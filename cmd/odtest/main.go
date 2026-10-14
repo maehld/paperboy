@@ -1,5 +1,5 @@
-// Command odtest checks an OpenDisplay ePaper display over Wi-Fi: it prints
-// firmware and panel configuration and optionally sends a test pattern.
+// Command odtest checks an OpenDisplay ePaper display over Wi-Fi or Bluetooth:
+// it prints firmware and panel configuration and optionally sends a test pattern.
 package main
 
 import (
@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"solarai/internal/opendisplay"
+	"solarai/internal/opendisplay/odble"
 )
 
 func main() {
@@ -27,24 +28,51 @@ func main() {
 func run() error {
 	host := flag.String("host", "", "IP-Adresse oder Hostname des Displays (z. B. 192.168.1.50 oder OD1234abcd.local)")
 	port := flag.Int("port", opendisplay.DefaultPort, "TCP-Port des Displays")
+	bleTarget := flag.String("ble", "", "Statt WLAN per Bluetooth verbinden: Gerätename (z. B. OD1234abcd) oder BLE-Adresse")
+	scan := flag.Bool("scan", false, "Nach OpenDisplay-Geräten per Bluetooth suchen und auflisten")
+	scanTime := flag.Duration("scan-time", 10*time.Second, "Suchdauer für -scan bzw. -ble")
+	noResponse := flag.Bool("ble-noresponse", false, "BLE: Schreiben ohne Bestätigung (schneller, experimentell)")
 	send := flag.Bool("send", false, "Testbild senden (ohne: nur Informationen lesen)")
 	fast := flag.Bool("fast", false, "Schnelle Aktualisierung statt Vollrefresh")
-	chunk := flag.Int("chunk", 1000, "Bytes pro Datenblock (1–4092)")
+	chunk := flag.Int("chunk", 1000, "Bytes pro Datenblock (WLAN 1–4092; bei BLE automatisch auf das Maximum begrenzt)")
 	pngPath := flag.String("png", "", "Testbild zusätzlich als PNG-Datei speichern")
 	timeout := flag.Duration("timeout", 10*time.Second, "Timeout für Verbindung und kurze Befehle")
 	buttons := flag.Bool("buttons", false, "Statusblock (Tasten/Touch) fortlaufend abfragen und Änderungen ausgeben; Ende mit Strg+C")
 	poll := flag.Duration("poll", 500*time.Millisecond, "Abfrageabstand für -buttons")
 	flag.Parse()
-	if *host == "" {
-		return fmt.Errorf("bitte -host angeben, z. B.: odtest -host 192.168.1.50 [-send]")
+	if *scan {
+		return scanBLE(*scanTime)
 	}
-	address := net.JoinHostPort(*host, strconv.Itoa(*port))
-	fmt.Println("Verbinde mit", address, "…")
-	client, err := opendisplay.Dial(address, *timeout)
-	if err != nil {
-		return fmt.Errorf("Verbindung fehlgeschlagen: %w (WLAN am Display aktiv? Port %d?)", err, *port)
+	var client *opendisplay.Client
+	switch {
+	case *bleTarget != "":
+		fmt.Println("Suche", *bleTarget, "per Bluetooth …")
+		d, err := odble.Find(*bleTarget, *scanTime)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Gefunden:       %s (%s, %d dBm), verbinde …\n", d.Name, d.Address, d.RSSI)
+		t, err := odble.Connect(d, odble.Options{WriteWithoutResponse: *noResponse})
+		if err != nil {
+			return err
+		}
+		client = opendisplay.NewClient(t, *timeout)
+		fmt.Printf("Verbunden:      höchstens %d Byte pro Befehl\n", t.MaxPayload())
+	case *host != "":
+		address := net.JoinHostPort(*host, strconv.Itoa(*port))
+		fmt.Println("Verbinde mit", address, "…")
+		var err error
+		client, err = opendisplay.Dial(address, *timeout)
+		if err != nil {
+			return fmt.Errorf("Verbindung fehlgeschlagen: %w (WLAN am Display aktiv? Port %d?)", err, *port)
+		}
+	default:
+		return fmt.Errorf("bitte -host, -ble oder -scan angeben, z. B.: odtest -host 192.168.1.50 [-send] oder odtest -scan")
 	}
 	defer client.Close()
+	if *chunk > client.MaxChunk() {
+		*chunk = client.MaxChunk()
+	}
 
 	if v, err := client.FirmwareVersion(); err != nil {
 		fmt.Println("Firmware:       nicht lesbar:", err)
@@ -152,6 +180,24 @@ func watchStatus(client *opendisplay.Client, cfg opendisplay.Config, interval ti
 		}
 		time.Sleep(interval)
 	}
+}
+
+// scanBLE lists nearby OpenDisplay devices.
+func scanBLE(duration time.Duration) error {
+	fmt.Printf("Suche %s nach OpenDisplay-Geräten per Bluetooth …\n", duration)
+	devices, err := odble.Scan(duration, nil)
+	if err != nil {
+		return err
+	}
+	if len(devices) == 0 {
+		fmt.Println("Keine Geräte gefunden (Bluetooth am Display aktiv? Nicht anderweitig verbunden?).")
+		return nil
+	}
+	for _, d := range devices {
+		fmt.Printf("  %-16s %s  %d dBm\n", d.Name, d.Address, d.RSSI)
+	}
+	fmt.Println("\nVerbinden mit: odtest -ble <Name>")
+	return nil
 }
 
 // testPattern draws orientation markers, a gray ramp and a fine checkerboard

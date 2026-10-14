@@ -1,6 +1,7 @@
-// Package opendisplay implements the sender side of the OpenDisplay protocol
-// over the Wi-Fi LAN transport (TCP, length-prefixed frames). Encryption is not
-// supported; it must be disabled on the device.
+// Package opendisplay implements the sender side of the OpenDisplay protocol.
+// The Wi-Fi LAN transport (TCP, length-prefixed frames) is built in; other
+// transports such as BLE plug in via Transport. Encryption is not supported;
+// it must be disabled on the device.
 package opendisplay
 
 import (
@@ -37,47 +38,79 @@ const (
 // ErrAuthRequired is returned when the device has encryption enabled.
 var ErrAuthRequired = errors.New("Gerät verlangt Authentifizierung; Verschlüsselung am Display deaktivieren")
 
+// Transport carries command payloads to the device and returns its responses
+// one payload at a time (a TCP frame or a BLE notification).
+type Transport interface {
+	WriteFrame(payload []byte) error
+	ReadFrame(timeout time.Duration) ([]byte, error)
+	// MaxPayload is the largest payload a single WriteFrame accepts.
+	MaxPayload() int
+	Close() error
+}
+
 // Client is a single plaintext session. The device serves one client at a time.
 type Client struct {
-	conn    net.Conn
+	t       Transport
 	Timeout time.Duration // per-response timeout for quick commands
 }
 
+func NewClient(t Transport, timeout time.Duration) *Client {
+	return &Client{t: t, Timeout: timeout}
+}
+
+// Dial connects over the Wi-Fi LAN transport.
 func Dial(address string, timeout time.Duration) (*Client, error) {
 	conn, err := net.DialTimeout("tcp", address, timeout)
 	if err != nil {
 		return nil, err
 	}
-	return &Client{conn: conn, Timeout: timeout}, nil
+	return NewClient(&tcpTransport{conn: conn, writeTimeout: timeout}, timeout), nil
 }
 
-func (c *Client) Close() error { return c.conn.Close() }
+func (c *Client) Close() error { return c.t.Close() }
 
-func (c *Client) writeFrame(payload []byte) error {
+// MaxChunk is the largest pixel chunk Upload can send in one data command.
+func (c *Client) MaxChunk() int { return c.t.MaxPayload() - 2 }
+
+func (c *Client) writeFrame(payload []byte) error { return c.t.WriteFrame(payload) }
+
+func (c *Client) readFrame(timeout time.Duration) ([]byte, error) { return c.t.ReadFrame(timeout) }
+
+// tcpTransport frames payloads as [length:2 LE][payload].
+type tcpTransport struct {
+	conn         net.Conn
+	writeTimeout time.Duration
+}
+
+func (t *tcpTransport) MaxPayload() int { return maxPayload }
+
+func (t *tcpTransport) Close() error { return t.conn.Close() }
+
+func (t *tcpTransport) WriteFrame(payload []byte) error {
 	if len(payload) == 0 || len(payload) > maxPayload {
 		return fmt.Errorf("ungültige Rahmenlänge %d", len(payload))
 	}
 	frame := make([]byte, 2+len(payload))
 	binary.LittleEndian.PutUint16(frame, uint16(len(payload)))
 	copy(frame[2:], payload)
-	c.conn.SetWriteDeadline(time.Now().Add(c.Timeout))
-	_, err := c.conn.Write(frame)
+	t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
+	_, err := t.conn.Write(frame)
 	return err
 }
 
-func (c *Client) readFrame(timeout time.Duration) ([]byte, error) {
-	c.conn.SetReadDeadline(time.Now().Add(timeout))
+func (t *tcpTransport) ReadFrame(timeout time.Duration) ([]byte, error) {
+	t.conn.SetReadDeadline(time.Now().Add(timeout))
 	var header [2]byte
-	if _, err := io.ReadFull(c.conn, header[:]); err != nil {
+	if _, err := io.ReadFull(t.conn, header[:]); err != nil {
 		return nil, err
 	}
 	n := binary.LittleEndian.Uint16(header[:])
 	if n == 0 || n > maxPayload {
-		c.conn.Close()
+		t.conn.Close()
 		return nil, fmt.Errorf("ungültige Rahmenlänge %d vom Gerät", n)
 	}
 	payload := make([]byte, n)
-	if _, err := io.ReadFull(c.conn, payload); err != nil {
+	if _, err := io.ReadFull(t.conn, payload); err != nil {
 		return nil, err
 	}
 	return payload, nil
@@ -183,7 +216,7 @@ func (c *Client) ReadConfig() (Config, error) {
 // Upload streams an encoded frame (see Encode) via uncompressed direct write
 // and waits until the panel has refreshed.
 func (c *Client) Upload(pixels []byte, chunk int, mode RefreshMode, progress func(sent, total int)) error {
-	if chunk < 1 || chunk > maxPayload-2 {
+	if chunk < 1 || chunk > c.MaxChunk() {
 		return fmt.Errorf("ungültige Blockgröße %d", chunk)
 	}
 	if err := c.send(cmdWriteStart, nil); err != nil {

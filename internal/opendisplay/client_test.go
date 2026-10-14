@@ -32,7 +32,7 @@ func fakeDevice(t *testing.T, handle func(cmd uint16, payload []byte, reply func
 			handle(binary.BigEndian.Uint16(payload), payload[2:], reply)
 		}
 	}()
-	return &Client{conn: client, Timeout: time.Second}
+	return NewClient(&tcpTransport{conn: client, writeTimeout: time.Second}, time.Second)
 }
 
 func testConfig(scheme ColorScheme) []byte {
