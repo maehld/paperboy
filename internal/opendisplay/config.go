@@ -1,0 +1,121 @@
+package opendisplay
+
+import (
+	"encoding/binary"
+	"fmt"
+)
+
+// Fixed payload sizes of Flex config packets (from the reference sender py-opendisplay).
+var packetSizes = map[byte]int{
+	0x01: 22, 0x02: 22, 0x04: 30, 0x20: 46, 0x21: 22, 0x23: 30, 0x24: 30, 0x25: 30,
+	0x26: 160, 0x27: 64, 0x28: 32, 0x29: 32, 0x2a: 32, 0x2b: 32,
+}
+
+const (
+	packetSystem   = 0x01
+	packetDisplay  = 0x20
+	packetWifi     = 0x26
+	packetSecurity = 0x27
+	wifiLegacySize = 65
+)
+
+type ColorScheme byte
+
+const (
+	SchemeMono  ColorScheme = 0
+	SchemeBWR   ColorScheme = 1
+	SchemeBWY   ColorScheme = 2
+	SchemeBWRY  ColorScheme = 3
+	Scheme6     ColorScheme = 4
+	SchemeGray4 ColorScheme = 5
+)
+
+func (s ColorScheme) String() string {
+	switch s {
+	case SchemeMono:
+		return "Schwarz/Weiß (1 bpp)"
+	case SchemeBWR:
+		return "Schwarz/Weiß/Rot"
+	case SchemeBWY:
+		return "Schwarz/Weiß/Gelb"
+	case SchemeBWRY:
+		return "Schwarz/Weiß/Rot/Gelb"
+	case Scheme6:
+		return "6 Farben (Spectra 6)"
+	case SchemeGray4:
+		return "4 Graustufen"
+	}
+	return fmt.Sprintf("unbekannt (%d)", s)
+}
+
+type Display struct {
+	PanelIC           uint16
+	Width, Height     int
+	WidthMM, HeightMM int
+	Rotation          byte
+	PartialUpdate     byte // 0 none, 1 regions, 2 full-frame partial only
+	ColorScheme       ColorScheme
+	TransmissionModes byte
+}
+
+type Config struct {
+	Version            byte
+	CommunicationModes byte // bit 0 BLE, bit 1 OEPL, bit 2 Wi-Fi
+	Displays           []Display
+	EncryptionEnabled  bool
+	UnknownPacket      int // first unknown packet ID, or -1
+}
+
+// ParseConfig parses [length:2 LE][version:1][packets…][crc:2].
+func ParseConfig(data []byte) (Config, error) {
+	if len(data) < 5 {
+		return Config{}, fmt.Errorf("Konfiguration zu kurz: %d Byte", len(data))
+	}
+	cfg := Config{Version: data[2], UnknownPacket: -1}
+	packets := data[3 : len(data)-2]
+	for offset := 0; offset+2 <= len(packets); {
+		id := packets[offset+1]
+		offset += 2
+		size, known := packetSizes[id]
+		if !known {
+			cfg.UnknownPacket = int(id)
+			break
+		}
+		if offset+size > len(packets) {
+			if id == packetWifi && len(packets)-offset == wifiLegacySize {
+				size = wifiLegacySize
+			} else {
+				return cfg, fmt.Errorf("Paket 0x%02x abgeschnitten", id)
+			}
+		}
+		p := packets[offset : offset+size]
+		offset += size
+		switch id {
+		case packetSystem:
+			cfg.CommunicationModes = p[2]
+		case packetDisplay:
+			cfg.Displays = append(cfg.Displays, Display{
+				PanelIC:           binary.LittleEndian.Uint16(p[2:]),
+				Width:             int(binary.LittleEndian.Uint16(p[4:])),
+				Height:            int(binary.LittleEndian.Uint16(p[6:])),
+				WidthMM:           int(binary.LittleEndian.Uint16(p[8:])),
+				HeightMM:          int(binary.LittleEndian.Uint16(p[10:])),
+				Rotation:          p[14],
+				PartialUpdate:     p[20],
+				ColorScheme:       ColorScheme(p[21]),
+				TransmissionModes: p[22],
+			})
+		case packetSecurity:
+			// [enabled:1][key:16]…; an all-zero key means encryption is off.
+			zero := true
+			for _, b := range p[1:17] {
+				zero = zero && b == 0
+			}
+			cfg.EncryptionEnabled = p[0] != 0 && !zero
+		}
+	}
+	if len(cfg.Displays) == 0 {
+		return cfg, fmt.Errorf("Konfiguration enthält kein Displaypaket")
+	}
+	return cfg, nil
+}
