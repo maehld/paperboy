@@ -8,16 +8,31 @@ import (
 // Fixed payload sizes of Flex config packets (from the reference sender py-opendisplay).
 var packetSizes = map[byte]int{
 	0x01: 22, 0x02: 22, 0x04: 30, 0x20: 46, 0x21: 22, 0x23: 30, 0x24: 30, 0x25: 30,
-	0x26: 160, 0x27: 64, 0x28: 32, 0x29: 32, 0x2a: 32, 0x2b: 32,
+	0x26: 160, 0x27: 64, 0x28: 32, 0x29: 32, 0x2a: 32, 0x2b: 32, 0x2c: 288,
 }
 
 const (
 	packetSystem   = 0x01
 	packetDisplay  = 0x20
+	packetButtons  = 0x25
 	packetWifi     = 0x26
 	packetSecurity = 0x27
+	packetTouch    = 0x28
+	packetNames    = 0x2c
 	wifiLegacySize = 65
+	// ButtonNotPublished marks an input that reports into no status byte.
+	ButtonNotPublished = 0xff
 )
+
+// Button describes a binary input; ByteIndex is its byte in the 11-byte dynamic status block.
+type Button struct {
+	Instance, InputType, ByteIndex byte
+}
+
+// Touch describes a touch controller reporting 5 bytes from StartByte of the dynamic block.
+type Touch struct {
+	Instance, StartByte, Flags byte
+}
 
 type ColorScheme byte
 
@@ -62,6 +77,9 @@ type Config struct {
 	Version            byte
 	CommunicationModes byte // bit 0 BLE, bit 1 OEPL, bit 2 Wi-Fi
 	Displays           []Display
+	Buttons            []Button
+	Touches            []Touch
+	Model, Name        string
 	EncryptionEnabled  bool
 	UnknownPacket      int // first unknown packet ID, or -1
 }
@@ -105,6 +123,12 @@ func ParseConfig(data []byte) (Config, error) {
 				ColorScheme:       ColorScheme(p[21]),
 				TransmissionModes: p[22],
 			})
+		case packetButtons:
+			cfg.Buttons = append(cfg.Buttons, Button{Instance: p[0], InputType: p[1], ByteIndex: p[15]})
+		case packetTouch:
+			cfg.Touches = append(cfg.Touches, Touch{Instance: p[0], Flags: p[8], StartByte: p[10]})
+		case packetNames:
+			cfg.Model, cfg.Name = cString(p[32:64]), cString(p[96:128])
 		case packetSecurity:
 			// [enabled:1][key:16]…; an all-zero key means encryption is off.
 			zero := true
@@ -118,4 +142,13 @@ func ParseConfig(data []byte) (Config, error) {
 		return cfg, fmt.Errorf("Konfiguration enthält kein Displaypaket")
 	}
 	return cfg, nil
+}
+
+func cString(b []byte) string {
+	for i, c := range b {
+		if c == 0 {
+			return string(b[:i])
+		}
+	}
+	return string(b)
 }

@@ -32,6 +32,8 @@ func run() error {
 	chunk := flag.Int("chunk", 1000, "Bytes pro Datenblock (1–4092)")
 	pngPath := flag.String("png", "", "Testbild zusätzlich als PNG-Datei speichern")
 	timeout := flag.Duration("timeout", 10*time.Second, "Timeout für Verbindung und kurze Befehle")
+	buttons := flag.Bool("buttons", false, "Statusblock (Tasten/Touch) fortlaufend abfragen und Änderungen ausgeben; Ende mit Strg+C")
+	poll := flag.Duration("poll", 500*time.Millisecond, "Abfrageabstand für -buttons")
 	flag.Parse()
 	if *host == "" {
 		return fmt.Errorf("bitte -host angeben, z. B.: odtest -host 192.168.1.50 [-send]")
@@ -62,6 +64,22 @@ func run() error {
 		fmt.Printf("Display %d:      %d × %d Pixel (%d × %d mm), %s\n", i, d.Width, d.Height, d.WidthMM, d.HeightMM, d.ColorScheme)
 		fmt.Printf("                Panel-IC 0x%04x, Rotation %d, Teilaktualisierung %d, Übertragungsmodi %08b\n",
 			d.PanelIC, d.Rotation, d.PartialUpdate, d.TransmissionModes)
+	}
+	if cfg.Model != "" || cfg.Name != "" {
+		fmt.Printf("Gerät:          %s %s\n", cfg.Model, cfg.Name)
+	}
+	for _, b := range cfg.Buttons {
+		where := fmt.Sprintf("Statusbyte %d", b.ByteIndex)
+		if b.ByteIndex == opendisplay.ButtonNotPublished || b.ByteIndex > 10 {
+			where = "nicht veröffentlicht"
+		}
+		fmt.Printf("Tasten %d:       Typ %d, %s\n", b.Instance, b.InputType, where)
+	}
+	for _, t := range cfg.Touches {
+		fmt.Printf("Touch %d:        Statusbytes %d–%d, Flags %08b\n", t.Instance, t.StartByte, t.StartByte+4, t.Flags)
+	}
+	if *buttons {
+		return watchStatus(client, cfg, *poll)
 	}
 
 	display := cfg.Displays[0]
@@ -99,6 +117,41 @@ func run() error {
 	fmt.Printf("Fertig nach %s: Das Display sollte jetzt das Testbild zeigen.\n", time.Since(start).Round(100*time.Millisecond))
 	fmt.Println("Erwartung: Rahmen, großes Quadrat oben links, kleines oben rechts, Balken Schwarz → Weiß, Schachbrett unten.")
 	return nil
+}
+
+// watchStatus polls the status block and prints every change, decoded where the
+// configuration says which bytes belong to buttons or touch.
+func watchStatus(client *opendisplay.Client, cfg opendisplay.Config, interval time.Duration) error {
+	fmt.Printf("\nFrage Statusblock alle %s ab. Jetzt Tasten drücken bzw. Display berühren; Ende mit Strg+C.\n", interval)
+	fmt.Println("Bytes 0–10 = dynamischer Bereich; Taste = Bit 7 gedrückt, Bits 3–6 Zähler, Bits 0–2 ID.")
+	var last *opendisplay.Status
+	for {
+		s, err := client.ReadStatus()
+		if err != nil {
+			return fmt.Errorf("Statusabfrage: %w", err)
+		}
+		if last == nil || s.Raw != last.Raw {
+			line := fmt.Sprintf("%s  dyn % x  %.1f °C  %d mV", time.Now().Format("15:04:05.0"), s.Dynamic[:], s.TemperatureC, s.BatteryMV)
+			for _, b := range cfg.Buttons {
+				if b.ByteIndex > 10 {
+					continue
+				}
+				st := s.Button(b.ByteIndex)
+				changed := last == nil || last.Dynamic[b.ByteIndex] != s.Dynamic[b.ByteIndex]
+				if changed {
+					line += fmt.Sprintf("  | Byte %d: Taste %d %s, Zähler %d", b.ByteIndex, st.ID, map[bool]string{true: "GEDRÜCKT", false: "los"}[st.Pressed], st.Count)
+				}
+			}
+			for _, t := range cfg.Touches {
+				if ts, ok := s.Touch(t.StartByte); ok && ts.Contacts != 0 {
+					line += fmt.Sprintf("  | Touch %d: Kontakte %d bei %d,%d", t.Instance, ts.Contacts, ts.X, ts.Y)
+				}
+			}
+			fmt.Println(line)
+			last = &s
+		}
+		time.Sleep(interval)
+	}
 }
 
 // testPattern draws orientation markers, a gray ramp and a fine checkerboard
