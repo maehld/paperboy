@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
 	"image/png"
 	"io"
 	"log/slog"
@@ -134,7 +135,9 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 type deviceInfo struct {
-	MAC     string `json:"mac"`
+	Type    string `json:"type"`
+	MAC     string `json:"mac,omitempty"`
+	Address string `json:"address,omitempty"`
 	Name    string `json:"name"`
 	Profile string `json:"profile"`
 	deviceState
@@ -147,14 +150,40 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	list := []deviceInfo{}
 	for _, d := range s.cfg.Devices {
-		info := deviceInfo{MAC: d.MAC, Name: d.Name, Profile: d.Profile}
-		if st := s.state[d.MAC]; st != nil {
+		info := deviceInfo{Type: d.Type, MAC: d.MAC, Address: d.Address, Name: d.Name, Profile: d.Profile}
+		if st := s.state[d.key()]; st != nil {
 			info.deviceState = *st
-			info.Registered = st.APIKey != ""
+			info.Registered = st.APIKey != "" || d.Type == TypeOpenDisplay
 		}
 		list = append(list, info)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"devices": list})
+}
+
+// stateLocked returns the device state, creating it if needed; callers hold s.mu.
+func (s *Server) stateLocked(key string) *deviceState {
+	st := s.state[key]
+	if st == nil {
+		st = &deviceState{}
+		s.state[key] = st
+	}
+	return st
+}
+
+// pageImage returns the page to show, with the stale banner if the upload is
+// too old. ok is false while nothing was uploaded for the profile.
+func (s *Server) pageImage(profile string, page int, now time.Time) (img *image.Paletted, pages int, ok bool) {
+	s.mu.Lock()
+	all := s.images[profile]
+	s.mu.Unlock()
+	if len(all) == 0 {
+		return nil, 0, false
+	}
+	stored := all[min(max(page, 0), len(all)-1)]
+	if now.Sub(stored.uploaded) > time.Duration(s.cfg.StaleAfter) {
+		return withBanner(stored.img, "Keine neuen Daten seit "+stored.uploaded.Local().Format("02.01. 15:04")), len(all), true
+	}
+	return stored.img, len(all), true
 }
 
 func (s *Server) baseURL(r *http.Request) string {

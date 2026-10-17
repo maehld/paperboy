@@ -35,6 +35,7 @@ type deviceState struct {
 	Firmware       string    `json:"firmware,omitempty"`
 	Model          string    `json:"model,omitempty"`
 	WakeReason     string    `json:"wake_reason,omitempty"`
+	LastError      string    `json:"last_error,omitempty"` // OpenDisplay: last push error, empty after success
 }
 
 func imagePath(dir, profile string, page int) string {

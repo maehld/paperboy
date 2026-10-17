@@ -51,6 +51,9 @@ func run() error {
 	}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.Serve(listener) }()
+	pushDone := make(chan struct{})
+	go func() { defer close(pushDone); srv.Run(ctx) }()
+	defer func() { cancel(); <-pushDone }()
 	slog.Info("Display-Service gestartet", "listen", listener.Addr().String(), "profiles", len(cfg.Profiles), "devices", len(cfg.Devices))
 	select {
 	case err := <-serveErr:

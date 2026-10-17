@@ -55,15 +55,32 @@ type Profile struct {
 	WidthMM int  `json:"width_mm"` // physical panel width; lets producers pick a layout
 }
 
-// Device is one allowed display, identified by its Wi-Fi MAC address.
+// Device is one display. TRMNL devices fetch images themselves and are
+// identified by their Wi-Fi MAC address; OpenDisplay devices are pushed to.
 type Device struct {
+	Type         string    `json:"type"` // "trmnl" (default) or "opendisplay"
 	MAC          string    `json:"mac"`
+	Address      string    `json:"address"` // OpenDisplay: host[:port]
+	Buttons      bool      `json:"buttons"` // OpenDisplay: poll buttons over a persistent connection
 	Name         string    `json:"name"`
 	Profile      string    `json:"profile"`
 	Refresh      Duration  `json:"refresh"`
 	NightRefresh Duration  `json:"night_refresh"` // optional; used between night_start and night_end
 	NightStart   ClockTime `json:"night_start"`
 	NightEnd     ClockTime `json:"night_end"`
+}
+
+const (
+	TypeTRMNL       = "trmnl"
+	TypeOpenDisplay = "opendisplay"
+)
+
+// key identifies the device in the persisted state.
+func (d *Device) key() string {
+	if d.Type == TypeOpenDisplay {
+		return "opendisplay:" + d.Name
+	}
+	return d.MAC
 }
 
 type Config struct {
@@ -121,26 +138,40 @@ func (c *Config) validate() error {
 	seen := map[string]bool{}
 	for i := range c.Devices {
 		d := &c.Devices[i]
-		mac, err := net.ParseMAC(d.MAC)
-		if err != nil {
-			return fmt.Errorf("Gerät %q: ungültige MAC-Adresse", d.Name)
+		switch d.Type {
+		case "", TypeTRMNL:
+			d.Type = TypeTRMNL
+			mac, err := net.ParseMAC(d.MAC)
+			if err != nil {
+				return fmt.Errorf("Gerät %q: ungültige MAC-Adresse", d.Name)
+			}
+			d.MAC = normalizeMAC(mac.String())
+			if d.Name == "" {
+				d.Name = d.MAC
+			}
+		case TypeOpenDisplay:
+			if d.Address == "" || d.Name == "" {
+				return fmt.Errorf("OpenDisplay-Gerät braucht name und address")
+			}
+			if _, _, err := net.SplitHostPort(d.Address); err != nil {
+				d.Address = net.JoinHostPort(d.Address, "2446")
+			}
+			d.MAC = "" // only TRMNL devices may use the device API
+		default:
+			return fmt.Errorf("Gerät %q: unbekannter Typ %q", d.Name, d.Type)
 		}
-		d.MAC = normalizeMAC(mac.String())
-		if seen[d.MAC] {
-			return fmt.Errorf("MAC-Adresse %s doppelt", d.MAC)
+		if seen[d.key()] {
+			return fmt.Errorf("Gerät %s doppelt", d.key())
 		}
-		seen[d.MAC] = true
+		seen[d.key()] = true
 		if _, ok := c.Profiles[d.Profile]; !ok {
-			return fmt.Errorf("Gerät %s: unbekanntes Profil %q", d.MAC, d.Profile)
+			return fmt.Errorf("Gerät %s: unbekanntes Profil %q", d.Name, d.Profile)
 		}
 		if d.Refresh == 0 {
 			d.Refresh = Duration(5 * time.Minute)
 		}
 		if time.Duration(d.Refresh) < minRefresh || (d.NightRefresh != 0 && time.Duration(d.NightRefresh) < minRefresh) {
-			return fmt.Errorf("Gerät %s: Intervalle müssen mindestens 1m betragen", d.MAC)
-		}
-		if d.Name == "" {
-			d.Name = d.MAC
+			return fmt.Errorf("Gerät %s: Intervalle müssen mindestens 1m betragen", d.Name)
 		}
 	}
 	return nil
@@ -148,6 +179,9 @@ func (c *Config) validate() error {
 
 func (c *Config) device(mac string) *Device {
 	mac = normalizeMAC(mac)
+	if mac == "" {
+		return nil
+	}
 	for i := range c.Devices {
 		if c.Devices[i].MAC == mac {
 			return &c.Devices[i]
