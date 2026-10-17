@@ -1,0 +1,14 @@
+{
+  "upload_token": "bitte-durch-ein-langes-zufaelliges-token-ersetzen",
+  "public_url": "",
+  "stale_after": "30m",
+  "page_timeout": "5m",
+  "profiles": {
+    "e1001": { "width": 800, "height": 480, "gray": true, "width_mm": 163 },
+    "sticky": { "width": 800, "height": 480, "gray": true, "width_mm": 86 }
+  },
+  "devices": [
+    { "mac": "AA:BB:CC:DD:EE:01", "name": "Wohnzimmer", "profile": "e1001", "refresh": "5m", "night_refresh": "1h", "night_start": "22:00", "night_end": "06:00" },
+    { "mac": "AA:BB:CC:DD:EE:02", "name": "Küche", "profile": "sticky", "refresh": "15m" }
+  ]
+}
