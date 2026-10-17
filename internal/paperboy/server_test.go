@@ -159,6 +159,20 @@ func TestDeviceFlow(t *testing.T) {
 	}
 }
 
+func TestFirstContactDoesNotPage(t *testing.T) {
+	s, _ := testServer(t)
+	upload(t, s, "0", 255)
+	upload(t, s, "1", 0)
+	key := call(t, s, "/api/setup", map[string]string{"ID": "AA:BB:CC:DD:EE:01"})["api_key"].(string)
+	dev := map[string]string{"ID": "AA:BB:CC:DD:EE:01", "Access-Token": key, "Update-Source": "EXT0"}
+	if out := call(t, s, "/api/display", dev); out["filename"].(string)[:7] != "small-0" {
+		t.Fatalf("erster Abruf nach Setup muss Übersicht zeigen: %v", out)
+	}
+	if out := call(t, s, "/api/display", dev); out["filename"].(string)[:7] != "small-1" {
+		t.Fatalf("danach blättert die Taste: %v", out)
+	}
+}
+
 func TestNightRefresh(t *testing.T) {
 	d := Device{Refresh: Duration(5 * time.Minute), NightRefresh: Duration(time.Hour), NightStart: 22 * 60, NightEnd: 6 * 60}
 	at := func(h int) time.Duration { return d.refresh(time.Date(2026, 1, 1, h, 0, 0, 0, time.Local)) }

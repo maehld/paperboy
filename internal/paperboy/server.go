@@ -242,6 +242,7 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"status": 202, "refresh_rate": 600})
 		return
 	}
+	firstContact := st.LastSeen.IsZero() // wake reason after setup still reflects the setup boot
 	st.LastSeen = now
 	st.BatteryVoltage, st.RSSI = r.Header.Get("Battery-Voltage"), r.Header.Get("RSSI")
 	st.Firmware, st.WakeReason = r.Header.Get("FW-Version"), r.Header.Get("Update-Source")
@@ -254,7 +255,7 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case special: // double click: back to the overview
 		st.Page, st.LastInput = 0, now
-	case buttonWake(st.WakeReason):
+	case buttonWake(st.WakeReason) && !firstContact:
 		st.Page, st.LastInput = st.Page+1, now
 	case st.Page != 0 && now.Sub(st.LastInput) >= pageTimeout:
 		st.Page = 0
