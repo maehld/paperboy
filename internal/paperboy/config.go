@@ -68,6 +68,31 @@ type Device struct {
 	NightRefresh Duration  `json:"night_refresh"` // optional; used between night_start and night_end
 	NightStart   ClockTime `json:"night_start"`
 	NightEnd     ClockTime `json:"night_end"`
+	Battery      *Battery  `json:"battery"` // TRMNL: overrides the global battery warning
+}
+
+// Battery configures the low-battery warning for TRMNL devices. A threshold
+// of 0 disables that stage.
+type Battery struct {
+	WarnVolts       float64 `json:"warn_volts"`       // banner on every page below this
+	CriticalVolts   float64 `json:"critical_volts"`   // full-screen warning below this
+	HysteresisVolts float64 `json:"hysteresis_volts"` // a stage ends this far above its threshold; 0 = 0.1
+}
+
+func (b *Battery) validate(owner string) error {
+	if b == nil {
+		return nil
+	}
+	if b.WarnVolts < 0 || b.CriticalVolts < 0 || b.HysteresisVolts < 0 || b.WarnVolts > 5 || b.CriticalVolts > 5 {
+		return fmt.Errorf("%s: ungültige Akkuschwellen", owner)
+	}
+	if b.WarnVolts > 0 && b.CriticalVolts > 0 && b.CriticalVolts >= b.WarnVolts {
+		return fmt.Errorf("%s: critical_volts muss unter warn_volts liegen", owner)
+	}
+	if b.HysteresisVolts == 0 {
+		b.HysteresisVolts = 0.1
+	}
+	return nil
 }
 
 const (
@@ -90,6 +115,15 @@ type Config struct {
 	PageTimeout Duration           `json:"page_timeout"` // back to page 0 after this; 0 = 5m
 	Profiles    map[string]Profile `json:"profiles"`
 	Devices     []Device           `json:"devices"`
+	Battery     *Battery           `json:"battery"` // low-battery warning for TRMNL devices; nil = off
+}
+
+// battery returns the effective battery warning settings for d, or nil.
+func (c *Config) battery(d *Device) *Battery {
+	if d.Battery != nil {
+		return d.Battery
+	}
+	return c.Battery
 }
 
 const (
@@ -127,6 +161,9 @@ func (c *Config) validate() error {
 		c.PageTimeout = Duration(5 * time.Minute)
 	}
 	c.PublicURL = strings.TrimRight(c.PublicURL, "/")
+	if err := c.Battery.validate("battery"); err != nil {
+		return err
+	}
 	for name, p := range c.Profiles {
 		if !validName(name) {
 			return fmt.Errorf("Profilname %q: nur a–z, 0–9 und -", name)
@@ -159,6 +196,9 @@ func (c *Config) validate() error {
 			d.MAC = "" // only TRMNL devices may use the device API
 		default:
 			return fmt.Errorf("Gerät %q: unbekannter Typ %q", d.Name, d.Type)
+		}
+		if err := d.Battery.validate("Gerät " + d.Name); err != nil {
+			return err
 		}
 		if seen[d.key()] {
 			return fmt.Errorf("Gerät %s doppelt", d.key())

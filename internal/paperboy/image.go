@@ -78,14 +78,20 @@ func drawText(dst draw.Image, s string, x, baseline int, size float64, c color.C
 	d.DrawString(s)
 }
 
-// withBanner returns a copy of img with an inverted notice bar at the bottom.
-func withBanner(img *image.Paletted, text string) *image.Paletted {
+// withBanner returns a copy of img with inverted notice bars stacked at the bottom.
+func withBanner(img *image.Paletted, texts ...string) *image.Paletted {
 	out := image.NewPaletted(img.Rect, img.Palette)
 	copy(out.Pix, img.Pix)
 	w, h := img.Rect.Dx(), img.Rect.Dy()
 	bar := h / 8
-	draw.Draw(out, image.Rect(0, h-bar, w, h), image.NewUniform(color.Black), image.Point{}, draw.Src)
-	drawText(out, text, w/2, h-bar*3/10, float64(bar)*0.55, color.White, true)
+	for i, text := range texts {
+		bottom := h - i*bar
+		draw.Draw(out, image.Rect(0, bottom-bar, w, bottom), image.NewUniform(color.Black), image.Point{}, draw.Src)
+		if i > 0 {
+			draw.Draw(out, image.Rect(0, bottom-max(1, bar/30), w, bottom), image.NewUniform(color.White), image.Point{}, draw.Src)
+		}
+		drawText(out, text, w/2, bottom-bar*3/10, float64(bar)*0.55, color.White, true)
+	}
 	return out
 }
 

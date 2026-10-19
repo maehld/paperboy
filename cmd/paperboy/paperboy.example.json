@@ -3,6 +3,7 @@
   "public_url": "",
   "stale_after": "30m",
   "page_timeout": "5m",
+  "battery": { "warn_volts": 3.45, "critical_volts": 3.3, "hysteresis_volts": 0.1 },
   "profiles": {
     "e1001": { "width": 800, "height": 480, "gray": true, "width_mm": 163 },
     "sticky": { "width": 800, "height": 480, "gray": true, "width_mm": 86 }

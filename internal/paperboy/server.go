@@ -278,10 +278,15 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 	if model := r.Header.Get("Model"); model != "" {
 		st.Model = model
 	}
+	prevLevel := st.BatteryLevel
+	st.BatteryLevel = nextBatteryLevel(s.cfg.battery(d), prevLevel, st.BatteryVoltage)
+	critical := st.BatteryLevel == batteryCritical
 	pageTimeout := time.Duration(s.cfg.PageTimeout)
 	special := r.Header.Get("special_function") != ""
 	pages := s.images[d.Profile]
 	switch {
+	case critical: // the warning replaces all pages; buttons only show it again
+		st.Page = 0
 	case special: // double click: back to the overview
 		st.Page, st.LastInput = 0, now
 	case buttonWake(st.WakeReason) && !firstContact:
@@ -298,16 +303,30 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 		refresh = min(refresh, max(minRefresh, pageTimeout-now.Sub(st.LastInput)+5*time.Second))
 	}
 	key := d.Profile + "-setup"
-	if len(pages) > 0 {
+	volts := voltageKey(st.BatteryVoltage)
+	switch {
+	case critical:
+		key = d.Profile + "-battery-" + volts
+	case len(pages) > 0:
 		img := pages[page]
 		key = fmt.Sprintf("%s-%d-%s", d.Profile, page, img.hash)
 		if now.Sub(img.uploaded) > time.Duration(s.cfg.StaleAfter) {
 			key += "-stale"
 		}
+		if st.BatteryLevel == batteryWarn {
+			key += "-low" + volts
+		}
 	}
 	logged := *st
 	s.saveStateLocked()
 	s.mu.Unlock()
+	if logged.BatteryLevel != prevLevel {
+		level := logged.BatteryLevel
+		if level == batteryOK {
+			level = "ok"
+		}
+		slog.Warn("Akkuwarnung", "device", d.Name, "level", level, "battery", logged.BatteryVoltage)
+	}
 	slog.Info("Display-Abruf", "device", d.Name, "page", page, "wake", logged.WakeReason, "special", special,
 		"battery", logged.BatteryVoltage, "rssi", logged.RSSI, "refresh", refresh)
 	resp := map[string]any{"status": 0, "image_url": s.baseURL(r) + "/images/" + key + ".png", "filename": key,
@@ -329,8 +348,9 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleImage serves keys of the form <profile>-setup, <profile>-<page>-<hash>
-// and <profile>-<page>-<hash>-stale. A changed hash still returns the newest page.
+// handleImage serves keys of the form <profile>-setup, <profile>-battery-<decivolts>
+// and <profile>-<page>-<hash>, optionally followed by -stale and -low<decivolts>.
+// A changed hash still returns the newest page.
 func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 	key, ok := strings.CutSuffix(r.PathValue("key"), ".png")
 	if !ok {
@@ -348,6 +368,10 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 			data = encodePNG(placeholder(p, "SolarAI-Display", "Warte auf Bilder …"))
 			break
 		}
+		if volts, ok := strings.CutPrefix(rest, "battery-"); ok {
+			data = encodePNG(criticalBatteryImage(p, volts))
+			break
+		}
 		parts := strings.Split(rest, "-")
 		page, err := strconv.Atoi(parts[0])
 		pages := s.images[name]
@@ -356,9 +380,16 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 		}
 		img := pages[page]
 		data = img.data
-		if strings.HasSuffix(rest, "-stale") {
-			at := img.uploaded.Local().Format("02.01. 15:04")
-			data = encodePNG(withBanner(img.img, "Keine neuen Daten seit "+at))
+		var banners []string
+		for _, flag := range parts[2:] {
+			if flag == "stale" {
+				banners = append(banners, "Keine neuen Daten seit "+img.uploaded.Local().Format("02.01. 15:04"))
+			} else if volts, ok := strings.CutPrefix(flag, "low"); ok {
+				banners = append(banners, lowBatteryText(volts))
+			}
+		}
+		if len(banners) > 0 {
+			data = encodePNG(withBanner(img.img, banners...))
 		}
 		break
 	}
