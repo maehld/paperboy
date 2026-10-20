@@ -1,66 +1,66 @@
 # Paperboy
 
-Paperboy ist ein kleiner Display-Dienst für ePaper-Anzeigen. Zulieferer wie [SolarAI](https://github.com/maehld/solarai) laden fertige Seiten als PNG hoch; Paperboy liefert sie an Geräte mit der unveränderten [TRMNL-Firmware](https://github.com/usetrmnl/trmnl-firmware) (Deep Sleep, Akkubetrieb) oder an OpenDisplay-Geräte aus. Zulieferer und Paperboy kennen sich nur über HTTP.
+Paperboy is a small display service for ePaper displays. Suppliers such as [SolarAI](https://github.com/maehld/solarai) upload finished pages as PNG; Paperboy delivers them to devices running the unmodified [TRMNL firmware](https://github.com/usetrmnl/trmnl-firmware) (deep sleep, battery operation) or to OpenDisplay devices. Suppliers and Paperboy know each other only via HTTP.
 
-Paperboy ist aus dem Display-Service `displayd` von SolarAI hervorgegangen (ADR 0028); die Git-Historie der übernommenen Dateien ist erhalten.
+Paperboy evolved from SolarAI's display service `displayd` (ADR 0028); the Git history of the carried-over files is preserved.
 
 ```text
-Zulieferer ──PUT /api/images/{profil}/{seite}──▶ paperboy ◀──GET /api/display── Display (TRMNL)
+Supplier ──PUT /api/images/{profile}/{page}──▶ paperboy ◀──GET /api/display── Display (TRMNL)
 ```
 
-## Schnellstart
+## Quick start
 
-1. Konfiguration anlegen: `cmd/paperboy/paperboy.example.json` nach `paperboy.json` kopieren, Token setzen und die MAC-Adressen der Displays eintragen (Freigabeliste; unbekannte Geräte werden abgelehnt und mit MAC im Log gemeldet).
-2. Starten:
+1. Create the configuration: copy `cmd/paperboy/paperboy.example.json` to `paperboy.json`, set the token and enter the MAC addresses of the displays (allow list; unknown devices are rejected and reported with their MAC in the log).
+2. Start:
    ```powershell
    go run ./cmd/paperboy -config paperboy.json -data paperboy-data -listen :8090
-   # Zulieferer, z. B. SolarAI:
+   # Supplier, e.g. SolarAI:
    solarai -host 192.168.1.100 -display-service http://127.0.0.1:8090 -display-token <token>
    ```
-   Alternativ als Container: `Dockerfile` und `compose.example.yaml`.
-3. Firmware flashen: E1001 über den [Seeed-Wiki-Flasher](https://wiki.seeedstudio.com/reterminal_e10xx_trmnl/) (ab 1.6.7), Sticky über den [Sticky-Playground](https://www.seeedstudio.com/sticky/playground/) (TRMNL). Im WLAN-Einrichtungsportal als Server-URL `http://<rechner>:8090` eintragen.
+   Alternatively as a container: `Dockerfile` and `compose.example.yaml`.
+3. Flash the firmware: E1001 via the [Seeed wiki flasher](https://wiki.seeedstudio.com/reterminal_e10xx_trmnl/) (1.6.7 or later), Sticky via the [Sticky playground](https://www.seeedstudio.com/sticky/playground/) (TRMNL). In the Wi-Fi setup portal, enter `http://<computer>:8090` as the server URL.
 
-**Umstieg von `displayd`:** Konfiguration und Datenverzeichnis sind unverändert verwendbar (`-config displayd.json -data displayd-data`); die Geräte brauchen kein neues Setup, solange Adresse und Port gleich bleiben. Die Umgebungsvariable heißt jetzt `PAPERBOY_UPLOAD_TOKEN`; `DISPLAYD_UPLOAD_TOKEN` wird weiterhin akzeptiert.
+**Migrating from `displayd`:** Configuration and data directory can be used unchanged (`-config displayd.json -data displayd-data`); the devices need no new setup as long as address and port stay the same. The environment variable is now called `PAPERBOY_UPLOAD_TOKEN`; `DISPLAYD_UPLOAD_TOKEN` is still accepted.
 
-## Verhalten
+## Behavior
 
-- **Profile** (Größe, Graustufen, Panelbreite) bestimmen das Layout; Zulieferer fragen sie über `GET /api/profiles` ab. Mehrere Geräte können ein Profil teilen. Bilder werden als PNG mit 1 Bit bzw. 2 Bit (4 Graustufen) ausgeliefert und unter `-data` gespeichert.
-- **Intervall** je Gerät (`refresh`, optional `night_refresh` zwischen `night_start` und `night_end`), mindestens 1 Minute. Unverändertes Bild → das Display zeichnet nicht neu.
-- **Taste**: kurzer Druck = nächste Seite, ca. 2 s halten (1–5 s) = Übersicht, länger als 5 s = WLAN zurücksetzen (Firmware). Ein echter Doppelklick löst dieselbe Funktion aus, ist aus dem Tiefschlaf aber kaum zu treffen. Nach `page_timeout` (5 min) zurück zur Übersicht. Drei getrennte Tasten unterstützt die TRMNL-Firmware nicht.
-- **Veraltet**: Kommt länger als `stale_after` (30 min) kein Upload, erscheint unten ein schwarzer Balken „Keine neuen Daten seit …“.
-- **Akkuwarnung** (ADR 0020): Die TRMNL-Firmware meldet nur die Spannung (`Battery-Voltage`). Mit `"battery": { "warn_volts": 3.45, "critical_volts": 3.3, "hysteresis_volts": 0.1 }` (global oder pro Gerät) bekommt jede Seite unter `warn_volts` den Balken „Akku schwach – bitte laden“; unter `critical_volts` erscheint stattdessen ein Vollbild „Akku fast leer“, Tasten blättern dann nicht. Eine Stufe endet erst `hysteresis_volts` über ihrer Schwelle. Ohne `battery` keine Warnung.
-- `GET /api/devices` zeigt registrierte Geräte mit Akkuspannung, Signalstärke, Weckgrund und letzter Abfrage (ohne Schlüssel).
-- **OpenDisplay-Geräte** (ADR 0018): Eintrag mit `"type": "opendisplay"`, `"address": "<IP>[:2446]"`, Profil und Intervall; `"buttons": true` hält eine dauerhafte Verbindung und wertet die drei Tasten aus (0 = Übersicht, 1 = zurück, 2 = weiter). Ohne Deep Sleep, nur per TCP. Noch nicht an Hardware getestet.
-- **Sicherheit:** Upload nur mit Token (`Authorization: Bearer`, alternativ per `PAPERBOY_UPLOAD_TOKEN`); Geräte per Freigabeliste und eigenem Schlüssel. Paperboy setzt niemals `reset_firmware` und antwortet nie mit Status 500.
+- **Profiles** (size, grayscale levels, panel width) determine the layout; suppliers query them via `GET /api/profiles`. Several devices can share a profile. Images are delivered as PNG with 1 bit or 2 bits (4 gray levels) and stored under `-data`.
+- **Interval** per device (`refresh`, optionally `night_refresh` between `night_start` and `night_end`), at least 1 minute. Unchanged image → the display does not redraw.
+- **Button**: short press = next page, hold approx. 2 s (1–5 s) = overview, longer than 5 s = reset Wi-Fi (firmware). A real double click triggers the same function, but is hardly achievable from deep sleep. After `page_timeout` (5 min) back to the overview. The TRMNL firmware does not support three separate buttons.
+- **Stale**: If no upload arrives for longer than `stale_after` (30 min), a black bar „Keine neuen Daten seit …“ (“No new data since …”) appears at the bottom.
+- **Battery warning** (ADR 0020): The TRMNL firmware reports only the voltage (`Battery-Voltage`). With `"battery": { "warn_volts": 3.45, "critical_volts": 3.3, "hysteresis_volts": 0.1 }` (global or per device), every page below `warn_volts` gets the bar „Akku schwach – bitte laden“ (“Battery low – please charge”); below `critical_volts` a full-screen image „Akku fast leer“ (“Battery almost empty”) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` no warning.
+- `GET /api/devices` shows registered devices with battery voltage, signal strength, wake reason and last request (without keys).
+- **OpenDisplay devices** (ADR 0018): entry with `"type": "opendisplay"`, `"address": "<IP>[:2446]"`, profile and interval; `"buttons": true` keeps a persistent connection and evaluates the three buttons (0 = overview, 1 = back, 2 = next). Without deep sleep, TCP only. Not yet tested on hardware.
+- **Security:** Upload only with token (`Authorization: Bearer`, alternatively via `PAPERBOY_UPLOAD_TOKEN`); devices via allow list and their own key. Paperboy never sets `reset_firmware` and never responds with status 500.
 
-## OpenDisplay-Testprogramm
+## OpenDisplay test program
 
 ```powershell
-# Firmware und Panelkonfiguration lesen
+# Read firmware and panel configuration
 go run ./cmd/odtest -host 192.168.1.50
-# Zusätzlich ein Testbild senden (optional -fast, -png vorschau.png)
+# Additionally send a test image (optional -fast, -png preview.png)
 go run ./cmd/odtest -host 192.168.1.50 -send
-# Per Bluetooth: Geräte suchen, dann wie oben per Name oder Adresse
+# Via Bluetooth: scan for devices, then as above by name or address
 go run ./cmd/odtest -scan
 go run ./cmd/odtest -ble ODE46FD8 [-send] [-buttons]
 ```
 
-Bluetooth (ADR 0016) gibt es nur im Testprogramm. An einer reTerminal Sticky unter Windows dauert ein Vollbild (48 KB) etwa 30 s, über WLAN wenige Sekunden. Nach dem Trennen braucht das Display einige Sekunden, bis es wieder gefunden wird (ggf. `-scan-time 20s`).
+Bluetooth (ADR 0016) exists only in the test program. On a reTerminal Sticky under Windows a full image (48 KB) takes about 30 s, via Wi-Fi a few seconds. After disconnecting, the display takes a few seconds until it is found again (if necessary `-scan-time 20s`).
 
-## Entwicklung
+## Development
 
-Benötigt Go 1.27 oder neuer.
+Requires Go 1.27 or newer.
 
 ```powershell
 go test ./...
 go vet ./...
-.\scripts\build.ps1   # paperboy und odtest für Linux amd64/arm64 und Windows nach bin/
+.\scripts\build.ps1   # paperboy and odtest for Linux amd64/arm64 and Windows into bin/
 ```
 
 ```text
-cmd/paperboy/            Start und Optionen, Beispielkonfiguration
-cmd/odtest/              Testprogramm für OpenDisplay-Geräte (TCP und Bluetooth)
-internal/paperboy/       Upload-API, TRMNL-API, OpenDisplay-Pusher, Akkuwarnung
-internal/opendisplay/    OpenDisplay-Protokoll; odble = Bluetooth-Transport
-docs/adr/                Architekturentscheidungen
+cmd/paperboy/            Startup and options, example configuration
+cmd/odtest/              Test program for OpenDisplay devices (TCP and Bluetooth)
+internal/paperboy/       Upload API, TRMNL API, OpenDisplay pusher, battery warning
+internal/opendisplay/    OpenDisplay protocol; odble = Bluetooth transport
+docs/adr/                Architecture decisions
 ```

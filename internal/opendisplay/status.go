@@ -44,7 +44,7 @@ func (c *Client) ReadStatus() (Status, error) {
 // ParseStatus decodes [company:2][dynamic:11][temp:1][battery:1][flags:1].
 func ParseStatus(b []byte) (Status, error) {
 	if len(b) != 16 {
-		return Status{}, fmt.Errorf("Statusblock hat %d statt 16 Byte", len(b))
+		return Status{}, fmt.Errorf("status block has %d instead of 16 bytes", len(b))
 	}
 	s := Status{}
 	copy(s.Raw[:], b)

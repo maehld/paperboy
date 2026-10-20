@@ -48,19 +48,19 @@ const (
 func (s ColorScheme) String() string {
 	switch s {
 	case SchemeMono:
-		return "Schwarz/Weiß (1 bpp)"
+		return "black/white (1 bpp)"
 	case SchemeBWR:
-		return "Schwarz/Weiß/Rot"
+		return "black/white/red"
 	case SchemeBWY:
-		return "Schwarz/Weiß/Gelb"
+		return "black/white/yellow"
 	case SchemeBWRY:
-		return "Schwarz/Weiß/Rot/Gelb"
+		return "black/white/red/yellow"
 	case Scheme6:
-		return "6 Farben (Spectra 6)"
+		return "6 colors (Spectra 6)"
 	case SchemeGray4:
-		return "4 Graustufen"
+		return "4 gray levels"
 	}
-	return fmt.Sprintf("unbekannt (%d)", s)
+	return fmt.Sprintf("unknown (%d)", s)
 }
 
 type Display struct {
@@ -87,7 +87,7 @@ type Config struct {
 // ParseConfig parses [length:2 LE][version:1][packets…][crc:2].
 func ParseConfig(data []byte) (Config, error) {
 	if len(data) < 5 {
-		return Config{}, fmt.Errorf("Konfiguration zu kurz: %d Byte", len(data))
+		return Config{}, fmt.Errorf("configuration too short: %d bytes", len(data))
 	}
 	cfg := Config{Version: data[2], UnknownPacket: -1}
 	packets := data[3 : len(data)-2]
@@ -103,7 +103,7 @@ func ParseConfig(data []byte) (Config, error) {
 			if id == packetWifi && len(packets)-offset == wifiLegacySize {
 				size = wifiLegacySize
 			} else {
-				return cfg, fmt.Errorf("Paket 0x%02x abgeschnitten", id)
+				return cfg, fmt.Errorf("packet 0x%02x truncated", id)
 			}
 		}
 		p := packets[offset : offset+size]
@@ -139,7 +139,7 @@ func ParseConfig(data []byte) (Config, error) {
 		}
 	}
 	if len(cfg.Displays) == 0 {
-		return cfg, fmt.Errorf("Konfiguration enthält kein Displaypaket")
+		return cfg, fmt.Errorf("configuration contains no display packet")
 	}
 	return cfg, nil
 }

@@ -18,7 +18,7 @@ type Duration time.Duration
 func (d *Duration) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
-		return fmt.Errorf("Dauer als Zeichenkette erwartet, z. B. \"5m\"")
+		return fmt.Errorf("expected duration as string, e.g. \"5m\"")
 	}
 	v, err := time.ParseDuration(s)
 	if err != nil {
@@ -40,7 +40,7 @@ func (c *ClockTime) UnmarshalJSON(b []byte) error {
 	}
 	t, err := time.Parse("15:04", s)
 	if err != nil {
-		return fmt.Errorf("Uhrzeit im Format HH:MM erwartet: %q", s)
+		return fmt.Errorf("expected time of day as HH:MM: %q", s)
 	}
 	*c = ClockTime(t.Hour()*60 + t.Minute())
 	return nil
@@ -83,10 +83,10 @@ func (b *Battery) validate(owner string) error {
 		return nil
 	}
 	if b.WarnVolts < 0 || b.CriticalVolts < 0 || b.HysteresisVolts < 0 || b.WarnVolts > 5 || b.CriticalVolts > 5 {
-		return fmt.Errorf("%s: ungültige Akkuschwellen", owner)
+		return fmt.Errorf("%s: invalid battery thresholds", owner)
 	}
 	if b.WarnVolts > 0 && b.CriticalVolts > 0 && b.CriticalVolts >= b.WarnVolts {
-		return fmt.Errorf("%s: critical_volts muss unter warn_volts liegen", owner)
+		return fmt.Errorf("%s: critical_volts must be below warn_volts", owner)
 	}
 	if b.HysteresisVolts == 0 {
 		b.HysteresisVolts = 0.1
@@ -154,7 +154,7 @@ func LoadConfig(path string) (*Config, error) {
 
 func (c *Config) validate() error {
 	if len(c.UploadToken) < 16 {
-		return fmt.Errorf("upload_token fehlt oder ist kürzer als 16 Zeichen")
+		return fmt.Errorf("upload_token missing or shorter than 16 characters")
 	}
 	if c.StaleAfter == 0 {
 		c.StaleAfter = Duration(30 * time.Minute)
@@ -168,10 +168,10 @@ func (c *Config) validate() error {
 	}
 	for name, p := range c.Profiles {
 		if !validName(name) {
-			return fmt.Errorf("Profilname %q: nur a–z, 0–9 und -", name)
+			return fmt.Errorf("profile name %q: only a–z, 0–9 and -", name)
 		}
 		if p.Width < 1 || p.Height < 1 || p.Width > 4096 || p.Height > 4096 {
-			return fmt.Errorf("Profil %s: ungültige Größe", name)
+			return fmt.Errorf("profile %s: invalid size", name)
 		}
 	}
 	seen := map[string]bool{}
@@ -182,7 +182,7 @@ func (c *Config) validate() error {
 			d.Type = TypeTRMNL
 			mac, err := net.ParseMAC(d.MAC)
 			if err != nil {
-				return fmt.Errorf("Gerät %q: ungültige MAC-Adresse", d.Name)
+				return fmt.Errorf("device %q: invalid MAC address", d.Name)
 			}
 			d.MAC = normalizeMAC(mac.String())
 			if d.Name == "" {
@@ -190,30 +190,30 @@ func (c *Config) validate() error {
 			}
 		case TypeOpenDisplay:
 			if d.Address == "" || d.Name == "" {
-				return fmt.Errorf("OpenDisplay-Gerät braucht name und address")
+				return fmt.Errorf("OpenDisplay device needs name and address")
 			}
 			if _, _, err := net.SplitHostPort(d.Address); err != nil {
 				d.Address = net.JoinHostPort(d.Address, "2446")
 			}
 			d.MAC = "" // only TRMNL devices may use the device API
 		default:
-			return fmt.Errorf("Gerät %q: unbekannter Typ %q", d.Name, d.Type)
+			return fmt.Errorf("device %q: unknown type %q", d.Name, d.Type)
 		}
-		if err := d.Battery.validate("Gerät " + d.Name); err != nil {
+		if err := d.Battery.validate("device " + d.Name); err != nil {
 			return err
 		}
 		if seen[d.key()] {
-			return fmt.Errorf("Gerät %s doppelt", d.key())
+			return fmt.Errorf("duplicate device %s", d.key())
 		}
 		seen[d.key()] = true
 		if _, ok := c.Profiles[d.Profile]; !ok {
-			return fmt.Errorf("Gerät %s: unbekanntes Profil %q", d.Name, d.Profile)
+			return fmt.Errorf("device %s: unknown profile %q", d.Name, d.Profile)
 		}
 		if d.Refresh == 0 {
 			d.Refresh = Duration(5 * time.Minute)
 		}
 		if time.Duration(d.Refresh) < minRefresh || (d.NightRefresh != 0 && time.Duration(d.NightRefresh) < minRefresh) {
-			return fmt.Errorf("Gerät %s: Intervalle müssen mindestens 1m betragen", d.Name)
+			return fmt.Errorf("device %s: intervals must be at least 1m", d.Name)
 		}
 	}
 	return nil

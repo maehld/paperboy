@@ -36,7 +36,7 @@ const (
 )
 
 // ErrAuthRequired is returned when the device has encryption enabled.
-var ErrAuthRequired = errors.New("Gerät verlangt Authentifizierung; Verschlüsselung am Display deaktivieren")
+var ErrAuthRequired = errors.New("device requires authentication; disable encryption on the display")
 
 // Transport carries command payloads to the device and returns its responses
 // one payload at a time (a TCP frame or a BLE notification).
@@ -88,7 +88,7 @@ func (t *tcpTransport) Close() error { return t.conn.Close() }
 
 func (t *tcpTransport) WriteFrame(payload []byte) error {
 	if len(payload) == 0 || len(payload) > maxPayload {
-		return fmt.Errorf("ungültige Rahmenlänge %d", len(payload))
+		return fmt.Errorf("invalid frame length %d", len(payload))
 	}
 	frame := make([]byte, 2+len(payload))
 	binary.LittleEndian.PutUint16(frame, uint16(len(payload)))
@@ -107,7 +107,7 @@ func (t *tcpTransport) ReadFrame(timeout time.Duration) ([]byte, error) {
 	n := binary.LittleEndian.Uint16(header[:])
 	if n == 0 || n > maxPayload {
 		t.conn.Close()
-		return nil, fmt.Errorf("ungültige Rahmenlänge %d vom Gerät", n)
+		return nil, fmt.Errorf("invalid frame length %d from device", n)
 	}
 	payload := make([]byte, n)
 	if _, err := io.ReadFull(t.conn, payload); err != nil {
@@ -126,7 +126,7 @@ func (c *Client) send(cmd uint16, payload []byte) error {
 // whether it is an error frame, and the bytes after the 2-byte code.
 func response(frame []byte) (code uint16, nack bool, body []byte, err error) {
 	if len(frame) < 2 {
-		return 0, false, nil, fmt.Errorf("Antwort zu kurz: % x", frame)
+		return 0, false, nil, fmt.Errorf("response too short: % x", frame)
 	}
 	if frame[0] == 0xff {
 		return uint16(frame[1]), true, frame[2:], nil
@@ -155,11 +155,11 @@ func (c *Client) expect(cmd uint16, timeout time.Duration) ([]byte, error) {
 			continue
 		}
 		if nack {
-			return nil, fmt.Errorf("Gerät meldet Fehler für Befehl 0x%04x: % x", cmd, frame)
+			return nil, fmt.Errorf("device reports error for command 0x%04x: % x", cmd, frame)
 		}
 		return body, nil
 	}
-	return nil, fmt.Errorf("keine passende Antwort auf Befehl 0x%04x", cmd)
+	return nil, fmt.Errorf("no matching response to command 0x%04x", cmd)
 }
 
 type FirmwareVersion struct {
@@ -176,7 +176,7 @@ func (c *Client) FirmwareVersion() (FirmwareVersion, error) {
 		return FirmwareVersion{}, err
 	}
 	if len(body) < 3 || len(body) < 3+int(body[2]) {
-		return FirmwareVersion{}, fmt.Errorf("Firmware-Antwort unvollständig: % x", body)
+		return FirmwareVersion{}, fmt.Errorf("incomplete firmware response: % x", body)
 	}
 	v := FirmwareVersion{Major: body[0], Minor: body[1], SHA: string(body[3 : 3+int(body[2])])}
 	if len(body) > 3+int(body[2]) {
@@ -196,17 +196,17 @@ func (c *Client) ReadConfig() (Config, error) {
 		return Config{}, err
 	}
 	if len(body) < 4 {
-		return Config{}, fmt.Errorf("Konfiguration: erster Block zu kurz")
+		return Config{}, fmt.Errorf("configuration: first chunk too short")
 	}
 	total := int(binary.LittleEndian.Uint16(body[2:4]))
 	data := append([]byte(nil), body[4:]...)
 	for len(data) < total {
 		body, err := c.expect(cmdReadConfig, 2*time.Second)
 		if err != nil {
-			return Config{}, fmt.Errorf("Konfiguration abgebrochen bei %d/%d Byte: %w", len(data), total, err)
+			return Config{}, fmt.Errorf("configuration aborted at %d/%d bytes: %w", len(data), total, err)
 		}
 		if len(body) <= 2 {
-			return Config{}, fmt.Errorf("Konfiguration: leerer Block bei %d/%d Byte", len(data), total)
+			return Config{}, fmt.Errorf("configuration: empty chunk at %d/%d bytes", len(data), total)
 		}
 		data = append(data, body[2:]...)
 	}
@@ -217,13 +217,13 @@ func (c *Client) ReadConfig() (Config, error) {
 // and waits until the panel has refreshed.
 func (c *Client) Upload(pixels []byte, chunk int, mode RefreshMode, progress func(sent, total int)) error {
 	if chunk < 1 || chunk > c.MaxChunk() {
-		return fmt.Errorf("ungültige Blockgröße %d", chunk)
+		return fmt.Errorf("invalid chunk size %d", chunk)
 	}
 	if err := c.send(cmdWriteStart, nil); err != nil {
 		return err
 	}
 	if _, err := c.expect(cmdWriteStart, 10*time.Second); err != nil {
-		return fmt.Errorf("Start: %w", err)
+		return fmt.Errorf("start: %w", err)
 	}
 	autoCompleted := false
 	for sent := 0; sent < len(pixels); {
@@ -234,14 +234,14 @@ func (c *Client) Upload(pixels []byte, chunk int, mode RefreshMode, progress fun
 		sent = end
 		frame, err := c.readFrame(90 * time.Second)
 		if err != nil {
-			return fmt.Errorf("Daten bei %d Byte: %w", sent, err)
+			return fmt.Errorf("data at %d bytes: %w", sent, err)
 		}
 		code, nack, _, err := response(frame)
 		if err != nil {
 			return err
 		}
 		if nack {
-			return fmt.Errorf("Gerät lehnt Daten bei %d Byte ab: % x", sent, frame)
+			return fmt.Errorf("device rejects data at %d bytes: % x", sent, frame)
 		}
 		if progress != nil {
 			progress(sent, len(pixels))
@@ -252,7 +252,7 @@ func (c *Client) Upload(pixels []byte, chunk int, mode RefreshMode, progress fun
 			break
 		}
 		if code != cmdWriteData {
-			return fmt.Errorf("unerwartete Antwort während der Übertragung: % x", frame)
+			return fmt.Errorf("unexpected response during transfer: % x", frame)
 		}
 	}
 	if !autoCompleted {
@@ -260,19 +260,19 @@ func (c *Client) Upload(pixels []byte, chunk int, mode RefreshMode, progress fun
 			return err
 		}
 		if _, err := c.expect(cmdWriteEnd, 90*time.Second); err != nil {
-			return fmt.Errorf("Ende: %w", err)
+			return fmt.Errorf("end: %w", err)
 		}
 	}
 	frame, err := c.readFrame(90 * time.Second)
 	if err != nil {
-		return fmt.Errorf("warte auf Anzeige: %w", err)
+		return fmt.Errorf("waiting for display: %w", err)
 	}
 	switch code, _, _, _ := response(frame); code {
 	case cmdRefreshDone:
 		return nil
 	case cmdRefreshTimeout:
-		return errors.New("Panel meldet Zeitüberschreitung beim Aktualisieren")
+		return errors.New("panel reports timeout while refreshing")
 	default:
-		return fmt.Errorf("unerwartete Antwort nach dem Senden: % x", frame)
+		return fmt.Errorf("unexpected response after sending: % x", frame)
 	}
 }

@@ -65,42 +65,42 @@ func TestUploadRules(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("ohne Token: %d", rec.Code)
+		t.Fatalf("without token: %d", rec.Code)
 	}
 	if code := upload(t, s, "1", 0); code != http.StatusConflict {
-		t.Fatalf("Lücke muss abgelehnt werden: %d", code)
+		t.Fatalf("gap must be rejected: %d", code)
 	}
 	if code := upload(t, s, "0", 0); code != http.StatusNoContent {
-		t.Fatalf("Upload: %d", code)
+		t.Fatalf("upload: %d", code)
 	}
 	if code := upload(t, s, "1", 255); code != http.StatusNoContent {
-		t.Fatalf("Upload Seite 1: %d", code)
+		t.Fatalf("upload page 1: %d", code)
 	}
 	// Stored images survive a restart.
 	s2, err := New(s.cfg, s.dir)
 	if err != nil || len(s2.images["small"]) != 2 {
-		t.Fatalf("Neustart: %v, %d Seiten", err, len(s2.images["small"]))
+		t.Fatalf("restart: %v, %d pages", err, len(s2.images["small"]))
 	}
 }
 
 func TestDeviceFlow(t *testing.T) {
 	s, now := testServer(t)
 	if out := call(t, s, "/api/setup", map[string]string{"ID": "11:22:33:44:55:66"}); out["status"].(float64) != 404 {
-		t.Fatalf("unbekanntes Gerät: %v", out)
+		t.Fatalf("unknown device: %v", out)
 	}
 	setup := call(t, s, "/api/setup", map[string]string{"ID": "AA:BB:CC:DD:EE:01"})
 	key, _ := setup["api_key"].(string)
 	if setup["status"].(float64) != 200 || key == "" {
-		t.Fatalf("Setup: %v", setup)
+		t.Fatalf("setup: %v", setup)
 	}
 	dev := map[string]string{"ID": "AA:BB:CC:DD:EE:01", "Access-Token": key, "Update-Source": "timer"}
 
-	bad := call(t, s, "/api/display", map[string]string{"ID": "AA:BB:CC:DD:EE:01", "Access-Token": "falsch"})
+	bad := call(t, s, "/api/display", map[string]string{"ID": "AA:BB:CC:DD:EE:01", "Access-Token": "wrong"})
 	if bad["status"].(float64) != 202 || bad["reset_firmware"] == true {
-		t.Fatalf("falscher Schlüssel darf nie zurücksetzen: %v", bad)
+		t.Fatalf("wrong key must never reset: %v", bad)
 	}
 	if out := call(t, s, "/api/display", dev); out["filename"] != "small-setup" {
-		t.Fatalf("ohne Bilder Platzhalter erwartet: %v", out)
+		t.Fatalf("expected placeholder without images: %v", out)
 	}
 	upload(t, s, "0", 255)
 	upload(t, s, "1", 0)
@@ -108,21 +108,21 @@ func TestDeviceFlow(t *testing.T) {
 
 	out := call(t, s, "/api/display", dev)
 	if page(out) != "small-0" || out["refresh_rate"].(float64) != 600 || out["special_function"] != "restart_playlist" {
-		t.Fatalf("Timer-Abruf: %v", out)
+		t.Fatalf("timer fetch: %v", out)
 	}
 	dev["Update-Source"] = "EXT1"
 	out = call(t, s, "/api/display", dev)
 	if page(out) != "small-1" || out["refresh_rate"].(float64) > 310 {
-		t.Fatalf("Tastendruck muss blättern und Intervall verkürzen: %v", out)
+		t.Fatalf("button press must page and shorten the interval: %v", out)
 	}
 	if out = call(t, s, "/api/display", dev); page(out) != "small-0" {
-		t.Fatalf("nach letzter Seite wieder Übersicht: %v", out)
+		t.Fatalf("overview again after the last page: %v", out)
 	}
 	call(t, s, "/api/display", dev) // page 1
 	dev["special_function"] = "true"
 	out = call(t, s, "/api/display", dev)
 	if page(out) != "small-0" || out["action"] != "restart_playlist" {
-		t.Fatalf("Doppelklick muss zur Übersicht führen: %v", out)
+		t.Fatalf("double click must lead to the overview: %v", out)
 	}
 	delete(dev, "special_function")
 	dev["Update-Source"] = "EXT1"
@@ -131,22 +131,22 @@ func TestDeviceFlow(t *testing.T) {
 	*now = now.Add(6 * time.Minute)
 	out = call(t, s, "/api/display", dev)
 	if page(out) != "small-0" {
-		t.Fatalf("nach Zeitablauf zurück zur Übersicht: %v", out)
+		t.Fatalf("back to overview after timeout: %v", out)
 	}
 	*now = now.Add(time.Hour)
 	out = call(t, s, "/api/display", dev)
 	if name := out["filename"].(string); name[len(name)-6:] != "-stale" {
-		t.Fatalf("altes Bild muss markiert werden: %v", out)
+		t.Fatalf("old image must be marked: %v", out)
 	}
 	req := httptest.NewRequest(http.MethodGet, "/images/"+out["filename"].(string)+".png", nil)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	img, err := png.Decode(rec.Body)
 	if err != nil || rec.Header().Get("Content-Type") != "image/png" {
-		t.Fatalf("Bildabruf: %v %v", err, rec.Header())
+		t.Fatalf("image fetch: %v %v", err, rec.Header())
 	}
 	if p, ok := img.(*image.Paletted); !ok || len(p.Palette) != 4 {
-		t.Fatalf("Graustufenprofil muss 2-Bit-Palette liefern: %T", img)
+		t.Fatalf("gray profile must yield 2-bit palette: %T", img)
 	}
 	black := 0
 	for x := 0; x < 40; x++ {
@@ -155,7 +155,7 @@ func TestDeviceFlow(t *testing.T) {
 		}
 	}
 	if black < 10 {
-		t.Fatalf("Hinweisbalken fehlt (%d schwarz, %T)", black, img)
+		t.Fatalf("notice bar missing (%d black, %T)", black, img)
 	}
 }
 
@@ -166,10 +166,10 @@ func TestFirstContactDoesNotPage(t *testing.T) {
 	key := call(t, s, "/api/setup", map[string]string{"ID": "AA:BB:CC:DD:EE:01"})["api_key"].(string)
 	dev := map[string]string{"ID": "AA:BB:CC:DD:EE:01", "Access-Token": key, "Update-Source": "EXT0"}
 	if out := call(t, s, "/api/display", dev); out["filename"].(string)[:7] != "small-0" {
-		t.Fatalf("erster Abruf nach Setup muss Übersicht zeigen: %v", out)
+		t.Fatalf("first fetch after setup must show the overview: %v", out)
 	}
 	if out := call(t, s, "/api/display", dev); out["filename"].(string)[:7] != "small-1" {
-		t.Fatalf("danach blättert die Taste: %v", out)
+		t.Fatalf("afterwards the button pages: %v", out)
 	}
 }
 
@@ -177,7 +177,7 @@ func TestNightRefresh(t *testing.T) {
 	d := Device{Refresh: Duration(5 * time.Minute), NightRefresh: Duration(time.Hour), NightStart: 22 * 60, NightEnd: 6 * 60}
 	at := func(h int) time.Duration { return d.refresh(time.Date(2026, 1, 1, h, 0, 0, 0, time.Local)) }
 	if at(23) != time.Hour || at(3) != time.Hour || at(6) != 5*time.Minute || at(12) != 5*time.Minute {
-		t.Fatal("Nachtfenster über Mitternacht falsch")
+		t.Fatal("wrong night window across midnight")
 	}
 }
 
@@ -186,9 +186,9 @@ func TestNormalizeMono(t *testing.T) {
 	img.Pix = []uint8{40, 200}
 	p := normalize(img, Profile{})
 	if len(p.Palette) != 2 || p.Pix[0] != 0 || p.Pix[1] != 1 {
-		t.Fatalf("Schwellwert falsch: %v", p.Pix)
+		t.Fatalf("wrong threshold: %v", p.Pix)
 	}
 	if b := encodePNG(p); b[24] != 1 { // IHDR bit depth
-		t.Fatalf("1-Bit-PNG erwartet, Bittiefe %d", b[24])
+		t.Fatalf("expected 1-bit PNG, bit depth %d", b[24])
 	}
 }

@@ -20,25 +20,25 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "Fehler:", err)
+		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
 }
 
 func run() error {
-	host := flag.String("host", "", "IP-Adresse oder Hostname des Displays (z. B. 192.168.1.50 oder OD1234abcd.local)")
-	port := flag.Int("port", opendisplay.DefaultPort, "TCP-Port des Displays")
-	bleTarget := flag.String("ble", "", "Statt WLAN per Bluetooth verbinden: Gerätename (z. B. OD1234abcd) oder BLE-Adresse")
-	scan := flag.Bool("scan", false, "Nach OpenDisplay-Geräten per Bluetooth suchen und auflisten")
-	scanTime := flag.Duration("scan-time", 10*time.Second, "Suchdauer für -scan bzw. -ble")
-	noResponse := flag.Bool("ble-noresponse", false, "BLE: Schreiben ohne Bestätigung (schneller, experimentell)")
-	send := flag.Bool("send", false, "Testbild senden (ohne: nur Informationen lesen)")
-	fast := flag.Bool("fast", false, "Schnelle Aktualisierung statt Vollrefresh")
-	chunk := flag.Int("chunk", 1000, "Bytes pro Datenblock (WLAN 1–4092; bei BLE automatisch auf das Maximum begrenzt)")
-	pngPath := flag.String("png", "", "Testbild zusätzlich als PNG-Datei speichern")
-	timeout := flag.Duration("timeout", 10*time.Second, "Timeout für Verbindung und kurze Befehle")
-	buttons := flag.Bool("buttons", false, "Statusblock (Tasten/Touch) fortlaufend abfragen und Änderungen ausgeben; Ende mit Strg+C")
-	poll := flag.Duration("poll", 500*time.Millisecond, "Abfrageabstand für -buttons")
+	host := flag.String("host", "", "IP address or hostname of the display (e.g. 192.168.1.50 or OD1234abcd.local)")
+	port := flag.Int("port", opendisplay.DefaultPort, "TCP port of the display")
+	bleTarget := flag.String("ble", "", "Connect via Bluetooth instead of Wi-Fi: device name (e.g. OD1234abcd) or BLE address")
+	scan := flag.Bool("scan", false, "Scan for OpenDisplay devices via Bluetooth and list them")
+	scanTime := flag.Duration("scan-time", 10*time.Second, "Scan duration for -scan or -ble")
+	noResponse := flag.Bool("ble-noresponse", false, "BLE: write without response (faster, experimental)")
+	send := flag.Bool("send", false, "Send a test pattern (without: only read information)")
+	fast := flag.Bool("fast", false, "Fast refresh instead of full refresh")
+	chunk := flag.Int("chunk", 1000, "Bytes per data chunk (Wi-Fi 1–4092; limited to the maximum automatically on BLE)")
+	pngPath := flag.String("png", "", "Also save the test pattern as a PNG file")
+	timeout := flag.Duration("timeout", 10*time.Second, "Timeout for connecting and short commands")
+	buttons := flag.Bool("buttons", false, "Continuously poll the status block (buttons/touch) and print changes; stop with Ctrl+C")
+	poll := flag.Duration("poll", 500*time.Millisecond, "Poll interval for -buttons")
 	flag.Parse()
 	if *scan {
 		return scanBLE(*scanTime)
@@ -46,28 +46,28 @@ func run() error {
 	var client *opendisplay.Client
 	switch {
 	case *bleTarget != "":
-		fmt.Println("Suche", *bleTarget, "per Bluetooth …")
+		fmt.Println("Searching for", *bleTarget, "via Bluetooth …")
 		d, err := odble.Find(*bleTarget, *scanTime)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Gefunden:       %s (%s, %d dBm), verbinde …\n", d.Name, d.Address, d.RSSI)
+		fmt.Printf("Found:          %s (%s, %d dBm), connecting …\n", d.Name, d.Address, d.RSSI)
 		t, err := odble.Connect(d, odble.Options{WriteWithoutResponse: *noResponse})
 		if err != nil {
 			return err
 		}
 		client = opendisplay.NewClient(t, *timeout)
-		fmt.Printf("Verbunden:      höchstens %d Byte pro Befehl\n", t.MaxPayload())
+		fmt.Printf("Connected:      at most %d bytes per command\n", t.MaxPayload())
 	case *host != "":
 		address := net.JoinHostPort(*host, strconv.Itoa(*port))
-		fmt.Println("Verbinde mit", address, "…")
+		fmt.Println("Connecting to", address, "…")
 		var err error
 		client, err = opendisplay.Dial(address, *timeout)
 		if err != nil {
-			return fmt.Errorf("Verbindung fehlgeschlagen: %w (WLAN am Display aktiv? Port %d?)", err, *port)
+			return fmt.Errorf("connection failed: %w (Wi-Fi enabled on the display? port %d?)", err, *port)
 		}
 	default:
-		return fmt.Errorf("bitte -host, -ble oder -scan angeben, z. B.: odtest -host 192.168.1.50 [-send] oder odtest -scan")
+		return fmt.Errorf("specify -host, -ble or -scan, e.g.: odtest -host 192.168.1.50 [-send] or odtest -scan")
 	}
 	defer client.Close()
 	if *chunk > client.MaxChunk() {
@@ -75,36 +75,36 @@ func run() error {
 	}
 
 	if v, err := client.FirmwareVersion(); err != nil {
-		fmt.Println("Firmware:       nicht lesbar:", err)
+		fmt.Println("Firmware:       not readable:", err)
 	} else {
 		fmt.Printf("Firmware:       %d.%d.%d (%s)\n", v.Major, v.Minor, v.Patch, v.SHA)
 	}
 	cfg, err := client.ReadConfig()
 	if err != nil {
-		return fmt.Errorf("Konfiguration: %w", err)
+		return fmt.Errorf("configuration: %w", err)
 	}
-	fmt.Printf("Konfiguration:  Version %d, BLE %v, WLAN %v, Verschlüsselung %v\n",
+	fmt.Printf("Configuration:  version %d, BLE %v, Wi-Fi %v, encryption %v\n",
 		cfg.Version, cfg.CommunicationModes&1 != 0, cfg.CommunicationModes&4 != 0, cfg.EncryptionEnabled)
 	if cfg.UnknownPacket >= 0 {
-		fmt.Printf("Hinweis:        unbekanntes Konfigurationspaket 0x%02x, Rest nicht ausgewertet\n", cfg.UnknownPacket)
+		fmt.Printf("Note:           unknown configuration packet 0x%02x, rest not parsed\n", cfg.UnknownPacket)
 	}
 	for i, d := range cfg.Displays {
-		fmt.Printf("Display %d:      %d × %d Pixel (%d × %d mm), %s\n", i, d.Width, d.Height, d.WidthMM, d.HeightMM, d.ColorScheme)
-		fmt.Printf("                Panel-IC 0x%04x, Rotation %d, Teilaktualisierung %d, Übertragungsmodi %08b\n",
+		fmt.Printf("Display %d:      %d × %d pixels (%d × %d mm), %s\n", i, d.Width, d.Height, d.WidthMM, d.HeightMM, d.ColorScheme)
+		fmt.Printf("                panel IC 0x%04x, rotation %d, partial update %d, transmission modes %08b\n",
 			d.PanelIC, d.Rotation, d.PartialUpdate, d.TransmissionModes)
 	}
 	if cfg.Model != "" || cfg.Name != "" {
-		fmt.Printf("Gerät:          %s %s\n", cfg.Model, cfg.Name)
+		fmt.Printf("Device:         %s %s\n", cfg.Model, cfg.Name)
 	}
 	for _, b := range cfg.Buttons {
-		where := fmt.Sprintf("Statusbyte %d", b.ByteIndex)
+		where := fmt.Sprintf("status byte %d", b.ByteIndex)
 		if b.ByteIndex == opendisplay.ButtonNotPublished || b.ByteIndex > 10 {
-			where = "nicht veröffentlicht"
+			where = "not published"
 		}
-		fmt.Printf("Tasten %d:       Typ %d, %s\n", b.Instance, b.InputType, where)
+		fmt.Printf("Button %d:       type %d, %s\n", b.Instance, b.InputType, where)
 	}
 	for _, t := range cfg.Touches {
-		fmt.Printf("Touch %d:        Statusbytes %d–%d, Flags %08b\n", t.Instance, t.StartByte, t.StartByte+4, t.Flags)
+		fmt.Printf("Touch %d:        status bytes %d–%d, flags %08b\n", t.Instance, t.StartByte, t.StartByte+4, t.Flags)
 	}
 	if *buttons {
 		return watchStatus(client, cfg, *poll)
@@ -116,10 +116,10 @@ func run() error {
 		if err := savePNG(*pngPath, img); err != nil {
 			return err
 		}
-		fmt.Println("Testbild gespeichert:", *pngPath)
+		fmt.Println("Test pattern saved:", *pngPath)
 	}
 	if !*send {
-		fmt.Println("\nNur gelesen. Mit -send wird ein Testbild übertragen.")
+		fmt.Println("\nRead only. Use -send to transfer a test pattern.")
 		return nil
 	}
 	pixels, err := opendisplay.Encode(img, display)
@@ -130,7 +130,7 @@ func run() error {
 	if *fast {
 		mode = opendisplay.RefreshFast
 	}
-	fmt.Printf("\nSende %d Byte in Blöcken zu %d Byte …\n", len(pixels), *chunk)
+	fmt.Printf("\nSending %d bytes in chunks of %d bytes …\n", len(pixels), *chunk)
 	start := time.Now()
 	lastPercent := -1
 	err = client.Upload(pixels, *chunk, mode, func(sent, total int) {
@@ -142,21 +142,21 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Fertig nach %s: Das Display sollte jetzt das Testbild zeigen.\n", time.Since(start).Round(100*time.Millisecond))
-	fmt.Println("Erwartung: Rahmen, großes Quadrat oben links, kleines oben rechts, Balken Schwarz → Weiß, Schachbrett unten.")
+	fmt.Printf("Done after %s: the display should now show the test pattern.\n", time.Since(start).Round(100*time.Millisecond))
+	fmt.Println("Expected: border, large square top left, small one top right, bar black → white, checkerboard at the bottom.")
 	return nil
 }
 
 // watchStatus polls the status block and prints every change, decoded where the
 // configuration says which bytes belong to buttons or touch.
 func watchStatus(client *opendisplay.Client, cfg opendisplay.Config, interval time.Duration) error {
-	fmt.Printf("\nFrage Statusblock alle %s ab. Jetzt Tasten drücken bzw. Display berühren; Ende mit Strg+C.\n", interval)
-	fmt.Println("Bytes 0–10 = dynamischer Bereich; Taste = Bit 7 gedrückt, Bits 3–6 Zähler, Bits 0–2 ID.")
+	fmt.Printf("\nPolling the status block every %s. Press buttons or touch the display now; stop with Ctrl+C.\n", interval)
+	fmt.Println("Bytes 0–10 = dynamic area; button = bit 7 pressed, bits 3–6 counter, bits 0–2 ID.")
 	var last *opendisplay.Status
 	for {
 		s, err := client.ReadStatus()
 		if err != nil {
-			return fmt.Errorf("Statusabfrage: %w", err)
+			return fmt.Errorf("status query: %w", err)
 		}
 		if last == nil || s.Raw != last.Raw {
 			line := fmt.Sprintf("%s  dyn % x  %.1f °C  %d mV", time.Now().Format("15:04:05.0"), s.Dynamic[:], s.TemperatureC, s.BatteryMV)
@@ -167,12 +167,12 @@ func watchStatus(client *opendisplay.Client, cfg opendisplay.Config, interval ti
 				st := s.Button(b.ByteIndex)
 				changed := last == nil || last.Dynamic[b.ByteIndex] != s.Dynamic[b.ByteIndex]
 				if changed {
-					line += fmt.Sprintf("  | Byte %d: Taste %d %s, Zähler %d", b.ByteIndex, st.ID, map[bool]string{true: "GEDRÜCKT", false: "los"}[st.Pressed], st.Count)
+					line += fmt.Sprintf("  | byte %d: button %d %s, counter %d", b.ByteIndex, st.ID, map[bool]string{true: "PRESSED", false: "released"}[st.Pressed], st.Count)
 				}
 			}
 			for _, t := range cfg.Touches {
 				if ts, ok := s.Touch(t.StartByte); ok && ts.Contacts != 0 {
-					line += fmt.Sprintf("  | Touch %d: Kontakte %d bei %d,%d", t.Instance, ts.Contacts, ts.X, ts.Y)
+					line += fmt.Sprintf("  | touch %d: %d contacts at %d,%d", t.Instance, ts.Contacts, ts.X, ts.Y)
 				}
 			}
 			fmt.Println(line)
@@ -184,19 +184,19 @@ func watchStatus(client *opendisplay.Client, cfg opendisplay.Config, interval ti
 
 // scanBLE lists nearby OpenDisplay devices.
 func scanBLE(duration time.Duration) error {
-	fmt.Printf("Suche %s nach OpenDisplay-Geräten per Bluetooth …\n", duration)
+	fmt.Printf("Scanning %s for OpenDisplay devices via Bluetooth …\n", duration)
 	devices, err := odble.Scan(duration, nil)
 	if err != nil {
 		return err
 	}
 	if len(devices) == 0 {
-		fmt.Println("Keine Geräte gefunden (Bluetooth am Display aktiv? Nicht anderweitig verbunden?).")
+		fmt.Println("No devices found (Bluetooth enabled on the display? Not connected elsewhere?).")
 		return nil
 	}
 	for _, d := range devices {
 		fmt.Printf("  %-16s %s  %d dBm\n", d.Name, d.Address, d.RSSI)
 	}
-	fmt.Println("\nVerbinden mit: odtest -ble <Name>")
+	fmt.Println("\nConnect with: odtest -ble <name>")
 	return nil
 }
 

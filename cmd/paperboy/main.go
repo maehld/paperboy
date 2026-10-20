@@ -24,12 +24,12 @@ func main() {
 }
 
 func run() error {
-	configPath := flag.String("config", "paperboy.json", "Konfigurationsdatei (JSON)")
-	dataDir := flag.String("data", "paperboy-data", "Verzeichnis für Bilder und Gerätezustand")
-	listen := flag.String("listen", ":8090", "HTTP-Listen-Adresse; muss für die Displays im WLAN erreichbar sein")
+	configPath := flag.String("config", "paperboy.json", "Configuration file (JSON)")
+	dataDir := flag.String("data", "paperboy-data", "Directory for images and device state")
+	listen := flag.String("listen", ":8090", "HTTP listen address; must be reachable for the displays on Wi-Fi")
 	flag.Parse()
 	if flag.NArg() != 0 {
-		return fmt.Errorf("unerwartete Argumente: %v", flag.Args())
+		return fmt.Errorf("unexpected arguments: %v", flag.Args())
 	}
 	cfg, err := paperboy.LoadConfig(*configPath)
 	if err != nil {

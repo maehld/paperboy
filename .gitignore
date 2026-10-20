@@ -2,7 +2,7 @@
 /paperboy
 /paperboy.exe
 
-# Konfiguration mit Token sowie Bilder und Gerätezustand
+# Configuration with token, images and device state
 /paperboy.json
 /paperboy-data/
 /displayd.json

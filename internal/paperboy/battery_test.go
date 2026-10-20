@@ -33,17 +33,17 @@ func TestNextBatteryLevel(t *testing.T) {
 	for _, s := range steps {
 		level = nextBatteryLevel(b, level, s.volts)
 		if level != s.want {
-			t.Fatalf("%s V: Stufe %q, erwartet %q", s.volts, level, s.want)
+			t.Fatalf("%s V: level %q, want %q", s.volts, level, s.want)
 		}
 	}
 	if nextBatteryLevel(nil, batteryWarn, "3.0") != batteryOK {
-		t.Fatal("ohne Konfiguration keine Warnung")
+		t.Fatal("no warning without configuration")
 	}
 }
 
 func TestBatteryConfig(t *testing.T) {
 	if err := (&Battery{WarnVolts: 3.3, CriticalVolts: 3.45}).validate("x"); err == nil {
-		t.Fatal("kritische Schwelle über Warnschwelle muss abgelehnt werden")
+		t.Fatal("critical threshold above warn threshold must be rejected")
 	}
 }
 
@@ -55,37 +55,37 @@ func TestBatteryWarningFlow(t *testing.T) {
 	key := call(t, s, "/api/setup", map[string]string{"ID": "AA:BB:CC:DD:EE:01"})["api_key"].(string)
 	dev := map[string]string{"ID": "AA:BB:CC:DD:EE:01", "Access-Token": key, "Update-Source": "timer", "Battery-Voltage": "3.74"}
 	if name := call(t, s, "/api/display", dev)["filename"].(string); strings.Contains(name, "low") {
-		t.Fatalf("voller Akku ohne Warnung: %s", name)
+		t.Fatalf("full battery must not warn: %s", name)
 	}
 
 	dev["Battery-Voltage"] = "3.40"
 	name := call(t, s, "/api/display", dev)["filename"].(string)
 	if !strings.HasSuffix(name, "-low34") {
-		t.Fatalf("Warnstufe muss Dateinamen ändern: %s", name)
+		t.Fatalf("warn level must change the file name: %s", name)
 	}
 	if blackRow(t, s, name) < 10 {
-		t.Fatal("Akkubalken fehlt")
+		t.Fatal("battery bar missing")
 	}
 	dev["Update-Source"] = "EXT0"
 	if name := call(t, s, "/api/display", dev)["filename"].(string); name[:7] != "small-1" {
-		t.Fatalf("in der Warnstufe wird weiter geblättert: %s", name)
+		t.Fatalf("warn level must keep paging: %s", name)
 	}
 
 	dev["Battery-Voltage"] = "3.25"
 	for range 2 { // buttons do not page away from the critical screen
 		name = call(t, s, "/api/display", dev)["filename"].(string)
 		if name != "small-battery-33" {
-			t.Fatalf("kritische Stufe muss Vollbild zeigen: %s", name)
+			t.Fatalf("critical level must show full screen: %s", name)
 		}
 	}
 	if blackRow(t, s, name) == 0 {
-		t.Fatal("Vollbild leer")
+		t.Fatal("full screen empty")
 	}
 
 	dev["Battery-Voltage"] = "4.12"
 	dev["Update-Source"] = "timer"
 	if name := call(t, s, "/api/display", dev)["filename"].(string); name[:7] != "small-0" || strings.Contains(name, "low") {
-		t.Fatalf("nach dem Laden wieder normale Übersicht: %s", name)
+		t.Fatalf("after charging the normal overview must return: %s", name)
 	}
 }
 

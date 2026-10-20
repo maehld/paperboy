@@ -15,7 +15,7 @@ var gray4V2Panels = map[uint16]bool{0x0028: true, 0x0048: true}
 func Encode(img image.Image, d Display) ([]byte, error) {
 	b := img.Bounds()
 	if b.Dx() != d.Width || b.Dy() != d.Height {
-		return nil, fmt.Errorf("Bildgröße %dx%d passt nicht zum Panel %dx%d", b.Dx(), b.Dy(), d.Width, d.Height)
+		return nil, fmt.Errorf("image size %dx%d does not match panel %dx%d", b.Dx(), b.Dy(), d.Width, d.Height)
 	}
 	stride := (d.Width + 7) / 8
 	switch d.ColorScheme {
@@ -51,7 +51,7 @@ func Encode(img image.Image, d Display) ([]byte, error) {
 		}
 		return out, nil
 	}
-	return nil, fmt.Errorf("Farbschema %s wird noch nicht unterstützt", d.ColorScheme)
+	return nil, fmt.Errorf("color scheme %s is not supported yet", d.ColorScheme)
 }
 
 func luma(c color.Color) uint8 {

@@ -1,6 +1,6 @@
 # 0030: Englisch für Lognachrichten, Kommentare und Commits
 
-- Status: Akzeptiert
+- Status: Abgelöst durch ADR-0031
 - Datum: 2026-10-20
 
 ## Kontext

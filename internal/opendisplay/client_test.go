@@ -69,7 +69,7 @@ func TestReadConfigInChunks(t *testing.T) {
 	}
 	d := cfg.Displays[0]
 	if d.Width != 800 || d.Height != 480 || d.ColorScheme != SchemeGray4 || d.PanelIC != 0x15 || d.Rotation != 1 || cfg.CommunicationModes&4 == 0 {
-		t.Fatalf("falsch geparst: %+v %+v", cfg, d)
+		t.Fatalf("parsed incorrectly: %+v %+v", cfg, d)
 	}
 }
 
@@ -97,7 +97,7 @@ func TestUploadWithAckFlagAndExplicitEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(received) != string(data) || len(endMode) != 1 || endMode[0] != 1 {
-		t.Fatalf("Daten oder Endmodus falsch: %d Byte, Ende % x", len(received), endMode)
+		t.Fatalf("wrong data or end mode: %d bytes, end % x", len(received), endMode)
 	}
 }
 
@@ -110,7 +110,7 @@ func TestUploadAutoCompleteAndNack(t *testing.T) {
 			reply(0x00, 0x72) // device refreshes on its own
 			reply(0x00, 0x73)
 		case cmdWriteEnd:
-			t.Error("END darf nach automatischem Abschluss nicht gesendet werden")
+			t.Error("END must not be sent after automatic completion")
 		}
 	})
 	if err := c.Upload([]byte{1, 2, 3}, 1000, RefreshFull, nil); err != nil {
@@ -118,7 +118,7 @@ func TestUploadAutoCompleteAndNack(t *testing.T) {
 	}
 	c = fakeDevice(t, func(cmd uint16, _ []byte, reply func(...byte)) { reply(0xff, 0x70) })
 	if err := c.Upload([]byte{1}, 1000, RefreshFull, nil); err == nil {
-		t.Fatal("NACK beim Start muss Fehler liefern")
+		t.Fatal("NACK on start must return an error")
 	}
 }
 
