@@ -1,8 +1,7 @@
-// Package displayd serves ePaper devices running the TRMNL firmware. Producers
+// Package paperboy serves ePaper devices running the TRMNL firmware. Producers
 // such as SolarAI upload one PNG per profile and page; devices wake up, fetch
-// their current page and go back to deep sleep. The package deliberately does
-// not import any SolarAI package so it can move into its own repository.
-package displayd
+// their current page and go back to deep sleep.
+package paperboy
 
 import (
 	"encoding/json"
@@ -132,7 +131,8 @@ const (
 )
 
 // LoadConfig reads and validates the configuration. The environment variable
-// DISPLAYD_UPLOAD_TOKEN overrides upload_token so secrets can stay out of files.
+// PAPERBOY_UPLOAD_TOKEN (formerly DISPLAYD_UPLOAD_TOKEN, still accepted)
+// overrides upload_token so secrets can stay out of files.
 func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -144,8 +144,10 @@ func LoadConfig(path string) (*Config, error) {
 	if err := dec.Decode(&c); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if token := os.Getenv("DISPLAYD_UPLOAD_TOKEN"); token != "" {
-		c.UploadToken = token
+	for _, name := range []string{"DISPLAYD_UPLOAD_TOKEN", "PAPERBOY_UPLOAD_TOKEN"} {
+		if token := os.Getenv(name); token != "" {
+			c.UploadToken = token
+		}
 	}
 	return &c, c.validate()
 }

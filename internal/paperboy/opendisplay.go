@@ -1,4 +1,4 @@
-package displayd
+package paperboy
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"solarai/internal/opendisplay"
+	"github.com/maehld/paperboy/internal/opendisplay"
 )
 
 // Run pushes images to OpenDisplay devices until ctx ends. TRMNL devices need
@@ -194,7 +194,7 @@ func (p *pusher) record(now time.Time, err error) {
 func (p *pusher) update(now time.Time) error {
 	img, pages, ok := p.s.pageImage(p.d.Profile, p.page, now)
 	if !ok {
-		img = placeholder(p.s.cfg.Profiles[p.d.Profile], "SolarAI-Display", "Warte auf Bilder …")
+		img = placeholder(p.s.cfg.Profiles[p.d.Profile], "Paperboy", "Warte auf Bilder …")
 	}
 	if p.page >= pages {
 		p.page = 0

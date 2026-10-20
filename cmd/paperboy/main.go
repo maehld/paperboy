@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"solarai/internal/displayd"
+	"github.com/maehld/paperboy/internal/paperboy"
 )
 
 func main() {
@@ -24,21 +24,21 @@ func main() {
 }
 
 func run() error {
-	configPath := flag.String("config", "displayd.json", "Konfigurationsdatei (JSON)")
-	dataDir := flag.String("data", "displayd-data", "Verzeichnis für Bilder und Gerätezustand")
+	configPath := flag.String("config", "paperboy.json", "Konfigurationsdatei (JSON)")
+	dataDir := flag.String("data", "paperboy-data", "Verzeichnis für Bilder und Gerätezustand")
 	listen := flag.String("listen", ":8090", "HTTP-Listen-Adresse; muss für die Displays im WLAN erreichbar sein")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return fmt.Errorf("unerwartete Argumente: %v", flag.Args())
 	}
-	cfg, err := displayd.LoadConfig(*configPath)
+	cfg, err := paperboy.LoadConfig(*configPath)
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(*dataDir, 0o755); err != nil {
 		return err
 	}
-	srv, err := displayd.New(cfg, *dataDir)
+	srv, err := paperboy.New(cfg, *dataDir)
 	if err != nil {
 		return err
 	}
