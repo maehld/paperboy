@@ -7,7 +7,7 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 - Bestehende ADRs nicht umschreiben; geänderte Entscheidungen bekommen ein neues ADR, das alte wird als abgelöst markiert.
 - Vorlage: [`0000-vorlage.md`](0000-vorlage.md)
 
-**Herkunft:** Paperboy ist aus dem Display-Service von [SolarAI](https://github.com/maehld/solarai) hervorgegangen. Die ADRs 0012–0029 sind Kopien aus SolarAI mit ihren ursprünglichen Nummern, damit Querverweise gültig bleiben; „SolarAI“, `displayd` und „Display-Service“ darin meinen den damaligen Stand. Fehlende Nummern betreffen nur SolarAI und stehen dort. Neue Paperboy-ADRs beginnen bei 0030.
+**Herkunft:** Paperboy ist aus dem Display-Service von [SolarAI](https://github.com/maehld/solarai) hervorgegangen. Die ADRs 0012–0030 sind Kopien aus SolarAI mit ihren ursprünglichen Nummern, damit Querverweise gültig bleiben; „SolarAI“, `displayd` und „Display-Service“ darin meinen den damaligen Stand. Fehlende Nummern betreffen nur SolarAI und stehen dort. ADR 0030 gilt für beide Repositories; neue Paperboy-ADRs beginnen bei 0031.
 
 | Nr. | Titel | Status |
 |---|---|---|
@@ -26,3 +26,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0027](0027-textdisplays-und-http-geraete.md) | Textdisplays und einfache HTTP-Geräte | Akzeptiert, Umsetzung ausstehend |
 | [0028](0028-paperboy-eigenes-repository.md) | Display-Service als „Paperboy“ in eigenem Repository | Akzeptiert |
 | [0029](0029-repository-trennung-umgesetzt.md) | Repository-Trennung SolarAI / Paperboy umgesetzt | Akzeptiert |
+| [0030](0030-englisch-fuer-logs-kommentare-commits.md) | Englisch für Lognachrichten, Kommentare und Commits | Akzeptiert |

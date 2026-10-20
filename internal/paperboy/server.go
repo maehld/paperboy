@@ -120,7 +120,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 	if err := writeAtomic(imagePath(s.dir, name, page), stored.data); err != nil {
-		slog.Error("Bild speichern fehlgeschlagen", "profile", name, "page", page, "error", err)
+		slog.Error("failed to store image", "profile", name, "page", page, "error", err)
 		http.Error(w, "Speichern fehlgeschlagen", http.StatusInternalServerError)
 		return
 	}
@@ -200,7 +200,7 @@ func (s *Server) saveStateLocked() {
 		err = writeAtomic(filepath.Join(s.dir, "state.json"), data)
 	}
 	if err != nil {
-		slog.Error("Gerätezustand speichern fehlgeschlagen", "error", err)
+		slog.Error("failed to store device state", "error", err)
 	}
 }
 
@@ -220,7 +220,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	mac := normalizeMAC(r.Header.Get("ID"))
 	d := s.cfg.device(mac)
 	if d == nil {
-		slog.Warn("Setup von unbekanntem Gerät; MAC in der Konfiguration ergänzen", "mac", mac, "model", r.Header.Get("Model"))
+		slog.Warn("setup from unknown device; add its MAC to the configuration", "mac", mac, "model", r.Header.Get("Model"))
 		writeJSON(w, http.StatusOK, map[string]any{"status": 404, "api_key": nil, "friendly_id": nil, "image_url": nil, "message": "Gerät nicht freigegeben"})
 		return
 	}
@@ -237,7 +237,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	s.saveStateLocked()
 	key, friendly := st.APIKey, st.FriendlyID
 	s.mu.Unlock()
-	slog.Info("Display eingerichtet", "device", d.Name, "mac", d.MAC)
+	slog.Info("display set up", "device", d.Name, "mac", d.MAC)
 	writeJSON(w, http.StatusOK, map[string]any{"status": 200, "api_key": key, "friendly_id": friendly,
 		"image_url": s.baseURL(r) + "/images/" + d.Profile + "-setup.png", "message": "Registriert als " + d.Name})
 }
@@ -262,11 +262,11 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 		// State was lost: accept the key the device still has instead of forcing a new setup.
 		st = &deviceState{APIKey: token, FriendlyID: friendlyID(d.MAC)}
 		s.state[mac] = st
-		slog.Info("Gerätschlüssel übernommen", "device", d.Name)
+		slog.Info("device key adopted", "device", d.Name)
 	}
 	if d == nil || st == nil || subtle.ConstantTimeCompare([]byte(token), []byte(st.APIKey)) != 1 {
 		s.mu.Unlock()
-		slog.Warn("Abruf von unbekanntem Gerät oder mit falschem Schlüssel", "mac", mac)
+		slog.Warn("request from unknown device or with wrong key", "mac", mac)
 		// Never 500: the firmware treats it as a reset and erases its credentials.
 		writeJSON(w, http.StatusOK, map[string]any{"status": 202, "refresh_rate": 600})
 		return
@@ -325,9 +325,9 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 		if level == batteryOK {
 			level = "ok"
 		}
-		slog.Warn("Akkuwarnung", "device", d.Name, "level", level, "battery", logged.BatteryVoltage)
+		slog.Warn("battery warning", "device", d.Name, "level", level, "battery", logged.BatteryVoltage)
 	}
-	slog.Info("Display-Abruf", "device", d.Name, "page", page, "wake", logged.WakeReason, "special", special,
+	slog.Info("display request", "device", d.Name, "page", page, "wake", logged.WakeReason, "special", special,
 		"battery", logged.BatteryVoltage, "rssi", logged.RSSI, "refresh", refresh)
 	resp := map[string]any{"status": 0, "image_url": s.baseURL(r) + "/images/" + key + ".png", "filename": key,
 		"refresh_rate": int(refresh.Seconds()), "reset_firmware": false, "update_firmware": false, "firmware_url": nil,
@@ -344,7 +344,7 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
 	if d := s.cfg.device(name); d != nil {
 		name = d.Name
 	}
-	slog.Warn("Display-Log", "device", name, "log", string(body))
+	slog.Warn("display log", "device", name, "log", string(body))
 	w.WriteHeader(http.StatusNoContent)
 }
 
