@@ -33,7 +33,7 @@ var (
 func adapter() (*bluetooth.Adapter, error) {
 	enableOnce.Do(func() { enableErr = bluetooth.DefaultAdapter.Enable() })
 	if enableErr != nil {
-		return nil, fmt.Errorf("Bluetooth-Adapter nicht verfügbar: %w", enableErr)
+		return nil, fmt.Errorf("Bluetooth adapter not available: %w", enableErr)
 	}
 	return bluetooth.DefaultAdapter, nil
 }
@@ -90,7 +90,7 @@ func Find(target string, timeout time.Duration) (Device, error) {
 		return Device{}, err
 	}
 	if hit == nil {
-		return Device{}, fmt.Errorf("Display %q nicht innerhalb von %s gefunden", target, timeout)
+		return Device{}, fmt.Errorf("display %q not found within %s", target, timeout)
 	}
 	return *hit, nil
 }
@@ -119,7 +119,7 @@ func Connect(d Device, opt Options) (*Transport, error) {
 	}
 	dev, err := a.Connect(d.Address, bluetooth.ConnectionParams{})
 	if err != nil {
-		return nil, fmt.Errorf("Verbindung: %w", err)
+		return nil, fmt.Errorf("connect: %w", err)
 	}
 	t := &Transport{dev: dev, noResponse: opt.WriteWithoutResponse, rx: make(chan []byte, 64)}
 	if err := t.setup(); err != nil {
@@ -132,11 +132,11 @@ func Connect(d Device, opt Options) (*Transport, error) {
 func (t *Transport) setup() error {
 	services, err := t.dev.DiscoverServices([]bluetooth.UUID{uuid})
 	if err != nil || len(services) == 0 {
-		return fmt.Errorf("OpenDisplay-Dienst 0x2446 nicht gefunden: %v", err)
+		return fmt.Errorf("OpenDisplay service 0x2446 not found: %v", err)
 	}
 	chars, err := services[0].DiscoverCharacteristics([]bluetooth.UUID{uuid})
 	if err != nil || len(chars) == 0 {
-		return fmt.Errorf("OpenDisplay-Characteristic 0x2446 nicht gefunden: %v", err)
+		return fmt.Errorf("OpenDisplay characteristic 0x2446 not found: %v", err)
 	}
 	t.char = chars[0]
 	// ATT payload = MTU - 3; without a negotiated MTU fall back to the minimum.
@@ -152,7 +152,7 @@ func (t *Transport) setup() error {
 		}
 	})
 	if err != nil {
-		return fmt.Errorf("Benachrichtigungen aktivieren: %w", err)
+		return fmt.Errorf("enable notifications: %w", err)
 	}
 	return nil
 }
@@ -161,7 +161,7 @@ func (t *Transport) MaxPayload() int { return t.maxPayload }
 
 func (t *Transport) WriteFrame(payload []byte) error {
 	if len(payload) == 0 || len(payload) > t.maxPayload {
-		return fmt.Errorf("ungültige Rahmenlänge %d (BLE höchstens %d)", len(payload), t.maxPayload)
+		return fmt.Errorf("invalid frame length %d (BLE at most %d)", len(payload), t.maxPayload)
 	}
 	var err error
 	if t.noResponse {
@@ -172,7 +172,7 @@ func (t *Transport) WriteFrame(payload []byte) error {
 	return err
 }
 
-var errTimeout = errors.New("Zeitüberschreitung beim Warten auf BLE-Antwort")
+var errTimeout = errors.New("timeout waiting for BLE response")
 
 func (t *Transport) ReadFrame(timeout time.Duration) ([]byte, error) {
 	timer := time.NewTimer(timeout)

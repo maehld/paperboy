@@ -87,27 +87,27 @@ func (s *Server) authorized(r *http.Request) bool {
 // handleUpload stores one page. Pages must be uploaded without gaps, starting at 0.
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	if !s.authorized(r) {
-		http.Error(w, "nicht berechtigt", http.StatusUnauthorized)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 	name := r.PathValue("profile")
 	profile, ok := s.cfg.Profiles[name]
 	if !ok {
-		http.Error(w, "unbekanntes Profil", http.StatusNotFound)
+		http.Error(w, "unknown profile", http.StatusNotFound)
 		return
 	}
 	page, err := strconv.Atoi(r.PathValue("page"))
 	if err != nil || page < 0 || page >= maxPages {
-		http.Error(w, "ungültige Seite", http.StatusBadRequest)
+		http.Error(w, "invalid page", http.StatusBadRequest)
 		return
 	}
 	img, err := png.Decode(http.MaxBytesReader(w, r.Body, 4<<20))
 	if err != nil {
-		http.Error(w, "kein gültiges PNG: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid PNG: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	if img.Bounds().Dx() != profile.Width || img.Bounds().Dy() != profile.Height {
-		http.Error(w, fmt.Sprintf("Bildgröße %dx%d erwartet", profile.Width, profile.Height), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("expected image size %dx%d", profile.Width, profile.Height), http.StatusBadRequest)
 		return
 	}
 	stored := newPageImage(normalize(img, profile), s.now())
@@ -115,13 +115,13 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	pages := s.images[name]
 	if page > len(pages) {
 		s.mu.Unlock()
-		http.Error(w, fmt.Sprintf("Seite %d fehlt noch", len(pages)), http.StatusConflict)
+		http.Error(w, fmt.Sprintf("page %d is still missing", len(pages)), http.StatusConflict)
 		return
 	}
 	s.mu.Unlock()
 	if err := writeAtomic(imagePath(s.dir, name, page), stored.data); err != nil {
 		slog.Error("failed to store image", "profile", name, "page", page, "error", err)
-		http.Error(w, "Speichern fehlgeschlagen", http.StatusInternalServerError)
+		http.Error(w, "storing failed", http.StatusInternalServerError)
 		return
 	}
 	s.mu.Lock()
@@ -221,7 +221,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	d := s.cfg.device(mac)
 	if d == nil {
 		slog.Warn("setup from unknown device; add its MAC to the configuration", "mac", mac, "model", r.Header.Get("Model"))
-		writeJSON(w, http.StatusOK, map[string]any{"status": 404, "api_key": nil, "friendly_id": nil, "image_url": nil, "message": "Gerät nicht freigegeben"})
+		writeJSON(w, http.StatusOK, map[string]any{"status": 404, "api_key": nil, "friendly_id": nil, "image_url": nil, "message": "device not allowed"})
 		return
 	}
 	s.mu.Lock()
@@ -239,7 +239,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	slog.Info("display set up", "device", d.Name, "mac", d.MAC)
 	writeJSON(w, http.StatusOK, map[string]any{"status": 200, "api_key": key, "friendly_id": friendly,
-		"image_url": s.baseURL(r) + "/images/" + d.Profile + "-setup.png", "message": "Registriert als " + d.Name})
+		"image_url": s.baseURL(r) + "/images/" + d.Profile + "-setup.png", "message": "Registered as " + d.Name})
 }
 
 // buttonWake reports whether the device was woken by its button rather than the timer.

@@ -21,13 +21,13 @@ func TestReadStatusDecodesButtonsAndTouch(t *testing.T) {
 		t.Fatal(err)
 	}
 	if b := s.Button(0); !b.Pressed || b.ID != 2 || b.Count != 5 {
-		t.Fatalf("Taste falsch dekodiert: %+v", b)
+		t.Fatalf("button decoded incorrectly: %+v", b)
 	}
 	if tc, ok := s.Touch(1); !ok || tc.Contacts != 2 || tc.X != 320 || tc.Y != 32 {
-		t.Fatalf("Touch falsch dekodiert: %+v", tc)
+		t.Fatalf("touch decoded incorrectly: %+v", tc)
 	}
 	if s.TemperatureC != 25 || s.BatteryMV != 3000 || !s.WantConnect || s.Reboot || s.Loop != 3 {
-		t.Fatalf("Status falsch: %+v", s)
+		t.Fatalf("wrong status: %+v", s)
 	}
 }
 
@@ -52,6 +52,6 @@ func TestParseConfigWithButtonsTouchAndNames(t *testing.T) {
 	}
 	if cfg.UnknownPacket != -1 || len(cfg.Buttons) != 1 || cfg.Buttons[0].ByteIndex != 4 || cfg.Buttons[0].InputType != 3 ||
 		len(cfg.Touches) != 1 || cfg.Touches[0].StartByte != 5 || cfg.Model != "reTerminal Sticky" || cfg.Name != "Flur" {
-		t.Fatalf("falsch geparst: %+v", cfg)
+		t.Fatalf("parsed incorrectly: %+v", cfg)
 	}
 }

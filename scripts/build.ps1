@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-Baut die Programme für mehrere Zielsysteme nach bin/<os>-<arch>/.
+Builds the programs for multiple target systems into bin/<os>-<arch>/.
 
 .EXAMPLE
-./scripts/build.ps1                                  # alle Programme, alle Ziele
-./scripts/build.ps1 -Targets linux/amd64,linux/arm64  # nur Linux
+./scripts/build.ps1                                  # all programs, all targets
+./scripts/build.ps1 -Targets linux/amd64,linux/arm64  # Linux only
 ./scripts/build.ps1 -Apps paperboy -Targets linux/arm64
 #>
 param(
@@ -25,7 +25,7 @@ try {
         $ext = if ($goos -eq 'windows') { '.exe' } else { '' }
         foreach ($app in $Apps) {
             $out = Join-Path 'bin' "$goos-$goarch/$app$ext"
-            Write-Host "Baue $out"
+            Write-Host "Building $out"
             go build -trimpath -ldflags '-s -w' -o $out "./cmd/$app"
             if ($LASTEXITCODE -ne 0) { $failed += "$target/$app" }
         }
@@ -38,7 +38,7 @@ finally {
 }
 
 if ($failed) {
-    Write-Error "Fehlgeschlagen: $($failed -join ', ')"
+    Write-Error "Failed: $($failed -join ', ')"
     exit 1
 }
-Write-Host 'Fertig.'
+Write-Host 'Done.'

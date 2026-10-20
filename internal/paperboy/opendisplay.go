@@ -78,7 +78,7 @@ func (p *pusher) run(ctx context.Context) {
 		if len(p.buttons) > 0 {
 			status, err := p.client.ReadStatus()
 			if err != nil {
-				p.fail(now, "Tastenabfrage", err)
+				p.fail(now, "button poll", err)
 				if !sleep(ctx, retry) {
 					return
 				}
@@ -95,7 +95,7 @@ func (p *pusher) run(ctx context.Context) {
 		}
 		if !now.Before(nextRender) {
 			if err := p.update(now); err != nil {
-				p.fail(now, "Aktualisierung", err)
+				p.fail(now, "update", err)
 				if !sleep(ctx, retry) {
 					return
 				}
@@ -142,7 +142,7 @@ func (p *pusher) connect() error {
 		}
 		if len(cfg.Displays) == 0 {
 			client.Close()
-			return fmt.Errorf("Gerät meldet kein Display")
+			return fmt.Errorf("device reports no display")
 		}
 		p.display = &cfg.Displays[0]
 		p.buttons = nil
@@ -200,7 +200,7 @@ func (p *pusher) update(now time.Time) error {
 		p.page = 0
 	}
 	if img.Rect.Dx() != p.display.Width || img.Rect.Dy() != p.display.Height {
-		return fmt.Errorf("Bild %dx%d passt nicht zum Panel %dx%d", img.Rect.Dx(), img.Rect.Dy(), p.display.Width, p.display.Height)
+		return fmt.Errorf("image %dx%d does not match panel %dx%d", img.Rect.Dx(), img.Rect.Dy(), p.display.Width, p.display.Height)
 	}
 	frame, err := opendisplay.Encode(img, *p.display)
 	if err != nil {
