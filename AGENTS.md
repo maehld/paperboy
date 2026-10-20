@@ -4,15 +4,15 @@
 
 Paperboy ist ein Display-Dienst für ePaper-Anzeigen (TRMNL-Firmware mit Deep Sleep, OpenDisplay). Zulieferer wie [SolarAI](https://github.com/maehld/solarai) laden Seiten als PNG hoch; Paperboy liefert sie an die Geräte aus. Hervorgegangen aus dem Display-Service `displayd` von SolarAI (ADR 0028, 0029).
 
-- Mit dem Nutzer auf Deutsch kommunizieren. Dokumentation und Bildtexte sind deutsch; Go-Bezeichner sind englisch.
+- Mit dem Nutzer auf Deutsch kommunizieren. Dokumentation und Bildtexte sind deutsch; Go-Bezeichner, Kommentare, Lognachrichten und Commits sind englisch (ADR 0030).
 - Änderungen an Struktur und Benennung an den vorhandenen Code anpassen.
 - Größere Anfragen (z. B. Funktionen oder Optionen entfernen, mehrere Dateien/ADRs betroffen) vor der Umsetzung kurz zusammenfassen (was wird geändert, was bleibt, Risiken) und erst nach Bestätigung durch den Nutzer durchführen.
 - Paperboy importiert keine SolarAI-Pakete; Zulieferer und Paperboy sprechen nur per HTTP miteinander.
 
 ## Versionierung und Entscheidungen
 
-- Git-Repository `github.com/maehld/paperboy`, Branch `main`. Nach **jedem abgeschlossenen Arbeitsschritt** einen Commit erstellen, mit deutscher Commit-Nachricht im Imperativ oder als kurze Zusammenfassung. Vor dem Commit die passenden Prüfungen ausführen.
-- Wesentliche Entscheidungen als ADR unter `docs/adr/` dokumentieren (Vorlage `0000-vorlage.md`, Index `docs/adr/README.md` pflegen). ADR 0012–0029 stammen aus SolarAI; neue ADRs ab 0030. Bestehende ADRs nicht umschreiben, sondern durch neue ablösen.
+- Git-Repository `github.com/maehld/paperboy`, Branch `main`. Nach **jedem abgeschlossenen Arbeitsschritt** einen Commit erstellen, mit **englischer** Commit-Nachricht im Imperativ (ADR 0030). Vor dem Commit die passenden Prüfungen ausführen.
+- Wesentliche Entscheidungen als ADR unter `docs/adr/` dokumentieren (Vorlage `0000-vorlage.md`, Index `docs/adr/README.md` pflegen). ADR 0012–0030 stammen aus SolarAI (0030 gilt für beide); neue ADRs ab 0031. Bestehende ADRs nicht umschreiben, sondern durch neue ablösen.
 - `paperboy.json`/`displayd.json` (enthalten Token), `paperboy-data/`/`displayd-data/` und `.env` sind per `.gitignore` ausgeschlossen und dürfen nicht committet oder gelöscht werden.
 
 ## Architektur

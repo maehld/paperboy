@@ -65,7 +65,7 @@ func (p *pusher) run(ctx context.Context) {
 		if p.client == nil {
 			if err := p.connect(); err != nil {
 				p.record(now, err)
-				slog.Warn("OpenDisplay nicht erreichbar", "device", p.d.Name, "error", err, "retry", retry)
+				slog.Warn("OpenDisplay unreachable", "device", p.d.Name, "error", err, "retry", retry)
 				if !sleep(ctx, retry) {
 					return
 				}
@@ -126,7 +126,7 @@ func (p *pusher) press(id byte, now time.Time) {
 	case buttonNext:
 		p.page = (p.page + 1) % pages
 	}
-	slog.Info("OpenDisplay-Taste", "device", p.d.Name, "button", id, "page", p.page)
+	slog.Info("OpenDisplay button", "device", p.d.Name, "button", id, "page", p.page)
 }
 
 func (p *pusher) connect() error {
@@ -153,10 +153,10 @@ func (p *pusher) connect() error {
 		}
 		profile := p.s.cfg.Profiles[p.d.Profile]
 		if profile.Width != p.display.Width || profile.Height != p.display.Height {
-			slog.Warn("Panelgröße passt nicht zum Profil", "device", p.d.Name, "panel", fmt.Sprintf("%dx%d", p.display.Width, p.display.Height),
+			slog.Warn("panel size does not match profile", "device", p.d.Name, "panel", fmt.Sprintf("%dx%d", p.display.Width, p.display.Height),
 				"profile", fmt.Sprintf("%dx%d", profile.Width, profile.Height))
 		}
-		slog.Info("OpenDisplay verbunden", "device", p.d.Name, "model", cfg.Model, "width", p.display.Width, "height", p.display.Height,
+		slog.Info("OpenDisplay connected", "device", p.d.Name, "model", cfg.Model, "width", p.display.Width, "height", p.display.Height,
 			"scheme", p.display.ColorScheme.String(), "buttons", len(p.buttons) > 0)
 	}
 	p.client = client
@@ -172,7 +172,7 @@ func (p *pusher) disconnect() {
 }
 
 func (p *pusher) fail(now time.Time, stage string, err error) {
-	slog.Warn("OpenDisplay-Fehler", "device", p.d.Name, "stage", stage, "error", err)
+	slog.Warn("OpenDisplay error", "device", p.d.Name, "stage", stage, "error", err)
 	p.record(now, fmt.Errorf("%s: %w", stage, err))
 	p.disconnect()
 	p.display = nil // re-read the configuration on the next connect
@@ -215,7 +215,7 @@ func (p *pusher) update(now time.Time) error {
 	if err := p.client.Upload(frame, 1000, mode, nil); err != nil {
 		return err
 	}
-	slog.Info("OpenDisplay aktualisiert", "device", p.d.Name, "page", p.page, "fast", mode == opendisplay.RefreshFast,
+	slog.Info("OpenDisplay updated", "device", p.d.Name, "page", p.page, "fast", mode == opendisplay.RefreshFast,
 		"duration", time.Since(start).Round(100*time.Millisecond))
 	p.lastFrame = frame
 	if mode == opendisplay.RefreshFast {

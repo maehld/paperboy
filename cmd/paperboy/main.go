@@ -18,7 +18,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("Start fehlgeschlagen", "error", err)
+		slog.Error("startup failed", "error", err)
 		os.Exit(1)
 	}
 }
@@ -54,7 +54,7 @@ func run() error {
 	pushDone := make(chan struct{})
 	go func() { defer close(pushDone); srv.Run(ctx) }()
 	defer func() { cancel(); <-pushDone }()
-	slog.Info("Display-Service gestartet", "listen", listener.Addr().String(), "profiles", len(cfg.Profiles), "devices", len(cfg.Devices))
+	slog.Info("Paperboy started", "listen", listener.Addr().String(), "profiles", len(cfg.Profiles), "devices", len(cfg.Devices))
 	select {
 	case err := <-serveErr:
 		if !errors.Is(err, http.ErrServerClosed) {
