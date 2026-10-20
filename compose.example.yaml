@@ -1,0 +1,15 @@
+# Beispiel: Paperboy als Container.
+# Vorher paperboy.json aus cmd/paperboy/paperboy.example.json anlegen und
+# PAPERBOY_UPLOAD_TOKEN (mindestens 16 Zeichen) in einer .env-Datei setzen.
+services:
+  paperboy:
+    build: .
+    command: ["-config", "/config/paperboy.json", "-data", "/data"]
+    environment:
+      PAPERBOY_UPLOAD_TOKEN: ${PAPERBOY_UPLOAD_TOKEN}
+    ports: ["8090:8090"]
+    volumes: ["./paperboy.json:/config/paperboy.json:ro", "paperboy-data:/data"]
+    restart: unless-stopped
+
+volumes:
+  paperboy-data:

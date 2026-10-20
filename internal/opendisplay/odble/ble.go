@@ -13,7 +13,7 @@ import (
 
 	"tinygo.org/x/bluetooth"
 
-	"solarai/internal/opendisplay"
+	"github.com/maehld/paperboy/internal/opendisplay"
 )
 
 var uuid = bluetooth.New16BitUUID(0x2446)

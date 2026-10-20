@@ -1,4 +1,4 @@
-package displayd
+package paperboy
 
 import (
 	"crypto/rand"
@@ -365,7 +365,7 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if rest == "setup" {
-			data = encodePNG(placeholder(p, "SolarAI-Display", "Warte auf Bilder …"))
+			data = encodePNG(placeholder(p, "Paperboy", "Warte auf Bilder …"))
 			break
 		}
 		if volts, ok := strings.CutPrefix(rest, "battery-"); ok {

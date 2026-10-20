@@ -1,0 +1,10 @@
+/bin/
+/paperboy
+/paperboy.exe
+
+# Konfiguration mit Token sowie Bilder und Gerätezustand
+/paperboy.json
+/paperboy-data/
+/displayd.json
+/displayd-data/
+.env

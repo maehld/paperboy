@@ -14,8 +14,8 @@ import (
 	"strconv"
 	"time"
 
-	"solarai/internal/opendisplay"
-	"solarai/internal/opendisplay/odble"
+	"github.com/maehld/paperboy/internal/opendisplay"
+	"github.com/maehld/paperboy/internal/opendisplay/odble"
 )
 
 func main() {

@@ -1,4 +1,4 @@
-package displayd
+package paperboy
 
 import (
 	"crypto/sha256"

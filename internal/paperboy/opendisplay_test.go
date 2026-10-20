@@ -1,10 +1,10 @@
-package displayd
+package paperboy
 
 import (
 	"testing"
 	"time"
 
-	"solarai/internal/opendisplay"
+	"github.com/maehld/paperboy/internal/opendisplay"
 )
 
 func TestOpenDisplayConfig(t *testing.T) {
