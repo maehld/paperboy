@@ -27,6 +27,7 @@ Supplier ──PUT /api/images/{profile}/{page}──▶ paperboy ◀──GET /
 - **Profiles** (size, grayscale levels, panel width) determine the layout; suppliers query them via `GET /api/profiles`. Several devices can share a profile. Images are delivered as PNG with 1 bit or 2 bits (4 gray levels) and stored under `-data`.
 - **Interval** per device (`refresh`, optionally `night_refresh` between `night_start` and `night_end`), at least 1 minute. Unchanged image → the display does not redraw.
 - **Button**: short press = next page, hold approx. 2 s (1–5 s) = overview, longer than 5 s = reset Wi-Fi (firmware). A real double click triggers the same function, but is hardly achievable from deep sleep. After `page_timeout` (5 min) back to the overview. The TRMNL firmware does not support three separate buttons.
+- **Data document** (ADR 0024, first stage): suppliers write JSON branches via `PUT /api/data/{path}` (bearer token; `PUT` replaces instead of merging, missing intermediate objects are created, 409 on type conflicts, 1 MB per write, optional `X-Data-Time` in RFC 3339). `GET` and `DELETE` on the same paths help with debugging. Each path keeps its write time, so stale data can be detected later without comparing content. Page templates that render from the document follow in a later step.
 - **Stale**: If no upload arrives for longer than `stale_after` (30 min), a black bar „Keine neuen Daten seit …“ (“No new data since …”) appears at the bottom.
 - **Battery warning** (ADR 0020): The TRMNL firmware reports only the voltage (`Battery-Voltage`). With `"battery": { "warn_volts": 3.45, "critical_volts": 3.3, "hysteresis_volts": 0.1 }` (global or per device), every page below `warn_volts` gets the bar „Akku schwach – bitte laden“ (“Battery low – please charge”); below `critical_volts` a full-screen image „Akku fast leer“ (“Battery almost empty”) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` no warning.
 - `GET /api/devices` shows registered devices with battery voltage, signal strength, wake reason and last request (without keys).
@@ -61,6 +62,7 @@ go vet ./...
 cmd/paperboy/            Startup and options, example configuration
 cmd/odtest/              Test program for OpenDisplay devices (TCP and Bluetooth)
 internal/paperboy/       Upload API, TRMNL API, OpenDisplay pusher, battery warning
+internal/data/           Shared data document for page templates (ADR 0024)
 internal/opendisplay/    OpenDisplay protocol; odble = Bluetooth transport
 docs/adr/                Architecture decisions
 ```
