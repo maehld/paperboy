@@ -1,0 +1,303 @@
+// Package plan parses display plans and decides which pages a device shows
+// (ADR 0025). A plan is a list of rules; the first matching rule wins, and a
+// rule combines a time window with a page list. Plans know nothing about
+// display types: they only name pages, the template is chosen per device.
+package plan
+
+import (
+	"fmt"
+	"io"
+	"strings"
+	"time"
+	_ "time/tzdata" // plans name timezones; embed them so no system tzdata is needed
+
+	"go.yaml.in/yaml/v3"
+)
+
+// Duration accepts duration strings such as "5m" in YAML.
+type Duration time.Duration
+
+func (d *Duration) UnmarshalYAML(v *yaml.Node) error {
+	var s string
+	if err := v.Decode(&s); err != nil {
+		return fmt.Errorf("expected duration as string, e.g. \"5m\"")
+	}
+	parsed, err := time.ParseDuration(s)
+	if err != nil {
+		return err
+	}
+	*d = Duration(parsed)
+	return nil
+}
+
+// Clock is a local time of day written as "HH:MM".
+type Clock int // minutes since midnight
+
+func (c *Clock) UnmarshalYAML(v *yaml.Node) error {
+	var s string
+	if err := v.Decode(&s); err != nil {
+		return fmt.Errorf("expected a time of day as \"HH:MM\"")
+	}
+	if len(s) != 5 || s[2] != ':' {
+		return fmt.Errorf("expected a time of day as \"HH:MM\", got %q", s)
+	}
+	t, err := time.Parse("15:04", s)
+	if err != nil {
+		return fmt.Errorf("expected a time of day as \"HH:MM\", got %q", s)
+	}
+	*c = Clock(t.Hour()*60 + t.Minute())
+	return nil
+}
+
+// Day is a weekday, written as a short name.
+type Day time.Weekday
+
+// Both English and German short names are accepted; plans are written by
+// operators, the rest of the software stays English.
+var dayNames = map[string]time.Weekday{
+	"mon": time.Monday, "monday": time.Monday, "mo": time.Monday, "montag": time.Monday,
+	"tue": time.Tuesday, "tuesday": time.Tuesday, "tu": time.Tuesday, "di": time.Tuesday, "dienstag": time.Tuesday,
+	"wed": time.Wednesday, "wednesday": time.Wednesday, "we": time.Wednesday, "mi": time.Wednesday, "mittwoch": time.Wednesday,
+	"thu": time.Thursday, "thursday": time.Thursday, "th": time.Thursday, "do": time.Thursday, "donnerstag": time.Thursday,
+	"fri": time.Friday, "friday": time.Friday, "fr": time.Friday, "freitag": time.Friday,
+	"sat": time.Saturday, "saturday": time.Saturday, "sa": time.Saturday, "samstag": time.Saturday,
+	"sun": time.Sunday, "sunday": time.Sunday, "su": time.Sunday, "so": time.Sunday, "sonntag": time.Sunday,
+}
+
+func (d *Day) UnmarshalYAML(v *yaml.Node) error {
+	var s string
+	if err := v.Decode(&s); err != nil {
+		return fmt.Errorf("expected a weekday such as \"mo\" or \"mon\"")
+	}
+	wd, ok := dayNames[strings.ToLower(s)]
+	if !ok {
+		return fmt.Errorf("unknown weekday %q", s)
+	}
+	*d = Day(wd)
+	return nil
+}
+
+// Plan is one file under plans/.
+type Plan struct {
+	Timezone string `yaml:"timezone"`
+	Rules    []Rule `yaml:"rules"`
+	Fallback string `yaml:"fallback"`
+
+	loc *time.Location
+}
+
+// Rule shows Pages while When matches.
+type Rule struct {
+	Name    string   `yaml:"name"`
+	When    When     `yaml:"when"`
+	Pages   []string `yaml:"pages"`
+	Rotate  bool     `yaml:"rotate"`
+	Refresh Duration `yaml:"refresh"`
+}
+
+// When is a time window. Days apply to the day the window starts, so a window
+// across midnight belongs to its start day. All conditions are combined.
+type When struct {
+	From *Clock `yaml:"from"`
+	To   *Clock `yaml:"to"`
+	Days []Day  `yaml:"days"`
+	// Data conditions are specified in ADR 0025 but not implemented yet.
+	// Rejecting them keeps operators from relying on something that is ignored.
+	Data []any `yaml:"data"`
+}
+
+// Selection is the evaluated rule.
+type Selection struct {
+	Rule    string
+	Pages   []string
+	Rotate  bool
+	Refresh time.Duration // 0 = use the device interval
+}
+
+// Parse reads a plan and validates it.
+func Parse(r io.Reader) (*Plan, error) {
+	dec := yaml.NewDecoder(r)
+	dec.KnownFields(true)
+	var p Plan
+	if err := dec.Decode(&p); err != nil {
+		return nil, err
+	}
+	if err := p.validate(); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// Select returns the first matching rule, otherwise the fallback rule. ok is
+// false when neither matches.
+func (p *Plan) Select(now time.Time) (Selection, bool) {
+	local := now.In(p.loc)
+	for i := range p.Rules {
+		if p.Rules[i].When.matches(local) {
+			return p.Rules[i].selection(), true
+		}
+	}
+	if p.Fallback != "" {
+		for i := range p.Rules {
+			if p.Rules[i].Name == p.Fallback {
+				return p.Rules[i].selection(), true
+			}
+		}
+	}
+	return Selection{}, false
+}
+
+// UntilNextBoundary returns the time until the next window starts or ends, so
+// a sleeping device wakes up when its rule changes. 0 means no window exists.
+func (p *Plan) UntilNextBoundary(now time.Time) time.Duration {
+	local := now.In(p.loc)
+	var best time.Duration
+	consider := func(t time.Time) {
+		d := t.Sub(local)
+		if d <= 0 || (best != 0 && d >= best) {
+			return
+		}
+		best = d
+	}
+	y, m, d := local.Date()
+	for i := range p.Rules {
+		w := p.Rules[i].When
+		if w.From == nil || w.To == nil {
+			continue
+		}
+		from, to := int(*w.From), int(*w.To)
+		for off := 0; off <= 8; off++ {
+			day := time.Date(y, m, d+off, 0, 0, 0, 0, p.loc)
+			if w.dayAllowed(day.Weekday()) {
+				consider(atClock(day, from))
+			}
+			start := day.Weekday()
+			if from > to { // the window started the day before
+				start = prevDay(start)
+			}
+			if w.dayAllowed(start) {
+				consider(atClock(day, to))
+			}
+		}
+	}
+	if best > 8*24*time.Hour {
+		return 0
+	}
+	return best
+}
+
+func atClock(day time.Time, minutes int) time.Time {
+	y, m, d := day.Date()
+	return time.Date(y, m, d, minutes/60, minutes%60, 0, 0, day.Location())
+}
+
+func prevDay(d time.Weekday) time.Weekday { return (d + 6) % 7 }
+
+func (w *When) dayAllowed(d time.Weekday) bool {
+	if len(w.Days) == 0 {
+		return true
+	}
+	for _, allowed := range w.Days {
+		if time.Weekday(allowed) == d {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *When) matches(t time.Time) bool {
+	m := t.Hour()*60 + t.Minute()
+	if w.From == nil || w.To == nil {
+		return w.dayAllowed(t.Weekday())
+	}
+	from, to := int(*w.From), int(*w.To)
+	if from < to {
+		return m >= from && m < to && w.dayAllowed(t.Weekday())
+	}
+	if m >= from {
+		return w.dayAllowed(t.Weekday())
+	}
+	if m < to {
+		return w.dayAllowed(prevDay(t.Weekday()))
+	}
+	return false
+}
+
+func (r *Rule) selection() Selection {
+	return Selection{Rule: r.Name, Pages: r.Pages, Rotate: r.Rotate, Refresh: time.Duration(r.Refresh)}
+}
+
+func (p *Plan) validate() error {
+	if p.Timezone == "" {
+		p.loc = time.Local
+	} else {
+		loc, err := time.LoadLocation(p.Timezone)
+		if err != nil {
+			return fmt.Errorf("timezone %q: %w", p.Timezone, err)
+		}
+		p.loc = loc
+	}
+	if len(p.Rules) == 0 {
+		return fmt.Errorf("rules missing")
+	}
+	seen := map[string]bool{}
+	for i := range p.Rules {
+		r := &p.Rules[i]
+		if !validName(r.Name) {
+			return fmt.Errorf("rule %d: name %q: only a-z, 0-9 and -", i, r.Name)
+		}
+		if seen[r.Name] {
+			return fmt.Errorf("duplicate rule name %q", r.Name)
+		}
+		seen[r.Name] = true
+		if err := r.validate(); err != nil {
+			return fmt.Errorf("rule %s: %w", r.Name, err)
+		}
+	}
+	if p.Fallback != "" && !seen[p.Fallback] {
+		return fmt.Errorf("fallback %q: no such rule", p.Fallback)
+	}
+	return nil
+}
+
+func (r *Rule) validate() error {
+	if len(r.Pages) == 0 {
+		return fmt.Errorf("pages missing")
+	}
+	pages := map[string]bool{}
+	for _, name := range r.Pages {
+		if !validName(name) {
+			return fmt.Errorf("page %q: only a-z, 0-9 and -", name)
+		}
+		if pages[name] {
+			return fmt.Errorf("duplicate page %q", name)
+		}
+		pages[name] = true
+	}
+	if r.Refresh != 0 && time.Duration(r.Refresh) < time.Minute {
+		return fmt.Errorf("refresh must be at least 1m")
+	}
+	w := &r.When
+	if len(w.Data) > 0 {
+		return fmt.Errorf("when.data: data conditions are not implemented yet")
+	}
+	if (w.From == nil) != (w.To == nil) {
+		return fmt.Errorf("when: from and to must be given together")
+	}
+	if w.From != nil && *w.From == *w.To {
+		return fmt.Errorf("when: from and to must differ")
+	}
+	return nil
+}
+
+func validName(s string) bool {
+	if s == "" || len(s) > 40 {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+			return false
+		}
+	}
+	return true
+}

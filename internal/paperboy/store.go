@@ -37,6 +37,7 @@ type deviceState struct {
 	WakeReason     string    `json:"wake_reason,omitempty"`
 	BatteryLevel   string    `json:"battery_level,omitempty"` // TRMNL: "", "warn" or "critical"
 	LastError      string    `json:"last_error,omitempty"`    // OpenDisplay: last push error, empty after success
+	Rule           string    `json:"rule,omitempty"`          // TRMNL plan: name of the active rule
 }
 
 func imagePath(dir, profile string, page int) string {

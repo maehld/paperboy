@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+	"text/template/parse"
 	"time"
 
 	"golang.org/x/image/font"
@@ -33,8 +34,9 @@ var (
 )
 
 // Render draws the page from the data document. Values that are missing or
-// null are shown as an em dash; stale watched paths add a notice bar.
-func (t *Template) Render(doc *data.Document, d Display, now time.Time) (*image.Paletted, error) {
+// null are shown as an em dash; stale watched paths add a notice bar. extra
+// banners (e.g. the battery warning) are stacked on top.
+func (t *Template) Render(doc *data.Document, d Display, now time.Time, extra ...string) (*image.Paletted, error) {
 	raw, _ := doc.Get("")
 	root, ok := raw.(map[string]any)
 	if !ok {
@@ -52,7 +54,7 @@ func (t *Template) Render(doc *data.Document, d Display, now time.Time) (*image.
 	if r.err != nil {
 		return nil, r.err
 	}
-	if banners := t.staleBanners(doc, now); len(banners) > 0 {
+	if banners := append(t.staleBanners(doc, now), extra...); len(banners) > 0 {
 		img = withBanner(img, banners...)
 	}
 	return img, nil
@@ -116,7 +118,9 @@ func (r *renderer) fail(err error) {
 	}
 }
 
-// expand runs the text/template helpers on a label, title or text.
+// expand runs the text/template helpers on a label, title or text. Missing
+// branches of the document are created as empty objects so that an unset
+// supplier still renders dashes instead of failing the whole page.
 func (r *renderer) expand(s string) string {
 	if s == "" || !strings.Contains(s, "{{") {
 		return s
@@ -126,12 +130,82 @@ func (r *renderer) expand(s string) string {
 		r.fail(err)
 		return ""
 	}
+	ensureBranches(r.root, tmpl.Tree)
 	var b strings.Builder
 	if err := tmpl.Execute(&b, r.root); err != nil {
 		r.fail(err)
 		return ""
 	}
-	return strings.TrimSpace(b.String())
+	return strings.TrimSpace(strings.ReplaceAll(b.String(), "<no value>", "—"))
+}
+
+// ensureBranches creates the intermediate objects of every field chain used in
+// the template, so a missing branch yields an em dash instead of an error.
+func ensureBranches(root map[string]any, tree *parse.Tree) {
+	if tree == nil || tree.Root == nil {
+		return
+	}
+	walkFields(root, tree.Root)
+}
+
+func walkFields(root map[string]any, n parse.Node) {
+	switch n := n.(type) {
+	case *parse.ListNode:
+		for _, c := range n.Nodes {
+			walkFields(root, c)
+		}
+	case *parse.ActionNode:
+		walkFields(root, n.Pipe)
+	case *parse.PipeNode:
+		for _, c := range n.Cmds {
+			walkFields(root, c)
+		}
+	case *parse.CommandNode:
+		for _, a := range n.Args {
+			walkFields(root, a)
+		}
+	case *parse.FieldNode:
+		ensurePath(root, n.Ident)
+	case *parse.ChainNode:
+		if f, ok := n.Node.(*parse.FieldNode); ok {
+			ensurePath(root, append(append([]string{}, f.Ident...), n.Field...))
+		}
+	case *parse.IfNode:
+		walkFields(root, n.Pipe)
+		walkFields(root, n.List)
+		if n.ElseList != nil {
+			walkFields(root, n.ElseList)
+		}
+	case *parse.WithNode:
+		walkFields(root, n.Pipe)
+		walkFields(root, n.List)
+		if n.ElseList != nil {
+			walkFields(root, n.ElseList)
+		}
+	case *parse.RangeNode:
+		walkFields(root, n.Pipe)
+		walkFields(root, n.List)
+		if n.ElseList != nil {
+			walkFields(root, n.ElseList)
+		}
+	case *parse.TemplateNode:
+		walkFields(root, n.Pipe)
+	}
+}
+
+func ensurePath(root map[string]any, path []string) {
+	cur := root
+	for i := 0; i < len(path)-1; i++ {
+		next, ok := cur[path[i]].(map[string]any)
+		if !ok {
+			if v, exists := cur[path[i]]; exists && v != nil {
+				return // a scalar cannot be descended into; leave the error visible
+			}
+			next = map[string]any{}
+			cur[path[i]] = next
+		}
+		cur = next
+	}
 }
 
 func (r *renderer) funcs() template.FuncMap {
