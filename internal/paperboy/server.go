@@ -289,7 +289,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		st.APIKey, st.FriendlyID = newAPIKey(), friendlyID(d.MAC)
 	}
 	st.Model, st.Firmware = r.Header.Get("Model"), r.Header.Get("FW-Version")
-	notice := s.hint(d.Profile, "Paperboy", "GerÃ¤t eingerichtet â€“ warte auf Plan")
+	notice := s.hint(d.Profile, "Paperboy", "Gerät eingerichtet – warte auf Plan")
 	s.saveStateLocked()
 	key, friendly := st.APIKey, st.FriendlyID
 	s.mu.Unlock()
@@ -353,7 +353,7 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 	case d.Plan != "":
 		served = s.planPage(d, st, now, firstContact, special, pageTimeout)
 	default:
-		served = s.hint(d.Profile, "Kein Plan konfiguriert", "FÃ¼r dieses GerÃ¤t ist in der Konfiguration kein Plan hinterlegt.")
+		served = s.hint(d.Profile, "Kein Plan konfiguriert", "Für dieses Gerät ist in der Konfiguration kein Plan hinterlegt.")
 	}
 	served.refresh = max(served.refresh, floor)
 	page := served.page
