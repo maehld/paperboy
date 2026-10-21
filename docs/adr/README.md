@@ -30,3 +30,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0031](0031-everything-in-english.md) | Everything in the software is English | Accepted |
 | [0032](0032-data-providers-and-regions.md) | Data providers with named regions instead of image fragments | Accepted |
 | [0033](0033-global-language-and-timezone.md) | Global language and timezone in the configuration | Accepted |
+| [0034](0034-layout-primitives-and-typography.md) | Layout primitives and typography in page templates | Draft |
