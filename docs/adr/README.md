@@ -28,3 +28,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0029](0029-repository-trennung-umgesetzt.md) | Repository-Trennung SolarAI / Paperboy umgesetzt | Akzeptiert |
 | [0030](0030-englisch-fuer-logs-kommentare-commits.md) | Englisch für Lognachrichten, Kommentare und Commits | Abgelöst durch ADR-0031 |
 | [0031](0031-everything-in-english.md) | Everything in the software is English | Accepted |
+| [0032](0032-data-providers-and-regions.md) | Data providers with named regions instead of image fragments | Accepted |
