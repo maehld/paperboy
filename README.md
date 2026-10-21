@@ -27,12 +27,48 @@ Supplier ──PUT /api/images/{profile}/{page}──▶ paperboy ◀──GET /
 - **Profiles** (size, grayscale levels, panel width) determine the layout; suppliers query them via `GET /api/profiles`. Several devices can share a profile. Images are delivered as PNG with 1 bit or 2 bits (4 gray levels) and stored under `-data`.
 - **Interval** per device (`refresh`, optionally `night_refresh` between `night_start` and `night_end`), at least 1 minute. Unchanged image → the display does not redraw.
 - **Button**: short press = next page, hold approx. 2 s (1–5 s) = overview, longer than 5 s = reset Wi-Fi (firmware). A real double click triggers the same function, but is hardly achievable from deep sleep. After `page_timeout` (5 min) back to the overview. The TRMNL firmware does not support three separate buttons.
-- **Data document** (ADR 0024, first stage): suppliers write JSON branches via `PUT /api/data/{path}` (bearer token; `PUT` replaces instead of merging, missing intermediate objects are created, 409 on type conflicts, 1 MB per write, optional `X-Data-Time` in RFC 3339). `GET` and `DELETE` on the same paths help with debugging. Each path keeps its write time, so stale data can be detected later without comparing content. Page templates that render from the document follow in a later step.
+- **Data document** (ADR 0024, first stage): suppliers write JSON branches via `PUT /api/data/{path}` (bearer token; `PUT` replaces instead of merging, missing intermediate objects are created, 409 on type conflicts, 1 MB per write, optional `X-Data-Time` in RFC 3339). `GET` and `DELETE` on the same paths help with debugging. Each path keeps its write time, so stale data can be detected without comparing content. Page templates render from the document (see below).
 - **Stale**: If no upload arrives for longer than `stale_after` (30 min), a black bar „Keine neuen Daten seit …“ (“No new data since …”) appears at the bottom.
 - **Battery warning** (ADR 0020): The TRMNL firmware reports only the voltage (`Battery-Voltage`). With `"battery": { "warn_volts": 3.45, "critical_volts": 3.3, "hysteresis_volts": 0.1 }` (global or per device), every page below `warn_volts` gets the bar „Akku schwach – bitte laden“ (“Battery low – please charge”); below `critical_volts` a full-screen image „Akku fast leer“ (“Battery almost empty”) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` no warning.
 - `GET /api/devices` shows registered devices with battery voltage, signal strength, wake reason and last request (without keys).
 - **OpenDisplay devices** (ADR 0018): entry with `"type": "opendisplay"`, `"address": "<IP>[:2446]"`, profile and interval; `"buttons": true` keeps a persistent connection and evaluates the three buttons (0 = overview, 1 = back, 2 = next). Without deep sleep, TCP only. Not yet tested on hardware.
 - **Security:** Upload only with token (`Authorization: Bearer`, alternatively via `PAPERBOY_UPLOAD_TOKEN`); devices via allow list and their own key. Paperboy never sets `reset_firmware` and never responds with status 500.
+
+## Page templates
+
+Pages can be rendered from the data document instead of uploaded images: `<page>.<profile>.yaml` in the `pages` directory (config key `pages`, default `<data>/pages`). `rows` gives the relative row heights, every row holds exactly one block, and the block `name` is its region name (ADR 0032).
+
+```yaml
+title: Solar
+locale: de
+watch:
+  - { path: solar/current, stale_after: 30m, label: Solar }
+rows: [1, 3, 6, 3]
+blocks:
+  - name: kopf
+    header:
+      title: Solar
+      subtitle: "{{ power .solar.current.latest.values.pv_power }} vom Dach"
+      time: solar.current.latest.time
+  - name: kacheln
+    tiles:
+      - { label: PV, value: solar.current.latest.values.pv_power, format: power }
+      - { label: Netz, value: solar.current.latest.values.grid_power, format: power, sign: [Einspeisung, Bezug] }
+  - name: verlauf
+    chart: { points: solar.history.points, series: [pv_power, load_power], unit: kW }
+  - name: zeiten
+    rows:
+      - { label: Sonnenaufgang, value: solar.today.sunrise, format: time }
+```
+
+- Data paths accept dots or slashes (`solar.current` equals `solar/current`); missing values render as `—`.
+- `format` formats the value: `power` (W or kW), `energy` (kWh), `percent`, `temp`, `time` (RFC 3339 → HH:MM), `abs`; `sign: [negative, positive]` appends the matching word.
+- Free texts are Go templates over the document with the same helpers, e.g. `{{ percent .solar.current.latest.values.battery_soc }}`.
+- `watch` entries add the „Keine neuen Daten seit …“ bar once the path is older than `stale_after`.
+- `locale: en` switches the decimal comma to a dot (default `de`); the built-in banner texts stay German.
+- Preview with the upload token: `GET /api/preview/e1001/solar`.
+
+Implemented blocks are `header`, `tiles`, `rows`, `chart` and `text`; `bar`, hatching and separators follow. Devices still receive uploaded images, templates are not yet served by `/api/display` until plans per display exist.
 
 ## OpenDisplay test program
 
@@ -63,6 +99,7 @@ cmd/paperboy/            Startup and options, example configuration
 cmd/odtest/              Test program for OpenDisplay devices (TCP and Bluetooth)
 internal/paperboy/       Upload API, TRMNL API, OpenDisplay pusher, battery warning
 internal/data/           Shared data document for page templates (ADR 0024)
+internal/page/           Page templates: YAML parsing and rendering from the data document
 internal/opendisplay/    OpenDisplay protocol; odble = Bluetooth transport
 docs/adr/                Architecture decisions
 ```

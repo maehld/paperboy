@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/maehld/paperboy/internal/data"
+	"github.com/maehld/paperboy/internal/page"
 )
 
 // Server implements the upload API for producers and the TRMNL device API.
@@ -44,6 +45,9 @@ func New(cfg *Config, dir string) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{cfg: cfg, dir: dir, now: time.Now, images: images, state: state}
+	if s.cfg.Pages == "" {
+		s.cfg.Pages = filepath.Join(dir, "pages")
+	}
 	// The document shares the server clock so that tests can move time.
 	s.doc, err = data.New(filepath.Join(dir, "data.json"), func() time.Time { return s.now() })
 	if err != nil {
@@ -62,6 +66,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/data/{path...}", s.handleGetData)
 	mux.HandleFunc("DELETE /api/data/{path...}", s.handleDeleteData)
 	mux.HandleFunc("GET /api/devices", s.handleDevices)
+	mux.HandleFunc("GET /api/preview/{display}/{page}", s.handlePreview)
 	mux.HandleFunc("GET /api/setup", s.handleSetup)
 	mux.HandleFunc("GET /api/setup/", s.handleSetup)
 	mux.HandleFunc("GET /api/display", s.handleDisplay)
@@ -433,6 +438,41 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Warn("display log", "device", name, "log", string(body))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handlePreview renders a page template from the data document as PNG, so a
+// layout can be checked without a device.
+func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	display, name := r.PathValue("display"), r.PathValue("page")
+	profile, ok := s.cfg.Profiles[display]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	tmpl, err := page.Load(s.cfg.Pages, name, display)
+	if errors.Is(err, page.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		slog.Error("page template invalid", "display", display, "page", name, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	img, err := tmpl.Render(s.doc, page.Display{Width: profile.Width, Height: profile.Height, Gray: profile.Gray}, s.now())
+	if err != nil {
+		slog.Error("page rendering failed", "display", display, "page", name, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	data := encodePNG(img)
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.Write(data)
 }
 
 // handleImage serves keys of the form <profile>-setup, <profile>-battery-<decivolts>

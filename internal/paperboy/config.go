@@ -112,6 +112,7 @@ type Config struct {
 	PublicURL   string             `json:"public_url"`   // base URL for image links; empty = request host
 	StaleAfter  Duration           `json:"stale_after"`  // mark images older than this; 0 = 30m
 	PageTimeout Duration           `json:"page_timeout"` // back to page 0 after this; 0 = 5m
+	Pages       string             `json:"pages"`        // page templates; empty = <data>/pages
 	Profiles    map[string]Profile `json:"profiles"`
 	Devices     []Device           `json:"devices"`
 	Battery     *Battery           `json:"battery"` // low-battery warning for TRMNL devices; nil = off
