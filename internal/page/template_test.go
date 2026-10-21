@@ -11,7 +11,6 @@ import (
 
 const validTemplate = `
 title: Solar
-locale: de
 watch:
   - { path: solar.current, stale_after: 5m, label: Solar }
 rows: [1, 2, 2]
@@ -99,8 +98,8 @@ rows: [1]
 blocks:
   - text: "x"
 `,
-		"bad locale": `
-locale: fr
+		"locale removed": `
+locale: de
 rows: [1]
 blocks:
   - text: "x"

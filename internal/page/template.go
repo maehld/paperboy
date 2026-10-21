@@ -40,7 +40,6 @@ func (d *Duration) UnmarshalYAML(v *yaml.Node) error {
 // Template is one page for one display type.
 type Template struct {
 	Title  string  `yaml:"title"`
-	Locale string  `yaml:"locale"` // "de" (decimal comma) or "en"; default "de"
 	Watch  []Watch `yaml:"watch"`
 	Rows   []int   `yaml:"rows"`   // relative heights, one per block
 	Blocks []Block `yaml:"blocks"` // one block per row
@@ -137,12 +136,6 @@ func ValidName(s string) bool {
 }
 
 func (t *Template) validate() error {
-	if t.Locale == "" {
-		t.Locale = "de"
-	}
-	if t.Locale != "de" && t.Locale != "en" {
-		return fmt.Errorf("locale %q: expected \"de\" or \"en\"", t.Locale)
-	}
 	if len(t.Rows) == 0 {
 		return fmt.Errorf("rows missing")
 	}

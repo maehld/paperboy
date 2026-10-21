@@ -23,9 +23,26 @@ import (
 
 // Display describes the panel a page is rendered for.
 type Display struct {
-	Width  int
-	Height int
-	Gray   bool // four gray levels instead of black and white
+	Width    int
+	Height   int
+	Gray     bool   // four gray levels instead of black and white
+	Language string // "de" or "en"; empty means "de"
+}
+
+// language returns the effective language of the display.
+func (d Display) language() string {
+	if d.Language == "en" {
+		return "en"
+	}
+	return "de"
+}
+
+// text picks the German or English variant of a built-in text.
+func text(language, de, en string) string {
+	if language == "en" {
+		return en
+	}
+	return de
 }
 
 var (
@@ -42,7 +59,8 @@ func (t *Template) Render(doc *data.Document, d Display, now time.Time, extra ..
 	if !ok {
 		return nil, fmt.Errorf("data document is not an object")
 	}
-	r := &renderer{t: t, root: root, f: formatter{comma: t.Locale != "en"}, now: now}
+	language := d.language()
+	r := &renderer{t: t, root: root, f: formatter{comma: language != "en"}, now: now, language: language}
 	img := newCanvas(d.Width, d.Height, d.Gray)
 	bands := t.bands(d)
 	for i, b := range t.Blocks {
@@ -54,7 +72,7 @@ func (t *Template) Render(doc *data.Document, d Display, now time.Time, extra ..
 	if r.err != nil {
 		return nil, r.err
 	}
-	if banners := append(t.staleBanners(doc, now), extra...); len(banners) > 0 {
+	if banners := append(t.staleBanners(doc, now, language), extra...); len(banners) > 0 {
 		img = withBanner(img, banners...)
 	}
 	return img, nil
@@ -85,7 +103,7 @@ func (t *Template) bands(d Display) []image.Rectangle {
 	return out
 }
 
-func (t *Template) staleBanners(doc *data.Document, now time.Time) []string {
+func (t *Template) staleBanners(doc *data.Document, now time.Time, language string) []string {
 	var banners []string
 	for _, w := range t.Watch {
 		age, ok := doc.Age(w.Path)
@@ -99,17 +117,18 @@ func (t *Template) staleBanners(doc *data.Document, now time.Time) []string {
 		if label == "" {
 			label = w.Path
 		}
-		banners = append(banners, "Keine neuen Daten seit "+now.Add(-age).Format("02.01. 15:04")+" ("+label+")")
+		banners = append(banners, text(language, "Keine neuen Daten seit ", "No new data since ")+now.Add(-age).Format("02.01. 15:04")+" ("+label+")")
 	}
 	return banners
 }
 
 type renderer struct {
-	t    *Template
-	root map[string]any
-	f    formatter
-	now  time.Time
-	err  error
+	t        *Template
+	root     map[string]any
+	f        formatter
+	now      time.Time
+	language string
+	err      error
 }
 
 func (r *renderer) fail(err error) {
@@ -306,7 +325,7 @@ func (r *renderer) list(img *image.Paletted, rc image.Rectangle, items []Tile) {
 func (r *renderer) chart(img *image.Paletted, rc image.Rectangle, c *Chart) {
 	points, _ := lookupList(r.root, c.Points)
 	if len(points) < 2 {
-		drawFitted(img, "keine Verlaufsdaten", rc.Min.X+rc.Dx()/2, rc.Min.Y+rc.Dy()/2,
+		drawFitted(img, text(r.language, "keine Verlaufsdaten", "no chart data"), rc.Min.X+rc.Dx()/2, rc.Min.Y+rc.Dy()/2,
 			float64(rc.Dy())/8, rc.Dx()-8, color.Black, alignCenter)
 		return
 	}

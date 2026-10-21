@@ -1,7 +1,6 @@
 package paperboy
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -75,18 +74,8 @@ func voltageKey(header string) string {
 	return strconv.Itoa(int(v*10 + 0.5))
 }
 
-func voltageText(key string) string {
-	n, err := strconv.Atoi(key)
-	if err != nil || n <= 0 {
-		return ""
-	}
-	return fmt.Sprintf(" (ca. %d,%d V)", n/10, n%10)
-}
-
-func lowBatteryText(key string) string { return "Akku schwach – bitte laden" + voltageText(key) }
-
 // criticalBatteryImage is a full-screen notice shown instead of the pages.
-func criticalBatteryImage(p Profile, key string) *image.Paletted {
+func criticalBatteryImage(p Profile, t texts, key string) *image.Paletted {
 	img := image.NewPaletted(image.Rect(0, 0, p.Width, p.Height), monoPalette)
 	draw.Draw(img, img.Rect, image.NewUniform(color.White), image.Point{}, draw.Src)
 	w, h := p.Width, p.Height
@@ -102,7 +91,8 @@ func criticalBatteryImage(p Profile, key string) *image.Paletted {
 	fill(image.Rect(x0+bw, y0+bh/3, x0+bw+line*2, y0+bh*2/3))
 	fill(image.Rect(x0+line*2, y0+line*2, x0+line*2+bw/10, y0+bh-line*2))
 	size := float64(h) / 10
-	drawText(img, "Akku fast leer", w/2, y0+bh+int(size*1.6), size, color.Black, true)
-	drawText(img, "Bitte jetzt laden"+voltageText(key), w/2, y0+bh+int(size*2.9), size*0.6, color.Black, true)
+	title, detail := t.criticalBattery(key)
+	drawText(img, title, w/2, y0+bh+int(size*1.6), size, color.Black, true)
+	drawText(img, detail, w/2, y0+bh+int(size*2.9), size*0.6, color.Black, true)
 	return img
 }

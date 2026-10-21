@@ -48,8 +48,7 @@ func TestBatteryConfig(t *testing.T) {
 }
 
 func TestBatteryWarningFlow(t *testing.T) {
-	s, _ := planServer(t, `timezone: UTC
-rules:
+	s, _ := planServer(t, `rules:
   - name: tag
     pages: [eins, zwei]
 `)

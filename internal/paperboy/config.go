@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	_ "time/tzdata" // embed IANA zones so the configured timezone needs no system tzdata
 
 	"go.yaml.in/yaml/v3"
 )
@@ -123,7 +124,9 @@ const (
 type Config struct {
 	UploadToken string
 	PublicURL   string
-	Refresh     Duration // default interval of a device; a plan rule may override it
+	Language    string         // "de" or "en"; built-in texts and number formats
+	Timezone    *time.Location // plans and built-in dates
+	Refresh     Duration       // default interval of a device; a plan rule may override it
 	PageTimeout Duration
 	DataDir     string // from directories.data; empty = -data or paperboy-data
 	Pages       string // page templates; empty = <data>/pages
@@ -132,6 +135,9 @@ type Config struct {
 	Devices     []Device
 	Battery     *Battery // default low-battery warning; nil = off
 }
+
+// texts returns the built-in image texts for the configured language.
+func (c *Config) texts() texts { return texts{language: c.Language} }
 
 // battery returns the effective battery warning settings for d, or nil.
 func (c *Config) battery(d *Device) *Battery {
@@ -149,7 +155,9 @@ func (c *Config) minRefresh(profile string) time.Duration {
 
 // fileConfig mirrors paperboy.yaml.
 type fileConfig struct {
-	Server struct {
+	Language string `yaml:"language"` // de or en; default: system language
+	Timezone string `yaml:"timezone"` // IANA name; default: system timezone
+	Server   struct {
 		PublicURL      string `yaml:"public_url"`
 		UploadToken    string `yaml:"upload_token"`
 		UploadTokenEnv string `yaml:"upload_token_env"`
@@ -210,9 +218,19 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	base := filepath.Dir(path)
+	tz := time.Local
+	if f.Timezone != "" {
+		loc, err := time.LoadLocation(f.Timezone)
+		if err != nil {
+			return nil, fmt.Errorf("%s: timezone %q: %w", path, f.Timezone, err)
+		}
+		tz = loc
+	}
 	c := &Config{
 		UploadToken: f.Server.UploadToken,
 		PublicURL:   f.Server.PublicURL,
+		Language:    f.Language,
+		Timezone:    tz,
 		Refresh:     f.Defaults.Refresh,
 		PageTimeout: f.Defaults.PageTimeout,
 		Battery:     f.Defaults.Battery,
@@ -287,6 +305,18 @@ func resolveDir(base, p string) string {
 }
 
 func (c *Config) validate() error {
+	if c.Timezone == nil {
+		c.Timezone = time.Local
+	}
+	if c.Language == "" {
+		c.Language = detectLanguage()
+	}
+	if c.Language == "" {
+		c.Language = "en"
+	}
+	if c.Language != "de" && c.Language != "en" {
+		return fmt.Errorf("language %q: expected de or en", c.Language)
+	}
 	if len(c.UploadToken) < 16 {
 		return fmt.Errorf("upload_token missing or shorter than 16 characters")
 	}

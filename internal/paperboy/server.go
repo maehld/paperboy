@@ -74,7 +74,7 @@ func New(cfg *Config, dir string) (*Server, error) {
 		if _, err := os.Stat(path); err != nil {
 			return nil, fmt.Errorf("device %s: plan %q: %w", d.ID, d.Plan, err)
 		}
-		if p, err := s.plans.get(s.cfg.Plans, d.Plan); p == nil || err != nil {
+		if p, err := s.plans.get(s.cfg.Plans, d.Plan, s.cfg.Timezone); p == nil || err != nil {
 			slog.Error("plan not usable", "device", d.ID, "plan", d.Plan, "error", err)
 		}
 	}
@@ -289,7 +289,8 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		st.APIKey, st.FriendlyID = newAPIKey(), friendlyID(d.MAC)
 	}
 	st.Model, st.Firmware = r.Header.Get("Model"), r.Header.Get("FW-Version")
-	notice := s.hint(d.Profile, "Paperboy", "Gerät eingerichtet – warte auf Plan")
+	title, text := s.cfg.texts().setup()
+	notice := s.hint(d.Profile, title, text)
 	s.saveStateLocked()
 	key, friendly := st.APIKey, st.FriendlyID
 	s.mu.Unlock()
@@ -348,12 +349,13 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case critical: // the warning replaces all pages; buttons only show it again
 		st.Page = 0
-		served = s.notice(d.Profile, criticalBatteryImage(s.cfg.Profiles[d.Profile], voltageKey(st.BatteryVoltage)))
+		served = s.notice(d.Profile, criticalBatteryImage(s.cfg.Profiles[d.Profile], s.cfg.texts(), voltageKey(st.BatteryVoltage)))
 		served.refresh = max(floor, d.refresh())
 	case d.Plan != "":
 		served = s.planPage(d, st, now, firstContact, special, pageTimeout)
 	default:
-		served = s.hint(d.Profile, "Kein Plan konfiguriert", "Für dieses Gerät ist in der Konfiguration kein Plan hinterlegt.")
+		title, text := s.cfg.texts().noPlan()
+		served = s.hint(d.Profile, title, text)
 	}
 	served.refresh = max(served.refresh, floor)
 	page := served.page
