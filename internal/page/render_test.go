@@ -205,12 +205,12 @@ blocks:
 	render(t, tmpl, doc, Display{Width: 200, Height: 60}, now)
 }
 
-func TestTemplateErrorIsReported(t *testing.T) {
+func TestTemplateParseErrorIsReported(t *testing.T) {
 	now := time.Date(2026, 10, 21, 13, 12, 0, 0, time.Local)
 	tmpl, err := Parse(strings.NewReader(`
 rows: [1]
 blocks:
-  - text: "{{ .missing.deeper }}"
+  - text: "{{ power .a"
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -218,6 +218,20 @@ blocks:
 	doc := testDocument(t, &now)
 	if _, err := tmpl.Render(doc, Display{Width: 100, Height: 40}, now); err == nil {
 		t.Fatal("a broken text template must fail the render")
+	}
+}
+
+func TestMissingTemplateBranchShowsDash(t *testing.T) {
+	r := &renderer{t: &Template{Locale: "de"}, root: map[string]any{}, f: formatter{comma: true}}
+	// A missing supplier must not fail the page: branches are created empty.
+	if got := r.expand("{{ temp .wetter.aktuell.temp }}"); got != "—" {
+		t.Fatalf("helper: %q", got)
+	}
+	if got := r.expand("{{ .wetter.aktuell.text }}"); got != "—" {
+		t.Fatalf("bare field: %q", got)
+	}
+	if _, ok := r.root["wetter"].(map[string]any); !ok {
+		t.Fatalf("branch not created: %v", r.root)
 	}
 }
 

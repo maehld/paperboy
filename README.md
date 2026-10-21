@@ -31,6 +31,7 @@ Supplier ──PUT /api/images/{profile}/{page}──▶ paperboy ◀──GET /
 - **Stale**: If no upload arrives for longer than `stale_after` (30 min), a black bar „Keine neuen Daten seit …“ (“No new data since …”) appears at the bottom.
 - **Battery warning** (ADR 0020): The TRMNL firmware reports only the voltage (`Battery-Voltage`). With `"battery": { "warn_volts": 3.45, "critical_volts": 3.3, "hysteresis_volts": 0.1 }` (global or per device), every page below `warn_volts` gets the bar „Akku schwach – bitte laden“ (“Battery low – please charge”); below `critical_volts` a full-screen image „Akku fast leer“ (“Battery almost empty”) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` no warning.
 - `GET /api/devices` shows registered devices with battery voltage, signal strength, wake reason and last request (without keys).
+- **Plans** (ADR 0025): devices with `"plan": "<name>"` show the pages of a plan (`plans/<name>.yaml`) according to time rules, instead of uploaded images (see below).
 - **OpenDisplay devices** (ADR 0018): entry with `"type": "opendisplay"`, `"address": "<IP>[:2446]"`, profile and interval; `"buttons": true` keeps a persistent connection and evaluates the three buttons (0 = overview, 1 = back, 2 = next). Without deep sleep, TCP only. Not yet tested on hardware.
 - **Security:** Upload only with token (`Authorization: Bearer`, alternatively via `PAPERBOY_UPLOAD_TOKEN`); devices via allow list and their own key. Paperboy never sets `reset_firmware` and never responds with status 500.
 
@@ -68,7 +69,36 @@ blocks:
 - `locale: en` switches the decimal comma to a dot (default `de`); the built-in banner texts stay German.
 - Preview with the upload token: `GET /api/preview/e1001/solar`.
 
-Implemented blocks are `header`, `tiles`, `rows`, `chart` and `text`; `bar`, hatching and separators follow. Devices still receive uploaded images, templates are not yet served by `/api/display` until plans per display exist.
+Implemented blocks are `header`, `tiles`, `rows`, `chart` and `text`; `bar`, hatching and separators follow. Devices without a plan keep showing uploaded images.
+
+## Plans
+
+Which pages a device shows is decided by a plan, `<name>.yaml` in the `plans` directory (config key `plans`, default `<data>/plans`). A device points to it with `"plan": "wohnzimmer"`; several devices may share a plan. A plan only names pages, so it works for devices of different display types.
+
+```yaml
+timezone: Europe/Berlin   # optional, default: the service's zone
+rules:
+  - name: morgen
+    when: { from: "07:00", to: "09:00", days: [mo, di, mi, do, fr] }
+    pages: [kalender-wetter, solar-overview]
+  - name: tag
+    when: { from: "09:00", to: "19:00" }
+    pages: [solar-gross, solar-battery, solar-history]
+    rotate: true
+    refresh: 5m
+  - name: nacht
+    when: { from: "19:00", to: "07:00" }
+    pages: [tueren]
+    refresh: 30m
+fallback: nacht
+```
+
+- The first matching rule wins. A `when` without `from`/`to` always matches; `from` is inclusive, `to` exclusive. `to < from` wraps over midnight and then belongs to the day the window starts. Days accept German and English short names.
+- `pages` is the paging order within the rule. `rotate: true` moves on at every timed refresh, otherwise only a button changes the page. Buttons page within the active rule only, holding returns to its first page, and after `page_timeout` the device shows the first page again unless the rule rotates.
+- `refresh` replaces the device interval. The reported interval is capped to the next rule boundary (at least 1 minute), so a sleeping device wakes up for a rule change.
+- `fallback` names the rule used when nothing matches; without a match and without a fallback the device gets a notice page.
+- Plans are reloaded on change without a restart; a broken file keeps the last valid version. Missing templates for a device's display type also lead to a notice page, so devices never see a server error.
+- Plans currently serve TRMNL devices. OpenDisplay and data conditions (`when.data`) follow later; `when.data` is rejected when loading a plan.
 
 ## OpenDisplay test program
 
@@ -100,6 +130,7 @@ cmd/odtest/              Test program for OpenDisplay devices (TCP and Bluetooth
 internal/paperboy/       Upload API, TRMNL API, OpenDisplay pusher, battery warning
 internal/data/           Shared data document for page templates (ADR 0024)
 internal/page/           Page templates: YAML parsing and rendering from the data document
+internal/plan/           Display plans: time rules that select pages per device (ADR 0025)
 internal/opendisplay/    OpenDisplay protocol; odble = Bluetooth transport
 docs/adr/                Architecture decisions
 ```

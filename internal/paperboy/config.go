@@ -68,6 +68,7 @@ type Device struct {
 	NightStart   ClockTime `json:"night_start"`
 	NightEnd     ClockTime `json:"night_end"`
 	Battery      *Battery  `json:"battery"` // TRMNL: overrides the global battery warning
+	Plan         string    `json:"plan"`    // page plan under plans/ (ADR 0025); empty = uploaded images
 }
 
 // Battery configures the low-battery warning for TRMNL devices. A threshold
@@ -113,6 +114,7 @@ type Config struct {
 	StaleAfter  Duration           `json:"stale_after"`  // mark images older than this; 0 = 30m
 	PageTimeout Duration           `json:"page_timeout"` // back to page 0 after this; 0 = 5m
 	Pages       string             `json:"pages"`        // page templates; empty = <data>/pages
+	Plans       string             `json:"plans"`        // page plans; empty = <data>/plans
 	Profiles    map[string]Profile `json:"profiles"`
 	Devices     []Device           `json:"devices"`
 	Battery     *Battery           `json:"battery"` // low-battery warning for TRMNL devices; nil = off
@@ -215,6 +217,14 @@ func (c *Config) validate() error {
 		}
 		if time.Duration(d.Refresh) < minRefresh || (d.NightRefresh != 0 && time.Duration(d.NightRefresh) < minRefresh) {
 			return fmt.Errorf("device %s: intervals must be at least 1m", d.Name)
+		}
+		if d.Plan != "" {
+			if !validName(d.Plan) {
+				return fmt.Errorf("device %s: plan %q: only a–z, 0–9 and -", d.Name, d.Plan)
+			}
+			if d.Type != TypeTRMNL {
+				return fmt.Errorf("device %s: plans are not supported for OpenDisplay yet", d.Name)
+			}
 		}
 	}
 	return nil
