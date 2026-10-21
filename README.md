@@ -28,6 +28,8 @@ Provider ──PUT /api/data/{path}──▶ paperboy ◀──GET /api/display�
 `paperboy.yaml` is the only configuration format (ADR 0026). Parsing is strict: unknown keys abort the start, as do missing plans, duplicate MAC addresses and unsupported protocols.
 
 ```yaml
+language: de            # de or en; default: system language
+timezone: Europe/Berlin # IANA zone; default: system timezone
 server:
   # public_url: https://paper.example.com   # only needed behind a reverse proxy
   upload_token_env: PAPERBOY_UPLOAD_TOKEN    # or upload_token: "a long random token"
@@ -57,8 +59,9 @@ devices:
 ```
 
 - The map key under `devices` is the stable device ID (a-z, 0-9, `-`). It appears in logs, in `GET /api/devices` and in `state.json`; existing MAC-keyed state is migrated automatically at startup.
+- `language` (`de` or `en`) selects the language of the built-in image texts and the number format. Without it Paperboy uses the system language (Windows UI language, otherwise `LANG`/`LC_ALL`/`LC_MESSAGES`) and falls back to English. `timezone` (IANA name) applies to plans and built-in dates; without it the system timezone is used.
 - `protocol` accepts only `trmnl` for now. `opendisplay` is rejected until plans cover it, `text-http`/`image-http` and `kind: text` follow with ADR 0027.
-- `plan` must name an existing `plans/<name>.yaml`; a missing file aborts the start, a broken plan shows a notice page. Without `plan` the device shows “Kein Plan konfiguriert”.
+- `plan` must name an existing `plans/<name>.yaml`; a missing file aborts the start, a broken plan shows a notice page. Without `plan` the device shows a notice page in the configured language („Kein Plan konfiguriert“ / “No plan configured”).
 - `upload_token_env` names the variable that holds the token; `upload_token` puts it into the file. `PAPERBOY_UPLOAD_TOKEN` (and the legacy `DISPLAYD_UPLOAD_TOKEN`) override both.
 - `-config` defaults to `paperboy.yaml`; passing a `.json` file is rejected with a hint. `-data` overrides `directories.data`, the page and plan directories then default to `<data>/pages` and `<data>/plans`.
 - The configuration is read once at startup; reloading it without a restart is still open (TODO).
@@ -70,8 +73,8 @@ devices:
 - **Interval**: `defaults.refresh` or the device's `refresh`, at least 1 minute and never below the display type's `min_refresh`; a plan rule may override it. Unchanged image → the display does not redraw.
 - **Button**: short press = next page, hold approx. 2 s (1–5 s) = overview, longer than 5 s = reset Wi-Fi (firmware). A real double click triggers the same function, but is hardly achievable from deep sleep. After `page_timeout` (5 min) back to the overview. The TRMNL firmware does not support three separate buttons.
 - **Data document** (ADR 0024): providers write JSON branches via `PUT /api/data/{path}` (bearer token; `PUT` replaces instead of merging, missing intermediate objects are created, 409 on type conflicts, 1 MB per write, optional `X-Data-Time` in RFC 3339). `GET` and `DELETE` on the same paths help with debugging. Each path keeps its write time, so stale data can be detected without comparing content. Page templates render from the document (see below).
-- **Stale**: templates mark watched paths with `stale_after`; page templates show the bar „Keine neuen Daten seit …“ (“No new data since …”) when the data is older.
-- **Battery warning** (ADR 0020): The TRMNL firmware reports only the voltage (`Battery-Voltage`). With `battery` in `defaults` or on a device, every page below `warn_volts` gets the bar „Akku schwach – bitte laden“ (“Battery low – please charge”); below `critical_volts` a full-screen image „Akku fast leer“ (“Battery almost empty”) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` no warning.
+- **Stale**: templates mark watched paths with `stale_after`; page templates show the bar „Keine neuen Daten seit …“ (“No new data since …”) when the data is older, in the configured language.
+- **Battery warning** (ADR 0020): The TRMNL firmware reports only the voltage (`Battery-Voltage`). With `battery` in `defaults` or on a device, every page below `warn_volts` gets the bar „Akku schwach – bitte laden“ (“Battery low – please charge”); below `critical_volts` a full-screen image „Akku fast leer“ (“Battery almost empty”) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` no warning. All texts use the configured `language`.
 - `GET /api/devices` shows registered devices with battery voltage, signal strength, wake reason and last request (without keys).
 - **Security:** Writing data and previewing pages require the token (`Authorization: Bearer`, alternatively via `PAPERBOY_UPLOAD_TOKEN`); devices via allow list and their own key. Paperboy never sets `reset_firmware` and never responds with status 500.
 
@@ -81,7 +84,6 @@ Pages are rendered from the data document: `<page>.<display type>.yaml` in the `
 
 ```yaml
 title: Solar
-locale: de
 watch:
   - { path: solar/current, stale_after: 30m, label: Solar }
 rows: [1, 3, 6, 3]
@@ -106,7 +108,7 @@ blocks:
 - `format` formats the value: `power` (W or kW), `energy` (kWh), `percent`, `temp`, `time` (RFC 3339 → HH:MM), `abs`; `sign: [negative, positive]` appends the matching word.
 - Free texts are Go templates over the document with the same helpers, e.g. `{{ percent .solar.current.latest.values.battery_soc }}`.
 - `watch` entries add the „Keine neuen Daten seit …“ bar once the path is older than `stale_after`.
-- `locale: en` switches the decimal comma to a dot (default `de`); the built-in banner texts stay German.
+- `language` in the configuration controls the number format (decimal comma for `de`, dot for `en`) and all built-in texts. Page templates have no locale of their own (ADR 0033); a `locale` key is rejected.
 - Preview with the upload token: `GET /api/preview/e1001/solar`.
 
 Implemented blocks are `header`, `tiles`, `rows`, `chart` and `text`; `bar`, hatching and separators follow.
@@ -116,7 +118,6 @@ Implemented blocks are `header`, `tiles`, `rows`, `chart` and `text`; `bar`, hat
 Which pages a device shows is decided by a plan, `<name>.yaml` in the `plans` directory (`directories.plans`, default `<data>/plans`). A device points to it with `plan: wohnzimmer`; several devices may share a plan. A plan only names pages, so it works for devices of different display types.
 
 ```yaml
-timezone: Europe/Berlin   # optional, default: the service's zone
 rules:
   - name: morgen
     when: { from: "07:00", to: "09:00", days: [mo, di, mi, do, fr] }
@@ -134,6 +135,7 @@ fallback: nacht
 ```
 
 - The first matching rule wins. A `when` without `from`/`to` always matches; `from` is inclusive, `to` exclusive. `to < from` wraps over midnight and then belongs to the day the window starts. Days accept German and English short names.
+- Times use the global `timezone` from the configuration (ADR 0033); plans have no timezone of their own, and a `timezone` key is rejected.
 - `pages` is the paging order within the rule. `rotate: true` moves on at every timed refresh, otherwise only a button changes the page. Buttons page within the active rule only, holding returns to its first page, and after `page_timeout` the device shows the first page again unless the rule rotates.
 - `refresh` replaces the device interval. The reported interval is capped to the next rule boundary (but never below the display type's `min_refresh`), so a sleeping device wakes up for a rule change.
 - `fallback` names the rule used when nothing matches; without a match and without a fallback the device gets a notice page.

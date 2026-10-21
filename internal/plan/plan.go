@@ -1,7 +1,8 @@
 // Package plan parses display plans and decides which pages a device shows
 // (ADR 0025). A plan is a list of rules; the first matching rule wins, and a
 // rule combines a time window with a page list. Plans know nothing about
-// display types: they only name pages, the template is chosen per device.
+// display types: they only name pages, the template is chosen per device. The
+// timezone comes from the service configuration (ADR 0033).
 package plan
 
 import (
@@ -9,7 +10,6 @@ import (
 	"io"
 	"strings"
 	"time"
-	_ "time/tzdata" // plans name timezones; embed them so no system tzdata is needed
 
 	"go.yaml.in/yaml/v3"
 )
@@ -79,7 +79,6 @@ func (d *Day) UnmarshalYAML(v *yaml.Node) error {
 
 // Plan is one file under plans/.
 type Plan struct {
-	Timezone string `yaml:"timezone"`
 	Rules    []Rule `yaml:"rules"`
 	Fallback string `yaml:"fallback"`
 
@@ -114,14 +113,19 @@ type Selection struct {
 	Refresh time.Duration // 0 = use the device interval
 }
 
-// Parse reads a plan and validates it.
-func Parse(r io.Reader) (*Plan, error) {
+// Parse reads a plan and validates it. Time windows refer to loc; nil means
+// the system timezone.
+func Parse(r io.Reader, loc *time.Location) (*Plan, error) {
 	dec := yaml.NewDecoder(r)
 	dec.KnownFields(true)
 	var p Plan
 	if err := dec.Decode(&p); err != nil {
 		return nil, err
 	}
+	if loc == nil {
+		loc = time.Local
+	}
+	p.loc = loc
 	if err := p.validate(); err != nil {
 		return nil, err
 	}
@@ -228,15 +232,6 @@ func (r *Rule) selection() Selection {
 }
 
 func (p *Plan) validate() error {
-	if p.Timezone == "" {
-		p.loc = time.Local
-	} else {
-		loc, err := time.LoadLocation(p.Timezone)
-		if err != nil {
-			return fmt.Errorf("timezone %q: %w", p.Timezone, err)
-		}
-		p.loc = loc
-	}
 	if len(p.Rules) == 0 {
 		return fmt.Errorf("rules missing")
 	}

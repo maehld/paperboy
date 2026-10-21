@@ -7,7 +7,6 @@ import (
 )
 
 const samplePlan = `
-timezone: Europe/Berlin
 rules:
   - name: morgen
     when: { from: "07:00", to: "09:00", days: [mo, di, mi, do, fr] }
@@ -24,9 +23,20 @@ rules:
 fallback: nacht
 `
 
+// berlin is the timezone used by the tests; plans get it from the
+// configuration (ADR 0033).
+func berlin(t *testing.T) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loc
+}
+
 func parse(t *testing.T, yaml string) *Plan {
 	t.Helper()
-	p, err := Parse(strings.NewReader(yaml))
+	p, err := Parse(strings.NewReader(yaml), berlin(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,11 +45,7 @@ func parse(t *testing.T, yaml string) *Plan {
 
 func at(t *testing.T, year int, month time.Month, day, hour, minute int) time.Time {
 	t.Helper()
-	loc, err := time.LoadLocation("Europe/Berlin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return time.Date(year, month, day, hour, minute, 0, 0, loc)
+	return time.Date(year, month, day, hour, minute, 0, 0, berlin(t))
 }
 
 func TestParse(t *testing.T) {
@@ -66,8 +72,8 @@ rules:
 func TestParseErrors(t *testing.T) {
 	cases := map[string]string{
 		"unknown field":      "rules: [{name: a, pages: [x]}]\nextra: 1",
-		"rules missing":      "timezone: Europe/Berlin",
-		"bad timezone":       "timezone: Mars/Olympus\nrules: [{name: a, pages: [x]}]",
+		"rules missing":      "rules: []",
+		"timezone in plan":   "timezone: Europe/Berlin\nrules: [{name: a, pages: [x]}]",
 		"duplicate rule":     "rules: [{name: a, pages: [x]}, {name: a, pages: [y]}]",
 		"bad rule name":      "rules: [{name: Morgen, pages: [x]}]",
 		"pages missing":      "rules: [{name: a}]",
@@ -84,7 +90,7 @@ func TestParseErrors(t *testing.T) {
 		"timezone not given": "rules: [{name: a, pages: [x]}]\ntimezone: 5",
 	}
 	for name, yaml := range cases {
-		if _, err := Parse(strings.NewReader(yaml)); err == nil {
+		if _, err := Parse(strings.NewReader(yaml), berlin(t)); err == nil {
 			t.Fatalf("%s: expected an error", name)
 		}
 	}
@@ -118,7 +124,6 @@ func TestSelect(t *testing.T) {
 
 func TestSelectAcrossMidnightAndDays(t *testing.T) {
 	p := parse(t, `
-timezone: Europe/Berlin
 rules:
   - name: freitagnacht
     when: { from: "22:00", to: "06:00", days: [fr] }
@@ -203,7 +208,6 @@ func TestUntilNextBoundary(t *testing.T) {
 
 func TestUntilNextBoundaryDays(t *testing.T) {
 	p := parse(t, `
-timezone: Europe/Berlin
 rules:
   - name: montag
     when: { from: "07:00", to: "09:00", days: [mo] }
@@ -223,7 +227,6 @@ rules:
 
 func TestUntilNextBoundaryDST(t *testing.T) {
 	p := parse(t, `
-timezone: Europe/Berlin
 rules:
   - name: tag
     when: { from: "07:00", to: "09:00" }

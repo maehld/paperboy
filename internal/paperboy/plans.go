@@ -50,7 +50,7 @@ func (s *Server) renderPage(profile, name string, now time.Time, banners ...stri
 	if err != nil {
 		return nil, err
 	}
-	img, err := tmpl.Render(s.doc, page.Display{Width: p.Width, Height: p.Height, Gray: p.Gray}, now, banners...)
+	img, err := tmpl.Render(s.doc, page.Display{Width: p.Width, Height: p.Height, Gray: p.Gray, Language: s.cfg.Language}, now, banners...)
 	if err != nil {
 		return nil, err
 	}
@@ -99,8 +99,9 @@ func newPlanLoader() *planLoader {
 }
 
 // get returns the current plan and the error of the last load attempt. p is
-// nil when the plan was never valid; err may be set even when p is usable.
-func (l *planLoader) get(dir, name string) (*plan.Plan, error) {
+// nil when the plan was never valid; err may be set even when p is usable. Time
+// windows use loc, the global timezone (ADR 0033).
+func (l *planLoader) get(dir, name string, loc *time.Location) (*plan.Plan, error) {
 	path := filepath.Join(dir, name+".yaml")
 	info, err := os.Stat(path)
 	if err != nil {
@@ -115,7 +116,7 @@ func (l *planLoader) get(dir, name string) (*plan.Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	p, parseErr := plan.Parse(bytes.NewReader(data))
+	p, parseErr := plan.Parse(bytes.NewReader(data), loc)
 	entry := &planEntry{mod: info.ModTime(), size: info.Size(), p: p, err: parseErr}
 	if parseErr != nil {
 		slog.Error("plan invalid, keeping the last valid version", "plan", name, "error", parseErr)
@@ -132,17 +133,18 @@ func (l *planLoader) get(dir, name string) (*plan.Plan, error) {
 // planPage evaluates the device plan and renders the page it selects. Callers
 // hold s.mu.
 func (s *Server) planPage(d *Device, st *deviceState, now time.Time, firstContact, special bool, pageTimeout time.Duration) servedPage {
-	p, err := s.plans.get(s.cfg.Plans, d.Plan)
+	p, err := s.plans.get(s.cfg.Plans, d.Plan, s.cfg.Timezone)
 	if p == nil {
 		slog.Error("plan unavailable", "device", d.ID, "plan", d.Plan, "error", err)
-		return s.hint(d.Profile, "Plan fehlt", shorten(fmt.Sprintf("%s: %v", d.Plan, err)))
+		return s.hint(d.Profile, s.cfg.texts().planMissing(), shorten(fmt.Sprintf("%s: %v", d.Plan, err)))
 	}
 	if err != nil {
 		slog.Warn("plan invalid, using the last valid version", "device", d.ID, "plan", d.Plan, "error", err)
 	}
 	sel, ok := p.Select(now)
 	if !ok {
-		return s.hint(d.Profile, "Keine Seite festgelegt", "Für diese Situation passt keine Regel und kein fallback.")
+		title, text := s.cfg.texts().noSelection()
+		return s.hint(d.Profile, title, text)
 	}
 	n := len(sel.Pages)
 	if switched := st.Rule != sel.Rule; switched {
@@ -180,12 +182,12 @@ func (s *Server) planPage(d *Device, st *deviceState, now time.Time, firstContac
 	}
 	var banners []string
 	if st.BatteryLevel == batteryWarn {
-		banners = append(banners, lowBatteryText(voltageKey(st.BatteryVoltage)))
+		banners = append(banners, s.cfg.texts().lowBattery(voltageKey(st.BatteryVoltage)))
 	}
 	rp, err := s.renderPage(d.Profile, name, now, banners...)
 	if err != nil {
 		slog.Error("page rendering failed", "device", d.ID, "page", name, "error", err)
-		sp := s.hint(d.Profile, "Seite "+name, shorten(err.Error()))
+		sp := s.hint(d.Profile, s.cfg.texts().pageError(name), shorten(err.Error()))
 		sp.page = page
 		return sp
 	}

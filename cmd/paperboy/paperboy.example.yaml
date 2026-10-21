@@ -1,5 +1,10 @@
 # Paperboy configuration (ADR 0026). Relative paths refer to this file.
 # Copy to paperboy.yaml next to the working directory, or pass -config.
+
+# Optional; default: system language and timezone (ADR 0033).
+# language: de            # de or en: built-in texts and number format
+# timezone: Europe/Berlin # IANA name; applies to plans and built-in dates
+
 server:
   # public_url: https://paper.example.com   # only needed behind a reverse proxy
   upload_token_env: PAPERBOY_UPLOAD_TOKEN   # or upload_token: "a long random token"

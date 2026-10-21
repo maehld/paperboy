@@ -9,6 +9,8 @@ import (
 )
 
 const validConfig = `
+language: en
+timezone: Europe/Berlin
 server:
   public_url: https://paper.example.com/
   upload_token_env: TEST_UPLOAD_TOKEN
@@ -68,6 +70,12 @@ func TestLoadConfig(t *testing.T) {
 	}
 	if cfg.PublicURL != "https://paper.example.com" {
 		t.Fatalf("public url: %q", cfg.PublicURL)
+	}
+	if cfg.Language != "en" {
+		t.Fatalf("language: %q", cfg.Language)
+	}
+	if cfg.Timezone == nil || cfg.Timezone.String() != "Europe/Berlin" {
+		t.Fatalf("timezone: %v", cfg.Timezone)
 	}
 	if cfg.Pages != filepath.Join(dir, "pages") || cfg.Plans != filepath.Join(dir, "plans") || cfg.DataDir != filepath.Join(dir, "data") {
 		t.Fatalf("directories: %q %q %q", cfg.Pages, cfg.Plans, cfg.DataDir)
@@ -142,6 +150,8 @@ func TestLoadConfigErrors(t *testing.T) {
 		{"duplicate mac", strings.Replace(validConfig, `"aa:bb:cc:dd:ee:02"`, `"AA:BB:CC:DD:EE:01"`, 1), "duplicate device"},
 		{"bad size", strings.Replace(validConfig, "size: [800, 480]", "size: [0, 480]", 1), "invalid size"},
 		{"bad plan", strings.Replace(validConfig, "plan: standard", `plan: "Standard"`, 1), "only a-z"},
+		{"bad language", strings.Replace(validConfig, "language: en", "language: fr", 1), "expected de or en"},
+		{"bad timezone", strings.Replace(validConfig, "timezone: Europe/Berlin", "timezone: Mars/Olympus", 1), "timezone"},
 		{"address", strings.Replace(validConfig, "mac: \"AA:BB:CC:DD:EE:01\"", "address: 10.0.0.1", 1), "opendisplay"},
 		{"gray levels", strings.Replace(validConfig, "gray_levels: 4", "gray_levels: 2", 1), ""},
 		{"empty", "", "empty configuration"},
@@ -180,5 +190,21 @@ func TestLoadConfigKeepsAbsoluteDirectories(t *testing.T) {
 	}
 	if cfg.Pages != pages {
 		t.Fatalf("absolute pages: %q", cfg.Pages)
+	}
+}
+
+func TestLoadConfigDefaultsLanguageAndTimezone(t *testing.T) {
+	t.Setenv("TEST_UPLOAD_TOKEN", "0123456789abcdef")
+	text := strings.Replace(validConfig, "language: en\n", "", 1)
+	text = strings.Replace(text, "timezone: Europe/Berlin\n", "", 1)
+	cfg, _, err := loadConfig(t, text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Timezone != time.Local {
+		t.Fatalf("default timezone: %v", cfg.Timezone)
+	}
+	if cfg.Language != "de" && cfg.Language != "en" {
+		t.Fatalf("default language: %q", cfg.Language)
 	}
 }

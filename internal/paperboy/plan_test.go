@@ -25,7 +25,7 @@ func planServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 	plans := filepath.Join(dir, "plans")
 	writePageFile(t, filepath.Join(plans, "zimmer.yaml"), planYAML)
 
-	cfg := &Config{UploadToken: testToken, Pages: pages, Plans: plans,
+	cfg := &Config{UploadToken: testToken, Pages: pages, Plans: plans, Timezone: time.UTC,
 		Profiles: map[string]Profile{"small": {Width: 40, Height: 20, Gray: true}},
 		Devices: []Device{{ID: "test", MAC: planDeviceMAC, Profile: "small", Plan: "zimmer",
 			Refresh: Duration(10 * time.Minute)}}}
@@ -52,7 +52,6 @@ func writePageFile(t *testing.T, path, content string) {
 }
 
 const testPlan = `
-timezone: UTC
 rules:
   - name: morgen
     when: { from: "07:00", to: "09:00" }
@@ -267,7 +266,7 @@ func TestPlanLoaderKeepsLastValidVersion(t *testing.T) {
 	path := filepath.Join(dir, "zimmer.yaml")
 	l := newPlanLoader()
 	writePageFile(t, path, "rules: [{name: alt, pages: [eins]}]\n")
-	p, err := l.get(dir, "zimmer")
+	p, err := l.get(dir, "zimmer", time.UTC)
 	if err != nil || p == nil || p.Rules[0].Name != "alt" {
 		t.Fatalf("load: %v %v", p, err)
 	}
@@ -277,7 +276,7 @@ func TestPlanLoaderKeepsLastValidVersion(t *testing.T) {
 	if err := os.Chtimes(path, stamp, stamp); err != nil {
 		t.Fatal(err)
 	}
-	p2, err2 := l.get(dir, "zimmer")
+	p2, err2 := l.get(dir, "zimmer", time.UTC)
 	if p2 != p || err2 == nil {
 		t.Fatalf("broken plan must keep the old version: %v %v", p2, err2)
 	}
@@ -287,7 +286,7 @@ func TestPlanLoaderKeepsLastValidVersion(t *testing.T) {
 	if err := os.Chtimes(path, stamp, stamp); err != nil {
 		t.Fatal(err)
 	}
-	p3, err3 := l.get(dir, "zimmer")
+	p3, err3 := l.get(dir, "zimmer", time.UTC)
 	if err3 != nil || p3 == nil || p3.Rules[0].Name != "neu" {
 		t.Fatalf("fixed plan: %v %v", p3, err3)
 	}

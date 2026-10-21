@@ -149,7 +149,7 @@ func TestFormats(t *testing.T) {
 }
 
 func TestSignWords(t *testing.T) {
-	r := &renderer{t: &Template{Locale: "de"}, root: map[string]any{}, f: formatter{comma: true}}
+	r := &renderer{t: &Template{}, root: map[string]any{}, f: formatter{comma: true}, language: "de"}
 	r.root["grid"] = -1330.0
 	tile := Tile{Value: "grid", Format: "power", Sign: []string{"Einspeisung", "Bezug"}}
 	if got := r.value(tile); got != "1,33 kW Einspeisung" {
@@ -190,6 +190,33 @@ blocks:
 	}
 }
 
+func TestBuiltInTextsFollowLanguage(t *testing.T) {
+	now := time.Date(2026, 10, 21, 13, 12, 0, 0, time.Local)
+	tmpl, err := Parse(strings.NewReader(`
+watch:
+  - { path: solar/current, stale_after: 5m }
+rows: [1]
+blocks:
+  - text: "{{ power .solar.current.latest.values.pv_power }}"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := testDocument(t, &now)
+	put(t, doc, "solar/current", map[string]any{"latest": map[string]any{"values": map[string]any{"pv_power": 1330}}}, now.Add(-10*time.Minute))
+	if got := tmpl.staleBanners(doc, now, "de"); len(got) != 1 || !strings.Contains(got[0], "Keine neuen Daten seit") {
+		t.Fatalf("german banner: %q", got)
+	}
+	if got := tmpl.staleBanners(doc, now, "en"); len(got) != 1 || !strings.Contains(got[0], "No new data since") {
+		t.Fatalf("english banner: %q", got)
+	}
+	de := render(t, tmpl, doc, Display{Width: 200, Height: 120}, now)
+	en := render(t, tmpl, doc, Display{Width: 200, Height: 120, Language: "en"}, now)
+	if bytes.Equal(de.Pix, en.Pix) {
+		t.Fatal("language must affect formatting and the banner")
+	}
+}
+
 func TestTemplateHelpers(t *testing.T) {
 	now := time.Date(2026, 10, 21, 13, 12, 0, 0, time.Local)
 	tmpl, err := Parse(strings.NewReader(`
@@ -222,7 +249,7 @@ blocks:
 }
 
 func TestMissingTemplateBranchShowsDash(t *testing.T) {
-	r := &renderer{t: &Template{Locale: "de"}, root: map[string]any{}, f: formatter{comma: true}}
+	r := &renderer{t: &Template{}, root: map[string]any{}, f: formatter{comma: true}, language: "de"}
 	// A missing supplier must not fail the page: branches are created empty.
 	if got := r.expand("{{ temp .wetter.aktuell.temp }}"); got != "—" {
 		t.Fatalf("helper: %q", got)
