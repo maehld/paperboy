@@ -51,6 +51,8 @@ ADR 0024 is implemented in its first two stages: the data document with path API
 
 ADR 0032 fixes the provider model on top of that: providers are external processes that push JSON into the shared document, pages are an operator-owned skeleton with named regions, and image fragments as well as Go plugins are rejected. Exec providers (local binaries that print JSON instead of posting it) are a possible later addition; the data document is the seam for that, no ADR yet.
 
+ADR 0034 is a draft: it specifies the typography, box model, `columns` and `bar` blocks, chart axes and series styles, header status and template context needed to reproduce SolarAI's reference pages. It is not implemented yet; the four existing page templates remain unchanged until then.
+
 ## Startup and checks
 
 ```powershell
