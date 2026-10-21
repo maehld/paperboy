@@ -1,14 +1,14 @@
 # Example: Paperboy as a container.
-# First create paperboy.json from cmd/paperboy/paperboy.example.json and
+# First create paperboy.yaml from cmd/paperboy/paperboy.example.yaml and
 # set PAPERBOY_UPLOAD_TOKEN (at least 16 characters) in a .env file.
 services:
   paperboy:
     build: .
-    command: ["-config", "/config/paperboy.json", "-data", "/data"]
+    command: ["-config", "/config/paperboy.yaml", "-data", "/data"]
     environment:
       PAPERBOY_UPLOAD_TOKEN: ${PAPERBOY_UPLOAD_TOKEN}
     ports: ["8090:8090"]
-    volumes: ["./paperboy.json:/config/paperboy.json:ro", "paperboy-data:/data"]
+    volumes: ["./paperboy.yaml:/config/paperboy.yaml:ro", "paperboy-data:/data"]
     restart: unless-stopped
 
 volumes:

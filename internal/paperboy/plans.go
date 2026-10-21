@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"image"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -43,7 +44,7 @@ func hashBytes(data []byte) string {
 func (s *Server) renderPage(profile, name string, now time.Time, banners ...string) (*renderedPage, error) {
 	p, ok := s.cfg.Profiles[profile]
 	if !ok {
-		return nil, fmt.Errorf("unknown profile %q", profile)
+		return nil, fmt.Errorf("unknown display type %q", profile)
 	}
 	tmpl, err := page.Load(s.cfg.Pages, name, profile)
 	if err != nil {
@@ -57,12 +58,25 @@ func (s *Server) renderPage(profile, name string, now time.Time, banners ...stri
 	return &renderedPage{data: data, hash: hashBytes(data)}, nil
 }
 
-// hint registers a notice page and returns its image path. Callers hold s.mu.
-func (s *Server) hint(profile, title, text string) servedPage {
-	data := encodePNG(placeholder(s.cfg.Profiles[profile], title, text))
+// notice registers a generated page and returns where it is served. Callers
+// hold s.mu.
+func (s *Server) notice(profile string, img *image.Paletted) servedPage {
+	data := encodePNG(img)
 	key := hashBytes(data)
 	s.hints[key] = data
-	return servedPage{filename: "hints/" + key, path: "/hints/" + key + ".png", refresh: hintRefresh}
+	return servedPage{filename: "hints/" + key, path: "/hints/" + key + ".png"}
+}
+
+// hint registers a notice page with a title and a line of text. Callers hold
+// s.mu.
+func (s *Server) hint(profile, title, text string) servedPage {
+	p, ok := s.cfg.Profiles[profile]
+	if !ok { // never expected: the device's display type was validated
+		p = Profile{Width: 400, Height: 300}
+	}
+	sp := s.notice(profile, placeholder(p, title, text))
+	sp.refresh = hintRefresh
+	return sp
 }
 
 // planEntry caches one plan file; mod and size detect changes on disk.
@@ -115,55 +129,20 @@ func (l *planLoader) get(dir, name string) (*plan.Plan, error) {
 	return entry.p, entry.err
 }
 
-// uploadPage is the pre-plan behaviour: pages of the profile, paging by button,
-// back to page 0 after the timeout. Callers hold s.mu.
-func (s *Server) uploadPage(d *Device, st *deviceState, now time.Time, firstContact, special bool, pageTimeout time.Duration) servedPage {
-	pages := s.images[d.Profile]
-	st.Rule = ""
-	switch {
-	case special: // double click: back to the overview
-		st.Page, st.LastInput = 0, now
-	case buttonWake(st.WakeReason) && !firstContact:
-		st.Page, st.LastInput = st.Page+1, now
-	case st.Page != 0 && now.Sub(st.LastInput) >= pageTimeout:
-		st.Page = 0
-	}
-	if len(pages) == 0 || st.Page >= len(pages) || st.Page < 0 {
-		st.Page = 0
-	}
-	page := st.Page
-	refresh := d.refresh(now)
-	if page != 0 {
-		refresh = min(refresh, max(minRefresh, pageTimeout-now.Sub(st.LastInput)+5*time.Second))
-	}
-	key := d.Profile + "-setup"
-	if len(pages) > 0 {
-		img := pages[page]
-		key = fmt.Sprintf("%s-%d-%s", d.Profile, page, img.hash)
-		if now.Sub(img.uploaded) > time.Duration(s.cfg.StaleAfter) {
-			key += "-stale"
-		}
-		if st.BatteryLevel == batteryWarn {
-			key += "-low" + voltageKey(st.BatteryVoltage)
-		}
-	}
-	return servedPage{filename: key, path: "/images/" + key + ".png", refresh: refresh, page: page}
-}
-
 // planPage evaluates the device plan and renders the page it selects. Callers
 // hold s.mu.
 func (s *Server) planPage(d *Device, st *deviceState, now time.Time, firstContact, special bool, pageTimeout time.Duration) servedPage {
 	p, err := s.plans.get(s.cfg.Plans, d.Plan)
 	if p == nil {
-		slog.Error("plan unavailable", "device", d.Name, "plan", d.Plan, "error", err)
+		slog.Error("plan unavailable", "device", d.ID, "plan", d.Plan, "error", err)
 		return s.hint(d.Profile, "Plan fehlt", shorten(fmt.Sprintf("%s: %v", d.Plan, err)))
 	}
 	if err != nil {
-		slog.Warn("plan invalid, using the last valid version", "device", d.Name, "plan", d.Plan, "error", err)
+		slog.Warn("plan invalid, using the last valid version", "device", d.ID, "plan", d.Plan, "error", err)
 	}
 	sel, ok := p.Select(now)
 	if !ok {
-		return s.hint(d.Profile, "Keine Seite festgelegt", "Für diese Situation passt keine Regel und kein fallback.")
+		return s.hint(d.Profile, "Keine Seite festgelegt", "FÃ¼r diese Situation passt keine Regel und kein fallback.")
 	}
 	n := len(sel.Pages)
 	if switched := st.Rule != sel.Rule; switched {
@@ -186,17 +165,18 @@ func (s *Server) planPage(d *Device, st *deviceState, now time.Time, firstContac
 	}
 	page := st.Page
 	name := sel.Pages[page]
+	floor := s.cfg.minRefresh(d.Profile)
 	refresh := time.Duration(sel.Refresh)
 	if refresh == 0 {
-		refresh = d.refresh(now)
+		refresh = d.refresh()
 	}
-	refresh = max(refresh, minRefresh)
+	refresh = max(refresh, floor)
 	// Wake up for the next rule change instead of sleeping through it.
 	if until := p.UntilNextBoundary(now); until > 0 && until < refresh {
-		refresh = max(minRefresh, until)
+		refresh = max(floor, until)
 	}
 	if !sel.Rotate && page != 0 {
-		refresh = min(refresh, max(minRefresh, pageTimeout-now.Sub(st.LastInput)+5*time.Second))
+		refresh = min(refresh, max(floor, pageTimeout-now.Sub(st.LastInput)+5*time.Second))
 	}
 	var banners []string
 	if st.BatteryLevel == batteryWarn {
@@ -204,10 +184,10 @@ func (s *Server) planPage(d *Device, st *deviceState, now time.Time, firstContac
 	}
 	rp, err := s.renderPage(d.Profile, name, now, banners...)
 	if err != nil {
-		slog.Error("page rendering failed", "device", d.Name, "page", name, "error", err)
-		hint := s.hint(d.Profile, "Seite "+name, shorten(err.Error()))
-		hint.refresh, hint.page = hintRefresh, page
-		return hint
+		slog.Error("page rendering failed", "device", d.ID, "page", name, "error", err)
+		sp := s.hint(d.Profile, "Seite "+name, shorten(err.Error()))
+		sp.page = page
+		return sp
 	}
 	s.rendered[d.Profile+"/"+name] = rp
 	filename := fmt.Sprintf("pages/%s/%s/%s", d.Profile, name, rp.hash)
@@ -220,7 +200,7 @@ func shorten(s string) string {
 		s = s[:i]
 	}
 	if r := []rune(s); len(r) > 90 {
-		s = string(r[:90]) + "…"
+		s = string(r[:90]) + "â€¦"
 	}
 	return s
 }

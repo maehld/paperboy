@@ -24,8 +24,8 @@ func main() {
 }
 
 func run() error {
-	configPath := flag.String("config", "paperboy.json", "Configuration file (JSON)")
-	dataDir := flag.String("data", "paperboy-data", "Directory for images and device state")
+	configPath := flag.String("config", "paperboy.yaml", "Configuration file (YAML)")
+	dataDir := flag.String("data", "", "Directory for device state and the data document; overrides directories.data")
 	listen := flag.String("listen", ":8090", "HTTP listen address; must be reachable for the displays on Wi-Fi")
 	flag.Parse()
 	if flag.NArg() != 0 {
@@ -35,10 +35,17 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(*dataDir, 0o755); err != nil {
+	dir := *dataDir
+	if dir == "" {
+		dir = cfg.DataDir
+	}
+	if dir == "" {
+		dir = "paperboy-data"
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	srv, err := paperboy.New(cfg, *dataDir)
+	srv, err := paperboy.New(cfg, dir)
 	if err != nil {
 		return err
 	}
@@ -51,10 +58,7 @@ func run() error {
 	}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.Serve(listener) }()
-	pushDone := make(chan struct{})
-	go func() { defer close(pushDone); srv.Run(ctx) }()
-	defer func() { cancel(); <-pushDone }()
-	slog.Info("Paperboy started", "listen", listener.Addr().String(), "profiles", len(cfg.Profiles), "devices", len(cfg.Devices))
+	slog.Info("Paperboy started", "listen", listener.Addr().String(), "display_types", len(cfg.Profiles), "devices", len(cfg.Devices))
 	select {
 	case err := <-serveErr:
 		if !errors.Is(err, http.ErrServerClosed) {

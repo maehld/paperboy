@@ -1,9 +1,9 @@
 package paperboy
 
 import (
+	"image"
 	"image/png"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -48,60 +48,71 @@ func TestBatteryConfig(t *testing.T) {
 }
 
 func TestBatteryWarningFlow(t *testing.T) {
-	s, _ := testServer(t)
+	s, _ := planServer(t, `timezone: UTC
+rules:
+  - name: tag
+    pages: [eins, zwei]
+`)
 	s.cfg.Battery = &Battery{WarnVolts: 3.45, CriticalVolts: 3.3, HysteresisVolts: 0.1}
-	upload(t, s, "0", 255)
-	upload(t, s, "1", 255)
-	key := call(t, s, "/api/setup", map[string]string{"ID": "AA:BB:CC:DD:EE:01"})["api_key"].(string)
-	dev := map[string]string{"ID": "AA:BB:CC:DD:EE:01", "Access-Token": key, "Update-Source": "timer", "Battery-Voltage": "3.74"}
-	if name := call(t, s, "/api/display", dev)["filename"].(string); strings.Contains(name, "low") {
-		t.Fatalf("full battery must not warn: %s", name)
+	dev := planDevice(t, s)
+	dev["Battery-Voltage"] = "3.74"
+	first := pagePath(call(t, s, "/api/display", dev))
+	if strings.HasPrefix(first, "hints/") || blackRow(t, s, "http://example.com/"+first+".png") > 0 {
+		t.Fatalf("full battery must show the plain page: %s", first)
 	}
 
 	dev["Battery-Voltage"] = "3.40"
-	name := call(t, s, "/api/display", dev)["filename"].(string)
-	if !strings.HasSuffix(name, "-low34") {
-		t.Fatalf("warn level must change the file name: %s", name)
+	warn := pagePath(call(t, s, "/api/display", dev))
+	if warn == first || !strings.Contains(warn, "/eins/") {
+		t.Fatalf("warn level must add the bar to the page: %s (%s)", warn, first)
 	}
-	if blackRow(t, s, name) < 10 {
+	if blackRow(t, s, "http://example.com/"+warn+".png") < 10 {
 		t.Fatal("battery bar missing")
 	}
 	dev["Update-Source"] = "EXT0"
-	if name := call(t, s, "/api/display", dev)["filename"].(string); name[:7] != "small-1" {
-		t.Fatalf("warn level must keep paging: %s", name)
+	if next := pagePath(call(t, s, "/api/display", dev)); !strings.Contains(next, "/zwei/") {
+		t.Fatalf("warn level must keep paging: %s", next)
 	}
 
 	dev["Battery-Voltage"] = "3.25"
+	var critical string
 	for range 2 { // buttons do not page away from the critical screen
-		name = call(t, s, "/api/display", dev)["filename"].(string)
-		if name != "small-battery-33" {
-			t.Fatalf("critical level must show full screen: %s", name)
+		critical = pagePath(call(t, s, "/api/display", dev))
+		if !strings.HasPrefix(critical, "hints/") {
+			t.Fatalf("critical level must show a full-screen notice: %s", critical)
 		}
 	}
-	if blackRow(t, s, name) == 0 {
+	if blackPixels(t, s, "http://example.com/"+critical+".png") == 0 {
 		t.Fatal("full screen empty")
 	}
 
 	dev["Battery-Voltage"] = "4.12"
 	dev["Update-Source"] = "timer"
-	if name := call(t, s, "/api/display", dev)["filename"].(string); name[:7] != "small-0" || strings.Contains(name, "low") {
-		t.Fatalf("after charging the normal overview must return: %s", name)
+	if name := pagePath(call(t, s, "/api/display", dev)); strings.HasPrefix(name, "hints/") || !strings.Contains(name, "/eins/") {
+		t.Fatalf("after charging the normal page must return: %s", name)
 	}
 }
 
-// blackRow fetches an image and counts black pixels in its bottom row
-// (banner) or, if none, anywhere.
-func blackRow(t *testing.T, s *Server, name string) int {
+// blackRow counts black pixels in the bottom row of a served image (banner).
+func blackRow(t *testing.T, s *Server, imageURL string) int {
 	t.Helper()
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/images/"+name+".png", nil))
-	img, err := png.Decode(rec.Body)
-	if err != nil {
-		t.Fatalf("%s: %v", name, err)
-	}
+	img := decodeImage(t, s, imageURL)
 	b := img.Bounds()
 	black := 0
-	for y := b.Max.Y - 1; y >= b.Min.Y && black == 0; y-- {
+	for x := b.Min.X; x < b.Max.X; x++ {
+		if r, _, _, _ := img.At(x, b.Max.Y-1).RGBA(); r == 0 {
+			black++
+		}
+	}
+	return black
+}
+
+func blackPixels(t *testing.T, s *Server, imageURL string) int {
+	t.Helper()
+	img := decodeImage(t, s, imageURL)
+	b := img.Bounds()
+	black := 0
+	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
 			if r, _, _, _ := img.At(x, y).RGBA(); r == 0 {
 				black++
@@ -109,4 +120,17 @@ func blackRow(t *testing.T, s *Server, name string) int {
 		}
 	}
 	return black
+}
+
+func decodeImage(t *testing.T, s *Server, imageURL string) image.Image {
+	t.Helper()
+	rec := fetchImage(t, s, imageURL)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%s: %d", imageURL, rec.Code)
+	}
+	img, err := png.Decode(rec.Body)
+	if err != nil {
+		t.Fatalf("%s: %v", imageURL, err)
+	}
+	return img
 }

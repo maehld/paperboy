@@ -7,11 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"image"
-	"image/png"
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -22,33 +21,41 @@ import (
 	"github.com/maehld/paperboy/internal/page"
 )
 
-// Server implements the upload API for producers and the TRMNL device API.
+// Server implements the TRMNL device API and the data document. Pages are
+// rendered from templates, notice pages replace uploads.
 type Server struct {
 	cfg *Config
 	dir string
 	now func() time.Time
 
-	mu     sync.Mutex
-	images map[string][]*pageImage // profile → pages
-	state  map[string]*deviceState // MAC → state
-	doc    *data.Document          // shared data document (ADR 0024)
-	plans  *planLoader             // plans of TRMNL devices (ADR 0025)
+	mu    sync.Mutex
+	state map[string]*deviceState // device ID â†’ state
+	doc   *data.Document          // shared data document (ADR 0024)
+	plans *planLoader             // plans of TRMNL devices (ADR 0025)
 
-	rendered map[string]*renderedPage // "<profile>/<page>" → last render
-	hints    map[string][]byte        // content hash → notice page
+	rendered map[string]*renderedPage // "<profile>/<page>" â†’ last render
+	hints    map[string][]byte        // content hash â†’ notice page
 }
 
-// New loads stored images and device state from dir.
+// New loads device state from dir and prepares templates and plans.
 func New(cfg *Config, dir string) (*Server, error) {
-	images, err := loadImages(dir, cfg.Profiles)
-	if err != nil {
-		return nil, err
-	}
 	state, err := loadState(filepath.Join(dir, "state.json"))
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{cfg: cfg, dir: dir, now: time.Now, images: images, state: state,
+	if moved, err := migrateState(state, cfg.Devices); err != nil {
+		return nil, err
+	} else if moved > 0 {
+		data, err := json.MarshalIndent(state, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+		if err := writeAtomic(filepath.Join(dir, "state.json"), data); err != nil {
+			return nil, err
+		}
+		slog.Info("device state migrated to device ids", "entries", moved)
+	}
+	s := &Server{cfg: cfg, dir: dir, now: time.Now, state: state,
 		plans: newPlanLoader(), rendered: map[string]*renderedPage{}, hints: map[string][]byte{}}
 	if s.cfg.Pages == "" {
 		s.cfg.Pages = filepath.Join(dir, "pages")
@@ -56,20 +63,25 @@ func New(cfg *Config, dir string) (*Server, error) {
 	if s.cfg.Plans == "" {
 		s.cfg.Plans = filepath.Join(dir, "plans")
 	}
-	// The document shares the server clock so that tests can move time.
-	s.doc, err = data.New(filepath.Join(dir, "data.json"), func() time.Time { return s.now() })
-	if err != nil {
-		return nil, err
-	}
-	// Report broken plans at startup; devices show a notice page instead.
+	// A plan named in the configuration must exist (ADR 0026). A broken file is
+	// reported and replaced by a notice page instead.
 	for i := range s.cfg.Devices {
 		d := &s.cfg.Devices[i]
 		if d.Plan == "" {
 			continue
 		}
-		if p, err := s.plans.get(s.cfg.Plans, d.Plan); p == nil || err != nil {
-			slog.Error("plan not usable", "device", d.Name, "plan", d.Plan, "error", err)
+		path := filepath.Join(s.cfg.Plans, d.Plan+".yaml")
+		if _, err := os.Stat(path); err != nil {
+			return nil, fmt.Errorf("device %s: plan %q: %w", d.ID, d.Plan, err)
 		}
+		if p, err := s.plans.get(s.cfg.Plans, d.Plan); p == nil || err != nil {
+			slog.Error("plan not usable", "device", d.ID, "plan", d.Plan, "error", err)
+		}
+	}
+	// The document shares the server clock so that tests can move time.
+	s.doc, err = data.New(filepath.Join(dir, "data.json"), func() time.Time { return s.now() })
+	if err != nil {
+		return nil, err
 	}
 	return s, nil
 }
@@ -77,7 +89,6 @@ func New(cfg *Config, dir string) (*Server, error) {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/profiles", s.handleProfiles)
-	mux.HandleFunc("PUT /api/images/{profile}/{page}", s.handleUpload)
 	mux.HandleFunc("PUT /api/data", s.handlePutData)
 	mux.HandleFunc("PUT /api/data/{path...}", s.handlePutData)
 	mux.HandleFunc("GET /api/data", s.handleGetData)
@@ -92,7 +103,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/display", s.handleDisplay)
 	mux.HandleFunc("GET /api/display/", s.handleDisplay)
 	mux.HandleFunc("POST /api/log", s.handleLog)
-	mux.HandleFunc("GET /images/{key}", s.handleImage)
 	return mux
 }
 
@@ -106,7 +116,6 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 type profileInfo struct {
 	Name string `json:"name"`
 	Profile
-	Pages int `json:"pages"`
 }
 
 func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +123,7 @@ func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	list := []profileInfo{}
 	for name, p := range s.cfg.Profiles {
-		list = append(list, profileInfo{name, p, len(s.images[name])})
+		list = append(list, profileInfo{Name: name, Profile: p})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"profiles": list})
 }
@@ -122,56 +131,6 @@ func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
 func (s *Server) authorized(r *http.Request) bool {
 	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	return ok && subtle.ConstantTimeCompare([]byte(token), []byte(s.cfg.UploadToken)) == 1
-}
-
-// handleUpload stores one page. Pages must be uploaded without gaps, starting at 0.
-func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
-	if !s.authorized(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	name := r.PathValue("profile")
-	profile, ok := s.cfg.Profiles[name]
-	if !ok {
-		http.Error(w, "unknown profile", http.StatusNotFound)
-		return
-	}
-	page, err := strconv.Atoi(r.PathValue("page"))
-	if err != nil || page < 0 || page >= maxPages {
-		http.Error(w, "invalid page", http.StatusBadRequest)
-		return
-	}
-	img, err := png.Decode(http.MaxBytesReader(w, r.Body, 4<<20))
-	if err != nil {
-		http.Error(w, "invalid PNG: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if img.Bounds().Dx() != profile.Width || img.Bounds().Dy() != profile.Height {
-		http.Error(w, fmt.Sprintf("expected image size %dx%d", profile.Width, profile.Height), http.StatusBadRequest)
-		return
-	}
-	stored := newPageImage(normalize(img, profile), s.now())
-	s.mu.Lock()
-	pages := s.images[name]
-	if page > len(pages) {
-		s.mu.Unlock()
-		http.Error(w, fmt.Sprintf("page %d is still missing", len(pages)), http.StatusConflict)
-		return
-	}
-	s.mu.Unlock()
-	if err := writeAtomic(imagePath(s.dir, name, page), stored.data); err != nil {
-		slog.Error("failed to store image", "profile", name, "page", page, "error", err)
-		http.Error(w, "storing failed", http.StatusInternalServerError)
-		return
-	}
-	s.mu.Lock()
-	if page == len(s.images[name]) {
-		s.images[name] = append(s.images[name], stored)
-	} else {
-		s.images[name][page] = stored
-	}
-	s.mu.Unlock()
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // maxDataBytes caps a single write to the data document.
@@ -247,11 +206,10 @@ func writeDataError(w http.ResponseWriter, err error) {
 }
 
 type deviceInfo struct {
-	Type    string `json:"type"`
+	ID      string `json:"id"`
+	Type    string `json:"protocol"`
 	MAC     string `json:"mac,omitempty"`
-	Address string `json:"address,omitempty"`
-	Name    string `json:"name"`
-	Profile string `json:"profile"`
+	Profile string `json:"display_type"`
 	Plan    string `json:"plan,omitempty"`
 	deviceState
 	APIKey     string `json:"api_key,omitempty"` // shadows the embedded key; never exposed
@@ -263,10 +221,10 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	list := []deviceInfo{}
 	for _, d := range s.cfg.Devices {
-		info := deviceInfo{Type: d.Type, MAC: d.MAC, Address: d.Address, Name: d.Name, Profile: d.Profile, Plan: d.Plan}
+		info := deviceInfo{ID: d.ID, Type: d.Type, MAC: d.MAC, Profile: d.Profile, Plan: d.Plan}
 		if st := s.state[d.key()]; st != nil {
 			info.deviceState = *st
-			info.Registered = st.APIKey != "" || d.Type == TypeOpenDisplay
+			info.Registered = st.APIKey != ""
 		}
 		list = append(list, info)
 	}
@@ -281,22 +239,6 @@ func (s *Server) stateLocked(key string) *deviceState {
 		s.state[key] = st
 	}
 	return st
-}
-
-// pageImage returns the page to show, with the stale banner if the upload is
-// too old. ok is false while nothing was uploaded for the profile.
-func (s *Server) pageImage(profile string, page int, now time.Time) (img *image.Paletted, pages int, ok bool) {
-	s.mu.Lock()
-	all := s.images[profile]
-	s.mu.Unlock()
-	if len(all) == 0 {
-		return nil, 0, false
-	}
-	stored := all[min(max(page, 0), len(all)-1)]
-	if now.Sub(stored.uploaded) > time.Duration(s.cfg.StaleAfter) {
-		return withBanner(stored.img, "Keine neuen Daten seit "+stored.uploaded.Local().Format("02.01. 15:04")), len(all), true
-	}
-	return stored.img, len(all), true
 }
 
 func (s *Server) baseURL(r *http.Request) string {
@@ -338,21 +280,22 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	st := s.state[d.MAC]
+	st := s.state[d.ID]
 	if st == nil {
 		st = &deviceState{}
-		s.state[d.MAC] = st
+		s.state[d.ID] = st
 	}
 	if st.APIKey == "" {
 		st.APIKey, st.FriendlyID = newAPIKey(), friendlyID(d.MAC)
 	}
 	st.Model, st.Firmware = r.Header.Get("Model"), r.Header.Get("FW-Version")
+	notice := s.hint(d.Profile, "Paperboy", "GerÃ¤t eingerichtet â€“ warte auf Plan")
 	s.saveStateLocked()
 	key, friendly := st.APIKey, st.FriendlyID
 	s.mu.Unlock()
-	slog.Info("display set up", "device", d.Name, "mac", d.MAC)
+	slog.Info("display set up", "device", d.ID, "mac", d.MAC)
 	writeJSON(w, http.StatusOK, map[string]any{"status": 200, "api_key": key, "friendly_id": friendly,
-		"image_url": s.baseURL(r) + "/images/" + d.Profile + "-setup.png", "message": "Registered as " + d.Name})
+		"image_url": s.baseURL(r) + notice.path, "message": "Registered as " + d.ID})
 }
 
 // buttonWake reports whether the device was woken by its button rather than the timer.
@@ -370,12 +313,15 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 	token := r.Header.Get("Access-Token")
 	d := s.cfg.device(mac)
 	s.mu.Lock()
-	st := s.state[mac]
+	var st *deviceState
+	if d != nil {
+		st = s.state[d.ID]
+	}
 	if d != nil && (st == nil || st.APIKey == "") && token != "" {
 		// State was lost: accept the key the device still has instead of forcing a new setup.
 		st = &deviceState{APIKey: token, FriendlyID: friendlyID(d.MAC)}
-		s.state[mac] = st
-		slog.Info("device key adopted", "device", d.Name)
+		s.state[d.ID] = st
+		slog.Info("device key adopted", "device", d.ID)
 	}
 	if d == nil || st == nil || subtle.ConstantTimeCompare([]byte(token), []byte(st.APIKey)) != 1 {
 		s.mu.Unlock()
@@ -398,16 +344,18 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 	special := r.Header.Get("special_function") != ""
 
 	var served servedPage
+	floor := s.cfg.minRefresh(d.Profile)
 	switch {
 	case critical: // the warning replaces all pages; buttons only show it again
 		st.Page = 0
-		key := d.Profile + "-battery-" + voltageKey(st.BatteryVoltage)
-		served = servedPage{filename: key, path: "/images/" + key + ".png", refresh: d.refresh(now)}
+		served = s.notice(d.Profile, criticalBatteryImage(s.cfg.Profiles[d.Profile], voltageKey(st.BatteryVoltage)))
+		served.refresh = max(floor, d.refresh())
 	case d.Plan != "":
 		served = s.planPage(d, st, now, firstContact, special, pageTimeout)
 	default:
-		served = s.uploadPage(d, st, now, firstContact, special, pageTimeout)
+		served = s.hint(d.Profile, "Kein Plan konfiguriert", "FÃ¼r dieses GerÃ¤t ist in der Konfiguration kein Plan hinterlegt.")
 	}
+	served.refresh = max(served.refresh, floor)
 	page := served.page
 	refresh := served.refresh
 	logged := *st
@@ -418,9 +366,9 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 		if level == batteryOK {
 			level = "ok"
 		}
-		slog.Warn("battery warning", "device", d.Name, "level", level, "battery", logged.BatteryVoltage)
+		slog.Warn("battery warning", "device", d.ID, "level", level, "battery", logged.BatteryVoltage)
 	}
-	slog.Info("display request", "device", d.Name, "page", page, "rule", logged.Rule, "wake", logged.WakeReason,
+	slog.Info("display request", "device", d.ID, "page", page, "rule", logged.Rule, "wake", logged.WakeReason,
 		"special", special, "battery", logged.BatteryVoltage, "rssi", logged.RSSI, "refresh", refresh)
 	resp := map[string]any{"status": 0, "image_url": s.baseURL(r) + served.path, "filename": served.filename,
 		"refresh_rate": int(refresh.Seconds()), "reset_firmware": false, "update_firmware": false, "firmware_url": nil,
@@ -435,7 +383,7 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(io.LimitReader(r.Body, 64<<10))
 	name := normalizeMAC(r.Header.Get("ID"))
 	if d := s.cfg.device(name); d != nil {
-		name = d.Name
+		name = d.ID
 	}
 	slog.Warn("display log", "device", name, "log", string(body))
 	w.WriteHeader(http.StatusNoContent)
@@ -466,8 +414,8 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 	writePNG(w, rp.data)
 }
 
-// handleRenderedImage serves a page rendered from a template. A changed hash
-// still returns the newest render, like the uploaded pages.
+// handleRenderedImage serves a page rendered from a template. An outdated hash
+// still returns the newest render, so a device that missed a change catches up.
 func (s *Server) handleRenderedImage(w http.ResponseWriter, r *http.Request) {
 	if _, ok := strings.CutSuffix(r.PathValue("file"), ".png"); !ok {
 		http.NotFound(w, r)
@@ -505,57 +453,4 @@ func writePNG(w http.ResponseWriter, data []byte) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.Write(data)
-}
-
-// handleImage serves keys of the form <profile>-setup, <profile>-battery-<decivolts>
-// and <profile>-<page>-<hash>, optionally followed by -stale and -low<decivolts>.
-// A changed hash still returns the newest page.
-func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
-	key, ok := strings.CutSuffix(r.PathValue("key"), ".png")
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	s.mu.Lock()
-	var data []byte
-	for name, p := range s.cfg.Profiles {
-		rest, ok := strings.CutPrefix(key, name+"-")
-		if !ok {
-			continue
-		}
-		if rest == "setup" {
-			data = encodePNG(placeholder(p, "Paperboy", "Warte auf Bilder …"))
-			break
-		}
-		if volts, ok := strings.CutPrefix(rest, "battery-"); ok {
-			data = encodePNG(criticalBatteryImage(p, volts))
-			break
-		}
-		parts := strings.Split(rest, "-")
-		page, err := strconv.Atoi(parts[0])
-		pages := s.images[name]
-		if err != nil || len(parts) < 2 || page < 0 || page >= len(pages) {
-			continue
-		}
-		img := pages[page]
-		data = img.data
-		var banners []string
-		for _, flag := range parts[2:] {
-			if flag == "stale" {
-				banners = append(banners, "Keine neuen Daten seit "+img.uploaded.Local().Format("02.01. 15:04"))
-			} else if volts, ok := strings.CutPrefix(flag, "low"); ok {
-				banners = append(banners, lowBatteryText(volts))
-			}
-		}
-		if len(banners) > 0 {
-			data = encodePNG(withBanner(img.img, banners...))
-		}
-		break
-	}
-	s.mu.Unlock()
-	if data == nil {
-		http.NotFound(w, r)
-		return
-	}
-	writePNG(w, data)
 }

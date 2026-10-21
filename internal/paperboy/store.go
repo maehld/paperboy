@@ -1,29 +1,16 @@
 package paperboy
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"image"
-	"image/png"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 )
 
-// pageImage is a stored, normalized upload.
-type pageImage struct {
-	img      *image.Paletted
-	data     []byte
-	hash     string
-	uploaded time.Time
-}
-
-// deviceState is persisted per MAC address in state.json.
+// deviceState is persisted per device ID in state.json.
 type deviceState struct {
 	APIKey         string    `json:"api_key"`
 	FriendlyID     string    `json:"friendly_id"`
@@ -36,46 +23,7 @@ type deviceState struct {
 	Model          string    `json:"model,omitempty"`
 	WakeReason     string    `json:"wake_reason,omitempty"`
 	BatteryLevel   string    `json:"battery_level,omitempty"` // TRMNL: "", "warn" or "critical"
-	LastError      string    `json:"last_error,omitempty"`    // OpenDisplay: last push error, empty after success
 	Rule           string    `json:"rule,omitempty"`          // TRMNL plan: name of the active rule
-}
-
-func imagePath(dir, profile string, page int) string {
-	return filepath.Join(dir, "images", profile, strconv.Itoa(page)+".png")
-}
-
-func newPageImage(img *image.Paletted, uploaded time.Time) *pageImage {
-	data := encodePNG(img)
-	sum := sha256.Sum256(data)
-	return &pageImage{img: img, data: data, hash: hex.EncodeToString(sum[:6]), uploaded: uploaded}
-}
-
-// loadImages reads stored pages; the file modification time is the upload time.
-func loadImages(dir string, profiles map[string]Profile) (map[string][]*pageImage, error) {
-	images := map[string][]*pageImage{}
-	for name, p := range profiles {
-		for page := 0; page < maxPages; page++ {
-			path := imagePath(dir, name, page)
-			info, err := os.Stat(path)
-			if errors.Is(err, fs.ErrNotExist) {
-				break
-			}
-			if err != nil {
-				return nil, err
-			}
-			f, err := os.Open(path)
-			if err != nil {
-				return nil, err
-			}
-			img, err := png.Decode(f)
-			f.Close()
-			if err != nil || img.Bounds().Dx() != p.Width || img.Bounds().Dy() != p.Height {
-				break // outdated or damaged file: wait for the next upload
-			}
-			images[name] = append(images[name], newPageImage(normalize(img, p), info.ModTime()))
-		}
-	}
-	return images, nil
 }
 
 func writeAtomic(path string, data []byte) error {
@@ -102,4 +50,33 @@ func loadState(path string) (map[string]*deviceState, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return state, nil
+}
+
+// migrateState moves TRMNL entries from their MAC address to the device ID
+// (ADR 0026). Entries that belong to no configured device stay untouched, so a
+// removed device keeps its key. It returns the number of moved entries.
+func migrateState(state map[string]*deviceState, devices []Device) (int, error) {
+	byMAC := make(map[string]string, len(devices))
+	for i := range devices {
+		if devices[i].MAC != "" {
+			byMAC[devices[i].MAC] = devices[i].ID
+		}
+	}
+	out := make(map[string]*deviceState, len(state))
+	moved := 0
+	for key, st := range state {
+		id := key
+		if target, ok := byMAC[normalizeMAC(key)]; ok {
+			id, moved = target, moved+1
+		}
+		if old, ok := out[id]; ok && old != st {
+			return 0, fmt.Errorf("state.json: several entries map to device %q; remove the outdated one", id)
+		}
+		out[id] = st
+	}
+	clear(state)
+	for id, st := range out {
+		state[id] = st
+	}
+	return moved, nil
 }

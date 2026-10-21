@@ -1,0 +1,41 @@
+# Paperboy configuration (ADR 0026). Relative paths refer to this file.
+# Copy to paperboy.yaml next to the working directory, or pass -config.
+server:
+  # public_url: https://paper.example.com   # only needed behind a reverse proxy
+  upload_token_env: PAPERBOY_UPLOAD_TOKEN   # or upload_token: "a long random token"
+
+# Optional; without these keys the page and plan directories default to
+# <data>/pages and <data>/plans.
+# directories:
+#   pages: pages
+#   plans: plans
+#   data: paperboy-data
+
+defaults:
+  refresh: 5m
+  page_timeout: 5m
+  # battery: { warn_volts: 3.45, critical_volts: 3.3, hysteresis_volts: 0.1 }
+
+display_types:
+  e1001:
+    kind: image
+    size: [800, 480]
+    gray_levels: 4
+    width_mm: 163
+    min_refresh: 60s
+  sticky:
+    kind: image
+    size: [800, 480]
+    gray_levels: 4
+    width_mm: 86
+
+devices:
+  wohnzimmer:
+    display_type: e1001
+    protocol: trmnl
+    mac: "AA:BB:CC:DD:EE:01"
+    # plan: standard   # plans/standard.yaml must exist; otherwise a notice page
+  flur:
+    display_type: sticky
+    protocol: trmnl
+    mac: "AA:BB:CC:DD:EE:02"

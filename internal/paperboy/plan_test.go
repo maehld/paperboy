@@ -27,7 +27,7 @@ func planServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 
 	cfg := &Config{UploadToken: testToken, Pages: pages, Plans: plans,
 		Profiles: map[string]Profile{"small": {Width: 40, Height: 20, Gray: true}},
-		Devices: []Device{{MAC: planDeviceMAC, Name: "Test", Profile: "small", Plan: "zimmer",
+		Devices: []Device{{ID: "test", MAC: planDeviceMAC, Profile: "small", Plan: "zimmer",
 			Refresh: Duration(10 * time.Minute)}}}
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)
@@ -151,7 +151,7 @@ func TestPlanRuleSwitchAndKeys(t *testing.T) {
 	if !strings.Contains(pagePath(out), "/drei/") {
 		t.Fatalf("new rule must start at its first page: %v", out)
 	}
-	if st := s.state[planDeviceMAC]; st.Rule != "tag" || st.Page != 0 {
+	if st := s.state["test"]; st.Rule != "tag" || st.Page != 0 {
 		t.Fatalf("state: %+v", st)
 	}
 }
