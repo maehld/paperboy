@@ -1,82 +1,75 @@
-// Package paperboy serves ePaper devices running the TRMNL firmware. Producers
-// such as SolarAI upload one PNG per profile and page; devices wake up, fetch
-// their current page and go back to deep sleep.
+// Package paperboy serves ePaper devices running the TRMNL firmware. Pages are
+// rendered from templates and chosen by plans (ADR 0024, 0025); the
+// configuration is YAML (ADR 0026).
 package paperboy
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
+
+	"go.yaml.in/yaml/v3"
 )
 
-// Duration accepts Go duration strings such as "5m" in JSON.
+// Duration accepts Go duration strings such as "5m" in YAML.
 type Duration time.Duration
 
-func (d *Duration) UnmarshalJSON(b []byte) error {
+func (d *Duration) UnmarshalYAML(v *yaml.Node) error {
 	var s string
-	if err := json.Unmarshal(b, &s); err != nil {
+	if err := v.Decode(&s); err != nil {
 		return fmt.Errorf("expected duration as string, e.g. \"5m\"")
 	}
-	v, err := time.ParseDuration(s)
+	parsed, err := time.ParseDuration(s)
 	if err != nil {
 		return err
 	}
-	*d = Duration(v)
+	*d = Duration(parsed)
 	return nil
 }
 
+func (d Duration) MarshalYAML() (any, error) { return time.Duration(d).String(), nil }
+
+// MarshalJSON keeps durations readable in API responses such as /api/profiles.
 func (d Duration) MarshalJSON() ([]byte, error) { return json.Marshal(time.Duration(d).String()) }
 
-// ClockTime is a local time of day written as "22:00".
-type ClockTime int // minutes since midnight
-
-func (c *ClockTime) UnmarshalJSON(b []byte) error {
-	var s string
-	if err := json.Unmarshal(b, &s); err != nil {
-		return err
-	}
-	t, err := time.Parse("15:04", s)
-	if err != nil {
-		return fmt.Errorf("expected time of day as HH:MM: %q", s)
-	}
-	*c = ClockTime(t.Hour()*60 + t.Minute())
-	return nil
-}
-
-// Profile describes one panel format; all devices of a profile share images.
+// Profile describes one display type (ADR 0026); the key is also the file
+// suffix of its page templates (pages/<page>.<display type>.yaml).
 type Profile struct {
-	Width   int  `json:"width"`
-	Height  int  `json:"height"`
-	Gray    bool `json:"gray"`     // four gray levels instead of black/white
-	WidthMM int  `json:"width_mm"` // physical panel width; lets producers pick a layout
+	Width      int      `json:"width"`
+	Height     int      `json:"height"`
+	Gray       bool     `json:"gray"`        // four gray levels instead of black/white
+	WidthMM    int      `json:"width_mm"`    // physical panel width; lets providers pick a layout
+	MinRefresh Duration `json:"min_refresh"` // reported intervals never go below this
 }
 
-// Device is one display. TRMNL devices fetch images themselves and are
-// identified by their Wi-Fi MAC address; OpenDisplay devices are pushed to.
+// Device is one physical display. Its ID is stable and used in state.json, logs
+// and the devices API; the TRMNL API identifies it by its Wi-Fi MAC address.
 type Device struct {
-	Type         string    `json:"type"` // "trmnl" (default) or "opendisplay"
-	MAC          string    `json:"mac"`
-	Address      string    `json:"address"` // OpenDisplay: host[:port]
-	Buttons      bool      `json:"buttons"` // OpenDisplay: poll buttons over a persistent connection
-	Name         string    `json:"name"`
-	Profile      string    `json:"profile"`
-	Refresh      Duration  `json:"refresh"`
-	NightRefresh Duration  `json:"night_refresh"` // optional; used between night_start and night_end
-	NightStart   ClockTime `json:"night_start"`
-	NightEnd     ClockTime `json:"night_end"`
-	Battery      *Battery  `json:"battery"` // TRMNL: overrides the global battery warning
-	Plan         string    `json:"plan"`    // page plan under plans/ (ADR 0025); empty = uploaded images
+	ID      string
+	Type    string // protocol; only "trmnl" for now
+	MAC     string
+	Address string // reserved for OpenDisplay, which is not supported yet
+	Buttons bool
+	Profile string // display type
+	Refresh Duration
+	Battery *Battery // overrides the defaults
+	Plan    string   // page plan under plans/; empty = notice page
 }
 
 // Battery configures the low-battery warning for TRMNL devices. A threshold
 // of 0 disables that stage.
 type Battery struct {
-	WarnVolts       float64 `json:"warn_volts"`       // banner on every page below this
-	CriticalVolts   float64 `json:"critical_volts"`   // full-screen warning below this
-	HysteresisVolts float64 `json:"hysteresis_volts"` // a stage ends this far above its threshold; 0 = 0.1
+	WarnVolts       float64 `yaml:"warn_volts" json:"warn_volts"`             // banner on every page below this
+	CriticalVolts   float64 `yaml:"critical_volts" json:"critical_volts"`     // full-screen warning below this
+	HysteresisVolts float64 `yaml:"hysteresis_volts" json:"hysteresis_volts"` // a stage ends this far above its threshold; 0 = 0.1
 }
 
 func (b *Battery) validate(owner string) error {
@@ -95,29 +88,49 @@ func (b *Battery) validate(owner string) error {
 	return nil
 }
 
-const (
-	TypeTRMNL       = "trmnl"
-	TypeOpenDisplay = "opendisplay"
-)
-
-// key identifies the device in the persisted state.
-func (d *Device) key() string {
-	if d.Type == TypeOpenDisplay {
-		return "opendisplay:" + d.Name
+// mergeBattery lets a device override single default thresholds; zero values
+// keep the default.
+func mergeBattery(base, override *Battery) *Battery {
+	if override == nil || base == nil {
+		if override != nil {
+			return override
+		}
+		return base
 	}
-	return d.MAC
+	merged := *base
+	if override.WarnVolts > 0 {
+		merged.WarnVolts = override.WarnVolts
+	}
+	if override.CriticalVolts > 0 {
+		merged.CriticalVolts = override.CriticalVolts
+	}
+	if override.HysteresisVolts > 0 {
+		merged.HysteresisVolts = override.HysteresisVolts
+	}
+	return &merged
 }
 
+const (
+	TypeTRMNL = "trmnl"
+
+	minRefresh         = time.Minute
+	defaultRefresh     = 5 * time.Minute
+	defaultPageTimeout = 5 * time.Minute
+	defaultMinRefresh  = time.Minute
+)
+
+// Config is the validated runtime configuration.
 type Config struct {
-	UploadToken string             `json:"upload_token"`
-	PublicURL   string             `json:"public_url"`   // base URL for image links; empty = request host
-	StaleAfter  Duration           `json:"stale_after"`  // mark images older than this; 0 = 30m
-	PageTimeout Duration           `json:"page_timeout"` // back to page 0 after this; 0 = 5m
-	Pages       string             `json:"pages"`        // page templates; empty = <data>/pages
-	Plans       string             `json:"plans"`        // page plans; empty = <data>/plans
-	Profiles    map[string]Profile `json:"profiles"`
-	Devices     []Device           `json:"devices"`
-	Battery     *Battery           `json:"battery"` // low-battery warning for TRMNL devices; nil = off
+	UploadToken string
+	PublicURL   string
+	Refresh     Duration // default interval of a device; a plan rule may override it
+	PageTimeout Duration
+	DataDir     string // from directories.data; empty = -data or paperboy-data
+	Pages       string // page templates; empty = <data>/pages
+	Plans       string // page plans; empty = <data>/plans
+	Profiles    map[string]Profile
+	Devices     []Device
+	Battery     *Battery // default low-battery warning; nil = off
 }
 
 // battery returns the effective battery warning settings for d, or nil.
@@ -128,108 +141,239 @@ func (c *Config) battery(d *Device) *Battery {
 	return c.Battery
 }
 
-const (
-	minRefresh = time.Minute
-	maxPages   = 16
-)
+// minRefresh returns the shortest interval reported for a display type.
+func (c *Config) minRefresh(profile string) time.Duration {
+	p := c.Profiles[profile]
+	return max(minRefresh, time.Duration(p.MinRefresh))
+}
 
-// LoadConfig reads and validates the configuration. The environment variable
+// fileConfig mirrors paperboy.yaml.
+type fileConfig struct {
+	Server struct {
+		PublicURL      string `yaml:"public_url"`
+		UploadToken    string `yaml:"upload_token"`
+		UploadTokenEnv string `yaml:"upload_token_env"`
+	} `yaml:"server"`
+	Directories struct {
+		Pages string `yaml:"pages"`
+		Plans string `yaml:"plans"`
+		Data  string `yaml:"data"`
+	} `yaml:"directories"`
+	Defaults struct {
+		Refresh     Duration `yaml:"refresh"`
+		PageTimeout Duration `yaml:"page_timeout"`
+		Battery     *Battery `yaml:"battery"`
+	} `yaml:"defaults"`
+	DisplayTypes map[string]struct {
+		Kind       string   `yaml:"kind"`
+		Size       [2]int   `yaml:"size"`
+		GrayLevels int      `yaml:"gray_levels"`
+		WidthMM    int      `yaml:"width_mm"`
+		MinRefresh Duration `yaml:"min_refresh"`
+	} `yaml:"display_types"`
+	Devices map[string]struct {
+		DisplayType string   `yaml:"display_type"`
+		Protocol    string   `yaml:"protocol"`
+		MAC         string   `yaml:"mac"`
+		Address     string   `yaml:"address"`
+		Buttons     bool     `yaml:"buttons"`
+		Plan        string   `yaml:"plan"`
+		Refresh     Duration `yaml:"refresh"`
+		Battery     *Battery `yaml:"battery"`
+	} `yaml:"devices"`
+}
+
+// LoadConfig reads and validates the YAML configuration. Relative directories
+// are resolved against the directory of the file. The environment variable
 // PAPERBOY_UPLOAD_TOKEN (formerly DISPLAYD_UPLOAD_TOKEN, still accepted)
-// overrides upload_token so secrets can stay out of files.
+// overrides the configured token so secrets can stay out of files.
 func LoadConfig(path string) (*Config, error) {
+	if strings.EqualFold(filepath.Ext(path), ".json") {
+		return nil, fmt.Errorf("%s: JSON configuration is no longer supported; convert it to YAML (see paperboy.example.yaml)", path)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var c Config
-	dec := json.NewDecoder(strings.NewReader(string(data)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&c); err != nil {
+	var f fileConfig
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&f); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, fmt.Errorf("%s: empty configuration", path)
+		}
 		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	var extra yaml.Node
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("%s: only one YAML document is allowed", path)
+	}
+
+	base := filepath.Dir(path)
+	c := &Config{
+		UploadToken: f.Server.UploadToken,
+		PublicURL:   f.Server.PublicURL,
+		Refresh:     f.Defaults.Refresh,
+		PageTimeout: f.Defaults.PageTimeout,
+		Battery:     f.Defaults.Battery,
+		DataDir:     resolveDir(base, f.Directories.Data),
+		Pages:       resolveDir(base, f.Directories.Pages),
+		Plans:       resolveDir(base, f.Directories.Plans),
+		Profiles:    make(map[string]Profile, len(f.DisplayTypes)),
+	}
+	if name := f.Server.UploadTokenEnv; name != "" {
+		if token := os.Getenv(name); token != "" {
+			c.UploadToken = token
+		} else if c.UploadToken == "" {
+			return nil, fmt.Errorf("%s: upload_token_env %q is empty", path, name)
+		}
 	}
 	for _, name := range []string{"DISPLAYD_UPLOAD_TOKEN", "PAPERBOY_UPLOAD_TOKEN"} {
 		if token := os.Getenv(name); token != "" {
 			c.UploadToken = token
 		}
 	}
-	return &c, c.validate()
+	for name, t := range f.DisplayTypes {
+		c.Profiles[name] = Profile{
+			Width:      t.Size[0],
+			Height:     t.Size[1],
+			Gray:       t.GrayLevels == 4,
+			WidthMM:    t.WidthMM,
+			MinRefresh: t.MinRefresh,
+		}
+		if t.Kind == "text" {
+			return nil, fmt.Errorf("%s: display type %s: kind text follows with ADR 0027", path, name)
+		}
+		if t.Kind != "" && t.Kind != "image" {
+			return nil, fmt.Errorf("%s: display type %s: unknown kind %q", path, name, t.Kind)
+		}
+		if t.GrayLevels != 0 && t.GrayLevels != 1 && t.GrayLevels != 4 {
+			return nil, fmt.Errorf("%s: display type %s: gray_levels must be 1 or 4", path, name)
+		}
+	}
+	ids := make([]string, 0, len(f.Devices))
+	for id := range f.Devices {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		d := f.Devices[id]
+		c.Devices = append(c.Devices, Device{
+			ID:      id,
+			Type:    d.Protocol,
+			MAC:     d.MAC,
+			Address: d.Address,
+			Buttons: d.Buttons,
+			Profile: d.DisplayType,
+			Refresh: d.Refresh,
+			Battery: mergeBattery(f.Defaults.Battery, d.Battery),
+			Plan:    d.Plan,
+		})
+	}
+	if err := c.validate(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return c, nil
+}
+
+func resolveDir(base, p string) string {
+	if p == "" {
+		return ""
+	}
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(base, p)
 }
 
 func (c *Config) validate() error {
 	if len(c.UploadToken) < 16 {
 		return fmt.Errorf("upload_token missing or shorter than 16 characters")
 	}
-	if c.StaleAfter == 0 {
-		c.StaleAfter = Duration(30 * time.Minute)
+	if c.Refresh == 0 {
+		c.Refresh = Duration(defaultRefresh)
+	}
+	if time.Duration(c.Refresh) < minRefresh {
+		return fmt.Errorf("defaults: refresh must be at least 1m")
 	}
 	if c.PageTimeout == 0 {
-		c.PageTimeout = Duration(5 * time.Minute)
+		c.PageTimeout = Duration(defaultPageTimeout)
 	}
 	c.PublicURL = strings.TrimRight(c.PublicURL, "/")
 	if err := c.Battery.validate("battery"); err != nil {
 		return err
 	}
+	if len(c.Profiles) == 0 {
+		return fmt.Errorf("display_types missing")
+	}
 	for name, p := range c.Profiles {
 		if !validName(name) {
-			return fmt.Errorf("profile name %q: only a–z, 0–9 and -", name)
+			return fmt.Errorf("display type %q: only a-z, 0-9 and -", name)
 		}
 		if p.Width < 1 || p.Height < 1 || p.Width > 4096 || p.Height > 4096 {
-			return fmt.Errorf("profile %s: invalid size", name)
+			return fmt.Errorf("display type %s: invalid size", name)
 		}
+		if p.MinRefresh == 0 {
+			p.MinRefresh = Duration(defaultMinRefresh)
+		}
+		if time.Duration(p.MinRefresh) < time.Second {
+			return fmt.Errorf("display type %s: min_refresh must be at least 1s", name)
+		}
+		c.Profiles[name] = p
 	}
-	seen := map[string]bool{}
+	seenID := map[string]bool{}
+	seenMAC := map[string]string{}
 	for i := range c.Devices {
 		d := &c.Devices[i]
+		if !validName(d.ID) {
+			return fmt.Errorf("device %q: id must use a-z, 0-9 and -", d.ID)
+		}
 		switch d.Type {
 		case "", TypeTRMNL:
 			d.Type = TypeTRMNL
+			if d.Address != "" || d.Buttons {
+				return fmt.Errorf("device %s: address/buttons belong to protocol opendisplay, which is not supported yet", d.ID)
+			}
 			mac, err := net.ParseMAC(d.MAC)
 			if err != nil {
-				return fmt.Errorf("device %q: invalid MAC address", d.Name)
+				return fmt.Errorf("device %s: invalid MAC address", d.ID)
 			}
 			d.MAC = normalizeMAC(mac.String())
-			if d.Name == "" {
-				d.Name = d.MAC
-			}
-		case TypeOpenDisplay:
-			if d.Address == "" || d.Name == "" {
-				return fmt.Errorf("OpenDisplay device needs name and address")
-			}
-			if _, _, err := net.SplitHostPort(d.Address); err != nil {
-				d.Address = net.JoinHostPort(d.Address, "2446")
-			}
-			d.MAC = "" // only TRMNL devices may use the device API
+		case "opendisplay":
+			return fmt.Errorf("device %s: protocol opendisplay is not supported yet (TODO in README)", d.ID)
+		case "text-http", "image-http":
+			return fmt.Errorf("device %s: protocol %q follows with ADR 0027", d.ID, d.Type)
 		default:
-			return fmt.Errorf("device %q: unknown type %q", d.Name, d.Type)
+			return fmt.Errorf("device %s: unknown protocol %q", d.ID, d.Type)
 		}
-		if err := d.Battery.validate("device " + d.Name); err != nil {
+		if err := d.Battery.validate("device " + d.ID); err != nil {
 			return err
 		}
-		if seen[d.key()] {
+		if seenID[d.key()] {
 			return fmt.Errorf("duplicate device %s", d.key())
 		}
-		seen[d.key()] = true
+		seenID[d.key()] = true
+		if other, ok := seenMAC[d.MAC]; ok {
+			return fmt.Errorf("duplicate device %s: MAC %s is already used by %s", d.ID, d.MAC, other)
+		}
+		seenMAC[d.MAC] = d.ID
 		if _, ok := c.Profiles[d.Profile]; !ok {
-			return fmt.Errorf("device %s: unknown profile %q", d.Name, d.Profile)
+			return fmt.Errorf("device %s: unknown display_type %q", d.ID, d.Profile)
 		}
 		if d.Refresh == 0 {
-			d.Refresh = Duration(5 * time.Minute)
+			d.Refresh = c.Refresh
 		}
-		if time.Duration(d.Refresh) < minRefresh || (d.NightRefresh != 0 && time.Duration(d.NightRefresh) < minRefresh) {
-			return fmt.Errorf("device %s: intervals must be at least 1m", d.Name)
+		if time.Duration(d.Refresh) < minRefresh {
+			return fmt.Errorf("device %s: refresh must be at least 1m", d.ID)
 		}
-		if d.Plan != "" {
-			if !validName(d.Plan) {
-				return fmt.Errorf("device %s: plan %q: only a–z, 0–9 and -", d.Name, d.Plan)
-			}
-			if d.Type != TypeTRMNL {
-				return fmt.Errorf("device %s: plans are not supported for OpenDisplay yet", d.Name)
-			}
+		if d.Plan != "" && !validName(d.Plan) {
+			return fmt.Errorf("device %s: plan %q: only a-z, 0-9 and -", d.ID, d.Plan)
 		}
 	}
 	return nil
 }
 
+// device returns the configured TRMNL device with this MAC address.
 func (c *Config) device(mac string) *Device {
 	mac = normalizeMAC(mac)
 	if mac == "" {
@@ -242,6 +386,9 @@ func (c *Config) device(mac string) *Device {
 	}
 	return nil
 }
+
+// key identifies the device in the persisted state.
+func (d *Device) key() string { return d.ID }
 
 func normalizeMAC(s string) string { return strings.ToUpper(strings.TrimSpace(s)) }
 
@@ -257,18 +404,5 @@ func validName(s string) bool {
 	return true
 }
 
-// refresh returns the regular sleep time at local time now.
-func (d *Device) refresh(now time.Time) time.Duration {
-	if d.NightRefresh == 0 || d.NightStart == d.NightEnd {
-		return time.Duration(d.Refresh)
-	}
-	m := ClockTime(now.Hour()*60 + now.Minute())
-	night := m >= d.NightStart && m < d.NightEnd
-	if d.NightStart > d.NightEnd { // window crosses midnight
-		night = m >= d.NightStart || m < d.NightEnd
-	}
-	if night {
-		return time.Duration(d.NightRefresh)
-	}
-	return time.Duration(d.Refresh)
-}
+// refresh returns the regular sleep time of the device. Plans may override it.
+func (d *Device) refresh() time.Duration { return time.Duration(d.Refresh) }

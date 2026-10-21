@@ -1,43 +1,83 @@
 # Paperboy
 
-Paperboy is a small display service for ePaper displays. Suppliers such as [SolarAI](https://github.com/maehld/solarai) upload finished pages as PNG; Paperboy delivers them to devices running the unmodified [TRMNL firmware](https://github.com/usetrmnl/trmnl-firmware) (deep sleep, battery operation) or to OpenDisplay devices. Suppliers and Paperboy know each other only via HTTP.
+Paperboy is a small display service for ePaper displays. It renders pages from YAML templates fed by a shared data document and delivers them to devices running the unmodified [TRMNL firmware](https://github.com/usetrmnl/trmnl-firmware) (deep sleep, battery operation). Data providers and Paperboy know each other only via HTTP (ADR 0032).
 
 Paperboy evolved from SolarAI's display service `displayd` (ADR 0028); the Git history of the carried-over files is preserved.
 
 ```text
-Supplier ──PUT /api/images/{profile}/{page}──▶ paperboy ◀──GET /api/display── Display (TRMNL)
+Provider ──PUT /api/data/{path}──▶ paperboy ◀──GET /api/display── Display (TRMNL)
 ```
 
 ## Quick start
 
-1. Create the configuration: copy `cmd/paperboy/paperboy.example.json` to `paperboy.json`, set the token and enter the MAC addresses of the displays (allow list; unknown devices are rejected and reported with their MAC in the log).
-2. Start:
+1. Create the configuration: copy `cmd/paperboy/paperboy.example.yaml` to `paperboy.yaml`, set the token and enter the MAC addresses of the displays (allow list; unknown devices are rejected and reported with their MAC in the log).
+2. Create a page template `paperboy-data/pages/standard.e1001.yaml` and a plan `paperboy-data/plans/standard.yaml`, then set `plan: standard` on the device. Without a plan a device only shows a notice page.
+3. Start:
    ```powershell
-   go run ./cmd/paperboy -config paperboy.json -data paperboy-data -listen :8090
-   # Supplier, e.g. SolarAI:
-   solarai -host 192.168.1.100 -display-service http://127.0.0.1:8090 -display-token <token>
+   go run ./cmd/paperboy -config paperboy.yaml -listen :8090
+   # Push data, e.g.:
+   curl -X PUT -H "Authorization: Bearer <token>" -d '{"pv_power": 4200}' http://127.0.0.1:8090/api/data/solar/current
    ```
    Alternatively as a container: `Dockerfile` and `compose.example.yaml`.
-3. Flash the firmware: E1001 via the [Seeed wiki flasher](https://wiki.seeedstudio.com/reterminal_e10xx_trmnl/) (1.6.7 or later), Sticky via the [Sticky playground](https://www.seeedstudio.com/sticky/playground/) (TRMNL). In the Wi-Fi setup portal, enter `http://<computer>:8090` as the server URL.
+4. Flash the firmware: E1001 via the [Seeed wiki flasher](https://wiki.seeedstudio.com/reterminal_e10xx_trmnl/) (1.6.7 or later), Sticky via the [Sticky playground](https://www.seeedstudio.com/sticky/playground/) (TRMNL). In the Wi-Fi setup portal, enter `http://<computer>:8090` as the server URL.
 
-**Migrating from `displayd`:** Configuration and data directory can be used unchanged (`-config displayd.json -data displayd-data`); the devices need no new setup as long as address and port stay the same. The environment variable is now called `PAPERBOY_UPLOAD_TOKEN`; `DISPLAYD_UPLOAD_TOKEN` is still accepted.
+**Migrating from `displayd`:** the data directory can be reused (`-data displayd-data`), and devices need no new setup as long as address and port stay the same. The configuration must be converted to YAML; `paperboy.json` is no longer read. The environment variable is now called `PAPERBOY_UPLOAD_TOKEN`; `DISPLAYD_UPLOAD_TOKEN` is still accepted.
+
+## Configuration
+
+`paperboy.yaml` is the only configuration format (ADR 0026). Parsing is strict: unknown keys abort the start, as do missing plans, duplicate MAC addresses and unsupported protocols.
+
+```yaml
+server:
+  # public_url: https://paper.example.com   # only needed behind a reverse proxy
+  upload_token_env: PAPERBOY_UPLOAD_TOKEN    # or upload_token: "a long random token"
+directories:                                  # relative to this file
+  pages: pages
+  plans: plans
+  data: paperboy-data
+defaults:
+  refresh: 5m          # regular sleep time; plans may override it
+  page_timeout: 5m     # back to the first page after this
+  battery: { warn_volts: 3.45, critical_volts: 3.3, hysteresis_volts: 0.1 }
+display_types:
+  e1001:
+    kind: image
+    size: [800, 480]
+    gray_levels: 4     # 1 or 4
+    width_mm: 163
+    min_refresh: 60s   # never report a shorter interval
+devices:
+  wohnzimmer:
+    display_type: e1001
+    protocol: trmnl
+    mac: "AA:BB:CC:DD:EE:01"
+    plan: standard
+    refresh: 10m                          # optional
+    battery: { warn_volts: 3.5 }          # optional, 0 inherits the default
+```
+
+- The map key under `devices` is the stable device ID (a-z, 0-9, `-`). It appears in logs, in `GET /api/devices` and in `state.json`; existing MAC-keyed state is migrated automatically at startup.
+- `protocol` accepts only `trmnl` for now. `opendisplay` is rejected until plans cover it, `text-http`/`image-http` and `kind: text` follow with ADR 0027.
+- `plan` must name an existing `plans/<name>.yaml`; a missing file aborts the start, a broken plan shows a notice page. Without `plan` the device shows “Kein Plan konfiguriert”.
+- `upload_token_env` names the variable that holds the token; `upload_token` puts it into the file. `PAPERBOY_UPLOAD_TOKEN` (and the legacy `DISPLAYD_UPLOAD_TOKEN`) override both.
+- `-config` defaults to `paperboy.yaml`; passing a `.json` file is rejected with a hint. `-data` overrides `directories.data`, the page and plan directories then default to `<data>/pages` and `<data>/plans`.
+- The configuration is read once at startup; reloading it without a restart is still open (TODO).
 
 ## Behavior
 
-- **Profiles** (size, grayscale levels, panel width) determine the layout; suppliers query them via `GET /api/profiles`. Several devices can share a profile. Images are delivered as PNG with 1 bit or 2 bits (4 gray levels) and stored under `-data`.
-- **Interval** per device (`refresh`, optionally `night_refresh` between `night_start` and `night_end`), at least 1 minute. Unchanged image → the display does not redraw.
+- **Display types** (size, grayscale levels, panel width, minimum interval) determine the layout; providers query them via `GET /api/profiles`. Several devices can share a display type. Pages are delivered as PNG with 1 bit or 2 bits (4 gray levels).
+- **Plans** (ADR 0025): every device points to a plan (`plans/<name>.yaml`) that selects its pages according to time rules. A device without a plan shows a notice page.
+- **Interval**: `defaults.refresh` or the device's `refresh`, at least 1 minute and never below the display type's `min_refresh`; a plan rule may override it. Unchanged image → the display does not redraw.
 - **Button**: short press = next page, hold approx. 2 s (1–5 s) = overview, longer than 5 s = reset Wi-Fi (firmware). A real double click triggers the same function, but is hardly achievable from deep sleep. After `page_timeout` (5 min) back to the overview. The TRMNL firmware does not support three separate buttons.
-- **Data document** (ADR 0024, first stage): suppliers write JSON branches via `PUT /api/data/{path}` (bearer token; `PUT` replaces instead of merging, missing intermediate objects are created, 409 on type conflicts, 1 MB per write, optional `X-Data-Time` in RFC 3339). `GET` and `DELETE` on the same paths help with debugging. Each path keeps its write time, so stale data can be detected without comparing content. Page templates render from the document (see below).
-- **Stale**: If no upload arrives for longer than `stale_after` (30 min), a black bar „Keine neuen Daten seit …“ (“No new data since …”) appears at the bottom.
-- **Battery warning** (ADR 0020): The TRMNL firmware reports only the voltage (`Battery-Voltage`). With `"battery": { "warn_volts": 3.45, "critical_volts": 3.3, "hysteresis_volts": 0.1 }` (global or per device), every page below `warn_volts` gets the bar „Akku schwach – bitte laden“ (“Battery low – please charge”); below `critical_volts` a full-screen image „Akku fast leer“ (“Battery almost empty”) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` no warning.
+- **Data document** (ADR 0024): providers write JSON branches via `PUT /api/data/{path}` (bearer token; `PUT` replaces instead of merging, missing intermediate objects are created, 409 on type conflicts, 1 MB per write, optional `X-Data-Time` in RFC 3339). `GET` and `DELETE` on the same paths help with debugging. Each path keeps its write time, so stale data can be detected without comparing content. Page templates render from the document (see below).
+- **Stale**: templates mark watched paths with `stale_after`; page templates show the bar „Keine neuen Daten seit …“ (“No new data since …”) when the data is older.
+- **Battery warning** (ADR 0020): The TRMNL firmware reports only the voltage (`Battery-Voltage`). With `battery` in `defaults` or on a device, every page below `warn_volts` gets the bar „Akku schwach – bitte laden“ (“Battery low – please charge”); below `critical_volts` a full-screen image „Akku fast leer“ (“Battery almost empty”) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` no warning.
 - `GET /api/devices` shows registered devices with battery voltage, signal strength, wake reason and last request (without keys).
-- **Plans** (ADR 0025): devices with `"plan": "<name>"` show the pages of a plan (`plans/<name>.yaml`) according to time rules, instead of uploaded images (see below).
-- **OpenDisplay devices** (ADR 0018): entry with `"type": "opendisplay"`, `"address": "<IP>[:2446]"`, profile and interval; `"buttons": true` keeps a persistent connection and evaluates the three buttons (0 = overview, 1 = back, 2 = next). Without deep sleep, TCP only. Not yet tested on hardware.
-- **Security:** Upload only with token (`Authorization: Bearer`, alternatively via `PAPERBOY_UPLOAD_TOKEN`); devices via allow list and their own key. Paperboy never sets `reset_firmware` and never responds with status 500.
+- **Security:** Writing data and previewing pages require the token (`Authorization: Bearer`, alternatively via `PAPERBOY_UPLOAD_TOKEN`); devices via allow list and their own key. Paperboy never sets `reset_firmware` and never responds with status 500.
 
 ## Page templates
 
-Pages can be rendered from the data document instead of uploaded images: `<page>.<profile>.yaml` in the `pages` directory (config key `pages`, default `<data>/pages`). `rows` gives the relative row heights, every row holds exactly one block, and the block `name` is its region name (ADR 0032).
+Pages are rendered from the data document: `<page>.<display type>.yaml` in the `pages` directory (`directories.pages`, default `<data>/pages`). `rows` gives the relative row heights, every row holds exactly one block, and the block `name` is its region name (ADR 0032).
 
 ```yaml
 title: Solar
@@ -69,11 +109,11 @@ blocks:
 - `locale: en` switches the decimal comma to a dot (default `de`); the built-in banner texts stay German.
 - Preview with the upload token: `GET /api/preview/e1001/solar`.
 
-Implemented blocks are `header`, `tiles`, `rows`, `chart` and `text`; `bar`, hatching and separators follow. Devices without a plan keep showing uploaded images.
+Implemented blocks are `header`, `tiles`, `rows`, `chart` and `text`; `bar`, hatching and separators follow.
 
 ## Plans
 
-Which pages a device shows is decided by a plan, `<name>.yaml` in the `plans` directory (config key `plans`, default `<data>/plans`). A device points to it with `"plan": "wohnzimmer"`; several devices may share a plan. A plan only names pages, so it works for devices of different display types.
+Which pages a device shows is decided by a plan, `<name>.yaml` in the `plans` directory (`directories.plans`, default `<data>/plans`). A device points to it with `plan: wohnzimmer`; several devices may share a plan. A plan only names pages, so it works for devices of different display types.
 
 ```yaml
 timezone: Europe/Berlin   # optional, default: the service's zone
@@ -95,10 +135,14 @@ fallback: nacht
 
 - The first matching rule wins. A `when` without `from`/`to` always matches; `from` is inclusive, `to` exclusive. `to < from` wraps over midnight and then belongs to the day the window starts. Days accept German and English short names.
 - `pages` is the paging order within the rule. `rotate: true` moves on at every timed refresh, otherwise only a button changes the page. Buttons page within the active rule only, holding returns to its first page, and after `page_timeout` the device shows the first page again unless the rule rotates.
-- `refresh` replaces the device interval. The reported interval is capped to the next rule boundary (at least 1 minute), so a sleeping device wakes up for a rule change.
+- `refresh` replaces the device interval. The reported interval is capped to the next rule boundary (but never below the display type's `min_refresh`), so a sleeping device wakes up for a rule change.
 - `fallback` names the rule used when nothing matches; without a match and without a fallback the device gets a notice page.
 - Plans are reloaded on change without a restart; a broken file keeps the last valid version. Missing templates for a device's display type also lead to a notice page, so devices never see a server error.
-- Plans currently serve TRMNL devices. OpenDisplay and data conditions (`when.data`) follow later; `when.data` is rejected when loading a plan.
+- Plans currently serve TRMNL devices. Data conditions (`when.data`) follow later and are rejected when loading a plan.
+
+## OpenDisplay
+
+Delivery to OpenDisplay devices is currently **not available**: the image-upload pipeline it relied on was removed, and plans for OpenDisplay are a TODO. The protocol implementation (`internal/opendisplay`, including Bluetooth) and the test program below remain in the repository.
 
 ## OpenDisplay test program
 
@@ -125,9 +169,9 @@ go vet ./...
 ```
 
 ```text
-cmd/paperboy/            Startup and options, example configuration
+cmd/paperboy/            Startup, options and example configuration
 cmd/odtest/              Test program for OpenDisplay devices (TCP and Bluetooth)
-internal/paperboy/       Upload API, TRMNL API, OpenDisplay pusher, battery warning
+internal/paperboy/       YAML configuration, TRMNL API, plans, data document, battery warning
 internal/data/           Shared data document for page templates (ADR 0024)
 internal/page/           Page templates: YAML parsing and rendering from the data document
 internal/plan/           Display plans: time rules that select pages per device (ADR 0025)

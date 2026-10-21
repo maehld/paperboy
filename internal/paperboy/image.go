@@ -6,7 +6,6 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
-	"math"
 	"sync"
 
 	"golang.org/x/image/font"
@@ -15,30 +14,7 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-var (
-	monoPalette = color.Palette{color.Gray{0}, color.Gray{255}}
-	grayPalette = color.Palette{color.Gray{0}, color.Gray{85}, color.Gray{170}, color.Gray{255}}
-)
-
-// normalize converts any image to the profile's palette. Go's PNG encoder
-// writes palettes of two or four colors with 1 or 2 bits per pixel, which the
-// TRMNL firmware decodes directly.
-func normalize(src image.Image, p Profile) *image.Paletted {
-	palette := monoPalette
-	if p.Gray {
-		palette = grayPalette
-	}
-	b := src.Bounds()
-	dst := image.NewPaletted(image.Rect(0, 0, b.Dx(), b.Dy()), palette)
-	levels := len(palette) - 1
-	for y := 0; y < b.Dy(); y++ {
-		for x := 0; x < b.Dx(); x++ {
-			g := color.GrayModel.Convert(src.At(b.Min.X+x, b.Min.Y+y)).(color.Gray).Y
-			dst.Pix[y*dst.Stride+x] = uint8(math.Round(float64(g) * float64(levels) / 255))
-		}
-	}
-	return dst
-}
+var monoPalette = color.Palette{color.Gray{0}, color.Gray{255}}
 
 func encodePNG(img image.Image) []byte {
 	var buf bytes.Buffer
@@ -78,24 +54,8 @@ func drawText(dst draw.Image, s string, x, baseline int, size float64, c color.C
 	d.DrawString(s)
 }
 
-// withBanner returns a copy of img with inverted notice bars stacked at the bottom.
-func withBanner(img *image.Paletted, texts ...string) *image.Paletted {
-	out := image.NewPaletted(img.Rect, img.Palette)
-	copy(out.Pix, img.Pix)
-	w, h := img.Rect.Dx(), img.Rect.Dy()
-	bar := h / 8
-	for i, text := range texts {
-		bottom := h - i*bar
-		draw.Draw(out, image.Rect(0, bottom-bar, w, bottom), image.NewUniform(color.Black), image.Point{}, draw.Src)
-		if i > 0 {
-			draw.Draw(out, image.Rect(0, bottom-max(1, bar/30), w, bottom), image.NewUniform(color.White), image.Point{}, draw.Src)
-		}
-		drawText(out, text, w/2, bottom-bar*3/10, float64(bar)*0.55, color.White, true)
-	}
-	return out
-}
-
-// placeholder is shown before a producer uploaded anything for a profile.
+// placeholder is a notice page with a title and a line of text, used for
+// configuration problems and the setup page.
 func placeholder(p Profile, lines ...string) *image.Paletted {
 	img := image.NewPaletted(image.Rect(0, 0, p.Width, p.Height), monoPalette)
 	draw.Draw(img, img.Rect, image.NewUniform(color.White), image.Point{}, draw.Src)
