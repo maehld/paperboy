@@ -46,6 +46,8 @@ Go **1.27 or newer**. Dependencies: `golang.org/x/image` **v0.24.0** (ADR 0013) 
 
 ADRs 0024–0027 are accepted but not yet implemented: data document instead of images with YAML layouts, plans per display, YAML configuration (`paperboy.yaml`, then migration of `state.json`), text displays and HTTP devices. For rendering, drawing functions and font will then be taken over from SolarAI's `internal/epaper`.
 
+ADR 0032 fixes the provider model on top of that: providers are external processes that push JSON into the shared document, pages are an operator-owned skeleton with named regions, and image fragments as well as Go plugins are rejected.
+
 ## Startup and checks
 
 ```powershell
