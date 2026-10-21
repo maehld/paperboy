@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
@@ -16,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/maehld/paperboy/internal/data"
 )
 
 // Server implements the upload API for producers and the TRMNL device API.
@@ -27,6 +30,7 @@ type Server struct {
 	mu     sync.Mutex
 	images map[string][]*pageImage // profile → pages
 	state  map[string]*deviceState // MAC → state
+	doc    *data.Document          // shared data document (ADR 0024)
 }
 
 // New loads stored images and device state from dir.
@@ -39,13 +43,24 @@ func New(cfg *Config, dir string) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, dir: dir, now: time.Now, images: images, state: state}, nil
+	s := &Server{cfg: cfg, dir: dir, now: time.Now, images: images, state: state}
+	// The document shares the server clock so that tests can move time.
+	s.doc, err = data.New(filepath.Join(dir, "data.json"), func() time.Time { return s.now() })
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/profiles", s.handleProfiles)
 	mux.HandleFunc("PUT /api/images/{profile}/{page}", s.handleUpload)
+	mux.HandleFunc("PUT /api/data", s.handlePutData)
+	mux.HandleFunc("PUT /api/data/{path...}", s.handlePutData)
+	mux.HandleFunc("GET /api/data", s.handleGetData)
+	mux.HandleFunc("GET /api/data/{path...}", s.handleGetData)
+	mux.HandleFunc("DELETE /api/data/{path...}", s.handleDeleteData)
 	mux.HandleFunc("GET /api/devices", s.handleDevices)
 	mux.HandleFunc("GET /api/setup", s.handleSetup)
 	mux.HandleFunc("GET /api/setup/", s.handleSetup)
@@ -132,6 +147,78 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// maxDataBytes caps a single write to the data document.
+const maxDataBytes = 1 << 20
+
+// handlePutData replaces the subtree at the path. PUT never merges: write a
+// deeper path to update part of a branch.
+func (s *Server) handlePutData(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var value any
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxDataBytes)).Decode(&value); err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			http.Error(w, "document too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	var at time.Time
+	if h := strings.TrimSpace(r.Header.Get("X-Data-Time")); h != "" {
+		t, err := time.Parse(time.RFC3339, h)
+		if err != nil {
+			http.Error(w, "invalid X-Data-Time: expected RFC 3339", http.StatusBadRequest)
+			return
+		}
+		at = t
+	}
+	if err := s.doc.Put(r.PathValue("path"), value, at); err != nil {
+		writeDataError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleGetData(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	v, ok := s.doc.Get(r.PathValue("path"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+func (s *Server) handleDeleteData(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if err := s.doc.Delete(r.PathValue("path")); err != nil {
+		writeDataError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func writeDataError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, data.ErrNotFound):
+		http.Error(w, err.Error(), http.StatusNotFound)
+	case errors.Is(err, data.ErrConflict):
+		http.Error(w, err.Error(), http.StatusConflict)
+	default:
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
 }
 
 type deviceInfo struct {
