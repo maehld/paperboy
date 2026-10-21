@@ -142,7 +142,7 @@ func (s *Server) planPage(d *Device, st *deviceState, now time.Time, firstContac
 	}
 	sel, ok := p.Select(now)
 	if !ok {
-		return s.hint(d.Profile, "Keine Seite festgelegt", "FÃ¼r diese Situation passt keine Regel und kein fallback.")
+		return s.hint(d.Profile, "Keine Seite festgelegt", "Für diese Situation passt keine Regel und kein fallback.")
 	}
 	n := len(sel.Pages)
 	if switched := st.Rule != sel.Rule; switched {
@@ -200,7 +200,7 @@ func shorten(s string) string {
 		s = s[:i]
 	}
 	if r := []rune(s); len(r) > 90 {
-		s = string(r[:90]) + "â€¦"
+		s = string(r[:90]) + "…"
 	}
 	return s
 }
