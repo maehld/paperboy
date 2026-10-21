@@ -61,6 +61,7 @@ go vet ./...
 ```
 
 - Apply `gofmt` to changed Go files.
+- **UTF-8 on Windows:** Windows PowerShell 5 reads UTF-8 files as ANSI, so a `Get-Content … | Set-Content …` round-trip turns „Für“ into „FÃ¼r“. Edit files with the dedicated tools, or read and write them with `[System.IO.File]::ReadAllText`/`WriteAllText` and `UTF8Encoding($false)`; never pipe source files through `Get-Content`/`Set-Content`.
 - Prefer tests for protocol behavior and state transitions.
 
 Keep this document up to date with relevant architecture or behavior changes.
