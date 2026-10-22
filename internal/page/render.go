@@ -199,8 +199,19 @@ func (r *renderer) fail(err error) {
 // branches of the document are created as empty objects so that an unset
 // supplier still renders dashes instead of failing the whole page.
 func (r *renderer) expand(s string) string {
+	return r.expandWith(s, "—")
+}
+
+// expandSource expands an icon source. A missing value becomes nothing instead
+// of an em dash: an empty source means "draw no icon", so a page without data
+// still renders (ADR 0038).
+func (r *renderer) expandSource(s string) string {
+	return r.expandWith(s, "")
+}
+
+func (r *renderer) expandWith(s, missing string) string {
 	if s == "" || !strings.Contains(s, "{{") {
-		return s
+		return strings.TrimSpace(s)
 	}
 	tmpl, err := template.New("text").Option("missingkey=zero").Funcs(r.funcs()).Parse(s)
 	if err != nil {
@@ -213,7 +224,7 @@ func (r *renderer) expand(s string) string {
 		r.fail(err)
 		return ""
 	}
-	return strings.TrimSpace(strings.ReplaceAll(b.String(), "<no value>", "—"))
+	return strings.TrimSpace(strings.ReplaceAll(b.String(), "<no value>", missing))
 }
 
 // ensureBranches creates the intermediate objects of every field chain used in

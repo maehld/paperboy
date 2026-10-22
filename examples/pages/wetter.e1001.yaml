@@ -17,7 +17,7 @@ blocks:
       items:
         - weight: 14
           block:
-            icon: { source: '{{ .weather.current.symbol }}.png', size: 0.7, padding: 6 }
+            icon: { source: '{{ if .weather.current.symbol }}{{ .weather.current.symbol }}.png{{ end }}', size: 0.7, padding: 6 }
         - weight: 50
           block:
             tiles:
@@ -51,7 +51,7 @@ blocks:
         - weight: 36
           block:
             icon:
-              source: '{{ if or (below .weather.current.apparent 15) (above .weather.current.beaufort 3) }}pullover{{ else }}tshirt{{ end }}.png'
+              source: '{{ if .weather.current }}{{ if or (below .weather.current.apparent 15) (above .weather.current.beaufort 3) }}pullover{{ else }}tshirt{{ end }}.png{{ end }}'
               label: '{{ if or (below .weather.current.apparent 15) (above .weather.current.beaufort 3) }}Pullover{{ else }}T-Shirt{{ end }}'
               size: 0.95
               label_size: 0.75
