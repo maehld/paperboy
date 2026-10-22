@@ -71,8 +71,8 @@ providers:
 {
   "updated": "2026-10-22T09:45:00Z",
   "current": {"time": "...", "temp": 12.4, "apparent": 10.9, "humidity": 78,
-              "precip": 0.0, "precip_prob": 20, "wind": 14.0,
-              "code": 3, "is_day": true, "text": "Bewölkt"},
+              "precip": 0.0, "precip_prob": 20, "wind": 14.0, "beaufort": 3,
+              "code": 3, "is_day": true, "symbol": "cloud", "text": "Bewölkt"},
   "today":   {"min": 8.1, "max": 15.2, "precip_prob": 40,
               "sunrise": "...", "sunset": "..."},
   "days":    [{"date": "2026-10-22", "label": "Do", "min": 8.1, "max": 15.2,
@@ -85,6 +85,7 @@ providers:
 - `hours` covers the local day of the location (midnight to midnight) and uses the point shape of `solar/history/points`, so the existing `chart` block plots it unchanged.
 - The chart connects samples whose timestamps are at most 90 minutes apart; hourly forecast data therefore draws a continuous curve while a real outage stays a gap.
 - The provider delivers the WMO `code`, a short text and the weekday label in the global language (`PAPERBOY_LANGUAGE`). Page templates stay language-neutral (ADR 0033) and cannot map codes without a helper, and a `weather_text` helper would put source-specific knowledge into the service.
+- `current.symbol` names the pictogram of the condition (`sun`, `cloud`, `rain`, `snow`, `thunder`) and `current.beaufort` the wind force, so a page can pick an icon from `icons/` and compare a wind force without knowing the units of the source (ADR 0038).
 - Times are RFC 3339 in UTC; templates and the chart convert to the configured timezone.
 - Daily aggregation uses the timezone of the location, so "today" means the local day at the place, not the Paperboy day.
 

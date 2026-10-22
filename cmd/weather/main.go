@@ -192,8 +192,10 @@ type current struct {
 	Precip     float64  `json:"precip"`
 	PrecipProb *float64 `json:"precip_prob,omitempty"`
 	Wind       float64  `json:"wind"`
+	Beaufort   int      `json:"beaufort"`
 	Code       int      `json:"code"`
 	IsDay      bool     `json:"is_day"`
+	Symbol     string   `json:"symbol"`
 	Text       string   `json:"text"`
 }
 
@@ -241,8 +243,10 @@ func branchOf(f *openMeteo, language string) (branch, error) {
 		Humidity: round1(f.Current.Humidity),
 		Precip:   round2(f.Current.Precip),
 		Wind:     round1(f.Current.Wind),
+		Beaufort: beaufort(f.Current.Wind),
 		Code:     f.Current.Code,
 		IsDay:    f.Current.IsDay != 0,
+		Symbol:   symbol(f.Current.Code),
 		Text:     conditionText(f.Current.Code, language),
 	}
 	b.Current.PrecipProb = at(f.Hourly.PrecipProb, hour)
@@ -340,6 +344,41 @@ func stamp(seconds int64) string {
 func round1(v float64) float64 { return math.Round(v*10) / 10 }
 
 func round2(v float64) float64 { return math.Round(v*100) / 100 }
+
+// beaufortBands are the upper limits of wind force 0 to 11 in km/h; everything
+// above belongs to force 12.
+var beaufortBands = []float64{1, 6, 12, 20, 29, 39, 50, 62, 75, 89, 103, 118}
+
+// beaufort converts a wind speed in km/h to the Beaufort scale, so that page
+// templates can compare a wind force instead of a unit-dependent speed
+// (ADR 0038).
+func beaufort(kmh float64) int {
+	for i, limit := range beaufortBands {
+		if kmh < limit {
+			return i
+		}
+	}
+	return 12
+}
+
+// symbol names the pictogram of a WMO weather code: sun, cloud, rain, snow or
+// thunder. Pages select an icon in icons/ by this name (ADR 0038); the mapping
+// is source-specific knowledge and therefore lives here, not in the service.
+func symbol(code int) string {
+	switch {
+	case code == 0, code == 1:
+		return "sun"
+	case code == 2, code == 3, code == 45, code == 48:
+		return "cloud"
+	case code >= 51 && code <= 67, code >= 80 && code <= 82:
+		return "rain"
+	case code >= 71 && code <= 77, code >= 85 && code <= 86:
+		return "snow"
+	case code >= 95:
+		return "thunder"
+	}
+	return "cloud"
+}
 
 var weekdayNames = map[string][7]string{
 	"de": {"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"},

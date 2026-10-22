@@ -99,7 +99,8 @@ func TestFetchAndBranch(t *testing.T) {
 	}
 	c := b.Current
 	if c.Time != "2026-10-22T09:00:00Z" || c.Temp != 12.4 || c.Apparent != 10.9 || c.Humidity != 78 ||
-		c.Precip != 0.12 || c.Wind != 14.2 || c.Code != 3 || !c.IsDay || c.Text != "Bedeckt" {
+		c.Precip != 0.12 || c.Wind != 14.2 || c.Beaufort != 3 || c.Code != 3 || !c.IsDay ||
+		c.Symbol != "cloud" || c.Text != "Bedeckt" {
 		t.Fatalf("current = %+v", c)
 	}
 	if c.PrecipProb == nil || *c.PrecipProb != 22 {
@@ -185,5 +186,36 @@ func TestWeekday(t *testing.T) {
 	}
 	if got := weekday(d, "en"); got != "Thu" {
 		t.Fatalf("en = %q", got)
+	}
+}
+
+func TestBeaufort(t *testing.T) {
+	tests := []struct {
+		kmh  float64
+		want int
+	}{
+		{0, 0}, {0.9, 0}, {1, 1}, {5.9, 1}, {12, 3}, {19.9, 3}, {20, 4},
+		{29, 5}, {50, 7}, {103, 11}, {117.9, 11}, {118, 12}, {200, 12},
+	}
+	for _, tt := range tests {
+		if got := beaufort(tt.kmh); got != tt.want {
+			t.Fatalf("beaufort(%g) = %d, want %d", tt.kmh, got, tt.want)
+		}
+	}
+}
+
+func TestSymbol(t *testing.T) {
+	tests := []struct {
+		code int
+		want string
+	}{
+		{0, "sun"}, {1, "sun"}, {2, "cloud"}, {3, "cloud"}, {45, "cloud"},
+		{51, "rain"}, {65, "rain"}, {80, "rain"}, {71, "snow"}, {86, "snow"},
+		{95, "thunder"}, {99, "thunder"}, {42, "cloud"},
+	}
+	for _, tt := range tests {
+		if got := symbol(tt.code); got != tt.want {
+			t.Fatalf("symbol(%d) = %q, want %q", tt.code, got, tt.want)
+		}
 	}
 }
