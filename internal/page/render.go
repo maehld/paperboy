@@ -8,6 +8,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 	"text/template/parse"
 	"time"
@@ -63,8 +64,14 @@ func (t *Template) Render(doc *data.Document, d Display, now time.Time, extra ..
 	return t.RenderContext(doc, d, Context{Now: now, Banners: extra})
 }
 
+// renderMu serializes rendering: the cached font faces are not safe for
+// concurrent use, and a page render is cheap.
+var renderMu sync.Mutex
+
 // RenderContext draws the page with the full render context (ADR 0034).
 func (t *Template) RenderContext(doc *data.Document, d Display, c Context) (*image.Paletted, error) {
+	renderMu.Lock()
+	defer renderMu.Unlock()
 	raw, _ := doc.Get("")
 	root, ok := raw.(map[string]any)
 	if !ok {
