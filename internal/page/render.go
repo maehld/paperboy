@@ -291,6 +291,7 @@ func (r *renderer) funcs() template.FuncMap {
 			return r.f.format(v, "time")
 		},
 		"abs":   func(v any) string { return r.f.format(v, "abs") },
+		"ratio": func(v any) string { return r.f.format(v, "ratio") },
 		"now":   func() time.Time { return r.now },
 		"page":  func() int { return r.page },
 		"pages": func() int { return r.pages },
@@ -386,11 +387,9 @@ func (r *renderer) padding(b *Block, override *int) int {
 	return max(p, 0)
 }
 
-// style resolves size, weight and shrink with the given defaults.
-func style(size, defSize float64, weight string, defBold bool, shrink *bool) textStyle {
-	if size <= 0 {
-		size = defSize
-	}
+// style resolves size, weight and shrink with the given defaults. An explicit
+// size is a fraction of refHeight, as in ADR 0034.
+func style(size, refHeight, defFraction float64, weight string, defBold bool, shrink *bool) textStyle {
 	bold := defBold
 	switch weight {
 	case "bold":
@@ -402,7 +401,16 @@ func style(size, defSize float64, weight string, defBold bool, shrink *bool) tex
 	if shrink != nil {
 		sh = *shrink
 	}
-	return textStyle{Size: size, Bold: bold, Shrink: sh}
+	return textStyle{Size: fractionSize(size, refHeight, defFraction), Bold: bold, Shrink: sh}
+}
+
+// fractionSize turns a fraction of refHeight into pixels; zero means the default
+// fraction.
+func fractionSize(size, refHeight, defFraction float64) float64 {
+	if size <= 0 {
+		size = defFraction
+	}
+	return size * refHeight
 }
 
 func pickShrink(a, b *bool) *bool {
@@ -465,10 +473,7 @@ func (r *renderer) header(img *image.Paletted, rc image.Rectangle, b Block) {
 	}
 
 	statusShrink := h.Shrink
-	statusSize := h.StatusSize
-	if statusSize <= 0 {
-		statusSize = float64(hgt) * 0.45
-	}
+	statusSize := fractionSize(h.StatusSize, float64(hgt), 0.45)
 	statusBold := h.StatusWeight == "bold" || (stale && h.StatusWeight == "")
 	statusWidth := 0
 	if statusText != "" {
@@ -497,11 +502,11 @@ func (r *renderer) header(img *image.Paletted, rc image.Rectangle, b Block) {
 	if subtitle != "" {
 		baseline = bodyTop + (bodyBottom-bodyTop)*45/100
 	}
-	titleStyle := style(h.TitleSize, float64(hgt)*0.5, h.TitleWeight, true, h.Shrink)
+	titleStyle := style(h.TitleSize, float64(hgt), 0.5, h.TitleWeight, true, h.Shrink)
 	drawStyled(img, title, x, baseline, titleStyle, right-left, color.Black, align)
 
 	if subtitle != "" {
-		subStyle := style(h.SubtitleSize, float64(hgt)*0.22, h.SubtitleWeight, false, h.Shrink)
+		subStyle := style(h.SubtitleSize, float64(hgt), 0.22, h.SubtitleWeight, false, h.Shrink)
 		drawStyled(img, subtitle, x, bodyBottom, subStyle, right-left, color.Black, align)
 	}
 
@@ -568,10 +573,10 @@ func (r *renderer) tile(img *image.Paletted, cell image.Rectangle, tile Tile, li
 	align := parseAlign(tile.Align, parseAlign(list.Align, alignLeft))
 	shrink := pickShrink(tile.Shrink, list.Shrink)
 
-	labelStyle := style(tile.LabelSize, float64(ch)*0.20, tile.LabelWeight, false, shrink)
-	valueStyle := style(tile.ValueSize, float64(ch)*0.34, tile.ValueWeight, true, shrink)
+	labelStyle := style(tile.LabelSize, float64(ch), 0.20, tile.LabelWeight, false, shrink)
+	valueStyle := style(tile.ValueSize, float64(ch), 0.34, tile.ValueWeight, true, shrink)
 	detail := r.expand(tile.Detail)
-	detailStyle := style(tile.DetailSize, float64(ch)*0.17, tile.DetailWeight, false, shrink)
+	detailStyle := style(tile.DetailSize, float64(ch), 0.17, tile.DetailWeight, false, shrink)
 
 	x := cell.Min.X + pad
 	switch align {
@@ -609,10 +614,10 @@ func (r *renderer) rows(img *image.Paletted, rc image.Rectangle, b Block) {
 			hline(img, rc.Min.X+pad, y-rs.Rule/2, rc.Max.X-pad, rs.Rule)
 		}
 		shrink := pickShrink(item.Shrink, rs.Shrink)
-		labelStyle := style(item.LabelSize, float64(step)*0.40, item.LabelWeight, false, shrink)
-		valueStyle := style(item.ValueSize, float64(step)*0.40, item.ValueWeight, true, shrink)
+		labelStyle := style(item.LabelSize, float64(step), 0.40, item.LabelWeight, false, shrink)
+		valueStyle := style(item.ValueSize, float64(step), 0.40, item.ValueWeight, true, shrink)
 		detail := r.expand(item.Detail)
-		detailStyle := style(item.DetailSize, float64(step)*0.30, item.DetailWeight, false, shrink)
+		detailStyle := style(item.DetailSize, float64(step), 0.30, item.DetailWeight, false, shrink)
 
 		labelBase := y + step*7/10
 		detailBase := y + step*85/100
@@ -650,7 +655,7 @@ func (r *renderer) text(img *image.Paletted, rc image.Rectangle, b Block) {
 		x = rc.Max.X - pad
 	}
 	for i, line := range lines {
-		st := style(t.Size, float64(lineHeight)*0.5, t.Weight, false, t.Shrink)
+		st := style(t.Size, float64(lineHeight), 0.5, t.Weight, false, t.Shrink)
 		baseline := rc.Min.Y + pad + i*lineHeight + lineHeight*3/5
 		drawStyled(img, line, x, baseline, st, rc.Dx()-2*pad, color.Black, align)
 	}

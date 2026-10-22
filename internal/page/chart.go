@@ -85,7 +85,7 @@ func (r *renderer) chart(img *image.Paletted, rc image.Rectangle, c *Chart, padd
 			labelWidth = w
 		}
 		left += labelWidth + 4
-		bottom -= int(fontSize) + 4
+		bottom -= int(fontSize) + int(fontSize/3) + 8
 	}
 	if right-left < 4 || bottom-top < 4 {
 		return
@@ -165,7 +165,8 @@ func (r *renderer) chartAxis(img *image.Paletted, c *Chart, inner image.Rectangl
 	if ticks <= 0 {
 		ticks = 6 * time.Hour
 	}
-	baseline := bottom + 2 + int(fontSize)
+	tickLen := max(2, int(fontSize/3))
+	baseline := bottom + tickLen + int(fontSize) + 2
 	lastRight := inner.Min.X - 1
 	span := float64(end.Sub(start))
 	for t := start; !t.After(end); t = t.Add(ticks) {
@@ -176,7 +177,7 @@ func (r *renderer) chartAxis(img *image.Paletted, c *Chart, inner image.Rectangl
 			x = right
 		}
 		if x >= inner.Min.X && x <= inner.Max.X {
-			vline(img, x, bottom, bottom+int(fontSize/2), chartAxisThickness)
+			vline(img, x, bottom, bottom+tickLen, chartAxisThickness)
 		}
 		label := chartTickLabel(minutes)
 		w := measure(label, fontSize, false)
