@@ -20,12 +20,10 @@ The templates expect the data paths described in ADR 0024, ADR 0034 and ADR 0036
 
 `icons/` holds single-colour PNG pictograms for the `icon` block (ADR 0038):
 `sun`, `cloud`, `rain`, `snow`, `thunder`, `tshirt` and `pullover`. They are
-drawn by `gen.go`, which is excluded from the build:
-
-```powershell
-go run examples/icons/gen.go -out examples/icons
-```
+taken from [OpenMoji](https://openmoji.org) (black style, CC BY-SA 4.0); see
+`icons/README.md` for the source files and the licence.
 
 Copy the files you need into the `icons/` directory of the instance. Paperboy
-reduces each picture to a mask, so black motifs on a transparent or white
-background both work and the same file renders on 1-bit and 4-gray displays.
+reduces each picture to a mask, trims the margins, so black motifs on a
+transparent or white background both work and the same file renders on 1-bit
+and 4-gray displays.
