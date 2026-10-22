@@ -217,7 +217,7 @@ Templates do not gain arithmetic or business calculations. Only presentation thr
 
 ## Resolved open questions
 
-1. `size` is a fraction of the block height. In `tiles` it is relative to the cell height, in `rows` to the item height.
+1. `size` is a fraction of the block height. In `tiles` it is relative to the cell height, in `rows` to the item height and in `text` to the line height.
 2. `shrink` defaults to `true`, keeping current behavior and avoiding clipped text.
 3. `columns` is one level deep. Nested `columns` are rejected.
 4. `bar` covers the vector primitives the four reference pages need. No `shape` block is added.
