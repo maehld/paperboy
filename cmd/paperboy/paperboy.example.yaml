@@ -1,5 +1,8 @@
-# Paperboy configuration (ADR 0026). Relative paths refer to this file.
-# Copy to paperboy.yaml next to the working directory, or pass -config.
+# Paperboy configuration (ADR 0026), placed in the instance directory you pass
+# with -config (ADR 0037). The instance directory also holds pages/, plans/,
+# providers/ and the state/ directory; no paths are configured here.
+# Layout: <dir>/paperboy.yaml, <dir>/pages, <dir>/plans, <dir>/providers,
+# <dir>/state/{devices.json,data.json}.
 
 # Optional; default: system language and timezone (ADR 0033).
 # language: de            # de or en: built-in texts and number format
@@ -9,17 +12,9 @@ server:
   # public_url: https://paper.example.com   # only needed behind a reverse proxy
   upload_token_env: PAPERBOY_UPLOAD_TOKEN   # or upload_token: "a long random token"
 
-# Optional; without these keys the page, plan and provider directories default
-# to <data>/pages, <data>/plans and <data>/providers.
-# directories:
-#   pages: pages
-#   plans: plans
-#   providers: providers
-#   data: paperboy-data
-
-# Optional exec providers (ADR 0036). The program lives in the providers
-# directory (default <data>/providers), prints the new value of its branch as
-# JSON on stdout and gets PAPERBOY_LANGUAGE and PAPERBOY_TIMEZONE from Paperboy.
+# Optional exec providers (ADR 0036). The program lives in providers/ and prints
+# the new value of its branch as JSON on stdout; it gets PAPERBOY_LANGUAGE and
+# PAPERBOY_TIMEZONE from Paperboy.
 # providers:
 #   weather:
 #     command: [weather, -lat, "52.52", -lon, "13.40"]

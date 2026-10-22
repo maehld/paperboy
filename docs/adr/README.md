@@ -20,9 +20,9 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0018](0018-opendisplay-im-display-service.md) | OpenDisplay im Display-Service | Teilweise abgelöst durch ADR-0019 |
 | [0019](0019-epaper-aus-solarai-entfernen.md) | ePaper-Sender aus SolarAI entfernen | Akzeptiert |
 | [0020](0020-akkuwarnung-trmnl.md) | Akkuwarnung für TRMNL-Geräte | Akzeptiert |
-| [0024](0024-layouts-im-display-service.md) | Daten statt Bilder – Datendokument und YAML-Layouts im Display-Service | Akzeptiert, teilweise umgesetzt; Sprache/Formatierung teilweise abgelöst durch ADR-0033 |
+| [0024](0024-layouts-im-display-service.md) | Daten statt Bilder – Datendokument und YAML-Layouts im Display-Service | Akzeptiert, teilweise umgesetzt; Sprache/Formatierung teilweise abgelöst durch ADR-0033, Ablageort abgelöst durch ADR-0037 |
 | [0025](0025-plaene-je-display.md) | Pläne – regelbasierte Seitenauswahl je Display | Akzeptiert, umgesetzt für TRMNL-Geräte; Zeitzone abgelöst durch ADR-0033 |
-| [0026](0026-konfiguration-als-yaml.md) | Konfiguration als YAML mit Displayarten und Geräten | Akzeptiert, teilweise umgesetzt (Konfiguration wird noch nicht neu geladen) |
+| [0026](0026-konfiguration-als-yaml.md) | Konfiguration als YAML mit Displayarten und Geräten | Akzeptiert, teilweise umgesetzt (Konfiguration wird noch nicht neu geladen); `directories` abgelöst durch ADR-0037 |
 | [0027](0027-textdisplays-und-http-geraete.md) | Textdisplays und einfache HTTP-Geräte | Akzeptiert, Umsetzung ausstehend |
 | [0028](0028-paperboy-eigenes-repository.md) | Display-Service als „Paperboy“ in eigenem Repository | Akzeptiert |
 | [0029](0029-repository-trennung-umgesetzt.md) | Repository-Trennung SolarAI / Paperboy umgesetzt | Akzeptiert |
@@ -32,4 +32,5 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0033](0033-global-language-and-timezone.md) | Global language and timezone in the configuration | Accepted |
 | [0034](0034-layout-primitives-and-typography.md) | Layout primitives and typography in page templates | Accepted, implemented |
 | [0035](0035-duration-format.md) | Duration format and explicit charge direction for derived values | Accepted, implemented |
-| [0036](0036-exec-providers.md) | Exec providers in the data directory | Accepted, implemented |
+| [0036](0036-exec-providers.md) | Exec providers in the data directory | Accepted, implemented; providers directory moved by ADR-0037 |
+| [0037](0037-instance-directory-layout.md) | One instance directory with a fixed layout | Accepted, implemented |

@@ -1,6 +1,6 @@
 // Package paperboy serves ePaper devices running the TRMNL firmware. Pages are
 // rendered from templates and chosen by plans (ADR 0024, 0025); the
-// configuration is YAML (ADR 0026).
+// configuration is YAML (ADR 0026) in a fixed instance directory (ADR 0037).
 package paperboy
 
 import (
@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
@@ -54,7 +55,7 @@ type Profile struct {
 	MinRefresh Duration `json:"min_refresh"` // reported intervals never go below this
 }
 
-// Device is one physical display. Its ID is stable and used in state.json, logs
+// Device is one physical display. Its ID is stable and used in state/devices.json, logs
 // and the devices API; the TRMNL API identifies it by its Wi-Fi MAC address.
 type Device struct {
 	ID      string
@@ -123,18 +124,29 @@ const (
 	defaultMinRefresh  = time.Minute
 )
 
+// Fixed names of the instance directory (ADR 0037).
+const (
+	configFileName   = "paperboy.yaml"
+	pagesDirName     = "pages"
+	plansDirName     = "plans"
+	providersDirName = "providers"
+	stateDirName     = "state"
+	devicesFileName  = "devices.json"
+	dataFileName     = "data.json"
+)
+
 // Config is the validated runtime configuration.
 type Config struct {
+	Dir          string // instance directory from -config; holds pages, plans, providers and state (ADR 0037)
 	UploadToken  string
 	PublicURL    string
 	Language     string         // "de" or "en"; built-in texts and number formats
 	Timezone     *time.Location // plans and built-in dates
 	Refresh      Duration       // default interval of a device; a plan rule may override it
 	PageTimeout  Duration
-	DataDir      string // from directories.data; empty = -data or paperboy-data
-	Pages        string // page templates; empty = <data>/pages
-	Plans        string // page plans; empty = <data>/plans
-	ProvidersDir string // provider programs; empty = <data>/providers
+	Pages        string // page templates: <dir>/pages
+	Plans        string // page plans: <dir>/plans
+	ProvidersDir string // provider programs: <dir>/providers
 	Profiles     map[string]Profile
 	Devices      []Device
 	Providers    []Provider // exec providers (ADR 0036)
@@ -178,12 +190,6 @@ type fileConfig struct {
 		UploadToken    string `yaml:"upload_token"`
 		UploadTokenEnv string `yaml:"upload_token_env"`
 	} `yaml:"server"`
-	Directories struct {
-		Pages     string `yaml:"pages"`
-		Plans     string `yaml:"plans"`
-		Data      string `yaml:"data"`
-		Providers string `yaml:"providers"`
-	} `yaml:"directories"`
 	Defaults struct {
 		Refresh     Duration `yaml:"refresh"`
 		PageTimeout Duration `yaml:"page_timeout"`
@@ -215,13 +221,28 @@ type fileConfig struct {
 	} `yaml:"devices"`
 }
 
-// LoadConfig reads and validates the YAML configuration. Relative directories
-// are resolved against the directory of the file. The environment variable
-// PAPERBOY_UPLOAD_TOKEN (formerly DISPLAYD_UPLOAD_TOKEN, still accepted)
-// overrides the configured token so secrets can stay out of files.
-func LoadConfig(path string) (*Config, error) {
-	if strings.EqualFold(filepath.Ext(path), ".json") {
-		return nil, fmt.Errorf("%s: JSON configuration is no longer supported; convert it to YAML (see paperboy.example.yaml)", path)
+// LoadConfig reads and validates the configuration of an instance directory
+// (ADR 0037): <dir>/paperboy.yaml, with pages, plans, providers and state as
+// fixed subdirectories. The environment variable PAPERBOY_UPLOAD_TOKEN
+// (formerly DISPLAYD_UPLOAD_TOKEN, still accepted) overrides the configured
+// token so secrets can stay out of files.
+func LoadConfig(dir string) (*Config, error) {
+	fi, err := os.Stat(dir)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.IsDir() {
+		return nil, fmt.Errorf("%s: -config expects the instance directory that contains %s, not a file", dir, configFileName)
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	path := filepath.Join(dir, configFileName)
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		if _, err := os.Stat(filepath.Join(dir, "paperboy.json")); err == nil {
+			return nil, fmt.Errorf("%s: JSON configuration is no longer supported; convert it to %s (see paperboy.example.yaml)", filepath.Join(dir, "paperboy.json"), configFileName)
+		}
+		return nil, fmt.Errorf("%s: no %s in the instance directory", dir, configFileName)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -241,7 +262,6 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("%s: only one YAML document is allowed", path)
 	}
 
-	base := filepath.Dir(path)
 	tz := time.Local
 	if f.Timezone != "" {
 		loc, err := time.LoadLocation(f.Timezone)
@@ -251,6 +271,7 @@ func LoadConfig(path string) (*Config, error) {
 		tz = loc
 	}
 	c := &Config{
+		Dir:          dir,
 		UploadToken:  f.Server.UploadToken,
 		PublicURL:    f.Server.PublicURL,
 		Language:     f.Language,
@@ -258,10 +279,9 @@ func LoadConfig(path string) (*Config, error) {
 		Refresh:      f.Defaults.Refresh,
 		PageTimeout:  f.Defaults.PageTimeout,
 		Battery:      f.Defaults.Battery,
-		DataDir:      resolveDir(base, f.Directories.Data),
-		Pages:        resolveDir(base, f.Directories.Pages),
-		Plans:        resolveDir(base, f.Directories.Plans),
-		ProvidersDir: resolveDir(base, f.Directories.Providers),
+		Pages:        filepath.Join(dir, pagesDirName),
+		Plans:        filepath.Join(dir, plansDirName),
+		ProvidersDir: filepath.Join(dir, providersDirName),
 		Profiles:     make(map[string]Profile, len(f.DisplayTypes)),
 	}
 	if name := f.Server.UploadTokenEnv; name != "" {
@@ -333,16 +353,6 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return c, nil
-}
-
-func resolveDir(base, p string) string {
-	if p == "" {
-		return ""
-	}
-	if filepath.IsAbs(p) {
-		return p
-	}
-	return filepath.Join(base, p)
 }
 
 func (c *Config) validate() error {

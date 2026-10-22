@@ -1,15 +1,21 @@
 # Example: Paperboy as a container.
-# First create paperboy.yaml from cmd/paperboy/paperboy.example.yaml and
-# set PAPERBOY_UPLOAD_TOKEN (at least 16 characters) in a .env file.
+# Create an instance directory first (ADR 0037) with paperboy.yaml, pages/,
+# plans/ and providers/; Paperboy creates state/ itself. Copy the example from
+# cmd/paperboy/paperboy.example.yaml, set PAPERBOY_UPLOAD_TOKEN (at least 16
+# characters) in a .env file, then mount the directory at /config.
 services:
   paperboy:
     build: .
-    command: ["-config", "/config/paperboy.yaml", "-data", "/data"]
     environment:
       PAPERBOY_UPLOAD_TOKEN: ${PAPERBOY_UPLOAD_TOKEN}
     ports: ["8090:8090"]
-    volumes: ["./paperboy.yaml:/config/paperboy.yaml:ro", "paperboy-data:/data"]
+    volumes: ["./paperboy:/config"]
     restart: unless-stopped
-
-volumes:
-  paperboy-data:
+    # Read-only configuration: replace the volumes line above with the
+    # following, so that only state/ is writable.
+    # volumes:
+    #   - "./paperboy/paperboy.yaml:/config/paperboy.yaml:ro"
+    #   - "./paperboy/pages:/config/pages:ro"
+    #   - "./paperboy/plans:/config/plans:ro"
+    #   - "./paperboy/providers:/config/providers:ro"
+    #   - "./paperboy/state:/config/state"

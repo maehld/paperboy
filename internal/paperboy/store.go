@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// deviceState is persisted per device ID in state.json.
+// deviceState is persisted per device ID in state/devices.json.
 type deviceState struct {
 	APIKey         string    `json:"api_key"`
 	FriendlyID     string    `json:"friendly_id"`
@@ -70,7 +70,7 @@ func migrateState(state map[string]*deviceState, devices []Device) (int, error) 
 			id, moved = target, moved+1
 		}
 		if old, ok := out[id]; ok && old != st {
-			return 0, fmt.Errorf("state.json: several entries map to device %q; remove the outdated one", id)
+			return 0, fmt.Errorf("devices.json: several entries map to device %q; remove the outdated one", id)
 		}
 		out[id] = st
 	}

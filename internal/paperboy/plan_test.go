@@ -25,14 +25,14 @@ func planServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 	plans := filepath.Join(dir, "plans")
 	writePageFile(t, filepath.Join(plans, "zimmer.yaml"), planYAML)
 
-	cfg := &Config{UploadToken: testToken, Pages: pages, Plans: plans, Timezone: time.UTC,
+	cfg := &Config{Dir: dir, UploadToken: testToken, Timezone: time.UTC,
 		Profiles: map[string]Profile{"small": {Width: 40, Height: 20, Gray: true}},
 		Devices: []Device{{ID: "test", MAC: planDeviceMAC, Profile: "small", Plan: "zimmer",
 			Refresh: Duration(10 * time.Minute)}}}
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)
 	}
-	s, err := New(cfg, dir)
+	s, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

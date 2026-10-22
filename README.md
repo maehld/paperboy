@@ -1,32 +1,50 @@
 # Paperboy
 
-Paperboy is a small display service for ePaper displays. It renders pages from YAML templates fed by a shared data document and delivers them to devices running the unmodified [TRMNL firmware](https://github.com/usetrmnl/trmnl-firmware) (deep sleep, battery operation). Data providers push JSON over HTTP or run as small programs in the data directory (ADR 0032, ADR 0036).
+Paperboy is a small display service for ePaper displays. It renders pages from YAML templates fed by a shared data document and delivers them to devices running the unmodified [TRMNL firmware](https://github.com/usetrmnl/trmnl-firmware) (deep sleep, battery operation). Data providers push JSON over HTTP or run as small programs in the instance's providers directory (ADR 0032, ADR 0036).
 
 Paperboy evolved from SolarAI's display service `displayd` (ADR 0028); the Git history of the carried-over files is preserved.
 
 ```text
 Provider ──PUT /api/data/{path}──▶ paperboy ◀──GET /api/display── Display (TRMNL)
-Provider program ──stdout──▶ paperboy (exec provider, data directory)
+Provider program ──stdout──▶ paperboy (exec provider, providers/)
 ```
 
 ## Quick start
 
-1. Create the configuration: copy `cmd/paperboy/paperboy.example.yaml` to `paperboy.yaml`, set the token and enter the MAC addresses of the displays (allow list; unknown devices are rejected and reported with their MAC in the log).
-2. Create a page template `paperboy-data/pages/standard.e1001.yaml` and a plan `paperboy-data/plans/standard.yaml`, then set `plan: standard` on the device. Without a plan a device only shows a notice page.
+1. Create an instance directory with the fixed layout (ADR 0037): `paperboy.yaml` plus `pages/`, `plans/`, `providers/` and `state/`. Copy `cmd/paperboy/paperboy.example.yaml` to `<instance>/paperboy.yaml`, set the token and enter the MAC addresses of the displays (allow list; unknown devices are rejected and reported with their MAC in the log).
+2. Create a page template `pages/standard.e1001.yaml` and a plan `plans/standard.yaml`, then set `plan: standard` on the device. Without a plan a device only shows a notice page.
 3. Start:
    ```powershell
-   go run ./cmd/paperboy -config paperboy.yaml -listen :8090
+   go run ./cmd/paperboy -config . -listen :8090
    # Push data, e.g.:
    curl -X PUT -H "Authorization: Bearer <token>" -d '{"pv_power": 4200}' http://127.0.0.1:8090/api/data/solar/current
    ```
    Alternatively as a container: `Dockerfile` and `compose.example.yaml`.
 4. Flash the firmware: E1001 via the [Seeed wiki flasher](https://wiki.seeedstudio.com/reterminal_e10xx_trmnl/) (1.6.7 or later), Sticky via the [Sticky playground](https://www.seeedstudio.com/sticky/playground/) (TRMNL). In the Wi-Fi setup portal, enter `http://<computer>:8090` as the server URL.
 
-**Migrating from `displayd`:** the data directory can be reused (`-data displayd-data`), and devices need no new setup as long as address and port stay the same. The configuration must be converted to YAML; `paperboy.json` is no longer read. The environment variable is now called `PAPERBOY_UPLOAD_TOKEN`; `DISPLAYD_UPLOAD_TOKEN` is still accepted.
+**Migrating from `displayd` or an older Paperboy:** in the instance directory create `state/`, move the old `state.json` to `state/devices.json` and `data.json` to `state/data.json` (usually out of `paperboy-data/` or `displayd-data/`), and move `pages/`, `plans/` and `providers/` to the instance directory. Remove the `directories` section from `paperboy.yaml` and start with `-config <dir>`; a `paperboy.json` is no longer read. Devices need no new setup as long as address and port stay the same and `devices.json` is kept. The environment variable is `PAPERBOY_UPLOAD_TOKEN`; `DISPLAYD_UPLOAD_TOKEN` is still accepted.
+
+## Instance directory
+
+Paperboy is configured with one instance directory, `-config <dir>` (default `.`). Its layout is fixed (ADR 0037):
+
+```text
+<dir>/
+  paperboy.yaml      configuration
+  pages/             page templates <page>.<display type>.yaml
+  plans/             plans <name>.yaml
+  providers/         exec provider programs (ADR 0036)
+  state/             written by Paperboy only
+    devices.json     device register with API keys, page cursor and battery level
+    data.json        last state of the data document
+```
+
+- `paperboy.yaml`, `pages/`, `plans/` and `providers/` are yours: Paperboy only reads them and never creates them.
+- `state/` is created at startup and is the only directory Paperboy writes. Back up `state/devices.json` in particular: without it every display needs a new setup. `state/data.json` is refilled by the providers, but keeps the last values across a restart.
 
 ## Configuration
 
-`paperboy.yaml` is the only configuration format (ADR 0026). Parsing is strict: unknown keys abort the start, as do missing plans, duplicate MAC addresses and unsupported protocols.
+`paperboy.yaml` is the only configuration format (ADR 0026) and lives in the instance directory. Parsing is strict: unknown keys abort the start, as do missing plans, duplicate MAC addresses and unsupported protocols.
 
 ```yaml
 language: de            # de or en; default: system language
@@ -34,10 +52,6 @@ timezone: Europe/Berlin # IANA zone; default: system timezone
 server:
   # public_url: https://paper.example.com   # only needed behind a reverse proxy
   upload_token_env: PAPERBOY_UPLOAD_TOKEN    # or upload_token: "a long random token"
-directories:                                  # relative to this file
-  pages: pages
-  plans: plans
-  data: paperboy-data
 defaults:
   refresh: 5m          # regular sleep time; plans may override it
   page_timeout: 5m     # back to the first page after this
@@ -59,12 +73,12 @@ devices:
     battery: { warn_volts: 3.5 }          # optional, 0 inherits the default
 ```
 
-- The map key under `devices` is the stable device ID (a-z, 0-9, `-`). It appears in logs, in `GET /api/devices` and in `state.json`; existing MAC-keyed state is migrated automatically at startup.
+- The map key under `devices` is the stable device ID (a-z, 0-9, `-`). It appears in logs, in `GET /api/devices` and in `state/devices.json`; existing MAC-keyed state is migrated automatically at startup.
 - `language` (`de` or `en`) selects the language of the built-in image texts and the number format. Without it Paperboy uses the system language (Windows UI language, otherwise `LANG`/`LC_ALL`/`LC_MESSAGES`) and falls back to English. `timezone` (IANA name) applies to plans and built-in dates; without it the system timezone is used.
 - `protocol` accepts only `trmnl` for now. `opendisplay` is rejected until plans cover it, `text-http`/`image-http` and `kind: text` follow with ADR 0027.
 - `plan` must name an existing `plans/<name>.yaml`; a missing file aborts the start, a broken plan shows a notice page. Without `plan` the device shows a notice page in the configured language („Kein Plan konfiguriert“ / “No plan configured”).
 - `upload_token_env` names the variable that holds the token; `upload_token` puts it into the file. `PAPERBOY_UPLOAD_TOKEN` (and the legacy `DISPLAYD_UPLOAD_TOKEN`) override both.
-- `-config` defaults to `paperboy.yaml`; passing a `.json` file is rejected with a hint. `-data` overrides `directories.data`, the page, plan and provider directories then default to `<data>/pages`, `<data>/plans` and `<data>/providers`.
+- `-config` names the instance directory (default `.`); Paperboy reads `<dir>/paperboy.yaml` and finds all other directories there. A file argument is rejected with an explanation, and a `.json` configuration is no longer read.
 - The configuration is read once at startup; reloading it without a restart is still open (TODO).
 
 ## Behavior
@@ -81,7 +95,7 @@ devices:
 
 ## Page templates
 
-Pages are rendered from the data document: `<page>.<display type>.yaml` in the `pages` directory (`directories.pages`, default `<data>/pages`). `rows` gives the relative row heights, every row holds exactly one block, and the block `name` is its region name (ADR 0032).
+Pages are rendered from the data document: `<page>.<display type>.yaml` in `pages/`. `rows` gives the relative row heights, every row holds exactly one block, and the block `name` is its region name (ADR 0032).
 
 ```yaml
 title: Solar
@@ -139,7 +153,7 @@ blocks:
 
 Implemented blocks are `header`, `tiles`, `rows`, `chart`, `text`, `columns` and `bar`.
 
-The four SolarAI reference pages (overview detailed and compact, battery, daily balance and daily history) are in `examples/pages`, with an example plan in `examples/plans/solar.yaml`. The weather page (`wetter.e1001.yaml`, `wetter.sticky.yaml`) belongs to the Open-Meteo provider. Copy them into the configured pages directory and rename the display-type suffix if needed; the golden-image tests in `internal/page` render them with a fixed data document.
+The four SolarAI reference pages (overview detailed and compact, battery, daily balance and daily history) are in `examples/pages`, with an example plan in `examples/plans/solar.yaml`. The weather page (`wetter.e1001.yaml`, `wetter.sticky.yaml`) belongs to the Open-Meteo provider. Copy them into the `pages/` directory of your instance and rename the display-type suffix if needed; the golden-image tests in `internal/page` render them with a fixed data document.
 
 ## Providers
 
@@ -157,7 +171,7 @@ providers:
     timeout: 30s          # default 30s, not longer than the interval
 ```
 
-- The program lives in the providers directory (`directories.providers`, default `<data>/providers`); `command` is an argument vector, never a shell string. A relative name is looked up there first, then on `PATH`.
+- The program lives in `providers/` of the instance directory; `command` is an argument vector, never a shell string. A relative name is looked up there first, then on `PATH`.
 - Exit code 0 and valid JSON → the branch is replaced. Any failure (non-zero exit, timeout, output above 1 MB, invalid JSON) is logged and leaves the previous data alone, so the stale notice appears instead of an error page.
 - The write time is the run time, unless the output contains a top-level `updated` RFC 3339 string: then that data time applies, as with `X-Data-Time` on the HTTP API.
 - Every provider sees `PAPERBOY_LANGUAGE` and `PAPERBOY_TIMEZONE`; the language is global (ADR 0033), providers do not carry their own.
@@ -166,15 +180,15 @@ providers:
 **Weather:** `cmd/weather` maps [Open-Meteo](https://open-meteo.com/) (no API key) to the branch `weather` and is a ready-made provider:
 
 ```powershell
-go build -o paperboy-data/providers/weather.exe ./cmd/weather   # or ./scripts/build.ps1
-paperboy-data/providers/weather.exe -lat 52.52 -lon 13.40 | ConvertFrom-Json | Select-Object updated
+go build -o providers/weather.exe ./cmd/weather   # or ./scripts/build.ps1
+providers/weather.exe -lat 52.52 -lon 13.40 | ConvertFrom-Json | Select-Object updated
 ```
 
 It writes `current` (temperature, apparent temperature, humidity, precipitation, probability, wind, condition), `today` (min/max, probability, sunrise, sunset), `days` (five days with weekday label and condition text) and `hours` (the local day as chart points). `examples/pages/wetter.e1001.yaml` and `wetter.sticky.yaml` render it.
 
 ## Plans
 
-Which pages a device shows is decided by a plan, `<name>.yaml` in the `plans` directory (`directories.plans`, default `<data>/plans`). A device points to it with `plan: wohnzimmer`; several devices may share a plan. A plan only names pages, so it works for devices of different display types.
+Which pages a device shows is decided by a plan, `<name>.yaml` in `plans/`. A device points to it with `plan: wohnzimmer`; several devices may share a plan. A plan only names pages, so it works for devices of different display types.
 
 ```yaml
 rules:

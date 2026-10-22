@@ -14,11 +14,6 @@ timezone: Europe/Berlin
 server:
   public_url: https://paper.example.com/
   upload_token_env: TEST_UPLOAD_TOKEN
-directories:
-  pages: pages
-  plans: plans
-  data: data
-  providers: providers
 defaults:
   refresh: 10m
   page_timeout: 3m
@@ -52,8 +47,8 @@ providers:
     env: { OPEN_METEO_KEY: secret }
 `
 
-// loadConfig writes text as paperboy.yaml next to a fresh temporary directory
-// and loads it. The token comes from the environment.
+// loadConfig writes text as paperboy.yaml into a fresh instance directory and
+// loads it. The token comes from the environment.
 func loadConfig(t *testing.T, text string) (*Config, string, error) {
 	t.Helper()
 	dir := t.TempDir()
@@ -61,7 +56,7 @@ func loadConfig(t *testing.T, text string) (*Config, string, error) {
 	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := LoadConfig(path)
+	cfg, err := LoadConfig(dir)
 	return cfg, dir, err
 }
 
@@ -85,8 +80,8 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.Timezone == nil || cfg.Timezone.String() != "Europe/Berlin" {
 		t.Fatalf("timezone: %v", cfg.Timezone)
 	}
-	if cfg.Pages != filepath.Join(dir, "pages") || cfg.Plans != filepath.Join(dir, "plans") || cfg.DataDir != filepath.Join(dir, "data") {
-		t.Fatalf("directories: %q %q %q", cfg.Pages, cfg.Plans, cfg.DataDir)
+	if cfg.Dir != dir || cfg.Pages != filepath.Join(dir, "pages") || cfg.Plans != filepath.Join(dir, "plans") {
+		t.Fatalf("instance layout: %q %q %q", cfg.Dir, cfg.Pages, cfg.Plans)
 	}
 	if cfg.ProvidersDir != filepath.Join(dir, "providers") {
 		t.Fatalf("providers directory: %q", cfg.ProvidersDir)
@@ -182,6 +177,7 @@ func TestLoadConfigErrors(t *testing.T) {
 		{"provider overlap", strings.Replace(validConfig, "    path: weather\n", "    path: weather/current\n", 1) +
 			"  weather2:\n    command: [weather]\n    path: weather\n", "one owner"},
 		{"gray levels", strings.Replace(validConfig, "gray_levels: 4", "gray_levels: 2", 1), ""},
+		{"directories", "directories:\n  pages: pages\n" + validConfig, "field directories not found"},
 		{"empty", "", "empty configuration"},
 		{"two documents", validConfig + "\n---\nserver: {}\n", "only one YAML document"},
 	}
@@ -204,20 +200,25 @@ func TestLoadConfigRejectsJSON(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"upload_token":"0123456789abcdef"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "YAML") {
+	if _, err := LoadConfig(dir); err == nil || !strings.Contains(err.Error(), "paperboy.yaml") {
 		t.Fatalf("JSON config: %v", err)
 	}
 }
 
-func TestLoadConfigKeepsAbsoluteDirectories(t *testing.T) {
-	t.Setenv("TEST_UPLOAD_TOKEN", "0123456789abcdef")
-	pages := t.TempDir()
-	cfg, _, err := loadConfig(t, strings.Replace(validConfig, "pages: pages", "pages: "+pages, 1))
-	if err != nil {
+func TestLoadConfigRejectsMissingConfig(t *testing.T) {
+	if _, err := LoadConfig(t.TempDir()); err == nil || !strings.Contains(err.Error(), "paperboy.yaml") {
+		t.Fatalf("missing config: %v", err)
+	}
+}
+
+func TestLoadConfigRejectsFilePath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "paperboy.yaml")
+	if err := os.WriteFile(path, []byte(validConfig), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Pages != pages {
-		t.Fatalf("absolute pages: %q", cfg.Pages)
+	if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "instance directory") {
+		t.Fatalf("file argument: %v", err)
 	}
 }
 
