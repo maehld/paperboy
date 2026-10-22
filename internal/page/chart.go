@@ -43,7 +43,7 @@ func (r *renderer) chart(img *image.Paletted, rc image.Rectangle, c *Chart, padd
 		return
 	}
 
-	fontSize := math.Max(6, math.Min(11, float64(rc.Dy())/12))
+	fontSize := math.Max(6, math.Min(float64(rc.Dy())*0.09, float64(rc.Dx())/30))
 	ymax := chartYMax(c, maxV)
 
 	title := r.expand(c.Title)
@@ -175,6 +175,9 @@ func (r *renderer) chartAxis(img *image.Paletted, c *Chart, inner image.Rectangl
 		if x > right {
 			x = right
 		}
+		if x >= inner.Min.X && x <= inner.Max.X {
+			vline(img, x, bottom, bottom+int(fontSize/2), chartAxisThickness)
+		}
 		label := chartTickLabel(minutes)
 		w := measure(label, fontSize, false)
 		ax, align := x, alignCenter
@@ -203,15 +206,33 @@ func (r *renderer) chartAxis(img *image.Paletted, c *Chart, inner image.Rectangl
 // chartTickLabel formats a tick of the time axis as hours since midnight.
 func chartTickLabel(minutes int) string {
 	if minutes%60 == 0 {
-		return fmt.Sprintf("%02d", minutes/60)
+		return fmt.Sprintf("%d:00", minutes/60)
 	}
 	return fmt.Sprintf("%d:%02d", minutes/60, minutes%60)
 }
 
-// chartLabel formats a y value with the chart unit.
+// chartLabel formats a y value with the chart unit. Axis labels use whole
+// numbers where possible, matching the reference pages ("5 kW", not
+// "5,00 kW").
 func (r *renderer) chartLabel(c *Chart, v float64) string {
-	if kind := unitFormat(c.Unit); kind != "" {
-		return r.f.format(v, kind)
+	switch c.Unit {
+	case "kW":
+		kw := v / 1000
+		decimals := 0
+		if kw < 10 && kw != math.Trunc(kw) {
+			decimals = 1
+		}
+		return r.f.num(kw, decimals) + " kW"
+	case "W":
+		return r.f.num(v, 0) + " W"
+	case "kWh":
+		return r.f.num(v, 1) + " kWh"
+	case "Wh":
+		return r.f.num(v, 0) + " Wh"
+	case "%":
+		return r.f.num(v, 0) + " %"
+	case "°C":
+		return r.f.num(v, 0) + " °C"
 	}
 	label := r.f.trim(v)
 	if c.Unit != "" {
