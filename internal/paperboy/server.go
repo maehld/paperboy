@@ -26,9 +26,9 @@ import (
 // Server implements the TRMNL device API and the data document. Pages are
 // rendered from templates, notice pages replace uploads.
 type Server struct {
-	cfg *Config
-	dir string
-	now func() time.Time
+	cfg         *Config
+	devicesPath string // state/devices.json in the instance directory
+	now         func() time.Time
 
 	mu    sync.Mutex
 	state map[string]*deviceState // device ID â†’ state
@@ -39,9 +39,18 @@ type Server struct {
 	hints    map[string][]byte        // content hash â†’ notice page
 }
 
-// New loads device state from dir and prepares templates and plans.
-func New(cfg *Config, dir string) (*Server, error) {
-	state, err := loadState(filepath.Join(dir, "state.json"))
+// New loads the device state and prepares templates and plans. Only state/ is
+// created; pages, plans and providers stay operator-owned (ADR 0037).
+func New(cfg *Config) (*Server, error) {
+	if cfg.Dir == "" {
+		return nil, errors.New("instance directory missing")
+	}
+	stateDir := filepath.Join(cfg.Dir, stateDirName)
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		return nil, err
+	}
+	devicesPath := filepath.Join(stateDir, devicesFileName)
+	state, err := loadState(devicesPath)
 	if err != nil {
 		return nil, err
 	}
@@ -52,21 +61,21 @@ func New(cfg *Config, dir string) (*Server, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := writeAtomic(filepath.Join(dir, "state.json"), data); err != nil {
+		if err := writeAtomic(devicesPath, data); err != nil {
 			return nil, err
 		}
 		slog.Info("device state migrated to device ids", "entries", moved)
 	}
-	s := &Server{cfg: cfg, dir: dir, now: time.Now, state: state,
+	s := &Server{cfg: cfg, devicesPath: devicesPath, now: time.Now, state: state,
 		plans: newPlanLoader(), rendered: map[string]*renderedPage{}, hints: map[string][]byte{}}
 	if s.cfg.Pages == "" {
-		s.cfg.Pages = filepath.Join(dir, "pages")
+		s.cfg.Pages = filepath.Join(cfg.Dir, pagesDirName)
 	}
 	if s.cfg.Plans == "" {
-		s.cfg.Plans = filepath.Join(dir, "plans")
+		s.cfg.Plans = filepath.Join(cfg.Dir, plansDirName)
 	}
 	if s.cfg.ProvidersDir == "" {
-		s.cfg.ProvidersDir = filepath.Join(dir, "providers")
+		s.cfg.ProvidersDir = filepath.Join(cfg.Dir, providersDirName)
 	}
 	// A plan named in the configuration must exist (ADR 0026). A broken file is
 	// reported and replaced by a notice page instead.
@@ -84,7 +93,7 @@ func New(cfg *Config, dir string) (*Server, error) {
 		}
 	}
 	// The document shares the server clock so that tests can move time.
-	s.doc, err = data.New(filepath.Join(dir, "data.json"), func() time.Time { return s.now() })
+	s.doc, err = data.New(filepath.Join(stateDir, dataFileName), func() time.Time { return s.now() })
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +312,7 @@ func (s *Server) saveState(data []byte) {
 	if data == nil {
 		return
 	}
-	if err := writeAtomic(filepath.Join(s.dir, "state.json"), data); err != nil {
+	if err := writeAtomic(s.devicesPath, data); err != nil {
 		slog.Error("failed to store device state", "error", err)
 	}
 }

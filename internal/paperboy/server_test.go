@@ -15,12 +15,12 @@ const testToken = "0123456789abcdef-test"
 
 func testServer(t *testing.T) (*Server, *time.Time) {
 	t.Helper()
-	cfg := &Config{UploadToken: testToken, Profiles: map[string]Profile{"small": {Width: 40, Height: 20, Gray: true}},
+	cfg := &Config{Dir: t.TempDir(), UploadToken: testToken, Profiles: map[string]Profile{"small": {Width: 40, Height: 20, Gray: true}},
 		Devices: []Device{{ID: "test", MAC: "aa:bb:cc:dd:ee:01", Profile: "small", Refresh: Duration(10 * time.Minute)}}}
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)
 	}
-	s, err := New(cfg, t.TempDir())
+	s, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,23 +93,28 @@ func TestDeviceFlow(t *testing.T) {
 
 func TestDeviceStateMigratesToDeviceID(t *testing.T) {
 	dir := t.TempDir()
-	old := `{"AA:BB:CC:DD:EE:01": {"api_key": "existing-key-1234", "friendly_id": "DDEE01"}}`
-	if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte(old), 0o644); err != nil {
+	stateDir := filepath.Join(dir, "state")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &Config{UploadToken: testToken, Profiles: map[string]Profile{"small": {Width: 40, Height: 20}},
+	statePath := filepath.Join(stateDir, "devices.json")
+	old := `{"AA:BB:CC:DD:EE:01": {"api_key": "existing-key-1234", "friendly_id": "DDEE01"}}`
+	if err := os.WriteFile(statePath, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &Config{Dir: dir, UploadToken: testToken, Profiles: map[string]Profile{"small": {Width: 40, Height: 20}},
 		Devices: []Device{{ID: "wohnzimmer", MAC: "aa:bb:cc:dd:ee:01", Profile: "small"}}}
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)
 	}
-	s, err := New(cfg, dir)
+	s, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if st := s.state["wohnzimmer"]; st == nil || st.APIKey != "existing-key-1234" {
 		t.Fatalf("state not migrated: %v", s.state)
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "state.json"))
+	raw, err := os.ReadFile(statePath)
 	if err != nil || !strings.Contains(string(raw), `"wohnzimmer"`) || strings.Contains(string(raw), `"AA:BB:`) {
 		t.Fatalf("state file not rewritten: %s (%v)", raw, err)
 	}
@@ -117,5 +122,36 @@ func TestDeviceStateMigratesToDeviceID(t *testing.T) {
 	out := call(t, s, "/api/display", map[string]string{"ID": "AA:BB:CC:DD:EE:01", "Access-Token": "existing-key-1234"})
 	if out["filename"] == nil {
 		t.Fatalf("display after migration: %v", out)
+	}
+}
+
+func TestNewCreatesOnlyStateDirectory(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &Config{Dir: dir, UploadToken: testToken, Profiles: map[string]Profile{"small": {Width: 40, Height: 20}},
+		Devices: []Device{{ID: "test", MAC: "aa:bb:cc:dd:ee:01", Profile: "small"}}}
+	if err := cfg.validate(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.cfg.Pages != filepath.Join(dir, "pages") || s.cfg.Plans != filepath.Join(dir, "plans") ||
+		s.cfg.ProvidersDir != filepath.Join(dir, "providers") {
+		t.Fatalf("derived directories: %q %q %q", s.cfg.Pages, s.cfg.Plans, s.cfg.ProvidersDir)
+	}
+	if fi, err := os.Stat(filepath.Join(dir, "state")); err != nil || !fi.IsDir() {
+		t.Fatalf("state directory: %v", err)
+	}
+	for _, name := range []string{"pages", "plans", "providers"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Fatalf("%s must stay operator-owned (err %v)", name, err)
+		}
+	}
+}
+
+func TestNewRejectsMissingInstanceDirectory(t *testing.T) {
+	if _, err := New(&Config{}); err == nil || !strings.Contains(err.Error(), "instance directory") {
+		t.Fatalf("missing instance directory: %v", err)
 	}
 }

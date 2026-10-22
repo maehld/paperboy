@@ -24,28 +24,17 @@ func main() {
 }
 
 func run() error {
-	configPath := flag.String("config", "paperboy.yaml", "Configuration file (YAML)")
-	dataDir := flag.String("data", "", "Directory for device state and the data document; overrides directories.data")
+	dir := flag.String("config", ".", "Instance directory with paperboy.yaml, pages, plans, providers and state")
 	listen := flag.String("listen", ":8090", "HTTP listen address; must be reachable for the displays on Wi-Fi")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return fmt.Errorf("unexpected arguments: %v", flag.Args())
 	}
-	cfg, err := paperboy.LoadConfig(*configPath)
+	cfg, err := paperboy.LoadConfig(*dir)
 	if err != nil {
 		return err
 	}
-	dir := *dataDir
-	if dir == "" {
-		dir = cfg.DataDir
-	}
-	if dir == "" {
-		dir = "paperboy-data"
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	srv, err := paperboy.New(cfg, dir)
+	srv, err := paperboy.New(cfg)
 	if err != nil {
 		return err
 	}
