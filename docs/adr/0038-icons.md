@@ -51,6 +51,7 @@ We add a `icon` block and one operator-owned directory of PNG assets.
 
 - `source` is resolved relative to `<instance>/icons/`. Absolute paths and `..` are rejected, so a page cannot read arbitrary files.
 - A missing or undecodable icon is a render error and leads to the notice page, exactly like a missing page template. A page that suddenly shows nothing is worse than a loud hint.
+- An **empty** source after expansion draws nothing instead: the page has no data for the picture name yet (a missing value is not an em dash here), and the rest of the page keeps rendering with its placeholders.
 - The mask is cached per (path, file modification time, target height, palette) so that repeated renders of a device do not decode the same files again.
 
 ### 4. Sample icons

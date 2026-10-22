@@ -242,6 +242,10 @@ func (m *mask) majority(x0, y0, x1, y1 int) bool {
 // an optional caption at the bottom (ADR 0038).
 func (r *renderer) icon(img *image.Paletted, rc image.Rectangle, b Block) {
 	ic := b.Icon
+	source := r.expandSource(ic.Source)
+	if source == "" {
+		return // no data for the picture name: draw nothing, not an error
+	}
 	pad := r.padding(&b, ic.Padding)
 	area := image.Rect(rc.Min.X+pad, rc.Min.Y+pad, rc.Max.X-pad, rc.Max.Y-pad)
 	if area.Dx() < 1 || area.Dy() < 1 {
@@ -257,7 +261,6 @@ func (r *renderer) icon(img *image.Paletted, rc image.Rectangle, b Block) {
 		}
 	}
 
-	source := strings.TrimSpace(r.expand(ic.Source))
 	path, err := iconPath(r.t.iconsDir(), source)
 	if err != nil {
 		r.fail(fmt.Errorf("icon: %w", err))

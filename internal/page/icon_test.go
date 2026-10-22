@@ -239,6 +239,42 @@ blocks:
 	}
 }
 
+func TestIconWithoutDataDrawsNothing(t *testing.T) {
+	const page = `
+rows: [100]
+blocks:
+  - name: bild
+    icon:
+      source: '{{ if .weather.current.symbol }}{{ .weather.current.symbol }}.png{{ end }}'
+      label: '{{ if .weather.current.symbol }}Wetter{{ end }}'
+`
+	// No weather data and no icons: the page must render empty instead of
+	// failing on a file called ".png" (a missing value is not an em dash here).
+	tmpl := iconTemplate(t, page, nil)
+	img := renderIcon(t, tmpl, iconDocument(t))
+	if n := blackIn(img, img.Rect); n != 0 {
+		t.Fatalf("expected an empty page, found %d ink pixels", n)
+	}
+}
+
+func TestIconUsesExpandedSource(t *testing.T) {
+	const page = `
+rows: [100]
+blocks:
+  - name: bild
+    icon: { source: '{{ .weather.current.symbol }}.png' }
+`
+	tmpl := iconTemplate(t, page, map[string][]byte{"sun.png": solidPNG(t, 20, 20, 0.6, true)})
+	doc := iconDocument(t)
+	if err := doc.Put("weather/current/symbol", "sun", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	img := renderIcon(t, tmpl, doc)
+	if img.ColorIndexAt(100, 50) != 0 {
+		t.Fatal("the icon chosen by the data must be drawn")
+	}
+}
+
 func TestIconMissingFileFails(t *testing.T) {
 	tmpl := iconTemplate(t, iconPage, nil)
 	_, err := tmpl.RenderContext(iconDocument(t), Display{Width: 200, Height: 100, Gray: true}, Context{Now: time.Now()})
