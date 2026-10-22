@@ -18,3 +18,7 @@
 
 # Golden-image mismatch artifacts
 /internal/page/testdata/golden/*.actual.png
+
+# Operator-supplied icons whose licence does not cover redistribution
+/examples/icons/polo-shirt.png
+/examples/icons/sweater.png
