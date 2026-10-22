@@ -31,3 +31,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0032](0032-data-providers-and-regions.md) | Data providers with named regions instead of image fragments | Accepted |
 | [0033](0033-global-language-and-timezone.md) | Global language and timezone in the configuration | Accepted |
 | [0034](0034-layout-primitives-and-typography.md) | Layout primitives and typography in page templates | Accepted, implemented |
+| [0035](0035-duration-format.md) | Duration format and explicit charge direction for derived values | Accepted, implemented |

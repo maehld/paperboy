@@ -64,7 +64,10 @@ func goldenDocument(t *testing.T) *data.Document {
 		"self_consumption": 0.64,
 		"approximate":      false,
 	})
-	putGolden(t, doc, "solar/derived/battery_remaining", "3 h 20 min")
+	putGolden(t, doc, "solar/derived/battery_remaining", map[string]any{
+		"seconds":  12000,
+		"charging": true,
+	})
 	return doc
 }
 
