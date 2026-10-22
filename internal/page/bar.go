@@ -28,10 +28,7 @@ func (r *renderer) bar(img *image.Paletted, rc image.Rectangle, b *Bar, padding 
 	}
 
 	label := r.expand(b.Label)
-	labelSize := b.LabelSize
-	if labelSize <= 0 {
-		labelSize = 0.13 * float64(rc.Dy())
-	}
+	labelSize := fractionSize(b.LabelSize, float64(rc.Dy()), 0.13)
 	band := 0
 	if label != "" && inner.Dy() >= 2 {
 		band = int(math.Ceil(labelSize * 1.3))

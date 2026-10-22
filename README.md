@@ -127,16 +127,18 @@ blocks:
 - `tiles` and `rows` also accept the object form with `padding`, `items` and, for `tiles`, `columns` (grid columns) and `divider`. A tile's optional `detail` is a third text line; `label_weight`, `value_weight`, `detail_weight`, `label_size`, `value_size`, `detail_size`, `align` and `shrink` style its elements.
 - `columns` splits a region into weighted columns, each holding exactly one block. Nested `columns` are rejected.
 - `bar` draws a value as a filled bar or battery symbol: `min`, `max`, `orientation: vertical|horizontal`, `border`, `cap`, `fill`, `label` and label styling.
-- Style fields are `weight: regular|bold`, `size`, `shrink`, `align: left|center|right`, `padding` and `rule`/`divider` in pixels. `size` is a fraction of the block height; in `tiles` it is relative to the cell height, in `rows` to the item height. `shrink` defaults to `true`.
+- Style fields are `weight: regular|bold`, `size`, `shrink`, `align: left|center|right`, `padding` and `rule`/`divider` in pixels. `size` is a fraction of the block height; in `tiles` it is relative to the cell height, in `rows` to the item height and in `text` to the line height. `shrink` defaults to `true`.
 - `chart`: `time: true` plots points by their RFC 3339 `time` from local midnight to midnight; `axis`, `ticks`, `now`, `y_max: auto|<number>` and `legend` control axes, time ticks, the "now" marker, the scale and the legend. Series use `style: area|line`, `fill: shade|hatch|solid|none` and `weight` in pixels; the string shorthand remains accepted.
 - `header` accepts `title`, `subtitle`, `align`, `status: { time, label }`, `page_indicator` and `rule`. The status area is right-aligned and formats `status.time` as `HH:MM`; `page_indicator` appends the page number when the plan has more than one page.
 - `notices: bar|badge|none` decides how stale data appears: a bottom bar (default), a badge in the header status area, or nothing. `badge` requires a header with `status`.
-- Free texts are Go templates over the document with the same helpers, e.g. `{{ percent .solar.current.latest.values.battery_soc }}`. They also provide `now`, `page`, `pages`, `stale "path"`, `below` and `above`; `stale` reports whether a watched path is older than its `stale_after`, and `time` also accepts a `time.Time` (`{{ time now }}`).
+- Free texts are Go templates over the document with the same helpers, e.g. `{{ percent .solar.current.latest.values.battery_soc }}` or `{{ ratio .solar.derived.balance.autarky }}`. They also provide `now`, `page`, `pages`, `stale "path"`, `below` and `above`; `stale` reports whether a watched path is older than its `stale_after`, and `time` also accepts a `time.Time` (`{{ time now }}`).
 - `watch` entries add the „Keine neuen Daten seit …“ bar once the path is older than `stale_after` (or the badge with `notices: badge`).
 - `language` in the configuration controls the number format (decimal comma for `de`, dot for `en`) and all built-in texts. Page templates have no locale of their own (ADR 0033); a `locale` key is rejected.
 - Preview with the upload token: `GET /api/preview/e1001/solar`.
 
 Implemented blocks are `header`, `tiles`, `rows`, `chart`, `text`, `columns` and `bar`.
+
+The four SolarAI reference pages (overview detailed and compact, battery, daily balance and daily history) are in `examples/pages`, with an example plan in `examples/plans/solar.yaml`. Copy them into the configured pages directory and rename the display-type suffix if needed; the golden-image tests in `internal/page` render them with a fixed data document.
 
 ## Plans
 

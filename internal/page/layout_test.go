@@ -165,12 +165,13 @@ func TestTemplateContextFunctions(t *testing.T) {
 	put(t, doc, "solar/current/latest", map[string]any{
 		"values": map[string]any{"battery_power": -500.0, "battery_soc": 81.0},
 	}, now)
+	put(t, doc, "solar/derived/balance", map[string]any{"autarky": 0.87}, now)
 	tmpl, err := Parse(strings.NewReader(`
 watch:
   - { path: solar/current, stale_after: 5m }
 rows: [1]
 blocks:
-  - text: '{{ page }}/{{ pages }} {{ time now }} {{ if below .solar.current.latest.values.battery_power -10 }}entlädt{{ end }} {{ if above .solar.current.latest.values.battery_soc 50 }}voll{{ end }} {{ if stale "solar/current" }}alt{{ else }}neu{{ end }}'
+  - text: '{{ page }}/{{ pages }} {{ time now }} {{ if below .solar.current.latest.values.battery_power -10 }}entlädt{{ end }} {{ if above .solar.current.latest.values.battery_soc 50 }}voll{{ end }} {{ if stale "solar/current" }}alt{{ else }}neu{{ end }} {{ ratio .solar.derived.balance.autarky }}'
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -182,6 +183,15 @@ blocks:
 	if _, err := tmpl.RenderContext(doc, Display{Width: 400, Height: 60},
 		Context{Now: now, Page: 2, Pages: 3}); err != nil {
 		t.Fatalf("render with fresh data: %v", err)
+	}
+}
+
+func TestExplicitSizesAreFractions(t *testing.T) {
+	if got := fractionSize(0.3, 100, 0.2); got != 30 {
+		t.Fatalf("size fraction: %v, want 30", got)
+	}
+	if got := fractionSize(0, 100, 0.2); got != 20 {
+		t.Fatalf("default size: %v, want 20", got)
 	}
 }
 

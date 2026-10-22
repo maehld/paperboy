@@ -9,3 +9,6 @@
 /displayd.json
 /displayd-data/
 .env
+
+# Golden-image mismatch artifacts
+/internal/page/testdata/golden/*.actual.png
