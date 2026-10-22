@@ -21,4 +21,12 @@ the region, so a single file works on 1-bit and 4-gray panels.
 
 To replace a motif, drop any PNG with a transparent or white background into
 the `icons/` directory of the instance and refer to it by file name in the page
-template. Icons without shading (solid silhouettes) work best.
+template. Icons without shading (line art or solid silhouettes) work best.
+
+## Local icons
+
+`polo-shirt.png` and `sweater.png` are operator-supplied alternatives for the
+clothing advice. They stay out of this repository (see `.gitignore`) because
+their licence does not cover redistribution. To use them, drop the files into
+the `icons/` directory of the instance and point the two `source` lines of the
+weather page at them; Paperboy never depends on a file name.
