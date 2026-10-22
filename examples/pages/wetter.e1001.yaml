@@ -1,8 +1,8 @@
-title: Wetter
+﻿title: Wetter
 watch:
   - { path: weather, stale_after: 45m, label: Wetter }
 notices: badge
-rows: [10, 24, 40, 26]
+rows: [10, 28, 34, 28]
 blocks:
   - name: kopf
     header:
@@ -11,35 +11,50 @@ blocks:
       align: left
       status: { time: weather/current/time, label: Stand }
       rule: 2
-  - name: kacheln
-    tiles:
-      columns: 4
+  - name: jetzt
+    columns:
       divider: 2
-      padding: 6
       items:
-        - label: Jetzt
-          value: weather/current/temp
-          format: temp
-          label_size: 0.16
-          value_size: 0.32
-        - label: Gefühlt
-          value: weather/current/apparent
-          format: temp
-          label_size: 0.16
-          value_size: 0.32
-        - label: Regen
-          value: weather/current/precip_prob
-          format: percent
-          label_size: 0.16
-          value_size: 0.32
-          detail_size: 0.14
-          detail: 'Heute {{ percent .weather.today.precip_prob }}'
-        - label: Wind
-          value: weather/current/wind
-          label_size: 0.16
-          value_size: 0.32
-          detail_size: 0.14
-          detail: km/h
+        - weight: 14
+          block:
+            icon: { source: '{{ .weather.current.symbol }}.png', size: 0.7, padding: 6 }
+        - weight: 50
+          block:
+            tiles:
+              columns: 2
+              divider: 2
+              padding: 6
+              items:
+                - label: Jetzt
+                  value: weather/current/temp
+                  format: temp
+                  label_size: 0.18
+                  value_size: 0.34
+                - label: Gefühlt
+                  value: weather/current/apparent
+                  format: temp
+                  label_size: 0.18
+                  value_size: 0.34
+                - label: Regen
+                  value: weather/current/precip_prob
+                  format: percent
+                  label_size: 0.18
+                  value_size: 0.34
+                  detail_size: 0.16
+                  detail: 'Heute {{ percent .weather.today.precip_prob }}'
+                - label: Wind
+                  value: weather/current/wind
+                  label_size: 0.18
+                  value_size: 0.34
+                  detail_size: 0.16
+                  detail: '{{ .weather.current.beaufort }} Bft'
+        - weight: 36
+          block:
+            icon:
+              source: '{{ if or (below .weather.current.apparent 15) (above .weather.current.beaufort 3) }}pullover{{ else }}tshirt{{ end }}.png'
+              label: '{{ if or (below .weather.current.apparent 15) (above .weather.current.beaufort 3) }}Pullover{{ else }}T-Shirt{{ end }}'
+              size: 0.7
+              label_size: 0.75
   - name: verlauf
     chart:
       points: weather/hours
