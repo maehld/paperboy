@@ -86,19 +86,37 @@ Pages are rendered from the data document: `<page>.<display type>.yaml` in the `
 title: Solar
 watch:
   - { path: solar/current, stale_after: 30m, label: Solar }
+notices: bar            # bar (default), badge or none
 rows: [1, 3, 6, 3]
 blocks:
   - name: kopf
     header:
       title: Solar
       subtitle: "{{ power .solar.current.latest.values.pv_power }} vom Dach"
-      time: solar.current.latest.time
+      align: left
+      status: { time: solar.current.latest.time, label: Stand }
+      page_indicator: true
+      rule: 2
   - name: kacheln
     tiles:
-      - { label: PV, value: solar.current.latest.values.pv_power, format: power }
-      - { label: Netz, value: solar.current.latest.values.grid_power, format: power, sign: [Einspeisung, Bezug] }
+      columns: 4
+      divider: 2
+      items:
+        - { label: PV, value: solar.current.latest.values.pv_power, format: power }
+        - { label: Netz, value: solar.current.latest.values.grid_power, format: power, sign: [Einspeisung, Bezug] }
   - name: verlauf
-    chart: { points: solar.history.points, series: [pv_power, load_power], unit: kW }
+    chart:
+      points: solar.history.points
+      title: Today
+      unit: kW
+      time: true
+      axis: true
+      ticks: 6h
+      now: true
+      y_max: auto
+      series:
+        - { key: pv_power, style: area, fill: shade }
+        - { key: load_power, style: line, weight: 3 }
   - name: zeiten
     rows:
       - { label: Sonnenaufgang, value: solar.today.sunrise, format: time }
@@ -106,12 +124,19 @@ blocks:
 
 - Data paths accept dots or slashes (`solar.current` equals `solar/current`); missing values render as `—`.
 - `format` formats the value: `power` (W or kW), `energy` (kWh), `percent`, `temp`, `time` (RFC 3339 → HH:MM), `abs`; `sign: [negative, positive]` appends the matching word.
-- Free texts are Go templates over the document with the same helpers, e.g. `{{ percent .solar.current.latest.values.battery_soc }}`.
-- `watch` entries add the „Keine neuen Daten seit …“ bar once the path is older than `stale_after`.
+- `tiles` and `rows` also accept the object form with `padding`, `items` and, for `tiles`, `columns` (grid columns) and `divider`. A tile's optional `detail` is a third text line; `label_weight`, `value_weight`, `detail_weight`, `label_size`, `value_size`, `detail_size`, `align` and `shrink` style its elements.
+- `columns` splits a region into weighted columns, each holding exactly one block. Nested `columns` are rejected.
+- `bar` draws a value as a filled bar or battery symbol: `min`, `max`, `orientation: vertical|horizontal`, `border`, `cap`, `fill`, `label` and label styling.
+- Style fields are `weight: regular|bold`, `size`, `shrink`, `align: left|center|right`, `padding` and `rule`/`divider` in pixels. `size` is a fraction of the block height; in `tiles` it is relative to the cell height, in `rows` to the item height. `shrink` defaults to `true`.
+- `chart`: `time: true` plots points by their RFC 3339 `time` from local midnight to midnight; `axis`, `ticks`, `now`, `y_max: auto|<number>` and `legend` control axes, time ticks, the "now" marker, the scale and the legend. Series use `style: area|line`, `fill: shade|hatch|solid|none` and `weight` in pixels; the string shorthand remains accepted.
+- `header` accepts `title`, `subtitle`, `align`, `status: { time, label }`, `page_indicator` and `rule`. The status area is right-aligned and formats `status.time` as `HH:MM`; `page_indicator` appends the page number when the plan has more than one page.
+- `notices: bar|badge|none` decides how stale data appears: a bottom bar (default), a badge in the header status area, or nothing. `badge` requires a header with `status`.
+- Free texts are Go templates over the document with the same helpers, e.g. `{{ percent .solar.current.latest.values.battery_soc }}`. They also provide `now`, `page`, `pages`, `stale "path"`, `below` and `above`; `stale` reports whether a watched path is older than its `stale_after`, and `time` also accepts a `time.Time` (`{{ time now }}`).
+- `watch` entries add the „Keine neuen Daten seit …“ bar once the path is older than `stale_after` (or the badge with `notices: badge`).
 - `language` in the configuration controls the number format (decimal comma for `de`, dot for `en`) and all built-in texts. Page templates have no locale of their own (ADR 0033); a `locale` key is rejected.
 - Preview with the upload token: `GET /api/preview/e1001/solar`.
 
-Implemented blocks are `header`, `tiles`, `rows`, `chart` and `text`; `bar`, hatching and separators follow.
+Implemented blocks are `header`, `tiles`, `rows`, `chart`, `text`, `columns` and `bar`.
 
 ## Plans
 

@@ -1,6 +1,6 @@
 # 0034: Layout primitives and typography in page templates
 
-- Status: Draft (discussion)
+- Status: Accepted
 - Date: 2026-10-21
 - Extends: ADR 0024 (data document, page templates), ADR 0032 (data providers and regions)
 - Related: ADR 0013 (TrueType font), ADR 0026 (YAML configuration), ADR 0033 (global language and timezone)
@@ -214,3 +214,13 @@ Templates do not gain arithmetic or business calculations. Only presentation thr
 5. Should stale state always be derived from the newest watched path, or should the header status name its own watch entry?
 6. Is the explicit `page_indicator` better than appending the page number automatically whenever a plan has several pages?
 7. Do chart series need labels and a legend, or is a chart `title` enough for the reference pages?
+
+## Resolved open questions
+
+1. `size` is a fraction of the block height. In `tiles` it is relative to the cell height, in `rows` to the item height.
+2. `shrink` defaults to `true`, keeping current behavior and avoiding clipped text.
+3. `columns` is one level deep. Nested `columns` are rejected.
+4. `bar` covers the vector primitives the four reference pages need. No `shape` block is added.
+5. Stale state is derived from the newest watched path. `notices: badge` shows the built-in "outdated" text in the header status area.
+6. `page_indicator` stays explicit (opt-in).
+7. Chart series labels and `legend: true` stay optional. The reference pages use a chart `title`.
