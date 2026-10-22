@@ -221,6 +221,6 @@ Templates do not gain arithmetic or business calculations. Only presentation thr
 2. `shrink` defaults to `true`, keeping current behavior and avoiding clipped text.
 3. `columns` is one level deep. Nested `columns` are rejected.
 4. `bar` covers the vector primitives the four reference pages need. No `shape` block is added.
-5. Stale state is derived from the newest watched path. `notices: badge` shows the built-in "outdated" text in the header status area.
+5. Stale state is derived from any watched path whose age exceeds its `stale_after`. `notices: badge` shows the built-in "outdated" text in the header status area.
 6. `page_indicator` stays explicit (opt-in).
 7. Chart series labels and `legend: true` stay optional. The reference pages use a chart `title`.

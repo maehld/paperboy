@@ -123,7 +123,7 @@ blocks:
 ```
 
 - Data paths accept dots or slashes (`solar.current` equals `solar/current`); missing values render as `—`.
-- `format` formats the value: `power` (W or kW), `energy` (kWh), `percent`, `temp`, `time` (RFC 3339 → HH:MM), `abs`; `sign: [negative, positive]` appends the matching word.
+- `format` formats the value: `power` (W or kW), `energy` (kWh), `percent` (already in percent), `ratio` (fraction 0..1 → percent), `temp`, `time` (RFC 3339 → HH:MM), `abs`; `sign: [negative, positive]` appends the matching word.
 - `tiles` and `rows` also accept the object form with `padding`, `items` and, for `tiles`, `columns` (grid columns) and `divider`. A tile's optional `detail` is a third text line; `label_weight`, `value_weight`, `detail_weight`, `label_size`, `value_size`, `detail_size`, `align` and `shrink` style its elements.
 - `columns` splits a region into weighted columns, each holding exactly one block. Nested `columns` are rejected.
 - `bar` draws a value as a filled bar or battery symbol: `min`, `max`, `orientation: vertical|horizontal`, `border`, `cap`, `fill`, `label` and label styling.
