@@ -248,13 +248,24 @@ func (s *Server) baseURL(r *http.Request) string {
 	return "http://" + r.Host
 }
 
-// saveStateLocked persists device state; callers hold s.mu.
-func (s *Server) saveStateLocked() {
+// stateSnapshotLocked serializes device state; callers hold s.mu and write the
+// result with saveState after unlocking, so that a slow disk cannot block other
+// requests.
+func (s *Server) stateSnapshotLocked() []byte {
 	data, err := json.MarshalIndent(s.state, "", "  ")
-	if err == nil {
-		err = writeAtomic(filepath.Join(s.dir, "state.json"), data)
-	}
 	if err != nil {
+		slog.Error("failed to encode device state", "error", err)
+		return nil
+	}
+	return data
+}
+
+// saveState persists a snapshot from stateSnapshotLocked outside the lock.
+func (s *Server) saveState(data []byte) {
+	if data == nil {
+		return
+	}
+	if err := writeAtomic(filepath.Join(s.dir, "state.json"), data); err != nil {
 		slog.Error("failed to store device state", "error", err)
 	}
 }
@@ -290,10 +301,13 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	st.Model, st.Firmware = r.Header.Get("Model"), r.Header.Get("FW-Version")
 	title, text := s.cfg.texts().setup()
-	notice := s.hint(d.Profile, title, text)
-	s.saveStateLocked()
 	key, friendly := st.APIKey, st.FriendlyID
+	stateData := s.stateSnapshotLocked()
 	s.mu.Unlock()
+	s.saveState(stateData)
+	// Drawing and writing run outside the lock so a slow disk or a broken font
+	// cannot block other device requests or the data API.
+	notice := s.hint(d.Profile, title, text)
 	slog.Info("display set up", "device", d.ID, "mac", d.MAC)
 	writeJSON(w, http.StatusOK, map[string]any{"status": 200, "api_key": key, "friendly_id": friendly,
 		"image_url": s.baseURL(r) + notice.path, "message": "Registered as " + d.ID})
@@ -346,23 +360,34 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 
 	var served servedPage
 	floor := s.cfg.minRefresh(d.Profile)
+	var choice planChoice
 	switch {
 	case critical: // the warning replaces all pages; buttons only show it again
 		st.Page = 0
-		served = s.notice(d.Profile, criticalBatteryImage(s.cfg.Profiles[d.Profile], s.cfg.texts(), voltageKey(st.BatteryVoltage)))
-		served.refresh = max(floor, d.refresh())
 	case d.Plan != "":
-		served = s.planPage(d, st, now, firstContact, special, pageTimeout)
+		choice = s.choosePlanPage(d, st, now, firstContact, special, pageTimeout)
 	default:
-		title, text := s.cfg.texts().noPlan()
-		served = s.hint(d.Profile, title, text)
+		choice.title, choice.text = s.cfg.texts().noPlan()
+	}
+	logged := *st
+	stateData := s.stateSnapshotLocked()
+	s.mu.Unlock()
+	s.saveState(stateData)
+
+	// Drawing and rendering happen without the lock: a slow page, a font problem
+	// or a panicking template must never block the other devices or the data API.
+	switch {
+	case critical:
+		served = s.notice(d.Profile, criticalBatteryImage(s.cfg.Profiles[d.Profile], s.cfg.texts(), voltageKey(logged.BatteryVoltage)))
+		served.refresh = d.refresh()
+	case d.Plan != "":
+		served = s.renderPlan(d, choice, now)
+	default:
+		served = s.hint(d.Profile, choice.title, choice.text)
 	}
 	served.refresh = max(served.refresh, floor)
 	page := served.page
 	refresh := served.refresh
-	logged := *st
-	s.saveStateLocked()
-	s.mu.Unlock()
 	if logged.BatteryLevel != prevLevel {
 		level := logged.BatteryLevel
 		if level == batteryOK {
