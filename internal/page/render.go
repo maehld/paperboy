@@ -467,7 +467,7 @@ func (r *renderer) header(img *image.Paletted, rc image.Rectangle, b Block) {
 	statusShrink := h.Shrink
 	statusSize := h.StatusSize
 	if statusSize <= 0 {
-		statusSize = float64(hgt) * 0.36
+		statusSize = float64(hgt) * 0.45
 	}
 	statusBold := h.StatusWeight == "bold" || (stale && h.StatusWeight == "")
 	statusWidth := 0
@@ -735,7 +735,7 @@ func (f formatter) magnitude(n float64, kind string) string {
 		}
 		return f.num(a, 0) + " W"
 	case "energy":
-		return f.num(a, 2) + " kWh"
+		return f.num(a, 1) + " kWh"
 	case "percent":
 		return f.num(a, 0) + " %"
 	case "ratio":
