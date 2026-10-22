@@ -53,7 +53,7 @@ blocks:
             icon:
               source: '{{ if or (below .weather.current.apparent 15) (above .weather.current.beaufort 3) }}pullover{{ else }}tshirt{{ end }}.png'
               label: '{{ if or (below .weather.current.apparent 15) (above .weather.current.beaufort 3) }}Pullover{{ else }}T-Shirt{{ end }}'
-              size: 0.7
+              size: 0.95
               label_size: 0.75
   - name: verlauf
     chart:
