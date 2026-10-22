@@ -134,6 +134,7 @@ func TestFormats(t *testing.T) {
 		{en, 4210.0, "power", "4.21 kW"},
 		{de, 81.5, "percent", "82 %"},
 		{de, 0.87, "ratio", "87 %"},
+		{de, 12.4, "energy", "12,4 kWh"},
 		{de, 18.4, "temp", "18,4 °C"},
 		{de, -5.0, "abs", "5"},
 		{de, 18.4, "", "18,4"},
