@@ -34,12 +34,13 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
   pages/             page templates <page>.<display type>.yaml
   plans/             plans <name>.yaml
   providers/         exec provider programs (ADR 0036)
+  icons/             PNG pictograms for the icon block (ADR 0038)
   state/             written by Paperboy only
     devices.json     device register with API keys, page cursor and battery level
     data.json        last state of the data document
 ```
 
-- `paperboy.yaml`, `pages/`, `plans/` and `providers/` are yours: Paperboy only reads them and never creates them.
+- `paperboy.yaml`, `pages/`, `plans/`, `providers/` and `icons/` are yours: Paperboy only reads them and never creates them.
 - `state/` is created at startup and is the only directory Paperboy writes. Back up `state/devices.json` in particular: without it every display needs a new setup. `state/data.json` is refilled by the providers, but keeps the last values across a restart.
 
 ## Configuration
@@ -142,6 +143,7 @@ blocks:
 - `tiles` and `rows` also accept the object form with `padding`, `items` and, for `tiles`, `columns` (grid columns) and `divider`. A tile's optional `detail` is a third text line; `label_weight`, `value_weight`, `detail_weight`, `label_size`, `value_size`, `detail_size`, `align` and `shrink` style its elements.
 - `columns` splits a region into weighted columns, each holding exactly one block. Nested `columns` are rejected.
 - `bar` draws a value as a filled bar or battery symbol: `min`, `max`, `orientation: vertical|horizontal`, `border`, `cap`, `fill`, `label` and label styling.
+- `icon` draws one PNG pictogram from `icons/` (ADR 0038). `source` is a text template, so the page chooses the picture from the data: `icon: { source: '{{ .weather.current.symbol }}.png', size: 0.9 }`. `align`, `size` (fraction of the region height), `padding` and an optional `label` below the picture are supported; the shorthand `icon: sun.png` works too. The picture is reduced to a mask (opaque dark pixels are ink) and scaled with nearest neighbour, so the same asset renders sharp on 1-bit and 4-gray panels. A missing file is a render error and leads to a notice page; `../` and absolute paths are rejected.
 - Style fields are `weight: regular|bold`, `size`, `shrink`, `align: left|center|right`, `padding` and `rule`/`divider` in pixels. `size` is a fraction of the block height; in `tiles` it is relative to the cell height, in `rows` to the item height and in `text` to the line height. `shrink` defaults to `true`.
 - `chart`: `time: true` plots points by their RFC 3339 `time` from local midnight to midnight; `axis`, `ticks`, `now`, `y_max: auto|<number>` and `legend` control axes, time ticks, the "now" marker, the scale and the legend. Series use `style: area|line`, `fill: shade|hatch|solid|none` and `weight` in pixels; the string shorthand remains accepted.
 - `header` accepts `title`, `subtitle`, `align`, `status: { time, label }`, `page_indicator` and `rule`. The status area is right-aligned and formats `status.time` as `HH:MM`; `page_indicator` appends the page number when the plan has more than one page.
@@ -151,9 +153,9 @@ blocks:
 - `language` in the configuration controls the number format (decimal comma for `de`, dot for `en`) and all built-in texts. Page templates have no locale of their own (ADR 0033); a `locale` key is rejected.
 - Preview with the upload token: `GET /api/preview/e1001/solar`.
 
-Implemented blocks are `header`, `tiles`, `rows`, `chart`, `text`, `columns` and `bar`.
+Implemented blocks are `header`, `tiles`, `rows`, `chart`, `text`, `columns`, `bar` and `icon`.
 
-The four SolarAI reference pages (overview detailed and compact, battery, daily balance and daily history) are in `examples/pages`, with an example plan in `examples/plans/solar.yaml`. The weather page (`wetter.e1001.yaml`, `wetter.sticky.yaml`) belongs to the Open-Meteo provider. Copy them into the `pages/` directory of your instance and rename the display-type suffix if needed; the golden-image tests in `internal/page` render them with a fixed data document.
+The four SolarAI reference pages (overview detailed and compact, battery, daily balance and daily history) are in `examples/pages`, with an example plan in `examples/plans/solar.yaml`. The weather page (`wetter.e1001.yaml`, `wetter.sticky.yaml`) belongs to the Open-Meteo provider and uses the icons in `examples/icons` (`sun`, `cloud`, `rain`, `snow`, `thunder`, `tshirt`, `pullover`). Copy them into the `pages/` and `icons/` directories of your instance and rename the display-type suffix if needed; the golden-image tests in `internal/page` render them with a fixed data document.
 
 ## Providers
 
@@ -184,7 +186,7 @@ go build -o providers/weather.exe ./cmd/weather   # or ./scripts/build.ps1
 providers/weather.exe -lat 52.52 -lon 13.40 | ConvertFrom-Json | Select-Object updated
 ```
 
-It writes `current` (temperature, apparent temperature, humidity, precipitation, probability, wind, condition), `today` (min/max, probability, sunrise, sunset), `days` (five days with weekday label and condition text) and `hours` (the local day as chart points). `examples/pages/wetter.e1001.yaml` and `wetter.sticky.yaml` render it.
+It writes `current` (temperature, apparent temperature, humidity, precipitation, probability, wind and Beaufort, WMO code, symbol name and condition text), `today` (min/max, probability, sunrise, sunset), `days` (five days with weekday label and condition text) and `hours` (the local day as chart points). `examples/pages/wetter.e1001.yaml` and `wetter.sticky.yaml` render it, including a clothing pictogram: below 15 °C felt temperature or above wind force 3 the page shows `pullover.png`, otherwise `tshirt.png`.
 
 ## Plans
 
