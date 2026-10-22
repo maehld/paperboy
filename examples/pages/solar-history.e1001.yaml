@@ -1,0 +1,25 @@
+title: Tagesverlauf
+watch:
+  - { path: solar/current, stale_after: 30m, label: Solar }
+  - { path: solar/history, stale_after: 30m, label: Verlauf }
+notices: badge
+rows: [10, 90]
+blocks:
+  - name: kopf
+    header:
+      title: Tagesverlauf
+      align: left
+      status: { time: solar/current/latest/time, label: Stand }
+      rule: 2
+  - name: verlauf
+    chart:
+      points: solar/history/points
+      title: 'Heute: Solar (Fläche) - Haus (Linie)'
+      unit: kW
+      time: true
+      axis: true
+      ticks: 6h
+      now: true
+      series:
+        - { key: pv_power, style: area, fill: shade }
+        - { key: load_power, style: line, weight: 3 }
