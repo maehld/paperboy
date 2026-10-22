@@ -8,15 +8,9 @@ import (
 	"math"
 	"strconv"
 	"strings"
-	"sync"
 	"text/template"
 	"text/template/parse"
 	"time"
-
-	"golang.org/x/image/font"
-	"golang.org/x/image/font/gofont/gobold"
-	"golang.org/x/image/font/opentype"
-	"golang.org/x/image/math/fixed"
 
 	"github.com/maehld/paperboy/internal/data"
 )
@@ -25,8 +19,9 @@ import (
 type Display struct {
 	Width    int
 	Height   int
-	Gray     bool   // four gray levels instead of black and white
-	Language string // "de" or "en"; empty means "de"
+	Gray     bool           // four gray levels instead of black and white
+	Language string         // "de" or "en"; empty means "de"
+	Timezone *time.Location // plans, built-in dates and chart days; nil = local
 }
 
 // language returns the effective language of the display.
@@ -37,6 +32,22 @@ func (d Display) language() string {
 	return "de"
 }
 
+func (d Display) location() *time.Location {
+	if d.Timezone == nil {
+		return time.Local
+	}
+	return d.Timezone
+}
+
+// Context carries everything that does not come from the data document: the
+// clock, the position in the plan and extra banners such as the battery warning.
+type Context struct {
+	Now     time.Time
+	Page    int // 1-based page index for the page indicator and templates
+	Pages   int // number of pages in the plan
+	Banners []string
+}
+
 // text picks the German or English variant of a built-in text.
 func text(language, de, en string) string {
 	if language == "en" {
@@ -45,22 +56,27 @@ func text(language, de, en string) string {
 	return de
 }
 
-var (
-	monoPalette = color.Palette{color.Gray{0}, color.Gray{255}}
-	grayPalette = color.Palette{color.Gray{0}, color.Gray{85}, color.Gray{170}, color.Gray{255}}
-)
-
 // Render draws the page from the data document. Values that are missing or
 // null are shown as an em dash; stale watched paths add a notice bar. extra
 // banners (e.g. the battery warning) are stacked on top.
 func (t *Template) Render(doc *data.Document, d Display, now time.Time, extra ...string) (*image.Paletted, error) {
+	return t.RenderContext(doc, d, Context{Now: now, Banners: extra})
+}
+
+// RenderContext draws the page with the full render context (ADR 0034).
+func (t *Template) RenderContext(doc *data.Document, d Display, c Context) (*image.Paletted, error) {
 	raw, _ := doc.Get("")
 	root, ok := raw.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("data document is not an object")
 	}
 	language := d.language()
-	r := &renderer{t: t, root: root, f: formatter{comma: language != "en"}, now: now, language: language}
+	loc := d.location()
+	now := c.Now.In(loc)
+	r := &renderer{t: t, doc: doc, root: root, f: formatter{comma: language != "en", loc: loc},
+		now: now, language: language, page: c.Page, pages: c.Pages, badge: t.noticeMode() == "badge"}
+	r.stale = t.isStale(doc, now)
+
 	img := newCanvas(d.Width, d.Height, d.Gray)
 	bands := t.bands(d)
 	for i, b := range t.Blocks {
@@ -72,10 +88,23 @@ func (t *Template) Render(doc *data.Document, d Display, now time.Time, extra ..
 	if r.err != nil {
 		return nil, r.err
 	}
-	if banners := append(t.staleBanners(doc, now, language), extra...); len(banners) > 0 {
+	var banners []string
+	if t.noticeMode() == "bar" {
+		banners = append(banners, t.staleBanners(doc, now, language)...)
+	}
+	banners = append(banners, c.Banners...)
+	if len(banners) > 0 {
 		img = withBanner(img, banners...)
 	}
 	return img, nil
+}
+
+// noticeMode returns the notice style; the default is the bottom bar.
+func (t *Template) noticeMode() string {
+	if t.Notices == "" {
+		return "bar"
+	}
+	return t.Notices
 }
 
 // bands splits the page height according to the row weights.
@@ -122,12 +151,28 @@ func (t *Template) staleBanners(doc *data.Document, now time.Time, language stri
 	return banners
 }
 
+// isStale reports whether any watched path is older than its stale_after.
+func (t *Template) isStale(doc *data.Document, now time.Time) bool {
+	for _, w := range t.Watch {
+		age, ok := doc.Age(w.Path)
+		if ok && age > time.Duration(w.StaleAfter) {
+			return true
+		}
+	}
+	return false
+}
+
 type renderer struct {
 	t        *Template
+	doc      *data.Document
 	root     map[string]any
 	f        formatter
 	now      time.Time
 	language string
+	page     int
+	pages    int
+	stale    bool
+	badge    bool
 	err      error
 }
 
@@ -233,9 +278,49 @@ func (r *renderer) funcs() template.FuncMap {
 		"energy":  func(v any) string { return r.f.format(v, "energy") },
 		"percent": func(v any) string { return r.f.format(v, "percent") },
 		"temp":    func(v any) string { return r.f.format(v, "temp") },
-		"time":    func(v any) string { return r.f.format(v, "time") },
-		"abs":     func(v any) string { return r.f.format(v, "abs") },
+		"time": func(v any) string {
+			if ts, ok := v.(time.Time); ok {
+				return ts.In(r.f.location()).Format("15:04")
+			}
+			return r.f.format(v, "time")
+		},
+		"abs":   func(v any) string { return r.f.format(v, "abs") },
+		"now":   func() time.Time { return r.now },
+		"page":  func() int { return r.page },
+		"pages": func() int { return r.pages },
+		"stale": func(p string) (bool, error) { return r.stalePath(p) },
+		"below": func(v, limit any) bool { return compare(v, limit, func(a, b float64) bool { return a < b }) },
+		"above": func(v, limit any) bool { return compare(v, limit, func(a, b float64) bool { return a > b }) },
 	}
+}
+
+// stalePath reports whether a watched path is older than its stale_after. The
+// path has to appear in watch; an unknown path is a template error.
+func (r *renderer) stalePath(p string) (bool, error) {
+	path, err := normalizePath(p)
+	if err != nil {
+		return false, err
+	}
+	for _, w := range r.t.Watch {
+		if w.Path != path {
+			continue
+		}
+		if r.doc == nil {
+			return false, nil
+		}
+		age, ok := r.doc.Age(path)
+		return ok && age > time.Duration(w.StaleAfter), nil
+	}
+	return false, fmt.Errorf("stale %q: path is not watched", path)
+}
+
+func compare(v, limit any, fn func(a, b float64) bool) bool {
+	a, ok := toFloat(v)
+	if !ok {
+		return false
+	}
+	b, ok := toFloat(limit)
+	return ok && fn(a, b)
 }
 
 // value formats a tile value and applies the optional sign words.
@@ -255,161 +340,353 @@ func (r *renderer) value(t Tile) string {
 	return r.f.format(v, t.Format)
 }
 
+// ---- blocks ----
+
 func (r *renderer) block(img *image.Paletted, rc image.Rectangle, b Block) {
+	if rc.Dx() <= 0 || rc.Dy() <= 0 {
+		return
+	}
 	switch {
 	case b.Header != nil:
-		r.header(img, rc, b.Header)
-	case len(b.Tiles) > 0:
-		r.grid(img, rc, b.Tiles, 2)
-	case len(b.Rows) > 0:
-		r.list(img, rc, b.Rows)
+		r.header(img, rc, b)
+	case b.Tiles != nil:
+		r.tiles(img, rc, b)
+	case b.Rows != nil:
+		r.rows(img, rc, b)
 	case b.Chart != nil:
-		r.chart(img, rc, b.Chart)
+		r.chart(img, rc, b.Chart, b.Padding)
 	case b.Text != nil:
-		r.text(img, rc, *b.Text)
+		r.text(img, rc, b)
+	case b.Columns != nil:
+		r.columns(img, rc, b)
+	case b.Bar != nil:
+		r.bar(img, rc, b.Bar, b.Padding)
+	}
+	if b.Rule > 0 {
+		hline(img, rc.Min.X, rc.Max.Y-b.Rule, rc.Max.X, b.Rule)
 	}
 }
 
-func (r *renderer) header(img *image.Paletted, rc image.Rectangle, h *Header) {
+// padding resolves the inner distance of a block; the object form overrides the
+// block-level value.
+func (r *renderer) padding(b *Block, override *int) int {
+	p := 4
+	if b.Padding != nil {
+		p = *b.Padding
+	}
+	if override != nil {
+		p = *override
+	}
+	return max(p, 0)
+}
+
+// style resolves size, weight and shrink with the given defaults.
+func style(size, defSize float64, weight string, defBold bool, shrink *bool) textStyle {
+	if size <= 0 {
+		size = defSize
+	}
+	bold := defBold
+	switch weight {
+	case "bold":
+		bold = true
+	case "regular":
+		bold = false
+	}
+	sh := true
+	if shrink != nil {
+		sh = *shrink
+	}
+	return textStyle{Size: size, Bold: bold, Shrink: sh}
+}
+
+func pickShrink(a, b *bool) *bool {
+	if a != nil {
+		return a
+	}
+	return b
+}
+
+func parseAlign(s string, def int) int {
+	switch s {
+	case "left":
+		return alignLeft
+	case "center":
+		return alignCenter
+	case "right":
+		return alignRight
+	}
+	return def
+}
+
+func (r *renderer) header(img *image.Paletted, rc image.Rectangle, b Block) {
+	h := b.Header
+	pad := r.padding(&b, h.Padding)
+	rule := h.Rule
+	if rule == 0 {
+		rule = 1
+	}
+	hgt := rc.Dy()
+
 	title := r.expand(h.Title)
 	if title == "" {
 		title = r.expand(r.t.Title)
 	}
 	subtitle := r.expand(h.Subtitle)
-	clock := ""
-	if h.Time != "" {
+
+	statusText := ""
+	if h.Status != nil {
+		clock := ""
+		if h.Status.Time != "" {
+			if v, ok := lookupValue(r.root, h.Status.Time); ok {
+				clock = r.f.format(v, "time")
+			} else {
+				clock = "—"
+			}
+		}
+		statusText = strings.TrimSpace(strings.Join([]string{r.expand(h.Status.Label), clock}, " "))
+	} else if h.Time != "" {
 		if v, ok := lookupValue(r.root, h.Time); ok {
-			clock = r.f.format(v, "time")
+			statusText = r.f.format(v, "time")
 		}
 	}
-	w, hgt := rc.Dx(), rc.Dy()
-	pad := max(w/40, 4)
-	titleSize := float64(hgt) * 0.38
-	base := rc.Min.Y + hgt*3/5
+
+	stale := r.stale && r.badge
+	if stale {
+		statusText = strings.TrimSpace(statusText + " · " + text(r.language, "veraltet", "outdated"))
+	}
+	if h.PageIndicator && r.pages > 1 && r.page > 0 {
+		title += fmt.Sprintf(" - %d/%d", r.page, r.pages)
+	}
+
+	statusShrink := h.Shrink
+	statusSize := h.StatusSize
+	if statusSize <= 0 {
+		statusSize = float64(hgt) * 0.36
+	}
+	statusBold := h.StatusWeight == "bold" || (stale && h.StatusWeight == "")
+	statusWidth := 0
+	if statusText != "" {
+		statusWidth = measure(statusText, statusSize, statusBold) + pad
+	}
+
+	left, right := rc.Min.X+pad, rc.Max.X-pad
+	if statusWidth > 0 {
+		right -= statusWidth + pad
+	}
+	if right < left+1 {
+		right = left + 1
+	}
+	align := parseAlign(h.Align, alignCenter)
+	x := left
+	switch align {
+	case alignCenter:
+		x = left + (right-left)/2
+	case alignRight:
+		x = right
+	}
+
+	bodyTop := rc.Min.Y + pad
+	bodyBottom := rc.Max.Y - rule - pad
+	baseline := bodyBottom
 	if subtitle != "" {
-		titleSize = float64(hgt) * 0.32
-		base = rc.Min.Y + hgt*2/5
+		baseline = bodyTop + (bodyBottom-bodyTop)*45/100
 	}
-	drawFitted(img, title, rc.Min.X+w/2, base, titleSize, w-2*pad, color.Black, alignCenter)
-	if clock != "" {
-		drawFitted(img, clock, rc.Max.X-pad, base, titleSize*0.7, w/4, color.Black, alignRight)
-	}
+	titleStyle := style(h.TitleSize, float64(hgt)*0.5, h.TitleWeight, true, h.Shrink)
+	drawStyled(img, title, x, baseline, titleStyle, right-left, color.Black, align)
+
 	if subtitle != "" {
-		drawFitted(img, subtitle, rc.Min.X+w/2, rc.Min.Y+hgt*4/5, float64(hgt)*0.22, w-2*pad, color.Black, alignCenter)
+		subStyle := style(h.SubtitleSize, float64(hgt)*0.22, h.SubtitleWeight, false, h.Shrink)
+		drawStyled(img, subtitle, x, bodyBottom, subStyle, right-left, color.Black, align)
 	}
-	hline(img, rc.Min.X, rc.Max.Y-1, rc.Max.X)
+
+	if statusText != "" {
+		if stale {
+			bw := statusWidth + pad/2
+			x0 := rc.Max.X - pad - bw
+			badge := image.Rect(x0, rc.Min.Y+pad/2, rc.Max.X-pad, rc.Max.Y-rule-pad/2)
+			if badge.Empty() {
+				badge = image.Rect(x0, rc.Min.Y, rc.Max.X-pad, rc.Max.Y-rule)
+			}
+			fillSolid(img, badge)
+			drawStyled(img, statusText, rc.Max.X-pad-pad/4, baseline,
+				textStyle{Size: statusSize, Bold: statusBold, Shrink: true}, rc.Dx(), color.White, alignRight)
+		} else {
+			drawStyled(img, statusText, rc.Max.X-pad, baseline,
+				textStyle{Size: statusSize, Bold: statusBold, Shrink: statusShrinkOrDefault(statusShrink)},
+				rc.Dx()/2, color.Black, alignRight)
+		}
+	}
+
+	if rule > 0 {
+		hline(img, rc.Min.X, rc.Max.Y-rule, rc.Max.X, rule)
+	}
 }
 
-func (r *renderer) grid(img *image.Paletted, rc image.Rectangle, tiles []Tile, cols int) {
-	lines := (len(tiles) + cols - 1) / cols
-	cw, ch := rc.Dx()/cols, rc.Dy()/lines
-	for i, tile := range tiles {
-		x := rc.Min.X + (i%cols)*cw
-		y := rc.Min.Y + (i/cols)*ch
-		pad := max(cw/16, 2)
-		drawFitted(img, r.expand(tile.Label), x+pad, y+ch/3, float64(ch)*0.2, cw-2*pad, color.Black, alignLeft)
-		drawFitted(img, r.value(tile), x+pad, y+ch*4/5, float64(ch)*0.34, cw-2*pad, color.Black, alignLeft)
+func statusShrinkOrDefault(s *bool) bool {
+	if s == nil {
+		return true
 	}
+	return *s
 }
 
-func (r *renderer) list(img *image.Paletted, rc image.Rectangle, items []Tile) {
-	ch := rc.Dy() / len(items)
-	pad := max(rc.Dx()/40, 2)
-	for i, tile := range items {
-		y := rc.Min.Y + i*ch
-		drawFitted(img, r.expand(tile.Label), rc.Min.X+pad, y+ch*3/5, float64(ch)*0.4, rc.Dx()/2-2*pad, color.Black, alignLeft)
-		drawFitted(img, r.value(tile), rc.Max.X-pad, y+ch*3/5, float64(ch)*0.4, rc.Dx()/2-2*pad, color.Black, alignRight)
+func (r *renderer) tiles(img *image.Paletted, rc image.Rectangle, b Block) {
+	t := b.Tiles
+	cols := t.Columns
+	if cols <= 0 {
+		cols = 2
 	}
-}
-
-func (r *renderer) chart(img *image.Paletted, rc image.Rectangle, c *Chart) {
-	points, _ := lookupList(r.root, c.Points)
-	if len(points) < 2 {
-		drawFitted(img, text(r.language, "keine Verlaufsdaten", "no chart data"), rc.Min.X+rc.Dx()/2, rc.Min.Y+rc.Dy()/2,
-			float64(rc.Dy())/8, rc.Dx()-8, color.Black, alignCenter)
+	rows := (len(t.Items) + cols - 1) / cols
+	cw, ch := rc.Dx()/cols, rc.Dy()/rows
+	if cw < 1 || ch < 1 {
 		return
 	}
-	left := rc.Min.X + rc.Dx()/20
-	right := rc.Max.X - rc.Dx()/20
-	top := rc.Min.Y + rc.Dy()/4
-	bottom := rc.Max.Y - rc.Dy()/8
-	series := make([][]float64, len(c.Series))
-	maxV := 0.0
-	for si, key := range c.Series {
-		series[si] = make([]float64, len(points))
-		for i, p := range points {
-			v, ok := seriesValue(p, key)
-			if !ok {
-				continue
-			}
-			series[si][i] = v
-			if v > maxV {
-				maxV = v
-			}
+	pad := r.padding(&b, t.Padding)
+	for i := range t.Items {
+		x := rc.Min.X + (i%cols)*cw
+		y := rc.Min.Y + (i/cols)*ch
+		r.tile(img, image.Rect(x, y, x+cw, y+ch), t.Items[i], t, b.Padding)
+	}
+	if t.Divider > 0 {
+		for c := 1; c < cols; c++ {
+			vline(img, rc.Min.X+c*cw-t.Divider/2, rc.Min.Y, rc.Max.Y, t.Divider)
+		}
+		for row := 1; row < rows; row++ {
+			hline(img, rc.Min.X, rc.Min.Y+row*ch-t.Divider/2, rc.Max.X, t.Divider)
 		}
 	}
-	hline(img, left, bottom, right)
-	if maxV > 0 {
-		label := r.f.format(maxV, unitFormat(c.Unit))
-		if unitFormat(c.Unit) == "" && c.Unit != "" {
-			label = r.f.trim(maxV) + " " + c.Unit
-		}
-		drawFitted(img, label, left, top, float64(rc.Dy())/14, rc.Dx()/3, color.Black, alignLeft)
+	_ = pad
+}
+
+func (r *renderer) tile(img *image.Paletted, cell image.Rectangle, tile Tile, list *Tiles, blockPad *int) {
+	b := Block{Padding: blockPad}
+	pad := r.padding(&b, list.Padding)
+	cw, ch := cell.Dx(), cell.Dy()
+	align := parseAlign(tile.Align, parseAlign(list.Align, alignLeft))
+	shrink := pickShrink(tile.Shrink, list.Shrink)
+
+	labelStyle := style(tile.LabelSize, float64(ch)*0.20, tile.LabelWeight, false, shrink)
+	valueStyle := style(tile.ValueSize, float64(ch)*0.34, tile.ValueWeight, true, shrink)
+	detail := r.expand(tile.Detail)
+	detailStyle := style(tile.DetailSize, float64(ch)*0.17, tile.DetailWeight, false, shrink)
+
+	x := cell.Min.X + pad
+	switch align {
+	case alignCenter:
+		x = cell.Min.X + cw/2
+	case alignRight:
+		x = cell.Max.X - pad
 	}
-	for si := range series {
-		px, py, has := 0, 0, false
-		for i, v := range series[si] {
-			x := left + (right-left)*i/(len(points)-1)
-			y := bottom - int(float64(bottom-top)*v/maxV)
-			if has {
-				line(img, px, py, x, y, si%2 == 1)
-			}
-			px, py, has = x, y, true
+	maxWidth := cw - 2*pad
+	labelBase := cell.Min.Y + pad + int(labelStyle.Size)
+	valueBase := cell.Min.Y + int(float64(ch)*0.72)
+	if detail != "" {
+		valueBase = cell.Min.Y + int(float64(ch)*0.66)
+	}
+	drawStyled(img, r.expand(tile.Label), x, labelBase, labelStyle, maxWidth, color.Black, align)
+	drawStyled(img, r.value(tile), x, valueBase, valueStyle, maxWidth, color.Black, align)
+	if detail != "" {
+		drawStyled(img, detail, x, cell.Max.Y-pad, detailStyle, maxWidth, color.Black, align)
+	}
+}
+
+func (r *renderer) rows(img *image.Paletted, rc image.Rectangle, b Block) {
+	rs := b.Rows
+	items := rs.Items
+	step := rc.Dy() / len(items)
+	if step < 1 {
+		return
+	}
+	pad := r.padding(&b, rs.Padding)
+	align := parseAlign(rs.Align, alignRight)
+	for i := range items {
+		item := &items[i]
+		y := rc.Min.Y + i*step
+		if i > 0 && rs.Rule > 0 {
+			hline(img, rc.Min.X+pad, y-rs.Rule/2, rc.Max.X-pad, rs.Rule)
+		}
+		shrink := pickShrink(item.Shrink, rs.Shrink)
+		labelStyle := style(item.LabelSize, float64(step)*0.40, item.LabelWeight, false, shrink)
+		valueStyle := style(item.ValueSize, float64(step)*0.40, item.ValueWeight, true, shrink)
+		detail := r.expand(item.Detail)
+		detailStyle := style(item.DetailSize, float64(step)*0.30, item.DetailWeight, false, shrink)
+
+		labelBase := y + step*7/10
+		detailBase := y + step*85/100
+		if detail != "" {
+			labelBase = y + step*45/100
+		}
+		drawStyled(img, r.expand(item.Label), rc.Min.X+pad, labelBase, labelStyle,
+			rc.Dx()/2-pad, color.Black, alignLeft)
+		drawStyled(img, r.value(*item), rc.Max.X-pad, labelBase, valueStyle,
+			rc.Dx()/2-pad, color.Black, align)
+		if detail != "" {
+			drawStyled(img, detail, rc.Max.X-pad, detailBase, detailStyle,
+				rc.Dx()/2-pad, color.Black, align)
 		}
 	}
 }
 
-func (r *renderer) text(img *image.Paletted, rc image.Rectangle, s string) {
-	s = r.expand(s)
-	lines := strings.Split(s, "\n")
-	ch := rc.Dy() / len(lines)
-	for i, text := range lines {
-		drawFitted(img, text, rc.Min.X+rc.Dx()/2, rc.Min.Y+i*ch+ch*3/5,
-			float64(ch)*0.5, rc.Dx()-rc.Dx()/20, color.Black, alignCenter)
+func (r *renderer) text(img *image.Paletted, rc image.Rectangle, b Block) {
+	t := b.Text
+	pad := r.padding(&b, t.Padding)
+	lines := strings.Split(r.expand(t.Value), "\n")
+	if len(lines) == 0 {
+		return
+	}
+	lineHeight := (rc.Dy() - 2*pad) / len(lines)
+	if lineHeight < 1 {
+		return
+	}
+	align := parseAlign(t.Align, alignCenter)
+	x := rc.Min.X + rc.Dx()/2
+	switch align {
+	case alignLeft:
+		x = rc.Min.X + pad
+	case alignRight:
+		x = rc.Max.X - pad
+	}
+	for i, line := range lines {
+		st := style(t.Size, float64(lineHeight)*0.5, t.Weight, false, t.Shrink)
+		baseline := rc.Min.Y + pad + i*lineHeight + lineHeight*3/5
+		drawStyled(img, line, x, baseline, st, rc.Dx()-2*pad, color.Black, align)
 	}
 }
 
-// unitFormat maps a chart unit to a formatting helper.
-func unitFormat(unit string) string {
-	switch unit {
-	case "W", "kW":
-		return "power"
-	case "kWh", "Wh":
-		return "energy"
-	case "%":
-		return "percent"
-	case "°C":
-		return "temp"
+func (r *renderer) columns(img *image.Paletted, rc image.Rectangle, b Block) {
+	c := b.Columns
+	total := 0
+	for _, col := range c.Items {
+		total += col.Weight
 	}
-	return ""
-}
-
-func seriesValue(p any, key string) (float64, bool) {
-	m, ok := p.(map[string]any)
-	if !ok {
-		return 0, false
+	if total < 1 {
+		return
 	}
-	values, ok := m["values"].(map[string]any)
-	if !ok {
-		return 0, false
+	x := rc.Min.X
+	for i, col := range c.Items {
+		w := rc.Dx() * col.Weight / total
+		if i == len(c.Items)-1 {
+			w = rc.Max.X - x
+		}
+		if c.Divider > 0 && i > 0 {
+			vline(img, x-c.Divider/2, rc.Min.Y, rc.Max.Y, c.Divider)
+		}
+		r.block(img, image.Rect(x, rc.Min.Y, x+w, rc.Max.Y), col.Block)
+		x += w
 	}
-	return toFloat(values[key])
 }
 
 // ---- formatting ----
 
 type formatter struct {
 	comma bool
+	loc   *time.Location
+}
+
+func (f formatter) location() *time.Location {
+	if f.loc == nil {
+		return time.Local
+	}
+	return f.loc
 }
 
 func (f formatter) format(v any, kind string) string {
@@ -417,15 +694,17 @@ func (f formatter) format(v any, kind string) string {
 		return "—"
 	}
 	if kind == "time" {
-		s, ok := v.(string)
-		if !ok {
-			return "—"
+		switch ts := v.(type) {
+		case time.Time:
+			return ts.In(f.location()).Format("15:04")
+		case string:
+			parsed, err := time.Parse(time.RFC3339, ts)
+			if err != nil {
+				return "—"
+			}
+			return parsed.In(f.location()).Format("15:04")
 		}
-		ts, err := time.Parse(time.RFC3339, s)
-		if err != nil {
-			return "—"
-		}
-		return ts.Local().Format("15:04")
+		return "—"
 	}
 	if kind == "" {
 		if s, ok := v.(string); ok {
@@ -522,120 +801,31 @@ func lookupList(root map[string]any, path string) ([]any, bool) {
 	return list, ok
 }
 
-// ---- drawing ----
-
-const (
-	alignLeft = iota
-	alignCenter
-	alignRight
-)
-
-var (
-	fontOnce sync.Once
-	fontBold *opentype.Font
-)
-
-func face(size float64) (font.Face, error) {
-	fontOnce.Do(func() {
-		f, err := opentype.Parse(gobold.TTF)
-		if err != nil {
-			panic(err)
-		}
-		fontBold = f
-	})
-	return opentype.NewFace(fontBold, &opentype.FaceOptions{Size: math.Max(size, 6), DPI: 72, Hinting: font.HintingFull})
+func seriesValue(p any, key string) (float64, bool) {
+	m, ok := p.(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	values, ok := m["values"].(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	return toFloat(values[key])
 }
 
-func newCanvas(w, h int, gray bool) *image.Paletted {
-	p := monoPalette
-	if gray {
-		p = grayPalette
+// unitFormat maps a chart unit to a formatting helper.
+func unitFormat(unit string) string {
+	switch unit {
+	case "W", "kW":
+		return "power"
+	case "kWh", "Wh":
+		return "energy"
+	case "%":
+		return "percent"
+	case "°C":
+		return "temp"
 	}
-	img := image.NewPaletted(image.Rect(0, 0, w, h), p)
-	draw.Draw(img, img.Rect, image.NewUniform(color.White), image.Point{}, draw.Src)
-	return img
-}
-
-func drawText(dst draw.Image, s string, x, baseline int, size float64, c color.Color, align int) {
-	if s == "" {
-		return
-	}
-	fc, err := face(size)
-	if err != nil {
-		return
-	}
-	defer fc.Close()
-	switch align {
-	case alignCenter:
-		x -= font.MeasureString(fc, s).Ceil() / 2
-	case alignRight:
-		x -= font.MeasureString(fc, s).Ceil()
-	}
-	d := font.Drawer{Dst: dst, Src: image.NewUniform(c), Face: fc, Dot: fixed.P(x, baseline)}
-	d.DrawString(s)
-}
-
-// drawFitted shrinks the text until it fits maxWidth.
-func drawFitted(dst draw.Image, s string, x, baseline int, size float64, maxWidth int, c color.Color, align int) {
-	if s == "" || maxWidth <= 0 {
-		return
-	}
-	for size > 6 {
-		fc, err := face(size)
-		if err != nil {
-			break
-		}
-		w := font.MeasureString(fc, s).Ceil()
-		fc.Close()
-		if w <= maxWidth {
-			break
-		}
-		size--
-	}
-	drawText(dst, s, x, baseline, size, c, align)
-}
-
-func hline(img *image.Paletted, x0, y, x1 int) {
-	if y < 0 || y >= img.Rect.Dy() {
-		return
-	}
-	draw.Draw(img, image.Rect(x0, y, x1, y+1), image.NewUniform(color.Black), image.Point{}, draw.Src)
-}
-
-func line(img *image.Paletted, x0, y0, x1, y1 int, dotted bool) {
-	dx, dy := absInt(x1-x0), -absInt(y1-y0)
-	sx, sy := -1, -1
-	if x0 < x1 {
-		sx = 1
-	}
-	if y0 < y1 {
-		sy = 1
-	}
-	err := dx + dy
-	for n := 1; ; n++ {
-		if (!dotted || n%3 != 0) && image.Pt(x0, y0).In(img.Rect) {
-			img.SetColorIndex(x0, y0, 0)
-		}
-		if x0 == x1 && y0 == y1 {
-			return
-		}
-		e2 := 2 * err
-		if e2 >= dy {
-			err += dy
-			x0 += sx
-		}
-		if e2 <= dx {
-			err += dx
-			y0 += sy
-		}
-	}
-}
-
-func absInt(v int) int {
-	if v < 0 {
-		return -v
-	}
-	return v
+	return ""
 }
 
 // withBanner returns a copy of img with inverted notice bars stacked at the
@@ -654,7 +844,8 @@ func withBanner(img *image.Paletted, texts ...string) *image.Paletted {
 		if i > 0 {
 			draw.Draw(out, image.Rect(0, bottom-max(1, bar/30), w, bottom), image.NewUniform(color.White), image.Point{}, draw.Src)
 		}
-		drawFitted(out, text, w/2, bottom-bar*3/10, float64(bar)*0.55, w-w/25, color.White, alignCenter)
+		drawStyled(out, text, w/2, bottom-bar*3/10, textStyle{Size: float64(bar) * 0.55, Bold: true, Shrink: true},
+			w-w/25, color.White, alignCenter)
 	}
 	return out
 }

@@ -403,7 +403,7 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	rp, err := s.renderPage(display, name, s.now())
+	rp, err := s.renderPage(display, name, s.now(), pagePosition{index: 0, count: 1})
 	if errors.Is(err, page.ErrNotFound) {
 		http.NotFound(w, r)
 		return

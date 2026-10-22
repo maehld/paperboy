@@ -1,12 +1,13 @@
 // Package page parses page templates and renders them into paletted images.
 //
-// A page is a skeleton of named regions with relative heights; every region
-// holds one block (header, tiles, rows, chart or text). Values are read from
-// the shared data document (ADR 0024), the region names are the slots that
-// providers fill (ADR 0032).
+// A page is a skeleton of rows with relative heights; every row holds one block
+// (header, tiles, rows, chart, text, columns or bar). Values are read from the
+// shared data document (ADR 0024), the block names are the slots that providers
+// fill (ADR 0032), and the optional style fields follow ADR 0034.
 package page
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -39,10 +40,11 @@ func (d *Duration) UnmarshalYAML(v *yaml.Node) error {
 
 // Template is one page for one display type.
 type Template struct {
-	Title  string  `yaml:"title"`
-	Watch  []Watch `yaml:"watch"`
-	Rows   []int   `yaml:"rows"`   // relative heights, one per block
-	Blocks []Block `yaml:"blocks"` // one block per row
+	Title   string  `yaml:"title"`
+	Watch   []Watch `yaml:"watch"`
+	Notices string  `yaml:"notices"` // bar (default), badge or none
+	Rows    []int   `yaml:"rows"`    // relative heights, one per block
+	Blocks  []Block `yaml:"blocks"`  // one block per row
 }
 
 // Watch declares a data path the page depends on and when it counts as stale.
@@ -52,43 +54,193 @@ type Watch struct {
 	Label      string   `yaml:"label"`
 }
 
-// Block is the content of one region; exactly one field is set.
+// Block is the content of one region; exactly one content field is set.
 type Block struct {
-	Name   string  `yaml:"name"`
-	Header *Header `yaml:"header"`
-	Tiles  []Tile  `yaml:"tiles"`
-	Rows   []Tile  `yaml:"rows"`
-	Chart  *Chart  `yaml:"chart"`
-	Text   *string `yaml:"text"`
+	Name    string   `yaml:"name"`
+	Rule    int      `yaml:"rule"`    // separator at the bottom edge, px; 0 = none
+	Padding *int     `yaml:"padding"` // inner distance to the region edges, px
+	Header  *Header  `yaml:"header"`
+	Tiles   *Tiles   `yaml:"tiles"`
+	Rows    *Rows    `yaml:"rows"`
+	Chart   *Chart   `yaml:"chart"`
+	Text    *Text    `yaml:"text"`
+	Columns *Columns `yaml:"columns"`
+	Bar     *Bar     `yaml:"bar"`
 }
 
-// Header shows a title, an optional subtitle and an optional time.
+// Header shows a title, an optional subtitle and a status area.
 type Header struct {
-	Title    string `yaml:"title"`    // text template
-	Subtitle string `yaml:"subtitle"` // text template
-	Time     string `yaml:"time"`     // path to an RFC 3339 timestamp
+	Title          string        `yaml:"title"`    // text template
+	Subtitle       string        `yaml:"subtitle"` // text template
+	Time           string        `yaml:"time"`     // legacy shortcut for status.time
+	Status         *HeaderStatus `yaml:"status"`
+	Align          string        `yaml:"align"` // left, center (default) or right
+	PageIndicator  bool          `yaml:"page_indicator"`
+	Rule           int           `yaml:"rule"` // separator below the header, px; 0 = default 1
+	Padding        *int          `yaml:"padding"`
+	TitleSize      float64       `yaml:"title_size"`
+	SubtitleSize   float64       `yaml:"subtitle_size"`
+	StatusSize     float64       `yaml:"status_size"`
+	TitleWeight    string        `yaml:"title_weight"`
+	SubtitleWeight string        `yaml:"subtitle_weight"`
+	StatusWeight   string        `yaml:"status_weight"`
+	Shrink         *bool         `yaml:"shrink"`
+}
+
+// HeaderStatus is the right-aligned area of a header.
+type HeaderStatus struct {
+	Time  string `yaml:"time"`  // path to an RFC 3339 timestamp
+	Label string `yaml:"label"` // text template, e.g. "Stand"
+}
+
+// Tiles lays out label/value pairs in a grid. In YAML the block also accepts
+// the list shorthand: tiles: [{label: ..., value: ...}].
+type Tiles struct {
+	Columns int    `yaml:"columns"` // default 2
+	Divider int    `yaml:"divider"` // separator between cells, px; 0 = none
+	Padding *int   `yaml:"padding"`
+	Align   string `yaml:"align"` // alignment inside a cell; default left
+	Shrink  *bool  `yaml:"shrink"`
+	Items   []Tile `yaml:"items"`
+}
+
+// Rows lays out label/value pairs as an evenly spaced table. In YAML the block
+// also accepts the list shorthand: rows: [{label: ..., value: ...}].
+type Rows struct {
+	Rule    int    `yaml:"rule"` // separator between items, px; 0 = none
+	Padding *int   `yaml:"padding"`
+	Align   string `yaml:"align"` // alignment of the values; default right
+	Shrink  *bool  `yaml:"shrink"`
+	Items   []Tile `yaml:"items"`
+}
+
+// Text is a free text block. In YAML the block also accepts a scalar:
+// text: "Hello".
+type Text struct {
+	Value   string  `yaml:"value"`
+	Align   string  `yaml:"align"` // default center
+	Size    float64 `yaml:"size"`  // fraction of the line height
+	Weight  string  `yaml:"weight"`
+	Shrink  *bool   `yaml:"shrink"`
+	Padding *int    `yaml:"padding"`
 }
 
 // Tile is one label/value pair, used by both tiles and rows.
 type Tile struct {
-	Label  string   `yaml:"label"`  // text template
-	Value  string   `yaml:"value"`  // path into the data document
-	Format string   `yaml:"format"` // power, energy, percent, temp, time, abs
-	Sign   []string `yaml:"sign"`   // [negative, positive] suffix words
+	Label        string   `yaml:"label"`  // text template
+	Detail       string   `yaml:"detail"` // optional third line, text template
+	Value        string   `yaml:"value"`  // path into the data document
+	Format       string   `yaml:"format"` // power, energy, percent, temp, time, abs
+	Sign         []string `yaml:"sign"`   // [negative, positive] suffix words
+	Align        string   `yaml:"align"`
+	LabelSize    float64  `yaml:"label_size"`
+	ValueSize    float64  `yaml:"value_size"`
+	DetailSize   float64  `yaml:"detail_size"`
+	LabelWeight  string   `yaml:"label_weight"`
+	ValueWeight  string   `yaml:"value_weight"`
+	DetailWeight string   `yaml:"detail_weight"`
+	Shrink       *bool    `yaml:"shrink"`
 }
 
 // Chart draws one or more series from a list of points.
 type Chart struct {
-	Points string   `yaml:"points"` // path to [{values: {...}}]
-	Series []string `yaml:"series"` // keys inside "values"
+	Points string   `yaml:"points"` // path to [{time: ..., values: {...}}]
+	Title  string   `yaml:"title"`  // text template
 	Unit   string   `yaml:"unit"`
+	Time   bool     `yaml:"time"`  // x from point.time, local midnight to midnight
+	YMax   YMax     `yaml:"y_max"` // auto (0) or a number
+	Axis   bool     `yaml:"axis"`  // draw axes and labels
+	Ticks  Duration `yaml:"ticks"` // time axis step; default 6h
+	Now    bool     `yaml:"now"`   // mark the current time
+	Legend bool     `yaml:"legend"`
+	Series []Series `yaml:"series"`
 }
 
-var formats = map[string]bool{"": true, "power": true, "energy": true, "percent": true, "temp": true, "time": true, "abs": true}
+// YMax accepts a number or the word "auto"; zero means auto.
+type YMax float64
 
-// Parse reads a template and validates it.
+func (y *YMax) UnmarshalYAML(v *yaml.Node) error {
+	if v.Kind == yaml.ScalarNode && v.Value == "auto" {
+		*y = 0
+		return nil
+	}
+	var n float64
+	if err := v.Decode(&n); err != nil {
+		return fmt.Errorf("y_max: expected a number or \"auto\"")
+	}
+	*y = YMax(n)
+	return nil
+}
+
+// Series is one chart line. In YAML the list also accepts a plain key:
+// series: [pv_power].
+type Series struct {
+	Key    string `yaml:"key"`
+	Label  string `yaml:"label"`  // text template
+	Style  string `yaml:"style"`  // line (default) or area
+	Fill   string `yaml:"fill"`   // shade (default for areas), hatch, solid, none
+	Weight int    `yaml:"weight"` // line thickness in px; default 1
+}
+
+// Columns splits a region into weighted columns with one block each.
+type Columns struct {
+	Divider int      `yaml:"divider"` // separator between columns, px
+	Items   []Column `yaml:"items"`
+}
+
+// Column is one weighted column of a columns block.
+type Column struct {
+	Weight int   `yaml:"weight"`
+	Block  Block `yaml:"block"`
+}
+
+// Bar draws a value as a filled bar or a battery symbol.
+type Bar struct {
+	Value       string  `yaml:"value"`
+	Min         float64 `yaml:"min"`         // default 0
+	Max         float64 `yaml:"max"`         // default 100
+	Orientation string  `yaml:"orientation"` // vertical (default) or horizontal
+	Border      int     `yaml:"border"`      // frame in px; 0 = none
+	Cap         bool    `yaml:"cap"`         // battery nub, vertical only
+	Fill        string  `yaml:"fill"`        // shade (default), hatch, solid, none
+	Label       string  `yaml:"label"`       // text template
+	LabelSize   float64 `yaml:"label_size"`
+	LabelWeight string  `yaml:"label_weight"`
+	Align       string  `yaml:"align"`
+}
+
+var (
+	formats      = map[string]bool{"": true, "power": true, "energy": true, "percent": true, "temp": true, "time": true, "abs": true}
+	weights      = map[string]bool{"": true, "regular": true, "bold": true}
+	aligns       = map[string]bool{"": true, "left": true, "center": true, "right": true}
+	fills        = map[string]bool{"": true, "shade": true, "hatch": true, "solid": true, "none": true}
+	styles       = map[string]bool{"": true, "line": true, "area": true}
+	notices      = map[string]bool{"": true, "bar": true, "badge": true, "none": true}
+	orientations = map[string]bool{"": true, "vertical": true, "horizontal": true}
+)
+
+// Parse reads a template and validates it. The list shorthands of ADR 0024 are
+// normalized to the object forms before the strict decode.
 func Parse(r io.Reader) (*Template, error) {
-	dec := yaml.NewDecoder(r)
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, err
+	}
+	if doc.Kind == 0 || len(doc.Content) == 0 {
+		return nil, fmt.Errorf("empty template")
+	}
+	if err := normalizeDoc(&doc); err != nil {
+		return nil, err
+	}
+	normalized, err := yaml.Marshal(&doc)
+	if err != nil {
+		return nil, err
+	}
+	dec := yaml.NewDecoder(bytes.NewReader(normalized))
 	dec.KnownFields(true)
 	var t Template
 	if err := dec.Decode(&t); err != nil {
@@ -135,6 +287,115 @@ func ValidName(s string) bool {
 	return true
 }
 
+// ---- shorthand normalization ----
+
+func normalizeDoc(n *yaml.Node) error {
+	if n.Kind == yaml.DocumentNode && len(n.Content) > 0 {
+		n = n.Content[0]
+	}
+	if n.Kind != yaml.MappingNode {
+		return nil
+	}
+	blocks := mappingValue(n, "blocks")
+	if blocks == nil || blocks.Kind != yaml.SequenceNode {
+		return nil
+	}
+	for _, b := range blocks.Content {
+		if err := normalizeBlock(b); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func normalizeBlock(b *yaml.Node) error {
+	if b.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: block must be a mapping", b.Line)
+	}
+	for i := 0; i+1 < len(b.Content); i += 2 {
+		key, val := b.Content[i], b.Content[i+1]
+		switch key.Value {
+		case "tiles", "rows":
+			if val.Kind == yaml.SequenceNode {
+				b.Content[i+1] = newMapping(newKey("items"), val)
+			}
+		case "text":
+			if val.Kind == yaml.ScalarNode {
+				b.Content[i+1] = newMapping(newKey("value"), val)
+			}
+		case "chart":
+			normalizeChart(val)
+		case "columns":
+			if err := normalizeColumns(val); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func normalizeChart(c *yaml.Node) {
+	if c == nil || c.Kind != yaml.MappingNode {
+		return
+	}
+	series := mappingValue(c, "series")
+	if series == nil || series.Kind != yaml.SequenceNode {
+		return
+	}
+	for i, s := range series.Content {
+		if s.Kind == yaml.ScalarNode {
+			series.Content[i] = newMapping(newKey("key"), s)
+		}
+	}
+}
+
+func normalizeColumns(c *yaml.Node) error {
+	var items *yaml.Node
+	if c.Kind == yaml.SequenceNode {
+		original := *c
+		items = &original
+		*c = *newMapping(newKey("items"), items)
+	} else {
+		items = mappingValue(c, "items")
+	}
+	if items == nil || items.Kind != yaml.SequenceNode {
+		return nil
+	}
+	for _, col := range items.Content {
+		if col.Kind != yaml.MappingNode {
+			continue
+		}
+		if block := mappingValue(col, "block"); block != nil {
+			if err := normalizeBlock(block); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func mappingValue(n *yaml.Node, key string) *yaml.Node {
+	if n == nil || n.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		if n.Content[i].Value == key {
+			return n.Content[i+1]
+		}
+	}
+	return nil
+}
+
+func newKey(name string) *yaml.Node {
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name}
+}
+
+func newMapping(pairs ...*yaml.Node) *yaml.Node {
+	return &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: pairs}
+}
+
+// ---- validation ----
+
 func (t *Template) validate() error {
 	if len(t.Rows) == 0 {
 		return fmt.Errorf("rows missing")
@@ -150,7 +411,14 @@ func (t *Template) validate() error {
 			return fmt.Errorf("row %d: weight must be positive", i)
 		}
 	}
+	if t.Notices == "" {
+		t.Notices = "bar"
+	}
+	if !notices[t.Notices] {
+		return fmt.Errorf("notices %q: expected bar, badge or none", t.Notices)
+	}
 	seen := map[string]bool{}
+	hasStatus := false
 	for i := range t.Blocks {
 		b := &t.Blocks[i]
 		if b.Name == "" {
@@ -166,6 +434,12 @@ func (t *Template) validate() error {
 		if err := b.validate(); err != nil {
 			return fmt.Errorf("block %s: %w", b.Name, err)
 		}
+		if b.Header != nil && (b.Header.Status != nil || b.Header.Time != "") {
+			hasStatus = true
+		}
+	}
+	if t.Notices == "badge" && !hasStatus {
+		return fmt.Errorf("notices badge requires a header with status")
 	}
 	for i := range t.Watch {
 		w := &t.Watch[i]
@@ -182,41 +456,168 @@ func (t *Template) validate() error {
 }
 
 func (b *Block) validate() error {
+	return b.validateNested(false)
+}
+
+func (b *Block) validateNested(nested bool) error {
+	if b.Rule < 0 {
+		return fmt.Errorf("rule must not be negative")
+	}
+	if b.Padding != nil && *b.Padding < 0 {
+		return fmt.Errorf("padding must not be negative")
+	}
 	kinds := 0
-	for _, set := range []bool{b.Header != nil, len(b.Tiles) > 0, len(b.Rows) > 0, b.Chart != nil, b.Text != nil} {
+	for _, set := range []bool{b.Header != nil, b.Tiles != nil, b.Rows != nil, b.Chart != nil,
+		b.Text != nil, b.Columns != nil, b.Bar != nil} {
 		if set {
 			kinds++
 		}
 	}
 	if kinds != 1 {
-		return fmt.Errorf("exactly one of header, tiles, rows, chart or text is required")
+		return fmt.Errorf("exactly one of header, tiles, rows, chart, text, columns or bar is required")
 	}
-	for _, tiles := range [][]Tile{b.Tiles, b.Rows} {
-		for i := range tiles {
-			if err := tiles[i].validate(); err != nil {
-				return err
-			}
+	if nested && b.Columns != nil {
+		return fmt.Errorf("nested columns are not supported")
+	}
+	if b.Header != nil {
+		if err := b.Header.validate(); err != nil {
+			return fmt.Errorf("header: %w", err)
+		}
+	}
+	if b.Tiles != nil {
+		if err := b.Tiles.validate(); err != nil {
+			return fmt.Errorf("tiles: %w", err)
+		}
+	}
+	if b.Rows != nil {
+		if err := b.Rows.validate(); err != nil {
+			return fmt.Errorf("rows: %w", err)
 		}
 	}
 	if b.Chart != nil {
-		path, err := normalizePath(b.Chart.Points)
-		if err != nil {
+		if err := b.Chart.validate(); err != nil {
 			return fmt.Errorf("chart: %w", err)
 		}
-		b.Chart.Points = path
-		if len(b.Chart.Series) == 0 {
-			return fmt.Errorf("chart: series missing")
+	}
+	if b.Text != nil {
+		if err := b.Text.validate(); err != nil {
+			return fmt.Errorf("text: %w", err)
 		}
 	}
-	if b.Header != nil && b.Header.Time != "" {
-		path, err := normalizePath(b.Header.Time)
+	if b.Columns != nil {
+		if err := b.Columns.validate(); err != nil {
+			return fmt.Errorf("columns: %w", err)
+		}
+	}
+	if b.Bar != nil {
+		if err := b.Bar.validate(); err != nil {
+			return fmt.Errorf("bar: %w", err)
+		}
+	}
+	return nil
+}
+
+func (h *Header) validate() error {
+	if err := validateStyle("header", h.Align, h.TitleWeight, h.TitleSize); err != nil {
+		return err
+	}
+	if err := validateWeight(h.SubtitleWeight); err != nil {
+		return fmt.Errorf("subtitle_weight: %w", err)
+	}
+	if err := validateWeight(h.StatusWeight); err != nil {
+		return fmt.Errorf("status_weight: %w", err)
+	}
+	if err := validateSize(h.SubtitleSize); err != nil {
+		return fmt.Errorf("subtitle_size: %w", err)
+	}
+	if err := validateSize(h.StatusSize); err != nil {
+		return fmt.Errorf("status_size: %w", err)
+	}
+	if h.Rule < 0 {
+		return fmt.Errorf("rule must not be negative")
+	}
+	if h.Padding != nil && *h.Padding < 0 {
+		return fmt.Errorf("padding must not be negative")
+	}
+	if h.Status != nil {
+		if h.Status.Time == "" && strings.TrimSpace(h.Status.Label) == "" {
+			return fmt.Errorf("status needs time or label")
+		}
+		if h.Status.Time != "" {
+			path, err := normalizePath(h.Status.Time)
+			if err != nil {
+				return fmt.Errorf("status.time: %w", err)
+			}
+			h.Status.Time = path
+		}
+	}
+	if h.Time != "" {
+		path, err := normalizePath(h.Time)
 		if err != nil {
-			return fmt.Errorf("header: %w", err)
+			return fmt.Errorf("time: %w", err)
 		}
-		b.Header.Time = path
+		h.Time = path
 	}
-	if b.Text != nil && strings.TrimSpace(*b.Text) == "" {
-		return fmt.Errorf("text is empty")
+	return nil
+}
+
+func (t *Tiles) validate() error {
+	if len(t.Items) == 0 {
+		return fmt.Errorf("items missing")
+	}
+	if t.Columns == 0 {
+		t.Columns = 2
+	}
+	if t.Columns < 1 || t.Columns > 4 {
+		return fmt.Errorf("columns %d: expected 1 to 4", t.Columns)
+	}
+	if t.Divider < 0 {
+		return fmt.Errorf("divider must not be negative")
+	}
+	if t.Padding != nil && *t.Padding < 0 {
+		return fmt.Errorf("padding must not be negative")
+	}
+	if err := validateAlign(t.Align); err != nil {
+		return err
+	}
+	for i := range t.Items {
+		if err := t.Items[i].validate(); err != nil {
+			return fmt.Errorf("item %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
+func (rs *Rows) validate() error {
+	if len(rs.Items) == 0 {
+		return fmt.Errorf("items missing")
+	}
+	if rs.Rule < 0 {
+		return fmt.Errorf("rule must not be negative")
+	}
+	if rs.Padding != nil && *rs.Padding < 0 {
+		return fmt.Errorf("padding must not be negative")
+	}
+	if err := validateAlign(rs.Align); err != nil {
+		return err
+	}
+	for i := range rs.Items {
+		if err := rs.Items[i].validate(); err != nil {
+			return fmt.Errorf("item %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
+func (tx *Text) validate() error {
+	if strings.TrimSpace(tx.Value) == "" {
+		return fmt.Errorf("value is empty")
+	}
+	if err := validateStyle("text", tx.Align, tx.Weight, tx.Size); err != nil {
+		return err
+	}
+	if tx.Padding != nil && *tx.Padding < 0 {
+		return fmt.Errorf("padding must not be negative")
 	}
 	return nil
 }
@@ -225,13 +626,153 @@ func (t *Tile) validate() error {
 	if !formats[t.Format] {
 		return fmt.Errorf("unknown format %q", t.Format)
 	}
-	path, err := normalizePath(t.Value)
+	if t.Value != "" {
+		path, err := normalizePath(t.Value)
+		if err != nil {
+			return err
+		}
+		t.Value = path
+	}
+	if len(t.Sign) != 0 && len(t.Sign) != 2 {
+		return fmt.Errorf("sign needs two words (negative, positive)")
+	}
+	if err := validateAlign(t.Align); err != nil {
+		return err
+	}
+	for name, w := range map[string]string{"label": t.LabelWeight, "value": t.ValueWeight, "detail": t.DetailWeight} {
+		if err := validateWeight(w); err != nil {
+			return fmt.Errorf("%s_weight: %w", name, err)
+		}
+	}
+	for name, size := range map[string]float64{"label": t.LabelSize, "value": t.ValueSize, "detail": t.DetailSize} {
+		if err := validateSize(size); err != nil {
+			return fmt.Errorf("%s_size: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func (c *Chart) validate() error {
+	if c.Points == "" {
+		return fmt.Errorf("points missing")
+	}
+	path, err := normalizePath(c.Points)
 	if err != nil {
 		return err
 	}
-	t.Value = path
-	if len(t.Sign) != 0 && len(t.Sign) != 2 {
-		return fmt.Errorf("sign needs two words (negative, positive)")
+	c.Points = path
+	if len(c.Series) == 0 {
+		return fmt.Errorf("series missing")
+	}
+	if c.Ticks < 0 {
+		return fmt.Errorf("ticks must not be negative")
+	}
+	if c.YMax < 0 {
+		return fmt.Errorf("y_max must not be negative")
+	}
+	for i := range c.Series {
+		s := &c.Series[i]
+		if s.Key == "" {
+			return fmt.Errorf("series %d: key missing", i)
+		}
+		if !styles[s.Style] {
+			return fmt.Errorf("series %s: style %q: expected line or area", s.Key, s.Style)
+		}
+		if !fills[s.Fill] {
+			return fmt.Errorf("series %s: fill %q: expected shade, hatch, solid or none", s.Key, s.Fill)
+		}
+		if s.Weight < 0 || s.Weight > 10 {
+			return fmt.Errorf("series %s: weight must be between 0 and 10", s.Key)
+		}
+	}
+	return nil
+}
+
+func (c *Columns) validate() error {
+	if len(c.Items) < 2 {
+		return fmt.Errorf("at least two columns are required")
+	}
+	if c.Divider < 0 {
+		return fmt.Errorf("divider must not be negative")
+	}
+	for i := range c.Items {
+		col := &c.Items[i]
+		if col.Weight < 1 {
+			return fmt.Errorf("column %d: weight must be positive", i)
+		}
+		if err := col.Block.validateNested(true); err != nil {
+			return fmt.Errorf("column %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
+func (b *Bar) validate() error {
+	if b.Value == "" {
+		return fmt.Errorf("value missing")
+	}
+	path, err := normalizePath(b.Value)
+	if err != nil {
+		return err
+	}
+	b.Value = path
+	if b.Max == 0 {
+		b.Max = 100
+	}
+	if b.Max <= b.Min {
+		return fmt.Errorf("max must be above min")
+	}
+	if !orientations[b.Orientation] {
+		return fmt.Errorf("orientation %q: expected vertical or horizontal", b.Orientation)
+	}
+	if b.Border < 0 {
+		return fmt.Errorf("border must not be negative")
+	}
+	if !fills[b.Fill] {
+		return fmt.Errorf("fill %q: expected shade, hatch, solid or none", b.Fill)
+	}
+	if err := validateAlign(b.Align); err != nil {
+		return err
+	}
+	if err := validateWeight(b.LabelWeight); err != nil {
+		return fmt.Errorf("label_weight: %w", err)
+	}
+	if err := validateSize(b.LabelSize); err != nil {
+		return fmt.Errorf("label_size: %w", err)
+	}
+	return nil
+}
+
+func validateStyle(owner, align, weight string, size float64) error {
+	if err := validateAlign(align); err != nil {
+		return err
+	}
+	if err := validateWeight(weight); err != nil {
+		return err
+	}
+	if err := validateSize(size); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateAlign(a string) error {
+	if !aligns[a] {
+		return fmt.Errorf("align %q: expected left, center or right", a)
+	}
+	return nil
+}
+
+func validateWeight(w string) error {
+	if !weights[w] {
+		return fmt.Errorf("weight %q: expected regular or bold", w)
+	}
+	return nil
+}
+
+func validateSize(size float64) error {
+	if size < 0 || size > 1.5 {
+		return fmt.Errorf("size %g: expected a fraction between 0 and 1.5", size)
 	}
 	return nil
 }
