@@ -18,6 +18,7 @@ directories:
   pages: pages
   plans: plans
   data: data
+  providers: providers
 defaults:
   refresh: 10m
   page_timeout: 3m
@@ -42,6 +43,13 @@ devices:
   flur:
     display_type: sticky
     mac: "44:1b:f6:85:aa:1d"
+providers:
+  weather:
+    command: [weather, -lat, "52.52"]
+    path: weather
+    interval: 30m
+    timeout: 20s
+    env: { OPEN_METEO_KEY: secret }
 `
 
 // loadConfig writes text as paperboy.yaml next to a fresh temporary directory
@@ -79,6 +87,17 @@ func TestLoadConfig(t *testing.T) {
 	}
 	if cfg.Pages != filepath.Join(dir, "pages") || cfg.Plans != filepath.Join(dir, "plans") || cfg.DataDir != filepath.Join(dir, "data") {
 		t.Fatalf("directories: %q %q %q", cfg.Pages, cfg.Plans, cfg.DataDir)
+	}
+	if cfg.ProvidersDir != filepath.Join(dir, "providers") {
+		t.Fatalf("providers directory: %q", cfg.ProvidersDir)
+	}
+	if len(cfg.Providers) != 1 {
+		t.Fatalf("providers: %+v", cfg.Providers)
+	}
+	if p := cfg.Providers[0]; p.Name != "weather" || p.Path != "weather" ||
+		len(p.Command) != 3 || p.Interval != Duration(30*time.Minute) || p.Timeout != Duration(20*time.Second) ||
+		p.Env["OPEN_METEO_KEY"] != "secret" {
+		t.Fatalf("provider: %+v", p)
 	}
 	if cfg.Refresh != Duration(10*time.Minute) || cfg.PageTimeout != Duration(3*time.Minute) {
 		t.Fatalf("defaults: %v %v", cfg.Refresh, cfg.PageTimeout)
@@ -153,6 +172,15 @@ func TestLoadConfigErrors(t *testing.T) {
 		{"bad language", strings.Replace(validConfig, "language: en", "language: fr", 1), "expected de or en"},
 		{"bad timezone", strings.Replace(validConfig, "timezone: Europe/Berlin", "timezone: Mars/Olympus", 1), "timezone"},
 		{"address", strings.Replace(validConfig, "mac: \"44:1B:F6:85:AA:1C\"", "address: 10.0.0.1", 1), "opendisplay"},
+		{"provider command", strings.Replace(validConfig, "    command: [weather, -lat, \"52.52\"]\n", "", 1), "command missing"},
+		{"provider path", strings.Replace(validConfig, "    path: weather\n", "", 1), "path missing"},
+		{"provider root path", strings.Replace(validConfig, "    path: weather\n", "    path: /\n", 1), "not the whole document"},
+		{"provider bad path", strings.Replace(validConfig, "    path: weather\n", "    path: Weather/Now\n", 1), "segment"},
+		{"provider interval", strings.Replace(validConfig, "    interval: 30m\n", "    interval: 1s\n", 1), "at least"},
+		{"provider timeout", strings.Replace(validConfig, "    timeout: 20s\n", "    timeout: 60m\n", 1), "must not exceed interval"},
+		{"provider name", strings.Replace(validConfig, "  weather:\n", "  Weather:\n", 1), "name must use"},
+		{"provider overlap", strings.Replace(validConfig, "    path: weather\n", "    path: weather/current\n", 1) +
+			"  weather2:\n    command: [weather]\n    path: weather\n", "one owner"},
 		{"gray levels", strings.Replace(validConfig, "gray_levels: 4", "gray_levels: 2", 1), ""},
 		{"empty", "", "empty configuration"},
 		{"two documents", validConfig + "\n---\nserver: {}\n", "only one YAML document"},

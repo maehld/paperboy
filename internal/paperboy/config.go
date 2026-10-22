@@ -18,6 +18,9 @@ import (
 	_ "time/tzdata" // embed IANA zones so the configured timezone needs no system tzdata
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/maehld/paperboy/internal/data"
+	"github.com/maehld/paperboy/internal/provider"
 )
 
 // Duration accepts Go duration strings such as "5m" in YAML.
@@ -122,18 +125,31 @@ const (
 
 // Config is the validated runtime configuration.
 type Config struct {
-	UploadToken string
-	PublicURL   string
-	Language    string         // "de" or "en"; built-in texts and number formats
-	Timezone    *time.Location // plans and built-in dates
-	Refresh     Duration       // default interval of a device; a plan rule may override it
-	PageTimeout Duration
-	DataDir     string // from directories.data; empty = -data or paperboy-data
-	Pages       string // page templates; empty = <data>/pages
-	Plans       string // page plans; empty = <data>/plans
-	Profiles    map[string]Profile
-	Devices     []Device
-	Battery     *Battery // default low-battery warning; nil = off
+	UploadToken  string
+	PublicURL    string
+	Language     string         // "de" or "en"; built-in texts and number formats
+	Timezone     *time.Location // plans and built-in dates
+	Refresh      Duration       // default interval of a device; a plan rule may override it
+	PageTimeout  Duration
+	DataDir      string // from directories.data; empty = -data or paperboy-data
+	Pages        string // page templates; empty = <data>/pages
+	Plans        string // page plans; empty = <data>/plans
+	ProvidersDir string // provider programs; empty = <data>/providers
+	Profiles     map[string]Profile
+	Devices      []Device
+	Providers    []Provider // exec providers (ADR 0036)
+	Battery      *Battery   // default low-battery warning; nil = off
+}
+
+// Provider is one exec provider (ADR 0036): a program in the providers
+// directory that prints the new value of a data branch.
+type Provider struct {
+	Name     string
+	Command  []string // argument vector, never a shell string
+	Path     string   // data branch the provider owns
+	Interval Duration // pause between two runs
+	Timeout  Duration // hard limit for one run
+	Env      map[string]string
 }
 
 // texts returns the built-in image texts for the configured language.
@@ -163,15 +179,23 @@ type fileConfig struct {
 		UploadTokenEnv string `yaml:"upload_token_env"`
 	} `yaml:"server"`
 	Directories struct {
-		Pages string `yaml:"pages"`
-		Plans string `yaml:"plans"`
-		Data  string `yaml:"data"`
+		Pages     string `yaml:"pages"`
+		Plans     string `yaml:"plans"`
+		Data      string `yaml:"data"`
+		Providers string `yaml:"providers"`
 	} `yaml:"directories"`
 	Defaults struct {
 		Refresh     Duration `yaml:"refresh"`
 		PageTimeout Duration `yaml:"page_timeout"`
 		Battery     *Battery `yaml:"battery"`
 	} `yaml:"defaults"`
+	Providers map[string]struct {
+		Command  []string          `yaml:"command"`
+		Path     string            `yaml:"path"`
+		Interval Duration          `yaml:"interval"`
+		Timeout  Duration          `yaml:"timeout"`
+		Env      map[string]string `yaml:"env"`
+	} `yaml:"providers"`
 	DisplayTypes map[string]struct {
 		Kind       string   `yaml:"kind"`
 		Size       [2]int   `yaml:"size"`
@@ -227,17 +251,18 @@ func LoadConfig(path string) (*Config, error) {
 		tz = loc
 	}
 	c := &Config{
-		UploadToken: f.Server.UploadToken,
-		PublicURL:   f.Server.PublicURL,
-		Language:    f.Language,
-		Timezone:    tz,
-		Refresh:     f.Defaults.Refresh,
-		PageTimeout: f.Defaults.PageTimeout,
-		Battery:     f.Defaults.Battery,
-		DataDir:     resolveDir(base, f.Directories.Data),
-		Pages:       resolveDir(base, f.Directories.Pages),
-		Plans:       resolveDir(base, f.Directories.Plans),
-		Profiles:    make(map[string]Profile, len(f.DisplayTypes)),
+		UploadToken:  f.Server.UploadToken,
+		PublicURL:    f.Server.PublicURL,
+		Language:     f.Language,
+		Timezone:     tz,
+		Refresh:      f.Defaults.Refresh,
+		PageTimeout:  f.Defaults.PageTimeout,
+		Battery:      f.Defaults.Battery,
+		DataDir:      resolveDir(base, f.Directories.Data),
+		Pages:        resolveDir(base, f.Directories.Pages),
+		Plans:        resolveDir(base, f.Directories.Plans),
+		ProvidersDir: resolveDir(base, f.Directories.Providers),
+		Profiles:     make(map[string]Profile, len(f.DisplayTypes)),
 	}
 	if name := f.Server.UploadTokenEnv; name != "" {
 		if token := os.Getenv(name); token != "" {
@@ -286,6 +311,22 @@ func LoadConfig(path string) (*Config, error) {
 			Refresh: d.Refresh,
 			Battery: mergeBattery(f.Defaults.Battery, d.Battery),
 			Plan:    d.Plan,
+		})
+	}
+	names := make([]string, 0, len(f.Providers))
+	for name := range f.Providers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		p := f.Providers[name]
+		c.Providers = append(c.Providers, Provider{
+			Name:     name,
+			Command:  p.Command,
+			Path:     p.Path,
+			Interval: p.Interval,
+			Timeout:  p.Timeout,
+			Env:      p.Env,
 		})
 	}
 	if err := c.validate(); err != nil {
@@ -400,7 +441,52 @@ func (c *Config) validate() error {
 			return fmt.Errorf("device %s: plan %q: only a-z, 0-9 and -", d.ID, d.Plan)
 		}
 	}
+	if err := c.validateProviders(); err != nil {
+		return err
+	}
 	return nil
+}
+
+// validateProviders checks the exec providers (ADR 0036): every provider needs a
+// command and owns exactly one data branch.
+func (c *Config) validateProviders() error {
+	for i := range c.Providers {
+		p := &c.Providers[i]
+		if !validName(p.Name) {
+			return fmt.Errorf("provider %q: name must use a-z, 0-9 and -", p.Name)
+		}
+		if len(p.Command) == 0 || p.Command[0] == "" {
+			return fmt.Errorf("provider %s: command missing", p.Name)
+		}
+		if p.Path == "" {
+			return fmt.Errorf("provider %s: path missing; a provider writes one branch, not the whole document", p.Name)
+		}
+		p.Path = strings.Trim(p.Path, "/")
+		if p.Path == "" {
+			return fmt.Errorf("provider %s: path must name a branch, not the whole document", p.Name)
+		}
+		if err := data.ValidPath(p.Path); err != nil {
+			return fmt.Errorf("provider %s: path %q: %w", p.Name, p.Path, err)
+		}
+		spec := provider.Spec{Interval: time.Duration(p.Interval), Timeout: time.Duration(p.Timeout)}
+		if err := spec.Validate(); err != nil {
+			return fmt.Errorf("provider %s: %w", p.Name, err)
+		}
+		p.Interval, p.Timeout = Duration(spec.Interval), Duration(spec.Timeout)
+		for _, other := range c.Providers[:i] {
+			if pathsOverlap(p.Path, other.Path) {
+				return fmt.Errorf("providers %s and %s: paths %q and %q overlap; each branch has exactly one owner",
+					other.Name, p.Name, other.Path, p.Path)
+			}
+		}
+	}
+	return nil
+}
+
+// pathsOverlap reports whether one path contains the other, which would let two
+// providers overwrite the same data.
+func pathsOverlap(a, b string) bool {
+	return a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
 }
 
 // device returns the configured TRMNL device with this MAC address.

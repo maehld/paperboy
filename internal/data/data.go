@@ -261,6 +261,13 @@ func (d *Document) save() error {
 	return os.Rename(tmp, d.path)
 }
 
+// ValidPath reports whether path can be used with the path API: segments of
+// a-z, 0-9, _ and -, separated by slashes. The root ("" or "/") is valid.
+func ValidPath(path string) error {
+	_, err := segments(path)
+	return err
+}
+
 func segments(path string) ([]string, error) {
 	path = strings.Trim(path, "/")
 	if path == "" {

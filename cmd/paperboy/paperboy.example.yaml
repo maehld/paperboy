@@ -9,12 +9,23 @@ server:
   # public_url: https://paper.example.com   # only needed behind a reverse proxy
   upload_token_env: PAPERBOY_UPLOAD_TOKEN   # or upload_token: "a long random token"
 
-# Optional; without these keys the page and plan directories default to
-# <data>/pages and <data>/plans.
+# Optional; without these keys the page, plan and provider directories default
+# to <data>/pages, <data>/plans and <data>/providers.
 # directories:
 #   pages: pages
 #   plans: plans
+#   providers: providers
 #   data: paperboy-data
+
+# Optional exec providers (ADR 0036). The program lives in the providers
+# directory (default <data>/providers), prints the new value of its branch as
+# JSON on stdout and gets PAPERBOY_LANGUAGE and PAPERBOY_TIMEZONE from Paperboy.
+# providers:
+#   weather:
+#     command: [weather, -lat, "52.52", -lon, "13.40"]
+#     path: weather
+#     interval: 15m
+#     timeout: 30s
 
 defaults:
   refresh: 5m
