@@ -65,6 +65,7 @@ go vet ./...
 ```
 
 - Apply `gofmt` to changed Go files.
+- **Windows Firewall blocks per binary path (confirmed 2026-10-22):** `go run` starts the server from a new `%LOCALAPPDATA%\go-build\<hash>\…\paperboy.exe` each time, so every build is a new program for the firewall. A dismissed prompt leaves a permanent **inbound Block** rule for exactly that build: displays on the LAN get "connection refused" or timeouts, while `127.0.0.1` (SolarAI) keeps working. Check with `Get-NetFirewallApplicationFilter | ? Program -like "*paperboy.exe"` and prefer a stable binary from `.\scripts\build.ps1` (`bin\<os>-<arch>\paperboy.exe`) that is allowed once, instead of `go run`.
 - **UTF-8 on Windows:** Windows PowerShell 5 reads UTF-8 files as ANSI, so a `Get-Content … | Set-Content …` round-trip turns „Für“ into „FÃ¼r“. Edit files with the dedicated tools, or read and write them with `[System.IO.File]::ReadAllText`/`WriteAllText` and `UTF8Encoding($false)`; never pipe source files through `Get-Content`/`Set-Content`.
 - Prefer tests for protocol behavior and state transitions.
 
