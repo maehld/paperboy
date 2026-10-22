@@ -40,8 +40,15 @@ func hashBytes(data []byte) string {
 	return hex.EncodeToString(sum[:6])
 }
 
+// pagePosition is the 0-based page index and page count of a plan rule. The
+// preview uses a single page so that no indicator is appended.
+type pagePosition struct {
+	index int
+	count int
+}
+
 // renderPage renders pages/<name>.<profile>.yaml from the data document.
-func (s *Server) renderPage(profile, name string, now time.Time, banners ...string) (*renderedPage, error) {
+func (s *Server) renderPage(profile, name string, now time.Time, pos pagePosition, banners ...string) (*renderedPage, error) {
 	p, ok := s.cfg.Profiles[profile]
 	if !ok {
 		return nil, fmt.Errorf("unknown display type %q", profile)
@@ -50,7 +57,9 @@ func (s *Server) renderPage(profile, name string, now time.Time, banners ...stri
 	if err != nil {
 		return nil, err
 	}
-	img, err := tmpl.Render(s.doc, page.Display{Width: p.Width, Height: p.Height, Gray: p.Gray, Language: s.cfg.Language}, now, banners...)
+	img, err := tmpl.RenderContext(s.doc, page.Display{
+		Width: p.Width, Height: p.Height, Gray: p.Gray, Language: s.cfg.Language, Timezone: s.cfg.Timezone,
+	}, page.Context{Now: now, Page: pos.index + 1, Pages: pos.count, Banners: banners})
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +193,7 @@ func (s *Server) planPage(d *Device, st *deviceState, now time.Time, firstContac
 	if st.BatteryLevel == batteryWarn {
 		banners = append(banners, s.cfg.texts().lowBattery(voltageKey(st.BatteryVoltage)))
 	}
-	rp, err := s.renderPage(d.Profile, name, now, banners...)
+	rp, err := s.renderPage(d.Profile, name, now, pagePosition{index: page, count: n}, banners...)
 	if err != nil {
 		slog.Error("page rendering failed", "device", d.ID, "page", name, "error", err)
 		sp := s.hint(d.Profile, s.cfg.texts().pageError(name), shorten(err.Error()))
