@@ -45,6 +45,8 @@ type Template struct {
 	Notices string  `yaml:"notices"` // bar (default), badge or none
 	Rows    []int   `yaml:"rows"`    // relative heights, one per block
 	Blocks  []Block `yaml:"blocks"`  // one block per row
+
+	pages string // pages directory the template was loaded from; icons live next to it
 }
 
 // Watch declares a data path the page depends on and when it counts as stale.
@@ -66,6 +68,7 @@ type Block struct {
 	Text    *Text    `yaml:"text"`
 	Columns *Columns `yaml:"columns"`
 	Bar     *Bar     `yaml:"bar"`
+	Icon    *Icon    `yaml:"icon"`
 }
 
 // Header shows a title, an optional subtitle and a status area.
@@ -123,6 +126,18 @@ type Text struct {
 	Weight  string  `yaml:"weight"`
 	Shrink  *bool   `yaml:"shrink"`
 	Padding *int    `yaml:"padding"`
+}
+
+// Icon draws one PNG pictogram from the instance's icons directory (ADR 0038).
+// In YAML the block also accepts a scalar: icon: sun.png.
+type Icon struct {
+	Source      string  `yaml:"source"` // text template, relative to <instance>/icons
+	Align       string  `yaml:"align"`  // left, center (default) or right
+	Size        float64 `yaml:"size"`   // fraction of the region height, default 0.85
+	Label       string  `yaml:"label"`  // optional caption below the icon, text template
+	LabelSize   float64 `yaml:"label_size"`
+	LabelWeight string  `yaml:"label_weight"`
+	Padding     *int    `yaml:"padding"`
 }
 
 // Tile is one label/value pair, used by both tiles and rows.
@@ -271,7 +286,17 @@ func Load(dir, name, display string) (*Template, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	t.pages = dir
 	return t, nil
+}
+
+// iconsDir returns the icons directory of the instance. Pages and icons are
+// siblings in the instance directory (ADR 0037, ADR 0038).
+func (t *Template) iconsDir() string {
+	if t.pages == "" {
+		return "icons"
+	}
+	return filepath.Join(filepath.Dir(filepath.Clean(t.pages)), "icons")
 }
 
 // ValidName reports whether s can be used as a page, region or display name.
@@ -322,6 +347,10 @@ func normalizeBlock(b *yaml.Node) error {
 		case "text":
 			if val.Kind == yaml.ScalarNode {
 				b.Content[i+1] = newMapping(newKey("value"), val)
+			}
+		case "icon":
+			if val.Kind == yaml.ScalarNode {
+				b.Content[i+1] = newMapping(newKey("source"), val)
 			}
 		case "chart":
 			normalizeChart(val)
@@ -468,13 +497,13 @@ func (b *Block) validateNested(nested bool) error {
 	}
 	kinds := 0
 	for _, set := range []bool{b.Header != nil, b.Tiles != nil, b.Rows != nil, b.Chart != nil,
-		b.Text != nil, b.Columns != nil, b.Bar != nil} {
+		b.Text != nil, b.Columns != nil, b.Bar != nil, b.Icon != nil} {
 		if set {
 			kinds++
 		}
 	}
 	if kinds != 1 {
-		return fmt.Errorf("exactly one of header, tiles, rows, chart, text, columns or bar is required")
+		return fmt.Errorf("exactly one of header, tiles, rows, chart, text, columns, bar or icon is required")
 	}
 	if nested && b.Columns != nil {
 		return fmt.Errorf("nested columns are not supported")
@@ -512,6 +541,11 @@ func (b *Block) validateNested(nested bool) error {
 	if b.Bar != nil {
 		if err := b.Bar.validate(); err != nil {
 			return fmt.Errorf("bar: %w", err)
+		}
+	}
+	if b.Icon != nil {
+		if err := b.Icon.validate(); err != nil {
+			return fmt.Errorf("icon: %w", err)
 		}
 	}
 	return nil
