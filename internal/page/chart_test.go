@@ -239,8 +239,8 @@ func TestChartAxisAndLabels(t *testing.T) {
 	}
 	img := chartImage(chartRenderer(now, "en", points), chart)
 
-	// The bottom axis is two pixels high and starts right of the y labels.
-	if n := blackIn(img, image.Rect(60, 84, 150, 86)); n < 100 {
+	// The bottom axis is two pixels high; labels and ticks sit below it.
+	if n := blackIn(img, image.Rect(50, 80, 195, 98)); n < 100 {
 		t.Fatalf("bottom axis has %d black pixels", n)
 	}
 	if blackIn(img, image.Rect(0, 0, 40, 90)) < 10 {
