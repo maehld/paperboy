@@ -73,6 +73,12 @@ func (t *Template) RenderContext(doc *data.Document, d Display, c Context) (*ima
 	language := d.language()
 	loc := d.location()
 	now := c.Now.In(loc)
+	if c.Page <= 0 {
+		c.Page = 1
+	}
+	if c.Pages <= 0 {
+		c.Pages = 1
+	}
 	r := &renderer{t: t, doc: doc, root: root, f: formatter{comma: language != "en", loc: loc},
 		now: now, language: language, page: c.Page, pages: c.Pages, badge: t.noticeMode() == "badge"}
 	r.stale = t.isStale(doc, now)
@@ -540,7 +546,6 @@ func (r *renderer) tiles(img *image.Paletted, rc image.Rectangle, b Block) {
 	if cw < 1 || ch < 1 {
 		return
 	}
-	pad := r.padding(&b, t.Padding)
 	for i := range t.Items {
 		x := rc.Min.X + (i%cols)*cw
 		y := rc.Min.Y + (i/cols)*ch
@@ -554,7 +559,6 @@ func (r *renderer) tiles(img *image.Paletted, rc image.Rectangle, b Block) {
 			hline(img, rc.Min.X, rc.Min.Y+row*ch-t.Divider/2, rc.Max.X, t.Divider)
 		}
 	}
-	_ = pad
 }
 
 func (r *renderer) tile(img *image.Paletted, cell image.Rectangle, tile Tile, list *Tiles, blockPad *int) {
@@ -620,8 +624,8 @@ func (r *renderer) rows(img *image.Paletted, rc image.Rectangle, b Block) {
 		drawStyled(img, r.value(*item), rc.Max.X-pad, labelBase, valueStyle,
 			rc.Dx()/2-pad, color.Black, align)
 		if detail != "" {
-			drawStyled(img, detail, rc.Max.X-pad, detailBase, detailStyle,
-				rc.Dx()/2-pad, color.Black, align)
+			drawStyled(img, detail, rc.Min.X+pad, detailBase, detailStyle,
+				rc.Dx()/2-pad, color.Black, alignLeft)
 		}
 	}
 }
@@ -734,6 +738,8 @@ func (f formatter) magnitude(n float64, kind string) string {
 		return f.num(a, 2) + " kWh"
 	case "percent":
 		return f.num(a, 0) + " %"
+	case "ratio":
+		return f.num(a*100, 0) + " %"
 	case "temp":
 		return f.num(a, 1) + " °C"
 	case "abs":
