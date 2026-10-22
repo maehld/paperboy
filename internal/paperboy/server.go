@@ -1,6 +1,7 @@
 package paperboy
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/maehld/paperboy/internal/data"
 	"github.com/maehld/paperboy/internal/page"
+	"github.com/maehld/paperboy/internal/provider"
 )
 
 // Server implements the TRMNL device API and the data document. Pages are
@@ -63,6 +65,9 @@ func New(cfg *Config, dir string) (*Server, error) {
 	if s.cfg.Plans == "" {
 		s.cfg.Plans = filepath.Join(dir, "plans")
 	}
+	if s.cfg.ProvidersDir == "" {
+		s.cfg.ProvidersDir = filepath.Join(dir, "providers")
+	}
 	// A plan named in the configuration must exist (ADR 0026). A broken file is
 	// reported and replaced by a notice page instead.
 	for i := range s.cfg.Devices {
@@ -84,6 +89,39 @@ func New(cfg *Config, dir string) (*Server, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// StartProviders runs the configured exec providers until ctx is done
+// (ADR 0036). Each provider writes its own data branch in process; failures
+// only appear in the log and leave the previous data in place.
+func (s *Server) StartProviders(ctx context.Context) {
+	tz := "UTC"
+	if s.cfg.Timezone != nil {
+		tz = s.cfg.Timezone.String()
+	}
+	for _, p := range s.cfg.Providers {
+		env := map[string]string{
+			"PAPERBOY_LANGUAGE": s.cfg.Language,
+			"PAPERBOY_TIMEZONE": tz,
+		}
+		for k, v := range p.Env {
+			env[k] = v
+		}
+		runner := &provider.Runner{
+			Spec: provider.Spec{
+				Name:     p.Name,
+				Command:  p.Command,
+				Path:     p.Path,
+				Interval: time.Duration(p.Interval),
+				Timeout:  time.Duration(p.Timeout),
+				Env:      env,
+				Dir:      s.cfg.ProvidersDir,
+			},
+			Sink: s.doc,
+			Now:  func() time.Time { return s.now() },
+		}
+		go runner.Run(ctx)
+	}
 }
 
 func (s *Server) Handler() http.Handler {
