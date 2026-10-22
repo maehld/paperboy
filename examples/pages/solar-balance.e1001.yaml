@@ -1,0 +1,41 @@
+title: Tagesbilanz
+watch:
+  - { path: solar/current, stale_after: 30m, label: Solar }
+notices: badge
+rows: [10, 90]
+blocks:
+  - name: kopf
+    header:
+      title: Tagesbilanz
+      align: left
+      status: { time: solar/current/latest/time, label: Stand }
+      rule: 2
+  - name: bilanz
+    rows:
+      rule: 1
+      padding: 8
+      items:
+        - label: PV-Ertrag
+          value: solar/current/latest/values/pv_today
+          format: energy
+        - label: '{{ if .solar.derived.balance.approximate }}≈ {{ end }}Verbrauch'
+          value: solar/derived/balance/consumption
+          format: energy
+        - label: Netzbezug
+          value: solar/current/latest/values/import_today
+          format: energy
+        - label: Einspeisung
+          value: solar/current/latest/values/export_today
+          format: energy
+        - label: Batterie geladen
+          value: solar/current/latest/values/battery_charge_today
+          format: energy
+        - label: Batterie entladen
+          value: solar/current/latest/values/battery_discharge_today
+          format: energy
+        - label: '{{ if .solar.derived.balance.approximate }}≈ {{ end }}Autarkie'
+          value: solar/derived/balance/autarky
+          format: ratio
+        - label: Eigenverbrauch
+          value: solar/derived/balance/self_consumption
+          format: ratio

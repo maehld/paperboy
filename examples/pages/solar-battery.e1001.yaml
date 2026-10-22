@@ -1,0 +1,52 @@
+title: Batterie
+watch:
+  - { path: solar/current, stale_after: 30m, label: Solar }
+notices: badge
+rows: [10, 90]
+blocks:
+  - name: kopf
+    header:
+      title: Batterie
+      align: left
+      status: { time: solar/current/latest/time, label: Stand }
+      rule: 2
+  - name: akku
+    columns:
+      items:
+        - weight: 30
+          block:
+            padding: 8
+            bar:
+              value: solar/current/latest/values/battery_soc
+              min: 0
+              max: 100
+              orientation: vertical
+              border: 5
+              cap: true
+              fill: shade
+              label: '{{ percent .solar.current.latest.values.battery_soc }}'
+              label_size: 0.13
+        - weight: 70
+          block:
+            rows:
+              rule: 1
+              padding: 6
+              items:
+                - label: Leistung
+                  value: solar/current/latest/values/battery_power
+                  format: power
+                  detail: '{{ if below .solar.current.latest.values.battery_power -10 }}lädt{{ else if above .solar.current.latest.values.battery_power 10 }}entlädt{{ else }}ruht{{ end }}'
+                - label: Restzeit
+                  value: solar/derived/battery_remaining
+                - label: Temperatur
+                  value: solar/current/latest/values/battery_temperature
+                  format: temp
+                - label: Gesundheit
+                  value: solar/current/latest/values/battery_soh
+                  format: percent
+                - label: Heute geladen
+                  value: solar/current/latest/values/battery_charge_today
+                  format: energy
+                - label: Heute entladen
+                  value: solar/current/latest/values/battery_discharge_today
+                  format: energy
