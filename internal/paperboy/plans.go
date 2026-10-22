@@ -27,7 +27,9 @@ type servedPage struct {
 	filename string        // cache name reported as "filename"
 	path     string        // image path below the server root
 	refresh  time.Duration // sleep time to report
-	page     int           // page index for logging and state
+	name     string        // page or template name for logging; empty for a notice
+	page     int           // page index within the plan rule, for logging
+	pages    int           // pages in the rule, for logging
 }
 
 // renderedPage is a page template rendered for one profile and page.
@@ -238,18 +240,20 @@ func (s *Server) choosePlanPage(d *Device, st *deviceState, now time.Time, first
 func (s *Server) renderPlan(d *Device, c planChoice, now time.Time) servedPage {
 	if c.name == "" {
 		sp := s.hint(d.Profile, c.title, c.text)
-		sp.page = c.page
+		sp.page, sp.pages = c.page, c.pages
 		return sp
 	}
 	rp, err := s.renderPage(d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages}, c.banners...)
 	if err != nil {
 		slog.Error("page rendering failed", "device", d.ID, "page", c.name, "error", err)
+		// The device gets a notice page; its log line says so instead of naming a
+		// page that was not drawn.
 		sp := s.hint(d.Profile, s.cfg.texts().pageError(c.name), shorten(err.Error()))
-		sp.page = c.page
+		sp.page, sp.pages = c.page, c.pages
 		return sp
 	}
 	sp := s.storePage(d.Profile, c.name, rp)
-	sp.page, sp.refresh = c.page, c.refresh
+	sp.name, sp.page, sp.pages, sp.refresh = c.name, c.page, c.pages, c.refresh
 	return sp
 }
 

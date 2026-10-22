@@ -379,14 +379,13 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case critical:
 		served = s.notice(d.Profile, criticalBatteryImage(s.cfg.Profiles[d.Profile], s.cfg.texts(), voltageKey(logged.BatteryVoltage)))
-		served.refresh = d.refresh()
+		served.name, served.refresh = "battery", d.refresh()
 	case d.Plan != "":
 		served = s.renderPlan(d, choice, now)
 	default:
 		served = s.hint(d.Profile, choice.title, choice.text)
 	}
 	served.refresh = max(served.refresh, floor)
-	page := served.page
 	refresh := served.refresh
 	if logged.BatteryLevel != prevLevel {
 		level := logged.BatteryLevel
@@ -395,8 +394,17 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 		}
 		slog.Warn("battery warning", "device", d.ID, "level", level, "battery", logged.BatteryVoltage)
 	}
-	slog.Info("display request", "device", d.ID, "page", page, "rule", logged.Rule, "wake", logged.WakeReason,
-		"special", special, "battery", logged.BatteryVoltage, "rssi", logged.RSSI, "refresh", refresh)
+	pageName := served.name
+	if pageName == "" {
+		pageName = "notice"
+	}
+	attrs := []any{"device", d.ID, "page", pageName}
+	if served.pages > 1 {
+		attrs = append(attrs, "index", served.page, "pages", served.pages)
+	}
+	attrs = append(attrs, "rule", logged.Rule, "wake", logged.WakeReason, "special", special,
+		"battery", logged.BatteryVoltage, "rssi", logged.RSSI, "refresh", refresh)
+	slog.Info("display request", attrs...)
 	resp := map[string]any{"status": 0, "image_url": s.baseURL(r) + served.path, "filename": served.filename,
 		"refresh_rate": int(refresh.Seconds()), "reset_firmware": false, "update_firmware": false, "firmware_url": nil,
 		"special_function": "restart_playlist"}
