@@ -231,6 +231,22 @@ blocks:
 	}
 }
 
+func TestColumnsSequenceShorthand(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader(`
+rows: [1]
+blocks:
+  - columns:
+      - { weight: 30, block: { text: "L" } }
+      - { weight: 70, block: { text: "R" } }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tmpl.Blocks[0].Columns.Items) != 2 {
+		t.Fatalf("columns: %+v", tmpl.Blocks[0].Columns)
+	}
+}
+
 func TestLoad(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "solar-overview.e1001.yaml")
