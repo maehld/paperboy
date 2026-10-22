@@ -106,6 +106,18 @@ func TestMaskOf(t *testing.T) {
 			t.Fatalf("%s: the background must not be ink", name)
 		}
 	}
+	// trim removes the margins around the square.
+	trimmed := opaque.trim()
+	if trimmed == nil || trimmed.w != 20 || trimmed.h != 20 {
+		t.Fatalf("trimmed mask: %+v", trimmed)
+	}
+	for y := 0; y < trimmed.h; y++ {
+		for x := 0; x < trimmed.w; x++ {
+			if !trimmed.at(x, y) {
+				t.Fatalf("trimmed mask has a hole at %d,%d", x, y)
+			}
+		}
+	}
 }
 
 func decodePNG(t *testing.T, raw []byte) image.Image {
