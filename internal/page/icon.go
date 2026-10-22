@@ -78,6 +78,33 @@ func maskOf(img image.Image) *mask {
 	return m
 }
 
+// trim crops the mask to its ink so that transparent or white margins of an
+// asset do not shrink the drawn pictogram.
+func (m *mask) trim() *mask {
+	minX, minY, maxX, maxY := m.w, m.h, -1, -1
+	for y := 0; y < m.h; y++ {
+		for x := 0; x < m.w; x++ {
+			if !m.ink[y*m.w+x] {
+				continue
+			}
+			minX, minY = min(minX, x), min(minY, y)
+			maxX, maxY = max(maxX, x), max(maxY, y)
+		}
+	}
+	if maxX < 0 {
+		return nil
+	}
+	w, h := maxX-minX+1, maxY-minY+1
+	if w == m.w && h == m.h {
+		return m
+	}
+	out := &mask{w: w, h: h, ink: make([]bool, w*h)}
+	for y := 0; y < h; y++ {
+		copy(out.ink[y*w:(y+1)*w], m.ink[(minY+y)*m.w+minX:])
+	}
+	return out
+}
+
 // iconKey identifies a decoded icon; the modification time replaces an asset
 // after it was edited.
 type iconKey struct {
@@ -112,7 +139,10 @@ func loadIcon(path string) (*mask, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	m := maskOf(img)
+	m := maskOf(img).trim()
+	if m == nil {
+		return nil, fmt.Errorf("%s: the picture contains no ink", path)
+	}
 	iconMu.Lock()
 	if len(iconCache) >= 128 { // an instance has a handful of icons; keep the map bounded
 		iconCache = map[iconKey]*mask{}
@@ -153,7 +183,8 @@ func (m *mask) fit(height int) (int, int) {
 }
 
 // drawIcon paints the mask scaled to height with its ink colour, aligned inside
-// dst. Nearest neighbour keeps the edges crisp on a 1-bit panel.
+// dst. Downscaling uses the majority of the covered source pixels, so thin
+// strokes of a large pictogram survive on a small panel.
 func drawIcon(dst *image.Paletted, m *mask, dstRect image.Rectangle, height int, align int) {
 	w, h := m.fit(height)
 	if w > dstRect.Dx() { // a wide pictogram is limited by the width as well
@@ -172,9 +203,16 @@ func drawIcon(dst *image.Paletted, m *mask, dstRect image.Rectangle, height int,
 		return
 	}
 	for y := 0; y < h; y++ {
-		sy := y * m.h / h
+		sy0, sy1 := y*m.h/h, (y+1)*m.h/h
+		if sy1 <= sy0 {
+			sy1 = sy0 + 1
+		}
 		for x := 0; x < w; x++ {
-			if !m.at(x*m.w/w, sy) {
+			sx0, sx1 := x*m.w/w, (x+1)*m.w/w
+			if sx1 <= sx0 {
+				sx1 = sx0 + 1
+			}
+			if !m.majority(sx0, sy0, sx1, sy1) {
 				continue
 			}
 			px, py := x0+x, y0+y
@@ -184,6 +222,20 @@ func drawIcon(dst *image.Paletted, m *mask, dstRect image.Rectangle, height int,
 			dst.SetColorIndex(px, py, 0)
 		}
 	}
+}
+
+// majority reports whether at least half of a source rectangle is ink.
+func (m *mask) majority(x0, y0, x1, y1 int) bool {
+	ink, total := 0, 0
+	for y := y0; y < y1; y++ {
+		for x := x0; x < x1; x++ {
+			total++
+			if m.at(x, y) {
+				ink++
+			}
+		}
+	}
+	return total > 0 && ink*2 >= total
 }
 
 // icon draws the icon block: the picture uses the region minus its padding and
