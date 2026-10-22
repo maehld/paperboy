@@ -756,8 +756,24 @@ func (f formatter) magnitude(n float64, kind string) string {
 		return f.num(a, 1) + " °C"
 	case "abs":
 		return f.trim(a)
+	case "duration":
+		return f.durationText(a)
 	}
 	return f.trim(n)
+}
+
+// durationText renders seconds as whole minutes, e.g. "42 min", "2 h" or
+// "3 h 20 min"; longer than a day stays in hours ("31 h 5 min").
+func (f formatter) durationText(seconds float64) string {
+	minutes := int(math.Round(seconds / 60))
+	if minutes < 60 {
+		return f.num(float64(minutes), 0) + " min"
+	}
+	hours := minutes / 60
+	if minutes%60 == 0 {
+		return f.num(float64(hours), 0) + " h"
+	}
+	return f.num(float64(hours), 0) + " h " + f.num(float64(minutes%60), 0) + " min"
 }
 
 func (f formatter) num(v float64, decimals int) string {

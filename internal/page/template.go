@@ -130,7 +130,7 @@ type Tile struct {
 	Label        string   `yaml:"label"`  // text template
 	Detail       string   `yaml:"detail"` // optional third line, text template
 	Value        string   `yaml:"value"`  // path into the data document
-	Format       string   `yaml:"format"` // power, energy, percent, temp, time, abs
+	Format       string   `yaml:"format"` // power, energy, percent, ratio, temp, time, abs, duration
 	Sign         []string `yaml:"sign"`   // [negative, positive] suffix words
 	Align        string   `yaml:"align"`
 	LabelSize    float64  `yaml:"label_size"`
@@ -210,7 +210,7 @@ type Bar struct {
 }
 
 var (
-	formats      = map[string]bool{"": true, "power": true, "energy": true, "percent": true, "ratio": true, "temp": true, "time": true, "abs": true}
+	formats      = map[string]bool{"": true, "power": true, "energy": true, "percent": true, "ratio": true, "temp": true, "time": true, "abs": true, "duration": true}
 	weights      = map[string]bool{"": true, "regular": true, "bold": true}
 	aligns       = map[string]bool{"": true, "left": true, "center": true, "right": true}
 	fills        = map[string]bool{"": true, "shade": true, "hatch": true, "solid": true, "none": true}
