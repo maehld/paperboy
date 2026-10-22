@@ -16,7 +16,8 @@ import (
 // time.Now: the images and their hashes must be reproducible.
 var fixedGoldenNow = time.Date(2026, 10, 21, 14, 20, 0, 0, time.UTC)
 
-// referencePages lists the SolarAI reference pages per display type.
+// referencePages lists the reference pages per display type: the four SolarAI
+// pages and the weather page fed by an exec provider (ADR 0036).
 var referencePages = []struct {
 	name    string
 	display string
@@ -29,6 +30,8 @@ var referencePages = []struct {
 	{"solar-balance", "sticky"},
 	{"solar-history", "e1001"},
 	{"solar-history", "sticky"},
+	{"wetter", "e1001"},
+	{"wetter", "sticky"},
 }
 
 // goldenDocument builds the deterministic data document of the reference pages.
@@ -68,7 +71,62 @@ func goldenDocument(t *testing.T) *data.Document {
 		"seconds":  12000,
 		"charging": true,
 	})
+	putGolden(t, doc, "weather", goldenWeather())
 	return doc
+}
+
+// goldenWeather is the weather branch as cmd/weather writes it (ADR 0036).
+func goldenWeather() map[string]any {
+	days := make([]any, 0, 5)
+	conditions := []struct{ code, text string }{
+		{"3", "Bedeckt"}, {"61", "Leichter Regen"}, {"2", "Teilweise bewölkt"},
+		{"0", "Klar"}, {"80", "Leichte Regenschauer"},
+	}
+	labels := []string{"Mi", "Do", "Fr", "Sa", "So"}
+	for i := range conditions {
+		days = append(days, map[string]any{
+			"date":        time.Date(2026, 10, 21+i, 0, 0, 0, 0, time.UTC).Format("2006-01-02"),
+			"label":       labels[i],
+			"min":         8.5 + float64(i),
+			"max":         14.5 + float64(i),
+			"precip_prob": 20 + 10*i,
+			"text":        conditions[i].text,
+		})
+	}
+	return map[string]any{
+		"updated": "2026-10-21T14:20:00Z",
+		"current": map[string]any{
+			"time": "2026-10-21T14:20:00Z", "temp": 13.4, "apparent": 11.9,
+			"humidity": 72, "precip": 0.2, "precip_prob": 35, "wind": 12.5,
+			"code": 3, "is_day": true, "text": "Bedeckt",
+		},
+		"today": map[string]any{
+			"min": 8.5, "max": 15.6, "precip_prob": 60,
+			"sunrise": "2026-10-21T05:45:00Z", "sunset": "2026-10-21T15:52:00Z",
+			"code": 61, "text": "Leichter Regen",
+		},
+		"days":  days,
+		"hours": goldenWeatherHours(),
+	}
+}
+
+// goldenWeatherHours returns 24 hourly points from midnight to midnight with a
+// temperature curve and a precipitation probability that follows it.
+func goldenWeatherHours() []any {
+	midnight := time.Date(2026, 10, 21, 0, 0, 0, 0, time.UTC)
+	points := make([]any, 0, 24)
+	for i := 0; i < 24; i++ {
+		temp := 9.2 + 4.5*math.Sin((float64(i)-7)/24*2*math.Pi)
+		prob := math.Max(0, 70-6*float64(i))
+		points = append(points, map[string]any{
+			"time": midnight.Add(time.Duration(i) * time.Hour).Format(time.RFC3339),
+			"values": map[string]any{
+				"temp":        math.Round(temp*10) / 10,
+				"precip_prob": math.Round(prob),
+			},
+		})
+	}
+	return points
 }
 
 func putGolden(t *testing.T, doc *data.Document, path string, v any) {

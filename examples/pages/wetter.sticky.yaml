@@ -1,0 +1,54 @@
+title: Wetter
+watch:
+  - { path: weather, stale_after: 45m, label: Wetter }
+notices: badge
+rows: [13, 34, 53]
+blocks:
+  - name: kopf
+    header:
+      title: Wetter
+      subtitle: '{{ .weather.current.text }} - {{ time .weather.today.sunrise }} bis {{ time .weather.today.sunset }}'
+      align: left
+      status: { time: weather/current/time, label: Stand }
+      rule: 2
+  - name: kacheln
+    tiles:
+      columns: 2
+      divider: 2
+      padding: 10
+      items:
+        - label: Jetzt
+          value: weather/current/temp
+          format: temp
+          label_size: 0.18
+          value_size: 0.40
+          detail_size: 0.16
+          detail: '{{ .weather.current.text }}'
+        - label: Gefühlt
+          value: weather/current/apparent
+          format: temp
+          label_size: 0.18
+          value_size: 0.40
+        - label: Regen
+          value: weather/current/precip_prob
+          format: percent
+          label_size: 0.18
+          value_size: 0.40
+          detail_size: 0.16
+          detail: 'heute bis {{ percent .weather.today.precip_prob }}'
+        - label: Wind
+          value: weather/current/wind
+          label_size: 0.18
+          value_size: 0.40
+          detail_size: 0.16
+          detail: km/h
+  - name: verlauf
+    chart:
+      points: weather/hours
+      unit: °C
+      time: true
+      axis: true
+      ticks: 6h
+      now: true
+      series:
+        - { key: temp, style: area, fill: shade }
