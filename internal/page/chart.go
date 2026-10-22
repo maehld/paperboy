@@ -10,8 +10,11 @@ import (
 
 const (
 	chartDefaultPadding = 4
-	chartGapLimit       = 8 // px between columns that still connect a line
-	chartAxisThickness  = 2
+	// chartGapTime is the longest distance between two samples that still
+	// connects them in time mode. Hourly and minutely data connect, a real
+	// outage of more than an hour and a half stays a gap.
+	chartGapTime       = 90 * time.Minute
+	chartAxisThickness = 2
 )
 
 // chart draws the series of a chart block (ADR 0034, section 5). With time the
@@ -346,8 +349,9 @@ func pointTime(p any) (time.Time, bool) {
 // chartPoint is one plotted sample in pixel coordinates.
 type chartPoint struct {
 	x, y int
-	v    float64 // value, mapped to y once the axis is laid out
-	idx  int     // pixel column (time) or sample index, used to detect gaps
+	v    float64   // value, mapped to y once the axis is laid out
+	idx  int       // pixel column (time) or sample index, used to detect gaps
+	at   time.Time // time of the sample in time mode; zero in index mode
 }
 
 // chartTimeSamples buckets the samples into pixel columns from local midnight
@@ -358,6 +362,7 @@ func chartTimeSamples(points []any, key string, x0, width int, start, end time.T
 	}
 	sums := make([]float64, width)
 	counts := make([]int, width)
+	stamps := make([]time.Time, width)
 	span := float64(end.Sub(start))
 	if span <= 0 {
 		return nil
@@ -385,13 +390,17 @@ func chartTimeSamples(points []any, key string, x0, width int, start, end time.T
 		}
 		sums[col] += v
 		counts[col]++
+		if counts[col] == 1 {
+			stamps[col] = local
+		}
 	}
 	var out []chartPoint
 	for col := 0; col < width; col++ {
 		if counts[col] == 0 {
 			continue
 		}
-		out = append(out, chartPoint{x: x0 + col, idx: col, v: sums[col] / float64(counts[col])})
+		out = append(out, chartPoint{x: x0 + col, idx: col, at: stamps[col],
+			v: sums[col] / float64(counts[col])})
 	}
 	return out
 }
@@ -414,12 +423,12 @@ func chartIndexSamples(points []any, key string, x0, width int) []chartPoint {
 	return out
 }
 
-// chartConnected reports whether two samples may be joined. In time mode only
-// neighbouring columns within chartGapLimit are connected; in index mode only
-// directly adjacent samples.
+// chartConnected reports whether two samples may be joined. In time mode the
+// distance of their timestamps decides, so minutely and hourly data connect and
+// a real outage stays a gap; in index mode only directly adjacent samples do.
 func chartConnected(a, b chartPoint, timeAxis bool) bool {
 	if timeAxis {
-		return b.idx > a.idx && b.idx-a.idx <= chartGapLimit
+		return !a.at.IsZero() && b.at.After(a.at) && b.at.Sub(a.at) <= chartGapTime
 	}
 	return b.idx == a.idx+1
 }

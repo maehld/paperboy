@@ -1,11 +1,12 @@
 # Paperboy
 
-Paperboy is a small display service for ePaper displays. It renders pages from YAML templates fed by a shared data document and delivers them to devices running the unmodified [TRMNL firmware](https://github.com/usetrmnl/trmnl-firmware) (deep sleep, battery operation). Data providers and Paperboy know each other only via HTTP (ADR 0032).
+Paperboy is a small display service for ePaper displays. It renders pages from YAML templates fed by a shared data document and delivers them to devices running the unmodified [TRMNL firmware](https://github.com/usetrmnl/trmnl-firmware) (deep sleep, battery operation). Data providers push JSON over HTTP or run as small programs in the data directory (ADR 0032, ADR 0036).
 
 Paperboy evolved from SolarAI's display service `displayd` (ADR 0028); the Git history of the carried-over files is preserved.
 
 ```text
 Provider ──PUT /api/data/{path}──▶ paperboy ◀──GET /api/display── Display (TRMNL)
+Provider program ──stdout──▶ paperboy (exec provider, data directory)
 ```
 
 ## Quick start
@@ -63,7 +64,7 @@ devices:
 - `protocol` accepts only `trmnl` for now. `opendisplay` is rejected until plans cover it, `text-http`/`image-http` and `kind: text` follow with ADR 0027.
 - `plan` must name an existing `plans/<name>.yaml`; a missing file aborts the start, a broken plan shows a notice page. Without `plan` the device shows a notice page in the configured language („Kein Plan konfiguriert“ / “No plan configured”).
 - `upload_token_env` names the variable that holds the token; `upload_token` puts it into the file. `PAPERBOY_UPLOAD_TOKEN` (and the legacy `DISPLAYD_UPLOAD_TOKEN`) override both.
-- `-config` defaults to `paperboy.yaml`; passing a `.json` file is rejected with a hint. `-data` overrides `directories.data`, the page and plan directories then default to `<data>/pages` and `<data>/plans`.
+- `-config` defaults to `paperboy.yaml`; passing a `.json` file is rejected with a hint. `-data` overrides `directories.data`, the page, plan and provider directories then default to `<data>/pages`, `<data>/plans` and `<data>/providers`.
 - The configuration is read once at startup; reloading it without a restart is still open (TODO).
 
 ## Behavior
@@ -72,7 +73,7 @@ devices:
 - **Plans** (ADR 0025): every device points to a plan (`plans/<name>.yaml`) that selects its pages according to time rules. A device without a plan shows a notice page.
 - **Interval**: `defaults.refresh` or the device's `refresh`, at least 1 minute and never below the display type's `min_refresh`; a plan rule may override it. Unchanged image → the display does not redraw.
 - **Button**: short press = next page, hold approx. 2 s (1–5 s) = overview, longer than 5 s = reset Wi-Fi (firmware). A real double click triggers the same function, but is hardly achievable from deep sleep. After `page_timeout` (5 min) back to the overview. The TRMNL firmware does not support three separate buttons.
-- **Data document** (ADR 0024): providers write JSON branches via `PUT /api/data/{path}` (bearer token; `PUT` replaces instead of merging, missing intermediate objects are created, 409 on type conflicts, 1 MB per write, optional `X-Data-Time` in RFC 3339). `GET` and `DELETE` on the same paths help with debugging. Each path keeps its write time, so stale data can be detected without comparing content. Page templates render from the document (see below).
+- **Data document** (ADR 0024): providers write JSON branches via `PUT /api/data/{path}` (bearer token; `PUT` replaces instead of merging, missing intermediate objects are created, 409 on type conflicts, 1 MB per write, optional `X-Data-Time` in RFC 3339). Exec providers write the same branches in process (see below). `GET` and `DELETE` on the same paths help with debugging. Each path keeps its write time, so stale data can be detected without comparing content. Page templates render from the document (see below).
 - **Stale**: templates mark watched paths with `stale_after`; page templates show the bar „Keine neuen Daten seit …“ (“No new data since …”) when the data is older, in the configured language.
 - **Battery warning** (ADR 0020): The TRMNL firmware reports only the voltage (`Battery-Voltage`). With `battery` in `defaults` or on a device, every page below `warn_volts` gets the bar „Akku schwach – bitte laden“ (“Battery low – please charge”); below `critical_volts` a full-screen image „Akku fast leer“ (“Battery almost empty”) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` no warning. All texts use the configured `language`.
 - `GET /api/devices` shows registered devices with battery voltage, signal strength, wake reason and last request (without keys).
@@ -138,7 +139,38 @@ blocks:
 
 Implemented blocks are `header`, `tiles`, `rows`, `chart`, `text`, `columns` and `bar`.
 
-The four SolarAI reference pages (overview detailed and compact, battery, daily balance and daily history) are in `examples/pages`, with an example plan in `examples/plans/solar.yaml`. Copy them into the configured pages directory and rename the display-type suffix if needed; the golden-image tests in `internal/page` render them with a fixed data document.
+The four SolarAI reference pages (overview detailed and compact, battery, daily balance and daily history) are in `examples/pages`, with an example plan in `examples/plans/solar.yaml`. The weather page (`wetter.e1001.yaml`, `wetter.sticky.yaml`) belongs to the Open-Meteo provider. Copy them into the configured pages directory and rename the display-type suffix if needed; the golden-image tests in `internal/page` render them with a fixed data document.
+
+## Providers
+
+Data reaches the document by one of two routes:
+
+- **HTTP:** any service writes branches with `PUT /api/data/{path}` (bearer token). SolarAI does this for `solar/...`.
+- **Exec providers** (ADR 0036): a small program in the providers directory prints the new value of its branch as JSON, and Paperboy runs it on an interval and writes the result.
+
+```yaml
+providers:
+  weather:
+    command: [weather, -lat, "52.52", -lon, "13.40"]
+    path: weather         # the branch the provider owns
+    interval: 15m         # default 15m, at least 10s
+    timeout: 30s          # default 30s, not longer than the interval
+```
+
+- The program lives in the providers directory (`directories.providers`, default `<data>/providers`); `command` is an argument vector, never a shell string. A relative name is looked up there first, then on `PATH`.
+- Exit code 0 and valid JSON → the branch is replaced. Any failure (non-zero exit, timeout, output above 1 MB, invalid JSON) is logged and leaves the previous data alone, so the stale notice appears instead of an error page.
+- The write time is the run time, unless the output contains a top-level `updated` RFC 3339 string: then that data time applies, as with `X-Data-Time` on the HTTP API.
+- Every provider sees `PAPERBOY_LANGUAGE` and `PAPERBOY_TIMEZONE`; the language is global (ADR 0033), providers do not carry their own.
+- Only programs named in `paperboy.yaml` run, so the configuration file is executable content.
+
+**Weather:** `cmd/weather` maps [Open-Meteo](https://open-meteo.com/) (no API key) to the branch `weather` and is a ready-made provider:
+
+```powershell
+go build -o paperboy-data/providers/weather.exe ./cmd/weather   # or ./scripts/build.ps1
+paperboy-data/providers/weather.exe -lat 52.52 -lon 13.40 | ConvertFrom-Json | Select-Object updated
+```
+
+It writes `current` (temperature, apparent temperature, humidity, precipitation, probability, wind, condition), `today` (min/max, probability, sunrise, sunset), `days` (five days with weekday label and condition text) and `hours` (the local day as chart points). `examples/pages/wetter.e1001.yaml` and `wetter.sticky.yaml` render it.
 
 ## Plans
 
@@ -194,16 +226,18 @@ Requires Go 1.27 or newer.
 ```powershell
 go test ./...
 go vet ./...
-.\scripts\build.ps1   # paperboy and odtest for Linux amd64/arm64 and Windows into bin/
+.\scripts\build.ps1   # paperboy, odtest and weather for Linux amd64/arm64 and Windows into bin/
 ```
 
 ```text
 cmd/paperboy/            Startup, options and example configuration
 cmd/odtest/              Test program for OpenDisplay devices (TCP and Bluetooth)
+cmd/weather/             Weather provider: Open-Meteo to the weather branch (ADR 0036)
 internal/paperboy/       YAML configuration, TRMNL API, plans, data document, battery warning
 internal/data/           Shared data document for page templates (ADR 0024)
 internal/page/           Page templates: YAML parsing and rendering from the data document
 internal/plan/           Display plans: time rules that select pages per device (ADR 0025)
+internal/provider/       Exec providers: run configured programs that print JSON (ADR 0036)
 internal/opendisplay/    OpenDisplay protocol; odble = Bluetooth transport
 docs/adr/                Architecture decisions
 ```
