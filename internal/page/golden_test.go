@@ -98,7 +98,7 @@ func goldenWeather() map[string]any {
 		"current": map[string]any{
 			"time": "2026-10-21T14:20:00Z", "temp": 13.4, "apparent": 11.9,
 			"humidity": 72, "precip": 0.2, "precip_prob": 35, "wind": 12.5,
-			"code": 3, "is_day": true, "text": "Bedeckt",
+			"beaufort": 3, "code": 3, "is_day": true, "symbol": "cloud", "text": "Bedeckt",
 		},
 		"today": map[string]any{
 			"min": 8.5, "max": 15.6, "precip_prob": 60,

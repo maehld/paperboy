@@ -17,3 +17,15 @@ instance directory and point a device at it with `plan: solar`.
 The templates expect the data paths described in ADR 0024, ADR 0034 and ADR 0036:
 `solar/current/latest`, `solar/history/points`, `solar/derived` and `weather`
 (the branch of `cmd/weather`).
+
+`icons/` holds single-colour PNG pictograms for the `icon` block (ADR 0038):
+`sun`, `cloud`, `rain`, `snow`, `thunder`, `tshirt` and `pullover`. They are
+drawn by `gen.go`, which is excluded from the build:
+
+```powershell
+go run examples/icons/gen.go -out examples/icons
+```
+
+Copy the files you need into the `icons/` directory of the instance. Paperboy
+reduces each picture to a mask, so black motifs on a transparent or white
+background both work and the same file renders on 1-bit and 4-gray displays.
