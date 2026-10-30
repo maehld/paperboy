@@ -24,6 +24,15 @@ type deviceState struct {
 	WakeReason     string    `json:"wake_reason,omitempty"`
 	BatteryLevel   string    `json:"battery_level,omitempty"` // TRMNL: "", "warn" or "critical"
 	Rule           string    `json:"rule,omitempty"`          // TRMNL plan: name of the active rule
+
+	// What the device was last pointed at; set after rendering, so a failed
+	// render shows up as a notice instead of a page that was never drawn.
+	LastPage     string    `json:"last_page,omitempty"`      // page template; empty for a notice or the battery warning
+	LastPageKind string    `json:"last_page_kind,omitempty"` // "page", "notice" or "battery"
+	LastPageHash string    `json:"last_page_hash,omitempty"` // content hash, the same as the response's "filename"
+	LastPageTime time.Time `json:"last_page_time,omitempty"`
+	LastRefresh  int       `json:"last_refresh,omitempty"` // reported refresh in seconds
+	LastError    string    `json:"last_error,omitempty"`   // last render or plan error
 }
 
 func writeAtomic(path string, data []byte) error {

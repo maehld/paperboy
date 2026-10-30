@@ -35,3 +35,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0036](0036-exec-providers.md) | Exec providers in the data directory | Accepted, implemented; providers directory moved by ADR-0037 |
 | [0037](0037-instance-directory-layout.md) | One instance directory with a fixed layout | Accepted, implemented |
 | [0038](0038-icons.md) | Icons from the instance directory | Accepted, implemented |
+| [0039](0039-device-status.md) | Device status in the devices API | Accepted, implemented |
