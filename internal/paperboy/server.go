@@ -261,13 +261,16 @@ type deviceInfo struct {
 	Profile string `json:"display_type"`
 	Plan    string `json:"plan,omitempty"`
 	deviceState
-	APIKey     string `json:"api_key,omitempty"` // shadows the embedded key; never exposed
-	Registered bool   `json:"registered"`
+	APIKey      string `json:"api_key,omitempty"` // shadows the embedded key; never exposed
+	Registered  bool   `json:"registered"`
+	Status      string `json:"status"`                  // ok, late, never or unregistered
+	LastPageURL string `json:"last_page_url,omitempty"` // where the last served image sits
 }
 
 func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	now := s.now()
 	list := []deviceInfo{}
 	for _, d := range s.cfg.Devices {
 		info := deviceInfo{ID: d.ID, Type: d.Type, MAC: d.MAC, Profile: d.Profile, Plan: d.Plan}
@@ -275,9 +278,37 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 			info.deviceState = *st
 			info.Registered = st.APIKey != ""
 		}
+		info.Status = deviceStatus(d, info.deviceState, now)
+		if info.LastPageHash != "" {
+			if info.LastPageKind == "page" && info.LastPage != "" {
+				info.LastPageURL = fmt.Sprintf("/pages/%s/%s/%s.png", d.Profile, info.LastPage, info.LastPageHash)
+			} else {
+				info.LastPageURL = "/hints/" + info.LastPageHash + ".png"
+			}
+		}
 		list = append(list, info)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"devices": list})
+}
+
+// deviceStatus summarizes the last contact. TRMNL devices deep-sleep and poll,
+// so "ok" only means the last request is not overdue: it may be twice the
+// reported refresh old before a device counts as "late".
+func deviceStatus(d Device, st deviceState, now time.Time) string {
+	if st.APIKey == "" {
+		return "unregistered"
+	}
+	if st.LastSeen.IsZero() {
+		return "never"
+	}
+	interval := time.Duration(st.LastRefresh) * time.Second
+	if interval <= 0 {
+		interval = d.refresh()
+	}
+	if now.Sub(st.LastSeen) <= 2*interval {
+		return "ok"
+	}
+	return "late"
 }
 
 // stateLocked returns the device state, creating it if needed; callers hold s.mu.
@@ -436,6 +467,32 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 	}
 	served.refresh = max(served.refresh, floor)
 	refresh := served.refresh
+	// Remember what the device was pointed at, so /api/devices can show the
+	// current content. Rendering happened above, outside the lock.
+	shownKind, shownPage := "page", served.name
+	switch {
+	case critical:
+		shownKind, shownPage = "battery", ""
+	case served.name == "":
+		shownKind = "notice"
+	}
+	errText := ""
+	switch {
+	case choice.err != nil:
+		errText = shortError(choice.err)
+	case served.err != nil:
+		errText = shortError(served.err)
+	}
+	s.mu.Lock()
+	var pageData []byte
+	if st = s.state[d.ID]; st != nil {
+		st.LastPage, st.LastPageKind, st.LastPageHash = shownPage, shownKind, served.hash
+		st.LastPageTime, st.LastRefresh = now, int(refresh.Seconds())
+		st.LastError = errText
+		pageData = s.stateSnapshotLocked()
+	}
+	s.mu.Unlock()
+	s.saveState(pageData)
 	if logged.BatteryLevel != prevLevel {
 		level := logged.BatteryLevel
 		if level == batteryOK {

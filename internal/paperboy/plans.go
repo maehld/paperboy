@@ -30,6 +30,8 @@ type servedPage struct {
 	name     string        // page or template name for logging; empty for a notice
 	page     int           // page index within the plan rule, for logging
 	pages    int           // pages in the rule, for logging
+	hash     string        // content hash of the PNG, as in the response's "filename"
+	err      error         // render error that turned the page into a notice
 }
 
 // renderedPage is a page template rendered for one profile and page.
@@ -90,7 +92,7 @@ func (s *Server) notice(profile string, img *image.Paletted) servedPage {
 	s.mu.Lock()
 	s.hints[key] = data
 	s.mu.Unlock()
-	return servedPage{filename: "hints/" + key, path: "/hints/" + key + ".png"}
+	return servedPage{filename: "hints/" + key, path: "/hints/" + key + ".png", hash: key}
 }
 
 // hint registers a notice page with a title and a line of text. It draws the
@@ -112,7 +114,7 @@ func (s *Server) storePage(profile, name string, rp *renderedPage) servedPage {
 	s.rendered[profile+"/"+name] = rp
 	s.mu.Unlock()
 	filename := fmt.Sprintf("pages/%s/%s/%s", profile, name, rp.hash)
-	return servedPage{filename: filename, path: "/" + filename + ".png"}
+	return servedPage{filename: filename, path: "/" + filename + ".png", hash: rp.hash}
 }
 
 // planEntry caches one plan file; mod and size detect changes on disk.
@@ -174,6 +176,7 @@ type planChoice struct {
 	name    string        // page template; empty when only a notice is shown
 	title   string        // notice title
 	text    string        // notice text
+	err     error         // reason for the notice, shown as the device's last error
 	refresh time.Duration // sleep time to report
 	banners []string
 }
@@ -185,7 +188,10 @@ func (s *Server) choosePlanPage(d *Device, st *deviceState, now time.Time, first
 	if p == nil {
 		slog.Error("plan unavailable", "device", d.ID, "plan", d.Plan, "error", err)
 		title, text := s.cfg.texts().planMissing(), shorten(fmt.Sprintf("%s: %v", d.Plan, err))
-		return planChoice{title: title, text: text}
+		if err == nil {
+			err = fmt.Errorf("plan %s missing", d.Plan)
+		}
+		return planChoice{title: title, text: text, err: err}
 	}
 	if err != nil {
 		slog.Warn("plan invalid, using the last valid version", "device", d.ID, "plan", d.Plan, "error", err)
@@ -250,6 +256,7 @@ func (s *Server) renderPlan(d *Device, c planChoice, now time.Time) servedPage {
 		// page that was not drawn.
 		sp := s.hint(d.Profile, s.cfg.texts().pageError(c.name), shorten(err.Error()))
 		sp.page, sp.pages = c.page, c.pages
+		sp.err = err
 		return sp
 	}
 	sp := s.storePage(d.Profile, c.name, rp)
@@ -264,6 +271,23 @@ func shorten(s string) string {
 	}
 	if r := []rune(s); len(r) > 90 {
 		s = string(r[:90]) + "…"
+	}
+	return s
+}
+
+// shortError keeps a rendered error readable in the devices API and the state
+// file: long enough for the file name and the YAML message, short enough to
+// stay on one line.
+func shortError(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := err.Error()
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	if r := []rune(s); len(r) > 200 {
+		s = string(r[:200]) + "…"
 	}
 	return s
 }
