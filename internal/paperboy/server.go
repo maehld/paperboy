@@ -37,6 +37,7 @@ type Server struct {
 
 	rendered map[string]*renderedPage // "<profile>/<page>" â†’ last render
 	hints    map[string][]byte        // content hash â†’ notice page
+	logs     *logSeen                 // delivered device log entries (own lock)
 }
 
 // New loads the device state and prepares templates and plans. Only state/ is
@@ -67,7 +68,8 @@ func New(cfg *Config) (*Server, error) {
 		slog.Info("device state migrated to device ids", "entries", moved)
 	}
 	s := &Server{cfg: cfg, devicesPath: devicesPath, now: time.Now, state: state,
-		plans: newPlanLoader(), rendered: map[string]*renderedPage{}, hints: map[string][]byte{}}
+		plans: newPlanLoader(), rendered: map[string]*renderedPage{}, hints: map[string][]byte{},
+		logs: newLogSeen()}
 	if s.cfg.Pages == "" {
 		s.cfg.Pages = filepath.Join(cfg.Dir, pagesDirName)
 	}
@@ -467,7 +469,7 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
 	if d := s.cfg.device(name); d != nil {
 		name = d.ID
 	}
-	slog.Warn("display log", "device", name, "log", string(body))
+	s.logDevice(name, body)
 	w.WriteHeader(http.StatusNoContent)
 }
 
