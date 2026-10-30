@@ -32,6 +32,23 @@ func TestVersionText(t *testing.T) {
 	}
 }
 
+// TestBuildOverrides covers builds without VCS information, such as the
+// container image, where the release data comes from -X.
+func TestBuildOverrides(t *testing.T) {
+	tag, commit, at := buildVersionTag, buildCommit, buildTime
+	defer func() { buildVersionTag, buildCommit, buildTime = tag, commit, at }()
+	buildVersionTag, buildCommit, buildTime = "v1.2.3", "abcdef0123456789-dirty", "2026-10-30T20:00:00Z"
+
+	v := applyBuildOverrides(buildVersion{Version: "(devel)", Revision: "stale", At: "old"})
+	if v.Version != "v1.2.3" || v.Revision != "abcdef0123456789" || !v.Modified || v.At != "2026-10-30T20:00:00Z" {
+		t.Fatalf("overrides: %+v", v)
+	}
+	buildVersionTag, buildCommit, buildTime = "", "", ""
+	if v := applyBuildOverrides(buildVersion{Version: "(devel)"}); v.Version != "(devel)" {
+		t.Fatalf("empty overrides must not change the build info: %+v", v)
+	}
+}
+
 // TestDashboardShowsBuildInfo checks that the overview names the running build.
 func TestDashboardShowsBuildInfo(t *testing.T) {
 	s, _ := planServer(t, testPlan)
