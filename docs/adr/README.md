@@ -36,3 +36,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0037](0037-instance-directory-layout.md) | One instance directory with a fixed layout | Accepted, implemented |
 | [0038](0038-icons.md) | Icons from the instance directory | Accepted, implemented |
 | [0039](0039-device-status.md) | Device status in the devices API | Accepted, implemented |
+| [0040](0040-operator-dashboard.md) | Operator dashboard as a Go template | Accepted, implemented |
