@@ -152,6 +152,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/display", s.handleDisplay)
 	mux.HandleFunc("GET /api/display/", s.handleDisplay)
 	mux.HandleFunc("POST /api/log", s.handleLog)
+	mux.HandleFunc("GET /{$}", s.handleRoot)
+	mux.HandleFunc("GET /ui", s.handleDashboard)
 	return mux
 }
 
@@ -268,6 +270,11 @@ type deviceInfo struct {
 }
 
 func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"devices": s.deviceInfos()})
+}
+
+// deviceInfos builds the device list for the devices API and the dashboard.
+func (s *Server) deviceInfos() []deviceInfo {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
@@ -288,7 +295,7 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 		}
 		list = append(list, info)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"devices": list})
+	return list
 }
 
 // deviceStatus summarizes the last contact. TRMNL devices deep-sleep and poll,

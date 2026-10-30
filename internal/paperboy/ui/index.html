@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="30">
+<title>Paperboy</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 1.5rem; font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: #f2f2f2; color: #111; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; margin-bottom: 1rem; }
+h1 { font-size: 1.5rem; margin: 0; }
+.muted { color: #666; font-size: .85rem; }
+.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; }
+.card h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+.badge { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; padding: .12rem .45rem; border-radius: 999px; border: 1px solid currentColor; font-weight: 600; }
+.badge.ok { color: #17692c; }
+.badge.late { color: #9a6400; }
+.badge.never, .badge.unregistered { color: #666; }
+.preview { display: block; width: 100%; height: auto; border: 1px solid #ccc; background: #fff; image-rendering: pixelated; }
+.empty { margin: 0; padding: 2rem 1rem; text-align: center; color: #888; border: 1px dashed #ccc; }
+dl { display: grid; grid-template-columns: auto 1fr; gap: .15rem .7rem; margin: .7rem 0 0; font-size: .9rem; }
+dt { color: #666; }
+dd { margin: 0; }
+.error { margin: .7rem 0 0; padding: .5rem .6rem; background: #fff2f2; border-left: 3px solid #c22; font-size: .85rem; word-break: break-word; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Paperboy</h1>
+  <span class="muted">{{len .Devices}} device(s) · updated {{.Now}}</span>
+</header>
+{{if .Devices}}
+<div class="grid">
+  {{range .Devices}}
+  <section class="card">
+    <h2>{{.ID}} <span class="badge {{.Status}}">{{.Status}}</span></h2>
+    {{if .ImageURL}}
+    <img class="preview" src="{{.ImageURL}}" alt="{{.Content}}" {{if .Width}}width="{{.Width}}" height="{{.Height}}"{{end}}>
+    {{else}}
+    <p class="empty">Nothing served yet</p>
+    {{end}}
+    <dl>
+      <dt>Plan</dt>
+      <dd>{{.Plan}}{{if .Rule}} · {{.Rule}}{{end}}</dd>
+      {{if .Content}}<dt>Showing</dt><dd>{{.Content}}{{if .ServedAgo}} · {{.ServedAgo}}{{end}}</dd>{{end}}
+      {{if .Refresh}}<dt>Refresh</dt><dd>{{.Refresh}}</dd>{{end}}
+      <dt>Last seen</dt>
+      <dd>{{.SeenAgo}}</dd>
+      {{if .Battery}}<dt>Battery</dt><dd>{{.Battery}}</dd>{{end}}
+    </dl>
+    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+  </section>
+  {{end}}
+</div>
+{{else}}
+<p class="empty">No devices configured.</p>
+{{end}}
+</body>
+</html>
