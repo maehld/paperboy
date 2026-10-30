@@ -20,46 +20,22 @@ type buildVersion struct {
 
 var build = readBuildInfo()
 
-// Set with -X at build time. Go stamps VCS information by itself, but only when
-// the Git repository is part of the build (not in the container image, where
-// .dockerignore excludes .git) or when buildvcs is not disabled.
-var (
-	buildVersionTag string // -X ...buildVersionTag=v1.2.3
-	buildCommit     string // -X ...buildCommit=<hash>
-	buildTime       string // -X ...buildTime=<RFC 3339>
-)
-
 func readBuildInfo() buildVersion {
 	v := buildVersion{Go: runtime.Version()}
-	if info, ok := debug.ReadBuildInfo(); ok {
-		v.Version = info.Main.Version
-		for _, s := range info.Settings {
-			switch s.Key {
-			case "vcs.revision":
-				v.Revision = s.Value
-			case "vcs.time":
-				v.At = s.Value
-			case "vcs.modified":
-				v.Modified = s.Value == "true"
-			}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return v
+	}
+	v.Version = info.Main.Version
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			v.Revision = s.Value
+		case "vcs.time":
+			v.At = s.Value
+		case "vcs.modified":
+			v.Modified = s.Value == "true"
 		}
-	}
-	return applyBuildOverrides(v)
-}
-
-// applyBuildOverrides lets an explicit -X value win over the embedded VCS
-// information, so container builds can report the same version.
-func applyBuildOverrides(v buildVersion) buildVersion {
-	if buildVersionTag != "" {
-		v.Version = buildVersionTag
-	}
-	if buildCommit != "" {
-		rev := strings.TrimSuffix(buildCommit, "-dirty")
-		v.Revision = rev
-		v.Modified = rev != buildCommit || v.Modified
-	}
-	if buildTime != "" {
-		v.At = buildTime
 	}
 	return v
 }
