@@ -247,6 +247,16 @@ go vet ./...
 .\scripts\build.ps1   # paperboy, odtest and weather for Linux amd64/arm64 and Windows into bin/
 ```
 
+The dashboard header shows version, commit and commit date. `go build` and `scripts/build.ps1` embed them from the Git repository; the container image has no `.git` (see `.dockerignore`), so pass them explicitly:
+
+```powershell
+docker build --build-arg VERSION=$(git describe --tags --always) `
+             --build-arg COMMIT=$(git rev-parse HEAD) `
+             --build-arg BUILD_DATE=$(git log -1 --format=%cI) -t paperboy .
+```
+
+A binary built without either (`-buildvcs=false` and no `-X` values) reports `dev`. `go version -m <binary>` shows what was stamped.
+
 ```text
 cmd/paperboy/            Startup, options and example configuration
 cmd/odtest/              Test program for OpenDisplay devices (TCP and Bluetooth)
