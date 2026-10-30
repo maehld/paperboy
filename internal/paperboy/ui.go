@@ -36,8 +36,10 @@ type dashboardDevice struct {
 }
 
 type dashboardPage struct {
-	Now     string
-	Devices []dashboardDevice
+	Now       string
+	Version   string // build label: version, commit and commit date
+	GoVersion string
+	Devices   []dashboardDevice
 }
 
 // handleRoot sends the bare root to the dashboard so that the instance needs
@@ -73,7 +75,12 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	if loc == nil {
 		loc = time.UTC
 	}
-	page := dashboardPage{Now: now.In(loc).Format("15:04:05"), Devices: cards}
+	page := dashboardPage{
+		Now:       now.In(loc).Format("15:04:05"),
+		Version:   versionText(build, loc),
+		GoVersion: build.Go,
+		Devices:   cards,
+	}
 	if err := dashboardTmpl.Execute(w, page); err != nil {
 		slog.Error("dashboard rendering failed", "error", err)
 	}

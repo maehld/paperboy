@@ -28,6 +28,7 @@ Paperboy serves a read-only dashboard rendered on the server.
 - Refresh is a 30-second `<meta http-equiv="refresh">`. That is enough for a status board and keeps the page script-free; live updates would be a later enhancement on top of `/api/devices`.
 - Texts are English like the rest of the software (ADR 0031); the dashboard is an operator tool, not a device page, so it does not use the configured `language` or the built-in display texts.
 - No token: the page shows the same data as the unauthenticated devices API and the page images. It exposes no keys.
+- The header names the running build: the module version (or `dev` for an untagged build), the short commit with `+dirty` when the worktree was modified, and the commit date in the configured timezone, with the Go toolchain in a tooltip. The values come from `runtime/debug.ReadBuildInfo`, so no `-ldflags`, version file or release process is needed.
 
 ## Consequences
 
