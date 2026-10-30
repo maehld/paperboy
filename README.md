@@ -247,15 +247,9 @@ go vet ./...
 .\scripts\build.ps1   # paperboy, odtest and weather for Linux amd64/arm64 and Windows into bin/
 ```
 
-The dashboard header shows version, commit and commit date. `go build` and `scripts/build.ps1` embed them from the Git repository; the container image has no `.git` (see `.dockerignore`), so pass them explicitly:
+The dashboard header shows version, commit and commit date, straight from Go's VCS stamping. `go build` and `scripts/build.ps1` embed them as long as the Git repository is present. The container image therefore keeps `.git` in the build context and installs the git binary in its build stage (the alpine Go image ships none); the final image still contains only the binary.
 
-```powershell
-docker build --build-arg VERSION=$(git describe --tags --always) `
-             --build-arg COMMIT=$(git rev-parse HEAD) `
-             --build-arg BUILD_DATE=$(git log -1 --format=%cI) -t paperboy .
-```
-
-A binary built without either (`-buildvcs=false` and no `-X` values) reports `dev`. `go version -m <binary>` shows what was stamped.
+A build without a repository or with `-buildvcs=false` reports `dev`. `go version -m <binary>` shows what was stamped. Untagged builds show `dev` plus commit; `git tag v0.1.0` gives release builds a version name.
 
 ```text
 cmd/paperboy/            Startup, options and example configuration

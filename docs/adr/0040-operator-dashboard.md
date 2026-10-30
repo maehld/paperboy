@@ -28,12 +28,12 @@ Paperboy serves a read-only dashboard rendered on the server.
 - Refresh is a 30-second `<meta http-equiv="refresh">`. That is enough for a status board and keeps the page script-free; live updates would be a later enhancement on top of `/api/devices`.
 - Texts are English like the rest of the software (ADR 0031); the dashboard is an operator tool, not a device page, so it does not use the configured `language` or the built-in display texts.
 - No token: the page shows the same data as the unauthenticated devices API and the page images. It exposes no keys.
-- The header names the running build: the module version (or `dev` for an untagged build), the short commit with `+dirty` when the worktree was modified, and the commit date in the configured timezone, with the Go toolchain in a tooltip. The values come from `runtime/debug.ReadBuildInfo`; `-X` overrides (`buildVersionTag`, `buildCommit`, `buildTime`) cover builds without VCS information such as the container image, which has no `.git`.
+- The header names the running build: the module version (or `dev` for an untagged build), the short commit with `+dirty` when the worktree was modified, and the commit date in the configured timezone, with the Go toolchain in a tooltip. Everything comes from Go's VCS stamping (`runtime/debug.ReadBuildInfo`), so no `-ldflags`, version file or release process is needed.
 
 ## Consequences
 
 - The instance gets a usable overview without any frontend dependency; the binary stays self-contained and the Docker image unchanged.
-- A binary built without VCS information (container image, `-buildvcs=false`) would lose the build label. `--build-arg VERSION/COMMIT/BUILD_DATE` (see `Dockerfile` and README) fill it through `-X` overrides; `scripts/build.ps1` passes commit and date explicitly.
+- VCS stamping needs the repository and the git binary at build time. The container image therefore keeps `.git` in the build context (`.dockerignore`) and installs git in its build stage; the final image still contains only the binary, and no build arguments are required.
 - The dashboard cannot break rendering or the data API: it only reads a state snapshot, like the devices API.
 - A later JavaScript view can consume `/api/devices` without replacing this page, so progressive enhancement stays possible.
 - The page renders for every request. With the state read under the lock and no rendering, this is cheap; if instance sizes ever make it matter, caching the HTML would be a separate decision.
