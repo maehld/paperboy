@@ -23,14 +23,16 @@ The instance directory (ADR 0037) gains an operator-owned `firmware/` directory,
 firmware/
   sticky/
     sticky-0.4.0.bin
+    sticky-0.4.1.bin
   e1001/
     e1001-0.4.0.bin
 ```
 
 - One directory per hardware type, named as the firmware reports it in `hardware` (ADR 0042).
-- **Exactly one image per directory**, named `<hardware>-<version>.bin` (the ESPHome OTA image). The version comes from the file name; Paperboy computes the MD5 when it reads the file. There is no manifest.
-- Rolling out means replacing the file; rolling back means putting the older file there. A directory with no image or several images is an error: Paperboy offers nothing for that hardware and reports it in the log and the dashboard.
-- The publish script writes the file and removes the previous one (`-Out <instance>/firmware`). Paperboy does not build firmware and does not download it from the internet.
+- Images are named `<hardware>-<version>.bin` (the ESPHome OTA image), with a version of dot-separated numbers. **The highest version is the one offered**, compared part by part as numbers (`0.10.0` is higher than `0.9.2`). The version comes from the file name; Paperboy computes the MD5 when it reads the file. There is no manifest.
+- Rolling out means adding a file; older ones may stay. Rolling back means deleting the newer file: the highest remaining version differs from the device's and is offered.
+- Files whose name does not match are ignored and reported in the log and the dashboard. A directory without a valid image offers nothing.
+- The publish script adds the file (`-Out <instance>/firmware`). Paperboy does not build firmware and does not download it from the internet.
 
 Paperboy serves the image at `GET /firmware/<hardware>/<file>` without a token, like page images. Names are validated as for icons (ADR 0038); paths outside `firmware/` are rejected. The directory is read again when it changes, like plans.
 
@@ -53,7 +55,7 @@ Updates are off until the operator turns them on.
 On `POST /api/device/sync` Paperboy offers an update when all of these hold:
 
 - `firmware.update` is `auto` and the device is not on `hold`;
-- an image exists for the device's `hardware` and its version **differs** from the reported `firmware` (a lower version is a deliberate rollback);
+- the highest image version for the device's `hardware` **differs** from the reported `firmware` (a lower one is a deliberate rollback);
 - the reported battery is at least `min_battery_volts` and not at warning or critical level (ADR 0020);
 - the same version has not failed three times for this device.
 
@@ -67,7 +69,7 @@ The device flashes and reboots; its next sync reports the new version. If the ne
 
 ### 4. State and visibility
 
-`state/devices.json` records per device `firmware` (reported version), `firmware_offered` (version and time of the last offer) and `firmware_failures` (count for that version). `GET /api/devices` and the dashboard (ADR 0040) show the running version, the available version and a status: `current`, `offered`, `failed`, `held` or `none` (no single image for the hardware).
+`state/devices.json` records per device `firmware` (reported version), `firmware_offered` (version and time of the last offer) and `firmware_failures` (count for that version). `GET /api/devices` and the dashboard (ADR 0040) show the running version, the available version and a status: `current`, `offered`, `failed`, `held` or `none` (no valid image for the hardware).
 
 ### 5. Firmware side
 
@@ -76,6 +78,7 @@ The device's own manifest URL field from the experiment is removed: Paperboy is 
 ## Consequences
 
 - Rolling out a new version means copying one file into the instance's `firmware/` directory; devices update on their next sync, within one refresh interval, if the battery allows.
+- Old images can stay as a record and for rollback; the directory only grows if nobody cleans it up.
 - Holding single devices back and pinning a rollback need no firmware changes.
 - A broken image costs at most three attempts per device, not one per wake.
 - Integrity rests on the MD5 Paperboy computes; authenticity on the LAN, like the rest of the device API. Signed images are possible later if ESPHome's OTA supports them.
