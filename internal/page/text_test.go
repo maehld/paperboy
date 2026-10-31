@@ -66,6 +66,53 @@ func TestTextRenderMissingAndCut(t *testing.T) {
 	}
 }
 
+func TestFitValue(t *testing.T) {
+	de := formatter{comma: true, loc: time.UTC}
+	cases := []struct {
+		width int
+		kind  string
+		v     any
+		want  string
+	}{
+		{8, "energy", 15.5, "15,5 kWh"},
+		{7, "energy", 15.5, "15,5kWh"},
+		{6, "energy", 15.5, "16 kWh"},
+		{5, "energy", 15.5, "16kWh"},
+		{4, "energy", 15.5, "15,5"},
+		{3, "energy", 15.5, " 16"},
+		{1, "energy", 15.5, "#"},
+		{5, "percent", 100.0, "100 %"},
+		{4, "percent", 100.0, "100%"},
+		{3, "percent", 100.0, "100"},
+		{6, "percent", 5.0, "   5 %"},
+		{7, "power", 4210.0, "4,21 kW"},
+		{6, "power", 4210.0, "4,21kW"},
+		{5, "power", 4210.0, "4,2kW"},
+		{3, "power", 435.0, "435"},
+		{5, "power", nil, "    —"},
+		{5, "time", "2026-10-21T14:20:00Z", "14:20"},
+		{4, "time", "2026-10-21T14:20:00Z", "####"},
+		{6, "duration", 12000.0, "######"},
+		{7, "duration", 12000.0, "3h20min"},
+		{0, "energy", 1.0, ""},
+	}
+	for _, c := range cases {
+		if got := de.fitValue(c.width, c.kind, c.v); got != c.want {
+			t.Errorf("fit %d %s %v = %q, want %q", c.width, c.kind, c.v, got, c.want)
+		}
+	}
+
+	now := time.Now()
+	doc := testDocument(t, &now)
+	tmpl, err := ParseText(strings.NewReader(`lines: ["{{ fit 4 \"weird\" 1 }}"]`))
+	if err == nil {
+		_, err = tmpl.Render(doc, TextDisplay{Columns: 8, Rows: 1}, Context{Now: now})
+	}
+	if err == nil {
+		t.Fatal("unknown format accepted")
+	}
+}
+
 func TestTextParseErrors(t *testing.T) {
 	for name, src := range map[string]string{
 		"blocks":      "rows: [1]\nblocks: [{text: x}]\n",

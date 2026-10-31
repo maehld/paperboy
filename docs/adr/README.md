@@ -42,3 +42,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0043](0043-firmware-distribution.md) | Firmware distribution through Paperboy | Accepted, implemented |
 | [0044](0044-text-displays-on-the-device-api.md) | Text displays on the device API | Accepted, implemented (firmware not yet flashed); poll interval and 304 amended by ADR-0045 |
 | [0045](0045-text-poll-interval-from-the-plan.md) | Text display poll interval from the plan | Accepted, implemented |
+| [0046](0046-width-aware-value-formatting.md) | Width-aware value formatting for text displays | Accepted, implemented |
