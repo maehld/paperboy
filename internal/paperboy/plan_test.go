@@ -1,9 +1,9 @@
 package paperboy
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,32 +68,85 @@ rules:
 fallback: nacht
 `
 
-func planDevice(t *testing.T, s *Server) map[string]string {
+// testDevice is a registered device and the sync body it sends next.
+type testDevice struct {
+	key string
+	req syncRequest
+}
+
+// register posts a registration body and returns the recorder.
+func register(t *testing.T, s *Server, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	key, _ := call(t, s, "/api/setup", map[string]string{"ID": planDeviceMAC})["api_key"].(string)
-	if key == "" {
-		t.Fatal("no api key")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/device/register", strings.NewReader(body)))
+	return rec
+}
+
+func planDevice(t *testing.T, s *Server) *testDevice {
+	t.Helper()
+	rec := register(t, s, `{"mac":"`+planDeviceMAC+`","hardware":"sticky","firmware":"0.4.0"}`)
+	var out struct{ Key, Device string }
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); rec.Code != http.StatusOK || err != nil || out.Key == "" {
+		t.Fatalf("register: %d %s", rec.Code, rec.Body)
 	}
-	return map[string]string{"ID": planDeviceMAC, "Access-Token": key, "Update-Source": "timer"}
+	return &testDevice{key: out.Key, req: syncRequest{Firmware: "0.4.0", Hardware: "sticky", Reason: "timer"}}
 }
 
-func displayPage(t *testing.T, s *Server, dev map[string]string) map[string]any {
+// syncRaw posts a sync body with the given key.
+func syncRaw(t *testing.T, s *Server, key, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	return call(t, s, "/api/display", dev)
+	req := httptest.NewRequest(http.MethodPost, "/api/device/sync", strings.NewReader(body))
+	if key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
 }
 
-func pagePath(out map[string]any) string {
-	return out["filename"].(string)
-}
-
-func fetchImage(t *testing.T, s *Server, imageURL string) *httptest.ResponseRecorder {
+// displayPage sends the device's sync and remembers the shown hash; events
+// are consumed by the sync.
+func displayPage(t *testing.T, s *Server, dev *testDevice) map[string]any {
 	t.Helper()
-	u, err := url.Parse(imageURL)
+	body, err := json.Marshal(dev.req)
 	if err != nil {
 		t.Fatal(err)
 	}
+	rec := syncRaw(t, s, dev.key, string(body))
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); rec.Code != http.StatusOK || err != nil {
+		t.Fatalf("sync: %d %s", rec.Code, rec.Body)
+	}
+	dev.req.Events = nil
+	dev.req.Shown = imageOf(out)["hash"].(string)
+	return out
+}
+
+// press sends one button wake with the given roles in order.
+func press(t *testing.T, s *Server, dev *testDevice, roles ...string) map[string]any {
+	t.Helper()
+	dev.req.Reason = "button"
+	for _, role := range roles {
+		dev.req.Events = append(dev.req.Events, syncEvent{Type: "button", Button: role})
+	}
+	out := displayPage(t, s, dev)
+	dev.req.Reason = "timer"
+	return out
+}
+
+func imageOf(out map[string]any) map[string]any {
+	return out["image"].(map[string]any)
+}
+
+// pagePath returns the image path of a sync response, e.g. /pages/small/eins/<hash>.png.
+func pagePath(out map[string]any) string {
+	return imageOf(out)["path"].(string)
+}
+
+func fetchImage(t *testing.T, s *Server, imagePath string) *httptest.ResponseRecorder {
+	t.Helper()
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, u.RequestURI(), nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, imagePath, nil))
 	return rec
 }
 
@@ -101,13 +154,13 @@ func TestPlanServesRenderedPage(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	dev := planDevice(t, s)
 	out := displayPage(t, s, dev)
-	if got := pagePath(out); !strings.HasPrefix(got, "pages/small/eins/") {
+	if got := pagePath(out); !strings.HasPrefix(got, "/pages/small/eins/") {
 		t.Fatalf("first page: %q", got)
 	}
-	if out["refresh_rate"].(float64) != 600 {
-		t.Fatalf("refresh: %v", out["refresh_rate"])
+	if out["refresh_s"].(float64) != 600 || out["listen_s"].(float64) != 0 {
+		t.Fatalf("refresh/listen: %v", out)
 	}
-	rec := fetchImage(t, s, out["image_url"].(string))
+	rec := fetchImage(t, s, pagePath(out))
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" {
 		t.Fatalf("image: %d %v", rec.Code, rec.Header())
 	}
@@ -115,7 +168,7 @@ func TestPlanServesRenderedPage(t *testing.T) {
 		t.Fatal("not a PNG")
 	}
 	// Unknown rendered pages are 404, never 500.
-	if rec := fetchImage(t, s, "http://example.com/pages/small/unbekannt/000000000000.png"); rec.Code != http.StatusNotFound {
+	if rec := fetchImage(t, s, "/pages/small/unbekannt/000000000000.png"); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown rendered page: %d", rec.Code)
 	}
 }
@@ -126,26 +179,24 @@ func TestPlanRuleSwitchAndKeys(t *testing.T) {
 	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/eins/") {
 		t.Fatalf("morning page: %q", got)
 	}
-	dev["Update-Source"] = "EXT1"
-	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/zwei/") {
-		t.Fatalf("button must page: %q", got)
+	out := press(t, s, dev, buttonNext)
+	if !strings.Contains(pagePath(out), "/zwei/") || out["listen_s"].(float64) != listenAfterInput.Seconds() {
+		t.Fatalf("next must page and keep the device listening: %v", out)
 	}
-	// Hold: first page of the rule.
-	dev["special_function"] = "true"
-	out := displayPage(t, s, dev)
-	if !strings.Contains(pagePath(out), "/eins/") || out["action"] != "restart_playlist" {
-		t.Fatalf("hold: %v", out)
+	if got := pagePath(press(t, s, dev, buttonHome)); !strings.Contains(got, "/eins/") {
+		t.Fatalf("home: %q", got)
 	}
-	delete(dev, "special_function")
+	// previous wraps around within the rule.
+	if got := pagePath(press(t, s, dev, buttonPrevious)); !strings.Contains(got, "/zwei/") {
+		t.Fatalf("previous must wrap: %q", got)
+	}
+	// Several presses apply in order: zwei -> eins -> zwei -> eins -> zwei.
+	if got := pagePath(press(t, s, dev, buttonNext, buttonNext, buttonPrevious, buttonNext)); !strings.Contains(got, "/zwei/") {
+		t.Fatalf("events in order: %q", got)
+	}
 
 	// 09:00 starts another rule: first page, even though the device paged before.
-	dev["Update-Source"] = "EXT1"
-	displayPage(t, s, dev) // eins -> zwei
-	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/eins/") {
-		t.Fatalf("wrap around: %q", got)
-	}
 	*now = time.Date(2026, time.October, 21, 9, 0, 0, 0, time.UTC)
-	dev["Update-Source"] = "timer"
 	out = displayPage(t, s, dev)
 	if !strings.Contains(pagePath(out), "/drei/") {
 		t.Fatalf("new rule must start at its first page: %v", out)
@@ -170,11 +221,9 @@ func TestPlanRotation(t *testing.T) {
 		}
 	}
 	// A button press also moves on and rotation continues from there.
-	dev["Update-Source"] = "EXT1"
-	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/drei/") {
+	if got := pagePath(press(t, s, dev, buttonNext)); !strings.Contains(got, "/drei/") {
 		t.Fatalf("button in rotation: %q", got)
 	}
-	dev["Update-Source"] = "timer"
 	*now = now.Add(5 * time.Minute)
 	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/vier/") {
 		t.Fatalf("rotation after button: %q", got)
@@ -184,10 +233,8 @@ func TestPlanRotation(t *testing.T) {
 func TestPlanPageTimeout(t *testing.T) {
 	s, now := planServer(t, testPlan)
 	dev := planDevice(t, s)
-	displayPage(t, s, dev) // eins
-	dev["Update-Source"] = "EXT1"
-	displayPage(t, s, dev) // zwei
-	dev["Update-Source"] = "timer"
+	displayPage(t, s, dev)          // eins
+	press(t, s, dev, buttonNext)    // zwei
 	*now = now.Add(6 * time.Minute) // past page_timeout (5m)
 	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/eins/") {
 		t.Fatalf("back to the first page after the timeout: %q", got)
@@ -198,15 +245,15 @@ func TestPlanRefreshCappedAtBoundary(t *testing.T) {
 	s, now := planServer(t, testPlan)
 	dev := planDevice(t, s)
 	*now = time.Date(2026, time.October, 21, 8, 59, 0, 0, time.UTC)
-	if got := displayPage(t, s, dev)["refresh_rate"].(float64); got != 60 {
+	if got := displayPage(t, s, dev)["refresh_s"].(float64); got != 60 {
 		t.Fatalf("wake at the rule change: %v", got)
 	}
 	*now = time.Date(2026, time.October, 21, 18, 59, 0, 0, time.UTC)
-	if got := displayPage(t, s, dev)["refresh_rate"].(float64); got != 60 {
+	if got := displayPage(t, s, dev)["refresh_s"].(float64); got != 60 {
 		t.Fatalf("wake at the evening change: %v", got)
 	}
 	*now = time.Date(2026, time.October, 21, 20, 0, 0, 0, time.UTC)
-	if got := displayPage(t, s, dev)["refresh_rate"].(float64); got != 1800 {
+	if got := displayPage(t, s, dev)["refresh_s"].(float64); got != 1800 {
 		t.Fatalf("night refresh: %v", got)
 	}
 }
@@ -220,10 +267,10 @@ rules:
 `)
 	dev := planDevice(t, s)
 	out := displayPage(t, s, dev)
-	if got := pagePath(out); !strings.HasPrefix(got, "hints/") {
+	if got := pagePath(out); !strings.HasPrefix(got, "/hints/") {
 		t.Fatalf("missing template must show a notice: %q", got)
 	}
-	if rec := fetchImage(t, s, out["image_url"].(string)); rec.Code != http.StatusOK {
+	if rec := fetchImage(t, s, pagePath(out)); rec.Code != http.StatusOK {
 		t.Fatalf("notice image: %d", rec.Code)
 	}
 	// A missing plan file also yields a notice page.
@@ -231,11 +278,11 @@ rules:
 	s2.cfg.Devices[0].Plan = "gibtsnicht"
 	dev2 := planDevice(t, s2)
 	out = displayPage(t, s2, dev2)
-	if got := pagePath(out); !strings.HasPrefix(got, "hints/") {
+	if got := pagePath(out); !strings.HasPrefix(got, "/hints/") {
 		t.Fatalf("missing plan must show a notice: %q", got)
 	}
-	if out["refresh_rate"].(float64) != hintRefresh.Seconds() {
-		t.Fatalf("notice refresh: %v", out["refresh_rate"])
+	if out["refresh_s"].(float64) != hintRefresh.Seconds() {
+		t.Fatalf("notice refresh: %v", out["refresh_s"])
 	}
 }
 
@@ -254,9 +301,9 @@ rules:
 	}
 	second := pagePath(displayPage(t, s, dev))
 	if first == second {
-		t.Fatalf("changed data must change the filename: %q", first)
+		t.Fatalf("changed data must change the image path: %q", first)
 	}
-	if rec := fetchImage(t, s, "http://example.com/"+second+".png"); rec.Code != http.StatusOK {
+	if rec := fetchImage(t, s, second); rec.Code != http.StatusOK {
 		t.Fatalf("image after data change: %d", rec.Code)
 	}
 }

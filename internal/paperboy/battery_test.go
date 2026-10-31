@@ -54,40 +54,42 @@ func TestBatteryWarningFlow(t *testing.T) {
 `)
 	s.cfg.Battery = &Battery{WarnVolts: 3.45, CriticalVolts: 3.3, HysteresisVolts: 0.1}
 	dev := planDevice(t, s)
-	dev["Battery-Voltage"] = "3.74"
-	first := pagePath(call(t, s, "/api/display", dev))
-	if strings.HasPrefix(first, "hints/") || blackRow(t, s, "http://example.com/"+first+".png") > 0 {
+	setVolts := func(v float64) { dev.req.Battery = &syncBattery{Volts: v} }
+	setVolts(3.74)
+	first := pagePath(displayPage(t, s, dev))
+	if strings.HasPrefix(first, "/hints/") || blackRow(t, s, first) > 0 {
 		t.Fatalf("full battery must show the plain page: %s", first)
 	}
 
-	dev["Battery-Voltage"] = "3.40"
-	warn := pagePath(call(t, s, "/api/display", dev))
+	setVolts(3.40)
+	warn := pagePath(displayPage(t, s, dev))
 	if warn == first || !strings.Contains(warn, "/eins/") {
 		t.Fatalf("warn level must add the bar to the page: %s (%s)", warn, first)
 	}
-	if blackRow(t, s, "http://example.com/"+warn+".png") < 10 {
+	if blackRow(t, s, warn) < 10 {
 		t.Fatal("battery bar missing")
 	}
-	dev["Update-Source"] = "EXT0"
-	if next := pagePath(call(t, s, "/api/display", dev)); !strings.Contains(next, "/zwei/") {
+	if next := pagePath(press(t, s, dev, buttonNext)); !strings.Contains(next, "/zwei/") {
 		t.Fatalf("warn level must keep paging: %s", next)
 	}
 
-	dev["Battery-Voltage"] = "3.25"
+	setVolts(3.25)
 	var critical string
 	for range 2 { // buttons do not page away from the critical screen
-		critical = pagePath(call(t, s, "/api/display", dev))
-		if !strings.HasPrefix(critical, "hints/") {
+		critical = pagePath(press(t, s, dev, buttonNext))
+		if !strings.HasPrefix(critical, "/hints/") {
 			t.Fatalf("critical level must show a full-screen notice: %s", critical)
 		}
 	}
-	if blackPixels(t, s, "http://example.com/"+critical+".png") == 0 {
+	if blackPixels(t, s, critical) == 0 {
 		t.Fatal("full screen empty")
 	}
+	if info := deviceInfoOf(t, s); info["last_page_kind"] != "battery" || info["battery_level"] != "critical" {
+		t.Fatalf("critical level in the devices API: %v", info)
+	}
 
-	dev["Battery-Voltage"] = "4.12"
-	dev["Update-Source"] = "timer"
-	if name := pagePath(call(t, s, "/api/display", dev)); strings.HasPrefix(name, "hints/") || !strings.Contains(name, "/eins/") {
+	setVolts(4.12)
+	if name := pagePath(displayPage(t, s, dev)); strings.HasPrefix(name, "/hints/") || !strings.Contains(name, "/eins/") {
 		t.Fatalf("after charging the normal page must return: %s", name)
 	}
 }

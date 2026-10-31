@@ -17,10 +17,10 @@ func TestDisplaySurvivesRenderingPanic(t *testing.T) {
 	s.doc = nil
 	out := displayPage(t, s, dev)
 	s.doc = doc
-	if got := pagePath(out); !strings.HasPrefix(got, "hints/") {
+	if got := pagePath(out); !strings.HasPrefix(got, "/hints/") {
 		t.Fatalf("a panicking page must become a notice page: %q", got)
 	}
-	if rec := fetchImage(t, s, out["image_url"].(string)); rec.Code != http.StatusOK {
+	if rec := fetchImage(t, s, pagePath(out)); rec.Code != http.StatusOK {
 		t.Fatalf("notice image: %d", rec.Code)
 	}
 	// The state lock must be free again: other requests answer immediately.
@@ -39,12 +39,12 @@ func TestDisplayPageErrorsKeepDeviceWorking(t *testing.T) {
 	s, _ := planServer(t, "rules: [{name: tag, pages: [kaputt]}]\n")
 	writePageFile(t, s.cfg.Pages+"/kaputt.small.yaml", "rows: [1]\nblocks: [\n")
 	dev := planDevice(t, s)
-	if got := pagePath(displayPage(t, s, dev)); !strings.HasPrefix(got, "hints/") {
+	if got := pagePath(displayPage(t, s, dev)); !strings.HasPrefix(got, "/hints/") {
 		t.Fatalf("broken template must show a notice: %q", got)
 	}
 	// Fixing the file serves the page again without a restart.
 	writePageFile(t, s.cfg.Pages+"/kaputt.small.yaml", "rows: [1]\nblocks:\n  - text: \"ok\"\n")
-	if got := pagePath(displayPage(t, s, dev)); !strings.HasPrefix(got, "pages/small/kaputt/") {
+	if got := pagePath(displayPage(t, s, dev)); !strings.HasPrefix(got, "/pages/small/kaputt/") {
 		t.Fatalf("fixed template must render again: %q", got)
 	}
 }
