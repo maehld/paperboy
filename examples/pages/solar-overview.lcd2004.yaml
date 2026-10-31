@@ -1,0 +1,10 @@
+# Solar overview for a 20x4 HD44780 text display (ADR 0044). Every line is a
+# Go text template; pad, right and center fit values into fixed columns.
+title: Solar
+watch:
+  - { path: solar/current, stale_after: 5m, label: Solar }
+lines:
+  - '{{ pad 5 "PV" }}{{ right 7 (power .solar.current.latest.values.pv_power) }}{{ right 8 (time .solar.current.latest.time) }}'
+  - '{{ pad 5 "Akku" }}{{ right 7 (power .solar.current.latest.values.battery_power) }}{{ right 8 (percent .solar.current.latest.values.battery_soc) }}'
+  - '{{ pad 5 "Netz" }}{{ right 7 (power .solar.current.latest.values.grid_power) }}{{ right 8 (energy .solar.current.latest.values.import_today) }}'
+  - '{{ pad 8 "Heute" }}{{ right 12 (energy .solar.current.latest.values.pv_today) }}'
