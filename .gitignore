@@ -11,6 +11,9 @@
 /providers/
 /icons/
 /state/
+# Operator-owned firmware images of a local instance (ADR 0043); the sources stay versioned.
+/firmware/*
+!/firmware/esphome/
 /paperboy-data/
 /displayd.json
 /displayd-data/

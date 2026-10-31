@@ -12,9 +12,9 @@
 # up to 10 minutes. After power-on it stays awake 3 minutes for changes.
 #
 # Cycle (ADR 0042): wake -> (register) -> POST /api/device/sync with reason,
-# events, shown hash, battery, RSSI and log -> download and paint only if the
-# hash changed -> stay awake listen_s for further input -> deep sleep for
-# refresh_s. Presses made while a sync or paint is running are queued and sent
+# events, shown hash, battery, RSSI and log -> flash and reboot if the sync
+# offers firmware (ADR 0043) -> download and paint only if the hash changed ->
+# stay awake listen_s for further input -> deep sleep for refresh_s. Presses made while a sync or paint is running are queued and sent
 # together in the next sync, so Paperboy renders only the final page.
 
 esphome:
@@ -66,6 +66,9 @@ web_server:
 ota:
   - platform: esphome
     password: !secret ota_password
+  # Updates offered by Paperboy in the sync (ADR 0043); ESPHome checks the MD5
+  # and rolls back an image that does not boot.
+  - platform: http_request
 
 text:
   - platform: template
@@ -116,6 +119,16 @@ globals:
   - id: listen_s
     type: int
     initial_value: "0"
+  # Firmware offer from the last sync; empty path = no offer.
+  - id: fw_path
+    type: std::string
+    initial_value: '""'
+  - id: fw_md5
+    type: std::string
+    initial_value: '""'
+  - id: fw_offered
+    type: std::string
+    initial_value: '""'
   # Result of the last sync: 0 = failed, 1 = ok, 2 = key rejected.
   - id: sync_result
     type: int
@@ -336,6 +349,9 @@ script:
                     int refresh = root["refresh_s"] | 600;
                     pb_refresh_s = refresh > 0 ? refresh : 600;
                     id(listen_s) = root["listen_s"] | 0;
+                    id(fw_offered) = root["firmware"]["version"] | "";
+                    id(fw_path) = root["firmware"]["path"] | "";
+                    id(fw_md5) = root["firmware"]["md5"] | "";
                     return true;
                   });
                   if (ok && !id(image_path).empty()) {
@@ -378,6 +394,22 @@ script:
                 then:
                   - script.execute: go_sleep
           else:
+            - if:
+                condition:
+                  lambda: "return !id(fw_path).empty() && !id(fw_md5).empty();"
+                then:
+                  # Paperboy decided (battery, hold, failures); the device
+                  # flashes and reboots, and the next sync reports the result.
+                  - script.stop: awake_limit
+                  - lambda: |-
+                      ESP_LOGI("paperboy", "firmware update ${fw_version} -> %s", id(fw_offered).c_str());
+                  - ota.http_request.flash:
+                      url: !lambda "return pb_base(id(paperboy_url).state) + id(fw_path);"
+                      md5: !lambda "return id(fw_md5);"
+                  - lambda: |-
+                      pb_note_for_next_wake("firmware update to " + id(fw_offered) + " failed");
+                      id(fw_path) = "";
+                  - script.execute: awake_limit
             - if:
                 condition:
                   lambda: "return pb_unchanged(id(image_hash));"

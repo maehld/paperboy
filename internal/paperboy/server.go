@@ -37,6 +37,8 @@ type Server struct {
 	rendered map[string]*renderedPage // "<profile>/<page>" → last render
 	hints    map[string][]byte        // content hash → notice page
 	logs     *logSeen                 // delivered device log entries (own lock)
+	firmware *firmwareStore           // OTA images (ADR 0043; own lock)
+	fwNotes  map[string]string        // device ID → last logged reason for withholding an update
 }
 
 // New loads the device state and prepares templates and plans. Only state/ is
@@ -68,7 +70,7 @@ func New(cfg *Config) (*Server, error) {
 	}
 	s := &Server{cfg: cfg, devicesPath: devicesPath, now: time.Now, state: state,
 		plans: newPlanLoader(), rendered: map[string]*renderedPage{}, hints: map[string][]byte{},
-		logs: newLogSeen()}
+		logs: newLogSeen(), fwNotes: map[string]string{}}
 	if s.cfg.Pages == "" {
 		s.cfg.Pages = filepath.Join(cfg.Dir, pagesDirName)
 	}
@@ -78,6 +80,10 @@ func New(cfg *Config) (*Server, error) {
 	if s.cfg.ProvidersDir == "" {
 		s.cfg.ProvidersDir = filepath.Join(cfg.Dir, providersDirName)
 	}
+	if s.cfg.FirmwareDir == "" {
+		s.cfg.FirmwareDir = filepath.Join(cfg.Dir, firmwareDirName)
+	}
+	s.firmware = newFirmwareStore(s.cfg.FirmwareDir)
 	// A plan named in the configuration must exist (ADR 0026). A broken file is
 	// reported and replaced by a notice page instead.
 	for i := range s.cfg.Devices {
@@ -146,6 +152,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/preview/{display}/{page}", s.handlePreview)
 	mux.HandleFunc("GET /pages/{profile}/{page}/{file}", s.handleRenderedImage)
 	mux.HandleFunc("GET /hints/{file}", s.handleHint)
+	mux.HandleFunc("GET /firmware/{hardware}/{file}", s.handleFirmware)
 	mux.HandleFunc("POST /api/device/register", s.handleRegister)
 	mux.HandleFunc("POST /api/device/sync", s.handleSync)
 	mux.HandleFunc("GET /{$}", s.handleRoot)
@@ -259,10 +266,12 @@ type deviceInfo struct {
 	Profile string `json:"display_type"`
 	Plan    string `json:"plan,omitempty"`
 	deviceState
-	APIKey      string `json:"api_key,omitempty"` // shadows the embedded key; never exposed
-	Registered  bool   `json:"registered"`
-	Status      string `json:"status"`                  // ok, late, never or unregistered
-	LastPageURL string `json:"last_page_url,omitempty"` // where the last served image sits
+	APIKey            string `json:"api_key,omitempty"` // shadows the embedded key; never exposed
+	Registered        bool   `json:"registered"`
+	Status            string `json:"status"`                       // ok, late, never or unregistered
+	LastPageURL       string `json:"last_page_url,omitempty"`      // where the last served image sits
+	FirmwareAvailable string `json:"firmware_available,omitempty"` // newest image for the hardware (ADR 0043)
+	FirmwareStatus    string `json:"firmware_status"`              // current, offered, available, failed, held or none
 }
 
 func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
@@ -270,11 +279,12 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 }
 
 // deviceInfos builds the device list for the devices API and the dashboard.
+// The firmware directory is read after the state lock is released.
 func (s *Server) deviceInfos() []deviceInfo {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	now := s.now()
 	list := []deviceInfo{}
+	devices := make([]Device, 0, len(s.cfg.Devices))
 	for _, d := range s.cfg.Devices {
 		info := deviceInfo{ID: d.ID, Type: d.Type, MAC: d.MAC, Profile: d.Profile, Plan: d.Plan}
 		if st := s.state[d.key()]; st != nil {
@@ -290,6 +300,21 @@ func (s *Server) deviceInfos() []deviceInfo {
 			}
 		}
 		list = append(list, info)
+		devices = append(devices, d)
+	}
+	s.mu.Unlock()
+	images := map[string]*firmwareImage{}
+	for i := range list {
+		hw := list[i].Hardware
+		img, ok := images[hw]
+		if !ok {
+			img, _ = s.firmware.latest(hw)
+			images[hw] = img
+		}
+		if img != nil {
+			list[i].FirmwareAvailable = img.Version
+		}
+		list[i].FirmwareStatus = firmwareStatus(devices[i], list[i].deviceState, img)
 	}
 	return list
 }

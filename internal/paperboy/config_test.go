@@ -17,6 +17,9 @@ defaults:
   refresh: 10m
   page_timeout: 3m
   battery: { warn_volts: 3.45, critical_volts: 3.3 }
+firmware:
+  update: auto
+  min_battery_volts: 3.7
 display_types:
   e1001:
     kind: image
@@ -34,6 +37,7 @@ devices:
     mac: "44:1B:F6:85:AA:1C"
     plan: standard
     battery: { warn_volts: 3.5 }
+    firmware: hold
   flur:
     display_type: sticky
     mac: "44:1b:f6:85:aa:1d"
@@ -109,8 +113,11 @@ func TestLoadConfig(t *testing.T) {
 	if flur.Type != TypePaperboy || flur.MAC != "44:1B:F6:85:AA:1D" || flur.Refresh != Duration(10*time.Minute) || flur.Plan != "" {
 		t.Fatalf("flur: %+v", flur)
 	}
-	if living.Type != TypePaperboy || living.MAC != "44:1B:F6:85:AA:1C" || living.Plan != "standard" {
+	if living.Type != TypePaperboy || living.MAC != "44:1B:F6:85:AA:1C" || living.Plan != "standard" || !living.Hold || flur.Hold {
 		t.Fatalf("wohnzimmer: %+v", living)
+	}
+	if cfg.Firmware.Update != firmwareAuto || cfg.Firmware.MinBatteryVolts != 3.7 || cfg.FirmwareDir != filepath.Join(dir, "firmware") {
+		t.Fatalf("firmware: %+v %q", cfg.Firmware, cfg.FirmwareDir)
 	}
 	b := cfg.battery(&living)
 	if b == nil || b.WarnVolts != 3.5 || b.CriticalVolts != 3.3 || b.HysteresisVolts != 0.1 {
@@ -175,6 +182,9 @@ func TestLoadConfigErrors(t *testing.T) {
 		{"gray levels", strings.Replace(validConfig, "gray_levels: 4", "gray_levels: 2", 1), ""},
 		{"directories", "directories:\n  pages: pages\n" + validConfig, "field directories not found"},
 		{"trmnl", strings.Replace(validConfig, "protocol: paperboy", "protocol: trmnl", 1), "protocol trmnl was removed"},
+		{"firmware update", strings.Replace(validConfig, "update: auto", "update: always", 1), "expected auto or off"},
+		{"firmware volts", strings.Replace(validConfig, "min_battery_volts: 3.7", "min_battery_volts: 7", 1), "min_battery_volts"},
+		{"firmware hold", strings.Replace(validConfig, "firmware: hold", "firmware: pin", 1), "only hold"},
 		{"public url", strings.Replace(validConfig, "server:\n", "server:\n  public_url: https://paper.example.com\n", 1), "public_url is no longer used"},
 		{"empty", "", "empty configuration"},
 		{"two documents", validConfig + "\n---\nserver: {}\n", "only one YAML document"},
@@ -233,5 +243,9 @@ func TestLoadConfigDefaultsLanguageAndTimezone(t *testing.T) {
 	}
 	if cfg.Language != "de" && cfg.Language != "en" {
 		t.Fatalf("default language: %q", cfg.Language)
+	}
+	cfg, _, err = loadConfig(t, strings.Replace(validConfig, "firmware:\n  update: auto\n  min_battery_volts: 3.7\n", "", 1))
+	if err != nil || cfg.Firmware.Update != firmwareOff || cfg.Firmware.MinBatteryVolts != defaultFirmwareVolts {
+		t.Fatalf("firmware defaults: %+v %v", cfg, err)
 	}
 }
