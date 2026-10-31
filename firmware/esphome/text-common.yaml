@@ -38,6 +38,13 @@ wifi:
 
 captive_portal:
 
+# Text displays have no deep sleep that would flush pending preferences, and
+# they lose power by being unplugged. ESPHome batches flash writes for a
+# minute by default, so a Paperboy URL entered shortly before a restart was
+# lost. The values change rarely, so write them at once.
+preferences:
+  flash_write_interval: 0s
+
 improv_serial:
 
 web_server:
