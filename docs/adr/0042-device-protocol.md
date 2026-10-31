@@ -1,6 +1,6 @@
 # 0042: Paperboy device protocol
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-31
 - Builds on: ADR 0041 (Paperboy firmware on ESPHome)
 - Partially supersedes: ADR 0017 (TRMNL as the device protocol and its workarounds), ADR 0027 section 3 (`image-http` with a configured token per device and `POST /api/image/button`)

@@ -16,14 +16,14 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0014](0014-epaper-tastenbedienung.md) | Tastenbedienung der ePaper-Anzeigen | Teilweise abgelöst durch ADR-0015, ADR-0017 und ADR-0018 |
 | [0015](0015-tastenbedienung-per-schalter.md) | Tastenbedienung nur per Schalter | Teilweise abgelöst durch ADR-0017 und ADR-0018 |
 | [0016](0016-opendisplay-bluetooth.md) | OpenDisplay per Bluetooth über tinygo.org/x/bluetooth | Akzeptiert |
-| [0017](0017-display-service-trmnl.md) | Eigener Display-Service mit TRMNL-Protokoll | Akzeptiert |
+| [0017](0017-display-service-trmnl.md) | Eigener Display-Service mit TRMNL-Protokoll | Akzeptiert; TRMNL-Firmware und -Protokoll abgelöst durch ADR-0041 und ADR-0042 |
 | [0018](0018-opendisplay-im-display-service.md) | OpenDisplay im Display-Service | Teilweise abgelöst durch ADR-0019 |
 | [0019](0019-epaper-aus-solarai-entfernen.md) | ePaper-Sender aus SolarAI entfernen | Akzeptiert |
 | [0020](0020-akkuwarnung-trmnl.md) | Akkuwarnung für TRMNL-Geräte | Akzeptiert |
 | [0024](0024-layouts-im-display-service.md) | Daten statt Bilder – Datendokument und YAML-Layouts im Display-Service | Akzeptiert, teilweise umgesetzt; Sprache/Formatierung teilweise abgelöst durch ADR-0033, Ablageort abgelöst durch ADR-0037 |
 | [0025](0025-plaene-je-display.md) | Pläne – regelbasierte Seitenauswahl je Display | Akzeptiert, umgesetzt für TRMNL-Geräte; Zeitzone abgelöst durch ADR-0033 |
 | [0026](0026-konfiguration-als-yaml.md) | Konfiguration als YAML mit Displayarten und Geräten | Akzeptiert, teilweise umgesetzt (Konfiguration wird noch nicht neu geladen); `directories` abgelöst durch ADR-0037 |
-| [0027](0027-textdisplays-und-http-geraete.md) | Textdisplays und einfache HTTP-Geräte | Akzeptiert, Umsetzung ausstehend |
+| [0027](0027-textdisplays-und-http-geraete.md) | Textdisplays und einfache HTTP-Geräte | Akzeptiert, Umsetzung ausstehend; `image-http` abgelöst durch ADR-0042 |
 | [0028](0028-paperboy-eigenes-repository.md) | Display-Service als „Paperboy“ in eigenem Repository | Akzeptiert |
 | [0029](0029-repository-trennung-umgesetzt.md) | Repository-Trennung SolarAI / Paperboy umgesetzt | Akzeptiert |
 | [0030](0030-englisch-fuer-logs-kommentare-commits.md) | Englisch für Lognachrichten, Kommentare und Commits | Abgelöst durch ADR-0031 |
@@ -37,6 +37,6 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0038](0038-icons.md) | Icons from the instance directory | Accepted, implemented |
 | [0039](0039-device-status.md) | Device status in the devices API | Accepted, implemented |
 | [0040](0040-operator-dashboard.md) | Operator dashboard as a Go template | Accepted, implemented |
-| [0041](0041-esphome-firmware.md) | Paperboy firmware built on ESPHome | Proposed |
-| [0042](0042-device-protocol.md) | Paperboy device protocol | Proposed |
-| [0043](0043-firmware-distribution.md) | Firmware distribution through Paperboy | Proposed |
+| [0041](0041-esphome-firmware.md) | Paperboy firmware built on ESPHome | Accepted |
+| [0042](0042-device-protocol.md) | Paperboy device protocol | Accepted |
+| [0043](0043-firmware-distribution.md) | Firmware distribution through Paperboy | Accepted |

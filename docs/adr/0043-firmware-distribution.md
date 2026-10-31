@@ -1,6 +1,6 @@
 # 0043: Firmware distribution through Paperboy
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-31
 - Builds on: ADR 0041 (Paperboy firmware on ESPHome), ADR 0042 (device protocol)
 - Extends: ADR 0037 (instance directory layout), ADR 0026 (configuration), ADR 0039 (device status)
