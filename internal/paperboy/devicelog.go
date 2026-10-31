@@ -2,7 +2,6 @@ package paperboy
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -10,41 +9,30 @@ import (
 	"time"
 )
 
-// deviceLogEntry is one entry of the TRMNL log payload. The firmware buffers
-// logs it could not upload and delivers them later in batches, so one request
-// can carry entries from hours ago.
+// deviceLogEntry is one firmware log entry delivered with a sync (ADR 0042).
+// The firmware may buffer entries it could not deliver and send them with a
+// later sync, so an entry can be hours old.
 type deviceLogEntry struct {
-	CreatedAt      int64   `json:"created_at"`
-	ID             int     `json:"id"`
-	Message        string  `json:"message"`
-	SourcePath     string  `json:"source_path"`
-	SourceLine     int     `json:"source_line"`
-	Level          string  `json:"level"`
-	WiFiStatus     string  `json:"wifi_status"`
-	BatteryVoltage float64 `json:"battery_voltage"`
-	Retry          int     `json:"retry"`
+	Time    int64  `json:"time"` // Unix seconds on the device clock; 0 = unknown
+	ID      int    `json:"id"`   // optional sequence number, used to drop repeated deliveries
+	Level   string `json:"level"`
+	Message string `json:"message"`
+	Source  string `json:"source"` // firmware component or file
 }
 
-// source names the firmware file and line that logged the entry.
-func (e deviceLogEntry) source() string {
-	switch {
-	case e.SourcePath == "":
-		return ""
-	case e.SourceLine == 0:
-		return e.SourcePath
+// key identifies an entry across repeated deliveries. Entries without a time
+// and an ID cannot be told apart and are always logged.
+func (e deviceLogEntry) key(device string) (string, bool) {
+	if e.Time == 0 && e.ID == 0 {
+		return "", false
 	}
-	return fmt.Sprintf("%s:%d", e.SourcePath, e.SourceLine)
-}
-
-// key identifies an entry across retried deliveries of the same batch.
-func (e deviceLogEntry) key(device string) string {
-	return fmt.Sprintf("%s|%d|%d|%s", device, e.ID, e.CreatedAt, e.Message)
+	return fmt.Sprintf("%s|%d|%d|%s", device, e.ID, e.Time, e.Message), true
 }
 
 // slogLevel maps the firmware level names onto the slog levels.
 func (e deviceLogEntry) slogLevel() slog.Level {
 	switch strings.ToLower(e.Level) {
-	case "debug":
+	case "debug", "verbose":
 		return slog.LevelDebug
 	case "warn", "warning":
 		return slog.LevelWarn
@@ -55,37 +43,23 @@ func (e deviceLogEntry) slogLevel() slog.Level {
 	}
 }
 
-// logDevice writes one line per delivered entry instead of dumping the whole
-// batch, so firmware noise stays readable and filterable by level and source.
-// A body that is not a log batch is kept as is.
-func (s *Server) logDevice(device string, body []byte) {
-	var batch struct {
-		Logs []deviceLogEntry `json:"logs"`
-	}
-	if err := json.Unmarshal(body, &batch); err != nil || len(batch.Logs) == 0 {
-		slog.Warn("display log", "device", device, "log", string(body))
-		return
-	}
+// logDevice writes one line per delivered entry, so firmware messages stay
+// readable and filterable by level and source.
+func (s *Server) logDevice(device string, entries []deviceLogEntry) {
 	now := s.now()
-	for _, entry := range batch.Logs {
-		// A failed upload is retried with the same entries.
-		if !s.logs.first(entry.key(device), now) {
+	for _, entry := range entries {
+		// A sync that failed is repeated with the same entries.
+		if key, ok := entry.key(device); ok && !s.logs.first(key, now) {
 			continue
 		}
 		attrs := []any{"device", device, "message", entry.Message}
-		if src := entry.source(); src != "" {
-			attrs = append(attrs, "source", src)
-		}
-		if entry.WiFiStatus != "" && entry.WiFiStatus != "connected" {
-			attrs = append(attrs, "wifi", entry.WiFiStatus)
-		}
-		if entry.Retry > 1 {
-			attrs = append(attrs, "retry", entry.Retry)
+		if entry.Source != "" {
+			attrs = append(attrs, "source", entry.Source)
 		}
 		// Times come from the device clock: a positive distance means the entry
 		// waited in the device buffer, a negative one a clock ahead of ours.
-		if entry.CreatedAt > 0 {
-			switch age := now.Sub(time.Unix(entry.CreatedAt, 0)); {
+		if entry.Time > 0 {
+			switch age := now.Sub(time.Unix(entry.Time, 0)); {
 			case age >= time.Minute:
 				attrs = append(attrs, "age", age.Round(time.Minute))
 			case age <= -time.Minute:
@@ -96,7 +70,7 @@ func (s *Server) logDevice(device string, body []byte) {
 	}
 }
 
-// logSeen remembers delivered entries so a retried batch is logged only once.
+// logSeen remembers delivered entries so a repeated delivery is logged only once.
 type logSeen struct {
 	mu    sync.Mutex
 	seen  map[string]time.Time

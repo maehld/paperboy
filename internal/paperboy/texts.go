@@ -46,13 +46,6 @@ func (t texts) pageError(name string) string {
 	return t.variant("Seite ", "Page ") + name
 }
 
-func (t texts) setup() (string, string) {
-	return "Paperboy", t.variant(
-		"Gerät eingerichtet – warte auf Plan",
-		"Device set up – waiting for a plan",
-	)
-}
-
 // voltage renders a tenth-of-a-volt key such as "34" as "3,4 V" in German and
 // "3.4 V" in English.
 func (t texts) voltage(key string) string {

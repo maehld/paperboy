@@ -24,14 +24,13 @@ const hintRefresh = 15 * time.Minute
 
 // servedPage is the page an answer points the device to.
 type servedPage struct {
-	filename string        // cache name reported as "filename"
-	path     string        // image path below the server root
-	refresh  time.Duration // sleep time to report
-	name     string        // page or template name for logging; empty for a notice
-	page     int           // page index within the plan rule, for logging
-	pages    int           // pages in the rule, for logging
-	hash     string        // content hash of the PNG, as in the response's "filename"
-	err      error         // render error that turned the page into a notice
+	path    string        // image path below the server root
+	refresh time.Duration // sleep time to report
+	name    string        // page or template name for logging; empty for a notice
+	page    int           // page index within the plan rule, for logging
+	pages   int           // pages in the rule, for logging
+	hash    string        // content hash of the PNG; the device repaints when it changes
+	err     error         // render error that turned the page into a notice
 }
 
 // renderedPage is a page template rendered for one profile and page.
@@ -92,7 +91,7 @@ func (s *Server) notice(profile string, img *image.Paletted) servedPage {
 	s.mu.Lock()
 	s.hints[key] = data
 	s.mu.Unlock()
-	return servedPage{filename: "hints/" + key, path: "/hints/" + key + ".png", hash: key}
+	return servedPage{path: "/hints/" + key + ".png", hash: key}
 }
 
 // hint registers a notice page with a title and a line of text. It draws the
@@ -113,8 +112,7 @@ func (s *Server) storePage(profile, name string, rp *renderedPage) servedPage {
 	s.mu.Lock()
 	s.rendered[profile+"/"+name] = rp
 	s.mu.Unlock()
-	filename := fmt.Sprintf("pages/%s/%s/%s", profile, name, rp.hash)
-	return servedPage{filename: filename, path: "/" + filename + ".png", hash: rp.hash}
+	return servedPage{path: fmt.Sprintf("/pages/%s/%s/%s.png", profile, name, rp.hash), hash: rp.hash}
 }
 
 // planEntry caches one plan file; mod and size detect changes on disk.
@@ -183,7 +181,7 @@ type planChoice struct {
 
 // choosePlanPage evaluates the device plan and advances the rotation state.
 // Callers hold s.mu; rendering happens later in renderPlan.
-func (s *Server) choosePlanPage(d *Device, st *deviceState, now time.Time, firstContact, special bool, pageTimeout time.Duration) planChoice {
+func (s *Server) choosePlanPage(d *Device, st *deviceState, now time.Time, firstContact bool, buttons []string, pageTimeout time.Duration) planChoice {
 	p, err := s.plans.get(s.cfg.Plans, d.Plan, s.cfg.Timezone)
 	if p == nil {
 		slog.Error("plan unavailable", "device", d.ID, "plan", d.Plan, "error", err)
@@ -206,12 +204,22 @@ func (s *Server) choosePlanPage(d *Device, st *deviceState, now time.Time, first
 		// A new rule starts at its first page, the previous position is dropped.
 		st.Rule, st.Page, st.LastInput = sel.Rule, 0, now
 	} else {
+		// Button roles apply in order (ADR 0042): presses made while the panel
+		// was painting arrive together and only the final page is rendered.
+		for _, role := range buttons {
+			switch role {
+			case buttonNext:
+				st.Page = (st.Page + 1) % n
+			case buttonPrevious:
+				st.Page = ((st.Page-1)%n + n) % n
+			case buttonHome:
+				st.Page = 0
+			}
+			st.LastInput = now
+		}
 		switch {
-		case special: // hold: first page of the rule
-			st.Page, st.LastInput = 0, now
-		case buttonWake(st.WakeReason) && !firstContact:
-			st.Page, st.LastInput = (st.Page+1)%n, now
-		case sel.Rotate && !buttonWake(st.WakeReason) && !firstContact:
+		case len(buttons) > 0:
+		case sel.Rotate && !firstContact:
 			st.Page = (st.Page + 1) % n
 		case !sel.Rotate && st.Page != 0 && now.Sub(st.LastInput) >= pageTimeout:
 			st.Page = 0

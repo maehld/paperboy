@@ -12,7 +12,6 @@ const validConfig = `
 language: en
 timezone: Europe/Berlin
 server:
-  public_url: https://paper.example.com/
   upload_token_env: TEST_UPLOAD_TOKEN
 defaults:
   refresh: 10m
@@ -31,7 +30,7 @@ display_types:
 devices:
   wohnzimmer:
     display_type: e1001
-    protocol: trmnl
+    protocol: paperboy
     mac: "AA:BB:CC:DD:EE:01"
     plan: standard
     battery: { warn_volts: 3.5 }
@@ -71,9 +70,6 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.UploadToken != "0123456789abcdef" {
 		t.Fatalf("token: %q", cfg.UploadToken)
 	}
-	if cfg.PublicURL != "https://paper.example.com" {
-		t.Fatalf("public url: %q", cfg.PublicURL)
-	}
 	if cfg.Language != "en" {
 		t.Fatalf("language: %q", cfg.Language)
 	}
@@ -110,10 +106,10 @@ func TestLoadConfig(t *testing.T) {
 		t.Fatalf("devices: %+v", cfg.Devices)
 	}
 	flur, living := cfg.Devices[0], cfg.Devices[1]
-	if flur.Type != TypeTRMNL || flur.MAC != "AA:BB:CC:DD:EE:02" || flur.Refresh != Duration(10*time.Minute) || flur.Plan != "" {
+	if flur.Type != TypePaperboy || flur.MAC != "AA:BB:CC:DD:EE:02" || flur.Refresh != Duration(10*time.Minute) || flur.Plan != "" {
 		t.Fatalf("flur: %+v", flur)
 	}
-	if living.Type != TypeTRMNL || living.MAC != "AA:BB:CC:DD:EE:01" || living.Plan != "standard" {
+	if living.Type != TypePaperboy || living.MAC != "AA:BB:CC:DD:EE:01" || living.Plan != "standard" {
 		t.Fatalf("wohnzimmer: %+v", living)
 	}
 	b := cfg.battery(&living)
@@ -155,10 +151,10 @@ func TestLoadConfigErrors(t *testing.T) {
 		yaml string
 		want string
 	}{
-		{"unknown key", strings.Replace(validConfig, "  public_url:", "  public_ur:", 1), "field public_ur not found"},
+		{"unknown key", strings.Replace(validConfig, "  upload_token_env:", "  upload_token_en:", 1), "field upload_token_en not found"},
 		{"no token", strings.Replace(validConfig, "upload_token_env: TEST_UPLOAD_TOKEN", "", 1), "upload_token missing"},
-		{"opendisplay", strings.Replace(validConfig, "protocol: trmnl", "protocol: opendisplay", 1), "not supported yet"},
-		{"http protocol", strings.Replace(validConfig, "protocol: trmnl", "protocol: text-http", 1), "ADR 0027"},
+		{"opendisplay", strings.Replace(validConfig, "protocol: paperboy", "protocol: opendisplay", 1), "not supported yet"},
+		{"http protocol", strings.Replace(validConfig, "protocol: paperboy", "protocol: text-http", 1), "ADR 0027"},
 		{"text kind", strings.Replace(validConfig, "kind: image", "kind: text", 1), "ADR 0027"},
 		{"unknown display type", strings.Replace(validConfig, "display_type: sticky", "display_type: fehlt", 1), "unknown display_type"},
 		{"duplicate mac", strings.Replace(validConfig, `"aa:bb:cc:dd:ee:02"`, `"AA:BB:CC:DD:EE:01"`, 1), "duplicate device"},
@@ -178,6 +174,8 @@ func TestLoadConfigErrors(t *testing.T) {
 			"  weather2:\n    command: [weather]\n    path: weather\n", "one owner"},
 		{"gray levels", strings.Replace(validConfig, "gray_levels: 4", "gray_levels: 2", 1), ""},
 		{"directories", "directories:\n  pages: pages\n" + validConfig, "field directories not found"},
+		{"trmnl", strings.Replace(validConfig, "protocol: paperboy", "protocol: trmnl", 1), "protocol trmnl was removed"},
+		{"public url", strings.Replace(validConfig, "server:\n", "server:\n  public_url: https://paper.example.com\n", 1), "public_url is no longer used"},
 		{"empty", "", "empty configuration"},
 		{"two documents", validConfig + "\n---\nserver: {}\n", "only one YAML document"},
 	}

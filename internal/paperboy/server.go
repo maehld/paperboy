@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -23,20 +22,20 @@ import (
 	"github.com/maehld/paperboy/internal/provider"
 )
 
-// Server implements the TRMNL device API and the data document. Pages are
-// rendered from templates, notice pages replace uploads.
+// Server implements the device API (ADR 0042) and the data document. Pages are
+// rendered from templates and chosen by plans.
 type Server struct {
 	cfg         *Config
 	devicesPath string // state/devices.json in the instance directory
 	now         func() time.Time
 
 	mu    sync.Mutex
-	state map[string]*deviceState // device ID â†’ state
+	state map[string]*deviceState // device ID → state
 	doc   *data.Document          // shared data document (ADR 0024)
-	plans *planLoader             // plans of TRMNL devices (ADR 0025)
+	plans *planLoader             // device plans (ADR 0025)
 
-	rendered map[string]*renderedPage // "<profile>/<page>" â†’ last render
-	hints    map[string][]byte        // content hash â†’ notice page
+	rendered map[string]*renderedPage // "<profile>/<page>" → last render
+	hints    map[string][]byte        // content hash → notice page
 	logs     *logSeen                 // delivered device log entries (own lock)
 }
 
@@ -147,11 +146,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/preview/{display}/{page}", s.handlePreview)
 	mux.HandleFunc("GET /pages/{profile}/{page}/{file}", s.handleRenderedImage)
 	mux.HandleFunc("GET /hints/{file}", s.handleHint)
-	mux.HandleFunc("GET /api/setup", s.handleSetup)
-	mux.HandleFunc("GET /api/setup/", s.handleSetup)
-	mux.HandleFunc("GET /api/display", s.handleDisplay)
-	mux.HandleFunc("GET /api/display/", s.handleDisplay)
-	mux.HandleFunc("POST /api/log", s.handleLog)
+	mux.HandleFunc("POST /api/device/register", s.handleRegister)
+	mux.HandleFunc("POST /api/device/sync", s.handleSync)
 	mux.HandleFunc("GET /{$}", s.handleRoot)
 	mux.HandleFunc("GET /ui", s.handleDashboard)
 	return mux
@@ -298,8 +294,8 @@ func (s *Server) deviceInfos() []deviceInfo {
 	return list
 }
 
-// deviceStatus summarizes the last contact. TRMNL devices deep-sleep and poll,
-// so "ok" only means the last request is not overdue: it may be twice the
+// deviceStatus summarizes the last contact. Devices deep-sleep between syncs,
+// so "ok" only means the last sync is not overdue: it may be twice the
 // reported refresh old before a device counts as "late".
 func deviceStatus(d Device, st deviceState, now time.Time) string {
 	if st.APIKey == "" {
@@ -328,13 +324,6 @@ func (s *Server) stateLocked(key string) *deviceState {
 	return st
 }
 
-func (s *Server) baseURL(r *http.Request) string {
-	if s.cfg.PublicURL != "" {
-		return s.cfg.PublicURL
-	}
-	return "http://" + r.Host
-}
-
 // stateSnapshotLocked serializes device state; callers hold s.mu and write the
 // result with saveState after unlocking, so that a slow disk cannot block other
 // requests.
@@ -361,180 +350,6 @@ func newAPIKey() string {
 	b := make([]byte, 16)
 	rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
-}
-
-func friendlyID(mac string) string {
-	return strings.ReplaceAll(mac[len(mac)-8:], ":", "")
-}
-
-// handleSetup trades a known MAC address for an API key. Unknown devices are
-// rejected so that only configured displays can register.
-func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
-	mac := normalizeMAC(r.Header.Get("ID"))
-	d := s.cfg.device(mac)
-	if d == nil {
-		slog.Warn("setup from unknown device; add its MAC to the configuration", "mac", mac, "model", r.Header.Get("Model"))
-		writeJSON(w, http.StatusOK, map[string]any{"status": 404, "api_key": nil, "friendly_id": nil, "image_url": nil, "message": "device not allowed"})
-		return
-	}
-	s.mu.Lock()
-	st := s.state[d.ID]
-	if st == nil {
-		st = &deviceState{}
-		s.state[d.ID] = st
-	}
-	if st.APIKey == "" {
-		st.APIKey, st.FriendlyID = newAPIKey(), friendlyID(d.MAC)
-	}
-	st.Model, st.Firmware = r.Header.Get("Model"), r.Header.Get("FW-Version")
-	title, text := s.cfg.texts().setup()
-	key, friendly := st.APIKey, st.FriendlyID
-	stateData := s.stateSnapshotLocked()
-	s.mu.Unlock()
-	s.saveState(stateData)
-	// Drawing and writing run outside the lock so a slow disk or a broken font
-	// cannot block other device requests or the data API.
-	notice := s.hint(d.Profile, title, text)
-	slog.Info("display set up", "device", d.ID, "mac", d.MAC)
-	writeJSON(w, http.StatusOK, map[string]any{"status": 200, "api_key": key, "friendly_id": friendly,
-		"image_url": s.baseURL(r) + notice.path, "message": "Registered as " + d.ID})
-}
-
-// buttonWake reports whether the device was woken by its button rather than the timer.
-func buttonWake(source string) bool {
-	switch strings.ToLower(source) {
-	case "", "timer", "powercycle", "unknown":
-		return false
-	}
-	return true
-}
-
-func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
-	now := s.now()
-	mac := normalizeMAC(r.Header.Get("ID"))
-	token := r.Header.Get("Access-Token")
-	d := s.cfg.device(mac)
-	s.mu.Lock()
-	var st *deviceState
-	if d != nil {
-		st = s.state[d.ID]
-	}
-	if d != nil && (st == nil || st.APIKey == "") && token != "" {
-		// State was lost: accept the key the device still has instead of forcing a new setup.
-		st = &deviceState{APIKey: token, FriendlyID: friendlyID(d.MAC)}
-		s.state[d.ID] = st
-		slog.Info("device key adopted", "device", d.ID)
-	}
-	if d == nil || st == nil || subtle.ConstantTimeCompare([]byte(token), []byte(st.APIKey)) != 1 {
-		s.mu.Unlock()
-		slog.Warn("request from unknown device or with wrong key", "mac", mac)
-		// Never 500: the firmware treats it as a reset and erases its credentials.
-		writeJSON(w, http.StatusOK, map[string]any{"status": 202, "refresh_rate": 600})
-		return
-	}
-	firstContact := st.LastSeen.IsZero() // wake reason after setup still reflects the setup boot
-	st.LastSeen = now
-	st.BatteryVoltage, st.RSSI = r.Header.Get("Battery-Voltage"), r.Header.Get("RSSI")
-	st.Firmware, st.WakeReason = r.Header.Get("FW-Version"), r.Header.Get("Update-Source")
-	if model := r.Header.Get("Model"); model != "" {
-		st.Model = model
-	}
-	prevLevel := st.BatteryLevel
-	st.BatteryLevel = nextBatteryLevel(s.cfg.battery(d), prevLevel, st.BatteryVoltage)
-	critical := st.BatteryLevel == batteryCritical
-	pageTimeout := time.Duration(s.cfg.PageTimeout)
-	special := r.Header.Get("special_function") != ""
-
-	var served servedPage
-	floor := s.cfg.minRefresh(d.Profile)
-	var choice planChoice
-	switch {
-	case critical: // the warning replaces all pages; buttons only show it again
-		st.Page = 0
-	case d.Plan != "":
-		choice = s.choosePlanPage(d, st, now, firstContact, special, pageTimeout)
-	default:
-		choice.title, choice.text = s.cfg.texts().noPlan()
-	}
-	logged := *st
-	stateData := s.stateSnapshotLocked()
-	s.mu.Unlock()
-	s.saveState(stateData)
-
-	// Drawing and rendering happen without the lock: a slow page, a font problem
-	// or a panicking template must never block the other devices or the data API.
-	switch {
-	case critical:
-		served = s.notice(d.Profile, criticalBatteryImage(s.cfg.Profiles[d.Profile], s.cfg.texts(), voltageKey(logged.BatteryVoltage)))
-		served.name, served.refresh = "battery", d.refresh()
-	case d.Plan != "":
-		served = s.renderPlan(d, choice, now)
-	default:
-		served = s.hint(d.Profile, choice.title, choice.text)
-	}
-	served.refresh = max(served.refresh, floor)
-	refresh := served.refresh
-	// Remember what the device was pointed at, so /api/devices can show the
-	// current content. Rendering happened above, outside the lock.
-	shownKind, shownPage := "page", served.name
-	switch {
-	case critical:
-		shownKind, shownPage = "battery", ""
-	case served.name == "":
-		shownKind = "notice"
-	}
-	errText := ""
-	switch {
-	case choice.err != nil:
-		errText = shortError(choice.err)
-	case served.err != nil:
-		errText = shortError(served.err)
-	}
-	s.mu.Lock()
-	var pageData []byte
-	if st = s.state[d.ID]; st != nil {
-		st.LastPage, st.LastPageKind, st.LastPageHash = shownPage, shownKind, served.hash
-		st.LastPageTime, st.LastRefresh = now, int(refresh.Seconds())
-		st.LastError = errText
-		pageData = s.stateSnapshotLocked()
-	}
-	s.mu.Unlock()
-	s.saveState(pageData)
-	if logged.BatteryLevel != prevLevel {
-		level := logged.BatteryLevel
-		if level == batteryOK {
-			level = "ok"
-		}
-		slog.Warn("battery warning", "device", d.ID, "level", level, "battery", logged.BatteryVoltage)
-	}
-	pageName := served.name
-	if pageName == "" {
-		pageName = "notice"
-	}
-	attrs := []any{"device", d.ID, "page", pageName}
-	if served.pages > 1 {
-		attrs = append(attrs, "index", served.page, "pages", served.pages)
-	}
-	attrs = append(attrs, "rule", logged.Rule, "wake", logged.WakeReason, "special", special,
-		"battery", logged.BatteryVoltage, "rssi", logged.RSSI, "refresh", refresh)
-	slog.Info("display request", attrs...)
-	resp := map[string]any{"status": 0, "image_url": s.baseURL(r) + served.path, "filename": served.filename,
-		"refresh_rate": int(refresh.Seconds()), "reset_firmware": false, "update_firmware": false, "firmware_url": nil,
-		"special_function": "restart_playlist"}
-	if special {
-		resp["action"] = "restart_playlist"
-	}
-	writeJSON(w, http.StatusOK, resp)
-}
-
-func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
-	body, _ := io.ReadAll(io.LimitReader(r.Body, 64<<10))
-	name := normalizeMAC(r.Header.Get("ID"))
-	if d := s.cfg.device(name); d != nil {
-		name = d.ID
-	}
-	s.logDevice(name, body)
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // handlePreview renders a page template from the data document as PNG, so a

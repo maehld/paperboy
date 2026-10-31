@@ -38,5 +38,5 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0039](0039-device-status.md) | Device status in the devices API | Accepted, implemented |
 | [0040](0040-operator-dashboard.md) | Operator dashboard as a Go template | Accepted, implemented |
 | [0041](0041-esphome-firmware.md) | Paperboy firmware built on ESPHome | Accepted |
-| [0042](0042-device-protocol.md) | Paperboy device protocol | Accepted |
+| [0042](0042-device-protocol.md) | Paperboy device protocol | Accepted, implemented |
 | [0043](0043-firmware-distribution.md) | Firmware distribution through Paperboy | Accepted |

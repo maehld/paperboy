@@ -9,7 +9,6 @@
 # timezone: Europe/Berlin # IANA name; applies to plans and built-in dates
 
 server:
-  # public_url: https://paper.example.com   # only needed behind a reverse proxy
   upload_token_env: PAPERBOY_UPLOAD_TOKEN   # or upload_token: "a long random token"
 
 # Optional exec providers (ADR 0036). The program lives in providers/ and prints
@@ -43,10 +42,10 @@ display_types:
 devices:
   wohnzimmer:
     display_type: e1001
-    protocol: trmnl
+    protocol: paperboy   # Paperboy firmware (ADR 0041, 0042)
     mac: "AA:BB:CC:DD:EE:01"
     # plan: standard   # plans/standard.yaml must exist; otherwise a notice page
   flur:
     display_type: sticky
-    protocol: trmnl
+    protocol: paperboy   # Paperboy firmware (ADR 0041, 0042)
     mac: "AA:BB:CC:DD:EE:02"

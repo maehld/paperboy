@@ -1,4 +1,5 @@
-// Package paperboy serves ePaper devices running the TRMNL firmware. Pages are
+// Package paperboy serves ePaper devices running the Paperboy firmware over the
+// device API (ADR 0041, 0042). Pages are
 // rendered from templates and chosen by plans (ADR 0024, 0025); the
 // configuration is YAML (ADR 0026) in a fixed instance directory (ADR 0037).
 package paperboy
@@ -56,10 +57,10 @@ type Profile struct {
 }
 
 // Device is one physical display. Its ID is stable and used in state/devices.json, logs
-// and the devices API; the TRMNL API identifies it by its Wi-Fi MAC address.
+// and the devices API; the device API registers it by its Wi-Fi MAC address.
 type Device struct {
 	ID      string
-	Type    string // protocol; only "trmnl" for now
+	Type    string // protocol; only "paperboy" for now
 	MAC     string
 	Address string // reserved for OpenDisplay, which is not supported yet
 	Buttons bool
@@ -69,7 +70,7 @@ type Device struct {
 	Plan    string   // page plan under plans/; empty = notice page
 }
 
-// Battery configures the low-battery warning for TRMNL devices. A threshold
+// Battery configures the low-battery warning (ADR 0020). A threshold
 // of 0 disables that stage.
 type Battery struct {
 	WarnVolts       float64 `yaml:"warn_volts" json:"warn_volts"`             // banner on every page below this
@@ -116,7 +117,7 @@ func mergeBattery(base, override *Battery) *Battery {
 }
 
 const (
-	TypeTRMNL = "trmnl"
+	TypePaperboy = "paperboy"
 
 	minRefresh         = time.Minute
 	defaultRefresh     = 5 * time.Minute
@@ -139,7 +140,6 @@ const (
 type Config struct {
 	Dir          string // instance directory from -config; holds pages, plans, providers and state (ADR 0037)
 	UploadToken  string
-	PublicURL    string
 	Language     string         // "de" or "en"; built-in texts and number formats
 	Timezone     *time.Location // plans and built-in dates
 	Refresh      Duration       // default interval of a device; a plan rule may override it
@@ -273,7 +273,6 @@ func LoadConfig(dir string) (*Config, error) {
 	c := &Config{
 		Dir:          dir,
 		UploadToken:  f.Server.UploadToken,
-		PublicURL:    f.Server.PublicURL,
 		Language:     f.Language,
 		Timezone:     tz,
 		Refresh:      f.Defaults.Refresh,
@@ -283,6 +282,9 @@ func LoadConfig(dir string) (*Config, error) {
 		Plans:        filepath.Join(dir, plansDirName),
 		ProvidersDir: filepath.Join(dir, providersDirName),
 		Profiles:     make(map[string]Profile, len(f.DisplayTypes)),
+	}
+	if f.Server.PublicURL != "" {
+		return nil, fmt.Errorf("%s: server.public_url is no longer used: devices fetch images relative to the configured Paperboy URL (ADR 0042); remove it", path)
 	}
 	if name := f.Server.UploadTokenEnv; name != "" {
 		if token := os.Getenv(name); token != "" {
@@ -380,7 +382,6 @@ func (c *Config) validate() error {
 	if c.PageTimeout == 0 {
 		c.PageTimeout = Duration(defaultPageTimeout)
 	}
-	c.PublicURL = strings.TrimRight(c.PublicURL, "/")
 	if err := c.Battery.validate("battery"); err != nil {
 		return err
 	}
@@ -410,8 +411,8 @@ func (c *Config) validate() error {
 			return fmt.Errorf("device %q: id must use a-z, 0-9 and -", d.ID)
 		}
 		switch d.Type {
-		case "", TypeTRMNL:
-			d.Type = TypeTRMNL
+		case "", TypePaperboy:
+			d.Type = TypePaperboy
 			if d.Address != "" || d.Buttons {
 				return fmt.Errorf("device %s: address/buttons belong to protocol opendisplay, which is not supported yet", d.ID)
 			}
@@ -420,6 +421,8 @@ func (c *Config) validate() error {
 				return fmt.Errorf("device %s: invalid MAC address", d.ID)
 			}
 			d.MAC = normalizeMAC(mac.String())
+		case "trmnl":
+			return fmt.Errorf("device %s: protocol trmnl was removed (ADR 0042); flash the Paperboy firmware and set protocol: paperboy", d.ID)
 		case "opendisplay":
 			return fmt.Errorf("device %s: protocol opendisplay is not supported yet (TODO in README)", d.ID)
 		case "text-http", "image-http":
@@ -499,7 +502,7 @@ func pathsOverlap(a, b string) bool {
 	return a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
 }
 
-// device returns the configured TRMNL device with this MAC address.
+// device returns the configured device with this MAC address.
 func (c *Config) device(mac string) *Device {
 	mac = normalizeMAC(mac)
 	if mac == "" {

@@ -13,23 +13,24 @@ import (
 // deviceState is persisted per device ID in state/devices.json.
 type deviceState struct {
 	APIKey         string    `json:"api_key"`
-	FriendlyID     string    `json:"friendly_id"`
 	Page           int       `json:"page"`
 	LastInput      time.Time `json:"last_input,omitempty"`
 	LastSeen       time.Time `json:"last_seen,omitempty"`
 	BatteryVoltage string    `json:"battery_voltage,omitempty"`
+	BatteryPercent *float64  `json:"battery_percent,omitempty"` // fuel gauge, if the hardware has one
+	BatteryMAH     *float64  `json:"battery_mah,omitempty"`     // remaining capacity from the fuel gauge
 	RSSI           string    `json:"rssi,omitempty"`
 	Firmware       string    `json:"firmware,omitempty"`
-	Model          string    `json:"model,omitempty"`
+	Hardware       string    `json:"hardware,omitempty"` // firmware image type, e.g. "sticky"
 	WakeReason     string    `json:"wake_reason,omitempty"`
-	BatteryLevel   string    `json:"battery_level,omitempty"` // TRMNL: "", "warn" or "critical"
-	Rule           string    `json:"rule,omitempty"`          // TRMNL plan: name of the active rule
+	BatteryLevel   string    `json:"battery_level,omitempty"` // "", "warn" or "critical"
+	Rule           string    `json:"rule,omitempty"`          // name of the active plan rule
 
 	// What the device was last pointed at; set after rendering, so a failed
 	// render shows up as a notice instead of a page that was never drawn.
 	LastPage     string    `json:"last_page,omitempty"`      // page template; empty for a notice or the battery warning
 	LastPageKind string    `json:"last_page_kind,omitempty"` // "page", "notice" or "battery"
-	LastPageHash string    `json:"last_page_hash,omitempty"` // content hash, the same as the response's "filename"
+	LastPageHash string    `json:"last_page_hash,omitempty"` // content hash, the same as the sync response's image hash
 	LastPageTime time.Time `json:"last_page_time,omitempty"`
 	LastRefresh  int       `json:"last_refresh,omitempty"` // reported refresh in seconds
 	LastError    string    `json:"last_error,omitempty"`   // last render or plan error
@@ -61,7 +62,7 @@ func loadState(path string) (map[string]*deviceState, error) {
 	return state, nil
 }
 
-// migrateState moves TRMNL entries from their MAC address to the device ID
+// migrateState moves old entries from their MAC address to the device ID
 // (ADR 0026). Entries that belong to no configured device stay untouched, so a
 // removed device keeps its key. It returns the number of moved entries.
 func migrateState(state map[string]*deviceState, devices []Device) (int, error) {

@@ -136,16 +136,21 @@ func refreshText(seconds int) string {
 	return fmt.Sprintf("every %d min", (seconds+30)/60)
 }
 
-// batteryText shows the voltage and, when a threshold was crossed, its level.
+// batteryText shows the voltage, the fuel gauge charge if known and, when a
+// threshold was crossed, its level.
 func batteryText(st deviceState) string {
 	if st.BatteryVoltage == "" {
 		return ""
 	}
+	text := st.BatteryVoltage + " V"
+	if st.BatteryPercent != nil {
+		text += fmt.Sprintf(" · %.0f %%", *st.BatteryPercent)
+	}
 	switch st.BatteryLevel {
 	case batteryWarn:
-		return st.BatteryVoltage + " V · low"
+		return text + " · low"
 	case batteryCritical:
-		return st.BatteryVoltage + " V · critical"
+		return text + " · critical"
 	}
-	return st.BatteryVoltage + " V"
+	return text
 }

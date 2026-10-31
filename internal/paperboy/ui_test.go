@@ -37,13 +37,14 @@ func TestDashboardShowsDevices(t *testing.T) {
 	}
 
 	dev := planDevice(t, s)
-	dev["Battery-Voltage"] = "3.74"
+	percent := 61.0
+	dev.req.Battery = &syncBattery{Volts: 3.74, Percent: &percent}
 	out := displayPage(t, s, dev)
 	body = htmlRequest(t, s, "/ui").Body.String()
-	if want := "/" + pagePath(out) + ".png"; !strings.Contains(body, want) {
+	if want := pagePath(out); !strings.Contains(body, want) {
 		t.Fatalf("dashboard must preview the served page %q: %s", want, body)
 	}
-	for _, want := range []string{"zimmer", "eins", "every 10 min", "3.74 V"} {
+	for _, want := range []string{"zimmer", "eins", "every 10 min", "3.74 V · 61 %"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("dashboard misses %q: %s", want, body)
 		}

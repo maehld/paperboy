@@ -22,18 +22,18 @@ func TestDevicesAPIShowsServedPage(t *testing.T) {
 	s, now := planServer(t, testPlan)
 	dev := planDevice(t, s)
 	out := displayPage(t, s, dev)
-	filename := pagePath(out) // pages/small/eins/<hash>
-	hash := filename[strings.LastIndexByte(filename, '/')+1:]
+	path := pagePath(out) // /pages/small/eins/<hash>.png
+	hash := imageOf(out)["hash"].(string)
 
 	info := deviceInfoOf(t, s)
 	if info["last_page"] != "eins" || info["last_page_kind"] != "page" {
 		t.Fatalf("last page: %v", info)
 	}
-	if info["last_page_hash"] != hash {
-		t.Fatalf("hash %v, want %q", info["last_page_hash"], hash)
+	if info["last_page_hash"] != hash || !strings.HasSuffix(path, "/"+hash+".png") {
+		t.Fatalf("hash %v, want %q in %q", info["last_page_hash"], hash, path)
 	}
-	if want := "/" + filename + ".png"; info["last_page_url"] != want {
-		t.Fatalf("page url %v, want %q", info["last_page_url"], want)
+	if info["last_page_url"] != path {
+		t.Fatalf("page url %v, want %q", info["last_page_url"], path)
 	}
 	if info["last_refresh"] != float64(600) || info["status"] != "ok" {
 		t.Fatalf("refresh/status: %v", info)
@@ -90,10 +90,10 @@ func TestDevicesAPIStatusLifecycle(t *testing.T) {
 	}
 	dev := planDevice(t, s)
 	if info := deviceInfoOf(t, s); info["status"] != "never" {
-		t.Fatalf("after setup without a display request: %v", info)
+		t.Fatalf("after registration without a sync: %v", info)
 	}
 	displayPage(t, s, dev)
 	if info := deviceInfoOf(t, s); info["status"] != "ok" {
-		t.Fatalf("after the first display request: %v", info)
+		t.Fatalf("after the first sync: %v", info)
 	}
 }

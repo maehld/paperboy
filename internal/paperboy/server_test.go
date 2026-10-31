@@ -45,41 +45,75 @@ func call(t *testing.T, s *Server, path string, headers map[string]string) map[s
 }
 
 func TestDeviceFlow(t *testing.T) {
-	s, _ := testServer(t)
-	if out := call(t, s, "/api/setup", map[string]string{"ID": "11:22:33:44:55:66"}); out["status"].(float64) != 404 {
-		t.Fatalf("unknown device: %v", out)
+	s, now := testServer(t)
+	if rec := register(t, s, `{"mac":"11:22:33:44:55:66","hardware":"sticky"}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("unknown device: %d %s", rec.Code, rec.Body)
 	}
-	setup := call(t, s, "/api/setup", map[string]string{"ID": "AA:BB:CC:DD:EE:01"})
-	key, _ := setup["api_key"].(string)
-	if setup["status"].(float64) != 200 || key == "" {
-		t.Fatalf("setup: %v", setup)
+	if rec := register(t, s, `not json`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("malformed registration: %d", rec.Code)
 	}
-	if rec := fetchImage(t, s, setup["image_url"].(string)); rec.Code != http.StatusOK {
-		t.Fatalf("setup image: %d", rec.Code)
+	rec := register(t, s, `{"mac":"aa:bb:cc:dd:ee:01","hardware":"sticky","firmware":"0.4.0"}`)
+	var reg struct{ Key, Device string }
+	if err := json.Unmarshal(rec.Body.Bytes(), &reg); rec.Code != http.StatusOK || err != nil || reg.Key == "" || reg.Device != "test" {
+		t.Fatalf("register: %d %s", rec.Code, rec.Body)
 	}
-	dev := map[string]string{"ID": "AA:BB:CC:DD:EE:01", "Access-Token": key, "Update-Source": "timer"}
-
-	bad := call(t, s, "/api/display", map[string]string{"ID": "AA:BB:CC:DD:EE:01", "Access-Token": "wrong"})
-	if bad["status"].(float64) != 202 || bad["reset_firmware"] == true {
-		t.Fatalf("wrong key must never reset: %v", bad)
-	}
-	// Without a plan the device gets a notice page instead of uploaded images.
-	out := call(t, s, "/api/display", dev)
-	if name := pagePath(out); !strings.HasPrefix(name, "hints/") {
-		t.Fatalf("expected a notice page: %v", out)
-	}
-	if out["refresh_rate"].(float64) != hintRefresh.Seconds() || out["special_function"] != "restart_playlist" {
-		t.Fatalf("notice response: %v", out)
-	}
-	rec := fetchImage(t, s, out["image_url"].(string))
-	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" {
-		t.Fatalf("notice image: %d %v", rec.Code, rec.Header())
+	// Registering again keeps the key, so a reflashed device keeps its state.
+	again := register(t, s, `{"mac":"AA:BB:CC:DD:EE:01","hardware":"sticky","firmware":"0.4.1"}`)
+	if !strings.Contains(again.Body.String(), reg.Key) {
+		t.Fatalf("key must stay: %s", again.Body)
 	}
 
-	devices := call(t, s, "/api/devices", nil)["devices"].([]any)
-	info := devices[0].(map[string]any)
-	if info["id"] != "test" || info["display_type"] != "small" || info["registered"] != true {
+	if rec := syncRaw(t, s, "wrong", `{"reason":"timer"}`); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong key: %d", rec.Code)
+	}
+	if rec := syncRaw(t, s, "", `{"reason":"timer"}`); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("missing key: %d", rec.Code)
+	}
+	for _, body := range []string{
+		`{"reason":"sleepy"}`,
+		`{"reason":"button","events":[{"type":"button","button":"up"}]}`,
+		`{"reason":"button","events":[{"type":"swipe"}]}`,
+		`{"reason":"timer","battery":{"percent":50}}`,
+	} {
+		if rec := syncRaw(t, s, reg.Key, body); rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s: %d", body, rec.Code)
+		}
+	}
+
+	// Without a plan the device gets a notice page.
+	rec = syncRaw(t, s, reg.Key, `{"firmware":"0.4.1","hardware":"sticky","reason":"powercycle",
+		"battery":{"volts":3.912,"percent":61,"mah":449,"ma":-68},"rssi":-63}`)
+	var out struct {
+		Image    struct{ Path, Hash string }
+		RefreshS int `json:"refresh_s"`
+		ListenS  int `json:"listen_s"`
+		Time     int64
+		Firmware any
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); rec.Code != http.StatusOK || err != nil {
+		t.Fatalf("sync: %d %s", rec.Code, rec.Body)
+	}
+	if !strings.HasPrefix(out.Image.Path, "/hints/") || !strings.Contains(out.Image.Path, out.Image.Hash) {
+		t.Fatalf("expected a notice page: %+v", out)
+	}
+	if out.RefreshS != int(hintRefresh.Seconds()) || out.ListenS != 0 || out.Time != now.Unix() || out.Firmware != nil {
+		t.Fatalf("sync response: %s", rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), `"firmware":null`) {
+		t.Fatalf("firmware must be null: %s", rec.Body)
+	}
+	img := fetchImage(t, s, out.Image.Path)
+	if img.Code != http.StatusOK || img.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("notice image: %d %v", img.Code, img.Header())
+	}
+
+	info := deviceInfoOf(t, s)
+	if info["id"] != "test" || info["display_type"] != "small" || info["registered"] != true || info["protocol"] != "paperboy" {
 		t.Fatalf("devices API: %v", info)
+	}
+	if info["battery_voltage"] != "3.91" || info["battery_percent"] != float64(61) || info["battery_mah"] != float64(449) ||
+		info["rssi"] != "-63" || info["firmware"] != "0.4.1" || info["hardware"] != "sticky" || info["wake_reason"] != "powercycle" {
+		t.Fatalf("reported values: %v", info)
 	}
 	if _, ok := info["api_key"]; ok {
 		t.Fatal("devices API must not expose keys")
@@ -88,6 +122,12 @@ func TestDeviceFlow(t *testing.T) {
 	p := profiles[0].(map[string]any)
 	if p["name"] != "small" || p["min_refresh"] != "1m0s" {
 		t.Fatalf("profiles API: %v", p)
+	}
+	// The TRMNL endpoints are gone.
+	for _, path := range []string{"/api/setup", "/api/display"} {
+		if rec := htmlRequest(t, s, path); rec.Code != http.StatusNotFound {
+			t.Fatalf("%s: %d", path, rec.Code)
+		}
 	}
 }
 
@@ -118,10 +158,12 @@ func TestDeviceStateMigratesToDeviceID(t *testing.T) {
 	if err != nil || !strings.Contains(string(raw), `"wohnzimmer"`) || strings.Contains(string(raw), `"AA:BB:`) {
 		t.Fatalf("state file not rewritten: %s (%v)", raw, err)
 	}
-	// The device keeps working with the key it already has.
-	out := call(t, s, "/api/display", map[string]string{"ID": "AA:BB:CC:DD:EE:01", "Access-Token": "existing-key-1234"})
-	if out["filename"] == nil {
-		t.Fatalf("display after migration: %v", out)
+	// Registration hands out the key the device state already has.
+	if rec := register(t, s, `{"mac":"AA:BB:CC:DD:EE:01"}`); !strings.Contains(rec.Body.String(), "existing-key-1234") {
+		t.Fatalf("register after migration: %s", rec.Body)
+	}
+	if rec := syncRaw(t, s, "existing-key-1234", `{"reason":"timer"}`); rec.Code != http.StatusOK {
+		t.Fatalf("sync after migration: %d %s", rec.Code, rec.Body)
 	}
 }
 
