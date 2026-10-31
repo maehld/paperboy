@@ -792,15 +792,41 @@ func (f formatter) fitValue(width int, kind string, v any) string {
 	return strings.Repeat("#", width)
 }
 
-// variants lists the spellings of v from the most to the least precise.
-func (f formatter) variants(v any, kind string) []string {
-	normal := f.format(v, kind)
-	n, ok := toFloat(v)
-	if !ok || v == nil {
-		return []string{normal}
+// fitAligned is fitValue with a unit column of unitWidth characters: the unit
+// is left-aligned in it after one space, so numbers of several lines end in
+// the same column (ADR 0046). Only decimals are dropped; the unit stays.
+func (f formatter) fitAligned(width, unitWidth int, kind string, v any) string {
+	if width <= 0 {
+		return ""
+	}
+	numWidth := width - unitWidth - 1
+	nums, unit, ok := f.numberParts(v, kind)
+	if !ok {
+		nums, unit = []string{f.format(v, kind)}, ""
+	}
+	if r := len([]rune(unit)); r < unitWidth {
+		unit += strings.Repeat(" ", unitWidth-r)
+	}
+	tail := " " + unit
+	if numWidth < 0 || len([]rune(tail)) > width {
+		return strings.Repeat("#", width)
+	}
+	for _, s := range nums {
+		if n := len([]rune(s)); n <= numWidth {
+			return strings.Repeat(" ", numWidth-n) + s + tail
+		}
+	}
+	return strings.Repeat("#", numWidth) + tail
+}
+
+// numberParts splits a value into its unit and its number with decreasing
+// decimals. ok is false for values and formats without such a split.
+func (f formatter) numberParts(v any, kind string) (nums []string, unit string, ok bool) {
+	n, isNum := toFloat(v)
+	if !isNum || v == nil {
+		return nil, "", false
 	}
 	a := math.Abs(n)
-	var unit string
 	var decimals []int
 	switch kind {
 	case "power":
@@ -817,19 +843,30 @@ func (f formatter) variants(v any, kind string) []string {
 		a, unit, decimals = a*100, "%", []int{0}
 	case "temp":
 		unit, decimals = "°C", []int{1, 0}
-	case "duration":
-		return []string{normal, strings.ReplaceAll(normal, " ", "")}
 	default:
+		return nil, "", false
+	}
+	for _, d := range decimals {
+		nums = append(nums, f.num(a, d))
+	}
+	return nums, unit, true
+}
+
+// variants lists the spellings of v from the most to the least precise.
+func (f formatter) variants(v any, kind string) []string {
+	normal := f.format(v, kind)
+	if kind == "duration" {
+		return []string{normal, strings.ReplaceAll(normal, " ", "")}
+	}
+	nums, unit, ok := f.numberParts(v, kind)
+	if !ok {
 		return []string{normal}
 	}
 	out := []string{normal}
-	for _, d := range decimals {
-		out = append(out, f.num(a, d)+" "+unit, f.num(a, d)+unit)
+	for _, s := range nums {
+		out = append(out, s+" "+unit, s+unit)
 	}
-	for _, d := range decimals {
-		out = append(out, f.num(a, d))
-	}
-	return out
+	return append(out, nums...)
 }
 
 // durationText renders seconds as whole minutes, e.g. "42 min", "2 h" or

@@ -22,6 +22,10 @@ Text page templates get a helper `fit <width> "<format>" <value>`. It formats th
 
 `fit` is available on text pages only; image pages keep their typographic `shrink`.
 
+### Aligned units (amendment 2026-10-31)
+
+An optional fourth argument gives the unit a column of its own: `fit <width> "<format>" <value> <unit_width>`. The value is written as number, one space and the unit left-aligned and padded to `unit_width`, so numbers of several lines end in the same column even when their units differ (`5,7 kWh`, `  0 %  `). In this form the unit never moves or disappears: only decimals are dropped, and a number that still does not fit becomes `#` in front of the unit. `power` keeps switching between `W` and `kW` inside the unit column. Formats without a unit (`time`, `abs`, `duration`, plain) leave the unit column blank. Without the fourth argument `fit` behaves as described above.
+
 ## Consequences
 
 - Values never touch or get cut silently; at worst they lose the unit, and `#` makes a column that is too narrow visible.
