@@ -3,7 +3,7 @@
 - Status: Proposed
 - Date: 2026-10-31
 - Builds on: ADR 0041 (Paperboy firmware on ESPHome)
-- Partially supersedes: ADR 0027 section 3 (`image-http` with a configured token per device and `POST /api/image/button`)
+- Partially supersedes: ADR 0017 (TRMNL as the device protocol and its workarounds), ADR 0027 section 3 (`image-http` with a configured token per device and `POST /api/image/button`)
 - Related: ADR 0017 (TRMNL protocol), ADR 0020 (battery warning), ADR 0025 (plans), ADR 0039 (device status), ADR 0043 (firmware distribution)
 
 ## Context
@@ -20,11 +20,11 @@ ADR 0027 proposed `image-http` for graphical ESPHome displays, with a token per 
 
 ## Decision
 
-We add a native device API for our firmware. TRMNL devices keep the TRMNL API unchanged.
+We replace the TRMNL API with a native device API for our firmware (ADR 0041). The TRMNL endpoints `/api/setup`, `/api/display` and `/api/log` and their workarounds are removed once every display runs our firmware.
 
 ### 1. Configuration
 
-Devices using it are configured with `protocol: paperboy` and their `mac`, like TRMNL devices. Both APIs accept every MAC-identified device, so a display can be flashed before its configuration is changed; `protocol` states which firmware is expected, and the devices API reports the protocol a device actually used last (`last_protocol`).
+Devices are configured with `protocol: paperboy` and their `mac`; `trmnl` is no longer accepted. The existing entries in `state/devices.json` (key, page cursor, battery level) stay valid, so a display keeps its state when it is flashed.
 
 ### 2. Registration
 
@@ -34,7 +34,7 @@ Devices using it are configured with `protocol: paperboy` and their `mac`, like 
 { "mac": "B8:1F:3F:D8:6A:FC", "hardware": "sticky", "firmware": "0.4.0" }
 ```
 
-- Known MAC → `200 {"key": "…", "device": "sticky1"}`. The key is the existing one from `state/devices.json` if there is one, so moving between TRMNL and Paperboy firmware keeps the device's state.
+- Known MAC → `200 {"key": "…", "device": "sticky1"}`. The key is the existing one from `state/devices.json` if there is one.
 - Unknown MAC → `403`. The firmware shows its MAC and retries later.
 
 ### 3. One sync per wake
@@ -98,10 +98,12 @@ Plain HTTP status codes, no TRMNL workarounds:
 
 ## Consequences
 
-- One request per wake instead of up to three (log, display, TRMNL headers), and the image download only when the hash changed.
+- One request per wake instead of up to three (log, display, button headers), and the image download only when the hash changed.
 - A real "back" button, and the transport for touch and long presses is in place before their meaning is decided.
 - The firmware's protocol code shrinks to register, sync and download; awake windows move to the server.
-- Paperboy gains two handlers, a "previous" step in the plan cursor, and new fields in `devices.json` and `GET /api/devices` (`last_protocol`, battery percent and mAh). State stays shared with the TRMNL path.
+- Paperboy gains two handlers, a "previous" step in the plan cursor, and new fields in `devices.json` and `GET /api/devices` (battery percent and mAh).
+- Removing TRMNL removes `/api/setup`, `/api/display` and `/api/log`, the 202 and "never 500" rules, `special_function`, the `Update-Source` parsing and the absolute image URLs; the TRMNL rules in `AGENTS.md` go with them. The battery warning (ADR 0020) and the device status (ADR 0039) carry over to the new API.
+- Order of work: implement the new API, flash every display, then remove the TRMNL code. A display left on the TRMNL firmware stops getting pages at that point.
 - Images stay PNG. A raw packed framebuffer would save about 1.8 s of PNG decoding per changed image on the device; it can be added later as an image format the device asks for.
 - ADR 0027's `text-http` is unaffected; text displays may adopt the sync model later.
-- The device API stays reachable without a user token, like the TRMNL API: registration is limited to configured MACs, everything else needs the device key, and it runs in the LAN.
+- The device API stays reachable without a user token: registration is limited to configured MACs, everything else needs the device key, and it runs in the LAN.
