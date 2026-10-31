@@ -776,6 +776,62 @@ func (f formatter) magnitude(n float64, kind string) string {
 	return f.trim(n)
 }
 
+// fitValue formats v with kind into exactly width columns, right-aligned
+// (ADR 0046). It tries ever shorter spellings — the normal text, the unit
+// without its space, fewer decimals, then the bare number — and fills the
+// width with '#' when none fits.
+func (f formatter) fitValue(width int, kind string, v any) string {
+	if width <= 0 {
+		return ""
+	}
+	for _, s := range f.variants(v, kind) {
+		if n := len([]rune(s)); n <= width {
+			return strings.Repeat(" ", width-n) + s
+		}
+	}
+	return strings.Repeat("#", width)
+}
+
+// variants lists the spellings of v from the most to the least precise.
+func (f formatter) variants(v any, kind string) []string {
+	normal := f.format(v, kind)
+	n, ok := toFloat(v)
+	if !ok || v == nil {
+		return []string{normal}
+	}
+	a := math.Abs(n)
+	var unit string
+	var decimals []int
+	switch kind {
+	case "power":
+		if a >= 1000 {
+			a, unit, decimals = a/1000, "kW", []int{2, 1, 0}
+		} else {
+			unit, decimals = "W", []int{0}
+		}
+	case "energy":
+		unit, decimals = "kWh", []int{1, 0}
+	case "percent":
+		unit, decimals = "%", []int{0}
+	case "ratio":
+		a, unit, decimals = a*100, "%", []int{0}
+	case "temp":
+		unit, decimals = "°C", []int{1, 0}
+	case "duration":
+		return []string{normal, strings.ReplaceAll(normal, " ", "")}
+	default:
+		return []string{normal}
+	}
+	out := []string{normal}
+	for _, d := range decimals {
+		out = append(out, f.num(a, d)+" "+unit, f.num(a, d)+unit)
+	}
+	for _, d := range decimals {
+		out = append(out, f.num(a, d))
+	}
+	return out
+}
+
 // durationText renders seconds as whole minutes, e.g. "42 min", "2 h" or
 // "3 h 20 min"; longer than a day stays in hours ("31 h 5 min").
 func (f formatter) durationText(seconds float64) string {
