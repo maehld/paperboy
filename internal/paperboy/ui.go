@@ -28,12 +28,13 @@ type dashboardDevice struct {
 	ImageURL  string // last served image, empty before the first request
 	Width     int
 	Height    int
-	Refresh   string // "every 10 min", empty when unknown
-	SeenAgo   string // last contact, "never" when unknown
-	ServedAgo string // age of the last served page
-	Battery   string // voltage and warning level, empty when unknown
-	Firmware  string // running version, available version and update status
-	Error     string // last render or plan error
+	Text      []string // text displays: the last served lines
+	Refresh   string   // "every 10 min", empty when unknown
+	SeenAgo   string   // last contact, "never" when unknown
+	ServedAgo string   // age of the last served page
+	Battery   string   // voltage and warning level, empty when unknown
+	Firmware  string   // running version, available version and update status
+	Error     string   // last render or plan error
 }
 
 type dashboardPage struct {
@@ -64,6 +65,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			ImageURL:  d.LastPageURL,
 			Width:     profiles[d.Profile].Width,
 			Height:    profiles[d.Profile].Height,
+			Text:      d.LastText,
 			Refresh:   refreshText(d.LastRefresh),
 			SeenAgo:   agoText(d.LastSeen, now),
 			ServedAgo: agoText(d.LastPageTime, now),

@@ -44,7 +44,10 @@ display_types:
     size: [800, 480]
     gray_levels: 4
     width_mm: 86
-
+  lcd2004:            # HD44780 text display (ADR 0044); pages use lines instead of blocks
+    kind: text
+    size: [20, 4]     # columns, rows
+    charset: hd44780  # utf8 (default), ascii or hd44780
 devices:
   wohnzimmer:
     display_type: e1001
@@ -56,3 +59,8 @@ devices:
     display_type: sticky
     protocol: paperboy   # Paperboy firmware (ADR 0041, 0042)
     mac: "AA:BB:CC:DD:EE:02"
+  kueche:
+    display_type: lcd2004
+    protocol: paperboy   # syncs every refresh, polls GET /api/device/text every second
+    mac: "AA:BB:CC:DD:EE:03"
+    refresh: 1m

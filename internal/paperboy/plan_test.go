@@ -118,7 +118,11 @@ func displayPage(t *testing.T, s *Server, dev *testDevice) map[string]any {
 		t.Fatalf("sync: %d %s", rec.Code, rec.Body)
 	}
 	dev.req.Events = nil
-	dev.req.Shown = imageOf(out)["hash"].(string)
+	content, ok := out["image"].(map[string]any)
+	if !ok {
+		content, _ = out["text"].(map[string]any)
+	}
+	dev.req.Shown, _ = content["hash"].(string)
 	return out
 }
 

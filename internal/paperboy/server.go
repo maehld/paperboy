@@ -155,6 +155,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /firmware/{hardware}/{file}", s.handleFirmware)
 	mux.HandleFunc("POST /api/device/register", s.handleRegister)
 	mux.HandleFunc("POST /api/device/sync", s.handleSync)
+	mux.HandleFunc("GET /api/device/text", s.handleText)
 	mux.HandleFunc("GET /{$}", s.handleRoot)
 	mux.HandleFunc("GET /ui", s.handleDashboard)
 	return mux
@@ -292,7 +293,7 @@ func (s *Server) deviceInfos() []deviceInfo {
 			info.Registered = st.APIKey != ""
 		}
 		info.Status = deviceStatus(d, info.deviceState, now)
-		if info.LastPageHash != "" {
+		if info.LastPageHash != "" && !s.cfg.Profiles[d.Profile].text() {
 			if info.LastPageKind == "page" && info.LastPage != "" {
 				info.LastPageURL = fmt.Sprintf("/pages/%s/%s/%s.png", d.Profile, info.LastPage, info.LastPageHash)
 			} else {
@@ -385,8 +386,24 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	display, name := r.PathValue("display"), r.PathValue("page")
-	if _, ok := s.cfg.Profiles[display]; !ok {
+	p, ok := s.cfg.Profiles[display]
+	if !ok {
 		http.NotFound(w, r)
+		return
+	}
+	if p.text() {
+		lines, err := s.renderText(display, name, s.now(), pagePosition{index: 0, count: 1})
+		if errors.Is(err, page.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		if err != nil {
+			slog.Error("page preview failed", "display", display, "page", name, "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write([]byte(strings.Join(lines, "\n") + "\n"))
 		return
 	}
 	rp, err := s.renderPage(display, name, s.now(), pagePosition{index: 0, count: 1})
