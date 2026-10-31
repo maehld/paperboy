@@ -65,11 +65,11 @@ type syncImage struct {
 }
 
 type syncResponse struct {
-	Image    syncImage `json:"image"`
-	RefreshS int       `json:"refresh_s"`
-	ListenS  int       `json:"listen_s"`
-	Time     int64     `json:"time"`
-	Firmware any       `json:"firmware"` // update offer (ADR 0043); null until then
+	Image    syncImage      `json:"image"`
+	RefreshS int            `json:"refresh_s"`
+	ListenS  int            `json:"listen_s"`
+	Time     int64          `json:"time"`
+	Firmware *firmwareOffer `json:"firmware"` // update offer (ADR 0043); null when none
 }
 
 // validate checks the parts of a sync that change device state; anything the
@@ -165,6 +165,11 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	if !decodeDeviceJSON(w, r, &req) {
 		return
 	}
+	// The firmware directory is read before taking the state lock.
+	var img *firmwareImage
+	if req.Hardware != "" {
+		img, _ = s.firmware.latest(req.Hardware)
+	}
 	s.mu.Lock()
 	d, st := s.deviceByKeyLocked(r)
 	if d == nil {
@@ -199,6 +204,12 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	st.BatteryLevel = nextBatteryLevel(s.cfg.battery(d), prevLevel, st.BatteryVoltage)
 	critical := st.BatteryLevel == batteryCritical
 	pageTimeout := time.Duration(s.cfg.PageTimeout)
+	s.settleFirmwareLocked(d, st)
+	var volts float64
+	if req.Battery != nil {
+		volts = req.Battery.Volts
+	}
+	offer := s.offerFirmwareLocked(d, st, img, volts, req.Battery != nil, now)
 
 	var buttons []string
 	input := req.Reason == "button" || req.Reason == "touch"
@@ -307,5 +318,6 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		RefreshS: int(refresh.Seconds()),
 		ListenS:  int(listen.Seconds()),
 		Time:     now.Unix(),
+		Firmware: offer,
 	})
 }

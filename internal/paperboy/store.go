@@ -34,6 +34,15 @@ type deviceState struct {
 	LastPageTime time.Time `json:"last_page_time,omitempty"`
 	LastRefresh  int       `json:"last_refresh,omitempty"` // reported refresh in seconds
 	LastError    string    `json:"last_error,omitempty"`   // last render or plan error
+
+	// Firmware updates (ADR 0043): the last offered version and its image
+	// checksum, whether the offer is still unanswered, and failed attempts for
+	// that version. Clearing firmware_failures lets Paperboy offer it again.
+	FirmwareOffered     string    `json:"firmware_offered,omitempty"`
+	FirmwareOfferedMD5  string    `json:"firmware_offered_md5,omitempty"`
+	FirmwareOfferedTime time.Time `json:"firmware_offered_time,omitempty"`
+	FirmwarePending     bool      `json:"firmware_pending,omitempty"`
+	FirmwareFailures    int       `json:"firmware_failures,omitempty"`
 }
 
 func writeAtomic(path string, data []byte) error {

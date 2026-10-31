@@ -35,12 +35,13 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
   plans/             plans <name>.yaml
   providers/         exec provider programs (ADR 0036)
   icons/             PNG pictograms for the icon block (ADR 0038)
+  firmware/          OTA images <hardware>/<hardware>-<version>.bin (ADR 0043)
   state/             written by Paperboy only
     devices.json     device register with API keys, page cursor and battery level
     data.json        last state of the data document
 ```
 
-- `paperboy.yaml`, `pages/`, `plans/`, `providers/` and `icons/` are yours: Paperboy only reads them and never creates them.
+- `paperboy.yaml`, `pages/`, `plans/`, `providers/`, `icons/` and `firmware/` are yours: Paperboy only reads them and never creates them.
 - `state/` is created at startup and is the only directory Paperboy writes. Back up `state/devices.json` anyway: it holds the page cursor, battery level and last served page; without it the devices get new keys on their next sync (401, then registration by MAC). `state/data.json` is refilled by the providers, but keeps the last values across a restart.
 
 ## Configuration
@@ -56,6 +57,9 @@ defaults:
   refresh: 5m          # regular sleep time; plans may override it
   page_timeout: 5m     # back to the first page after this
   battery: { warn_volts: 3.45, critical_volts: 3.3, hysteresis_volts: 0.1 }
+firmware:
+  update: auto         # auto or off (default); offers firmware/<hardware>/ images (ADR 0043)
+  min_battery_volts: 3.6
 display_types:
   e1001:
     kind: image
@@ -71,6 +75,7 @@ devices:
     plan: standard
     refresh: 10m                          # optional
     battery: { warn_volts: 3.5 }          # optional, 0 inherits the default
+    firmware: hold                        # optional, keeps the device on its firmware
 ```
 
 - The map key under `devices` is the stable device ID (a-z, 0-9, `-`). It appears in logs, in `GET /api/devices` and in `state/devices.json`; existing MAC-keyed state is migrated automatically at startup.
@@ -86,11 +91,12 @@ devices:
 - **Display types** (size, grayscale levels, panel width, minimum interval) determine the layout; providers query them via `GET /api/profiles`. Several devices can share a display type. Pages are delivered as PNG with 1 bit or 2 bits (4 gray levels).
 - **Plans** (ADR 0025): every device points to a plan (`plans/<name>.yaml`) that selects its pages according to time rules. A device without a plan shows a notice page.
 - **Interval**: `defaults.refresh` or the device's `refresh`, at least 1 minute and never below the display type's `min_refresh`; a plan rule may override it. Unchanged image → the display does not redraw.
-- **Device API** (ADR 0042): `POST /api/device/register` with `{"mac", "hardware", "firmware"}` returns `{"key", "device"}` for a configured MAC (an existing key is kept) and `403` otherwise. Every wake sends one `POST /api/device/sync` with `Authorization: Bearer <key>`: `reason` (`timer`, `button`, `touch`, `powercycle`), `events` (buttons by role `next`, `previous`, `home`, optionally `hold_ms`; touches with `x`/`y`), `shown` (hash on the panel), `battery` (`volts` required, `percent`, `mah`, `ma` optional), `rssi` and `log` entries. The answer names the image (`image.path` relative to the Paperboy URL, `image.hash`), the deep-sleep time `refresh_s`, `listen_s` (0 after a timer wake, 20 s after input), the server `time` in Unix seconds and `firmware` (`null` until ADR 0043). An unknown key gets `401` and the device registers again; an invalid body gets `400`.
+- **Device API** (ADR 0042): `POST /api/device/register` with `{"mac", "hardware", "firmware"}` returns `{"key", "device"}` for a configured MAC (an existing key is kept) and `403` otherwise. Every wake sends one `POST /api/device/sync` with `Authorization: Bearer <key>`: `reason` (`timer`, `button`, `touch`, `powercycle`), `events` (buttons by role `next`, `previous`, `home`, optionally `hold_ms`; touches with `x`/`y`), `shown` (hash on the panel), `battery` (`volts` required, `percent`, `mah`, `ma` optional), `rssi` and `log` entries. The answer names the image (`image.path` relative to the Paperboy URL, `image.hash`), the deep-sleep time `refresh_s`, `listen_s` (0 after a timer wake, 20 s after input), the server `time` in Unix seconds and `firmware` (an update offer, otherwise `null`). An unknown key gets `401` and the device registers again; an invalid body gets `400`.
 - **Buttons**: events apply in order before rendering. `next` = next page, `previous` = one page back (wrapping), `home` = first page of the active rule. After `page_timeout` (5 min) back to the first page. Touches and long presses are logged but change nothing yet.
 - **Data document** (ADR 0024): providers write JSON branches via `PUT /api/data/{path}` (bearer token; `PUT` replaces instead of merging, missing intermediate objects are created, 409 on type conflicts, 1 MB per write, optional `X-Data-Time` in RFC 3339). Exec providers write the same branches in process (see below). `GET` and `DELETE` on the same paths help with debugging. Each path keeps its write time, so stale data can be detected without comparing content. Page templates render from the document (see below).
 - **Stale**: templates mark watched paths with `stale_after`; page templates show the bar „Keine neuen Daten seit …“ (“No new data since …”) when the data is older, in the configured language.
 - **Battery warning** (ADR 0020): fed by `battery.volts` of the sync. With `battery` in `defaults` or on a device, every page below `warn_volts` gets the bar „Akku schwach – bitte laden“ (“Battery low – please charge”); below `critical_volts` a full-screen image „Akku fast leer“ (“Battery almost empty”) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` no warning. All texts use the configured `language`.
+- **Firmware updates** (ADR 0043): put OTA images into `firmware/<hardware>/<hardware>-<version>.bin` of the instance (`firmware/esphome/build.ps1 -Hardware sticky -Instance <dir>` does it). The highest version (compared part by part as numbers) is offered in the sync as `{"version", "path", "md5"}` when `firmware.update` is `auto`, the device has no `firmware: hold`, its reported version differs (a lower file is a rollback), its battery reading is at least `min_battery_volts` and not at warning level, and the version has not failed three times on that device. A sync that still reports the old version after an offer counts as a failure; a changed image (new MD5) or clearing `firmware_failures` in `state/devices.json` allows new attempts. Images are served at `GET /firmware/<hardware>/<file>` without a token; other file names are ignored and listed in the log and on the dashboard. `GET /api/devices` adds `firmware_available` and `firmware_status` (`current`, `offered`, `available`, `failed`, `held`, `none`). Test the rollback with a broken image before using `update: auto`.
 - **Device logs**: the sync carries firmware log entries (`level`, `message`, optional `source`, `time` and `id`). Paperboy writes one line per entry with device, level, source and age; an entry with a `time` or `id` that a repeated sync delivers again is logged only once.
 - `GET /api/devices` shows every configured device with registration, hardware, firmware, battery voltage (and `battery_percent`/`battery_mah` from a fuel gauge), signal strength, wake reason and last sync (without keys), plus what it is showing (ADR 0039): `last_page`, `last_page_kind` (`page`, `notice` or `battery`), `last_page_hash`, `last_page_url` and `last_refresh`, the last render or plan error in `last_error`, and a derived `status` (`ok`, `late`, `never` or `unregistered`). `late` means the last sync is more than twice the reported refresh old; devices deep-sleep, so an idle device is not an offline one.
 - **Dashboard:** `GET /` redirects to `/ui`, a read-only overview of all devices (ADR 0040). Each card shows the status, the plan and its active rule, a preview of the last served page, refresh, last contact, battery and the last render or plan error. It is a server-rendered Go template without JavaScript, refreshes itself every 30 seconds and needs no token. The header shows the running build: version (or `dev`), short commit with `+dirty` for local changes, and commit date from the VCS stamp; the Go toolchain is in the tooltip.

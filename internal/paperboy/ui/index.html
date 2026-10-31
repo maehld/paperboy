@@ -52,6 +52,7 @@ dd { margin: 0; }
       <dt>Last seen</dt>
       <dd>{{.SeenAgo}}</dd>
       {{if .Battery}}<dt>Battery</dt><dd>{{.Battery}}</dd>{{end}}
+      {{if .Firmware}}<dt>Firmware</dt><dd>{{.Firmware}}</dd>{{end}}
     </dl>
     {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
   </section>
@@ -60,5 +61,6 @@ dd { margin: 0; }
 {{else}}
 <p class="empty">No devices configured.</p>
 {{end}}
+{{if .FirmwareIssues}}<p class="error">Ignored firmware files (expected &lt;hardware&gt;-&lt;version&gt;.bin): {{range $i, $f := .FirmwareIssues}}{{if $i}}, {{end}}{{$f}}{{end}}</p>{{end}}
 </body>
 </html>

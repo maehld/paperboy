@@ -32,14 +32,16 @@ type dashboardDevice struct {
 	SeenAgo   string // last contact, "never" when unknown
 	ServedAgo string // age of the last served page
 	Battery   string // voltage and warning level, empty when unknown
+	Firmware  string // running version, available version and update status
 	Error     string // last render or plan error
 }
 
 type dashboardPage struct {
-	Now       string
-	Version   string // build label: version, commit and commit date
-	GoVersion string
-	Devices   []dashboardDevice
+	Now            string
+	Version        string // build label: version, commit and commit date
+	GoVersion      string
+	Devices        []dashboardDevice
+	FirmwareIssues []string // ignored files in the firmware directory
 }
 
 // handleRoot sends the bare root to the dashboard so that the instance needs
@@ -66,6 +68,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			SeenAgo:   agoText(d.LastSeen, now),
 			ServedAgo: agoText(d.LastPageTime, now),
 			Battery:   batteryText(d.deviceState),
+			Firmware:  firmwareText(d),
 			Error:     d.LastError,
 		})
 	}
@@ -76,10 +79,11 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		loc = time.UTC
 	}
 	page := dashboardPage{
-		Now:       now.In(loc).Format("15:04:05"),
-		Version:   versionText(build, loc),
-		GoVersion: build.Go,
-		Devices:   cards,
+		Now:            now.In(loc).Format("15:04:05"),
+		Version:        versionText(build, loc),
+		GoVersion:      build.Go,
+		Devices:        cards,
+		FirmwareIssues: s.firmware.invalidNames(),
 	}
 	if err := dashboardTmpl.Execute(w, page); err != nil {
 		slog.Error("dashboard rendering failed", "error", err)
@@ -134,6 +138,27 @@ func refreshText(seconds int) string {
 		}
 	}
 	return fmt.Sprintf("every %d min", (seconds+30)/60)
+}
+
+// firmwareText shows the running version and, if another image is available,
+// the target and the update status (ADR 0043).
+func firmwareText(d deviceInfo) string {
+	running := d.Firmware
+	if running == "" {
+		running = "unknown"
+	}
+	switch d.FirmwareStatus {
+	case fwNone:
+		if d.Firmware == "" {
+			return ""
+		}
+		return running
+	case fwCurrent:
+		return running + " · current"
+	case fwFailed:
+		return fmt.Sprintf("%s → %s · failed %d times", running, d.FirmwareAvailable, d.FirmwareFailures)
+	}
+	return running + " → " + d.FirmwareAvailable + " · " + d.FirmwareStatus
 }
 
 // batteryText shows the voltage, the fuel gauge charge if known and, when a

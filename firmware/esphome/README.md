@@ -20,6 +20,7 @@ installation, nothing installation-specific is compiled in.
 | First contact | `POST /api/device/register` with `mac`, `hardware`, `firmware` | the key is kept in flash; `403` shows "Paperboy does not know this display" with the MAC |
 | Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `rssi`, `log` | `401` drops the key, registers again and repeats the sync |
 | Unchanged content | `image.hash` equals the hash on the panel | no download, no paint |
+| Firmware offer | `firmware` in the sync answer (ADR 0043) | flash `<Paperboy URL><path>` with its MD5 and reboot; a failure is reported in the next sync's `log` |
 | Changed content | `GET <Paperboy URL><image.path>` | PNG, painted with the panel's gray mapping |
 | After painting | input that arrived meanwhile is sent in one more sync | Paperboy renders only the final page |
 | Sleep | stay awake `listen_s`, then deep sleep for `refresh_s` | wake on any button (EXT1) |
@@ -66,8 +67,11 @@ open the address shown on the display and enter the Paperboy URL (for example
 `http://10.1.1.2:8090`). Configure the device in `paperboy.yaml` with
 `protocol: paperboy` and its `mac`.
 
-Raise `fw_version` in `<hardware>.yaml` for every release. Restoring the
-original firmware: Seeed's playground (Sticky) or the SenseCraft/TRMNL flasher
+Raise `fw_version` in `<hardware>.yaml` for every release and publish it with
+`-Instance`; Paperboy offers it in the sync once `firmware.update: auto` is set
+(ADR 0043). ESPHome keeps the previous image and `safe_mode` rolls back one
+that does not boot; test that with a deliberately broken image before turning
+updates on. Restoring the original firmware: Seeed's playground (Sticky) or the SenseCraft/TRMNL flasher
 (E1001).
 
 ## Hardware facts

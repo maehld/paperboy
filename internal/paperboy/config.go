@@ -68,7 +68,23 @@ type Device struct {
 	Refresh Duration
 	Battery *Battery // overrides the defaults
 	Plan    string   // page plan under plans/; empty = notice page
+	Hold    bool     // firmware: hold keeps the device on its firmware version (ADR 0043)
 }
+
+// FirmwareConfig controls firmware updates offered in the sync (ADR 0043).
+type FirmwareConfig struct {
+	Update          string  // "auto" or "off"
+	MinBatteryVolts float64 // no offer below this voltage
+}
+
+const (
+	firmwareAuto         = "auto"
+	firmwareOff          = "off"
+	firmwareHold         = "hold"
+	defaultFirmwareVolts = 3.6
+	firmwareFailureLimit = 3 // failed attempts per version before the offer stops
+	firmwareDirName      = "firmware"
+)
 
 // Battery configures the low-battery warning (ADR 0020). A threshold
 // of 0 disables that stage.
@@ -147,6 +163,8 @@ type Config struct {
 	Pages        string // page templates: <dir>/pages
 	Plans        string // page plans: <dir>/plans
 	ProvidersDir string // provider programs: <dir>/providers
+	FirmwareDir  string // firmware images: <dir>/firmware (ADR 0043)
+	Firmware     FirmwareConfig
 	Profiles     map[string]Profile
 	Devices      []Device
 	Providers    []Provider // exec providers (ADR 0036)
@@ -195,6 +213,10 @@ type fileConfig struct {
 		PageTimeout Duration `yaml:"page_timeout"`
 		Battery     *Battery `yaml:"battery"`
 	} `yaml:"defaults"`
+	Firmware struct {
+		Update          string  `yaml:"update"`
+		MinBatteryVolts float64 `yaml:"min_battery_volts"`
+	} `yaml:"firmware"`
 	Providers map[string]struct {
 		Command  []string          `yaml:"command"`
 		Path     string            `yaml:"path"`
@@ -218,6 +240,7 @@ type fileConfig struct {
 		Plan        string   `yaml:"plan"`
 		Refresh     Duration `yaml:"refresh"`
 		Battery     *Battery `yaml:"battery"`
+		Firmware    string   `yaml:"firmware"`
 	} `yaml:"devices"`
 }
 
@@ -281,6 +304,8 @@ func LoadConfig(dir string) (*Config, error) {
 		Pages:        filepath.Join(dir, pagesDirName),
 		Plans:        filepath.Join(dir, plansDirName),
 		ProvidersDir: filepath.Join(dir, providersDirName),
+		FirmwareDir:  filepath.Join(dir, firmwareDirName),
+		Firmware:     FirmwareConfig{Update: f.Firmware.Update, MinBatteryVolts: f.Firmware.MinBatteryVolts},
 		Profiles:     make(map[string]Profile, len(f.DisplayTypes)),
 	}
 	if f.Server.PublicURL != "" {
@@ -323,6 +348,11 @@ func LoadConfig(dir string) (*Config, error) {
 	sort.Strings(ids)
 	for _, id := range ids {
 		d := f.Devices[id]
+		switch d.Firmware {
+		case "", firmwareHold:
+		default:
+			return nil, fmt.Errorf("%s: device %s: firmware %q: only hold is allowed", path, id, d.Firmware)
+		}
 		c.Devices = append(c.Devices, Device{
 			ID:      id,
 			Type:    d.Protocol,
@@ -333,6 +363,7 @@ func LoadConfig(dir string) (*Config, error) {
 			Refresh: d.Refresh,
 			Battery: mergeBattery(f.Defaults.Battery, d.Battery),
 			Plan:    d.Plan,
+			Hold:    d.Firmware == firmwareHold,
 		})
 	}
 	names := make([]string, 0, len(f.Providers))
@@ -384,6 +415,19 @@ func (c *Config) validate() error {
 	}
 	if err := c.Battery.validate("battery"); err != nil {
 		return err
+	}
+	switch c.Firmware.Update {
+	case "":
+		c.Firmware.Update = firmwareOff
+	case firmwareOff, firmwareAuto:
+	default:
+		return fmt.Errorf("firmware: update %q: expected auto or off", c.Firmware.Update)
+	}
+	if c.Firmware.MinBatteryVolts == 0 {
+		c.Firmware.MinBatteryVolts = defaultFirmwareVolts
+	}
+	if c.Firmware.MinBatteryVolts < 0 || c.Firmware.MinBatteryVolts > 5 {
+		return fmt.Errorf("firmware: invalid min_battery_volts")
 	}
 	if len(c.Profiles) == 0 {
 		return fmt.Errorf("display_types missing")
