@@ -64,8 +64,15 @@ type syncImage struct {
 	Hash string `json:"hash"`
 }
 
+// syncText is the content of a text display (ADR 0044).
+type syncText struct {
+	Lines []string `json:"lines"`
+	Hash  string   `json:"hash"`
+}
+
 type syncResponse struct {
-	Image    syncImage      `json:"image"`
+	Image    *syncImage     `json:"image"`          // null for text displays
+	Text     *syncText      `json:"text,omitempty"` // text displays only
 	RefreshS int            `json:"refresh_s"`
 	ListenS  int            `json:"listen_s"`
 	Time     int64          `json:"time"`
@@ -221,12 +228,13 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	floor := s.cfg.minRefresh(d.Profile)
+	textDisplay := s.cfg.Profiles[d.Profile].text()
 	var choice planChoice
 	switch {
 	case critical: // the warning replaces all pages; buttons only show it again
 		st.Page = 0
 	case d.Plan != "":
-		choice = s.choosePlanPage(d, st, now, firstContact, buttons, pageTimeout)
+		choice = s.choosePlanPage(d, st, now, firstContact, buttons, pageTimeout, false)
 	default:
 		choice.title, choice.text = s.cfg.texts().noPlan()
 	}
@@ -249,10 +257,15 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	var served servedPage
 	switch {
 	case critical:
-		served = s.notice(d.Profile, criticalBatteryImage(s.cfg.Profiles[d.Profile], s.cfg.texts(), voltageKey(logged.BatteryVoltage)))
+		if p := s.cfg.Profiles[d.Profile]; p.text() {
+			title, text := s.cfg.texts().criticalBattery(voltageKey(logged.BatteryVoltage))
+			served = s.hint(d.Profile, title, text)
+		} else {
+			served = s.notice(d.Profile, criticalBatteryImage(p, s.cfg.texts(), voltageKey(logged.BatteryVoltage)))
+		}
 		served.refresh = d.refresh()
 	case d.Plan != "":
-		served = s.renderPlan(d, choice, now)
+		served = s.renderPlan(d, choice, now, false)
 	default:
 		served = s.hint(d.Profile, choice.title, choice.text)
 	}
@@ -279,6 +292,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	if st = s.state[d.key()]; st != nil {
 		st.LastPage, st.LastPageKind, st.LastPageHash = shownPage, shownKind, served.hash
 		st.LastPageTime, st.LastRefresh = now, int(refresh.Seconds())
+		st.LastText = served.lines
 		st.LastError = errText
 		pageData = s.stateSnapshotLocked()
 	}
@@ -292,7 +306,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("battery warning", "device", d.ID, "level", level, "battery", logged.BatteryVoltage)
 	}
 	listen := time.Duration(0)
-	if input {
+	if input && !textDisplay {
 		listen = listenAfterInput
 	}
 	pageName := served.name
@@ -313,11 +327,71 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	attrs = append(attrs, "changed", req.Shown != served.hash, "battery", logged.BatteryVoltage,
 		"rssi", logged.RSSI, "refresh", refresh)
 	slog.Info("display sync", attrs...)
-	writeJSON(w, http.StatusOK, syncResponse{
-		Image:    syncImage{Path: served.path, Hash: served.hash},
+	resp := syncResponse{
 		RefreshS: int(refresh.Seconds()),
 		ListenS:  int(listen.Seconds()),
 		Time:     now.Unix(),
 		Firmware: offer,
-	})
+	}
+	if textDisplay {
+		resp.Text = &syncText{Lines: served.lines, Hash: served.hash}
+	} else {
+		resp.Image = &syncImage{Path: served.path, Hash: served.hash}
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleText answers the text poll of a text display (ADR 0044): the lines of
+// the page the cursor points to, without advancing it or writing the state
+// file. A matching If-None-Match is answered with 304.
+func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
+	now := s.now()
+	s.mu.Lock()
+	d, st := s.deviceByKeyLocked(r)
+	if d == nil {
+		s.mu.Unlock()
+		http.Error(w, "unknown key", http.StatusUnauthorized)
+		return
+	}
+	if !s.cfg.Profiles[d.Profile].text() {
+		s.mu.Unlock()
+		http.Error(w, "not a text display", http.StatusConflict)
+		return
+	}
+	// Only kept in memory; the next sync persists it.
+	st.LastSeen = now
+	critical := st.BatteryLevel == batteryCritical
+	voltage := st.BatteryVoltage
+	var choice planChoice
+	switch {
+	case critical:
+	case d.Plan != "":
+		// A copy keeps the cursor: a rule change or page timeout only shows here
+		// and is stored by the next sync.
+		peek := *st
+		choice = s.choosePlanPage(d, &peek, now, true, nil, time.Duration(s.cfg.PageTimeout), true)
+	default:
+		choice.title, choice.text = s.cfg.texts().noPlan()
+	}
+	s.mu.Unlock()
+
+	var served servedPage
+	switch {
+	case critical:
+		title, text := s.cfg.texts().criticalBattery(voltageKey(voltage))
+		served = s.hint(d.Profile, title, text)
+	case d.Plan != "":
+		served = s.renderPlan(d, choice, now, true)
+	default:
+		served = s.hint(d.Profile, choice.title, choice.text)
+	}
+	etag := `"` + served.hash + `"`
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "no-cache")
+	if match := r.Header.Get("If-None-Match"); match != "" && strings.Contains(match, etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(syncText{Lines: served.lines, Hash: served.hash})
 }

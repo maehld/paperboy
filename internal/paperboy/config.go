@@ -22,6 +22,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/maehld/paperboy/internal/data"
+	"github.com/maehld/paperboy/internal/page"
 	"github.com/maehld/paperboy/internal/provider"
 )
 
@@ -47,14 +48,25 @@ func (d Duration) MarshalYAML() (any, error) { return time.Duration(d).String(),
 func (d Duration) MarshalJSON() ([]byte, error) { return json.Marshal(time.Duration(d).String()) }
 
 // Profile describes one display type (ADR 0026); the key is also the file
-// suffix of its page templates (pages/<page>.<display type>.yaml).
+// suffix of its page templates (pages/<page>.<display type>.yaml). A text
+// display type (ADR 0044) uses Width and Height for columns and rows.
 type Profile struct {
+	Kind       string   `json:"kind"`              // "image" or "text"
+	Charset    string   `json:"charset,omitempty"` // text displays: utf8, ascii or hd44780
 	Width      int      `json:"width"`
 	Height     int      `json:"height"`
 	Gray       bool     `json:"gray"`        // four gray levels instead of black/white
 	WidthMM    int      `json:"width_mm"`    // physical panel width; lets providers pick a layout
 	MinRefresh Duration `json:"min_refresh"` // reported intervals never go below this
 }
+
+const (
+	kindImage = "image"
+	kindText  = "text"
+)
+
+// text reports whether the display type shows lines of characters.
+func (p Profile) text() bool { return p.Kind == kindText }
 
 // Device is one physical display. Its ID is stable and used in state/devices.json, logs
 // and the devices API; the device API registers it by its Wi-Fi MAC address.
@@ -226,6 +238,7 @@ type fileConfig struct {
 	} `yaml:"providers"`
 	DisplayTypes map[string]struct {
 		Kind       string   `yaml:"kind"`
+		Charset    string   `yaml:"charset"`
 		Size       [2]int   `yaml:"size"`
 		GrayLevels int      `yaml:"gray_levels"`
 		WidthMM    int      `yaml:"width_mm"`
@@ -325,17 +338,16 @@ func LoadConfig(dir string) (*Config, error) {
 	}
 	for name, t := range f.DisplayTypes {
 		c.Profiles[name] = Profile{
+			Kind:       t.Kind,
+			Charset:    t.Charset,
 			Width:      t.Size[0],
 			Height:     t.Size[1],
 			Gray:       t.GrayLevels == 4,
 			WidthMM:    t.WidthMM,
 			MinRefresh: t.MinRefresh,
 		}
-		if t.Kind == "text" {
-			return nil, fmt.Errorf("%s: display type %s: kind text follows with ADR 0027", path, name)
-		}
-		if t.Kind != "" && t.Kind != "image" {
-			return nil, fmt.Errorf("%s: display type %s: unknown kind %q", path, name, t.Kind)
+		if t.Kind == kindText && (t.GrayLevels != 0 || t.WidthMM != 0) {
+			return nil, fmt.Errorf("%s: display type %s: gray_levels and width_mm do not apply to kind text", path, name)
 		}
 		if t.GrayLevels != 0 && t.GrayLevels != 1 && t.GrayLevels != 4 {
 			return nil, fmt.Errorf("%s: display type %s: gray_levels must be 1 or 4", path, name)
@@ -436,6 +448,26 @@ func (c *Config) validate() error {
 		if !validName(name) {
 			return fmt.Errorf("display type %q: only a-z, 0-9 and -", name)
 		}
+		switch p.Kind {
+		case "":
+			p.Kind = kindImage
+		case kindImage, kindText:
+		default:
+			return fmt.Errorf("display type %s: unknown kind %q: expected image or text", name, p.Kind)
+		}
+		if p.text() {
+			if p.Width < 1 || p.Height < 1 || p.Width > 80 || p.Height > 24 {
+				return fmt.Errorf("display type %s: size [columns, rows] must be at most [80, 24]", name)
+			}
+			if !page.ValidCharset(p.Charset) {
+				return fmt.Errorf("display type %s: charset %q: expected utf8, ascii or hd44780", name, p.Charset)
+			}
+			if p.Charset == "" {
+				p.Charset = page.CharsetUTF8
+			}
+		} else if p.Charset != "" {
+			return fmt.Errorf("display type %s: charset only applies to kind text", name)
+		}
 		if p.Width < 1 || p.Height < 1 || p.Width > 4096 || p.Height > 4096 {
 			return fmt.Errorf("display type %s: invalid size", name)
 		}
@@ -470,7 +502,7 @@ func (c *Config) validate() error {
 		case "opendisplay":
 			return fmt.Errorf("device %s: protocol opendisplay is not supported yet (TODO in README)", d.ID)
 		case "text-http", "image-http":
-			return fmt.Errorf("device %s: protocol %q follows with ADR 0027", d.ID, d.Type)
+			return fmt.Errorf("device %s: protocol %q was replaced by the device API (ADR 0044); set protocol: paperboy", d.ID, d.Type)
 		default:
 			return fmt.Errorf("device %s: unknown protocol %q", d.ID, d.Type)
 		}

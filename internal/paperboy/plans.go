@@ -29,7 +29,8 @@ type servedPage struct {
 	name    string        // page or template name for logging; empty for a notice
 	page    int           // page index within the plan rule, for logging
 	pages   int           // pages in the rule, for logging
-	hash    string        // content hash of the PNG; the device repaints when it changes
+	hash    string        // content hash of the PNG or the lines; the device repaints when it changes
+	lines   []string      // text displays: the lines to show (ADR 0044)
 	err     error         // render error that turned the page into a notice
 }
 
@@ -83,6 +84,37 @@ func (s *Server) renderPage(profile, name string, now time.Time, pos pagePositio
 	return &renderedPage{data: data, hash: hashBytes(data)}, nil
 }
 
+// textDisplay describes a text display type for the page package.
+func (s *Server) textDisplay(p Profile) page.TextDisplay {
+	return page.TextDisplay{Columns: p.Width, Rows: p.Height, Charset: p.Charset,
+		Language: s.cfg.Language, Timezone: s.cfg.Timezone}
+}
+
+// hashLines is the content hash of a text page.
+func hashLines(lines []string) string {
+	return hashBytes([]byte(strings.Join(lines, "\n")))
+}
+
+// renderText renders pages/<name>.<profile>.yaml for a text display type
+// (ADR 0044). Like renderPage it turns a panic into an error.
+func (s *Server) renderText(profile, name string, now time.Time, pos pagePosition) (lines []string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("text page rendering panicked", "profile", profile, "page", name, "panic", r, "stack", string(debug.Stack()))
+			lines, err = nil, fmt.Errorf("page rendering panicked: %v", r)
+		}
+	}()
+	p, ok := s.cfg.Profiles[profile]
+	if !ok || !p.text() {
+		return nil, fmt.Errorf("unknown text display type %q", profile)
+	}
+	tmpl, err := page.LoadText(s.cfg.Pages, name, profile)
+	if err != nil {
+		return nil, err
+	}
+	return tmpl.Render(s.doc, s.textDisplay(p), page.Context{Now: now, Page: pos.index + 1, Pages: pos.count})
+}
+
 // notice registers a generated page and returns where it is served. Only the
 // registration needs the lock; drawing happens before.
 func (s *Server) notice(profile string, img *image.Paletted) servedPage {
@@ -100,6 +132,10 @@ func (s *Server) hint(profile, title, text string) servedPage {
 	p, ok := s.cfg.Profiles[profile]
 	if !ok { // never expected: the device's display type was validated
 		p = Profile{Width: 400, Height: 300}
+	}
+	if p.text() {
+		lines := page.NoticeLines(s.textDisplay(p), title, text)
+		return servedPage{lines: lines, hash: hashLines(lines), refresh: hintRefresh}
 	}
 	sp := s.notice(profile, placeholder(p, title, text))
 	sp.refresh = hintRefresh
@@ -181,17 +217,19 @@ type planChoice struct {
 
 // choosePlanPage evaluates the device plan and advances the rotation state.
 // Callers hold s.mu; rendering happens later in renderPlan.
-func (s *Server) choosePlanPage(d *Device, st *deviceState, now time.Time, firstContact bool, buttons []string, pageTimeout time.Duration) planChoice {
+func (s *Server) choosePlanPage(d *Device, st *deviceState, now time.Time, firstContact bool, buttons []string, pageTimeout time.Duration, quiet bool) planChoice {
 	p, err := s.plans.get(s.cfg.Plans, d.Plan, s.cfg.Timezone)
 	if p == nil {
-		slog.Error("plan unavailable", "device", d.ID, "plan", d.Plan, "error", err)
+		if !quiet {
+			slog.Error("plan unavailable", "device", d.ID, "plan", d.Plan, "error", err)
+		}
 		title, text := s.cfg.texts().planMissing(), shorten(fmt.Sprintf("%s: %v", d.Plan, err))
 		if err == nil {
 			err = fmt.Errorf("plan %s missing", d.Plan)
 		}
 		return planChoice{title: title, text: text, err: err}
 	}
-	if err != nil {
+	if err != nil && !quiet {
 		slog.Warn("plan invalid, using the last valid version", "device", d.ID, "plan", d.Plan, "error", err)
 	}
 	sel, ok := p.Select(now)
@@ -251,24 +289,39 @@ func (s *Server) choosePlanPage(d *Device, st *deviceState, now time.Time, first
 
 // renderPlan draws the chosen page or notice outside s.mu. A broken template
 // becomes a notice page so that a device is never left without an answer.
-func (s *Server) renderPlan(d *Device, c planChoice, now time.Time) servedPage {
+// quiet suppresses the error log for the text poll, which repeats every
+// second; the next sync logs it.
+func (s *Server) renderPlan(d *Device, c planChoice, now time.Time, quiet bool) servedPage {
 	if c.name == "" {
 		sp := s.hint(d.Profile, c.title, c.text)
 		sp.page, sp.pages = c.page, c.pages
 		return sp
 	}
+	if s.cfg.Profiles[d.Profile].text() {
+		lines, err := s.renderText(d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages})
+		if err != nil {
+			return s.pageFailed(d, c, err, quiet)
+		}
+		return servedPage{lines: lines, hash: hashLines(lines), name: c.name, page: c.page, pages: c.pages, refresh: c.refresh}
+	}
 	rp, err := s.renderPage(d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages}, c.banners...)
 	if err != nil {
-		slog.Error("page rendering failed", "device", d.ID, "page", c.name, "error", err)
-		// The device gets a notice page; its log line says so instead of naming a
-		// page that was not drawn.
-		sp := s.hint(d.Profile, s.cfg.texts().pageError(c.name), shorten(err.Error()))
-		sp.page, sp.pages = c.page, c.pages
-		sp.err = err
-		return sp
+		return s.pageFailed(d, c, err, quiet)
 	}
 	sp := s.storePage(d.Profile, c.name, rp)
 	sp.name, sp.page, sp.pages, sp.refresh = c.name, c.page, c.pages, c.refresh
+	return sp
+}
+
+// pageFailed turns a render error into a notice page; its log line says so
+// instead of naming a page that was not drawn.
+func (s *Server) pageFailed(d *Device, c planChoice, err error, quiet bool) servedPage {
+	if !quiet {
+		slog.Error("page rendering failed", "device", d.ID, "page", c.name, "error", err)
+	}
+	sp := s.hint(d.Profile, s.cfg.texts().pageError(c.name), shorten(err.Error()))
+	sp.page, sp.pages = c.page, c.pages
+	sp.err = err
 	return sp
 }
 

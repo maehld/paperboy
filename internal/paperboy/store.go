@@ -34,6 +34,7 @@ type deviceState struct {
 	LastPageTime time.Time `json:"last_page_time,omitempty"`
 	LastRefresh  int       `json:"last_refresh,omitempty"` // reported refresh in seconds
 	LastError    string    `json:"last_error,omitempty"`   // last render or plan error
+	LastText     []string  `json:"last_text,omitempty"`    // text displays: the last served lines (ADR 0044)
 
 	// Firmware updates (ADR 0043): the last offered version and its image
 	// checksum, whether the offer is still unanswered, and failed attempts for
