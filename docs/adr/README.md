@@ -23,7 +23,7 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0024](0024-layouts-im-display-service.md) | Daten statt Bilder – Datendokument und YAML-Layouts im Display-Service | Akzeptiert, teilweise umgesetzt; Sprache/Formatierung teilweise abgelöst durch ADR-0033, Ablageort abgelöst durch ADR-0037 |
 | [0025](0025-plaene-je-display.md) | Pläne – regelbasierte Seitenauswahl je Display | Akzeptiert, umgesetzt für TRMNL-Geräte; Zeitzone abgelöst durch ADR-0033 |
 | [0026](0026-konfiguration-als-yaml.md) | Konfiguration als YAML mit Displayarten und Geräten | Akzeptiert, teilweise umgesetzt (Konfiguration wird noch nicht neu geladen); `directories` abgelöst durch ADR-0037 |
-| [0027](0027-textdisplays-und-http-geraete.md) | Textdisplays und einfache HTTP-Geräte | Akzeptiert, Umsetzung ausstehend; `image-http` abgelöst durch ADR-0042 |
+| [0027](0027-textdisplays-und-http-geraete.md) | Textdisplays und einfache HTTP-Geräte | Akzeptiert; Textvorlagen umgesetzt mit ADR-0044, `text-http` abgelöst durch ADR-0044, `image-http` abgelöst durch ADR-0042 |
 | [0028](0028-paperboy-eigenes-repository.md) | Display-Service als „Paperboy“ in eigenem Repository | Akzeptiert |
 | [0029](0029-repository-trennung-umgesetzt.md) | Repository-Trennung SolarAI / Paperboy umgesetzt | Akzeptiert |
 | [0030](0030-englisch-fuer-logs-kommentare-commits.md) | Englisch für Lognachrichten, Kommentare und Commits | Abgelöst durch ADR-0031 |
@@ -40,3 +40,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0041](0041-esphome-firmware.md) | Paperboy firmware built on ESPHome | Accepted, implemented (not yet flashed) |
 | [0042](0042-device-protocol.md) | Paperboy device protocol | Accepted, implemented |
 | [0043](0043-firmware-distribution.md) | Firmware distribution through Paperboy | Accepted, implemented |
+| [0044](0044-text-displays-on-the-device-api.md) | Text displays on the device API | Accepted |
