@@ -15,7 +15,6 @@ $config = Join-Path $here "$Hardware.yaml"
 $yaml = [System.IO.File]::ReadAllText($config)
 $version = [regex]::Match($yaml, '(?m)^\s*fw_version:\s*"?([^"\s]+)"?').Groups[1].Value
 if (-not $version) { throw "fw_version not found in $config" }
-if (-not (Test-Path (Join-Path $here "secrets.yaml"))) { throw "secrets.yaml missing; copy secrets.example.yaml" }
 
 $started = Get-Date
 if (-not $NoCompile) {
