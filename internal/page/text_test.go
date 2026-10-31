@@ -113,6 +113,33 @@ func TestFitValue(t *testing.T) {
 	}
 }
 
+func TestFitAligned(t *testing.T) {
+	de := formatter{comma: true, loc: time.UTC}
+	cases := []struct {
+		width, unit int
+		kind        string
+		v           any
+		want        string
+	}{
+		{7, 3, "energy", 5.7, "5,7 kWh"},
+		{7, 3, "energy", 15.5, " 16 kWh"},
+		{7, 3, "percent", 0.0, "  0 %  "},
+		{7, 3, "percent", 100.0, "100 %  "},
+		{7, 3, "energy", 1234.0, "### kWh"},
+		{7, 2, "power", 515.0, " 515 W "},
+		{7, 2, "power", 4210.0, "4,21 kW"},
+		{6, 2, "power", 4210.0, "4,2 kW"},
+		{7, 3, "energy", nil, "  —    "},
+		{7, 3, "time", "2026-10-21T14:20:00Z", "###    "},
+		{3, 3, "energy", 1.0, "###"},
+	}
+	for _, c := range cases {
+		if got := de.fitAligned(c.width, c.unit, c.kind, c.v); got != c.want {
+			t.Errorf("fit %d %s %v %d = %q, want %q", c.width, c.kind, c.v, c.unit, got, c.want)
+		}
+	}
+}
+
 func TestTextParseErrors(t *testing.T) {
 	for name, src := range map[string]string{
 		"blocks":      "rows: [1]\nblocks: [{text: x}]\n",
@@ -168,7 +195,7 @@ func TestTextReferencePage(t *testing.T) {
 	}
 	want := []string{
 		"PV   4,21 kW   14:20",
-		"Akku 1,24 kW    82 %",
+		"Akku 1,24 kW  82 %  ",
 		"Netz 1,33 kW 1,2 kWh",
 		"Heute       12,4 kWh",
 	}

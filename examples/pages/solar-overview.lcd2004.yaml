@@ -7,6 +7,6 @@ watch:
   - { path: solar/current, stale_after: 5m, label: Solar }
 lines:
   - '{{ pad 5 "PV" }}{{ fit 7 "power" .solar.current.latest.values.pv_power }}{{ right 8 (time .solar.current.latest.time) }}'
-  - '{{ pad 5 "Akku" }}{{ fit 7 "power" .solar.current.latest.values.battery_power }} {{ fit 7 "percent" .solar.current.latest.values.battery_soc }}'
-  - '{{ pad 5 "Netz" }}{{ fit 7 "power" .solar.current.latest.values.grid_power }} {{ fit 7 "energy" .solar.current.latest.values.import_today }}'
+  - '{{ pad 5 "Akku" }}{{ fit 7 "power" .solar.current.latest.values.battery_power }} {{ fit 7 "percent" .solar.current.latest.values.battery_soc 3 }}'
+  - '{{ pad 5 "Netz" }}{{ fit 7 "power" .solar.current.latest.values.grid_power }} {{ fit 7 "energy" .solar.current.latest.values.import_today 3 }}'
   - '{{ pad 5 "Heute" }}{{ fit 15 "energy" .solar.current.latest.values.pv_today }}'

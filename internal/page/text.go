@@ -191,11 +191,17 @@ func (r *renderer) textFuncs() template.FuncMap {
 	m["pad"] = func(n int, v any) string { return align(n, fmt.Sprint(v), 'l') }
 	m["right"] = func(n int, v any) string { return align(n, fmt.Sprint(v), 'r') }
 	m["center"] = func(n int, v any) string { return align(n, fmt.Sprint(v), 'c') }
-	m["fit"] = func(n int, kind string, v any) (string, error) {
+	m["fit"] = func(n int, kind string, v any, unitWidth ...int) (string, error) {
 		if !formats[kind] {
 			return "", fmt.Errorf("fit: unknown format %q", kind)
 		}
-		return r.f.fitValue(n, kind, v), nil
+		switch {
+		case len(unitWidth) == 0:
+			return r.f.fitValue(n, kind, v), nil
+		case len(unitWidth) > 1 || unitWidth[0] < 0:
+			return "", fmt.Errorf("fit: expected one unit width >= 0")
+		}
+		return r.f.fitAligned(n, unitWidth[0], kind, v), nil
 	}
 	return m
 }
