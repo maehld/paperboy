@@ -1,0 +1,444 @@
+# Shared part of the Paperboy firmware (ADR 0041), included as a package by
+# the hardware files. The hardware file supplies the pins, the display (id
+# epaper_display), the read_battery script (sets pb_bat_* in paperboy.h), the
+# deep_sleep component (id sleeper), the wake decoding and the button roles.
+#
+# Nothing installation-specific is compiled in:
+# - Wi-Fi comes from the captive portal (hotspot paperboy-<id>) or Improv.
+# - The Paperboy URL is entered in the device's web UI and kept in flash.
+# - The device key comes from POST /api/device/register by MAC and is kept in
+#   flash; a 401 drops it and the device registers again.
+# While something is missing the device shows instructions and stays awake for
+# up to 10 minutes. After power-on it stays awake 3 minutes for changes.
+#
+# Cycle (ADR 0042): wake -> (register) -> POST /api/device/sync with reason,
+# events, shown hash, battery, RSSI and log -> download and paint only if the
+# hash changed -> stay awake listen_s for further input -> deep sleep for
+# refresh_s. Presses made while a sync or paint is running are queued and sent
+# together in the next sync, so Paperboy renders only the final page.
+
+esphome:
+  # Network name paperboy-<last three MAC bytes>; the build directory is per
+  # hardware type.
+  name: paperboy
+  name_add_mac_suffix: true
+  build_path: build/${hardware}   # relative to .esphome/
+  includes:
+    - paperboy.h
+  project:
+    name: paperboy.${hardware}
+    version: ${fw_version}
+  on_boot:
+    - priority: -100
+      then:
+        - lambda: "id(mac) = get_mac_address_pretty();"
+        - if:
+            condition:
+              lambda: "return !wifi::global_wifi_component->has_sta();"
+            then:
+              - script.execute: { id: enter_setup, reason: "wifi" }
+              - wait_until:
+                  condition: wifi.connected
+        - wait_until:
+            condition: wifi.connected
+            timeout: 20s
+        - if:
+            condition: wifi.connected
+            then:
+              - script.execute: run_cycle
+            else:
+              - lambda: 'pb_note_for_next_wake("no Wi-Fi connection");'
+              - logger.log: "no Wi-Fi, sleeping"
+              - script.execute: go_sleep
+
+wifi:
+  # No networks compiled in: they come from the captive portal or Improv.
+  power_save_mode: light
+  ap: {}   # SSID: the node name, paperboy-<id>
+
+captive_portal:
+
+improv_serial:
+
+web_server:
+  port: 80
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+text:
+  - platform: template
+    id: paperboy_url
+    name: "Paperboy URL"
+    mode: text
+    optimistic: true
+    restore_value: true
+    initial_value: "${default_paperboy_url}"
+    max_length: 120
+  - platform: template
+    id: api_key
+    internal: true
+    mode: password
+    optimistic: true
+    restore_value: true
+    initial_value: ""
+    max_length: 64
+
+font:
+  - file: "gfonts://Inter@500"
+    id: setup_font
+    size: 28
+
+globals:
+  - id: wake_reason
+    type: std::string
+    initial_value: '"powercycle"'
+  - id: setup_mode
+    type: bool
+    initial_value: "false"
+  - id: setup_text
+    type: std::string
+    initial_value: '""'
+  - id: mac
+    type: std::string
+    initial_value: '""'
+  # Header lambdas return const char*, so the header value lives in a global.
+  - id: auth_header
+    type: std::string
+    initial_value: '""'
+  - id: image_path
+    type: std::string
+    initial_value: '""'
+  - id: image_hash
+    type: std::string
+    initial_value: '""'
+  - id: listen_s
+    type: int
+    initial_value: "0"
+  # Result of the last sync: 0 = failed, 1 = ok, 2 = key rejected.
+  - id: sync_result
+    type: int
+    initial_value: "0"
+  # True while a sync, download or paint runs; input is queued meanwhile.
+  - id: busy
+    type: bool
+    initial_value: "false"
+
+http_request:
+  useragent: paperboy-esphome
+  timeout: 15s
+  verify_ssl: false
+
+online_image:
+  - id: page_image
+    url: "http://0.0.0.0/"
+    format: PNG
+    type: GRAYSCALE
+    update_interval: never
+    on_download_finished:
+      - lambda: "pb_remember(id(image_hash));"
+      - component.update: epaper_display
+      - script.execute: after_paint
+    on_error:
+      - lambda: 'pb_note_for_next_wake("image download failed: " + id(image_path));'
+      - logger.log: "image download failed"
+      - script.execute: go_sleep
+
+script:
+  # ---------------------------------------------------------------- cycle
+
+  - id: run_cycle
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: "return pb_base(id(paperboy_url).state).empty();"
+          then:
+            - script.execute: { id: enter_setup, reason: "url" }
+            - wait_until:
+                condition:
+                  lambda: "return !pb_base(id(paperboy_url).state).empty();"
+      - lambda: "id(setup_mode) = false;"
+      - script.stop: setup_limit
+      - script.execute: awake_limit
+      - if:
+          condition:
+            lambda: "return id(api_key).state.empty();"
+          then:
+            - script.execute: do_register
+            - script.wait: do_register
+      - if:
+          condition:
+            lambda: "return !id(api_key).state.empty();"
+          then:
+            - script.execute: sync_and_show
+          else:
+            - if:
+                condition:
+                  lambda: "return !id(setup_mode);"
+                then:
+                  - script.execute: go_sleep
+
+  # Called by the buttons with their role (next, previous, home). The event is
+  # queued; a sync starts at once unless one is already running.
+  - id: button_pressed
+    mode: queued
+    parameters:
+      role: string
+    then:
+      - if:
+          condition:
+            lambda: "return !id(setup_mode) && !id(api_key).state.empty();"
+          then:
+            - lambda: |-
+                pb_button(role);
+                id(wake_reason) = "button";
+            - script.execute: awake_limit
+            - if:
+                condition:
+                  lambda: "return !id(busy);"
+                then:
+                  - script.execute: sync_and_show
+
+  # Touches carry no meaning yet; Paperboy logs them (ADR 0042).
+  - id: touched
+    mode: queued
+    parameters:
+      x: int
+      y: int
+    then:
+      - if:
+          condition:
+            lambda: "return !id(setup_mode) && !id(api_key).state.empty();"
+          then:
+            - lambda: |-
+                pb_touch(x, y);
+                if (id(wake_reason) != "button") id(wake_reason) = "touch";
+            - script.execute: awake_limit
+            - if:
+                condition:
+                  lambda: "return !id(busy);"
+                then:
+                  - script.execute: sync_and_show
+
+  # ---------------------------------------------------------------- setup
+
+  - id: enter_setup
+    mode: restart
+    parameters:
+      reason: string
+    then:
+      - lambda: |-
+          id(setup_mode) = true;
+          std::string t = "Paperboy setup\n";
+          if (reason == "wifi") {
+            t += "1. Join the Wi-Fi \"" + App.get_name() + "\"\n";
+            t += "   and choose your network.\n";
+            t += "2. Then open this device's address\n";
+            t += "   and enter the Paperboy URL.\n";
+          } else if (reason == "url") {
+            auto ips = wifi::global_wifi_component->get_ip_addresses();
+            char ip[48] = "?";
+            if (ips[0].is_set()) {
+              ips[0].str_to(ip);
+            }
+            t += "Open http://" + std::string(ip) + "/\n";
+            t += "and enter the Paperboy URL.\n";
+          } else {
+            t += "Paperboy does not know this display.\n";
+            t += "Add its MAC to paperboy.yaml.\n";
+          }
+          t += "MAC " + id(mac);
+          id(setup_text) = t;
+          ESP_LOGW("paperboy", "setup needed: %s", reason.c_str());
+      - script.stop: awake_limit
+      - script.execute: setup_limit
+      - component.update: epaper_display
+
+  # ---------------------------------------------------------------- device API
+
+  # POST /api/device/register trades the MAC for the device key; 403 means
+  # the MAC is not in paperboy.yaml.
+  - id: do_register
+    then:
+      - http_request.post:
+          url: !lambda 'return pb_base(id(paperboy_url).state) + "/api/device/register";'
+          capture_response: true
+          max_response_buffer_size: 512
+          request_headers:
+            Content-Type: application/json
+          body: !lambda |-
+            return "{\"mac\":" + pb_json_string(id(mac)) +
+                   ",\"hardware\":\"${hardware}\",\"firmware\":\"${fw_version}\"}";
+          on_response:
+            then:
+              - lambda: |-
+                  std::string key;
+                  if (response->status_code == 200) {
+                    json::parse_json(body, [&](JsonObject root) -> bool {
+                      key = root["key"] | "";
+                      return true;
+                    });
+                  }
+                  if (!key.empty()) {
+                    id(api_key).make_call().set_value(key).perform();
+                    ESP_LOGI("paperboy", "registered with Paperboy");
+                  } else {
+                    ESP_LOGW("paperboy", "registration refused: HTTP %d", response->status_code);
+                  }
+              - if:
+                  condition:
+                    lambda: "return response->status_code == 403;"
+                  then:
+                    - script.execute: { id: enter_setup, reason: "unknown" }
+          on_error:
+            then:
+              - lambda: 'pb_note_for_next_wake("registration request failed");'
+              - logger.log: "registration request failed"
+
+  # One POST /api/device/sync; the outcome is left in sync_result.
+  - id: do_sync
+    then:
+      - script.execute: read_battery
+      - script.wait: read_battery
+      - lambda: |-
+          id(sync_result) = 0;
+          id(auth_header) = "Bearer " + id(api_key).state;
+      - http_request.post:
+          url: !lambda 'return pb_base(id(paperboy_url).state) + "/api/device/sync";'
+          capture_response: true
+          max_response_buffer_size: 1024
+          request_headers:
+            Content-Type: application/json
+            Authorization: !lambda "return id(auth_header).c_str();"
+          body: !lambda |-
+            return pb_sync_body("${fw_version}", "${hardware}", id(wake_reason),
+                                (int) wifi::global_wifi_component->wifi_rssi());
+          on_response:
+            then:
+              - lambda: |-
+                  int status = response->status_code;
+                  if (status == 401) {
+                    ESP_LOGW("paperboy", "key rejected, registering again");
+                    id(api_key).make_call().set_value("").perform();
+                    id(sync_result) = 2;
+                    return;
+                  }
+                  if (status != 200) {
+                    ESP_LOGW("paperboy", "sync: HTTP %d", status);
+                    pb_note_for_next_wake(str_sprintf("sync answered HTTP %d", status));
+                    return;
+                  }
+                  bool ok = json::parse_json(body, [&](JsonObject root) -> bool {
+                    id(image_path) = root["image"]["path"] | "";
+                    id(image_hash) = root["image"]["hash"] | "";
+                    int refresh = root["refresh_s"] | 600;
+                    pb_refresh_s = refresh > 0 ? refresh : 600;
+                    id(listen_s) = root["listen_s"] | 0;
+                    return true;
+                  });
+                  if (ok && !id(image_path).empty()) {
+                    id(sync_result) = 1;
+                  }
+                  ESP_LOGI("paperboy", "image %s, refresh %d s, listen %d s", id(image_path).c_str(),
+                           pb_refresh_s, id(listen_s));
+          on_error:
+            then:
+              - lambda: 'pb_note_for_next_wake("sync request failed");'
+              - logger.log: "sync request failed"
+
+  # Sync, register again after a 401, then paint the answer if it changed.
+  - id: sync_and_show
+    mode: single
+    then:
+      - script.stop: after_paint
+      - lambda: "id(busy) = true;"
+      - script.execute: do_sync
+      - script.wait: do_sync
+      - if:
+          condition:
+            lambda: "return id(sync_result) == 2;"
+          then:
+            - script.execute: do_register
+            - script.wait: do_register
+            - if:
+                condition:
+                  lambda: "return !id(api_key).state.empty();"
+                then:
+                  - script.execute: do_sync
+                  - script.wait: do_sync
+      - if:
+          condition:
+            lambda: "return id(sync_result) != 1;"
+          then:
+            - if:
+                condition:
+                  lambda: "return !id(setup_mode);"
+                then:
+                  - script.execute: go_sleep
+          else:
+            - if:
+                condition:
+                  lambda: "return pb_unchanged(id(image_hash));"
+                then:
+                  - logger.log: "content unchanged, not repainting"
+                  - script.execute: after_paint
+                else:
+                  - online_image.set_url:
+                      id: page_image
+                      url: !lambda "return pb_base(id(paperboy_url).state) + id(image_path);"
+
+  # ---------------------------------------------------------------- sleep
+
+  # Waits for the panel, sends input that arrived meanwhile, and otherwise
+  # stays awake as long as Paperboy asked (listen_s); after power-on long
+  # enough to change settings in the web UI.
+  - id: after_paint
+    mode: restart
+    then:
+      - delay: 500ms
+      - wait_until:
+          condition:
+            not:
+              epaper_spi.is_updating: epaper_display
+          timeout: 15s
+      - lambda: "id(busy) = false;"
+      - if:
+          condition:
+            lambda: "return pb_has_events();"
+          then:
+            - script.execute: sync_and_show
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(wake_reason) == "powercycle";'
+                then:
+                  - script.stop: awake_limit
+                  - delay: 180s
+                else:
+                  - delay: !lambda "return (uint32_t) std::max(0, id(listen_s)) * 1000;"
+            - script.execute: go_sleep
+
+  - id: go_sleep
+    mode: single
+    then:
+      - deep_sleep.enter:
+          id: sleeper
+          sleep_duration: !lambda "return (uint32_t) (pb_refresh_s > 0 ? pb_refresh_s : 600) * 1000;"
+
+  # Never stay awake longer than this after the last input, whatever hangs.
+  - id: awake_limit
+    mode: restart
+    then:
+      - delay: 120s
+      - logger.log: "awake limit: forcing deep sleep"
+      - script.execute: go_sleep
+
+  # Setup waits for the operator, but not forever: retry in an hour.
+  - id: setup_limit
+    then:
+      - delay: 10min
+      - logger.log: "setup not finished, sleeping for an hour"
+      - lambda: "pb_refresh_s = 3600;"
+      - script.execute: go_sleep

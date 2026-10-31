@@ -1,0 +1,182 @@
+# Paperboy firmware for the Seeed reTerminal Sticky (ADR 0041). The shared
+# cycle and the device API live in common.yaml; this file holds the hardware.
+#
+# Buttons by role (ADR 0042): down = next, up = previous, ok = home.
+
+substitutions:
+  hardware: sticky
+  fw_version: "0.4.0"
+  # Optional default for the Paperboy URL entered in the web UI.
+  default_paperboy_url: ""
+
+packages:
+  paperboy: !include common.yaml
+
+esphome:
+  on_boot:
+    - priority: 800
+      then:
+        - lambda: |-
+            // The power latch is held through deep sleep (see on_shutdown).
+            gpio_hold_dis(GPIO_NUM_45);
+            gpio_hold_dis(GPIO_NUM_46);
+    - priority: 600
+      then:
+        - output.turn_on: pwr_hold
+        - output.turn_on: pwr_lock
+        - lambda: |-
+            auto cause = esp_sleep_get_wakeup_cause();
+            if (cause == ESP_SLEEP_WAKEUP_EXT1) {
+              uint64_t pins = esp_sleep_get_ext1_wakeup_status();
+              id(wake_reason) = "button";
+              if (pins & (1ULL << 5)) {
+                pb_button("previous");
+              } else if (pins & (1ULL << 6)) {
+                pb_button("next");
+              } else {
+                pb_button("home");
+              }
+            } else if (cause == ESP_SLEEP_WAKEUP_TIMER) {
+              id(wake_reason) = "timer";
+            } else {
+              id(wake_reason) = "powercycle";
+            }
+            ESP_LOGI("paperboy", "wake reason: %s", id(wake_reason).c_str());
+  on_shutdown:
+    - priority: 100
+      then:
+        - lambda: |-
+            gpio_set_level(GPIO_NUM_42, 0);  // touch panel power off
+            gpio_hold_en(GPIO_NUM_45);
+            gpio_hold_en(GPIO_NUM_46);
+            gpio_deep_sleep_hold_en();
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: ESP32S3
+  flash_size: 32MB
+  framework:
+    type: esp-idf
+    advanced:
+      enable_idf_experimental_features: true
+
+psram:
+  mode: octal
+
+logger:
+  hardware_uart: UART0
+
+output:
+  - platform: gpio
+    pin: GPIO45
+    id: pwr_hold
+  - platform: gpio
+    pin: GPIO46
+    id: pwr_lock
+
+switch:
+  - platform: gpio
+    pin: GPIO42
+    id: touch_power
+    internal: true
+    restore_mode: ALWAYS_ON
+    setup_priority: 1100
+
+spi:
+  clk_pin: GPIO13
+  mosi_pin: GPIO14
+  miso_pin: GPIO12
+
+i2c:
+  - id: i2c_sensor
+    scl: GPIO0
+    sda: GPIO1
+    frequency: 400kHz
+  - id: i2c_touch
+    scl: GPIO2
+    sda: GPIO3
+    frequency: 100kHz
+
+binary_sensor:
+  # Presses while awake are queued and sent with the next sync.
+  - platform: gpio
+    id: button_ok
+    pin: { number: GPIO4, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true }
+    on_press:
+      - script.execute: { id: button_pressed, role: "home" }
+  - platform: gpio
+    id: button_up
+    pin: { number: GPIO5, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true }
+    on_press:
+      - script.execute: { id: button_pressed, role: "previous" }
+  - platform: gpio
+    id: button_down
+    pin: { number: GPIO6, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true }
+    on_press:
+      - script.execute: { id: button_pressed, role: "next" }
+
+display:
+  - platform: epaper_spi
+    id: epaper_display
+    model: Seeed-reTerminal-Sticky-gray4
+    # Upright with the buttons at the top left.
+    rotation: 180
+    update_interval: never
+    lambda: |-
+      if (id(setup_mode)) {
+        pb_draw_text(it, id(setup_font), id(setup_text));
+      } else {
+        pb_draw_gray4(it, id(page_image));
+      }
+
+touchscreen:
+  - platform: gt911
+    id: sticky_touch
+    i2c_id: i2c_touch
+    display: epaper_display
+    interrupt_pin: GPIO21
+    reset_pin: GPIO41
+    # Measured: the panel reports image x as y and image y as x, and the
+    # display rotation is not applied to touches.
+    transform:
+      swap_xy: true
+      mirror_x: true
+      mirror_y: true
+    on_touch:
+      - script.execute: { id: touched, x: !lambda "return touch.x;", y: !lambda "return touch.y;" }
+
+script:
+  # BQ27220 fuel gauge. Measured: currents and capacities come ten times too
+  # large (design capacity 7500 mAh for the 750 mAh cell); state of charge and
+  # voltage are correct.
+  - id: read_battery
+    then:
+      - lambda: |-
+          auto rd = [](uint8_t reg, int &out) -> bool {
+            uint8_t raw[2];
+            if (id(i2c_sensor).write_readv(0x55, &reg, 1, raw, 2) != i2c::ERROR_OK) {
+              return false;
+            }
+            out = raw[0] | (raw[1] << 8);
+            return true;
+          };
+          int v;
+          pb_bat_volts = rd(0x08, v) && v > 0 ? v / 1000.0f : NAN;
+          pb_bat_percent = rd(0x2C, v) && v <= 100 ? (float) v : NAN;
+          pb_bat_ma = rd(0x0C, v) ? (int16_t) v / 10.0f : NAN;
+          pb_bat_mah = rd(0x10, v) ? v / 10.0f : NAN;
+
+deep_sleep:
+  id: sleeper
+  esp32_ext1_wakeup:
+    pins:
+      - number: GPIO4
+        mode: INPUT_PULLUP
+        allow_other_uses: true
+      - number: GPIO5
+        mode: INPUT_PULLUP
+        allow_other_uses: true
+      - number: GPIO6
+        mode: INPUT_PULLUP
+        allow_other_uses: true
+    mode: ANY_LOW
