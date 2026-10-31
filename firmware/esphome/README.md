@@ -11,7 +11,7 @@ installation, nothing installation-specific is compiled in.
 | `paperboy.h` | C++ helpers: sync body, event and log queue, RTC state, gray-level mapping, dithering, text lines and HD44780 character mapping |
 | `sticky.yaml` | reTerminal Sticky: pins, gray4 panel, touch, BQ27220 fuel gauge |
 | `e1001.yaml` | reTerminal E1001: pins, black-and-white panel, ADC battery |
-| `text-common.yaml` | Shared cycle of text displays: register, sync every `refresh_s`, text poll every second, no sleep |
+| `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep |
 | `lcd2004.yaml` | ESP32 dev board with a 20×4 HD44780 LCD behind a PCF8574 (I²C 0x27, SDA GPIO21, SCL GPIO22) |
 | `build.ps1` | Builds one hardware type with the pinned ESPHome version, optionally publishes it to an instance |
 
@@ -49,9 +49,11 @@ awake for up to 10 minutes before retrying in an hour.
 ## Text displays
 
 `lcd2004` runs on mains power and never sleeps. After registering it syncs at
-boot and every `refresh_s` (paging, log, firmware offers) and polls
-`GET /api/device/text` every second with `If-None-Match`; unchanged text is a
-`304` and leaves the LCD alone. Setup instructions (Wi-Fi hotspot, address for
+boot and every `refresh_s`, at most once a minute (paging, log, firmware
+offers), and polls `GET /api/device/text?shown=<hash>` every `refresh_s`, which
+the plan decides (ADR 0045; one minute until the first sync, registration is
+retried once a minute). Unchanged text is a `204` and leaves the LCD alone;
+ESPHome would log any non-2xx answer as a failure. Setup instructions (Wi-Fi hotspot, address for
 the Paperboy URL, unknown MAC) appear on the LCD itself. Paperboy converts the
 text for `charset: hd44780` and keeps only `ä ö ü ß ° µ`, which the firmware
 maps to the A00 character ROM (`pb_hd44780`); a display with the A02 ROM would

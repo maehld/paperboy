@@ -205,9 +205,14 @@ func (c *Config) battery(d *Device) *Battery {
 	return c.Battery
 }
 
-// minRefresh returns the shortest interval reported for a display type.
+// minRefresh returns the shortest interval reported for a display type. Image
+// displays never go below one minute; text displays may poll down to their
+// min_refresh, by default one second (ADR 0045).
 func (c *Config) minRefresh(profile string) time.Duration {
 	p := c.Profiles[profile]
+	if p.text() {
+		return max(time.Second, time.Duration(p.MinRefresh))
+	}
 	return max(minRefresh, time.Duration(p.MinRefresh))
 }
 
@@ -473,6 +478,9 @@ func (c *Config) validate() error {
 		}
 		if p.MinRefresh == 0 {
 			p.MinRefresh = Duration(defaultMinRefresh)
+			if p.Kind == kindText {
+				p.MinRefresh = Duration(time.Second)
+			}
 		}
 		if time.Duration(p.MinRefresh) < time.Second {
 			return fmt.Errorf("display type %s: min_refresh must be at least 1s", name)

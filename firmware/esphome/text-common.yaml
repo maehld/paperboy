@@ -2,10 +2,11 @@
 # included as a package by the hardware files. The hardware file supplies the
 # board and the display (id text_display) whose lambda prints pb_lines.
 #
-# Text displays run on mains power and never sleep:
-# - boot -> (register) -> POST /api/device/sync, again every refresh_s;
-# - GET /api/device/text every second with If-None-Match, so unchanged text
-#   costs a 304;
+# Text displays run on mains power and never sleep (ADR 0044, ADR 0045):
+# - boot -> register (retried once a minute) -> POST /api/device/sync, again
+#   every refresh_s but at most once a minute;
+# - GET /api/device/text?shown=<hash> every refresh_s, which the plan decides
+#   (one minute until the first sync); unchanged text is a 204;
 # - a firmware offer in the sync (ADR 0043) is flashed at once.
 #
 # Nothing installation-specific is compiled in: Wi-Fi comes from the captive
@@ -69,20 +70,27 @@ globals:
   - id: mac
     type: std::string
     initial_value: '""'
-  # Header lambdas return const char*, so the header values live in globals.
+  # Header lambdas return const char*, so the header value lives in a global.
   - id: auth_header
-    type: std::string
-    initial_value: '""'
-  - id: etag_header
     type: std::string
     initial_value: '""'
   - id: wake_reason
     type: std::string
     initial_value: '"powercycle"'
-  # Uptime in ms when the next sync is due; 0 = at once.
+  # Uptime in ms when the next register, sync or text poll is due; 0 = at once.
+  - id: next_register
+    type: uint32_t
+    initial_value: "0"
   - id: next_sync
     type: uint32_t
     initial_value: "0"
+  - id: next_poll
+    type: uint32_t
+    initial_value: "0"
+  # Text poll interval: refresh_s of the last sync; one minute until then.
+  - id: poll_ms
+    type: uint32_t
+    initial_value: "60000"
   - id: fw_path
     type: std::string
     initial_value: '""'
@@ -102,9 +110,9 @@ http_request:
   verify_ssl: false
 
 interval:
-  # One step per second: show setup instructions, register, sync when due,
-  # otherwise poll the text. The scripts are single, so a slow request skips
-  # ticks instead of piling them up.
+  # One tick per second only decides what is due: setup instructions (local),
+  # register, sync or text poll, each paced by its own next_* time. The
+  # scripts are single, so a slow request never piles up.
   - interval: 1s
     then:
       - if:
@@ -125,8 +133,7 @@ interval:
                       then:
                         - if:
                             condition:
-                              not:
-                                script.is_running: do_register
+                              lambda: "return millis() >= id(next_register) && !id(do_register).is_running();"
                             then:
                               - script.execute: do_register
                       else:
@@ -143,10 +150,9 @@ interval:
                             else:
                               - if:
                                   condition:
-                                    not:
-                                      or:
-                                        - script.is_running: do_sync
-                                        - script.is_running: do_poll
+                                    lambda: |-
+                                      return millis() >= id(next_poll) && !id(do_sync).is_running() &&
+                                             !id(do_poll).is_running();
                                   then:
                                     - script.execute: do_poll
 
@@ -178,10 +184,11 @@ script:
       - component.update: text_display
 
   # POST /api/device/register trades the MAC for the device key; 403 means
-  # the MAC is not in paperboy.yaml, then the next try waits a minute.
+  # the MAC is not in paperboy.yaml. Any failure waits a minute.
   - id: do_register
     mode: single
     then:
+      - lambda: "id(next_register) = millis() + 60000;"
       - http_request.post:
           url: !lambda 'return pb_base(id(paperboy_url).state) + "/api/device/register";'
           capture_response: true
@@ -214,11 +221,9 @@ script:
                     lambda: "return response->status_code == 403;"
                   then:
                     - script.execute: { id: show_setup, reason: "unknown" }
-                    - delay: 60s
           on_error:
             then:
               - logger.log: "registration request failed"
-              - delay: 10s
 
   # POST /api/device/sync: reports firmware, RSSI and log, takes the text, the
   # next sync time and a firmware offer.
@@ -257,8 +262,12 @@ script:
                   id(wake_reason) = "timer";
                   bool changed = false;
                   json::parse_json(body, [&](JsonObject root) -> bool {
-                    int refresh = root["refresh_s"] | 60;
-                    id(next_sync) = millis() + (uint32_t) std::max(refresh, 10) * 1000;
+                    // refresh_s comes from the plan and paces the text poll;
+                    // the sync itself runs at most once a minute (ADR 0045).
+                    int refresh = std::max(1, (int) (root["refresh_s"] | 60));
+                    id(poll_ms) = (uint32_t) refresh * 1000;
+                    id(next_poll) = millis() + id(poll_ms);
+                    id(next_sync) = millis() + (uint32_t) std::max(refresh, 60) * 1000;
                     changed = pb_take_text(root["text"]);
                     id(fw_offered) = root["firmware"]["version"] | "";
                     id(fw_path) = root["firmware"]["path"] | "";
@@ -291,25 +300,25 @@ script:
                 id(fw_path) = "";
                 pb_text_hash.clear();
 
-  # GET /api/device/text with the last hash; 304 leaves the display alone.
+  # GET /api/device/text?shown=<hash>; 204 = unchanged, the display stays as
+  # is. ESPHome logs every non-2xx answer as a failed request.
   - id: do_poll
     mode: single
     then:
       - lambda: |-
           id(auth_header) = "Bearer " + id(api_key).state;
-          id(etag_header) = pb_text_hash.empty() ? "" : "\"" + pb_text_hash + "\"";
+          id(next_poll) = millis() + id(poll_ms);
       - http_request.get:
-          url: !lambda 'return pb_base(id(paperboy_url).state) + "/api/device/text";'
+          url: !lambda 'return pb_base(id(paperboy_url).state) + "/api/device/text?shown=" + pb_text_hash;'
           capture_response: true
           max_response_buffer_size: 1024
           request_headers:
             Authorization: !lambda "return id(auth_header).c_str();"
-            If-None-Match: !lambda "return id(etag_header).c_str();"
           on_response:
             then:
               - lambda: |-
                   int status = response->status_code;
-                  if (status == 304) {
+                  if (status == 204) {
                     return;
                   }
                   if (status == 401) {

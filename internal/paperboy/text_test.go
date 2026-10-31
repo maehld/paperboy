@@ -41,14 +41,15 @@ func textServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 	return s, &now
 }
 
-func pollText(t *testing.T, s *Server, key, etag string) *httptest.ResponseRecorder {
+func pollText(t *testing.T, s *Server, key, shown string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/api/device/text", nil)
+	path := "/api/device/text"
+	if shown != "" {
+		path += "?shown=" + shown
+	}
+	req := httptest.NewRequest(http.MethodGet, path, nil)
 	if key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
-	}
-	if etag != "" {
-		req.Header.Set("If-None-Match", etag)
 	}
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
@@ -60,6 +61,7 @@ rules:
   - name: immer
     when: { from: "06:00", to: "22:00" }
     pages: [eins, zwei, kaputt]
+    refresh: 2s
 fallback: immer
 `
 
@@ -78,6 +80,9 @@ func TestTextDeviceSyncAndPoll(t *testing.T) {
 	if len(lines) != 2 || lines[0] != "PV 42   " || lines[1] != "Groesse " {
 		t.Fatalf("sync text: %v", out)
 	}
+	if out["refresh_s"].(float64) != 2 {
+		t.Fatalf("refresh_s from the plan: %v", out["refresh_s"])
+	}
 	if out["listen_s"].(float64) != 0 {
 		t.Fatalf("listen_s: %v", out["listen_s"])
 	}
@@ -90,19 +95,22 @@ func TestTextDeviceSyncAndPoll(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &polled); rec.Code != http.StatusOK || err != nil {
 		t.Fatalf("poll: %d %s", rec.Code, rec.Body)
 	}
-	if polled.Hash != text["hash"] || rec.Header().Get("ETag") != `"`+polled.Hash+`"` {
-		t.Fatalf("poll hash %q etag %q, sync %v", polled.Hash, rec.Header().Get("ETag"), text["hash"])
+	if polled.Hash != text["hash"] {
+		t.Fatalf("poll hash %q, sync %v", polled.Hash, text["hash"])
 	}
-	if rec := pollText(t, s, dev.key, `"`+polled.Hash+`"`); rec.Code != http.StatusNotModified || rec.Body.Len() != 0 {
+	if rec := pollText(t, s, dev.key, polled.Hash); rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
 		t.Fatalf("unchanged poll: %d %s", rec.Code, rec.Body)
 	}
 	// New data changes the lines without a sync.
 	if err := s.doc.Put("solar/pv", 7, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
-	rec = pollText(t, s, dev.key, `"`+polled.Hash+`"`)
+	rec = pollText(t, s, dev.key, polled.Hash)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"PV 7    "`) {
 		t.Fatalf("changed poll: %d %s", rec.Code, rec.Body)
+	}
+	if info := s.deviceInfos()[0]; len(info.LastText) == 0 || info.LastText[0] != "PV 7    " {
+		t.Fatalf("dashboard text not updated by the poll: %q", info.LastText)
 	}
 
 	// Polling never advances the cursor or writes the state file.

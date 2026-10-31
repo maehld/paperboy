@@ -341,9 +341,9 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// handleText answers the text poll of a text display (ADR 0044): the lines of
-// the page the cursor points to, without advancing it or writing the state
-// file. A matching If-None-Match is answered with 304.
+// handleText answers the text poll of a text display (ADR 0044, 0045): the
+// lines of the page the cursor points to, without advancing it or writing the
+// state file.
 func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	s.mu.Lock()
@@ -385,13 +385,32 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 	default:
 		served = s.hint(d.Profile, choice.title, choice.text)
 	}
-	etag := `"` + served.hash + `"`
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", "no-cache")
-	if match := r.Header.Get("If-None-Match"); match != "" && strings.Contains(match, etag) {
-		w.WriteHeader(http.StatusNotModified)
+	// The dashboard and /api/devices show what the display shows now. Kept in
+	// memory only; the next sync writes it to state/devices.json.
+	s.mu.Lock()
+	if st := s.state[d.key()]; st != nil && st.LastPageHash != served.hash {
+		st.LastText, st.LastPageHash, st.LastPageTime = served.lines, served.hash, now
+		st.LastPage, st.LastPageKind = served.name, "page"
+		switch {
+		case critical:
+			st.LastPage, st.LastPageKind = "", "battery"
+		case served.name == "":
+			st.LastPageKind = "notice"
+		}
+		st.LastError = ""
+		if choice.err != nil {
+			st.LastError = shortError(choice.err)
+		} else if served.err != nil {
+			st.LastError = shortError(served.err)
+		}
+	}
+	s.mu.Unlock()
+	// ESPHome logs every non-2xx answer as a failed request, so unchanged text
+	// is a 204 for the hash the device names in ?shown= (ADR 0045).
+	if shown := r.URL.Query().Get("shown"); shown != "" && shown == served.hash {
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(syncText{Lines: served.lines, Hash: served.hash})
+	writeJSON(w, http.StatusOK, syncText{Lines: served.lines, Hash: served.hash})
 }
