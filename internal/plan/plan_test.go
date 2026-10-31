@@ -79,7 +79,7 @@ func TestParseErrors(t *testing.T) {
 		"pages missing":      "rules: [{name: a}]",
 		"bad page name":      "rules: [{name: a, pages: [Solar]}]",
 		"duplicate page":     "rules: [{name: a, pages: [x, x]}]",
-		"refresh too short":  "rules: [{name: a, pages: [x], refresh: 30s}]",
+		"refresh too short":  "rules: [{name: a, pages: [x], refresh: 500ms}]",
 		"data condition":     "rules: [{name: a, pages: [x], when: {data: [{path: tuer, equals: offen}]}}]",
 		"from without to":    "rules: [{name: a, pages: [x], when: {from: \"07:00\"}}]",
 		"from equals to":     "rules: [{name: a, pages: [x], when: {from: \"07:00\", to: \"07:00\"}}]",

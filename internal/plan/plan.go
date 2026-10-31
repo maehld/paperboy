@@ -269,8 +269,10 @@ func (r *Rule) validate() error {
 		}
 		pages[name] = true
 	}
-	if r.Refresh != 0 && time.Duration(r.Refresh) < time.Minute {
-		return fmt.Errorf("refresh must be at least 1m")
+	// Image displays never go below one minute; Paperboy applies the display
+	// type's floor. Text displays may poll every second (ADR 0045).
+	if r.Refresh != 0 && time.Duration(r.Refresh) < time.Second {
+		return fmt.Errorf("refresh must be at least 1s")
 	}
 	w := &r.When
 	if len(w.Data) > 0 {

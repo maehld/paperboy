@@ -135,7 +135,8 @@ func (s *Server) hint(profile, title, text string) servedPage {
 	}
 	if p.text() {
 		lines := page.NoticeLines(s.textDisplay(p), title, text)
-		return servedPage{lines: lines, hash: hashLines(lines), refresh: hintRefresh}
+		// Text displays come back sooner: their sync is cheap and they never sleep.
+		return servedPage{lines: lines, hash: hashLines(lines), refresh: time.Minute}
 	}
 	sp := s.notice(profile, placeholder(p, title, text))
 	sp.refresh = hintRefresh
