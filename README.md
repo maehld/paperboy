@@ -20,7 +20,7 @@ Provider program ──stdout──▶ paperboy (exec provider, providers/)
    curl -X PUT -H "Authorization: Bearer <token>" -d '{"pv_power": 4200}' http://127.0.0.1:8090/api/data/solar/current
    ```
    Alternatively as a container: `Dockerfile` and `compose.example.yaml`.
-4. Flash the Paperboy firmware (ADR 0041) and enter `http://<computer>:8090` as the Paperboy URL in the device's web UI. The device registers with its MAC address; unknown MACs are rejected and logged.
+4. Flash the Paperboy firmware (ADR 0041, see [firmware/esphome/README.md](firmware/esphome/README.md)) and enter `http://<computer>:8090` as the Paperboy URL in the device's web UI. The device registers with its MAC address; unknown MACs are rejected and logged.
 
 **Migrating from `displayd` or an older Paperboy:** in the instance directory create `state/`, move the old `state.json` to `state/devices.json` and `data.json` to `state/data.json` (usually out of `paperboy-data/` or `displayd-data/`), and move `pages/`, `plans/` and `providers/` to the instance directory. Remove the `directories` section from `paperboy.yaml` and start with `-config <dir>`; a `paperboy.json` is no longer read. Devices keep their key as long as `devices.json` is kept. The environment variable is `PAPERBOY_UPLOAD_TOKEN`; `DISPLAYD_UPLOAD_TOKEN` is still accepted.
 
@@ -261,5 +261,6 @@ internal/page/           Page templates: YAML parsing and rendering from the dat
 internal/plan/           Display plans: time rules that select pages per device (ADR 0025)
 internal/provider/       Exec providers: run configured programs that print JSON (ADR 0036)
 internal/opendisplay/    OpenDisplay protocol; odble = Bluetooth transport
+firmware/esphome/        Paperboy firmware on ESPHome for Sticky and E1001 (ADR 0041)
 docs/adr/                Architecture decisions
 ```
