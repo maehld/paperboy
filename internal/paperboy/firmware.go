@@ -295,12 +295,20 @@ func (s *Server) settleFirmwareLocked(d *Device, st *deviceState) {
 // logs the decision when it changes. Callers hold s.mu.
 func (s *Server) offerFirmwareLocked(d *Device, st *deviceState, img *firmwareImage, volts float64, haveVolts bool, now time.Time) *firmwareOffer {
 	reason := ""
+	// Text displays run on mains power (ADR 0044) and report no battery.
+	mains := s.cfg.Profiles[d.Profile].text()
 	switch {
 	case img == nil || sameVersion(st.Firmware, img):
 	case s.cfg.Firmware.Update != firmwareAuto:
 		reason = "updates off"
 	case d.Hold:
 		reason = "held"
+	case mains:
+		if st.FirmwareOffered == img.Version && st.FirmwareOfferedMD5 == img.MD5 && st.FirmwareFailures >= firmwareFailureLimit {
+			reason = "failed " + strconv.Itoa(st.FirmwareFailures) + " times"
+			break
+		}
+		return s.makeOfferLocked(d, st, img, now)
 	case !haveVolts:
 		reason = "battery unknown"
 	case volts < s.cfg.Firmware.MinBatteryVolts || st.BatteryLevel != batteryOK:
@@ -308,14 +316,7 @@ func (s *Server) offerFirmwareLocked(d *Device, st *deviceState, img *firmwareIm
 	case st.FirmwareOffered == img.Version && st.FirmwareOfferedMD5 == img.MD5 && st.FirmwareFailures >= firmwareFailureLimit:
 		reason = "failed " + strconv.Itoa(st.FirmwareFailures) + " times"
 	default:
-		if st.FirmwareOffered != img.Version || st.FirmwareOfferedMD5 != img.MD5 {
-			st.FirmwareFailures = 0
-		}
-		st.FirmwareOffered, st.FirmwareOfferedMD5, st.FirmwareOfferedTime = img.Version, img.MD5, now
-		st.FirmwarePending = true
-		s.fwNotes[d.ID] = ""
-		slog.Info("firmware offered", "device", d.ID, "running", st.Firmware, "offered", img.Version)
-		return &firmwareOffer{Version: img.Version, Path: img.URLPath(), MD5: img.MD5}
+		return s.makeOfferLocked(d, st, img, now)
 	}
 	// Deliberate holds stay quiet; reasons the operator may not expect are logged
 	// once per change, so the decision is visible without flooding the log.
@@ -325,4 +326,16 @@ func (s *Server) offerFirmwareLocked(d *Device, st *deviceState, img *firmwareIm
 	}
 	s.fwNotes[d.ID] = reason
 	return nil
+}
+
+// makeOfferLocked records and returns an update offer. Callers hold s.mu.
+func (s *Server) makeOfferLocked(d *Device, st *deviceState, img *firmwareImage, now time.Time) *firmwareOffer {
+	if st.FirmwareOffered != img.Version || st.FirmwareOfferedMD5 != img.MD5 {
+		st.FirmwareFailures = 0
+	}
+	st.FirmwareOffered, st.FirmwareOfferedMD5, st.FirmwareOfferedTime = img.Version, img.MD5, now
+	st.FirmwarePending = true
+	s.fwNotes[d.ID] = ""
+	slog.Info("firmware offered", "device", d.ID, "running", st.Firmware, "offered", img.Version)
+	return &firmwareOffer{Version: img.Version, Path: img.URLPath(), MD5: img.MD5}
 }

@@ -179,3 +179,17 @@ func anyStrings(v any) []string {
 	}
 	return out
 }
+
+// Text displays run on mains power and report no battery; they still get
+// firmware offers.
+func TestTextDeviceFirmwareOffer(t *testing.T) {
+	s, _ := textServer(t, textPlan)
+	s.cfg.Firmware = FirmwareConfig{Update: firmwareAuto, MinBatteryVolts: 3.6}
+	writePageFile(t, filepath.Join(s.cfg.FirmwareDir, "lcd2004", "lcd2004-0.2.1.bin"), "image")
+	dev := planDevice(t, s)
+	dev.req.Hardware, dev.req.Firmware = "lcd2004", "0.2.0"
+	offer := offerOf(displayPage(t, s, dev))
+	if offer["version"] != "0.2.1" {
+		t.Fatalf("no offer for a text display: %v", offer)
+	}
+}
