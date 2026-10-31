@@ -64,10 +64,10 @@ web_server:
   port: 80
 
 ota:
-  - platform: esphome
-    password: !secret ota_password
-  # Updates offered by Paperboy in the sync (ADR 0043); ESPHome checks the MD5
-  # and rolls back an image that does not boot.
+  # The only network update path: images offered by Paperboy in the sync
+  # (ADR 0043). ESPHome checks the MD5 and rolls back an image that does not
+  # boot. There is no native ESPHome OTA and no web UI upload, so the build
+  # needs no secrets; anything else goes over USB.
   - platform: http_request
 
 text:

@@ -11,7 +11,6 @@ installation, nothing installation-specific is compiled in.
 | `sticky.yaml` | reTerminal Sticky: pins, gray4 panel, touch, BQ27220 fuel gauge |
 | `e1001.yaml` | reTerminal E1001: pins, black-and-white panel, ADC battery |
 | `build.ps1` | Builds one hardware type with the pinned ESPHome version, optionally publishes it to an instance |
-| `secrets.example.yaml` | Template for the ignored `secrets.yaml` (OTA password only) |
 
 ## Cycle
 
@@ -50,17 +49,23 @@ ESPHome is pinned to **2026.10.1** and runs through `uvx`, outside Paperboy.
 
 ```powershell
 cd firmware/esphome
-Copy-Item secrets.example.yaml secrets.yaml      # OTA password; secrets.yaml is ignored
 .\build.ps1 -Hardware sticky                      # or e1001; image in .esphome/build/<hardware>/build/
-uvx esphome==2026.10.1 run sticky.yaml            # first flash over USB-C, later over the network
+uvx esphome==2026.10.1 run sticky.yaml            # first flash over USB-C
 .\build.ps1 -Hardware sticky -Instance <dir>      # publish to <dir>/firmware/sticky/sticky-<version>.bin (ADR 0043)
 ```
 
+The build needs no secrets. Over the network the firmware only installs images
+that Paperboy offers in the sync (ADR 0043); there is no native ESPHome OTA and
+no upload in the web UI, so nobody on the LAN can push an image. Everything
+else, including the rescue of a device that no longer syncs, goes over USB-C.
+
 A device that runs the TRMNL firmware is flashed over USB-C once. A device on
-the ESPHome experiment can be updated over the network with
-`uvx esphome==2026.10.1 run sticky.yaml --device <ip>` (same OTA password as
-the experiment's `secrets.yaml`). Its key stays valid: Paperboy hands out the
-existing key for the MAC.
+the ESPHome experiment can switch without a cable through the experiment's own
+manifest update: serve the built `firmware.ota.bin` together with a
+`manifest.json` (`{"version": "0.4.0", "builds": [{"ota": {"path":
+"firmware.ota.bin", "md5": "<md5>"}}]}`), enter its URL as "Firmware manifest
+URL" in the device's web UI and press a button. Its key stays valid: Paperboy
+hands out the existing key for the MAC.
 
 After flashing, join the hotspot `paperboy-<id>`, pick the Wi-Fi network, then
 open the address shown on the display and enter the Paperboy URL (for example
