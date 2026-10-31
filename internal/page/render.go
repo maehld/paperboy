@@ -86,7 +86,7 @@ func (t *Template) RenderContext(doc *data.Document, d Display, c Context) (*ima
 	if c.Pages <= 0 {
 		c.Pages = 1
 	}
-	r := &renderer{t: t, doc: doc, root: root, f: formatter{comma: language != "en", loc: loc},
+	r := &renderer{t: t, watch: t.Watch, doc: doc, root: root, f: formatter{comma: language != "en", loc: loc},
 		now: now, language: language, page: c.Page, pages: c.Pages, badge: t.noticeMode() == "badge"}
 	r.stale = t.isStale(doc, now)
 
@@ -177,6 +177,7 @@ func (t *Template) isStale(doc *data.Document, now time.Time) bool {
 
 type renderer struct {
 	t        *Template
+	watch    []Watch // paths the stale function may ask for
 	doc      *data.Document
 	root     map[string]any
 	f        formatter
@@ -326,7 +327,7 @@ func (r *renderer) stalePath(p string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for _, w := range r.t.Watch {
+	for _, w := range r.watch {
 		if w.Path != path {
 			continue
 		}
