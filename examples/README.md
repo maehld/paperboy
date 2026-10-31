@@ -10,6 +10,11 @@ for devices with `display_type: e1001`, `solar-overview.sticky.yaml` for devices
 with `display_type: sticky`. Both layouts are independent files because the
 compact variant has fewer rows and no chart.
 
+`solar-overview.lcd2004.yaml` is the same overview for a 20×4 text display
+(`kind: text`, ADR 0044): four `lines` instead of blocks, fitted with `pad` and
+`right`. A plan may name `solar-overview` for image and text displays alike;
+each device gets the template of its display type.
+
 `plans/solar.yaml` shows a plan that pages through the four pages during the day
 and returns to the overview at night. Copy it into the `plans/` directory of your
 instance directory and point a device at it with `plan: solar`.

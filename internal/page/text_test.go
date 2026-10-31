@@ -106,3 +106,26 @@ func TestNoticeLines(t *testing.T) {
 		t.Fatalf("%q", got)
 	}
 }
+
+// TestTextReferencePage renders the text reference page from the golden data.
+func TestTextReferencePage(t *testing.T) {
+	doc := goldenDocument(t)
+	tmpl, err := LoadText("../../examples/pages", "solar-overview", "lcd2004")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines, err := tmpl.Render(doc, TextDisplay{Columns: 20, Rows: 4, Charset: CharsetHD44780, Language: "de", Timezone: time.UTC},
+		Context{Now: fixedGoldenNow})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"PV   4,21 kW   14:20",
+		"Akku 1,24 kW    82 %",
+		"Netz 1,33 kW 1,2 kWh",
+		"Heute       12,4 kWh",
+	}
+	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("lines:\n%s", strings.Join(lines, "\n"))
+	}
+}
