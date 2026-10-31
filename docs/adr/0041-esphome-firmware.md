@@ -1,6 +1,6 @@
 # 0041: Paperboy firmware built on ESPHome
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-31
 - Partially supersedes: ADR 0017 (displays run the unmodified TRMNL firmware; ESPHome rejected; TRMNL as the device protocol)
 - Related: ADR 0042 (device protocol), ADR 0043 (firmware distribution), ADR 0027 (ESPHome text displays)
