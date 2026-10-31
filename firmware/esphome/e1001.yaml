@@ -1,15 +1,16 @@
 # Paperboy firmware for the Seeed reTerminal E1001 (ADR 0041). The shared
 # cycle and the device API live in common.yaml; this file holds the hardware.
 #
-# Buttons from left to right: down (GPIO5) = next, up (GPIO4) = previous,
-# ok (green, GPIO3) = home (ADR 0042).
+# Buttons from left to right: GPIO5 = previous, GPIO4 = next, green GPIO3 =
+# home (ADR 0042; confirmed on the device in 0.4.0, where left and middle were
+# swapped).
 #
 # ESPHome drives the E1001 panel in black and white only, so Paperboy's two
 # gray levels are drawn as a fixed 2x2 pattern (pb_draw_dithered).
 
 substitutions:
   hardware: e1001
-  fw_version: "0.4.0"
+  fw_version: "0.4.1"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
 
@@ -27,9 +28,9 @@ esphome:
               uint64_t pins = esp_sleep_get_ext1_wakeup_status();
               id(wake_reason) = "button";
               if (pins & (1ULL << 5)) {
-                pb_button("next");
-              } else if (pins & (1ULL << 4)) {
                 pb_button("previous");
+              } else if (pins & (1ULL << 4)) {
+                pb_button("next");
               } else {
                 pb_button("home");
               }
@@ -73,17 +74,17 @@ sensor:
 binary_sensor:
   # Presses while awake are queued and sent with the next sync; left to right.
   - platform: gpio
-    id: button_down
+    id: button_previous
     pin: { number: GPIO5, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true }
-    on_press:
-      - script.execute: { id: button_pressed, role: "next" }
-  - platform: gpio
-    id: button_up
-    pin: { number: GPIO4, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true }
     on_press:
       - script.execute: { id: button_pressed, role: "previous" }
   - platform: gpio
-    id: button_ok
+    id: button_next
+    pin: { number: GPIO4, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true }
+    on_press:
+      - script.execute: { id: button_pressed, role: "next" }
+  - platform: gpio
+    id: button_home
     pin: { number: GPIO3, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true }
     on_press:
       - script.execute: { id: button_pressed, role: "home" }

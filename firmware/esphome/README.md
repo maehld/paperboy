@@ -24,8 +24,8 @@ installation, nothing installation-specific is compiled in.
 | After painting | input that arrived meanwhile is sent in one more sync | Paperboy renders only the final page |
 | Sleep | stay awake `listen_s`, then deep sleep for `refresh_s` | wake on any button (EXT1) |
 
-Buttons are sent by role: **down = `next`, up = `previous`, ok = `home`** on
-both devices (E1001 from left to right: down, up, ok/green). Sticky touches are
+Buttons are sent by role. Sticky: **down = `next`, up = `previous`, ok =
+`home`**. E1001 from left to right: **`previous`, `next`, `home` (green)**. Sticky touches are
 sent as `touch` events; Paperboy only logs them for now. A failed download,
 sync or Wi-Fi connection is kept in RTC memory and reported in the next sync's
 `log`. After power-on the device stays awake 3 minutes so its web UI can be
@@ -93,8 +93,8 @@ read ten times too large and are divided by ten.
 
 **E1001**: ESP32-S3, octal PSRAM; panel UC8179 800×480, ESPHome model
 `Seeed-reTerminal-E1001`, black and white only: Paperboy's gray levels are
-drawn as a fixed 2×2 pattern (`pb_draw_dithered`). Buttons left to right GPIO5,
-GPIO4, GPIO3 (green). Battery voltage on ADC GPIO1 through a 1:2 divider,
+drawn as a fixed 2×2 pattern (`pb_draw_dithered`). Buttons left to right GPIO5 (`previous`),
+GPIO4 (`next`), GPIO3 (green, `home`). Battery voltage on ADC GPIO1 through a 1:2 divider,
 enabled by GPIO21; no fuel gauge.
 
 Measured on the experiment: paint 2.7 s, PNG decode about 1.8 s for 5 KB,
