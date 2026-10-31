@@ -172,3 +172,66 @@ template<typename D, typename I> void pb_draw_dithered(D &it, I *img) {
     }
   }
 }
+
+// ---------------------------------------------------------------- text displays (ADR 0044)
+
+// Lines on the text display and the hash Paperboy gave them.
+static std::vector<std::string> pb_lines;
+static std::string pb_text_hash;
+
+// Takes the text object of a sync or text poll answer; true when it changed.
+inline bool pb_take_text(JsonObject text) {
+  std::string hash = text["hash"] | "";
+  if (hash.empty() || hash == pb_text_hash) {
+    return false;
+  }
+  pb_lines.clear();
+  for (JsonVariant v : text["lines"].as<JsonArray>()) {
+    pb_lines.push_back(v.as<const char *>() ? v.as<const char *>() : "");
+  }
+  pb_text_hash = hash;
+  pb_remember(hash);
+  return true;
+}
+
+// Shows a local message, e.g. setup instructions, one line per '\n'.
+inline void pb_show_message(const std::string &text) {
+  pb_lines.clear();
+  size_t start = 0;
+  while (start <= text.size()) {
+    size_t end = text.find('\n', start);
+    pb_lines.push_back(text.substr(start, end == std::string::npos ? std::string::npos : end - start));
+    if (end == std::string::npos) {
+      break;
+    }
+    start = end + 1;
+  }
+  pb_text_hash.clear();
+}
+
+// Maps the UTF-8 characters Paperboy keeps for charset hd44780 to the codes
+// of the HD44780 A00 character ROM; anything else outside ASCII becomes '?'.
+inline std::string pb_hd44780(const std::string &s) {
+  std::string out;
+  for (size_t i = 0; i < s.size(); i++) {
+    unsigned char c = s[i];
+    if (c < 0x80) {
+      out += (char) c;
+      continue;
+    }
+    unsigned char n = i + 1 < s.size() ? (unsigned char) s[i + 1] : 0;
+    char mapped = '?';
+    if (c == 0xC3 && n == 0xA4) mapped = (char) 0xE1;       // ä
+    else if (c == 0xC3 && n == 0xB6) mapped = (char) 0xEF;  // ö
+    else if (c == 0xC3 && n == 0xBC) mapped = (char) 0xF5;  // ü
+    else if (c == 0xC3 && n == 0x9F) mapped = (char) 0xE2;  // ß
+    else if (c == 0xC2 && n == 0xB0) mapped = (char) 0xDF;  // °
+    else if (c == 0xC2 && n == 0xB5) mapped = (char) 0xE4;  // µ
+    out += mapped;
+    // Skip the continuation bytes of this character.
+    while (i + 1 < s.size() && ((unsigned char) s[i + 1] & 0xC0) == 0x80) {
+      i++;
+    }
+  }
+  return out;
+}

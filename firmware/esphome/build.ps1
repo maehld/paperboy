@@ -4,7 +4,7 @@
 #   <instance>/firmware/<hardware>/<hardware>-<version>.bin
 # The version comes from fw_version in <hardware>.yaml.
 param(
-    [Parameter(Mandatory = $true)][ValidateSet("sticky", "e1001")][string]$Hardware,
+    [Parameter(Mandatory = $true)][ValidateSet("sticky", "e1001", "lcd2004")][string]$Hardware,
     [string]$Instance,
     [switch]$NoCompile
 )

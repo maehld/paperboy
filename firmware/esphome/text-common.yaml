@@ -1,0 +1,336 @@
+# Shared part of the Paperboy firmware for text displays (ADR 0041, ADR 0044),
+# included as a package by the hardware files. The hardware file supplies the
+# board and the display (id text_display) whose lambda prints pb_lines.
+#
+# Text displays run on mains power and never sleep:
+# - boot -> (register) -> POST /api/device/sync, again every refresh_s;
+# - GET /api/device/text every second with If-None-Match, so unchanged text
+#   costs a 304;
+# - a firmware offer in the sync (ADR 0043) is flashed at once.
+#
+# Nothing installation-specific is compiled in: Wi-Fi comes from the captive
+# portal (hotspot paperboy-<id>) or Improv, the Paperboy URL from the web UI,
+# the device key from POST /api/device/register by MAC (dropped on a 401).
+
+esphome:
+  name: paperboy
+  name_add_mac_suffix: true
+  build_path: build/${hardware}   # relative to .esphome/
+  includes:
+    - paperboy.h
+  project:
+    name: paperboy.${hardware}
+    version: ${fw_version}
+  on_boot:
+    - priority: -100
+      then:
+        - lambda: |-
+            id(mac) = get_mac_address_pretty();
+            pb_show_message("Paperboy\nstarting ...");
+        - component.update: text_display
+
+wifi:
+  # No networks compiled in: they come from the captive portal or Improv.
+  ap: {}   # SSID: the node name, paperboy-<id>
+  on_disconnect:
+    - lambda: 'pb_note_for_next_wake("Wi-Fi connection lost");'
+
+captive_portal:
+
+improv_serial:
+
+web_server:
+  port: 80
+
+ota:
+  # Only images offered by Paperboy in the sync (ADR 0043); no native ESPHome
+  # OTA and no web UI upload, so the build needs no secrets.
+  - platform: http_request
+
+text:
+  - platform: template
+    id: paperboy_url
+    name: "Paperboy URL"
+    mode: text
+    optimistic: true
+    restore_value: true
+    initial_value: "${default_paperboy_url}"
+    max_length: 120
+  - platform: template
+    id: api_key
+    internal: true
+    mode: password
+    optimistic: true
+    restore_value: true
+    initial_value: ""
+    max_length: 64
+
+globals:
+  - id: mac
+    type: std::string
+    initial_value: '""'
+  # Header lambdas return const char*, so the header values live in globals.
+  - id: auth_header
+    type: std::string
+    initial_value: '""'
+  - id: etag_header
+    type: std::string
+    initial_value: '""'
+  - id: wake_reason
+    type: std::string
+    initial_value: '"powercycle"'
+  # Uptime in ms when the next sync is due; 0 = at once.
+  - id: next_sync
+    type: uint32_t
+    initial_value: "0"
+  - id: fw_path
+    type: std::string
+    initial_value: '""'
+  - id: fw_md5
+    type: std::string
+    initial_value: '""'
+  - id: fw_offered
+    type: std::string
+    initial_value: '""'
+  - id: setup_shown
+    type: std::string
+    initial_value: '""'
+
+http_request:
+  useragent: paperboy-esphome
+  timeout: 5s
+  verify_ssl: false
+
+interval:
+  # One step per second: show setup instructions, register, sync when due,
+  # otherwise poll the text. The scripts are single, so a slow request skips
+  # ticks instead of piling them up.
+  - interval: 1s
+    then:
+      - if:
+          condition:
+            not: wifi.connected
+          then:
+            - script.execute: { id: show_setup, reason: "wifi" }
+          else:
+            - if:
+                condition:
+                  lambda: "return pb_base(id(paperboy_url).state).empty();"
+                then:
+                  - script.execute: { id: show_setup, reason: "url" }
+                else:
+                  - if:
+                      condition:
+                        lambda: "return id(api_key).state.empty();"
+                      then:
+                        - if:
+                            condition:
+                              not:
+                                script.is_running: do_register
+                            then:
+                              - script.execute: do_register
+                      else:
+                        - if:
+                            condition:
+                              lambda: "return millis() >= id(next_sync);"
+                            then:
+                              - if:
+                                  condition:
+                                    not:
+                                      script.is_running: do_sync
+                                  then:
+                                    - script.execute: do_sync
+                            else:
+                              - if:
+                                  condition:
+                                    not:
+                                      or:
+                                        - script.is_running: do_sync
+                                        - script.is_running: do_poll
+                                  then:
+                                    - script.execute: do_poll
+
+script:
+  - id: show_setup
+    mode: single
+    parameters:
+      reason: string
+    then:
+      - lambda: |-
+          std::string t;
+          if (reason == "wifi") {
+            t = "Setup: join Wi-Fi\n" + App.get_name();
+          } else if (reason == "url") {
+            auto ips = wifi::global_wifi_component->get_ip_addresses();
+            char ip[48] = "?";
+            if (ips[0].is_set()) {
+              ips[0].str_to(ip);
+            }
+            t = "Setup: open\nhttp://" + std::string(ip) + "/\nenter Paperboy URL";
+          } else {
+            t = "Unknown display\nAdd MAC to Paperboy:\n" + id(mac);
+          }
+          if (t != id(setup_shown)) {
+            id(setup_shown) = t;
+            pb_show_message(t);
+            ESP_LOGW("paperboy", "setup needed: %s", reason.c_str());
+          }
+      - component.update: text_display
+
+  # POST /api/device/register trades the MAC for the device key; 403 means
+  # the MAC is not in paperboy.yaml, then the next try waits a minute.
+  - id: do_register
+    mode: single
+    then:
+      - http_request.post:
+          url: !lambda 'return pb_base(id(paperboy_url).state) + "/api/device/register";'
+          capture_response: true
+          max_response_buffer_size: 512
+          request_headers:
+            Content-Type: application/json
+          body: !lambda |-
+            return "{\"mac\":" + pb_json_string(id(mac)) +
+                   ",\"hardware\":\"${hardware}\",\"firmware\":\"${fw_version}\"}";
+          on_response:
+            then:
+              - lambda: |-
+                  std::string key;
+                  if (response->status_code == 200) {
+                    json::parse_json(body, [&](JsonObject root) -> bool {
+                      key = root["key"] | "";
+                      return true;
+                    });
+                  }
+                  if (!key.empty()) {
+                    id(api_key).make_call().set_value(key).perform();
+                    id(next_sync) = 0;
+                    id(setup_shown) = "";
+                    ESP_LOGI("paperboy", "registered with Paperboy");
+                  } else {
+                    ESP_LOGW("paperboy", "registration refused: HTTP %d", response->status_code);
+                  }
+              - if:
+                  condition:
+                    lambda: "return response->status_code == 403;"
+                  then:
+                    - script.execute: { id: show_setup, reason: "unknown" }
+                    - delay: 60s
+          on_error:
+            then:
+              - logger.log: "registration request failed"
+              - delay: 10s
+
+  # POST /api/device/sync: reports firmware, RSSI and log, takes the text, the
+  # next sync time and a firmware offer.
+  - id: do_sync
+    mode: single
+    then:
+      - lambda: |-
+          id(auth_header) = "Bearer " + id(api_key).state;
+          id(fw_path) = "";
+          // Retry in 30 s unless Paperboy answers with its refresh.
+          id(next_sync) = millis() + 30000;
+      - http_request.post:
+          url: !lambda 'return pb_base(id(paperboy_url).state) + "/api/device/sync";'
+          capture_response: true
+          max_response_buffer_size: 2048
+          request_headers:
+            Content-Type: application/json
+            Authorization: !lambda "return id(auth_header).c_str();"
+          body: !lambda |-
+            return pb_sync_body("${fw_version}", "${hardware}", id(wake_reason),
+                                (int) wifi::global_wifi_component->wifi_rssi());
+          on_response:
+            then:
+              - lambda: |-
+                  int status = response->status_code;
+                  if (status == 401) {
+                    ESP_LOGW("paperboy", "key rejected, registering again");
+                    id(api_key).make_call().set_value("").perform();
+                    return;
+                  }
+                  if (status != 200) {
+                    ESP_LOGW("paperboy", "sync: HTTP %d", status);
+                    pb_note_for_next_wake(str_sprintf("sync answered HTTP %d", status));
+                    return;
+                  }
+                  id(wake_reason) = "timer";
+                  bool changed = false;
+                  json::parse_json(body, [&](JsonObject root) -> bool {
+                    int refresh = root["refresh_s"] | 60;
+                    id(next_sync) = millis() + (uint32_t) std::max(refresh, 10) * 1000;
+                    changed = pb_take_text(root["text"]);
+                    id(fw_offered) = root["firmware"]["version"] | "";
+                    id(fw_path) = root["firmware"]["path"] | "";
+                    id(fw_md5) = root["firmware"]["md5"] | "";
+                    return true;
+                  });
+                  id(setup_shown) = "";
+                  if (changed) {
+                    id(text_display).update();
+                  }
+          on_error:
+            then:
+              - lambda: 'pb_note_for_next_wake("sync request failed");'
+              - logger.log: "sync request failed"
+      - if:
+          condition:
+            lambda: "return !id(fw_path).empty() && !id(fw_md5).empty();"
+          then:
+            # Paperboy decided; the device flashes and reboots, and the next
+            # sync reports the result.
+            - lambda: |-
+                ESP_LOGI("paperboy", "firmware update ${fw_version} -> %s", id(fw_offered).c_str());
+                pb_show_message("Firmware update\n" + id(fw_offered));
+            - component.update: text_display
+            - ota.http_request.flash:
+                url: !lambda "return pb_base(id(paperboy_url).state) + id(fw_path);"
+                md5: !lambda "return id(fw_md5);"
+            - lambda: |-
+                pb_note_for_next_wake("firmware update to " + id(fw_offered) + " failed");
+                id(fw_path) = "";
+                pb_text_hash.clear();
+
+  # GET /api/device/text with the last hash; 304 leaves the display alone.
+  - id: do_poll
+    mode: single
+    then:
+      - lambda: |-
+          id(auth_header) = "Bearer " + id(api_key).state;
+          id(etag_header) = pb_text_hash.empty() ? "" : "\"" + pb_text_hash + "\"";
+      - http_request.get:
+          url: !lambda 'return pb_base(id(paperboy_url).state) + "/api/device/text";'
+          capture_response: true
+          max_response_buffer_size: 1024
+          request_headers:
+            Authorization: !lambda "return id(auth_header).c_str();"
+            If-None-Match: !lambda "return id(etag_header).c_str();"
+          on_response:
+            then:
+              - lambda: |-
+                  int status = response->status_code;
+                  if (status == 304) {
+                    return;
+                  }
+                  if (status == 401) {
+                    ESP_LOGW("paperboy", "key rejected, registering again");
+                    id(api_key).make_call().set_value("").perform();
+                    return;
+                  }
+                  if (status != 200) {
+                    ESP_LOGW("paperboy", "text poll: HTTP %d", status);
+                    return;
+                  }
+                  bool changed = false;
+                  json::parse_json(body, [&](JsonObject root) -> bool {
+                    changed = pb_take_text(root);
+                    return true;
+                  });
+                  if (changed) {
+                    id(text_display).update();
+                  }
+          on_error:
+            then:
+              - logger.log:
+                  level: DEBUG
+                  format: "text poll failed"

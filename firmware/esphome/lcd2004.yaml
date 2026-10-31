@@ -1,0 +1,37 @@
+# Paperboy firmware for an HD44780 text display with 20 x 4 characters behind
+# a PCF8574 I2C expander on an ESP32 dev board (ADR 0044). The shared cycle
+# lives in text-common.yaml; this file holds the hardware.
+#
+# Configure the display type in paperboy.yaml with kind: text, size: [20, 4]
+# and charset: hd44780; the firmware maps ä ö ü ß ° µ to the A00 ROM codes.
+
+substitutions:
+  hardware: lcd2004
+  fw_version: "0.1.0"
+  # Optional default for the Paperboy URL entered in the web UI.
+  default_paperboy_url: ""
+
+packages:
+  paperboy: !include text-common.yaml
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+
+display:
+  - platform: lcd_pcf8574
+    id: text_display
+    dimensions: 20x4
+    address: 0x27
+    update_interval: never
+    lambda: |-
+      for (size_t row = 0; row < pb_lines.size() && row < 4; row++) {
+        it.print(0, row, pb_hd44780(pb_lines[row]).c_str());
+      }
