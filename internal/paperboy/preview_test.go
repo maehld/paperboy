@@ -24,10 +24,10 @@ blocks:
 
 func writePage(t *testing.T, s *Server, name, display, yaml string) {
 	t.Helper()
-	if err := os.MkdirAll(s.cfg.Pages, 0o755); err != nil {
+	if err := os.MkdirAll(s.config().Pages, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(s.cfg.Pages, name+"."+display+".yaml")
+	path := filepath.Join(s.config().Pages, name+"."+display+".yaml")
 	if err := os.WriteFile(path, []byte(yaml), 0o644); err != nil {
 		t.Fatal(err)
 	}

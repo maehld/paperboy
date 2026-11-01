@@ -292,14 +292,15 @@ func (s *Server) settleFirmwareLocked(d *Device, st *deviceState) {
 }
 
 // offerFirmwareLocked decides whether this sync carries an update offer and
-// logs the decision when it changes. Callers hold s.mu.
-func (s *Server) offerFirmwareLocked(d *Device, st *deviceState, img *firmwareImage, volts float64, haveVolts bool, now time.Time) *firmwareOffer {
+// logs the decision when it changes. cfg is the configuration snapshot the
+// caller works with; callers hold s.mu.
+func (s *Server) offerFirmwareLocked(d *Device, st *deviceState, cfg *Config, img *firmwareImage, volts float64, haveVolts bool, now time.Time) *firmwareOffer {
 	reason := ""
 	// Text displays run on mains power (ADR 0044) and report no battery.
-	mains := s.cfg.Profiles[d.Profile].text()
+	mains := cfg.Profiles[d.Profile].text()
 	switch {
 	case img == nil || sameVersion(st.Firmware, img):
-	case s.cfg.Firmware.Update != firmwareAuto:
+	case cfg.Firmware.Update != firmwareAuto:
 		reason = "updates off"
 	case d.Hold:
 		reason = "held"
@@ -311,7 +312,7 @@ func (s *Server) offerFirmwareLocked(d *Device, st *deviceState, img *firmwareIm
 		return s.makeOfferLocked(d, st, img, now)
 	case !haveVolts:
 		reason = "battery unknown"
-	case volts < s.cfg.Firmware.MinBatteryVolts || st.BatteryLevel != batteryOK:
+	case volts < cfg.Firmware.MinBatteryVolts || st.BatteryLevel != batteryOK:
 		reason = "battery low"
 	case st.FirmwareOffered == img.Version && st.FirmwareOfferedMD5 == img.MD5 && st.FirmwareFailures >= firmwareFailureLimit:
 		reason = "failed " + strconv.Itoa(st.FirmwareFailures) + " times"

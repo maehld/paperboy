@@ -32,7 +32,9 @@ func run() error {
 	}
 	cfg, err := paperboy.LoadConfig(*dir)
 	if err != nil {
-		return err
+		slog.Error("paperboy.yaml not usable; starting degraded (it will be applied without a restart once it is valid)",
+			"dir", *dir, "error", err)
+		cfg = paperboy.DegradedConfig(*dir)
 	}
 	srv, err := paperboy.New(cfg)
 	if err != nil {

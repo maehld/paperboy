@@ -19,14 +19,17 @@ import (
 
 	"github.com/maehld/paperboy/internal/data"
 	"github.com/maehld/paperboy/internal/page"
-	"github.com/maehld/paperboy/internal/provider"
 )
 
 // Server implements the device API (ADR 0042) and the data document. Pages are
-// rendered from templates and chosen by plans.
+// rendered from templates and chosen by plans. The configuration reloads from
+// paperboy.yaml when the file changes (ADR 0047): handlers read the current
+// configuration through config, and the providers are reconciled on the same
+// reload.
 type Server struct {
-	cfg         *Config
-	devicesPath string // state/devices.json in the instance directory
+	cfg         *configLoader    // current configuration, reloaded on change (ADR 0047)
+	providers   *providerManager // running exec providers, reconciled on reload
+	devicesPath string           // state/devices.json in the instance directory
 	now         func() time.Time
 
 	mu    sync.Mutex
@@ -39,6 +42,12 @@ type Server struct {
 	logs     *logSeen                 // delivered device log entries (own lock)
 	firmware *firmwareStore           // OTA images (ADR 0043; own lock)
 	fwNotes  map[string]string        // device ID → last logged reason for withholding an update
+}
+
+// config returns the current configuration, reloading it from paperboy.yaml
+// when the file changed (ADR 0047).
+func (s *Server) config() *Config {
+	return s.cfg.get()
 }
 
 // New loads the device state and prepares templates and plans. Only state/ is
@@ -68,34 +77,36 @@ func New(cfg *Config) (*Server, error) {
 		}
 		slog.Info("device state migrated to device ids", "entries", moved)
 	}
-	s := &Server{cfg: cfg, devicesPath: devicesPath, now: time.Now, state: state,
+	// The configuration is normalized here and then reloaded from paperboy.yaml
+	// whenever the file changes (ADR 0047). The given configuration is the last
+	// valid one; a degraded start hands over a configuration without display
+	// types or devices and applies the file as soon as it becomes valid.
+	if cfg.Pages == "" {
+		cfg.Pages = filepath.Join(cfg.Dir, pagesDirName)
+	}
+	if cfg.Plans == "" {
+		cfg.Plans = filepath.Join(cfg.Dir, plansDirName)
+	}
+	if cfg.ProvidersDir == "" {
+		cfg.ProvidersDir = filepath.Join(cfg.Dir, providersDirName)
+	}
+	if cfg.FirmwareDir == "" {
+		cfg.FirmwareDir = filepath.Join(cfg.Dir, firmwareDirName)
+	}
+	s := &Server{cfg: newConfigLoader(cfg.Dir, cfg), providers: newProviderManager(),
+		devicesPath: devicesPath, now: time.Now, state: state,
 		plans: newPlanLoader(), rendered: map[string]*renderedPage{}, hints: map[string][]byte{},
 		logs: newLogSeen(), fwNotes: map[string]string{}}
-	if s.cfg.Pages == "" {
-		s.cfg.Pages = filepath.Join(cfg.Dir, pagesDirName)
-	}
-	if s.cfg.Plans == "" {
-		s.cfg.Plans = filepath.Join(cfg.Dir, plansDirName)
-	}
-	if s.cfg.ProvidersDir == "" {
-		s.cfg.ProvidersDir = filepath.Join(cfg.Dir, providersDirName)
-	}
-	if s.cfg.FirmwareDir == "" {
-		s.cfg.FirmwareDir = filepath.Join(cfg.Dir, firmwareDirName)
-	}
-	s.firmware = newFirmwareStore(s.cfg.FirmwareDir)
-	// A plan named in the configuration must exist (ADR 0026). A broken file is
-	// reported and replaced by a notice page instead.
-	for i := range s.cfg.Devices {
-		d := &s.cfg.Devices[i]
+	s.firmware = newFirmwareStore(cfg.FirmwareDir)
+	// A plan named in the configuration is reported when it is missing or broken
+	// (ADR 0026); the device gets a notice page instead of an error, so a
+	// reloaded configuration never aborts the server.
+	for i := range cfg.Devices {
+		d := &cfg.Devices[i]
 		if d.Plan == "" {
 			continue
 		}
-		path := filepath.Join(s.cfg.Plans, d.Plan+".yaml")
-		if _, err := os.Stat(path); err != nil {
-			return nil, fmt.Errorf("device %s: plan %q: %w", d.ID, d.Plan, err)
-		}
-		if p, err := s.plans.get(s.cfg.Plans, d.Plan, s.cfg.Timezone); p == nil || err != nil {
+		if p, err := s.plans.get(cfg.Plans, d.Plan, cfg.Timezone); p == nil || err != nil {
 			slog.Error("plan not usable", "device", d.ID, "plan", d.Plan, "error", err)
 		}
 	}
@@ -107,37 +118,12 @@ func New(cfg *Config) (*Server, error) {
 	return s, nil
 }
 
-// StartProviders runs the configured exec providers until ctx is done
-// (ADR 0036). Each provider writes its own data branch in process; failures
-// only appear in the log and leave the previous data in place.
+// StartProviders starts the configuration reload loop, which runs the exec
+// providers until ctx is done and restarts them whenever paperboy.yaml changes
+// (ADR 0036, 0047). Each provider writes its own data branch in process;
+// failures only appear in the log and leave the previous data in place.
 func (s *Server) StartProviders(ctx context.Context) {
-	tz := "UTC"
-	if s.cfg.Timezone != nil {
-		tz = s.cfg.Timezone.String()
-	}
-	for _, p := range s.cfg.Providers {
-		env := map[string]string{
-			"PAPERBOY_LANGUAGE": s.cfg.Language,
-			"PAPERBOY_TIMEZONE": tz,
-		}
-		for k, v := range p.Env {
-			env[k] = v
-		}
-		runner := &provider.Runner{
-			Spec: provider.Spec{
-				Name:     p.Name,
-				Command:  p.Command,
-				Path:     p.Path,
-				Interval: time.Duration(p.Interval),
-				Timeout:  time.Duration(p.Timeout),
-				Env:      env,
-				Dir:      s.cfg.ProvidersDir,
-			},
-			Sink: s.doc,
-			Now:  func() time.Time { return s.now() },
-		}
-		go runner.Run(ctx)
-	}
+	go s.configLoop(ctx)
 }
 
 func (s *Server) Handler() http.Handler {
@@ -174,10 +160,11 @@ type profileInfo struct {
 }
 
 func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	list := []profileInfo{}
-	for name, p := range s.cfg.Profiles {
+	for name, p := range cfg.Profiles {
 		list = append(list, profileInfo{Name: name, Profile: p})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"profiles": list})
@@ -185,7 +172,9 @@ func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) authorized(r *http.Request) bool {
 	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	return ok && subtle.ConstantTimeCompare([]byte(token), []byte(s.cfg.UploadToken)) == 1
+	// An empty token is never authorized: a degraded start without a usable
+	// paperboy.yaml must not open the data API to empty bearer headers.
+	return ok && token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(s.config().UploadToken)) == 1
 }
 
 // maxDataBytes caps a single write to the data document.
@@ -282,18 +271,19 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 // deviceInfos builds the device list for the devices API and the dashboard.
 // The firmware directory is read after the state lock is released.
 func (s *Server) deviceInfos() []deviceInfo {
+	cfg := s.config()
 	s.mu.Lock()
 	now := s.now()
 	list := []deviceInfo{}
-	devices := make([]Device, 0, len(s.cfg.Devices))
-	for _, d := range s.cfg.Devices {
+	devices := make([]Device, 0, len(cfg.Devices))
+	for _, d := range cfg.Devices {
 		info := deviceInfo{ID: d.ID, Type: d.Type, MAC: d.MAC, Profile: d.Profile, Plan: d.Plan}
 		if st := s.state[d.key()]; st != nil {
 			info.deviceState = *st
 			info.Registered = st.APIKey != ""
 		}
 		info.Status = deviceStatus(d, info.deviceState, now)
-		if info.LastPageHash != "" && !s.cfg.Profiles[d.Profile].text() {
+		if info.LastPageHash != "" && !cfg.Profiles[d.Profile].text() {
 			if info.LastPageKind == "page" && info.LastPage != "" {
 				info.LastPageURL = fmt.Sprintf("/pages/%s/%s/%s.png", d.Profile, info.LastPage, info.LastPageHash)
 			} else {
@@ -386,7 +376,7 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	display, name := r.PathValue("display"), r.PathValue("page")
-	p, ok := s.cfg.Profiles[display]
+	p, ok := s.config().Profiles[display]
 	if !ok {
 		http.NotFound(w, r)
 		return

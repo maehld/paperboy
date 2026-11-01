@@ -36,7 +36,7 @@ func TestVersionText(t *testing.T) {
 func TestDashboardShowsBuildInfo(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	body := htmlRequest(t, s, "/ui").Body.String()
-	if want := versionText(build, s.cfg.Timezone); !strings.Contains(body, want) {
+	if want := versionText(build, s.config().Timezone); !strings.Contains(body, want) {
 		t.Fatalf("build label %q missing: %s", want, body)
 	}
 	if !strings.Contains(body, `title="Go `) {

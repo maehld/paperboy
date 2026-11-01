@@ -85,7 +85,7 @@ devices:
 - `plan` must name an existing `plans/<name>.yaml`; a missing file aborts the start, a broken plan shows a notice page. Without `plan` the device shows a notice page in the configured language („Kein Plan konfiguriert“ / “No plan configured”).
 - `upload_token_env` names the variable that holds the token; `upload_token` puts it into the file. `PAPERBOY_UPLOAD_TOKEN` (and the legacy `DISPLAYD_UPLOAD_TOKEN`) override both.
 - `-config` names the instance directory (default `.`); Paperboy reads `<dir>/paperboy.yaml` and finds all other directories there. A file argument is rejected with an explanation, and a `.json` configuration is no longer read.
-- The configuration is read once at startup; reloading it without a restart is still open (TODO).
+- The configuration is reloaded on change without a restart (ADR 0047): handlers pick up a modified `paperboy.yaml` on the next request, exec providers are restarted by the background loop, and a broken file keeps the last valid configuration while a missing one leaves the current configuration alone. With no usable file at startup the server still starts (degraded: no display types, no devices) and applies the file once it becomes valid.
 
 ## Behavior
 

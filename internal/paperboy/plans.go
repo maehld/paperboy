@@ -63,16 +63,17 @@ func (s *Server) renderPage(profile, name string, now time.Time, pos pagePositio
 		}
 	}()
 	start := time.Now()
-	p, ok := s.cfg.Profiles[profile]
+	cfg := s.config()
+	p, ok := cfg.Profiles[profile]
 	if !ok {
 		return nil, fmt.Errorf("unknown display type %q", profile)
 	}
-	tmpl, err := page.Load(s.cfg.Pages, name, profile)
+	tmpl, err := page.Load(cfg.Pages, name, profile)
 	if err != nil {
 		return nil, err
 	}
 	img, err := tmpl.RenderContext(s.doc, page.Display{
-		Width: p.Width, Height: p.Height, Gray: p.Gray, Language: s.cfg.Language, Timezone: s.cfg.Timezone,
+		Width: p.Width, Height: p.Height, Gray: p.Gray, Language: cfg.Language, Timezone: cfg.Timezone,
 	}, page.Context{Now: now, Page: pos.index + 1, Pages: pos.count, Banners: banners})
 	if err != nil {
 		return nil, err
@@ -86,8 +87,9 @@ func (s *Server) renderPage(profile, name string, now time.Time, pos pagePositio
 
 // textDisplay describes a text display type for the page package.
 func (s *Server) textDisplay(p Profile) page.TextDisplay {
+	cfg := s.config()
 	return page.TextDisplay{Columns: p.Width, Rows: p.Height, Charset: p.Charset,
-		Language: s.cfg.Language, Timezone: s.cfg.Timezone}
+		Language: cfg.Language, Timezone: cfg.Timezone}
 }
 
 // hashLines is the content hash of a text page.
@@ -104,11 +106,12 @@ func (s *Server) renderText(profile, name string, now time.Time, pos pagePositio
 			lines, err = nil, fmt.Errorf("page rendering panicked: %v", r)
 		}
 	}()
-	p, ok := s.cfg.Profiles[profile]
+	cfg := s.config()
+	p, ok := cfg.Profiles[profile]
 	if !ok || !p.text() {
 		return nil, fmt.Errorf("unknown text display type %q", profile)
 	}
-	tmpl, err := page.LoadText(s.cfg.Pages, name, profile)
+	tmpl, err := page.LoadText(cfg.Pages, name, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +132,8 @@ func (s *Server) notice(profile string, img *image.Paletted) servedPage {
 // hint registers a notice page with a title and a line of text. It draws the
 // page before touching the server state and may be called without the lock.
 func (s *Server) hint(profile, title, text string) servedPage {
-	p, ok := s.cfg.Profiles[profile]
+	cfg := s.config()
+	p, ok := cfg.Profiles[profile]
 	if !ok { // never expected: the device's display type was validated
 		p = Profile{Width: 400, Height: 300}
 	}
@@ -152,12 +156,24 @@ func (s *Server) storePage(profile, name string, rp *renderedPage) servedPage {
 	return servedPage{path: fmt.Sprintf("/pages/%s/%s/%s.png", profile, name, rp.hash), hash: rp.hash}
 }
 
-// planEntry caches one plan file; mod and size detect changes on disk.
+// planEntry caches one plan file; mod and size detect changes on disk. The
+// timezone belongs to the cache key too: a changed global timezone re-parses
+// the plan even when the file itself did not change (ADR 0047).
 type planEntry struct {
 	mod  time.Time
 	size int64
+	loc  string // timezone name the plan was parsed with
 	p    *plan.Plan
 	err  error
+}
+
+// locName names a timezone for the plan cache key; the system local timezone
+// gets a stable name that does not depend on the process location.
+func locName(loc *time.Location) string {
+	if loc == nil {
+		return "local"
+	}
+	return loc.String()
 }
 
 // planLoader reloads plans when their file changes. A broken file keeps the
@@ -173,7 +189,8 @@ func newPlanLoader() *planLoader {
 
 // get returns the current plan and the error of the last load attempt. p is
 // nil when the plan was never valid; err may be set even when p is usable. Time
-// windows use loc, the global timezone (ADR 0033).
+// windows use loc, the global timezone (ADR 0033); a changed timezone re-parses
+// the plan, so reloading the configuration also moves the plan rules (ADR 0047).
 func (l *planLoader) get(dir, name string, loc *time.Location) (*plan.Plan, error) {
 	path := filepath.Join(dir, name+".yaml")
 	info, err := os.Stat(path)
@@ -182,7 +199,8 @@ func (l *planLoader) get(dir, name string, loc *time.Location) (*plan.Plan, erro
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if e := l.entries[name]; e != nil && e.mod.Equal(info.ModTime()) && e.size == info.Size() {
+	zone := locName(loc)
+	if e := l.entries[name]; e != nil && e.mod.Equal(info.ModTime()) && e.size == info.Size() && e.loc == zone {
 		return e.p, e.err
 	}
 	data, err := os.ReadFile(path)
@@ -190,7 +208,7 @@ func (l *planLoader) get(dir, name string, loc *time.Location) (*plan.Plan, erro
 		return nil, err
 	}
 	p, parseErr := plan.Parse(bytes.NewReader(data), loc)
-	entry := &planEntry{mod: info.ModTime(), size: info.Size(), p: p, err: parseErr}
+	entry := &planEntry{mod: info.ModTime(), size: info.Size(), loc: zone, p: p, err: parseErr}
 	if parseErr != nil {
 		slog.Error("plan invalid, keeping the last valid version", "plan", name, "error", parseErr)
 		if old := l.entries[name]; old != nil && old.p != nil {
@@ -219,12 +237,13 @@ type planChoice struct {
 // choosePlanPage evaluates the device plan and advances the rotation state.
 // Callers hold s.mu; rendering happens later in renderPlan.
 func (s *Server) choosePlanPage(d *Device, st *deviceState, now time.Time, firstContact bool, buttons []string, pageTimeout time.Duration, quiet bool) planChoice {
-	p, err := s.plans.get(s.cfg.Plans, d.Plan, s.cfg.Timezone)
+	cfg := s.config()
+	p, err := s.plans.get(cfg.Plans, d.Plan, cfg.Timezone)
 	if p == nil {
 		if !quiet {
 			slog.Error("plan unavailable", "device", d.ID, "plan", d.Plan, "error", err)
 		}
-		title, text := s.cfg.texts().planMissing(), shorten(fmt.Sprintf("%s: %v", d.Plan, err))
+		title, text := cfg.texts().planMissing(), shorten(fmt.Sprintf("%s: %v", d.Plan, err))
 		if err == nil {
 			err = fmt.Errorf("plan %s missing", d.Plan)
 		}
@@ -235,7 +254,7 @@ func (s *Server) choosePlanPage(d *Device, st *deviceState, now time.Time, first
 	}
 	sel, ok := p.Select(now)
 	if !ok {
-		title, text := s.cfg.texts().noSelection()
+		title, text := cfg.texts().noSelection()
 		return planChoice{title: title, text: text}
 	}
 	n := len(sel.Pages)
@@ -268,7 +287,7 @@ func (s *Server) choosePlanPage(d *Device, st *deviceState, now time.Time, first
 		st.Page = 0
 	}
 	page := st.Page
-	floor := s.cfg.minRefresh(d.Profile)
+	floor := cfg.minRefresh(d.Profile)
 	refresh := time.Duration(sel.Refresh)
 	if refresh == 0 {
 		refresh = d.refresh()
@@ -283,7 +302,7 @@ func (s *Server) choosePlanPage(d *Device, st *deviceState, now time.Time, first
 	}
 	c := planChoice{page: page, pages: n, name: sel.Pages[page], refresh: refresh}
 	if st.BatteryLevel == batteryWarn {
-		c.banners = append(c.banners, s.cfg.texts().lowBattery(voltageKey(st.BatteryVoltage)))
+		c.banners = append(c.banners, cfg.texts().lowBattery(voltageKey(st.BatteryVoltage)))
 	}
 	return c
 }
@@ -298,7 +317,8 @@ func (s *Server) renderPlan(d *Device, c planChoice, now time.Time, quiet bool) 
 		sp.page, sp.pages = c.page, c.pages
 		return sp
 	}
-	if s.cfg.Profiles[d.Profile].text() {
+	cfg := s.config()
+	if cfg.Profiles[d.Profile].text() {
 		lines, err := s.renderText(d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages})
 		if err != nil {
 			return s.pageFailed(d, c, err, quiet)
@@ -320,7 +340,7 @@ func (s *Server) pageFailed(d *Device, c planChoice, err error, quiet bool) serv
 	if !quiet {
 		slog.Error("page rendering failed", "device", d.ID, "page", c.name, "error", err)
 	}
-	sp := s.hint(d.Profile, s.cfg.texts().pageError(c.name), shorten(err.Error()))
+	sp := s.hint(d.Profile, s.config().texts().pageError(c.name), shorten(err.Error()))
 	sp.page, sp.pages = c.page, c.pages
 	sp.err = err
 	return sp

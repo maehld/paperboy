@@ -52,7 +52,7 @@ func TestBatteryWarningFlow(t *testing.T) {
   - name: tag
     pages: [eins, zwei]
 `)
-	s.cfg.Battery = &Battery{WarnVolts: 3.45, CriticalVolts: 3.3, HysteresisVolts: 0.1}
+	s.config().Battery = &Battery{WarnVolts: 3.45, CriticalVolts: 3.3, HysteresisVolts: 0.1}
 	dev := planDevice(t, s)
 	setVolts := func(v float64) { dev.req.Battery = &syncBattery{Volts: v} }
 	setVolts(3.74)

@@ -178,9 +178,9 @@ func TestNewCreatesOnlyStateDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.cfg.Pages != filepath.Join(dir, "pages") || s.cfg.Plans != filepath.Join(dir, "plans") ||
-		s.cfg.ProvidersDir != filepath.Join(dir, "providers") {
-		t.Fatalf("derived directories: %q %q %q", s.cfg.Pages, s.cfg.Plans, s.cfg.ProvidersDir)
+	if s.config().Pages != filepath.Join(dir, "pages") || s.config().Plans != filepath.Join(dir, "plans") ||
+		s.config().ProvidersDir != filepath.Join(dir, "providers") {
+		t.Fatalf("derived directories: %q %q %q", s.config().Pages, s.config().Plans, s.config().ProvidersDir)
 	}
 	if fi, err := os.Stat(filepath.Join(dir, "state")); err != nil || !fi.IsDir() {
 		t.Fatalf("state directory: %v", err)
