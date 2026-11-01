@@ -46,7 +46,7 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
 
 ## Configuration
 
-`paperboy.yaml` is the only configuration format (ADR 0026) and lives in the instance directory. Parsing is strict: unknown keys abort the start, as do missing plans, duplicate MAC addresses and unsupported protocols.
+`paperboy.yaml` is the only configuration format (ADR 0026) and lives in the instance directory. Parsing is strict: unknown keys, duplicate MAC addresses and unsupported protocols abort the start. A plan that is missing or broken does not: it is logged and the device gets a notice page, because plan files may be added while the server runs (ADR 0047).
 
 ```yaml
 language: de            # de or en; default: system language
@@ -82,10 +82,10 @@ devices:
 - `language` (`de` or `en`) selects the language of the built-in image texts and the number format. Without it Paperboy uses the system language (Windows UI language, otherwise `LANG`/`LC_ALL`/`LC_MESSAGES`) and falls back to English. `timezone` (IANA name) applies to plans and built-in dates; without it the system timezone is used.
 - `protocol` accepts only `paperboy` (the default) for now: devices running the Paperboy firmware (ADR 0042). `trmnl` was removed and aborts the start, as does the former `server.public_url` (images are fetched relative to the URL configured on the device). `opendisplay` is rejected until plans cover it; `text-http`/`image-http` were replaced by the device API (ADR 0044) and abort the start.
 - A display type with `kind: text` is a text display (ADR 0044): `size: [columns, rows]` in characters (at most 80 × 24) and `charset: utf8|ascii|hd44780` (default `utf8`); `gray_levels` and `width_mm` are rejected for it.
-- `plan` must name an existing `plans/<name>.yaml`; a missing file aborts the start, a broken plan shows a notice page. Without `plan` the device shows a notice page in the configured language („Kein Plan konfiguriert“ / “No plan configured”).
+- `plan` should name an existing `plans/<name>.yaml`; a missing or broken plan is logged and shows a notice page instead of aborting the start, so a plan file can be added while the server runs (ADR 0047). Without `plan` the device shows a notice page in the configured language („Kein Plan konfiguriert“ / “No plan configured”).
 - `upload_token_env` names the variable that holds the token; `upload_token` puts it into the file. `PAPERBOY_UPLOAD_TOKEN` (and the legacy `DISPLAYD_UPLOAD_TOKEN`) override both.
 - `-config` names the instance directory (default `.`); Paperboy reads `<dir>/paperboy.yaml` and finds all other directories there. A file argument is rejected with an explanation, and a `.json` configuration is no longer read.
-- The configuration is read once at startup; reloading it without a restart is still open (TODO).
+- The configuration is reloaded on change without a restart (ADR 0047): handlers pick up a modified `paperboy.yaml` on the next request, exec providers are restarted by the background loop, and a broken file keeps the last valid configuration while a missing one leaves the current configuration alone. With no usable file at startup in an existing instance directory the server still starts (degraded: no display types, no devices) and applies the file as soon as it loads, even when its mod time did not change; a wrong `-config` stays fatal.
 
 ## Behavior
 

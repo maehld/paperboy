@@ -53,7 +53,8 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
-	profiles := s.cfg.Profiles
+	cfg := s.config()
+	profiles := cfg.Profiles
 	cards := []dashboardDevice{}
 	for _, d := range s.deviceInfos() {
 		cards = append(cards, dashboardDevice{
@@ -76,7 +77,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	loc := s.cfg.Timezone
+	loc := cfg.Timezone
 	if loc == nil {
 		loc = time.UTC
 	}

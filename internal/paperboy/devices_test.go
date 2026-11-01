@@ -56,7 +56,7 @@ func TestDevicesAPIShowsServedPage(t *testing.T) {
 // page that was not drawn.
 func TestDevicesAPIReportsNoticeKeepsError(t *testing.T) {
 	s, _ := planServer(t, "rules: [{name: tag, pages: [kaputt]}]\n")
-	writePageFile(t, s.cfg.Pages+"/kaputt.small.yaml", "rows: [1]\nblocks: [\n")
+	writePageFile(t, s.config().Pages+"/kaputt.small.yaml", "rows: [1]\nblocks: [\n")
 	dev := planDevice(t, s)
 	displayPage(t, s, dev)
 
@@ -75,7 +75,7 @@ func TestDevicesAPIReportsNoticeKeepsError(t *testing.T) {
 		t.Fatalf("render error not reported: %q", err)
 	}
 	// Fixing the template clears the error with the next request.
-	writePageFile(t, s.cfg.Pages+"/kaputt.small.yaml", "rows: [1]\nblocks:\n  - text: \"ok\"\n")
+	writePageFile(t, s.config().Pages+"/kaputt.small.yaml", "rows: [1]\nblocks:\n  - text: \"ok\"\n")
 	displayPage(t, s, dev)
 	if info := deviceInfoOf(t, s); info["last_page_kind"] != "page" || info["last_error"] != nil {
 		t.Fatalf("fixed page must clear the error: %v", info)

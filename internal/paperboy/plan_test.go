@@ -279,7 +279,7 @@ rules:
 	}
 	// A missing plan file also yields a notice page.
 	s2, _ := planServer(t, testPlan)
-	s2.cfg.Devices[0].Plan = "gibtsnicht"
+	s2.config().Devices[0].Plan = "gibtsnicht"
 	dev2 := planDevice(t, s2)
 	out = displayPage(t, s2, dev2)
 	if got := pagePath(out); !strings.HasPrefix(got, "/hints/") {
@@ -296,7 +296,7 @@ rules:
   - name: tag
     pages: [daten]
 `)
-	writePageFile(t, filepath.Join(s.cfg.Pages, "daten.small.yaml"),
+	writePageFile(t, filepath.Join(s.config().Pages, "daten.small.yaml"),
 		"rows: [1]\nblocks:\n  - text: \"Akku {{ percent .akku.soc }}\"\n")
 	dev := planDevice(t, s)
 	first := pagePath(displayPage(t, s, dev))

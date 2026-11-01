@@ -126,7 +126,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if !decodeDeviceJSON(w, r, &req) {
 		return
 	}
-	d := s.cfg.device(req.MAC)
+	d := s.config().device(req.MAC)
 	if d == nil {
 		slog.Warn("registration from unknown device; add its MAC to the configuration",
 			"mac", normalizeMAC(req.MAC), "hardware", req.Hardware, "firmware", req.Firmware)
@@ -147,14 +147,15 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"key": key, "device": d.ID})
 }
 
-// deviceByKeyLocked finds the device that owns the bearer key; callers hold s.mu.
-func (s *Server) deviceByKeyLocked(r *http.Request) (*Device, *deviceState) {
+// deviceByKeyLocked finds the device that owns the bearer key. cfg is the
+// configuration snapshot the caller works with; callers hold s.mu.
+func (s *Server) deviceByKeyLocked(r *http.Request, cfg *Config) (*Device, *deviceState) {
 	key, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok || key == "" {
 		return nil, nil
 	}
-	for i := range s.cfg.Devices {
-		d := &s.cfg.Devices[i]
+	for i := range cfg.Devices {
+		d := &cfg.Devices[i]
 		st := s.state[d.key()]
 		if st != nil && st.APIKey != "" && subtle.ConstantTimeCompare([]byte(key), []byte(st.APIKey)) == 1 {
 			return d, st
@@ -172,13 +173,14 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	if !decodeDeviceJSON(w, r, &req) {
 		return
 	}
+	cfg := s.config()
 	// The firmware directory is read before taking the state lock.
 	var img *firmwareImage
 	if req.Hardware != "" {
 		img, _ = s.firmware.latest(req.Hardware)
 	}
 	s.mu.Lock()
-	d, st := s.deviceByKeyLocked(r)
+	d, st := s.deviceByKeyLocked(r, cfg)
 	if d == nil {
 		s.mu.Unlock()
 		slog.Warn("sync with unknown key; the device registers again", "remote", r.RemoteAddr)
@@ -208,15 +210,15 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		st.BatteryPercent, st.BatteryMAH = b.Percent, b.MAH
 	}
 	prevLevel := st.BatteryLevel
-	st.BatteryLevel = nextBatteryLevel(s.cfg.battery(d), prevLevel, st.BatteryVoltage)
+	st.BatteryLevel = nextBatteryLevel(cfg.battery(d), prevLevel, st.BatteryVoltage)
 	critical := st.BatteryLevel == batteryCritical
-	pageTimeout := time.Duration(s.cfg.PageTimeout)
+	pageTimeout := time.Duration(cfg.PageTimeout)
 	s.settleFirmwareLocked(d, st)
 	var volts float64
 	if req.Battery != nil {
 		volts = req.Battery.Volts
 	}
-	offer := s.offerFirmwareLocked(d, st, img, volts, req.Battery != nil, now)
+	offer := s.offerFirmwareLocked(d, st, cfg, img, volts, req.Battery != nil, now)
 
 	var buttons []string
 	input := req.Reason == "button" || req.Reason == "touch"
@@ -227,16 +229,16 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	floor := s.cfg.minRefresh(d.Profile)
-	textDisplay := s.cfg.Profiles[d.Profile].text()
+	floor := cfg.minRefresh(d.Profile)
+	textDisplay := cfg.Profiles[d.Profile].text()
 	var choice planChoice
 	switch {
 	case critical: // the warning replaces all pages; buttons only show it again
 		st.Page = 0
 	case d.Plan != "":
-		choice = s.choosePlanPage(d, st, now, firstContact, buttons, pageTimeout, false)
+		choice = s.choosePlanPage(cfg, d, st, now, firstContact, buttons, pageTimeout, false)
 	default:
-		choice.title, choice.text = s.cfg.texts().noPlan()
+		choice.title, choice.text = cfg.texts().noPlan()
 	}
 	logged := *st
 	stateData := s.stateSnapshotLocked()
@@ -257,17 +259,17 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	var served servedPage
 	switch {
 	case critical:
-		if p := s.cfg.Profiles[d.Profile]; p.text() {
-			title, text := s.cfg.texts().criticalBattery(voltageKey(logged.BatteryVoltage))
-			served = s.hint(d.Profile, title, text)
+		if p := cfg.Profiles[d.Profile]; p.text() {
+			title, text := cfg.texts().criticalBattery(voltageKey(logged.BatteryVoltage))
+			served = s.hint(cfg, d.Profile, title, text)
 		} else {
-			served = s.notice(d.Profile, criticalBatteryImage(p, s.cfg.texts(), voltageKey(logged.BatteryVoltage)))
+			served = s.notice(d.Profile, criticalBatteryImage(p, cfg.texts(), voltageKey(logged.BatteryVoltage)))
 		}
 		served.refresh = d.refresh()
 	case d.Plan != "":
-		served = s.renderPlan(d, choice, now, false)
+		served = s.renderPlan(cfg, d, choice, now, false)
 	default:
-		served = s.hint(d.Profile, choice.title, choice.text)
+		served = s.hint(cfg, d.Profile, choice.title, choice.text)
 	}
 	served.refresh = max(served.refresh, floor)
 	refresh := served.refresh
@@ -346,14 +348,15 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 // state file.
 func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
+	cfg := s.config()
 	s.mu.Lock()
-	d, st := s.deviceByKeyLocked(r)
+	d, st := s.deviceByKeyLocked(r, cfg)
 	if d == nil {
 		s.mu.Unlock()
 		http.Error(w, "unknown key", http.StatusUnauthorized)
 		return
 	}
-	if !s.cfg.Profiles[d.Profile].text() {
+	if !cfg.Profiles[d.Profile].text() {
 		s.mu.Unlock()
 		http.Error(w, "not a text display", http.StatusConflict)
 		return
@@ -369,21 +372,21 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 		// A copy keeps the cursor: a rule change or page timeout only shows here
 		// and is stored by the next sync.
 		peek := *st
-		choice = s.choosePlanPage(d, &peek, now, true, nil, time.Duration(s.cfg.PageTimeout), true)
+		choice = s.choosePlanPage(cfg, d, &peek, now, true, nil, time.Duration(cfg.PageTimeout), true)
 	default:
-		choice.title, choice.text = s.cfg.texts().noPlan()
+		choice.title, choice.text = cfg.texts().noPlan()
 	}
 	s.mu.Unlock()
 
 	var served servedPage
 	switch {
 	case critical:
-		title, text := s.cfg.texts().criticalBattery(voltageKey(voltage))
-		served = s.hint(d.Profile, title, text)
+		title, text := cfg.texts().criticalBattery(voltageKey(voltage))
+		served = s.hint(cfg, d.Profile, title, text)
 	case d.Plan != "":
-		served = s.renderPlan(d, choice, now, true)
+		served = s.renderPlan(cfg, d, choice, now, true)
 	default:
-		served = s.hint(d.Profile, choice.title, choice.text)
+		served = s.hint(cfg, d.Profile, choice.title, choice.text)
 	}
 	// The dashboard and /api/devices show what the display shows now. Kept in
 	// memory only; the next sync writes it to state/devices.json.
