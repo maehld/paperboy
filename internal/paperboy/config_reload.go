@@ -30,14 +30,16 @@ type configEntry struct {
 // loader (ADR 0025): a broken file keeps the last valid configuration active
 // and is logged, a missing file leaves the current configuration alone. On a
 // degraded start (no usable paperboy.yaml yet) the server runs on the initial
-// configuration and applies the file as soon as it becomes valid (ADR 0047).
+// configuration and applies the file as soon as it becomes usable, even when
+// its mod time did not change (ADR 0047).
 type configLoader struct {
 	dir string
 
 	mu      sync.Mutex
 	entry   configEntry
 	cfg     *Config
-	missing bool // the last stat failed; the problem is logged once
+	lastErr string // message of the last load failure; the same failure logs once
+	missing bool   // the last stat failed; the problem is logged once
 }
 
 func newConfigLoader(dir string, cfg *Config) *configLoader {
@@ -46,7 +48,8 @@ func newConfigLoader(dir string, cfg *Config) *configLoader {
 		l.entry = configEntry{mod: info.ModTime(), size: info.Size()}
 	} else {
 		l.missing = true
-		slog.Error("paperboy.yaml unreadable, starting with the given configuration",
+		// main logs the startup failure; New also runs in tests without a file.
+		slog.Debug("paperboy.yaml unreadable, starting with the given configuration",
 			"path", filepath.Join(dir, configFileName), "error", err)
 	}
 	return l
@@ -69,16 +72,25 @@ func (l *configLoader) get() *Config {
 		return l.cfg
 	}
 	l.missing = false
-	if l.entry.size == info.Size() && l.entry.mod.Equal(info.ModTime()) {
+	changed := l.entry.size != info.Size() || !l.entry.mod.Equal(info.ModTime())
+	// A changed file reloads at once. A degraded start retries the file on
+	// every access even when it did not change, so a repaired file or a fixed
+	// permission applies without touching it; the same failure is logged once
+	// (ADR 0047).
+	if !changed && !l.cfg.degraded {
 		return l.cfg
 	}
 	l.entry = configEntry{mod: info.ModTime(), size: info.Size()}
 	cfg, loadErr := LoadConfig(l.dir)
 	if loadErr != nil {
-		slog.Error("paperboy.yaml invalid, keeping the last valid configuration",
-			"path", path, "error", loadErr)
+		if msg := loadErr.Error(); msg != l.lastErr {
+			l.lastErr = msg
+			slog.Error("paperboy.yaml invalid, keeping the last valid configuration",
+				"path", path, "error", loadErr)
+		}
 		return l.cfg
 	}
+	l.lastErr = ""
 	slog.Info("configuration loaded", "display_types", len(cfg.Profiles),
 		"devices", len(cfg.Devices), "providers", len(cfg.Providers))
 	l.cfg = cfg
@@ -88,12 +100,12 @@ func (l *configLoader) get() *Config {
 // DegradedConfig returns a minimal configuration for a startup without a
 // usable paperboy.yaml: the server serves the data API, profiles and the
 // dashboard with no display types and no devices, and applies the real
-// configuration as soon as the file becomes valid (ADR 0047).
+// configuration as soon as the file becomes usable (ADR 0047).
 func DegradedConfig(dir string) *Config {
 	if abs, err := filepath.Abs(dir); err == nil {
 		dir = abs
 	}
-	return &Config{Dir: dir, Profiles: map[string]Profile{}}
+	return &Config{Dir: dir, Profiles: map[string]Profile{}, degraded: true}
 }
 
 // providerRun is one running exec provider and the spec it was started with.

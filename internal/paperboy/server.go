@@ -376,13 +376,14 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	display, name := r.PathValue("display"), r.PathValue("page")
-	p, ok := s.config().Profiles[display]
+	cfg := s.config()
+	p, ok := cfg.Profiles[display]
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
 	if p.text() {
-		lines, err := s.renderText(display, name, s.now(), pagePosition{index: 0, count: 1})
+		lines, err := s.renderText(cfg, display, name, s.now(), pagePosition{index: 0, count: 1})
 		if errors.Is(err, page.ErrNotFound) {
 			http.NotFound(w, r)
 			return
@@ -396,7 +397,7 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(strings.Join(lines, "\n") + "\n"))
 		return
 	}
-	rp, err := s.renderPage(display, name, s.now(), pagePosition{index: 0, count: 1})
+	rp, err := s.renderPage(cfg, display, name, s.now(), pagePosition{index: 0, count: 1})
 	if errors.Is(err, page.ErrNotFound) {
 		http.NotFound(w, r)
 		return

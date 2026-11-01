@@ -236,7 +236,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	case critical: // the warning replaces all pages; buttons only show it again
 		st.Page = 0
 	case d.Plan != "":
-		choice = s.choosePlanPage(d, st, now, firstContact, buttons, pageTimeout, false)
+		choice = s.choosePlanPage(cfg, d, st, now, firstContact, buttons, pageTimeout, false)
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
 	}
@@ -261,15 +261,15 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	case critical:
 		if p := cfg.Profiles[d.Profile]; p.text() {
 			title, text := cfg.texts().criticalBattery(voltageKey(logged.BatteryVoltage))
-			served = s.hint(d.Profile, title, text)
+			served = s.hint(cfg, d.Profile, title, text)
 		} else {
 			served = s.notice(d.Profile, criticalBatteryImage(p, cfg.texts(), voltageKey(logged.BatteryVoltage)))
 		}
 		served.refresh = d.refresh()
 	case d.Plan != "":
-		served = s.renderPlan(d, choice, now, false)
+		served = s.renderPlan(cfg, d, choice, now, false)
 	default:
-		served = s.hint(d.Profile, choice.title, choice.text)
+		served = s.hint(cfg, d.Profile, choice.title, choice.text)
 	}
 	served.refresh = max(served.refresh, floor)
 	refresh := served.refresh
@@ -372,7 +372,7 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 		// A copy keeps the cursor: a rule change or page timeout only shows here
 		// and is stored by the next sync.
 		peek := *st
-		choice = s.choosePlanPage(d, &peek, now, true, nil, time.Duration(cfg.PageTimeout), true)
+		choice = s.choosePlanPage(cfg, d, &peek, now, true, nil, time.Duration(cfg.PageTimeout), true)
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
 	}
@@ -382,11 +382,11 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case critical:
 		title, text := cfg.texts().criticalBattery(voltageKey(voltage))
-		served = s.hint(d.Profile, title, text)
+		served = s.hint(cfg, d.Profile, title, text)
 	case d.Plan != "":
-		served = s.renderPlan(d, choice, now, true)
+		served = s.renderPlan(cfg, d, choice, now, true)
 	default:
-		served = s.hint(d.Profile, choice.title, choice.text)
+		served = s.hint(cfg, d.Profile, choice.title, choice.text)
 	}
 	// The dashboard and /api/devices show what the display shows now. Kept in
 	// memory only; the next sync writes it to state/devices.json.
