@@ -96,7 +96,7 @@ providers:
 - The same seam later serves calendar, transit or RSS data without touching the core.
 - **Running configured programs is code execution.** Anyone who can edit `paperboy.yaml` or drop a file into the providers directory can run code as the Paperboy user. This is accepted because both are operator-owned, but it is documented prominently and the directory belongs to the same trust boundary as the token.
 - The provider program must exist in the image (Linux) or next to the data directory (Windows); a shell script additionally needs an interpreter in the container. Missing programs are logged per interval, not fatal at startup.
-- Configuration reloading is still open; providers are read at startup like the rest of `paperboy.yaml`.
+- Providers are reloaded with the rest of `paperboy.yaml` (ADR 0047): the background loop restarts a provider whose spec changed, stops removed ones and starts new ones without a server restart. A broken or missing file keeps the last configuration.
 - The provider owns its branch but not its visual representation: no icons, no font or palette knowledge. A weather page is text, tiles, bars and a temperature chart; a pictogram or icon block would need its own ADR.
 - The data directory is now executable content, so backups and container volumes that carry it carry programs too.
 - Providers depend on two environment variables (`PAPERBOY_LANGUAGE`, `PAPERBOY_TIMEZONE`); a provider that ignores them produces texts or days that disagree with the rest of the page.

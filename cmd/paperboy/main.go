@@ -32,7 +32,15 @@ func run() error {
 	}
 	cfg, err := paperboy.LoadConfig(*dir)
 	if err != nil {
-		return err
+		// A wrong -config stays fatal. Only a broken or missing paperboy.yaml in
+		// an existing instance directory degrades, so the operator can repair it
+		// while the server runs (ADR 0047).
+		if info, statErr := os.Stat(*dir); statErr != nil || !info.IsDir() {
+			return err
+		}
+		slog.Error("paperboy.yaml not usable; starting degraded (it will be applied without a restart once it is valid)",
+			"dir", *dir, "error", err)
+		cfg = paperboy.DegradedConfig(*dir)
 	}
 	srv, err := paperboy.New(cfg)
 	if err != nil {

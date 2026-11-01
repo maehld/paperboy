@@ -36,8 +36,8 @@ func TestFirmwareVersions(t *testing.T) {
 func firmwareServer(t *testing.T) (*Server, *testDevice) {
 	t.Helper()
 	s, _ := planServer(t, testPlan)
-	s.cfg.Firmware = FirmwareConfig{Update: firmwareAuto, MinBatteryVolts: 3.6}
-	dir := filepath.Join(s.cfg.FirmwareDir, "sticky")
+	s.config().Firmware = FirmwareConfig{Update: firmwareAuto, MinBatteryVolts: 3.6}
+	dir := filepath.Join(s.config().FirmwareDir, "sticky")
 	writePageFile(t, filepath.Join(dir, "sticky-0.9.2.bin"), "old image")
 	writePageFile(t, filepath.Join(dir, "sticky-0.10.0.bin"), "new image")
 	writePageFile(t, filepath.Join(dir, "notes.txt"), "not an image")
@@ -119,7 +119,7 @@ func TestFirmwareStopsAfterFailures(t *testing.T) {
 		t.Fatalf("failures must be logged: %s", logs())
 	}
 	// A changed image is offered again.
-	path := filepath.Join(s.cfg.FirmwareDir, "sticky", "sticky-0.10.0.bin")
+	path := filepath.Join(s.config().FirmwareDir, "sticky", "sticky-0.10.0.bin")
 	writePageFile(t, path, "fixed image")
 	stamp := time.Now().Add(time.Minute)
 	if err := os.Chtimes(path, stamp, stamp); err != nil {
@@ -133,23 +133,23 @@ func TestFirmwareStopsAfterFailures(t *testing.T) {
 func TestFirmwareOfferConditions(t *testing.T) {
 	s, dev := firmwareServer(t)
 
-	s.cfg.Firmware.Update = firmwareOff
+	s.config().Firmware.Update = firmwareOff
 	if offerOf(displayPage(t, s, dev)) != nil {
 		t.Fatal("no offer with updates off")
 	}
 	if info := deviceInfoOf(t, s); info["firmware_status"] != fwAvailable {
 		t.Fatalf("updates off: %v", info)
 	}
-	s.cfg.Firmware.Update = firmwareAuto
+	s.config().Firmware.Update = firmwareAuto
 
-	s.cfg.Devices[0].Hold = true
+	s.config().Devices[0].Hold = true
 	if offerOf(displayPage(t, s, dev)) != nil {
 		t.Fatal("no offer for a held device")
 	}
 	if info := deviceInfoOf(t, s); info["firmware_status"] != fwHeld {
 		t.Fatalf("held: %v", info)
 	}
-	s.cfg.Devices[0].Hold = false
+	s.config().Devices[0].Hold = false
 
 	dev.req.Battery = &syncBattery{Volts: 3.5}
 	if offerOf(displayPage(t, s, dev)) != nil {
@@ -159,18 +159,18 @@ func TestFirmwareOfferConditions(t *testing.T) {
 	if offerOf(displayPage(t, s, dev)) != nil {
 		t.Fatal("no offer without a battery reading")
 	}
-	s.cfg.Battery = &Battery{WarnVolts: 4.0, CriticalVolts: 3.3, HysteresisVolts: 0.1}
+	s.config().Battery = &Battery{WarnVolts: 4.0, CriticalVolts: 3.3, HysteresisVolts: 0.1}
 	dev.req.Battery = &syncBattery{Volts: 3.9}
 	if offerOf(displayPage(t, s, dev)) != nil {
 		t.Fatal("no offer at battery warning level")
 	}
-	s.cfg.Battery = nil
+	s.config().Battery = nil
 	if offerOf(displayPage(t, s, dev)) == nil {
 		t.Fatal("offer once every condition holds")
 	}
 
 	// A lower version is a deliberate rollback and offered as well.
-	if err := os.Remove(filepath.Join(s.cfg.FirmwareDir, "sticky", "sticky-0.10.0.bin")); err != nil {
+	if err := os.Remove(filepath.Join(s.config().FirmwareDir, "sticky", "sticky-0.10.0.bin")); err != nil {
 		t.Fatal(err)
 	}
 	dev.req.Firmware = "0.10.0"
@@ -178,7 +178,7 @@ func TestFirmwareOfferConditions(t *testing.T) {
 		t.Fatalf("rollback offer: %v", offer)
 	}
 	// Hardware without images offers nothing.
-	if err := os.RemoveAll(filepath.Join(s.cfg.FirmwareDir, "sticky")); err != nil {
+	if err := os.RemoveAll(filepath.Join(s.config().FirmwareDir, "sticky")); err != nil {
 		t.Fatal(err)
 	}
 	if offerOf(displayPage(t, s, dev)) != nil {

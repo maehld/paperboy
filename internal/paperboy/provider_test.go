@@ -28,13 +28,13 @@ func TestProviderHelperProcess(t *testing.T) {
 // and timezone (ADR 0036).
 func TestProviderWritesIntoDocument(t *testing.T) {
 	s, _ := testServer(t)
-	s.cfg.Language = "en"
+	s.config().Language = "en"
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.cfg.ProvidersDir = t.TempDir()
-	s.cfg.Providers = []Provider{{
+	s.config().ProvidersDir = t.TempDir()
+	s.config().Providers = []Provider{{
 		Name:     "weather",
 		Command:  []string{exe, "-test.run=TestProviderHelperProcess"},
 		Path:     "weather",

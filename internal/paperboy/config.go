@@ -181,6 +181,10 @@ type Config struct {
 	Devices      []Device
 	Providers    []Provider // exec providers (ADR 0036)
 	Battery      *Battery   // default low-battery warning; nil = off
+
+	// degraded marks a start without a usable paperboy.yaml (ADR 0047). Such a
+	// configuration is retried from disk even when the file did not change.
+	degraded bool
 }
 
 // Provider is one exec provider (ADR 0036): a program in the providers

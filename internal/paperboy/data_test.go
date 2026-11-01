@@ -168,7 +168,7 @@ func TestDataSurvivesRestart(t *testing.T) {
 	if code, _ := dataCall(t, s, http.MethodPut, "/api/data/solar/current", `{"pv_power":4210}`); code != http.StatusNoContent {
 		t.Fatalf("put: %d", code)
 	}
-	restarted, err := New(s.cfg)
+	restarted, err := New(s.config())
 	if err != nil {
 		t.Fatal(err)
 	}
