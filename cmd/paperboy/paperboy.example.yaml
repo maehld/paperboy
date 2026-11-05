@@ -20,6 +20,11 @@ server:
 #     path: weather
 #     interval: 15m
 #     timeout: 30s
+#   calendar:              # ADR 0048; password in PAPERBOY_CALDAV_PASSWORD
+#     command: [calendar, -caldav, https://caldav.icloud.com, -user, me@icloud.com, -calendar, Privat]
+#     path: calendar
+#     interval: 15m
+#     timeout: 1m
 
 defaults:
   refresh: 5m
