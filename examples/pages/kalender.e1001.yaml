@@ -1,0 +1,20 @@
+title: Kalender
+watch:
+  - { path: calendar, stale_after: 1h, label: Kalender }
+notices: badge
+rows: [12, 88]
+blocks:
+  - name: kopf
+    header:
+      title: Termine
+      align: left
+      status: { time: calendar/updated, label: Stand }
+      rule: 2
+  - name: termine
+    agenda:
+      events: calendar/events
+      lines: 10
+      location: true
+      rule: 1
+      padding: 10
+      empty: Keine Termine in den nächsten Tagen

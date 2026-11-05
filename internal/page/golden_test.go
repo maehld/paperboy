@@ -32,6 +32,8 @@ var referencePages = []struct {
 	{"solar-history", "sticky"},
 	{"wetter", "e1001"},
 	{"wetter", "sticky"},
+	{"kalender", "e1001"},
+	{"kalender", "sticky"},
 }
 
 // goldenDocument builds the deterministic data document of the reference pages.
@@ -72,6 +74,7 @@ func goldenDocument(t *testing.T) *data.Document {
 		"charging": true,
 	})
 	putGolden(t, doc, "weather", goldenWeather())
+	putGolden(t, doc, "calendar", goldenCalendar())
 	return doc
 }
 
@@ -107,6 +110,34 @@ func goldenWeather() map[string]any {
 		},
 		"days":  days,
 		"hours": goldenWeatherHours(),
+	}
+}
+
+// goldenCalendar is the calendar branch as cmd/calendar writes it (ADR 0048):
+// one event that already ended, one running across midnight, all-day events
+// and enough appointments to overflow the smaller page.
+func goldenCalendar() map[string]any {
+	ev := func(start, end string, allDay bool, title, location string) map[string]any {
+		e := map[string]any{"start": start, "end": end, "all_day": allDay, "title": title, "calendar": "Privat"}
+		if location != "" {
+			e["location"] = location
+		}
+		return e
+	}
+	return map[string]any{
+		"updated":   "2026-10-21T14:00:00Z",
+		"calendars": []any{"Privat", "Arbeit"},
+		"events": []any{
+			ev("2026-10-20T00:00:00Z", "2026-10-23T00:00:00Z", true, "Herbstferien", ""),
+			ev("2026-10-21T08:00:00Z", "2026-10-21T09:00:00Z", false, "Frühstück mit Oma", ""),
+			ev("2026-10-21T15:30:00Z", "2026-10-21T16:30:00Z", false, "Zahnarzt Dr. Müller", "Praxis am Markt"),
+			ev("2026-10-21T18:00:00Z", "2026-10-21T20:00:00Z", false, "Elternabend Klasse 4b mit langer Tagesordnung und Abstimmung", "Schule"),
+			ev("2026-10-22T00:00:00Z", "2026-10-23T00:00:00Z", true, "Papiermüll", ""),
+			ev("2026-10-22T07:15:00Z", "2026-10-22T07:30:00Z", false, "Standup", ""),
+			ev("2026-10-22T16:00:00Z", "2026-10-22T17:30:00Z", false, "Training", "Sporthalle"),
+			ev("2026-10-24T10:00:00Z", "2026-10-24T13:00:00Z", false, "Flohmarkt", "Rathausplatz"),
+			ev("2026-10-26T09:00:00Z", "2026-10-26T10:00:00Z", false, "Werkstatt", ""),
+		},
 	}
 }
 
