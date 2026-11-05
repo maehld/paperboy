@@ -389,6 +389,8 @@ func (r *renderer) block(img *image.Paletted, rc image.Rectangle, b Block) {
 		r.bar(img, rc, b.Bar, b.Padding)
 	case b.Icon != nil:
 		r.icon(img, rc, b)
+	case b.Agenda != nil:
+		r.agenda(img, rc, b)
 	}
 	if b.Rule > 0 {
 		hline(img, rc.Min.X, rc.Max.Y-b.Rule, rc.Max.X, b.Rule)

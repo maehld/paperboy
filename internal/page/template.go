@@ -69,6 +69,7 @@ type Block struct {
 	Columns *Columns `yaml:"columns"`
 	Bar     *Bar     `yaml:"bar"`
 	Icon    *Icon    `yaml:"icon"`
+	Agenda  *Agenda  `yaml:"agenda"`
 }
 
 // Header shows a title, an optional subtitle and a status area.
@@ -138,6 +139,19 @@ type Icon struct {
 	LabelSize   float64 `yaml:"label_size"`
 	LabelWeight string  `yaml:"label_weight"`
 	Padding     *int    `yaml:"padding"`
+}
+
+// Agenda lists upcoming events with day headings (ADR 0048). In YAML the block
+// also accepts a scalar: agenda: calendar/events.
+type Agenda struct {
+	Events   string  `yaml:"events"`   // path to [{start, end, all_day, title, location}]
+	Lines    int     `yaml:"lines"`    // number of text lines; default 6
+	Headings *bool   `yaml:"headings"` // day headings; default true
+	Location bool    `yaml:"location"` // append the location to the title
+	Empty    string  `yaml:"empty"`    // text template for an empty list
+	Size     float64 `yaml:"size"`     // fraction of the line height, default 0.6
+	Rule     int     `yaml:"rule"`     // separator above each later day heading, px
+	Padding  *int    `yaml:"padding"`
 }
 
 // Tile is one label/value pair, used by both tiles and rows.
@@ -352,6 +366,10 @@ func normalizeBlock(b *yaml.Node) error {
 			if val.Kind == yaml.ScalarNode {
 				b.Content[i+1] = newMapping(newKey("source"), val)
 			}
+		case "agenda":
+			if val.Kind == yaml.ScalarNode {
+				b.Content[i+1] = newMapping(newKey("events"), val)
+			}
 		case "chart":
 			normalizeChart(val)
 		case "columns":
@@ -497,13 +515,13 @@ func (b *Block) validateNested(nested bool) error {
 	}
 	kinds := 0
 	for _, set := range []bool{b.Header != nil, b.Tiles != nil, b.Rows != nil, b.Chart != nil,
-		b.Text != nil, b.Columns != nil, b.Bar != nil, b.Icon != nil} {
+		b.Text != nil, b.Columns != nil, b.Bar != nil, b.Icon != nil, b.Agenda != nil} {
 		if set {
 			kinds++
 		}
 	}
 	if kinds != 1 {
-		return fmt.Errorf("exactly one of header, tiles, rows, chart, text, columns, bar or icon is required")
+		return fmt.Errorf("exactly one of header, tiles, rows, chart, text, columns, bar, icon or agenda is required")
 	}
 	if nested && b.Columns != nil {
 		return fmt.Errorf("nested columns are not supported")
@@ -547,6 +565,35 @@ func (b *Block) validateNested(nested bool) error {
 		if err := b.Icon.validate(); err != nil {
 			return fmt.Errorf("icon: %w", err)
 		}
+	}
+	if b.Agenda != nil {
+		if err := b.Agenda.validate(); err != nil {
+			return fmt.Errorf("agenda: %w", err)
+		}
+	}
+	return nil
+}
+
+func (a *Agenda) validate() error {
+	path, err := normalizePath(a.Events)
+	if err != nil {
+		return fmt.Errorf("events: %w", err)
+	}
+	a.Events = path
+	if a.Lines == 0 {
+		a.Lines = 6
+	}
+	if a.Lines < 1 || a.Lines > 30 {
+		return fmt.Errorf("lines %d: expected 1 to 30", a.Lines)
+	}
+	if err := validateSize(a.Size); err != nil {
+		return fmt.Errorf("size: %w", err)
+	}
+	if a.Rule < 0 {
+		return fmt.Errorf("rule must not be negative")
+	}
+	if a.Padding != nil && *a.Padding < 0 {
+		return fmt.Errorf("padding must not be negative")
 	}
 	return nil
 }
