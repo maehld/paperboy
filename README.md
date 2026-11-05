@@ -153,6 +153,7 @@ blocks:
 - `tiles` and `rows` also accept the object form with `padding`, `items` and, for `tiles`, `columns` (grid columns) and `divider`. A tile's optional `detail` is a third text line; `label_weight`, `value_weight`, `detail_weight`, `label_size`, `value_size`, `detail_size`, `align` and `shrink` style its elements.
 - `columns` splits a region into weighted columns, each holding exactly one block. Nested `columns` are rejected.
 - `bar` draws a value as a filled bar or battery symbol: `min`, `max`, `orientation: vertical|horizontal`, `border`, `cap`, `fill`, `label` and label styling.
+- `agenda` lists upcoming events from the calendar provider (ADR 0048): `agenda: { events: calendar/events, lines: 8, headings: true, location: false, empty: "Keine Termine", size, rule, padding }`, shorthand `agenda: calendar/events`. It draws `lines` text lines: a bold heading per day (Heute, Morgen, „Mo, 9.11.“), then time and title of each event, all-day events first. Ended events disappear, an event running since an earlier day shows under today, and when the lines run out the last one reads „+N weitere“. Long titles end with `…`. `rule` draws a separator above each later day; without `headings` the time column carries the weekday.
 - `icon` draws one PNG pictogram from `icons/` (ADR 0038). `source` is a text template, so the page chooses the picture from the data: `icon: { source: '{{ .weather.current.symbol }}.png', size: 0.9 }`. `align`, `size` (fraction of the region height), `padding` and an optional `label` below the picture are supported; the shorthand `icon: sun.png` works too. The picture is reduced to a mask (opaque dark pixels are ink), cropped to its ink and scaled to the region, so the same asset renders sharp on 1-bit and 4-gray panels. A missing file is a render error and leads to a notice page; `../` and absolute paths are rejected. A `source` that expands to nothing (the data is not there yet) draws no icon and keeps the page intact.
 - Style fields are `weight: regular|bold`, `size`, `shrink`, `align: left|center|right`, `padding` and `rule`/`divider` in pixels. `size` is a fraction of the block height; in `tiles` it is relative to the cell height, in `rows` to the item height and in `text` to the line height. `shrink` defaults to `true`.
 - `chart`: `time: true` plots points by their RFC 3339 `time` from local midnight to midnight; `axis`, `ticks`, `now`, `y_max: auto|<number>` and `legend` control axes, time ticks, the "now" marker, the scale and the legend. Series use `style: area|line`, `fill: shade|hatch|solid|none` and `weight` in pixels; the string shorthand remains accepted.
@@ -178,9 +179,9 @@ lines:
 
 Lines are not trimmed; they are converted to the display type's `charset`, cut to the column count and padded with spaces, and missing lines stay empty. More lines than rows is a render error. `ascii` transliterates (ä → ae, ° → o, € → EUR), `hd44780` keeps `ä ö ü ß ° µ` for the firmware's ROM mapping and transliterates the rest. Missing values show as `—` (`-` after conversion). `examples/pages/solar-overview.lcd2004.yaml` is a 20 × 4 example.
 
-Implemented blocks are `header`, `tiles`, `rows`, `chart`, `text`, `columns`, `bar` and `icon`.
+Implemented blocks are `header`, `tiles`, `rows`, `chart`, `text`, `columns`, `bar`, `icon` and `agenda`.
 
-The four SolarAI reference pages (overview detailed and compact, battery, daily balance and daily history) are in `examples/pages`, with an example plan in `examples/plans/solar.yaml`. The weather page (`wetter.e1001.yaml`, `wetter.sticky.yaml`) belongs to the Open-Meteo provider and uses the icons in `examples/icons` (`sun`, `cloud`, `rain`, `snow`, `thunder`, `tshirt`, `pullover`). Copy them into the `pages/` and `icons/` directories of your instance and rename the display-type suffix if needed; the golden-image tests in `internal/page` render them with a fixed data document.
+The four SolarAI reference pages (overview detailed and compact, battery, daily balance and daily history) are in `examples/pages`, with an example plan in `examples/plans/solar.yaml`. The weather page (`wetter.e1001.yaml`, `wetter.sticky.yaml`) belongs to the Open-Meteo provider and uses the icons in `examples/icons` (`sun`, `cloud`, `rain`, `snow`, `thunder`, `tshirt`, `pullover`). The calendar pages (`kalender.e1001.yaml`, `kalender.sticky.yaml`) belong to the calendar provider. Copy them into the `pages/` and `icons/` directories of your instance and rename the display-type suffix if needed; the golden-image tests in `internal/page` render them with a fixed data document.
 
 ## Providers
 
@@ -259,6 +260,29 @@ go run ./cmd/odtest -ble ODE46FD8 [-send] [-buttons]
 ```
 
 Bluetooth (ADR 0016) exists only in the test program. On a reTerminal Sticky under Windows a full image (48 KB) takes about 30 s, via Wi-Fi a few seconds. After disconnecting, the display takes a few seconds until it is found again (if necessary `-scan-time 20s`).
+**Calendar:** `cmd/calendar` (ADR 0048) reads a CalDAV account and optional iCalendar links into the branch `calendar`:
+
+```yaml
+providers:
+  calendar:
+    command: [calendar, -caldav, https://caldav.icloud.com, -user, me@icloud.com, -calendar, Privat, -calendar, Familie]
+    path: calendar
+    interval: 15m
+    timeout: 1m
+```
+
+- The password comes from the environment variable `PAPERBOY_CALDAV_PASSWORD` (or the one named by `-password-env`), which the provider inherits from Paperboy's environment or from `env` in the provider section; never put it into `command`. For iCloud create an app-specific password at [account.apple.com](https://account.apple.com) (Sign-In and Security → App-Specific Passwords) and use the Apple ID as `-user`. Other servers work with their CalDAV URL, e.g. `https://cloud.example.org/remote.php/dav` for Nextcloud.
+- Without `-calendar` all calendars with events are read; an unknown name fails and lists the available ones.
+- `-ics <url>` adds a public iCalendar link (`webcal://` works), `-ics-env <VAR>` reads one from the environment when the link contains a secret; both are repeatable and also work without `-caldav`.
+- `-days` (default 14) sets the window from local midnight today; `-max-events` (default 200) caps the list.
+- Recurring events are expanded by the provider. Unsupported rules (hourly, `BYWEEKNO`, `BYYEARDAY`) skip that event with a warning on standard error.
+
+The branch holds `updated`, `calendars`, `events` (`start`/`end` RFC 3339, `all_day`, `date`, `end_date`, `title`, `location`, `calendar`) and `days` (every day of the window with `date`, `label` and its `events`). Try it by hand:
+
+```sh
+PAPERBOY_CALDAV_PASSWORD=xxxx-xxxx-xxxx-xxxx go run ./cmd/calendar -caldav https://caldav.icloud.com -user me@icloud.com
+```
+
 
 ## Development
 
@@ -267,7 +291,7 @@ Requires Go 1.27 or newer.
 ```powershell
 go test ./...
 go vet ./...
-.\scripts\build.ps1   # paperboy, odtest and weather for Linux amd64/arm64 and Windows into bin/
+.\scripts\build.ps1   # paperboy, odtest, weather and calendar for Linux amd64/arm64 and Windows into bin/
 ```
 
 The dashboard header shows version, commit and commit date, straight from Go's VCS stamping. `go build` and `scripts/build.ps1` embed them as long as the Git repository is present. The container image therefore keeps `.git` in the build context and installs the git binary in its build stage (the alpine Go image ships none); the final image still contains only the binary.
@@ -278,6 +302,7 @@ A build without a repository or with `-buildvcs=false` reports `dev`. `go versio
 cmd/paperboy/            Startup, options and example configuration
 cmd/odtest/              Test program for OpenDisplay devices (TCP and Bluetooth)
 cmd/weather/             Weather provider: Open-Meteo to the weather branch (ADR 0036)
+cmd/calendar/            Calendar provider: CalDAV and iCalendar links to the calendar branch (ADR 0048)
 internal/paperboy/       YAML configuration, device API, plans, data document, battery warning
 internal/data/           Shared data document for page templates (ADR 0024)
 internal/page/           Page templates: YAML parsing and rendering from the data document

@@ -44,3 +44,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0045](0045-text-poll-interval-from-the-plan.md) | Text display poll interval from the plan | Accepted, implemented |
 | [0046](0046-width-aware-value-formatting.md) | Width-aware value formatting for text displays | Accepted, implemented |
 | [0047](0047-config-reload.md) | Reload the configuration on change | Accepted, implemented |
+| [0048](0048-calendar-provider-and-agenda.md) | Calendar provider over CalDAV and the agenda block | Accepted, implemented (not yet run against iCloud) |
