@@ -16,10 +16,7 @@ import (
 	"github.com/maehld/paperboy/pkg/render"
 )
 
-// calendarPlugin draws the calendar as image fragments (spike: plugin
-// fragments) instead of writing the calendar branch: "agenda" mirrors the
-// agenda block of the page renderer, "month" is a month grid that page blocks
-// cannot express.
+// calendarPlugin draws the calendar widgets "agenda" and "month".
 type calendarPlugin struct {
 	opts options
 	loc  *time.Location
@@ -36,7 +33,7 @@ type calendarPlugin struct {
 
 // Start loads the calendars in the background, right away and then every
 // -refresh, and reports a change when the events differ.
-func (p *calendarPlugin) Start(ctx context.Context, notify func(images ...string)) {
+func (p *calendarPlugin) Start(ctx context.Context, notify func(widgets ...string)) {
 	p.ready = make(chan struct{})
 	go func() {
 		first := true
@@ -89,32 +86,41 @@ func (p *calendarPlugin) load(ctx context.Context) ([]event, error) {
 }
 
 func (p *calendarPlugin) Describe() plugin.Description {
+	both := []string{plugin.KindImage, plugin.KindText}
 	return plugin.Description{
-		Title: "Calendar",
-		Images: []plugin.ImageInfo{
+		Title:  "Calendar",
+		Config: configKeys,
+		Widgets: []plugin.WidgetInfo{
 			{
-				Image: "agenda", Title: "Upcoming events",
-				Sizes:    []plugin.Span{{Columns: 1, Rows: 2}, {Columns: 2, Rows: 2}, {Columns: 3, Rows: 3}},
+				Widget: "agenda", Title: "Upcoming events", Kinds: both,
+				Sizes:    []plugin.Span{{Columns: 2, Rows: 2}, {Columns: 3, Rows: 3}, {Columns: 6, Rows: 3}},
 				MinWidth: 160, MinHeight: 80,
 				Args: map[string]plugin.Arg{
-					"lines":    {Type: "int", Default: 10, Description: "number of text lines"},
+					"lines":    {Type: "int", Default: 10, Description: "number of text lines (image displays; text displays use the cell height)"},
 					"location": {Type: "bool", Default: false, Description: "append the location to the title"},
 					"headings": {Type: "bool", Default: true, Description: "day headings"},
-					"rule":     {Type: "int", Default: 1, Description: "separator above later day headings, px"},
-					"padding":  {Type: "int", Default: 10, Description: "inner margin, px"},
 				},
 			},
 			{
-				Image: "month", Title: "Month grid",
-				Sizes:    []plugin.Span{{Columns: 2, Rows: 2}, {Columns: 3, Rows: 3}},
+				Widget: "month", Title: "Month grid", Kinds: both,
+				Sizes:    []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 4}},
 				MinWidth: 210, MinHeight: 160,
 				Args: map[string]plugin.Arg{
-					"titles":  {Type: "bool", Default: true, Description: "event titles in the day cells when they fit"},
-					"padding": {Type: "int", Default: 6, Description: "inner margin, px"},
+					"titles": {Type: "bool", Default: true, Description: "event titles in the day cells when they fit"},
 				},
 			},
 		},
 	}
+}
+
+// Configure reads the config section; the calendars load in Start.
+func (p *calendarPlugin) Configure(cfg plugin.Values, req *plugin.Request) error {
+	o, err := parseConfig(cfg, req.Lang(), req.Location())
+	if err != nil {
+		return err
+	}
+	p.opts = o
+	return nil
 }
 
 // MaxAge lets Paperboy reuse the images for 15 minutes: changed calendars
@@ -133,8 +139,8 @@ func (p *calendarPlugin) Prepare(req *plugin.Request) error {
 	}
 	select {
 	case <-p.ready:
-	case <-time.After(requestTimeout):
-		return fmt.Errorf("calendars not loaded yet")
+	case <-time.After(10 * time.Second):
+		return fmt.Errorf("calendars are still loading")
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -145,16 +151,67 @@ func (p *calendarPlugin) Prepare(req *plugin.Request) error {
 	return nil
 }
 
-func (p *calendarPlugin) Render(req *plugin.Request, ir plugin.ImageRequest, img *image.Paletted) error {
-	switch ir.Image {
+func (p *calendarPlugin) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
+	switch w.Widget {
 	case "agenda":
-		p.agenda(ir, img)
+		p.agenda(w, img)
 	case "month":
-		p.month(ir, img)
+		p.month(w, img)
 	default:
-		return fmt.Errorf("%w %q", plugin.ErrUnknownImage, ir.Image)
+		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 	}
 	return nil
+}
+
+// Text fills the widgets of a character display: the agenda as "time title"
+// lines, the month as the remaining days of the week with their events.
+func (p *calendarPlugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
+	switch w.Widget {
+	case "agenda":
+		lines, hidden := p.agendaLines(w.Height, w.Arg().Bool("headings", w.Height > 2), w.Arg().Bool("location", false))
+		if len(lines) == 0 {
+			return []string{p.text("Keine Termine", "No events")}, nil
+		}
+		if hidden > 0 {
+			lines = append(lines, agendaLine{text: fmt.Sprintf(p.text("+%d weitere", "+%d more"), hidden)})
+		}
+		var out []string
+		for _, l := range lines {
+			switch {
+			case l.heading:
+				out = append(out, l.text+":")
+			case l.when != "":
+				out = append(out, shortWhen(l.when)+" "+l.text)
+			default:
+				out = append(out, l.text)
+			}
+		}
+		return out, nil
+	case "month":
+		now := p.now.In(p.loc)
+		today := midnight(now)
+		byDay := p.eventsByDay(today, w.Height)
+		var out []string
+		for i := range w.Height {
+			day := today.AddDate(0, 0, i)
+			line := fmt.Sprintf("%s %2d", weekday(day, p.lang), day.Day())
+			if len(byDay[i]) > 0 {
+				line += " " + strings.Join(byDay[i], ", ")
+			}
+			out = append(out, line)
+		}
+		return out, nil
+	}
+	return nil, fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
+}
+
+// shortWhen keeps the time column of a text agenda narrow.
+func shortWhen(s string) string {
+	switch s {
+	case "ganztägig", "all day":
+		return "*"
+	}
+	return s
 }
 
 func (p *calendarPlugin) text(de, en string) string {
@@ -195,10 +252,11 @@ func (p *calendarPlugin) parsed() []parsedEvent {
 	return out
 }
 
-func (p *calendarPlugin) agenda(ir plugin.ImageRequest, img *image.Paletted) {
-	lines := max(ir.IntArg("lines", 10), 1)
-	pad := max(ir.IntArg("padding", 10), 0)
-	rule := ir.IntArg("rule", 1)
+func (p *calendarPlugin) agenda(w plugin.WidgetRequest, img *image.Paletted) {
+	a := w.Arg()
+	lines := max(a.Int("lines", 10), 1)
+	pad := w.Style.Padding
+	rule := w.Style.Rule
 	area := img.Rect.Inset(pad)
 	lineH := area.Dy() / lines
 	if area.Empty() || lineH < 1 {
@@ -207,7 +265,7 @@ func (p *calendarPlugin) agenda(ir plugin.ImageRequest, img *image.Paletted) {
 	size := 0.6 * float64(lineH)
 	baseline := func(i int) int { return area.Min.Y + i*lineH + lineH/2 + int(size*0.36) }
 
-	all, hidden := p.agendaLines(lines, ir.BoolArg("headings", true), ir.BoolArg("location", false))
+	all, hidden := p.agendaLines(lines, a.Bool("headings", true), a.Bool("location", false))
 	if len(all) == 0 {
 		render.Text(img, p.text("Keine Termine", "No events"), area.Min.X+area.Dx()/2, baseline(0),
 			render.Style{Size: size, Shrink: true}, area.Dx(), color.Black, render.Center)
@@ -356,8 +414,8 @@ var monthNames = map[string][12]string{
 // month draws the current month as a grid from Monday to Sunday. Today is
 // inverted; days with events show their titles when the cell is tall enough,
 // otherwise a bar under the day number.
-func (p *calendarPlugin) month(ir plugin.ImageRequest, img *image.Paletted) {
-	pad := max(ir.IntArg("padding", 6), 0)
+func (p *calendarPlugin) month(w plugin.WidgetRequest, img *image.Paletted) {
+	pad := w.Style.Padding
 	area := img.Rect.Inset(pad)
 	if area.Dx() < 70 || area.Dy() < 60 {
 		return
@@ -425,7 +483,7 @@ func (p *calendarPlugin) month(ir plugin.ImageRequest, img *image.Paletted) {
 		}
 		top := numBase + 3
 		room := (cell.Max.Y - 2 - top) / int(lineSize*1.15)
-		if ir.BoolArg("titles", true) && room >= 1 && cellW >= 50 {
+		if w.Arg().Bool("titles", true) && room >= 1 && cellW >= 50 {
 			shown := evs
 			if len(evs) > room {
 				shown = evs[:max(room-1, 0)]

@@ -3,42 +3,47 @@ package paperboy
 import (
 	"context"
 	"net/http"
-	"time"
+	"sort"
 
-	"github.com/maehld/paperboy/internal/fragment"
+	"github.com/maehld/paperboy/internal/builtin"
 	"github.com/maehld/paperboy/internal/page"
+	"github.com/maehld/paperboy/internal/widget"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
-// fragmentSource lets a page render ask the configured plugins for its image
-// fragments (spike: plugin fragments).
-func (s *Server) fragmentSource(cfg *Config, now time.Time) page.FragmentSource {
-	if len(cfg.Plugins) == 0 {
-		return nil
-	}
-	specs := cfg.pluginSpecs()
-	env := fragment.Env{Language: cfg.Language, Timezone: cfg.Timezone.String(), Now: now}
-	return func(reqs []page.FragmentRequest, gray bool) []page.Fragment {
-		return s.plugins.Render(context.Background(), specs, reqs, gray, env)
+// configurePlugins hands the plugin section and the global language and
+// timezone to the widget host; changed plugins restart on their next use.
+func (s *Server) configurePlugins(cfg *Config) {
+	s.widgets.Configure(cfg.pluginSpecs(), widget.Env{Language: cfg.Language, Timezone: cfg.timezoneName()})
+}
+
+// widgetSource lets a page ask the plugins for its widgets.
+func (s *Server) widgetSource() page.WidgetSource {
+	return func(b page.Batch) []page.Result {
+		return s.widgets.Fetch(context.Background(), b)
 	}
 }
 
 type pluginInfo struct {
 	Name        string              `json:"name"`
+	Builtin     bool                `json:"builtin,omitempty"`
 	Description *plugin.Description `json:"description,omitempty"`
 	Error       string              `json:"error,omitempty"`
 }
 
-// handlePlugins lists the configured plugins with the images they offer, the
-// data an editor would build pages from.
+// handlePlugins lists the plugins with the widgets they offer, the data an
+// editor builds pages from.
 func (s *Server) handlePlugins(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
-	list := []pluginInfo{}
+	names := []string{builtin.Name}
 	for _, p := range cfg.Plugins {
-		name := p.Name
-		spec := cfg.pluginSpecs()[name]
-		info := pluginInfo{Name: name}
-		d, err := s.plugins.Describe(r.Context(), spec)
+		names = append(names, p.Name)
+	}
+	sort.Strings(names[1:])
+	list := []pluginInfo{}
+	for _, name := range names {
+		info := pluginInfo{Name: name, Builtin: name == builtin.Name}
+		d, err := s.widgets.Describe(r.Context(), name)
 		if err != nil {
 			info.Error = err.Error()
 		} else {

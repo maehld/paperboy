@@ -2,6 +2,7 @@ package paperboy
 
 import (
 	"encoding/json"
+	"image"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maehld/paperboy/pkg/plugin"
+	"github.com/maehld/paperboy/pkg/render"
 )
 
 const planDeviceMAC = "AA:BB:CC:DD:EE:01"
@@ -20,12 +24,12 @@ func planServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 	dir := t.TempDir()
 	pages := filepath.Join(dir, "pages")
 	for _, name := range []string{"eins", "zwei", "drei", "vier"} {
-		writePageFile(t, filepath.Join(pages, name+".small.yaml"), "rows: [1]\nblocks:\n  - text: \""+name+"\"\n")
+		writePageFile(t, filepath.Join(pages, name+".small.yaml"), textPage(name))
 	}
 	plans := filepath.Join(dir, "plans")
 	writePageFile(t, filepath.Join(plans, "zimmer.yaml"), planYAML)
 
-	cfg := &Config{Dir: dir, UploadToken: testToken, Timezone: time.UTC,
+	cfg := &Config{Dir: dir, Timezone: time.UTC,
 		Profiles: map[string]Profile{"small": {Width: 40, Height: 20, Gray: true}},
 		Devices: []Device{{ID: "test", MAC: planDeviceMAC, Profile: "small", Plan: "zimmer",
 			Refresh: Duration(10 * time.Minute)}}}
@@ -39,6 +43,11 @@ func planServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 	now := time.Date(2026, time.October, 21, 8, 0, 0, 0, time.UTC) // Wednesday
 	s.now = func() time.Time { return now }
 	return s, &now
+}
+
+// textPage is a one-cell page with a text of the built-in plugin.
+func textPage(text string) string {
+	return "grid: [1, 1]\nstyle: {padding: 0}\ncells:\n  - {widget: paperboy/text, args: {text: \"" + text + "\"}}\n"
 }
 
 func writePageFile(t *testing.T, path, content string) {
@@ -290,25 +299,36 @@ rules:
 	}
 }
 
-func TestPlanRerendersOnDataChange(t *testing.T) {
+// fillPlugin is a built-in test plugin whose widget is filled black or white.
+type fillPlugin struct{ black *bool }
+
+func (fillPlugin) Describe() plugin.Description                   { return plugin.Description{} }
+func (fillPlugin) Configure(plugin.Values, *plugin.Request) error { return nil }
+func (f fillPlugin) Render(_ *plugin.Request, _ plugin.WidgetRequest, img *image.Paletted) error {
+	if *f.black {
+		render.FillSolid(img, img.Rect)
+	}
+	return nil
+}
+
+func TestPlanRerendersOnWidgetChange(t *testing.T) {
 	s, _ := planServer(t, `
 rules:
   - name: tag
-    pages: [daten]
+    pages: [widget]
 `)
-	writePageFile(t, filepath.Join(s.config().Pages, "daten.small.yaml"),
-		"rows: [1]\nblocks:\n  - text: \"Akku {{ percent .akku.soc }}\"\n")
+	black := false
+	s.widgets.Builtin["fill"] = fillPlugin{black: &black}
+	writePageFile(t, filepath.Join(s.config().Pages, "widget.small.yaml"), "grid: [1, 1]\ncells: [{widget: fill/area}]\n")
 	dev := planDevice(t, s)
 	first := pagePath(displayPage(t, s, dev))
-	if code, body := dataCall(t, s, http.MethodPut, "/api/data/akku", `{"soc":50}`); code != http.StatusNoContent {
-		t.Fatalf("put data: %d %s", code, body)
-	}
+	black = true
 	second := pagePath(displayPage(t, s, dev))
 	if first == second {
-		t.Fatalf("changed data must change the image path: %q", first)
+		t.Fatalf("a changed widget must change the image path: %q", first)
 	}
 	if rec := fetchImage(t, s, second); rec.Code != http.StatusOK {
-		t.Fatalf("image after data change: %d", rec.Code)
+		t.Fatalf("image after widget change: %d", rec.Code)
 	}
 }
 

@@ -3,6 +3,10 @@
 - Branch: `spike/plugin-fragments` (not for `main` as is)
 - Date: 2026-11-06
 - Revisits: ADR 0032 (image fragments rejected as the default model)
+- Outcome: adopted as Paperboy v2 in ADR 0049. Names changed since: images
+  are *widgets*, the `plugin` block became grid `cells`, `internal/fragment`
+  became `internal/widget`, and the protocol gained `configure` and `text`.
+  The text below describes the spike as it was.
 
 ## Question
 

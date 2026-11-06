@@ -9,7 +9,7 @@ Builds the programs for multiple target systems into bin/<os>-<arch>/.
 #>
 param(
     [string[]]$Targets = @('linux/amd64', 'linux/arm64', 'windows/amd64'),
-    [string[]]$Apps = @('paperboy', 'odtest', 'weather', 'calendar')
+    [string[]]$Apps = @('paperboy', 'odtest', 'weather', 'calendar', 'solardemo')
 )
 
 $ErrorActionPreference = 'Stop'

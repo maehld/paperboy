@@ -1,9 +1,8 @@
-// Command solardemo is a fragment plugin with synthetic solar data (spike:
-// plugin fragments). It stands in for a SolarAI plugin that draws several
-// images which a page stitches together: "tiles" with the current values and
-// "chart" with today's power curve.
+// Command solardemo is a Paperboy plugin with synthetic solar data (ADR 0049).
+// It stands in for a SolarAI plugin until that exists: "tiles" shows the
+// current values and "chart" today's power curve.
 //
-//	echo '{"version":1,"action":"describe"}' | go run ./cmd/solardemo
+//	echo '{"id":"1","action":"describe"}' | go run ./cmd/solardemo
 package main
 
 import (
@@ -24,6 +23,7 @@ func main() {
 }
 
 type solar struct {
+	req  *plugin.Request
 	loc  *time.Location
 	now  time.Time
 	lang string
@@ -32,34 +32,53 @@ type solar struct {
 func (s *solar) Describe() plugin.Description {
 	return plugin.Description{
 		Title: "Solar (demo)",
-		Images: []plugin.ImageInfo{
-			{Image: "tiles", Title: "Current values", MinWidth: 200, MinHeight: 100,
-				Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 3, Rows: 1}, {Columns: 2, Rows: 2}},
+		Widgets: []plugin.WidgetInfo{
+			{Widget: "tiles", Title: "Current values", Kinds: []string{plugin.KindImage, plugin.KindText}, MinWidth: 200, MinHeight: 100,
+				Sizes: []plugin.Span{{Columns: 3, Rows: 1}, {Columns: 6, Rows: 1}, {Columns: 3, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"columns": {Type: "int", Default: 2, Description: "tiles per row: 2 or 4"},
 				}},
-			{Image: "chart", Title: "Power today", MinWidth: 200, MinHeight: 100,
-				Sizes: []plugin.Span{{Columns: 3, Rows: 1}, {Columns: 3, Rows: 2}}},
+			{Widget: "chart", Title: "Power today", Kinds: []string{plugin.KindImage}, MinWidth: 200, MinHeight: 100,
+				Sizes: []plugin.Span{{Columns: 6, Rows: 1}, {Columns: 6, Rows: 2}}},
 		},
 	}
 }
 
+func (s *solar) Configure(cfg plugin.Values, _ *plugin.Request) error {
+	return cfg.Check(nil)
+}
+
 func (s *solar) Prepare(req *plugin.Request) error {
-	s.loc, s.now, s.lang = req.Location(), req.Now.In(req.Location()), req.Language
+	s.req, s.loc, s.now, s.lang = req, req.Location(), req.Now.In(req.Location()), req.Lang()
 	return nil
 }
 
-func (s *solar) Render(req *plugin.Request, ir plugin.ImageRequest, img *image.Paletted) error {
-	switch ir.Image {
+func (s *solar) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
+	switch w.Widget {
 	case "tiles":
-		s.tiles(ir, img)
+		s.tiles(w, img)
 	case "chart":
-		s.chart(img)
+		s.chart(w, img)
 	default:
-		return fmt.Errorf("%w %q", plugin.ErrUnknownImage, ir.Image)
+		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 	}
 	return nil
 }
+
+// Text shows the values on a character display, one per line.
+func (s *solar) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
+	if w.Widget != "tiles" {
+		return nil, fmt.Errorf("%w %q for text displays", plugin.ErrUnknownWidget, w.Widget)
+	}
+	var out []string
+	for _, it := range s.items() {
+		out = append(out, plugin.Columns(it[0], it[1], w.Width))
+	}
+	return out, nil
+}
+
+// MaxAge: the demo values change every minute.
+func (s *solar) MaxAge(*plugin.Request) time.Duration { return time.Minute }
 
 func (s *solar) t(de, en string) string {
 	if s.lang == "de" {
@@ -99,7 +118,7 @@ func (s *solar) power(w float64) string {
 	return s.num(math.Abs(w), 0) + " W"
 }
 
-func (s *solar) tiles(ir plugin.ImageRequest, img *image.Paletted) {
+func (s *solar) items() [][3]string {
 	h := s.hour()
 	p, l := pv(h), load(h)
 	grid := l - p
@@ -107,28 +126,33 @@ func (s *solar) tiles(ir plugin.ImageRequest, img *image.Paletted) {
 	if grid < 0 {
 		gridWord = s.t("Einspeisung", "export")
 	}
-	items := [][3]string{
+	return [][3]string{
 		{s.t("PV", "PV"), s.power(p), ""},
 		{s.t("Verbrauch", "Load"), s.power(l), ""},
 		{s.t("Netz", "Grid"), s.power(grid), gridWord},
 		{s.t("Akku", "Battery"), "81 %", s.t("lädt", "charging")},
 	}
+}
+
+func (s *solar) tiles(w plugin.WidgetRequest, img *image.Paletted) {
+	items := s.items()
 	cols := 2
-	if ir.IntArg("columns", 2) == 4 {
+	if w.Arg().Int("columns", 2) == 4 {
 		cols = 4
 	}
 	rows := (len(items) + cols - 1) / cols
 	b := img.Rect
 	cw, ch := b.Dx()/cols, b.Dy()/rows
-	pad := 8
+	pad := w.Style.Padding
+	base := s.req.TextPx(w)
 	for i, it := range items {
 		cell := image.Rect(b.Min.X+(i%cols)*cw, b.Min.Y+(i/cols)*ch, b.Min.X+(i%cols+1)*cw, b.Min.Y+(i/cols+1)*ch)
 		x := cell.Min.X + pad
-		labelSize := float64(ch) * 0.2
+		labelSize := min(float64(ch)*0.2, base*0.8)
 		render.Text(img, it[0], x, cell.Min.Y+pad+int(labelSize), render.Style{Size: labelSize, Shrink: true}, cw-2*pad, color.Black, render.Left)
-		render.Text(img, it[1], x, cell.Min.Y+ch*66/100, render.Style{Size: float64(ch) * 0.34, Bold: true, Shrink: true}, cw-2*pad, color.Black, render.Left)
+		render.Text(img, it[1], x, cell.Min.Y+ch*66/100, render.Style{Size: min(float64(ch)*0.34, base*1.6), Bold: true, Shrink: true}, cw-2*pad, color.Black, render.Left)
 		if it[2] != "" {
-			render.Text(img, it[2], x, cell.Max.Y-pad, render.Style{Size: float64(ch) * 0.17, Shrink: true}, cw-2*pad, color.Black, render.Left)
+			render.Text(img, it[2], x, cell.Max.Y-pad, render.Style{Size: min(float64(ch)*0.17, base*0.7), Shrink: true}, cw-2*pad, color.Black, render.Left)
 		}
 	}
 	for c := 1; c < cols; c++ {
@@ -141,9 +165,9 @@ func (s *solar) tiles(ir plugin.ImageRequest, img *image.Paletted) {
 
 // chart draws today's PV curve as an area and the load as a line, with a time
 // axis and a dashed "now" marker.
-func (s *solar) chart(img *image.Paletted) {
+func (s *solar) chart(w plugin.WidgetRequest, img *image.Paletted) {
 	b := img.Rect
-	labelSize := max(float64(b.Dy())*0.08, 11)
+	labelSize := max(min(s.req.TextPx(w)*0.6, float64(b.Dy())*0.1), 10)
 	left := b.Min.X + render.Measure("6 kW", labelSize, false) + 12
 	right := b.Max.X - render.Measure("00:00", labelSize, false)/2 - 4
 	top := b.Min.Y + int(labelSize*1.8)

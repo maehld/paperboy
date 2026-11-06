@@ -3,12 +3,10 @@ package paperboy
 import (
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/maehld/paperboy/internal/fragment"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,24 +16,24 @@ import (
 	"sync"
 	"time"
 
-	"github.com/maehld/paperboy/internal/data"
+	"github.com/maehld/paperboy/internal/builtin"
 	"github.com/maehld/paperboy/internal/page"
+	"github.com/maehld/paperboy/internal/widget"
+	"github.com/maehld/paperboy/pkg/plugin"
 )
 
-// Server implements the device API (ADR 0042) and the data document. Pages are
-// rendered from templates and chosen by plans. The configuration reloads from
+// Server implements the device API (ADR 0042). Pages are composed from plugin
+// widgets (ADR 0049) and chosen by plans. The configuration reloads from
 // paperboy.yaml when the file changes (ADR 0047): handlers read the current
-// configuration through config, and the providers are reconciled on the same
+// configuration through config, and the plugins are reconfigured on the same
 // reload.
 type Server struct {
-	cfg         *configLoader    // current configuration, reloaded on change (ADR 0047)
-	providers   *providerManager // running exec providers, reconciled on reload
-	devicesPath string           // state/devices.json in the instance directory
+	cfg         *configLoader // current configuration, reloaded on change (ADR 0047)
+	devicesPath string        // state/devices.json in the instance directory
 	now         func() time.Time
 
 	mu    sync.Mutex
 	state map[string]*deviceState // device ID → state
-	doc   *data.Document          // shared data document (ADR 0024)
 	plans *planLoader             // device plans (ADR 0025)
 
 	rendered map[string]*renderedPage // "<profile>/<page>" → last render
@@ -43,7 +41,7 @@ type Server struct {
 	logs     *logSeen                 // delivered device log entries (own lock)
 	firmware *firmwareStore           // OTA images (ADR 0043; own lock)
 	fwNotes  map[string]string        // device ID → last logged reason for withholding an update
-	plugins  fragment.Host            // fragment plugins and their image cache (spike; own lock)
+	widgets  *widget.Host             // plugins and their widget cache (ADR 0049; own lock)
 }
 
 // config returns the current configuration, reloading it from paperboy.yaml
@@ -53,7 +51,7 @@ func (s *Server) config() *Config {
 }
 
 // New loads the device state and prepares templates and plans. Only state/ is
-// created; pages, plans and providers stay operator-owned (ADR 0037).
+// created; pages, plans and plugins stay operator-owned (ADR 0037).
 func New(cfg *Config) (*Server, error) {
 	if cfg.Dir == "" {
 		return nil, errors.New("instance directory missing")
@@ -89,13 +87,14 @@ func New(cfg *Config) (*Server, error) {
 	if cfg.Plans == "" {
 		cfg.Plans = filepath.Join(cfg.Dir, plansDirName)
 	}
-	if cfg.ProvidersDir == "" {
-		cfg.ProvidersDir = filepath.Join(cfg.Dir, providersDirName)
+	if cfg.PluginsDir == "" {
+		cfg.PluginsDir = filepath.Join(cfg.Dir, pluginsDirName)
 	}
 	if cfg.FirmwareDir == "" {
 		cfg.FirmwareDir = filepath.Join(cfg.Dir, firmwareDirName)
 	}
-	s := &Server{cfg: newConfigLoader(cfg.Dir, cfg), providers: newProviderManager(),
+	s := &Server{cfg: newConfigLoader(cfg.Dir, cfg),
+		widgets:     &widget.Host{Builtin: map[string]plugin.Handler{builtin.Name: builtin.Plugin{}}},
 		devicesPath: devicesPath, now: time.Now, state: state,
 		plans: newPlanLoader(), rendered: map[string]*renderedPage{}, hints: map[string][]byte{},
 		logs: newLogSeen(), fwNotes: map[string]string{}}
@@ -112,20 +111,15 @@ func New(cfg *Config) (*Server, error) {
 			slog.Error("plan not usable", "device", d.ID, "plan", d.Plan, "error", err)
 		}
 	}
-	// The document shares the server clock so that tests can move time.
-	s.doc, err = data.New(filepath.Join(stateDir, dataFileName), func() time.Time { return s.now() })
-	if err != nil {
-		return nil, err
-	}
+	s.widgets.Now = func() time.Time { return s.now() }
+	s.configurePlugins(cfg)
 	return s, nil
 }
 
-// StartProviders starts the configuration reload loop, which runs the exec
-// providers until ctx is done and restarts them whenever paperboy.yaml changes
-// (ADR 0036, 0047). Each provider writes its own data branch in process;
-// failures only appear in the log and leave the previous data in place.
-func (s *Server) StartProviders(ctx context.Context) {
-	s.plugins.Start(ctx)
+// Start runs the plugins and the configuration reload loop until ctx is done
+// (ADR 0047, 0049). Plugins start on first use and stop with ctx.
+func (s *Server) Start(ctx context.Context) {
+	s.widgets.Start(ctx)
 	go s.configLoop(ctx)
 }
 
@@ -133,11 +127,6 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/profiles", s.handleProfiles)
 	mux.HandleFunc("GET /api/plugins", s.handlePlugins)
-	mux.HandleFunc("PUT /api/data", s.handlePutData)
-	mux.HandleFunc("PUT /api/data/{path...}", s.handlePutData)
-	mux.HandleFunc("GET /api/data", s.handleGetData)
-	mux.HandleFunc("GET /api/data/{path...}", s.handleGetData)
-	mux.HandleFunc("DELETE /api/data/{path...}", s.handleDeleteData)
 	mux.HandleFunc("GET /api/devices", s.handleDevices)
 	mux.HandleFunc("GET /api/preview/{display}/{page}", s.handlePreview)
 	mux.HandleFunc("GET /pages/{profile}/{page}/{file}", s.handleRenderedImage)
@@ -172,85 +161,6 @@ func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
 		list = append(list, profileInfo{Name: name, Profile: p})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"profiles": list})
-}
-
-func (s *Server) authorized(r *http.Request) bool {
-	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	// An empty token is never authorized: a degraded start without a usable
-	// paperboy.yaml must not open the data API to empty bearer headers.
-	return ok && token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(s.config().UploadToken)) == 1
-}
-
-// maxDataBytes caps a single write to the data document.
-const maxDataBytes = 1 << 20
-
-// handlePutData replaces the subtree at the path. PUT never merges: write a
-// deeper path to update part of a branch.
-func (s *Server) handlePutData(w http.ResponseWriter, r *http.Request) {
-	if !s.authorized(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	var value any
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxDataBytes)).Decode(&value); err != nil {
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
-			http.Error(w, "document too large", http.StatusRequestEntityTooLarge)
-			return
-		}
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	var at time.Time
-	if h := strings.TrimSpace(r.Header.Get("X-Data-Time")); h != "" {
-		t, err := time.Parse(time.RFC3339, h)
-		if err != nil {
-			http.Error(w, "invalid X-Data-Time: expected RFC 3339", http.StatusBadRequest)
-			return
-		}
-		at = t
-	}
-	if err := s.doc.Put(r.PathValue("path"), value, at); err != nil {
-		writeDataError(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) handleGetData(w http.ResponseWriter, r *http.Request) {
-	if !s.authorized(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	v, ok := s.doc.Get(r.PathValue("path"))
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-func (s *Server) handleDeleteData(w http.ResponseWriter, r *http.Request) {
-	if !s.authorized(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if err := s.doc.Delete(r.PathValue("path")); err != nil {
-		writeDataError(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func writeDataError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, data.ErrNotFound):
-		http.Error(w, err.Error(), http.StatusNotFound)
-	case errors.Is(err, data.ErrConflict):
-		http.Error(w, err.Error(), http.StatusConflict)
-	default:
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	}
 }
 
 type deviceInfo struct {
@@ -372,13 +282,9 @@ func newAPIKey() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-// handlePreview renders a page template from the data document as PNG, so a
+// handlePreview composes a page as PNG (or text for text displays), so a
 // layout can be checked without a device.
 func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
-	if !s.authorized(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
 	display, name := r.PathValue("display"), r.PathValue("page")
 	cfg := s.config()
 	p, ok := cfg.Profiles[display]

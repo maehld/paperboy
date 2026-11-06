@@ -48,7 +48,7 @@ func run() error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	srv.StartProviders(ctx)
+	srv.Start(ctx)
 	server := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	listener, err := net.Listen("tcp", *listen)
 	if err != nil {

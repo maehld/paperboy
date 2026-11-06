@@ -20,7 +20,7 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0018](0018-opendisplay-im-display-service.md) | OpenDisplay im Display-Service | Teilweise abgelöst durch ADR-0019 |
 | [0019](0019-epaper-aus-solarai-entfernen.md) | ePaper-Sender aus SolarAI entfernen | Akzeptiert |
 | [0020](0020-akkuwarnung-trmnl.md) | Akkuwarnung für TRMNL-Geräte | Akzeptiert |
-| [0024](0024-layouts-im-display-service.md) | Daten statt Bilder – Datendokument und YAML-Layouts im Display-Service | Akzeptiert, teilweise umgesetzt; Sprache/Formatierung teilweise abgelöst durch ADR-0033, Ablageort abgelöst durch ADR-0037 |
+| [0024](0024-layouts-im-display-service.md) | Daten statt Bilder – Datendokument und YAML-Layouts im Display-Service | Abgelöst durch ADR-0049 |
 | [0025](0025-plaene-je-display.md) | Pläne – regelbasierte Seitenauswahl je Display | Akzeptiert, umgesetzt für TRMNL-Geräte; Zeitzone abgelöst durch ADR-0033 |
 | [0026](0026-konfiguration-als-yaml.md) | Konfiguration als YAML mit Displayarten und Geräten | Akzeptiert, teilweise umgesetzt (Konfiguration wird noch nicht neu geladen); `directories` abgelöst durch ADR-0037 |
 | [0027](0027-textdisplays-und-http-geraete.md) | Textdisplays und einfache HTTP-Geräte | Akzeptiert; Textvorlagen umgesetzt mit ADR-0044, `text-http` abgelöst durch ADR-0044, `image-http` abgelöst durch ADR-0042 |
@@ -28,20 +28,21 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0029](0029-repository-trennung-umgesetzt.md) | Repository-Trennung SolarAI / Paperboy umgesetzt | Akzeptiert |
 | [0030](0030-englisch-fuer-logs-kommentare-commits.md) | Englisch für Lognachrichten, Kommentare und Commits | Abgelöst durch ADR-0031 |
 | [0031](0031-everything-in-english.md) | Everything in the software is English | Accepted |
-| [0032](0032-data-providers-and-regions.md) | Data providers with named regions instead of image fragments | Accepted |
+| [0032](0032-data-providers-and-regions.md) | Data providers with named regions instead of image fragments | Superseded by ADR-0049 |
 | [0033](0033-global-language-and-timezone.md) | Global language and timezone in the configuration | Accepted |
-| [0034](0034-layout-primitives-and-typography.md) | Layout primitives and typography in page templates | Accepted, implemented |
-| [0035](0035-duration-format.md) | Duration format and explicit charge direction for derived values | Accepted, implemented |
-| [0036](0036-exec-providers.md) | Exec providers in the data directory | Accepted, implemented; providers directory moved by ADR-0037 |
-| [0037](0037-instance-directory-layout.md) | One instance directory with a fixed layout | Accepted, implemented |
-| [0038](0038-icons.md) | Icons from the instance directory | Accepted, implemented |
+| [0034](0034-layout-primitives-and-typography.md) | Layout primitives and typography in page templates | Superseded by ADR-0049 |
+| [0035](0035-duration-format.md) | Duration format and explicit charge direction for derived values | Superseded by ADR-0049 |
+| [0036](0036-exec-providers.md) | Exec providers in the data directory | Superseded by ADR-0049 |
+| [0037](0037-instance-directory-layout.md) | One instance directory with a fixed layout | Accepted, implemented; `providers/` and `icons/` replaced by `plugins/` (ADR-0049) |
+| [0038](0038-icons.md) | Icons from the instance directory | Superseded by ADR-0049 |
 | [0039](0039-device-status.md) | Device status in the devices API | Accepted, implemented |
 | [0040](0040-operator-dashboard.md) | Operator dashboard as a Go template | Accepted, implemented |
 | [0041](0041-esphome-firmware.md) | Paperboy firmware built on ESPHome | Accepted, implemented (not yet flashed) |
 | [0042](0042-device-protocol.md) | Paperboy device protocol | Accepted, implemented |
 | [0043](0043-firmware-distribution.md) | Firmware distribution through Paperboy | Accepted, implemented |
-| [0044](0044-text-displays-on-the-device-api.md) | Text displays on the device API | Accepted, implemented (firmware not yet flashed); poll interval and 304 amended by ADR-0045 |
+| [0044](0044-text-displays-on-the-device-api.md) | Text displays on the device API | Accepted, implemented (firmware not yet flashed); poll interval and 304 amended by ADR-0045; text templates superseded by ADR-0049 |
 | [0045](0045-text-poll-interval-from-the-plan.md) | Text display poll interval from the plan | Accepted, implemented |
-| [0046](0046-width-aware-value-formatting.md) | Width-aware value formatting for text displays | Accepted, implemented |
+| [0046](0046-width-aware-value-formatting.md) | Width-aware value formatting for text displays | Superseded by ADR-0049 |
 | [0047](0047-config-reload.md) | Reload the configuration on change | Accepted, implemented |
-| [0048](0048-calendar-provider-and-agenda.md) | Calendar provider over CalDAV and the agenda block | Accepted, implemented (not yet run against iCloud) |
+| [0048](0048-calendar-provider-and-agenda.md) | Calendar provider over CalDAV and the agenda block | Accepted; provider and agenda block replaced by the calendar plugin (ADR-0049); not yet run against iCloud |
+| [0049](0049-plugin-widgets.md) | Paperboy v2 – pages composed from plugin widgets | Accepted, implemented |

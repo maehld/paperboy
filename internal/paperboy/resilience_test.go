@@ -12,11 +12,11 @@ import (
 func TestDisplaySurvivesRenderingPanic(t *testing.T) {
 	s, _ := planServer(t, "rules: [{name: tag, pages: [eins]}]\n")
 	dev := planDevice(t, s)
-	// A missing document makes the page renderer panic.
-	doc := s.doc
-	s.doc = nil
+	// A missing widget host makes the page renderer panic.
+	widgets := s.widgets
+	s.widgets = nil
 	out := displayPage(t, s, dev)
-	s.doc = doc
+	s.widgets = widgets
 	if got := pagePath(out); !strings.HasPrefix(got, "/hints/") {
 		t.Fatalf("a panicking page must become a notice page: %q", got)
 	}
@@ -27,9 +27,6 @@ func TestDisplaySurvivesRenderingPanic(t *testing.T) {
 	if out := call(t, s, "/api/devices", nil); out["devices"] == nil {
 		t.Fatalf("server wedged after a rendering panic: %v", out)
 	}
-	if code, body := dataCall(t, s, http.MethodPut, "/api/data/akku", `{"soc":50}`); code != http.StatusNoContent {
-		t.Fatalf("data API after a rendering panic: %d %s", code, body)
-	}
 }
 
 // TestDisplayPageErrorsKeepDeviceWorking checks that a broken template only
@@ -37,13 +34,13 @@ func TestDisplaySurvivesRenderingPanic(t *testing.T) {
 // request renders normally.
 func TestDisplayPageErrorsKeepDeviceWorking(t *testing.T) {
 	s, _ := planServer(t, "rules: [{name: tag, pages: [kaputt]}]\n")
-	writePageFile(t, s.config().Pages+"/kaputt.small.yaml", "rows: [1]\nblocks: [\n")
+	writePageFile(t, s.config().Pages+"/kaputt.small.yaml", "grid: [1, 1]\ncells: [\n")
 	dev := planDevice(t, s)
 	if got := pagePath(displayPage(t, s, dev)); !strings.HasPrefix(got, "/hints/") {
 		t.Fatalf("broken template must show a notice: %q", got)
 	}
 	// Fixing the file serves the page again without a restart.
-	writePageFile(t, s.config().Pages+"/kaputt.small.yaml", "rows: [1]\nblocks:\n  - text: \"ok\"\n")
+	writePageFile(t, s.config().Pages+"/kaputt.small.yaml", textPage("ok"))
 	if got := pagePath(displayPage(t, s, dev)); !strings.HasPrefix(got, "/pages/small/kaputt/") {
 		t.Fatalf("fixed template must render again: %q", got)
 	}

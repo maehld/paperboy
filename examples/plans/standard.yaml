@@ -1,0 +1,10 @@
+rules:
+  - name: tag
+    when: { from: "07:00", to: "22:00" }
+    pages: [uebersicht, kalender, wetter, solar]
+    refresh: 10m
+  - name: nacht
+    when: { from: "22:00", to: "07:00" }
+    pages: [uebersicht]
+    refresh: 30m
+fallback: tag
