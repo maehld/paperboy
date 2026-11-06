@@ -1,7 +1,9 @@
 // Package plugin is the protocol between Paperboy and fragment plugins
-// (spike). A plugin is a program that Paperboy starts with one JSON request on
-// standard input; it answers with one JSON response on standard output and
-// exits. Two actions exist:
+// (spike). A plugin is a long-running program: Paperboy starts it once and
+// writes requests to its standard input, one JSON object per line. The plugin
+// answers each request with one line on standard output that carries the same
+// id. Between answers it may send events, such as "changed" when its data
+// moved on. It keeps running until standard input closes. Two actions exist:
 //
 //   - "describe": the plugin lists the images it can draw, with the sizes it
 //     supports and its arguments, so that an editor can offer them.
@@ -13,7 +15,9 @@
 package plugin
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +25,7 @@ import (
 	"image/png"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/maehld/paperboy/pkg/render"
@@ -37,6 +42,7 @@ const (
 
 // Request is what Paperboy writes to standard input.
 type Request struct {
+	ID       string         `json:"id"`
 	Version  int            `json:"version"`
 	Action   string         `json:"action"`
 	Language string         `json:"language,omitempty"` // "de" or "en"
@@ -54,7 +60,21 @@ type ImageRequest struct {
 	Args   map[string]any `json:"args,omitempty"`
 }
 
-// Response is what a plugin prints for the render action. Images has one
+// Message is one line a plugin prints: the answer to request ID, or an event
+// when ID is empty.
+type Message struct {
+	ID          string       `json:"id,omitempty"`
+	Error       string       `json:"error,omitempty"` // the request failed as a whole
+	Render      *Response    `json:"render,omitempty"`
+	Description *Description `json:"description,omitempty"`
+	Event       string       `json:"event,omitempty"`  // "changed"
+	Images      []string     `json:"images,omitempty"` // changed images; empty = all
+}
+
+// EventChanged tells Paperboy that the plugin's images are out of date.
+const EventChanged = "changed"
+
+// Response is the result of the render action. Images has one
 // entry per requested image, in the same order.
 type Response struct {
 	Images []ImageResult `json:"images"`
@@ -104,43 +124,93 @@ type Arg struct {
 // Handler is implemented by a plugin.
 type Handler interface {
 	Describe() Description
-	// Prepare runs once per render request before the images, e.g. to fetch
-	// data that all images share.
+	// Prepare runs once per render request before the images.
 	Prepare(req *Request) error
 	// Render draws one image on a canvas of the requested size and palette.
 	Render(req *Request, img ImageRequest, canvas *image.Paletted) error
 }
 
-// Serve reads one request from standard input, answers it on standard output
-// and exits the process with status 1 on a protocol error.
+// Starter is implemented by plugins with background work, such as refreshing
+// their data. Start runs once before the first request; notify tells Paperboy
+// that images changed (none = all), so it renders them again.
+type Starter interface {
+	Start(ctx context.Context, notify func(images ...string))
+}
+
+// Ager is implemented by plugins that set how long Paperboy may reuse their
+// images.
+type Ager interface {
+	MaxAge(req *Request) time.Duration
+}
+
+// Serve answers requests from standard input until it closes. Requests are
+// handled one at a time; events from Start may arrive in between.
 func Serve(h Handler) {
-	if err := ServeIO(h, os.Stdin, os.Stdout); err != nil {
+	if err := ServeIO(context.Background(), h, os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 // ServeIO is Serve with explicit streams.
-func ServeIO(h Handler, in io.Reader, out io.Writer) error {
-	var req Request
-	dec := json.NewDecoder(in)
-	if err := dec.Decode(&req); err != nil {
-		return fmt.Errorf("invalid request: %w", err)
+func ServeIO(ctx context.Context, h Handler, in io.Reader, out io.Writer) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var mu sync.Mutex
+	enc := json.NewEncoder(out)
+	send := func(m Message) error {
+		mu.Lock()
+		defer mu.Unlock()
+		return enc.Encode(m)
 	}
-	var resp any
-	switch req.Action {
-	case ActionDescribe:
-		resp = h.Describe()
-	case ActionRender:
-		r, err := renderAll(h, &req)
-		if err != nil {
+	if s, ok := h.(Starter); ok {
+		s.Start(ctx, func(images ...string) {
+			send(Message{Event: EventChanged, Images: images})
+		})
+	}
+	sc := bufio.NewScanner(in)
+	sc.Buffer(make([]byte, 64<<10), 4<<20)
+	for sc.Scan() {
+		line := sc.Bytes()
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var req Request
+		if err := json.Unmarshal(line, &req); err != nil {
+			if err := send(Message{Error: "invalid request: " + err.Error()}); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := send(handle(h, &req)); err != nil {
 			return err
 		}
-		resp = r
-	default:
-		return fmt.Errorf("unknown action %q", req.Action)
 	}
-	return json.NewEncoder(out).Encode(resp)
+	return sc.Err()
+}
+
+func handle(h Handler, req *Request) (m Message) {
+	m.ID = req.ID
+	defer func() {
+		if r := recover(); r != nil {
+			m = Message{ID: req.ID, Error: fmt.Sprintf("panic: %v", r)}
+		}
+	}()
+	switch req.Action {
+	case ActionDescribe:
+		d := h.Describe()
+		m.Description = &d
+	case ActionRender:
+		r, err := renderAll(h, req)
+		if err != nil {
+			m.Error = err.Error()
+		} else {
+			m.Render = r
+		}
+	default:
+		m.Error = fmt.Sprintf("unknown action %q", req.Action)
+	}
+	return m
 }
 
 func renderAll(h Handler, req *Request) (*Response, error) {
@@ -151,6 +221,9 @@ func renderAll(h Handler, req *Request) (*Response, error) {
 		return nil, err
 	}
 	resp := &Response{}
+	if a, ok := h.(Ager); ok {
+		resp.MaxAge = int(a.MaxAge(req) / time.Second)
+	}
 	for _, ir := range req.Images {
 		resp.Images = append(resp.Images, renderOne(h, req, ir))
 	}

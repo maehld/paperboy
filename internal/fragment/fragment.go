@@ -1,8 +1,10 @@
 // Package fragment runs fragment plugins and caches their images (spike:
-// plugin fragments). Paperboy starts a plugin with one JSON request on
-// standard input (pkg/plugin), reads the PNG images from its answer and keeps
-// them until the plugin's max_age runs out. A failing plugin keeps its last
-// images, marked stale, and is not asked again for a minute.
+// plugin fragments). A plugin is a long-running process (pkg/plugin): Paperboy
+// starts it on first use, sends requests as JSON lines and keeps the PNG
+// images until the plugin's max_age runs out or it reports a change. A plugin
+// that exits or hangs is restarted on the next request; meanwhile its last
+// images are served as stale, and a failing plugin is not asked again for a
+// minute.
 package fragment
 
 import (
@@ -14,13 +16,10 @@ import (
 	"image"
 	"image/png"
 	"log/slog"
-	"os/exec"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/maehld/paperboy/internal/page"
-	"github.com/maehld/paperboy/internal/provider"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
@@ -53,15 +52,20 @@ type Env struct {
 
 // Host runs plugins and caches their images. The zero value is ready to use.
 type Host struct {
+	ctx     context.Context // ends all plugin processes; nil = never
+	procs   map[string]*process
 	mu      sync.Mutex
 	cache   map[string]entry
 	running map[string]*sync.Mutex // one run per plugin at a time
 	failing map[string]time.Time   // plugin -> no new run before
+	changes map[string]int         // plugin -> number of "changed" events
 }
 
 type entry struct {
 	img     image.Image
 	expires time.Time
+	plugin  string
+	image   string
 }
 
 // Render returns one fragment per request. Requests for the same plugin that
@@ -142,17 +146,18 @@ func (h *Host) run(ctx context.Context, spec Spec, reqs []page.FragmentRequest, 
 		req.Images = append(req.Images, plugin.ImageRequest{Image: r.Image, Width: r.Width, Height: r.Height, Args: r.Args})
 	}
 	start := time.Now()
-	raw, err := Exec(ctx, spec, req)
+	h.mu.Lock()
+	gen := h.changes[spec.Name]
+	h.mu.Unlock()
+	msg, err := h.call(ctx, spec, req)
+	if err == nil && msg.Render == nil {
+		err = errors.New("answer without images")
+	}
 	if err != nil {
 		h.fail(spec.Name, err)
 		return err
 	}
-	var resp plugin.Response
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		err = fmt.Errorf("invalid response: %w", err)
-		h.fail(spec.Name, err)
-		return err
-	}
+	resp := *msg.Render
 	if len(resp.Images) != len(missing) {
 		err = fmt.Errorf("%d images for %d requests", len(resp.Images), len(missing))
 		h.fail(spec.Name, err)
@@ -163,6 +168,12 @@ func (h *Host) run(ctx context.Context, spec Spec, reqs []page.FragmentRequest, 
 		maxAge = time.Duration(resp.MaxAge) * time.Second
 	}
 	expires := time.Now().Add(maxAge)
+	h.mu.Lock()
+	if h.changes[spec.Name] != gen {
+		// The data changed while the plugin drew: use the images once.
+		expires = time.Time{}
+	}
+	h.mu.Unlock()
 	var firstErr error
 	for n, i := range missing {
 		res := resp.Images[n]
@@ -179,7 +190,7 @@ func (h *Host) run(ctx context.Context, spec Spec, reqs []page.FragmentRequest, 
 			out[i] = page.Fragment{Err: err}
 			continue
 		}
-		h.put(keys[i], entry{img: img, expires: expires})
+		h.put(keys[i], entry{img: img, expires: expires, plugin: spec.Name, image: reqs[i].Image})
 		out[i] = page.Fragment{Image: img}
 	}
 	slog.Debug("plugin rendered", "plugin", spec.Name, "images", len(missing), "took", time.Since(start))
@@ -217,65 +228,45 @@ func decodePNG(res plugin.ImageResult) (image.Image, error) {
 }
 
 // Describe asks a plugin which images it offers.
-func Describe(ctx context.Context, spec Spec) (*plugin.Description, error) {
-	raw, err := Exec(ctx, spec, plugin.Request{Version: plugin.Version, Action: plugin.ActionDescribe, Now: time.Now()})
+func (h *Host) Describe(ctx context.Context, spec Spec) (*plugin.Description, error) {
+	msg, err := h.call(ctx, spec, plugin.Request{Version: plugin.Version, Action: plugin.ActionDescribe, Now: time.Now()})
 	if err != nil {
 		return nil, err
 	}
-	var d plugin.Description
-	if err := json.Unmarshal(raw, &d); err != nil {
-		return nil, fmt.Errorf("invalid description: %w", err)
+	if msg.Description == nil {
+		return nil, errors.New("answer without description")
 	}
-	return &d, nil
+	return msg.Description, nil
 }
 
-// Exec runs the plugin with one request and returns its standard output.
-func Exec(ctx context.Context, spec Spec, req plugin.Request) ([]byte, error) {
-	if len(spec.Command) == 0 {
-		return nil, errors.New("no command configured")
+// expire drops the cache lifetime of a plugin's images after a "changed"
+// event; the old images stay as a fallback.
+func (h *Host) expire(name string, images []string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.changes == nil {
+		h.changes = map[string]int{}
 	}
-	dir := spec.Dir
-	if dir == "" {
-		dir = "."
-	}
-	program, err := provider.ResolveCommand(dir, spec.Command[0])
-	if err != nil {
-		return nil, err
-	}
-	timeout := spec.Timeout
-	if timeout <= 0 {
-		timeout = DefaultTimeout
-	}
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	cmd := exec.CommandContext(runCtx, program, spec.Command[1:]...)
-	cmd.Dir = dir
-	cmd.Env = provider.Environ(spec.Env)
-	cmd.Stdin = bytes.NewReader(body)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err = cmd.Run()
-	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
-		return nil, fmt.Errorf("timed out after %s", timeout)
-	}
-	if err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if len(msg) > maxStderr {
-			msg = msg[:maxStderr]
+	h.changes[name]++
+	for k, e := range h.cache {
+		if e.plugin != name {
+			continue
 		}
-		if msg == "" {
-			return nil, err
+		if len(images) > 0 && !contains(images, e.image) {
+			continue
 		}
-		return nil, fmt.Errorf("%w: %s", err, msg)
+		e.expires = time.Time{}
+		h.cache[k] = e
 	}
-	if stdout.Len() > maxOutput {
-		return nil, fmt.Errorf("output exceeds %d bytes", maxOutput)
+}
+
+func contains(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
 	}
-	return stdout.Bytes(), nil
+	return false
 }
 
 func cacheKey(r page.FragmentRequest, levels int, env Env) string {

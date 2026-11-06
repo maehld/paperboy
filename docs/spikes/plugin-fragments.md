@@ -19,13 +19,20 @@ others, which broke strokes and text.
   `internal/page/draw.go` now delegates to it; all golden images are
   unchanged.
 - **`pkg/plugin`** – the protocol and a Go helper (`plugin.Serve`). A plugin
-  is a program that reads one JSON request on stdin and prints one JSON
-  answer on stdout:
-  - `{"action": "render", "levels": 2|4, "language", "timezone", "now",
+  is a **long-running process**: Paperboy starts it on first use and keeps
+  it. Requests go to stdin as JSON lines with an `id`, answers come back on
+  stdout as JSON lines with the same `id`:
+  - `{"id", "action": "render", "levels": 2|4, "language", "timezone", "now",
     "images": [{"image", "width", "height", "args"}]}` →
-    `{"images": [{"png": "<base64>"} | {"error": "…"}], "max_age": 600}`
-  - `{"action": "describe"}` → images with title, size hints in grid spans
-    (`columns` × `rows`), minimum pixel size and typed arguments.
+    `{"id", "render": {"images": [{"png": "<base64>"} | {"error": "…"}], "max_age": 900}}`
+  - `{"id", "action": "describe"}` → `{"id", "description": …}` with images,
+    title, size hints in grid spans (`columns` × `rows`), minimum pixel size
+    and typed arguments.
+  - Events without `id`: `{"event": "changed", "images": [...]}` marks the
+    plugin's cached images as outdated, so the next render asks again.
+  - The plugin ends when stdin closes. In Go, a plugin implements `Handler`
+    and optionally `Starter` (background work with a `notify` callback) and
+    `Ager` (`max_age`).
 - **`plugin` block** in page templates (`internal/page/plugin.go`):
   `plugin: calendar/month` or `plugin: {name, image, args, padding}`; it
   works inside `columns`. Before drawing, the renderer walks the layout,
@@ -35,18 +42,25 @@ others, which broke strokes and text.
   1:1. A wrong size or a failing plugin becomes a hatched notice inside the
   cell; a stale fragment sets the page's stale badge or bar.
 - **`internal/fragment`** – runs plugins (`<instance>/plugins`, configured
-  under `plugins:` in `paperboy.yaml` with `command`, `timeout`, `env`),
-  batches all missing images of one plugin into one run, caches per
-  (plugin, image, args, size, levels, language, timezone) for `max_age`,
-  serves the last image as stale when a run fails and backs off for a
-  minute.
+  under `plugins:` in `paperboy.yaml` with `command`, `timeout`, `env`; the
+  environment also carries `PAPERBOY_LANGUAGE`/`PAPERBOY_TIMEZONE`). One
+  process per plugin, started lazily, stopped with the server, restarted
+  after an exit, killed and restarted when an answer exceeds `timeout`, and
+  restarted when its configuration changes (reconciled by the reload loop).
+  All missing images of one plugin go out in one request; images are cached
+  per (plugin, image, args, size, levels, language, timezone) until
+  `max_age` or a `changed` event; a failure serves the last image as stale
+  and backs off for a minute.
 - **`GET /api/plugins`** – the `describe` answers of all configured plugins,
   the input for a page editor.
-- **Plugins:** `cmd/calendar -plugin` draws `agenda` (same logic as the
+- **Plugins:** `cmd/calendar -plugin` loads the calendars in the background
+  every `-refresh` (default 15 min), keeps them in memory, reports
+  `changed` when the events differ, and draws `agenda` (same logic as the
   `agenda` block) and `month` (a month grid with titles or event bars);
   `cmd/solardemo` stands in for SolarAI with `tiles` and `chart`. Example
   pages: `examples/pages/plugin-kalender.e1001.yaml`,
-  `examples/pages/plugin-solar.e1001.yaml`, sample data
+  `examples/pages/plugin-solar.e1001.yaml`, `examples/pages/plugin-mix.e1001.yaml`
+  (cells from two plugins on one page), sample data
   `examples/plugins/demo.ics`.
 
 ## Findings
@@ -64,14 +78,16 @@ others, which broke strokes and text.
    the plugin's choice; the solar tiles of the demo look like the `tiles`
    block only because they copy its ratios. A plugin that draws with
    another library (Cairo, a browser, SVG) will look different.
-3. **Stitching works.** One run delivers several images (`tiles` + `chart`),
-   which a page arranges with rows and columns. The header stays a block,
-   so mixed regions (title + status) remain possible.
-4. **Cost.** A cold page with two plugin images took ~0.1 s locally
-   (process start + render); cached ~0.07 s, mostly `Quantize` through
-   `image.At` (can be made faster). The calendar plugin fetches its data in
-   every run; with CalDAV that is seconds, so `max_age` and a background
-   refresh matter (see open points).
+3. **Stitching works, also across plugins.** One request delivers several
+   images of a plugin (`tiles` + `chart`), and one page mixes cells of
+   several plugins (`plugin-mix.e1001.png`: calendar agenda next to solar
+   tiles above the solar chart). The header stays a block, so mixed regions
+   (title + status) remain possible.
+4. **Cost.** A cold page with plugin images took ~0.1 s locally (process
+   start + render); later renders ~0.03–0.07 s, mostly `Quantize` through
+   `image.At` (can be made faster). Long-running plugins keep their data in
+   memory, so a slow source (CalDAV, SolarAI over HTTP) never sits in the
+   render path.
 5. **Data for text displays** does not come out of this model. A plugin can
    still print data (the calendar binary is both provider and plugin), or
    the protocol gains a `text` action that returns lines for a size in
@@ -108,13 +124,15 @@ spans plugins declare. That is a separate decision.
 
 ## Open points before an ADR
 
-- **Background refresh:** render fragments ahead of `max_age` for the cells
-  that plans will show, so device syncs never wait for a plugin.
 - **Cache bounds:** the spike cache never evicts.
-- **Long-running plugins:** a process start per run is fine for Go
-  binaries; plugins with a slow start (Python, data fetches) want a
-  persistent process or HTTP. SolarAI could also serve the protocol over
-  HTTP instead of exec.
+- **SolarAI:** a SolarAI plugin is a long-running process that talks to
+  SolarAI over HTTP internally. The data source knows nothing about
+  Paperboy, and Paperboy knows only plugins; no HTTP transport for plugins
+  (user decision 2026-11-06). Go's `plugin` package stays rejected (CGO,
+  no Windows, identical toolchain, no isolation).
+- **Background rendering:** a `changed` event only expires the cache;
+  Paperboy could render the affected pages right away so device syncs
+  never wait.
 - **Style hand-over:** pass `padding`, rule width and base font size in the
   request so plugins follow the page theme.
 - **Hashes and refresh:** a page changes when a fragment changes; plugins

@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
+	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/maehld/paperboy/pkg/plugin"
@@ -18,11 +21,71 @@ import (
 // agenda block of the page renderer, "month" is a month grid that page blocks
 // cannot express.
 type calendarPlugin struct {
-	opts   options
-	events []event
-	loc    *time.Location
-	lang   string
-	now    time.Time
+	opts options
+	loc  *time.Location
+	lang string
+	now  time.Time
+
+	events []event // snapshot for the current request
+
+	mu      sync.Mutex
+	loaded  []event
+	loadErr error
+	ready   chan struct{} // closed after the first load
+}
+
+// Start loads the calendars in the background, right away and then every
+// -refresh, and reports a change when the events differ.
+func (p *calendarPlugin) Start(ctx context.Context, notify func(images ...string)) {
+	p.ready = make(chan struct{})
+	go func() {
+		first := true
+		var last string
+		for {
+			events, err := p.load(ctx)
+			p.mu.Lock()
+			if err != nil {
+				p.loadErr = err
+				fmt.Fprintln(os.Stderr, "calendar:", err)
+			} else {
+				p.loaded, p.loadErr = events, nil
+			}
+			p.mu.Unlock()
+			if err == nil {
+				sum, _ := json.Marshal(events)
+				if !first && string(sum) != last {
+					notify()
+				}
+				last = string(sum)
+			}
+			if first {
+				close(p.ready)
+				first = false
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(p.opts.refresh):
+			}
+		}
+	}()
+}
+
+// load reads all sources for a window that starts a week before the first of
+// the month, so the month grid shows past days too.
+func (p *calendarPlugin) load(ctx context.Context) ([]event, error) {
+	o := p.opts
+	local := time.Now().In(o.location)
+	from := midnight(local).AddDate(0, 0, -(local.Day() - 1 + 7))
+	o.days = max(o.days, 42) + local.Day() - 1 + 7
+	o.maxEvents = max(o.maxEvents, 1000)
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+	b, _, err := collect(ctx, o, newClient(o.user, o.password), from)
+	if err != nil {
+		return nil, err
+	}
+	return b.Events, nil
 }
 
 func (p *calendarPlugin) Describe() plugin.Description {
@@ -54,6 +117,10 @@ func (p *calendarPlugin) Describe() plugin.Description {
 	}
 }
 
+// MaxAge lets Paperboy reuse the images for 15 minutes: changed calendars
+// are reported as events, and ended events leave the agenda within that time.
+func (p *calendarPlugin) MaxAge(*plugin.Request) time.Duration { return 15 * time.Minute }
+
 func (p *calendarPlugin) Prepare(req *plugin.Request) error {
 	p.loc = req.Location()
 	p.lang = req.Language
@@ -64,20 +131,17 @@ func (p *calendarPlugin) Prepare(req *plugin.Request) error {
 	if p.now.IsZero() {
 		p.now = time.Now()
 	}
-	o := p.opts
-	o.location, o.language = p.loc, p.lang
-	// The month grid looks back to the start of its first week.
-	local := p.now.In(p.loc)
-	from := midnight(local).AddDate(0, 0, -(local.Day() - 1 + 7))
-	o.days = max(o.days, 42) + local.Day() - 1 + 7
-	o.maxEvents = max(o.maxEvents, 1000)
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	defer cancel()
-	b, _, err := collect(ctx, o, newClient(o.user, o.password), from)
-	if err != nil {
-		return err
+	select {
+	case <-p.ready:
+	case <-time.After(requestTimeout):
+		return fmt.Errorf("calendars not loaded yet")
 	}
-	p.events = b.Events
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.loaded == nil && p.loadErr != nil {
+		return p.loadErr
+	}
+	p.events = p.loaded
 	return nil
 }
 

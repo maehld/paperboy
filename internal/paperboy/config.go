@@ -590,8 +590,16 @@ func (c *Config) validate() error {
 // pluginSpecs returns the plugins for the fragment host.
 func (c *Config) pluginSpecs() map[string]fragment.Spec {
 	out := make(map[string]fragment.Spec, len(c.Plugins))
+	tz := "UTC"
+	if c.Timezone != nil {
+		tz = c.Timezone.String()
+	}
 	for _, p := range c.Plugins {
-		out[p.Name] = fragment.Spec{Name: p.Name, Command: p.Command, Timeout: time.Duration(p.Timeout), Env: p.Env, Dir: c.PluginsDir}
+		env := map[string]string{"PAPERBOY_LANGUAGE": c.Language, "PAPERBOY_TIMEZONE": tz}
+		for k, v := range p.Env {
+			env[k] = v
+		}
+		out[p.Name] = fragment.Spec{Name: p.Name, Command: p.Command, Timeout: time.Duration(p.Timeout), Env: env, Dir: c.PluginsDir}
 	}
 	return out
 }

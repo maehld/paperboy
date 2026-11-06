@@ -125,6 +125,7 @@ func New(cfg *Config) (*Server, error) {
 // (ADR 0036, 0047). Each provider writes its own data branch in process;
 // failures only appear in the log and leave the previous data in place.
 func (s *Server) StartProviders(ctx context.Context) {
+	s.plugins.Start(ctx)
 	go s.configLoop(ctx)
 }
 

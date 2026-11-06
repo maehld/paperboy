@@ -54,6 +54,7 @@ type options struct {
 	passwordEnv string
 	icsFiles    []string
 	plugin      bool
+	refresh     time.Duration
 }
 
 func main() {
@@ -102,6 +103,7 @@ func parseFlags(args []string) (options, error) {
 	fs.Var(&icsEnv, "ics-env", "environment variable that holds an iCalendar URL; repeatable")
 	fs.Var(&icsFiles, "ics-file", "local iCalendar file; repeatable")
 	fs.BoolVar(&o.plugin, "plugin", false, "run as a fragment plugin: read a request on standard input and answer with images")
+	fs.DurationVar(&o.refresh, "refresh", 15*time.Minute, "plugin mode: how often the calendars are read again")
 	fs.IntVar(&o.days, "days", 14, "number of days from today to include")
 	fs.IntVar(&o.maxEvents, "max-events", 200, "maximum number of events in the output")
 	language := fs.String("language", envOr("PAPERBOY_LANGUAGE", "en"), `language of the day labels: "de" or "en"`)
@@ -138,6 +140,9 @@ func parseFlags(args []string) (options, error) {
 	}
 	if o.days < 1 || o.days > 366 {
 		return o, errors.New("-days must be within 1..366")
+	}
+	if o.refresh < time.Minute {
+		return o, errors.New("-refresh must be at least 1m")
 	}
 	if o.maxEvents < 1 {
 		return o, errors.New("-max-events must be positive")

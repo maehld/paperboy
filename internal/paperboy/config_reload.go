@@ -198,5 +198,6 @@ func (s *Server) configLoop(ctx context.Context) {
 		}
 		cfg := s.config()
 		s.providers.sync(ctx, cfg, s.doc, s.now)
+		s.plugins.Reconcile(cfg.pluginSpecs())
 	}
 }

@@ -38,7 +38,7 @@ func (s *Server) handlePlugins(w http.ResponseWriter, r *http.Request) {
 		name := p.Name
 		spec := cfg.pluginSpecs()[name]
 		info := pluginInfo{Name: name}
-		d, err := fragment.Describe(r.Context(), spec)
+		d, err := s.plugins.Describe(r.Context(), spec)
 		if err != nil {
 			info.Error = err.Error()
 		} else {
