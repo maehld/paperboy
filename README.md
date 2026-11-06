@@ -12,14 +12,13 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
 
 1. Create an instance directory with the fixed layout (ADR 0037): `paperboy.yaml` plus `pages/`, `plans/` and, for your own plugins, `plugins/`. Copy `cmd/paperboy/paperboy.example.yaml` to `<instance>/paperboy.yaml`, configure the plugins and enter the MAC addresses of the displays (allow list; unknown devices are rejected and reported with their MAC in the log).
 2. Copy pages from `examples/pages` and a plan from `examples/plans` into the instance, then set `plan: standard` on the device. Without a plan a device only shows a notice page.
-3. Build the plugins into the instance's `plugins/` (or anywhere on `PATH`) and start:
+3. Put the plugins into the instance's `plugins/`: unpack `paperboy-plugins-<os>-<arch>.zip` (attached to each release, otherwise an artifact of the *Plugins* workflow) in the instance directory, or build them yourself (`./scripts/package-plugins.sh` builds the zip locally). Then start:
    ```sh
-   for p in calendar weather solardemo; do go build -o plugins/$p ./cmd/$p; done
    go run ./cmd/paperboy -config . -listen :8090
    # look at a page without a device:
    curl -o page.png http://127.0.0.1:8090/api/preview/e1001/uebersicht
    ```
-   Alternatively as a container: `Dockerfile` (contains the shipped plugins) and `compose.example.yaml`.
+   Alternatively as a container: `Dockerfile` and `compose.example.yaml`. The image contains only Paperboy; use the `linux/amd64` plugin zip in the mounted instance directory.
 4. Flash the Paperboy firmware (ADR 0041, see [firmware/esphome/README.md](firmware/esphome/README.md)) and enter `http://<computer>:8090` as the Paperboy URL in the device's web UI. The device registers with its MAC address; unknown MACs are rejected and logged.
 
 **Migrating from Paperboy v1:** v2 has no data API, no exec providers and no upload token (ADR 0049). Remove the `server` and `providers` sections from `paperboy.yaml` (both abort the start with a hint) and add `plugins` instead; the weather and calendar providers are plugins now and take their settings from `config` instead of flags. Rewrite the pages as grids (see below); old templates with `rows` and `blocks` are rejected and show a notice page. `state/data.json` and the `icons/` directory are no longer used. Devices keep their keys as long as `state/devices.json` is kept.
@@ -33,7 +32,7 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
   paperboy.yaml      configuration
   pages/             pages <page>.<display type>.yaml or <page>.yaml
   plans/             plans <name>.yaml
-  plugins/           plugin programs (optional; shipped plugins may be on PATH)
+  plugins/           plugin programs, e.g. from paperboy-plugins-<os>-<arch>.zip
   firmware/          OTA images <hardware>/<hardware>-<version>.bin (ADR 0043)
   state/             written by Paperboy only
     devices.json     device register with API keys, page cursor and battery level
@@ -145,7 +144,7 @@ cells:
 
 Plugins answer with lines for the cell; Paperboy converts them to the display type's `charset`, cuts them to the cell width and pads them. `ascii` transliterates (ä → ae, ° → o, € → EUR), `hd44780` keeps `ä ö ü ß ° µ` for the firmware's ROM mapping and transliterates the rest. A widget without a text variant shows its error in the cell.
 
-The pages in `examples/pages` (`uebersicht`, `kalender`, `wetter`, `solar` and the 20 × 4 `uebersicht.lcd2004`) use the shipped plugins; `examples/plans/standard.yaml` pages through them.
+The pages in `examples/pages` (`uebersicht`, `kalender`, `wetter`, `solar`, `laden` and the 20 × 4 variants `uebersicht.lcd2004` and `laden.lcd2004`) use the shipped plugins; `examples/plans/standard.yaml` pages through them.
 
 ## Plugins
 
@@ -155,7 +154,9 @@ A plugin is a long-running program that provides widgets (ADR 0049). Paperboy st
 
 A Go plugin implements `plugin.Handler` (`Describe`, `Configure`, `Render`), optionally `Texter`, `Preparer`, `Starter` (background work with a `notify` callback) and `Ager` (`max_age`), calls `plugin.Serve` and draws with `pkg/render` – the fonts, gray levels, fills and icon masks Paperboy itself uses, so its widgets look like the rest of the page. Plugins in other languages speak the same JSON lines.
 
-Shipped plugins (in the container image on `PATH`):
+Shipped plugins (one zip per platform: `paperboy-plugins-linux-amd64.zip` and `paperboy-plugins-windows-amd64.zip`; unpacked in the instance directory they create `plugins/`):
+
+- **`evcc`** – [evcc](https://evcc.io) over its REST API (`/api/state`), polled in the background (`refresh`, default `30s`, at least `10s`) with a change event when a shown value moves. Config: `url` (e.g. `http://evcc:7070`). Widgets: `site` (PV, home, grid with import/export, home battery or grid price; `columns: 2|4`), `loadpoint` (`index`, default 0: vehicle, mode, state-of-charge bar with the limit as a tick, range, charge power and phases, remaining time, session energy and solar share) and `forecast` (solar forecast as an area and the grid price as steps for the next `hours`, default 24; image only). `site` and `loadpoint` have text variants.
 
 - **`weather`** – [Open-Meteo](https://open-meteo.com/), no API key. Config: `lat`, `lon` (required), `refresh` (default `15m`), `base`. Widgets: `current` (pictogram, temperature, condition, apparent temperature, wind force, today's range; `clothing: true` adds a T-shirt or pullover – pullover below 15 °C felt or above wind force 3), `days` (`days: 1..5`, pictogram and range per day), `hours` (today's temperature with precipitation probability; image only). The pictograms come from [OpenMoji](https://openmoji.org) (CC BY-SA 4.0, see `cmd/weather/icons/README.md`).
 - **`calendar`** – CalDAV and iCalendar (ADR 0048). Config: `caldav`, `user`, `password` (use `${VAR}`), `calendars` (names; default all, an unknown name fails and lists the available ones), `ics` (links, `webcal://` works), `ics_files`, `days` (default 14), `max_events`, `refresh` (default `15m`). For iCloud create an app-specific password at [account.apple.com](https://account.apple.com) and use the Apple ID as `user`; Nextcloud works with e.g. `https://cloud.example.org/remote.php/dav`. Recurring events are expanded by the plugin; unsupported rules (hourly, `BYWEEKNO`, `BYYEARDAY`) skip that event with a warning. Widgets: `agenda` (`lines`, `headings`, `location`; day headings, all-day events first, ended events disappear, „+N weitere“ on overflow) and `month` (month grid with titles or event bars; `titles: false`). The plugin reads the calendars in the background and reports changes.
@@ -215,10 +216,11 @@ Requires Go 1.27 or newer.
 ```powershell
 go test ./...
 go vet ./...
-.\scripts\build.ps1   # paperboy, odtest and the plugins weather, calendar, solardemo for Linux amd64/arm64 and Windows into bin/
+.\scripts\build.ps1             # paperboy, odtest and the plugins for Linux amd64/arm64 and Windows into bin/
+./scripts/package-plugins.sh dist  # the plugin zip for the host platform (GOOS/GOARCH select another)
 ```
 
-The dashboard header shows version, commit and commit date, straight from Go's VCS stamping. `go build` and `scripts/build.ps1` embed them as long as the Git repository is present. The container image therefore keeps `.git` in the build context and installs the git binary in its build stage (the alpine Go image ships none); the final image contains only the binaries.
+The dashboard header shows version, commit and commit date, straight from Go's VCS stamping. `go build` and `scripts/build.ps1` embed them as long as the Git repository is present. The container image therefore keeps `.git` in the build context and installs the git binary in its build stage (the alpine Go image ships none); the final image contains only the Paperboy binary. The *Plugins* workflow builds the plugin zips.
 
 A build without a repository or with `-buildvcs=false` reports `dev`. `go version -m <binary>` shows what was stamped. Untagged builds show `dev` plus commit; `git tag v0.1.0` gives release builds a version name.
 
@@ -226,6 +228,7 @@ A build without a repository or with `-buildvcs=false` reports `dev`. `go versio
 cmd/paperboy/            Startup, options and example configuration
 cmd/weather/             Weather plugin: Open-Meteo (ADR 0049)
 cmd/calendar/            Calendar plugin: CalDAV and iCalendar (ADR 0048, 0049)
+cmd/evcc/                evcc plugin: energy flow, charging point, forecast
 cmd/solardemo/           Demo plugin with synthetic solar values
 cmd/odtest/              Test program for OpenDisplay devices (TCP and Bluetooth)
 pkg/plugin/              Plugin protocol and Go helper (public API)

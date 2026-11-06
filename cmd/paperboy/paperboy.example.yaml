@@ -8,11 +8,15 @@
 # timezone: Europe/Berlin # IANA name; applies to plans, clocks and plugins
 
 # Plugins provide the widgets of the pages (ADR 0049). A plugin is a program in
-# plugins/ (or on PATH) that keeps running; Paperboy sends it its config section
+# plugins/ (unpack paperboy-plugins-<os>-<arch>.zip there) or on PATH that keeps
+# running; Paperboy sends it its config section
 # once after the start. ${VAR} in config values comes from the environment, so
 # secrets stay out of this file. The built-in plugin "paperboy" (header, text,
 # clock) needs no entry.
 plugins:
+  evcc:
+    command: [evcc]
+    config: { url: "http://evcc:7070" }
   weather:
     command: [weather]
     config: { lat: 52.52, lon: 13.40 }

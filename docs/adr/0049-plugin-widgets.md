@@ -76,8 +76,13 @@ drawing code.
    /api/plugins` need no token, like the dashboard.
 9. **Shipped plugins:** `calendar` (CalDAV and iCalendar, ADR 0048; widgets
    `agenda` and `month`), `weather` (Open-Meteo; widgets `current`, `days`,
-   `hours`, OpenMoji pictograms embedded) and `solardemo` (synthetic solar
-   values; a stand-in until a SolarAI plugin exists). A SolarAI plugin talks
+   `hours`, OpenMoji pictograms embedded), `evcc` (evcc REST API; widgets
+   `site`, `loadpoint`, `forecast`) and `solardemo` (synthetic solar values; a
+   stand-in until a SolarAI plugin exists). They are not part of the container
+   image: the *Plugins* workflow builds one zip per platform
+   (`paperboy-plugins-<os>-<arch>.zip`, attached to releases) that creates
+   `plugins/` when unpacked in the instance directory, so shipped and own
+   plugins live in the same place. A SolarAI plugin talks
    to SolarAI over HTTP itself; SolarAI knows nothing about Paperboy, and
    Paperboy knows only plugins. Plugins have no HTTP transport; Go's `plugin`
    package stays rejected (CGO, no Windows, identical toolchain, no
