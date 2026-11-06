@@ -93,7 +93,7 @@ func (p *calendarPlugin) Describe() plugin.Description {
 		Widgets: []plugin.WidgetInfo{
 			{
 				Widget: "agenda", Title: "Upcoming events", Kinds: both,
-				Sizes:    []plugin.Span{{Columns: 2, Rows: 2}, {Columns: 3, Rows: 3}, {Columns: 6, Rows: 3}},
+				Sizes:    []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 3, Rows: 7}, {Columns: 6, Rows: 4}},
 				MinWidth: 160, MinHeight: 80,
 				Args: map[string]plugin.Arg{
 					"lines":    {Type: "int", Default: 10, Description: "number of text lines (image displays; text displays use the cell height)"},
@@ -103,7 +103,7 @@ func (p *calendarPlugin) Describe() plugin.Description {
 			},
 			{
 				Widget: "month", Title: "Month grid", Kinds: both,
-				Sizes:    []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 4}},
+				Sizes:    []plugin.Span{{Columns: 3, Rows: 7}, {Columns: 6, Rows: 7}},
 				MinWidth: 210, MinHeight: 160,
 				Args: map[string]plugin.Arg{
 					"titles": {Type: "bool", Default: true, Description: "event titles in the day cells when they fit"},

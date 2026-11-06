@@ -315,3 +315,53 @@ func (t *Template) RenderText(d Display, c Context) ([]string, error) {
 	}
 	return out, nil
 }
+
+// DefaultStyle is the style a widget gets on a page without a style section.
+func DefaultStyle() plugin.Style {
+	return (&Template{}).pluginStyle(Cell{}, Display{})
+}
+
+// NoticeImage is the hatched notice Paperboy shows for a widget without a
+// result, as a standalone image of the widget's size.
+func NoticeImage(width, height, levels int, label, msg string) *image.Paletted {
+	renderMu.Lock()
+	defer renderMu.Unlock()
+	img := render.NewCanvas(width, height, levels)
+	cellNotice(img, img.Rect, label, msg)
+	return img
+}
+
+// WidgetImage maps a widget result onto the panel's palette like a page
+// does; a missing or wrongly sized result becomes a notice.
+func WidgetImage(r Result, width, height, levels int, label string) *image.Paletted {
+	switch {
+	case r.Image == nil:
+		msg := "no result"
+		if r.Err != nil {
+			msg = r.Err.Error()
+		}
+		return NoticeImage(width, height, levels, label, msg)
+	case r.Image.Bounds().Dx() != width || r.Image.Bounds().Dy() != height:
+		b := r.Image.Bounds()
+		return NoticeImage(width, height, levels, label, fmt.Sprintf("wrong size %dx%d instead of %dx%d", b.Dx(), b.Dy(), width, height))
+	}
+	return render.Quantize(r.Image, levels)
+}
+
+// TextCell fits widget lines to a cell of a text display like a page does:
+// converted to the charset, cut and padded; an error becomes wrapped lines.
+func TextCell(r Result, charset string, width, height int) []string {
+	lines := r.Lines
+	if r.Err != nil && lines == nil {
+		lines = wrap("? "+r.Err.Error(), width)
+	}
+	out := make([]string, height)
+	for i := range out {
+		if i < len(lines) {
+			out[i] = fit(Convert(charset, lines[i]), width)
+		} else {
+			out[i] = fit("", width)
+		}
+	}
+	return out
+}

@@ -12,6 +12,8 @@ body { margin: 0; padding: 1.5rem; font: 16px/1.4 system-ui, -apple-system, "Seg
 header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; margin-bottom: 1rem; }
 h1 { font-size: 1.5rem; margin: 0; }
 .muted { color: #666; font-size: .85rem; }
+nav a { color: #134e9c; text-decoration: none; }
+nav a.active { font-weight: 700; color: #111; }
 .build { margin-left: auto; font-variant-numeric: tabular-nums; }
 .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; }
@@ -32,6 +34,7 @@ dd { margin: 0; }
 <body>
 <header>
   <h1>Paperboy</h1>
+  <nav><a class="active" href="/ui">Devices</a> · <a href="/ui/plugins">Widgets</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
   <span class="muted">{{len .Devices}} device(s) · updated {{.Now}}</span>
 </header>

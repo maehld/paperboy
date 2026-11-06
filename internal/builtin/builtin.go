@@ -44,7 +44,7 @@ func (Plugin) Describe() plugin.Description {
 					"size":  {Type: "float", Default: 0.5, Description: "text height as a fraction of the line height"},
 					"bold":  {Type: "bool", Default: false},
 				}},
-			{Widget: "clock", Title: "Clock", Kinds: both, Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 3, Rows: 2}},
+			{Widget: "clock", Title: "Clock", Kinds: both, Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 3, Rows: 2}, {Columns: 6, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"format": {Type: "string", Default: "time", Description: "time, date or datetime"},
 				}},
