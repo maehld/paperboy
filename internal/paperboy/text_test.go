@@ -2,6 +2,8 @@ package paperboy
 
 import (
 	"encoding/json"
+	"fmt"
+	"image"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maehld/paperboy/pkg/plugin"
 )
 
 // textServer starts a server with one 8x2 text display that uses the plan.
@@ -16,9 +20,14 @@ func textServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 	t.Helper()
 	dir := t.TempDir()
 	pages := filepath.Join(dir, "pages")
-	writePageFile(t, filepath.Join(pages, "eins.lcd.yaml"), "lines: [\"PV {{ .solar.pv }}\", \"Größe\"]\n")
-	writePageFile(t, filepath.Join(pages, "zwei.lcd.yaml"), "lines: [zwei]\n")
-	writePageFile(t, filepath.Join(pages, "kaputt.lcd.yaml"), "lines: [a, b, c]\n")
+	writePageFile(t, filepath.Join(pages, "eins.lcd.yaml"), `
+grid: [8, 2]
+cells:
+  - { at: [0, 0], span: [8, 1], widget: value/pv }
+  - { at: [0, 1], span: [8, 1], widget: paperboy/text, args: { text: Größe } }
+`)
+	writePageFile(t, filepath.Join(pages, "zwei.lcd.yaml"), "grid: [8, 2]\ncells: [{span: [8, 1], widget: paperboy/text, args: {text: zwei}}]\n")
+	writePageFile(t, filepath.Join(pages, "kaputt.lcd.yaml"), "grid: [9, 2]\ncells: [{widget: paperboy/text, args: {text: x}}]\n")
 	if planYAML != "" {
 		writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), planYAML)
 	}
@@ -26,7 +35,7 @@ func textServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 	if planYAML != "" {
 		dev.Plan = "zimmer"
 	}
-	cfg := &Config{Dir: dir, UploadToken: testToken, Timezone: time.UTC, Language: "de",
+	cfg := &Config{Dir: dir, Timezone: time.UTC, Language: "de",
 		Profiles: map[string]Profile{"lcd": {Kind: kindText, Charset: "ascii", Width: 8, Height: 2}},
 		Devices:  []Device{dev}}
 	if err := cfg.validate(); err != nil {
@@ -38,7 +47,20 @@ func textServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 	}
 	now := time.Date(2026, time.October, 21, 8, 0, 0, 0, time.UTC)
 	s.now = func() time.Time { return now }
+	s.widgets.Builtin["value"] = &valuePlugin{}
 	return s, &now
+}
+
+// valuePlugin is a built-in test plugin with one text widget "PV <value>".
+type valuePlugin struct{ value int }
+
+func (*valuePlugin) Describe() plugin.Description                   { return plugin.Description{} }
+func (*valuePlugin) Configure(plugin.Values, *plugin.Request) error { return nil }
+func (*valuePlugin) Render(*plugin.Request, plugin.WidgetRequest, *image.Paletted) error {
+	return nil
+}
+func (v *valuePlugin) Text(*plugin.Request, plugin.WidgetRequest) ([]string, error) {
+	return []string{fmt.Sprintf("PV %d", v.value)}, nil
 }
 
 func pollText(t *testing.T, s *Server, key, shown string) *httptest.ResponseRecorder {
@@ -67,9 +89,8 @@ fallback: immer
 
 func TestTextDeviceSyncAndPoll(t *testing.T) {
 	s, _ := textServer(t, textPlan)
-	if err := s.doc.Put("solar/pv", 42, time.Time{}); err != nil {
-		t.Fatal(err)
-	}
+	value := s.widgets.Builtin["value"].(*valuePlugin)
+	value.value = 42
 	dev := planDevice(t, s)
 	out := displayPage(t, s, dev)
 	if out["image"] != nil {
@@ -101,10 +122,8 @@ func TestTextDeviceSyncAndPoll(t *testing.T) {
 	if rec := pollText(t, s, dev.key, polled.Hash); rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
 		t.Fatalf("unchanged poll: %d %s", rec.Code, rec.Body)
 	}
-	// New data changes the lines without a sync.
-	if err := s.doc.Put("solar/pv", 7, time.Time{}); err != nil {
-		t.Fatal(err)
-	}
+	// A changed widget changes the lines without a sync.
+	value.value = 7
 	rec = pollText(t, s, dev.key, polled.Hash)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"PV 7    "`) {
 		t.Fatalf("changed poll: %d %s", rec.Code, rec.Body)
@@ -164,7 +183,7 @@ func TestTextPollRejectsImageDisplay(t *testing.T) {
 
 func TestTextPreview(t *testing.T) {
 	s, _ := textServer(t, "")
-	rec := preview(t, s, "/api/preview/lcd/zwei", true)
+	rec := preview(t, s, "/api/preview/lcd/zwei")
 	if rec.Code != http.StatusOK || rec.Body.String() != "zwei    \n        \n" ||
 		!strings.HasPrefix(rec.Header().Get("Content-Type"), "text/plain") {
 		t.Fatalf("preview: %d %q", rec.Code, rec.Body)

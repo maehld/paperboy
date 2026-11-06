@@ -1,29 +1,31 @@
-// Command weather writes the weather branch of Paperboy's data document
-// (ADR 0036). It runs as an exec provider: it fetches Open-Meteo once, prints
-// the branch value as JSON on standard output and exits. On a network error or
-// a broken response it exits with status 1 and a message on standard error, so
-// Paperboy keeps the previous data and shows its age.
+// Command weather is a Paperboy plugin (ADR 0049) with Open-Meteo data. It
+// fetches the forecast in the background, keeps it in memory and draws the
+// widgets "current" (pictogram, temperature, condition, optional clothing
+// advice), "days" (daily forecast) and "hours" (today's temperature curve).
+// "current" and "days" have text variants for character displays.
 //
-//	go run ./cmd/weather -lat 52.52 -lon 13.40
+//	plugins:
+//	  weather:
+//	    command: [weather]
+//	    config: { lat: 52.52, lon: 13.40 }
 //
-// Open-Meteo needs no API key. The language of the condition texts comes from
-// PAPERBOY_LANGUAGE (de or en), which Paperboy passes to every provider.
+// Open-Meteo needs no API key. The pictograms come from OpenMoji (icons/).
 package main
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/maehld/paperboy/pkg/plugin"
 )
 
 const (
@@ -34,65 +36,12 @@ const (
 	hoursPerDay = 24
 	// forecastDays is the length of the daily list.
 	forecastDays = 5
-	// requestTimeout bounds the HTTP call; the provider timeout of the
-	// configuration is usually longer.
+	// requestTimeout bounds the HTTP call.
 	requestTimeout = 20 * time.Second
 )
 
 func main() {
-	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "weather:", err)
-		os.Exit(1)
-	}
-}
-
-func run() error {
-	lat := flag.Float64("lat", 0, "latitude of the location, e.g. 52.52")
-	lon := flag.Float64("lon", 0, "longitude of the location, e.g. 13.40")
-	base := flag.String("base", defaultBase, "Open-Meteo base URL")
-	language := flag.String("language", envOr("PAPERBOY_LANGUAGE", "en"), `language of the condition texts: "de" or "en"`)
-	flag.Parse()
-	if flag.NArg() != 0 {
-		return fmt.Errorf("unexpected arguments: %v", flag.Args())
-	}
-	set := map[string]bool{}
-	flag.Visit(func(f *flag.Flag) { set[f.Name] = true })
-	if !set["lat"] || !set["lon"] {
-		return errors.New("-lat and -lon are required")
-	}
-	if *lat < -90 || *lat > 90 {
-		return errors.New("-lat must be within -90..90")
-	}
-	if *lon < -180 || *lon > 180 {
-		return errors.New("-lon must be within -180..180")
-	}
-	if *language != "de" && *language != "en" {
-		return fmt.Errorf("language %q: expected de or en", *language)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	defer cancel()
-	forecast, err := fetch(ctx, http.DefaultClient, *base, *lat, *lon)
-	if err != nil {
-		return err
-	}
-	branch, err := branchOf(forecast, *language)
-	if err != nil {
-		return err
-	}
-	out, err := json.MarshalIndent(branch, "", "  ")
-	if err != nil {
-		return err
-	}
-	os.Stdout.Write(append(out, '\n'))
-	return nil
-}
-
-func envOr(name, fallback string) string {
-	if v := strings.TrimSpace(os.Getenv(name)); v != "" {
-		return v
-	}
-	return fallback
+	plugin.Serve(&weather{})
 }
 
 // ---- Open-Meteo response ----
@@ -174,8 +123,7 @@ func fetch(ctx context.Context, client *http.Client, base string, lat, lon float
 
 // ---- document branch ----
 
-// branch is the value of the weather branch. Its top-level "updated" is the
-// data time Paperboy uses for the write timestamp (ADR 0036).
+// branch is the forecast the widgets draw from.
 type branch struct {
 	Updated string  `json:"updated"`
 	Current current `json:"current"`
@@ -219,8 +167,7 @@ type day struct {
 	Text       string   `json:"text"`
 }
 
-// point is one hour in the shape of the solar history points, so the existing
-// chart block plots it unchanged.
+// point is one hour of today.
 type point struct {
 	Time   string             `json:"time"`
 	Values map[string]float64 `json:"values"`
@@ -349,9 +296,7 @@ func round2(v float64) float64 { return math.Round(v*100) / 100 }
 // above belongs to force 12.
 var beaufortBands = []float64{1, 6, 12, 20, 29, 39, 50, 62, 75, 89, 103, 118}
 
-// beaufort converts a wind speed in km/h to the Beaufort scale, so that page
-// templates can compare a wind force instead of a unit-dependent speed
-// (ADR 0038).
+// beaufort converts a wind speed in km/h to the Beaufort scale.
 func beaufort(kmh float64) int {
 	for i, limit := range beaufortBands {
 		if kmh < limit {
@@ -362,8 +307,7 @@ func beaufort(kmh float64) int {
 }
 
 // symbol names the pictogram of a WMO weather code: sun, cloud, rain, snow or
-// thunder. Pages select an icon in icons/ by this name (ADR 0038); the mapping
-// is source-specific knowledge and therefore lives here, not in the service.
+// thunder, the file names in icons/.
 func symbol(code int) string {
 	switch {
 	case code == 0, code == 1:
@@ -393,9 +337,7 @@ func weekday(t time.Time, language string) string {
 	return names[int(t.Weekday())]
 }
 
-// conditionText names a WMO weather code. The provider supplies the text
-// because page templates have no way to map codes and the service must stay
-// free of source-specific knowledge (ADR 0033, ADR 0036).
+// conditionText names a WMO weather code.
 var conditions = map[int][2]string{ // [de, en]
 	0:  {"Klar", "Clear"},
 	1:  {"Überwiegend klar", "Mainly clear"},

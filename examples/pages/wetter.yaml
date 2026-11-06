@@ -1,0 +1,8 @@
+title: Wetter
+grid: [6, 8]
+style: { padding: 8, divider: 1 }
+cells:
+  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
+  - { at: [0, 1], span: [6, 3], widget: weather/current, args: { clothing: true } }
+  - { at: [0, 4], span: [6, 2], widget: weather/days }
+  - { at: [0, 6], span: [6, 2], widget: weather/hours }

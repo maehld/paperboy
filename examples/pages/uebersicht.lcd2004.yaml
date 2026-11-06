@@ -1,0 +1,7 @@
+# The overview on a 20x4 character display: the grid is the character grid.
+title: Übersicht
+grid: [20, 4]
+cells:
+  - { at: [0, 0], span: [20, 1], widget: paperboy/header }
+  - { at: [0, 1], span: [20, 1], widget: weather/current }
+  - { at: [0, 2], span: [20, 2], widget: calendar/agenda }

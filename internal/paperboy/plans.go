@@ -52,7 +52,8 @@ type pagePosition struct {
 	count int
 }
 
-// renderPage renders pages/<name>.<profile>.yaml from the data document.
+// renderPage composes pages/<name>.<profile>.yaml (or pages/<name>.yaml) from
+// plugin widgets.
 // A panicking template or font problem is reported as an error instead of
 // tearing down the request, so the device can be served a notice page. cfg is
 // the configuration snapshot of the request; the render path never reloads the
@@ -73,9 +74,8 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	if err != nil {
 		return nil, err
 	}
-	img, err := tmpl.RenderContext(s.doc, page.Display{
-		Width: p.Width, Height: p.Height, Gray: p.Gray, Language: cfg.Language, Timezone: cfg.Timezone,
-	}, page.Context{Now: now, Page: pos.index + 1, Pages: pos.count, Banners: banners})
+	img, err := tmpl.RenderImage(s.display(cfg, p), page.Context{Now: now, Page: pos.index + 1, Pages: pos.count,
+		Banners: banners, Widgets: s.widgetSource()})
 	if err != nil {
 		return nil, err
 	}
@@ -86,9 +86,9 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	return &renderedPage{data: data, hash: hashBytes(data)}, nil
 }
 
-// textDisplay describes a text display type for the page package.
-func (s *Server) textDisplay(cfg *Config, p Profile) page.TextDisplay {
-	return page.TextDisplay{Columns: p.Width, Rows: p.Height, Charset: p.Charset,
+// display describes a display type for the page package.
+func (s *Server) display(cfg *Config, p Profile) page.Display {
+	return page.Display{Width: p.Width, Height: p.Height, Gray: p.Gray, Text: p.text(), Charset: p.Charset,
 		Language: cfg.Language, Timezone: cfg.Timezone}
 }
 
@@ -110,11 +110,12 @@ func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, po
 	if !ok || !p.text() {
 		return nil, fmt.Errorf("unknown text display type %q", profile)
 	}
-	tmpl, err := page.LoadText(cfg.Pages, name, profile)
+	tmpl, err := page.Load(cfg.Pages, name, profile)
 	if err != nil {
 		return nil, err
 	}
-	return tmpl.Render(s.doc, s.textDisplay(cfg, p), page.Context{Now: now, Page: pos.index + 1, Pages: pos.count})
+	return tmpl.RenderText(s.display(cfg, p), page.Context{Now: now, Page: pos.index + 1, Pages: pos.count,
+		Widgets: s.widgetSource()})
 }
 
 // notice registers a generated page and returns where it is served. Only the
@@ -136,7 +137,7 @@ func (s *Server) hint(cfg *Config, profile, title, text string) servedPage {
 		p = Profile{Width: 400, Height: 300}
 	}
 	if p.text() {
-		lines := page.NoticeLines(s.textDisplay(cfg, p), title, text)
+		lines := page.NoticeLines(s.display(cfg, p), title, text)
 		// Text displays come back sooner: their sync is cheap and they never sleep.
 		return servedPage{lines: lines, hash: hashLines(lines), refresh: time.Minute}
 	}

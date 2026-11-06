@@ -1,0 +1,6 @@
+# The evcc widgets on a 20x4 character display.
+title: Laden
+grid: [20, 4]
+cells:
+  - { at: [0, 0], span: [20, 2], widget: evcc/site }
+  - { at: [0, 2], span: [20, 2], widget: evcc/loadpoint }

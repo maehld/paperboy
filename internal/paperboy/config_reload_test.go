@@ -3,12 +3,16 @@ package paperboy
 import (
 	"context"
 	"fmt"
+	"image"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maehld/paperboy/pkg/plugin"
+	"github.com/maehld/paperboy/pkg/render"
 )
 
 const reloadConfig = `
@@ -24,8 +28,6 @@ devices:
     display_type: e1001
     protocol: paperboy
     mac: "AA:BB:CC:DD:EE:01"
-server:
-  upload_token: ` + testToken + `
 `
 
 func writeConfig(t *testing.T, dir, content string) {
@@ -54,7 +56,7 @@ func configServer(t *testing.T, dir string) *Server {
 // being served (ADR 0047).
 func TestConfigReloadChangesDeviceList(t *testing.T) {
 	dir := t.TempDir()
-	writePageFile(t, filepath.Join(dir, "pages", "seite.e1001.yaml"), "rows: [1]\nblocks:\n  - text: \"eins\"\n")
+	writePageFile(t, filepath.Join(dir, "pages", "seite.e1001.yaml"), textPage("eins"))
 	writeConfig(t, dir, reloadConfig)
 	s := configServer(t, dir)
 
@@ -77,8 +79,6 @@ func TestConfigReloadChangesDeviceList(t *testing.T) {
     kind: image
     size: [800, 480]
     gray_levels: 4
-server:
-  upload_token: ` + testToken + `
 `
 	writeConfig(t, dir, noDevices)
 	if rec := register(t, s, `{"mac":"AA:BB:CC:DD:EE:01","hardware":"sticky"}`); rec.Code != http.StatusForbidden {
@@ -115,7 +115,7 @@ func TestConfigReloadKeepsLastValid(t *testing.T) {
 // configuration, and applies the file once it becomes valid.
 func TestDegradedStartAppliesConfig(t *testing.T) {
 	dir := t.TempDir()
-	writePageFile(t, filepath.Join(dir, "pages", "seite.e1001.yaml"), "rows: [1]\nblocks:\n  - text: \"eins\"\n")
+	writePageFile(t, filepath.Join(dir, "pages", "seite.e1001.yaml"), textPage("eins"))
 	if _, err := LoadConfig(dir); err == nil {
 		t.Fatal("unexpected: directory without paperboy.yaml loads")
 	}
@@ -136,52 +136,76 @@ func TestDegradedStartAppliesConfig(t *testing.T) {
 	}
 }
 
-// TestConfigReloadStartsProviders verifies that the background loop starts a
-// provider added to paperboy.yaml without a restart (ADR 0036, 0047).
-func TestConfigReloadStartsProviders(t *testing.T) {
+// TestPluginHelperProcess is the plugin of the tests below, started as a
+// child process of the test binary.
+func TestPluginHelperProcess(t *testing.T) {
+	if os.Getenv("PAPERBOY_TEST_PLUGIN") != "1" {
+		t.Skip("helper process")
+	}
+	plugin.Serve(&testPlugin{})
+	os.Exit(0)
+}
+
+// testPlugin fills its widget black when its config says so.
+type testPlugin struct{ black bool }
+
+func (p *testPlugin) Describe() plugin.Description {
+	return plugin.Description{Title: "Test", Widgets: []plugin.WidgetInfo{{Widget: "area", Kinds: []string{plugin.KindImage}}}}
+}
+
+func (p *testPlugin) Configure(cfg plugin.Values, _ *plugin.Request) error {
+	if cfg.String("secret", "") != "s3cret" {
+		return fmt.Errorf("secret not expanded: %v", cfg["secret"])
+	}
+	p.black = cfg.Bool("black", false)
+	return nil
+}
+
+func (p *testPlugin) Render(_ *plugin.Request, _ plugin.WidgetRequest, img *image.Paletted) error {
+	if p.black {
+		render.FillSolid(img, img.Rect)
+	}
+	return nil
+}
+
+// TestConfigReloadReconfiguresPlugins verifies that a plugin gets its config
+// section with ${VAR} expanded, and that a changed section restarts it so the
+// next page shows the new configuration (ADR 0047, 0049).
+func TestConfigReloadReconfiguresPlugins(t *testing.T) {
 	dir := t.TempDir()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	providerYAML := `
-display_types:
-  e1001:
-    kind: image
-    size: [800, 480]
-    gray_levels: 4
-server:
-  upload_token: ` + testToken + `
-providers:
-  weather:
-    command: [` + exe + `, -test.run=TestProviderHelperProcess]
-    path: weather
-    interval: 1h
-    timeout: 30s
-    env: { PAPERBOY_TEST_PROVIDER: "1" }
+	t.Setenv("PAPERBOY_TEST_SECRET", "s3cret")
+	pluginYAML := func(black bool) string {
+		return fmt.Sprintf(timezoneConfig, "UTC") + `
+plugins:
+  test:
+    command: [` + exe + `, -test.run=TestPluginHelperProcess]
+    env: { PAPERBOY_TEST_PLUGIN: "1" }
+    config: { black: ` + fmt.Sprint(black) + `, secret: "${PAPERBOY_TEST_SECRET}" }
 `
-	writeConfig(t, dir, providerYAML)
-	// The providers directory is derived from the instance dir; the runner
-	// refuses to start without it.
-	if err := os.MkdirAll(filepath.Join(dir, providersDirName), 0o755); err != nil {
+	}
+	writePageFile(t, filepath.Join(dir, "pages", "eins.yaml"), "grid: [1, 1]\ncells: [{widget: test/area}]\n")
+	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), "rules: [{name: immer, pages: [eins]}]\n")
+	if err := os.MkdirAll(filepath.Join(dir, pluginsDirName), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	writeConfig(t, dir, pluginYAML(true))
 	s := configServer(t, dir)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s.StartProviders(ctx)
-
-	waitFor(t, func() bool { _, ok := s.doc.Get("weather"); return ok }, "weather provider to write its branch")
-
-	writeConfig(t, dir, providerYAML+`
-  wind:
-    command: [`+exe+`, -test.run=TestProviderHelperProcess]
-    path: wind
-    interval: 1h
-    timeout: 30s
-    env: { PAPERBOY_TEST_PROVIDER: "1" }
-`)
-	waitFor(t, func() bool { _, ok := s.doc.Get("wind"); return ok }, "added provider to start without a restart")
+	s.Start(ctx)
+	dev := planDevice(t, s)
+	if n := blackPixels(t, s, pagePath(displayPage(t, s, dev))); n < 800*480/2 {
+		t.Fatalf("plugin with black: true drew %d black pixels", n)
+	}
+	writeConfig(t, dir, pluginYAML(false))
+	s.configurePlugins(s.config())
+	if n := blackPixels(t, s, pagePath(displayPage(t, s, dev))); n > 800*480/10 {
+		t.Fatalf("reconfigured plugin still draws black: %d pixels", n)
+	}
 }
 
 func waitFor(t *testing.T, cond func() bool, what string) {
@@ -248,8 +272,6 @@ devices:
     protocol: paperboy
     mac: "AA:BB:CC:DD:EE:01"
     plan: zimmer
-server:
-  upload_token: ` + testToken + `
 `
 
 // TestConfigReloadMovesPlanRules verifies that the global timezone is part of
@@ -257,8 +279,8 @@ server:
 // without a restart (ADR 0033, 0047).
 func TestConfigReloadMovesPlanRules(t *testing.T) {
 	dir := t.TempDir()
-	writePageFile(t, filepath.Join(dir, "pages", "eins.e1001.yaml"), "rows: [1]\nblocks:\n  - text: \"eins\"\n")
-	writePageFile(t, filepath.Join(dir, "pages", "zwei.e1001.yaml"), "rows: [1]\nblocks:\n  - text: \"zwei\"\n")
+	writePageFile(t, filepath.Join(dir, "pages", "eins.e1001.yaml"), textPage("eins"))
+	writePageFile(t, filepath.Join(dir, "pages", "zwei.e1001.yaml"), textPage("zwei"))
 	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), `
 rules:
   - name: frueh
@@ -282,65 +304,5 @@ fallback: frueh
 	writeConfig(t, dir, fmt.Sprintf(timezoneConfig, "Europe/Berlin"))
 	if got := pagePath(displayPage(t, s, dev)); !strings.HasPrefix(got, "/pages/e1001/zwei/") {
 		t.Fatalf("page after the timezone change: %q", got)
-	}
-}
-
-// providerRunOf returns the run of a provider, or nil when it is not running.
-func providerRunOf(s *Server, name string) *providerRun {
-	s.providers.mu.Lock()
-	defer s.providers.mu.Unlock()
-	return s.providers.runs[name]
-}
-
-// TestProviderManagerReconciles verifies that an unchanged configuration keeps a
-// running provider, a changed spec restarts it and a removed provider stops
-// (ADR 0036, 0047).
-func TestProviderManagerReconciles(t *testing.T) {
-	dir := t.TempDir()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	block := func(name, interval string) string {
-		return "  " + name + ":\n    command: [" + exe + ", -test.run=TestProviderHelperProcess]\n" +
-			"    path: " + name + "\n    interval: " + interval + "\n    timeout: 30s\n" +
-			"    env: { PAPERBOY_TEST_PROVIDER: \"1\" }\n"
-	}
-	head := "\ndisplay_types:\n  e1001:\n    kind: image\n    size: [800, 480]\n" +
-		"server:\n  upload_token: " + testToken + "\nproviders:\n"
-	writeConfig(t, dir, head+block("weather", "1h")+block("wind", "1h"))
-	if err := os.MkdirAll(filepath.Join(dir, providersDirName), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	s := configServer(t, dir)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	s.providers.sync(ctx, s.config(), s.doc, s.now)
-	weather := providerRunOf(s, "weather")
-	if weather == nil || providerRunOf(s, "wind") == nil {
-		t.Fatal("providers not started")
-	}
-	s.providers.sync(ctx, s.config(), s.doc, s.now)
-	if providerRunOf(s, "weather") != weather {
-		t.Fatal("an unchanged configuration restarted the provider")
-	}
-
-	// A removed provider stops, the remaining one keeps running.
-	writeConfig(t, dir, head+block("weather", "1h"))
-	s.providers.sync(ctx, s.config(), s.doc, s.now)
-	if providerRunOf(s, "wind") != nil {
-		t.Fatal("a removed provider keeps running")
-	}
-	if providerRunOf(s, "weather") != weather {
-		t.Fatal("removing another provider restarted this one")
-	}
-
-	// A changed interval restarts the provider with the new spec.
-	writeConfig(t, dir, head+block("weather", "2h"))
-	s.providers.sync(ctx, s.config(), s.doc, s.now)
-	restarted := providerRunOf(s, "weather")
-	if restarted == nil || restarted == weather || restarted.spec.Interval != 2*time.Hour {
-		t.Fatalf("changed interval did not restart the provider: %#v", restarted)
 	}
 }

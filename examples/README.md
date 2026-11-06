@@ -1,34 +1,31 @@
 # Example pages and plans
 
-The templates under `pages/` are starting points for the SolarAI reference pages
-(overview, battery, daily balance and daily history) and for the weather page of
-the Open-Meteo provider. Copy the files you need into the `pages/` directory of
-your instance directory and adapt the texts, thresholds and sizes to your data.
+The pages under `pages/` are grids of widgets from the shipped plugins
+(ADR 0049): `weather`, `calendar`, `evcc` and the built-in `paperboy` plugin. Copy the files you
+need into the `pages/` directory of your instance and adapt the grid, the
+spans and the arguments.
 
-The display type suffix selects the template: `solar-overview.e1001.yaml` is used
-for devices with `display_type: e1001`, `solar-overview.sticky.yaml` for devices
-with `display_type: sticky`. Both layouts are independent files because the
-compact variant has fewer rows and no chart.
+- `uebersicht.yaml` – weather, energy flow from evcc, agenda and a three-day
+  forecast.
+- `kalender.yaml` – agenda next to a month grid.
+- `wetter.yaml` – current weather with clothing advice, five days and today's
+  temperature curve.
+- `laden.yaml` – evcc: energy flow, the charging point and the forecast;
+  `laden.lcd2004.yaml` shows site and charging point on 20×4.
+- `uebersicht.lcd2004.yaml` – the overview on a 20×4 character display; its
+  grid is the character grid.
 
-`solar-overview.lcd2004.yaml` is the same overview for a 20×4 text display
-(`kind: text`, ADR 0044): four `lines` instead of blocks, fitted with `pad` and
-`right`. A plan may name `solar-overview` for image and text displays alike;
-each device gets the template of its display type.
+A page without a display type suffix serves every display type that has no own
+variant, so `uebersicht.yaml` works on 800×480 and on 400×300 panels alike: the
+plugins draw every widget in the size of its cell. A text display needs its own
+`<page>.<display type>.yaml`, because its grid must match the display.
 
-`plans/solar.yaml` shows a plan that pages through the four pages during the day
-and returns to the overview at night. Copy it into the `plans/` directory of your
-instance directory and point a device at it with `plan: solar`.
+The plugin names in the pages are the keys under `plugins` in `paperboy.yaml`;
+`cmd/paperboy/paperboy.example.yaml` declares all of them.
 
-The templates expect the data paths described in ADR 0024, ADR 0034 and ADR 0036:
-`solar/current/latest`, `solar/history/points`, `solar/derived` and `weather`
-(the branch of `cmd/weather`).
+`plans/standard.yaml` pages through the four pages during the day and shows
+the overview at night. Copy it into the `plans/` directory of your instance and
+point a device at it with `plan: standard`.
 
-`icons/` holds single-colour PNG pictograms for the `icon` block (ADR 0038):
-`sun`, `cloud`, `rain`, `snow`, `thunder`, `tshirt` and `pullover`. They are
-taken from [OpenMoji](https://openmoji.org) (black style, CC BY-SA 4.0); see
-`icons/README.md` for the source files and the licence.
-
-Copy the files you need into the `icons/` directory of the instance. Paperboy
-reduces each picture to a mask, trims the margins, so black motifs on a
-transparent or white background both work and the same file renders on 1-bit
-and 4-gray displays.
+`plugins/demo.ics` is a small calendar for trying the calendar plugin without
+an account: `config: { ics_files: [/path/to/demo.ics] }`.

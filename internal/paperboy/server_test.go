@@ -11,11 +11,9 @@ import (
 	"time"
 )
 
-const testToken = "0123456789abcdef-test"
-
 func testServer(t *testing.T) (*Server, *time.Time) {
 	t.Helper()
-	cfg := &Config{Dir: t.TempDir(), UploadToken: testToken, Profiles: map[string]Profile{"small": {Width: 40, Height: 20, Gray: true}},
+	cfg := &Config{Dir: t.TempDir(), Profiles: map[string]Profile{"small": {Width: 40, Height: 20, Gray: true}},
 		Devices: []Device{{ID: "test", MAC: "aa:bb:cc:dd:ee:01", Profile: "small", Refresh: Duration(10 * time.Minute)}}}
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)
@@ -142,7 +140,7 @@ func TestDeviceStateMigratesToDeviceID(t *testing.T) {
 	if err := os.WriteFile(statePath, []byte(old), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &Config{Dir: dir, UploadToken: testToken, Profiles: map[string]Profile{"small": {Width: 40, Height: 20}},
+	cfg := &Config{Dir: dir, Profiles: map[string]Profile{"small": {Width: 40, Height: 20}},
 		Devices: []Device{{ID: "wohnzimmer", MAC: "aa:bb:cc:dd:ee:01", Profile: "small"}}}
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)
@@ -169,7 +167,7 @@ func TestDeviceStateMigratesToDeviceID(t *testing.T) {
 
 func TestNewCreatesOnlyStateDirectory(t *testing.T) {
 	dir := t.TempDir()
-	cfg := &Config{Dir: dir, UploadToken: testToken, Profiles: map[string]Profile{"small": {Width: 40, Height: 20}},
+	cfg := &Config{Dir: dir, Profiles: map[string]Profile{"small": {Width: 40, Height: 20}},
 		Devices: []Device{{ID: "test", MAC: "aa:bb:cc:dd:ee:01", Profile: "small"}}}
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)
@@ -179,13 +177,13 @@ func TestNewCreatesOnlyStateDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if s.config().Pages != filepath.Join(dir, "pages") || s.config().Plans != filepath.Join(dir, "plans") ||
-		s.config().ProvidersDir != filepath.Join(dir, "providers") {
-		t.Fatalf("derived directories: %q %q %q", s.config().Pages, s.config().Plans, s.config().ProvidersDir)
+		s.config().PluginsDir != filepath.Join(dir, "plugins") {
+		t.Fatalf("derived directories: %q %q %q", s.config().Pages, s.config().Plans, s.config().PluginsDir)
 	}
 	if fi, err := os.Stat(filepath.Join(dir, "state")); err != nil || !fi.IsDir() {
 		t.Fatalf("state directory: %v", err)
 	}
-	for _, name := range []string{"pages", "plans", "providers"} {
+	for _, name := range []string{"pages", "plans", "plugins"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
 			t.Fatalf("%s must stay operator-owned (err %v)", name, err)
 		}
