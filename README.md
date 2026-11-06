@@ -119,7 +119,7 @@ notices: show                # show (default) or none
 cells:
   - { at: [0, 0], span: [6, 1], widget: paperboy/header }
   - { at: [0, 1], span: [3, 3], widget: weather/current, args: { clothing: true } }
-  - { at: [3, 1], span: [3, 3], widget: solar/tiles }
+  - { at: [3, 1], span: [3, 3], widget: evcc/site }
   - { at: [0, 4], span: [3, 4], widget: calendar/agenda, args: { lines: 7 }, style: { padding: 4 } }
   - { at: [3, 4], span: [3, 4], widget: weather/days, args: { days: 3 } }
 ```
@@ -144,7 +144,7 @@ cells:
 
 Plugins answer with lines for the cell; Paperboy converts them to the display type's `charset`, cuts them to the cell width and pads them. `ascii` transliterates (ä → ae, ° → o, € → EUR), `hd44780` keeps `ä ö ü ß ° µ` for the firmware's ROM mapping and transliterates the rest. A widget without a text variant shows its error in the cell.
 
-The pages in `examples/pages` (`uebersicht`, `kalender`, `wetter`, `solar`, `laden` and the 20 × 4 variants `uebersicht.lcd2004` and `laden.lcd2004`) use the shipped plugins; `examples/plans/standard.yaml` pages through them.
+The pages in `examples/pages` (`uebersicht`, `kalender`, `wetter`, `laden` and the 20 × 4 variants `uebersicht.lcd2004` and `laden.lcd2004`) use the shipped plugins; `examples/plans/standard.yaml` pages through them.
 
 ## Plugins
 
@@ -160,7 +160,7 @@ Shipped plugins (one zip per platform: `paperboy-plugins-linux-amd64.zip` and `p
 
 - **`weather`** – [Open-Meteo](https://open-meteo.com/), no API key. Config: `lat`, `lon` (required), `refresh` (default `15m`), `base`. Widgets: `current` (pictogram, temperature, condition, apparent temperature, wind force, today's range; `clothing: true` adds a T-shirt or pullover – pullover below 15 °C felt or above wind force 3), `days` (`days: 1..5`, pictogram and range per day), `hours` (today's temperature with precipitation probability; image only). The pictograms come from [OpenMoji](https://openmoji.org) (CC BY-SA 4.0, see `cmd/weather/icons/README.md`).
 - **`calendar`** – CalDAV and iCalendar (ADR 0048). Config: `caldav`, `user`, `password` (use `${VAR}`), `calendars` (names; default all, an unknown name fails and lists the available ones), `ics` (links, `webcal://` works), `ics_files`, `days` (default 14), `max_events`, `refresh` (default `15m`). For iCloud create an app-specific password at [account.apple.com](https://account.apple.com) and use the Apple ID as `user`; Nextcloud works with e.g. `https://cloud.example.org/remote.php/dav`. Recurring events are expanded by the plugin; unsupported rules (hourly, `BYWEEKNO`, `BYYEARDAY`) skip that event with a warning. Widgets: `agenda` (`lines`, `headings`, `location`; day headings, all-day events first, ended events disappear, „+N weitere“ on overflow) and `month` (month grid with titles or event bars; `titles: false`). The plugin reads the calendars in the background and reports changes.
-- **`solardemo`** – synthetic solar values with the widgets `tiles` (`columns: 2|4`) and `chart`; a stand-in until a SolarAI plugin exists. A SolarAI plugin talks to SolarAI over HTTP itself; SolarAI needs to know nothing about Paperboy.
+- A SolarAI plugin is still to come; it talks to SolarAI over HTTP itself, and SolarAI needs to know nothing about Paperboy.
 
 ## Plans
 
@@ -229,7 +229,6 @@ cmd/paperboy/            Startup, options and example configuration
 cmd/weather/             Weather plugin: Open-Meteo (ADR 0049)
 cmd/calendar/            Calendar plugin: CalDAV and iCalendar (ADR 0048, 0049)
 cmd/evcc/                evcc plugin: energy flow, charging point, forecast
-cmd/solardemo/           Demo plugin with synthetic solar values
 cmd/odtest/              Test program for OpenDisplay devices (TCP and Bluetooth)
 pkg/plugin/              Plugin protocol and Go helper (public API)
 pkg/render/              Fonts, palettes and drawing shared by Paperboy and plugins (public API)

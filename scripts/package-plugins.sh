@@ -17,7 +17,7 @@ stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 
 mkdir -p "$stage/plugins" "$out"
-for app in calendar weather evcc solardemo; do
+for app in calendar weather evcc; do
   echo "building $app for $goos/$goarch"
   (cd "$root" && CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch \
     go build -trimpath -ldflags="-s -w" -o "$stage/plugins/$app$ext" "./cmd/$app")

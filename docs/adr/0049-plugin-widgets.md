@@ -77,8 +77,7 @@ drawing code.
 9. **Shipped plugins:** `calendar` (CalDAV and iCalendar, ADR 0048; widgets
    `agenda` and `month`), `weather` (Open-Meteo; widgets `current`, `days`,
    `hours`, OpenMoji pictograms embedded), `evcc` (evcc REST API; widgets
-   `site`, `loadpoint`, `forecast`) and `solardemo` (synthetic solar values; a
-   stand-in until a SolarAI plugin exists). They are not part of the container
+   `site`, `loadpoint`, `forecast`). A SolarAI plugin is still to come. They are not part of the container
    image: the *Plugins* workflow builds one zip per platform
    (`paperboy-plugins-<os>-<arch>.zip`, attached to releases) that creates
    `plugins/` when unpacked in the instance directory, so shipped and own

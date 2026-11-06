@@ -28,8 +28,6 @@ plugins:
       user: me@icloud.com
       password: ${PAPERBOY_CALDAV_PASSWORD}   # iCloud: app-specific password
       calendars: [Privat]
-  solar:
-    command: [solardemo]   # placeholder until a SolarAI plugin exists
 
 defaults:
   refresh: 5m

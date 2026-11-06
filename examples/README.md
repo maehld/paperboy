@@ -1,16 +1,15 @@
 # Example pages and plans
 
 The pages under `pages/` are grids of widgets from the shipped plugins
-(ADR 0049): `weather`, `calendar`, `evcc`, `solar` (the `solardemo` program, a stand-in
-for a SolarAI plugin) and the built-in `paperboy` plugin. Copy the files you
+(ADR 0049): `weather`, `calendar`, `evcc` and the built-in `paperboy` plugin. Copy the files you
 need into the `pages/` directory of your instance and adapt the grid, the
 spans and the arguments.
 
-- `uebersicht.yaml` – weather, solar values, agenda and a three-day forecast.
+- `uebersicht.yaml` – weather, energy flow from evcc, agenda and a three-day
+  forecast.
 - `kalender.yaml` – agenda next to a month grid.
 - `wetter.yaml` – current weather with clothing advice, five days and today's
   temperature curve.
-- `solar.yaml` – solar tiles and the power chart.
 - `laden.yaml` – evcc: energy flow, the charging point and the forecast;
   `laden.lcd2004.yaml` shows site and charging point on 20×4.
 - `uebersicht.lcd2004.yaml` – the overview on a 20×4 character display; its
