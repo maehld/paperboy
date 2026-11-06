@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maehld/paperboy/pkg/render"
 )
 
 const gridPage = `
@@ -154,5 +156,24 @@ cells:
 	}
 	if _, err := tmpl.RenderText(Display{Width: 20, Height: 4, Text: true}, Context{Widgets: src}); err == nil {
 		t.Fatal("a grid that does not match the display must fail")
+	}
+}
+
+func TestBannerOnTinyDisplayStaysBlack(t *testing.T) {
+	img := WithBanner(render.NewCanvas(40, 20, 4), "Akku schwach – bitte laden")
+	for x := 0; x < 40; x++ {
+		if gray(img, x, 19) != 0 {
+			t.Fatalf("pixel %d of the bar is %d, want black", x, gray(img, x, 19))
+		}
+	}
+	big := WithBanner(render.NewCanvas(400, 200, 4), "Akku schwach")
+	white := 0
+	for x := 0; x < 400; x++ {
+		if gray(big, x, 190) == 255 {
+			white++
+		}
+	}
+	if white == 0 {
+		t.Fatal("a large bar must carry the text")
 	}
 }

@@ -248,7 +248,8 @@ func firstLine(s string) string {
 }
 
 // WithBanner returns a copy of img with inverted notice bars stacked at the
-// bottom.
+// bottom. A bar too low for legible text stays a plain black bar: white text
+// at the minimum font size would cover it and turn it gray.
 func WithBanner(img *image.Paletted, texts ...string) *image.Paletted {
 	out := image.NewPaletted(img.Rect, img.Palette)
 	copy(out.Pix, img.Pix)
@@ -262,6 +263,9 @@ func WithBanner(img *image.Paletted, texts ...string) *image.Paletted {
 		render.FillSolid(out, image.Rect(0, bottom-bar, w, bottom))
 		if i > 0 {
 			render.FillColor(out, image.Rect(0, bottom-max(1, bar/30), w, bottom), color.White)
+		}
+		if float64(bar)*0.55 < render.MinSize {
+			continue
 		}
 		render.Text(out, s, w/2, bottom-bar*3/10, render.Style{Size: float64(bar) * 0.55, Bold: true, Shrink: true},
 			w-w/25, color.White, render.Center)

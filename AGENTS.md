@@ -59,7 +59,7 @@ Paperboy v2 (ADR 0049) replaced the data document (ADR 0024), the region model (
 
 Still in place from v1: the device API (ADR 0042) with text displays (ADR 0044, 0045), plans (ADR 0025), configuration reload (ADR 0047), device status and dashboard (ADR 0039, 0040), firmware distribution (ADR 0043) and the battery warning (ADR 0020). ADR 0041's firmware compiles for `sticky`, `e1001` and `lcd2004` but is not yet flashed; the rollback test with a broken image is still open before `firmware.update: auto` is used on real devices. The calendar plugin has not yet run against the real iCloud.
 
-Open: a page editor on top of `GET /api/plugins` and the grid, a SolarAI plugin (it talks to SolarAI over HTTP; SolarAI knows nothing about Paperboy), plans/delivery for OpenDisplay, data conditions in plans (`when.data`) and push delivery to text displays. `TestBatteryWarningFlow` fails on Linux (also on `main` before v2): the banner text covers the two-pixel bar of the 40×20 test display.
+Open: a page editor on top of `GET /api/plugins` and the grid, a SolarAI plugin (it talks to SolarAI over HTTP; SolarAI knows nothing about Paperboy), plans/delivery for OpenDisplay, data conditions in plans (`when.data`) and push delivery to text displays.
 
 ## Startup and checks
 
