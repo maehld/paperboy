@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/maehld/paperboy/pkg/plugin"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -372,18 +373,22 @@ func TestICSLink(t *testing.T) {
 	}
 }
 
-func TestParseFlags(t *testing.T) {
-	t.Setenv("PAPERBOY_CALDAV_PASSWORD", "")
-	if _, err := parseFlags([]string{"-caldav", "https://caldav.icloud.com", "-user", "me"}); err == nil || !strings.Contains(err.Error(), "PAPERBOY_CALDAV_PASSWORD") {
+func TestParseConfig(t *testing.T) {
+	berlin, _ := time.LoadLocation("Europe/Berlin")
+	cfg := plugin.Values{"caldav": "https://caldav.icloud.com", "user": "me"}
+	if _, err := parseConfig(cfg, "de", berlin); err == nil || !strings.Contains(err.Error(), "password") {
 		t.Fatalf("missing password: %v", err)
 	}
-	t.Setenv("PAPERBOY_CALDAV_PASSWORD", "pw")
-	t.Setenv("PAPERBOY_TIMEZONE", "Europe/Berlin")
-	o, err := parseFlags([]string{"-caldav", "https://caldav.icloud.com", "-user", "me", "-calendar", "Privat", "-calendar", "Arbeit"})
-	if err != nil || o.password != "pw" || len(o.calendars) != 2 || o.location.String() != "Europe/Berlin" {
+	cfg["password"] = "pw"
+	cfg["calendars"] = []any{"Privat", "Arbeit"}
+	o, err := parseConfig(cfg, "de", berlin)
+	if err != nil || o.password != "pw" || len(o.calendars) != 2 || o.location != berlin || o.refresh != 15*time.Minute {
 		t.Fatalf("%+v %v", o, err)
 	}
-	if _, err := parseFlags(nil); err == nil {
+	if _, err := parseConfig(plugin.Values{}, "de", berlin); err == nil {
 		t.Fatal("expected an error without sources")
+	}
+	if _, err := parseConfig(plugin.Values{"ics": "https://x", "colour": "red"}, "de", berlin); err == nil || !strings.Contains(err.Error(), "colour") {
+		t.Fatalf("unknown key accepted: %v", err)
 	}
 }

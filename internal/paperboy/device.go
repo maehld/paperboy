@@ -255,7 +255,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Drawing and rendering happen without the lock: a slow page, a font problem
-	// or a panicking template must never block the other devices or the data API.
+	// or a panicking template must never block the other devices.
 	var served servedPage
 	switch {
 	case critical:

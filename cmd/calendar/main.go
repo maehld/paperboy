@@ -1,156 +1,110 @@
-// Command calendar writes the calendar branch of Paperboy's data document
-// (ADR 0036, ADR 0048). It runs as an exec provider: it reads the calendars of
-// a CalDAV account (iCloud, Nextcloud, Fastmail, ...) and optional iCalendar
-// links, expands recurring events into the coming days, prints the branch as
-// JSON on standard output and exits. Any failing source makes it exit with
-// status 1 and a message on standard error, so Paperboy keeps the previous data
-// and shows its age instead of a calendar with missing appointments.
+// Command calendar is a Paperboy plugin (ADR 0048, ADR 0049). It reads the
+// calendars of a CalDAV account (iCloud, Nextcloud, Fastmail, ...) and
+// optional iCalendar links or files in the background, keeps the events in
+// memory and draws them as widgets: "agenda" lists the upcoming events,
+// "month" is a month grid. Both have a text variant for character displays.
 //
-//	PAPERBOY_CALDAV_PASSWORD=xxxx-xxxx-xxxx-xxxx \
-//	go run ./cmd/calendar -caldav https://caldav.icloud.com -user me@icloud.com
+// The configuration comes from its section in paperboy.yaml:
 //
-// The password comes from an environment variable, never from an argument.
+//	plugins:
+//	  calendar:
+//	    command: [calendar]
+//	    config:
+//	      caldav: https://caldav.icloud.com
+//	      user: me@icloud.com
+//	      password: ${PAPERBOY_CALDAV_PASSWORD}
+//	      calendars: [Privat]
+//
 // iCloud needs an app-specific password from account.apple.com.
 package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"net/url"
 	"os"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/maehld/paperboy/pkg/plugin"
 )
 
-const (
-	// requestTimeout bounds the whole run; the provider timeout of the
-	// configuration should be at least as long.
-	requestTimeout = 50 * time.Second
-	// defaultPasswordEnv names the variable with the CalDAV password.
-	defaultPasswordEnv = "PAPERBOY_CALDAV_PASSWORD"
-)
-
-type listFlag []string
-
-func (l *listFlag) String() string     { return strings.Join(*l, ",") }
-func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
+// requestTimeout bounds one reading of all calendars.
+const requestTimeout = 50 * time.Second
 
 type options struct {
-	caldav      string
-	user        string
-	password    string
-	calendars   []string
-	ics         []string
-	days        int
-	maxEvents   int
-	language    string
-	location    *time.Location
-	passwordEnv string
+	caldav    string
+	user      string
+	password  string
+	calendars []string
+	ics       []string
+	days      int
+	maxEvents int
+	language  string
+	location  *time.Location
+	icsFiles  []string
+	refresh   time.Duration
 }
 
 func main() {
-	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "calendar:", err)
-		os.Exit(1)
-	}
+	plugin.Serve(&calendarPlugin{})
 }
 
-func run() error {
-	opts, err := parseFlags(os.Args[1:])
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	defer cancel()
-	now := time.Now()
-	b, warnings, err := collect(ctx, opts, newClient(opts.user, opts.password), now)
-	for _, w := range warnings {
-		fmt.Fprintln(os.Stderr, "calendar: warning:", w)
-	}
-	if err != nil {
-		return err
-	}
-	out, err := json.MarshalIndent(b, "", "  ")
-	if err != nil {
-		return err
-	}
-	os.Stdout.Write(append(out, '\n'))
-	return nil
+// configKeys are the keys of the plugin's config section.
+var configKeys = map[string]plugin.Arg{
+	"caldav":     {Type: "string", Description: "CalDAV server or calendar URL, e.g. https://caldav.icloud.com"},
+	"user":       {Type: "string", Description: "CalDAV user name, for iCloud the Apple ID"},
+	"password":   {Type: "string", Description: "CalDAV password; use ${VAR} to read it from the environment"},
+	"calendars":  {Type: "list", Description: "CalDAV calendars to include by name; default all"},
+	"ics":        {Type: "list", Description: "iCalendar URLs (https:// or webcal://)"},
+	"ics_files":  {Type: "list", Description: "local iCalendar files"},
+	"days":       {Type: "int", Default: 14, Description: "days from today the agenda covers"},
+	"max_events": {Type: "int", Default: 200},
+	"refresh":    {Type: "duration", Default: "15m", Description: "how often the calendars are read again"},
 }
 
-func parseFlags(args []string) (options, error) {
-	fs := flag.NewFlagSet("calendar", flag.ContinueOnError)
+// parseConfig turns the config section into options.
+func parseConfig(cfg plugin.Values, language string, loc *time.Location) (options, error) {
 	var o options
-	var calendars, ics, icsEnv listFlag
-	fs.StringVar(&o.caldav, "caldav", "", "CalDAV server or calendar URL, e.g. https://caldav.icloud.com")
-	fs.StringVar(&o.user, "user", "", "CalDAV user name, for iCloud the Apple ID")
-	fs.StringVar(&o.passwordEnv, "password-env", defaultPasswordEnv, "environment variable that holds the CalDAV password")
-	fs.Var(&calendars, "calendar", "name of a CalDAV calendar to include; repeatable; default all")
-	fs.Var(&ics, "ics", "iCalendar URL (https:// or webcal://); repeatable")
-	fs.Var(&icsEnv, "ics-env", "environment variable that holds an iCalendar URL; repeatable")
-	fs.IntVar(&o.days, "days", 14, "number of days from today to include")
-	fs.IntVar(&o.maxEvents, "max-events", 200, "maximum number of events in the output")
-	language := fs.String("language", envOr("PAPERBOY_LANGUAGE", "en"), `language of the day labels: "de" or "en"`)
-	timezone := fs.String("timezone", envOr("PAPERBOY_TIMEZONE", ""), "IANA timezone of the local day; default the system timezone")
-	if err := fs.Parse(args); err != nil {
+	if err := cfg.Check(configKeys); err != nil {
 		return o, err
 	}
-	if fs.NArg() != 0 {
-		return o, fmt.Errorf("unexpected arguments: %v", fs.Args())
+	o.caldav = cfg.String("caldav", "")
+	o.user = cfg.String("user", "")
+	o.password = cfg.String("password", "")
+	o.calendars = cfg.Strings("calendars")
+	o.ics = cfg.Strings("ics")
+	o.icsFiles = cfg.Strings("ics_files")
+	o.days = cfg.Int("days", 14)
+	o.maxEvents = cfg.Int("max_events", 200)
+	refresh, err := cfg.Duration("refresh", 15*time.Minute)
+	if err != nil {
+		return o, err
 	}
-	o.calendars = calendars
-	o.ics = ics
-	for _, name := range icsEnv {
-		v := strings.TrimSpace(os.Getenv(name))
-		if v == "" {
-			return o, fmt.Errorf("-ics-env: %s is empty", name)
-		}
-		o.ics = append(o.ics, v)
-	}
-	if o.caldav == "" && len(o.ics) == 0 {
-		return o, errors.New("-caldav or -ics is required")
+	o.refresh = refresh
+	o.language, o.location = language, loc
+	if o.caldav == "" && len(o.ics) == 0 && len(o.icsFiles) == 0 {
+		return o, errors.New("caldav, ics or ics_files is required")
 	}
 	if o.caldav != "" {
-		if o.user == "" {
-			return o, errors.New("-caldav needs -user")
-		}
-		o.password = os.Getenv(o.passwordEnv)
-		if o.password == "" {
-			return o, fmt.Errorf("-caldav needs the password in %s", o.passwordEnv)
+		if o.user == "" || o.password == "" {
+			return o, errors.New("caldav needs user and password")
 		}
 	} else if len(o.calendars) > 0 {
-		return o, errors.New("-calendar needs -caldav")
+		return o, errors.New("calendars needs caldav")
 	}
 	if o.days < 1 || o.days > 366 {
-		return o, errors.New("-days must be within 1..366")
+		return o, errors.New("days must be within 1..366")
 	}
 	if o.maxEvents < 1 {
-		return o, errors.New("-max-events must be positive")
+		return o, errors.New("max_events must be positive")
 	}
-	if *language != "de" && *language != "en" {
-		return o, fmt.Errorf("language %q: expected de or en", *language)
-	}
-	o.language = *language
-	o.location = time.Local
-	if *timezone != "" {
-		loc, err := time.LoadLocation(*timezone)
-		if err != nil {
-			return o, fmt.Errorf("timezone %q: %w", *timezone, err)
-		}
-		o.location = loc
+	if o.refresh < time.Minute {
+		return o, errors.New("refresh must be at least 1m")
 	}
 	return o, nil
-}
-
-func envOr(name, fallback string) string {
-	if v := strings.TrimSpace(os.Getenv(name)); v != "" {
-		return v
-	}
-	return fallback
 }
 
 // collect reads all sources and builds the branch.
@@ -203,6 +157,21 @@ func collect(ctx context.Context, o options, c *client, now time.Time) (branch, 
 			return branch{}, nil, fmt.Errorf("iCalendar link: %w", err)
 		}
 		name := calendarName(roots, link)
+		names = append(names, name)
+		occ, warn := occurrences(roots, name, z, from, to)
+		all = append(all, occ...)
+		warnings = append(warnings, prefix(name, warn)...)
+	}
+	for _, file := range o.icsFiles {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			return branch{}, nil, err
+		}
+		roots, err := parseICS(raw)
+		if err != nil {
+			return branch{}, nil, fmt.Errorf("%s: %w", file, err)
+		}
+		name := calendarName(roots, file)
 		names = append(names, name)
 		occ, warn := occurrences(roots, name, z, from, to)
 		all = append(all, occ...)

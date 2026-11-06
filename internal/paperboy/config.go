@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/maehld/paperboy/internal/builtin"
+	"github.com/maehld/paperboy/internal/widget"
 	"io"
 	"io/fs"
 	"net"
@@ -21,9 +23,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/maehld/paperboy/internal/data"
 	"github.com/maehld/paperboy/internal/page"
-	"github.com/maehld/paperboy/internal/provider"
 )
 
 // Duration accepts Go duration strings such as "5m" in YAML.
@@ -56,7 +56,7 @@ type Profile struct {
 	Width      int      `json:"width"`
 	Height     int      `json:"height"`
 	Gray       bool     `json:"gray"`        // four gray levels instead of black/white
-	WidthMM    int      `json:"width_mm"`    // physical panel width; lets providers pick a layout
+	WidthMM    int      `json:"width_mm"`    // physical panel width
 	MinRefresh Duration `json:"min_refresh"` // reported intervals never go below this
 }
 
@@ -155,47 +155,46 @@ const (
 
 // Fixed names of the instance directory (ADR 0037).
 const (
-	configFileName   = "paperboy.yaml"
-	pagesDirName     = "pages"
-	plansDirName     = "plans"
-	providersDirName = "providers"
-	stateDirName     = "state"
-	devicesFileName  = "devices.json"
-	dataFileName     = "data.json"
+	configFileName  = "paperboy.yaml"
+	pagesDirName    = "pages"
+	plansDirName    = "plans"
+	pluginsDirName  = "plugins"
+	stateDirName    = "state"
+	devicesFileName = "devices.json"
+	dataFileName    = "data.json"
 )
 
 // Config is the validated runtime configuration.
 type Config struct {
-	Dir          string // instance directory from -config; holds pages, plans, providers and state (ADR 0037)
-	UploadToken  string
-	Language     string         // "de" or "en"; built-in texts and number formats
-	Timezone     *time.Location // plans and built-in dates
-	Refresh      Duration       // default interval of a device; a plan rule may override it
-	PageTimeout  Duration
-	Pages        string // page templates: <dir>/pages
-	Plans        string // page plans: <dir>/plans
-	ProvidersDir string // provider programs: <dir>/providers
-	FirmwareDir  string // firmware images: <dir>/firmware (ADR 0043)
-	Firmware     FirmwareConfig
-	Profiles     map[string]Profile
-	Devices      []Device
-	Providers    []Provider // exec providers (ADR 0036)
-	Battery      *Battery   // default low-battery warning; nil = off
+	Dir         string         // instance directory from -config; holds pages, plans, plugins and state (ADR 0037, 0049)
+	Language    string         // "de" or "en"; built-in texts and number formats
+	Timezone    *time.Location // plans and built-in dates
+	Refresh     Duration       // default interval of a device; a plan rule may override it
+	PageTimeout Duration
+	Pages       string // page templates: <dir>/pages
+	Plans       string // page plans: <dir>/plans
+	PluginsDir  string // plugin programs: <dir>/plugins (ADR 0049)
+	FirmwareDir string // firmware images: <dir>/firmware (ADR 0043)
+	Firmware    FirmwareConfig
+	Profiles    map[string]Profile
+	Devices     []Device
+	Plugins     []Plugin // plugins (ADR 0049)
+	Battery     *Battery // default low-battery warning; nil = off
 
 	// degraded marks a start without a usable paperboy.yaml (ADR 0047). Such a
 	// configuration is retried from disk even when the file did not change.
 	degraded bool
 }
 
-// Provider is one exec provider (ADR 0036): a program in the providers
-// directory that prints the new value of a data branch.
-type Provider struct {
-	Name     string
-	Command  []string // argument vector, never a shell string
-	Path     string   // data branch the provider owns
-	Interval Duration // pause between two runs
-	Timeout  Duration // hard limit for one run
-	Env      map[string]string
+// Plugin is one plugin (ADR 0049): a long-running program in the plugins
+// directory that provides widgets. Config is its section of paperboy.yaml,
+// with ${VAR} already replaced from the environment.
+type Plugin struct {
+	Name    string
+	Command []string
+	Timeout Duration
+	Env     map[string]string
+	Config  map[string]any
 }
 
 // texts returns the built-in image texts for the configured language.
@@ -222,13 +221,10 @@ func (c *Config) minRefresh(profile string) time.Duration {
 
 // fileConfig mirrors paperboy.yaml.
 type fileConfig struct {
-	Language string `yaml:"language"` // de or en; default: system language
-	Timezone string `yaml:"timezone"` // IANA name; default: system timezone
-	Server   struct {
-		PublicURL      string `yaml:"public_url"`
-		UploadToken    string `yaml:"upload_token"`
-		UploadTokenEnv string `yaml:"upload_token_env"`
-	} `yaml:"server"`
+	Language string `yaml:"language"`  // de or en; default: system language
+	Timezone string `yaml:"timezone"`  // IANA name; default: system timezone
+	Server   any    `yaml:"server"`    // removed in v2; rejected with a hint
+	Old      any    `yaml:"providers"` // removed in v2; rejected with a hint
 	Defaults struct {
 		Refresh     Duration `yaml:"refresh"`
 		PageTimeout Duration `yaml:"page_timeout"`
@@ -238,13 +234,12 @@ type fileConfig struct {
 		Update          string  `yaml:"update"`
 		MinBatteryVolts float64 `yaml:"min_battery_volts"`
 	} `yaml:"firmware"`
-	Providers map[string]struct {
-		Command  []string          `yaml:"command"`
-		Path     string            `yaml:"path"`
-		Interval Duration          `yaml:"interval"`
-		Timeout  Duration          `yaml:"timeout"`
-		Env      map[string]string `yaml:"env"`
-	} `yaml:"providers"`
+	Plugins map[string]struct {
+		Command []string          `yaml:"command"`
+		Timeout Duration          `yaml:"timeout"`
+		Env     map[string]string `yaml:"env"`
+		Config  map[string]any    `yaml:"config"`
+	} `yaml:"plugins"`
 	DisplayTypes map[string]struct {
 		Kind       string   `yaml:"kind"`
 		Charset    string   `yaml:"charset"`
@@ -267,10 +262,9 @@ type fileConfig struct {
 }
 
 // LoadConfig reads and validates the configuration of an instance directory
-// (ADR 0037): <dir>/paperboy.yaml, with pages, plans, providers and state as
-// fixed subdirectories. The environment variable PAPERBOY_UPLOAD_TOKEN
-// (formerly DISPLAYD_UPLOAD_TOKEN, still accepted) overrides the configured
-// token so secrets can stay out of files.
+// (ADR 0037): <dir>/paperboy.yaml, with pages, plans, plugins and state as
+// fixed subdirectories. Secrets stay out of the file: plugin config values
+// may reference the environment as ${VAR} (ADR 0049).
 func LoadConfig(dir string) (*Config, error) {
 	fi, err := os.Stat(dir)
 	if err != nil {
@@ -316,34 +310,24 @@ func LoadConfig(dir string) (*Config, error) {
 		tz = loc
 	}
 	c := &Config{
-		Dir:          dir,
-		UploadToken:  f.Server.UploadToken,
-		Language:     f.Language,
-		Timezone:     tz,
-		Refresh:      f.Defaults.Refresh,
-		PageTimeout:  f.Defaults.PageTimeout,
-		Battery:      f.Defaults.Battery,
-		Pages:        filepath.Join(dir, pagesDirName),
-		Plans:        filepath.Join(dir, plansDirName),
-		ProvidersDir: filepath.Join(dir, providersDirName),
-		FirmwareDir:  filepath.Join(dir, firmwareDirName),
-		Firmware:     FirmwareConfig{Update: f.Firmware.Update, MinBatteryVolts: f.Firmware.MinBatteryVolts},
-		Profiles:     make(map[string]Profile, len(f.DisplayTypes)),
+		Dir:         dir,
+		Language:    f.Language,
+		Timezone:    tz,
+		Refresh:     f.Defaults.Refresh,
+		PageTimeout: f.Defaults.PageTimeout,
+		Battery:     f.Defaults.Battery,
+		Pages:       filepath.Join(dir, pagesDirName),
+		Plans:       filepath.Join(dir, plansDirName),
+		PluginsDir:  filepath.Join(dir, pluginsDirName),
+		FirmwareDir: filepath.Join(dir, firmwareDirName),
+		Firmware:    FirmwareConfig{Update: f.Firmware.Update, MinBatteryVolts: f.Firmware.MinBatteryVolts},
+		Profiles:    make(map[string]Profile, len(f.DisplayTypes)),
 	}
-	if f.Server.PublicURL != "" {
-		return nil, fmt.Errorf("%s: server.public_url is no longer used: devices fetch images relative to the configured Paperboy URL (ADR 0042); remove it", path)
+	if f.Server != nil {
+		return nil, fmt.Errorf("%s: the server section was removed in Paperboy v2: there is no data API and no token any more (ADR 0049); remove it", path)
 	}
-	if name := f.Server.UploadTokenEnv; name != "" {
-		if token := os.Getenv(name); token != "" {
-			c.UploadToken = token
-		} else if c.UploadToken == "" {
-			return nil, fmt.Errorf("%s: upload_token_env %q is empty", path, name)
-		}
-	}
-	for _, name := range []string{"DISPLAYD_UPLOAD_TOKEN", "PAPERBOY_UPLOAD_TOKEN"} {
-		if token := os.Getenv(name); token != "" {
-			c.UploadToken = token
-		}
+	if f.Old != nil {
+		return nil, fmt.Errorf("%s: providers were replaced by plugins in Paperboy v2 (ADR 0049); move them to plugins with a config section", path)
 	}
 	for name, t := range f.DisplayTypes {
 		c.Profiles[name] = Profile{
@@ -387,21 +371,18 @@ func LoadConfig(dir string) (*Config, error) {
 			Hold:    d.Firmware == firmwareHold,
 		})
 	}
-	names := make([]string, 0, len(f.Providers))
-	for name := range f.Providers {
-		names = append(names, name)
+	pluginNames := make([]string, 0, len(f.Plugins))
+	for name := range f.Plugins {
+		pluginNames = append(pluginNames, name)
 	}
-	sort.Strings(names)
-	for _, name := range names {
-		p := f.Providers[name]
-		c.Providers = append(c.Providers, Provider{
-			Name:     name,
-			Command:  p.Command,
-			Path:     p.Path,
-			Interval: p.Interval,
-			Timeout:  p.Timeout,
-			Env:      p.Env,
-		})
+	sort.Strings(pluginNames)
+	for _, name := range pluginNames {
+		p := f.Plugins[name]
+		cfg, err := expandConfig(p.Config)
+		if err != nil {
+			return nil, fmt.Errorf("%s: plugin %s: config: %w", path, name, err)
+		}
+		c.Plugins = append(c.Plugins, Plugin{Name: name, Command: p.Command, Timeout: p.Timeout, Env: p.Env, Config: cfg})
 	}
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -421,9 +402,6 @@ func (c *Config) validate() error {
 	}
 	if c.Language != "de" && c.Language != "en" {
 		return fmt.Errorf("language %q: expected de or en", c.Language)
-	}
-	if len(c.UploadToken) < 16 {
-		return fmt.Errorf("upload_token missing or shorter than 16 characters")
 	}
 	if c.Refresh == 0 {
 		c.Refresh = Duration(defaultRefresh)
@@ -542,52 +520,95 @@ func (c *Config) validate() error {
 			return fmt.Errorf("device %s: plan %q: only a-z, 0-9 and -", d.ID, d.Plan)
 		}
 	}
-	if err := c.validateProviders(); err != nil {
-		return err
-	}
-	return nil
-}
-
-// validateProviders checks the exec providers (ADR 0036): every provider needs a
-// command and owns exactly one data branch.
-func (c *Config) validateProviders() error {
-	for i := range c.Providers {
-		p := &c.Providers[i]
+	for _, p := range c.Plugins {
 		if !validName(p.Name) {
-			return fmt.Errorf("provider %q: name must use a-z, 0-9 and -", p.Name)
+			return fmt.Errorf("plugin %q: name must use a-z, 0-9 and -", p.Name)
+		}
+		if p.Name == builtin.Name {
+			return fmt.Errorf("plugin %q: the name is reserved for the built-in plugin", p.Name)
 		}
 		if len(p.Command) == 0 || p.Command[0] == "" {
-			return fmt.Errorf("provider %s: command missing", p.Name)
+			return fmt.Errorf("plugin %s: command missing", p.Name)
 		}
-		if p.Path == "" {
-			return fmt.Errorf("provider %s: path missing; a provider writes one branch, not the whole document", p.Name)
-		}
-		p.Path = strings.Trim(p.Path, "/")
-		if p.Path == "" {
-			return fmt.Errorf("provider %s: path must name a branch, not the whole document", p.Name)
-		}
-		if err := data.ValidPath(p.Path); err != nil {
-			return fmt.Errorf("provider %s: path %q: %w", p.Name, p.Path, err)
-		}
-		spec := provider.Spec{Interval: time.Duration(p.Interval), Timeout: time.Duration(p.Timeout)}
-		if err := spec.Validate(); err != nil {
-			return fmt.Errorf("provider %s: %w", p.Name, err)
-		}
-		p.Interval, p.Timeout = Duration(spec.Interval), Duration(spec.Timeout)
-		for _, other := range c.Providers[:i] {
-			if pathsOverlap(p.Path, other.Path) {
-				return fmt.Errorf("providers %s and %s: paths %q and %q overlap; each branch has exactly one owner",
-					other.Name, p.Name, other.Path, p.Path)
-			}
+		if p.Timeout < 0 {
+			return fmt.Errorf("plugin %s: timeout must not be negative", p.Name)
 		}
 	}
 	return nil
 }
 
-// pathsOverlap reports whether one path contains the other, which would let two
-// providers overwrite the same data.
-func pathsOverlap(a, b string) bool {
-	return a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
+// pluginSpecs returns the plugins for the widget host, with the global
+// language and timezone in their environment.
+func (c *Config) pluginSpecs() map[string]widget.Spec {
+	out := make(map[string]widget.Spec, len(c.Plugins))
+	for _, p := range c.Plugins {
+		env := map[string]string{"PAPERBOY_LANGUAGE": c.Language, "PAPERBOY_TIMEZONE": c.timezoneName()}
+		for k, v := range p.Env {
+			env[k] = v
+		}
+		out[p.Name] = widget.Spec{Name: p.Name, Command: p.Command, Timeout: time.Duration(p.Timeout), Env: env,
+			Dir: c.PluginsDir, Config: p.Config}
+	}
+	return out
+}
+
+func (c *Config) timezoneName() string {
+	if c.Timezone == nil {
+		return "UTC"
+	}
+	return c.Timezone.String()
+}
+
+// expandConfig replaces ${VAR} in the string values of a plugin's config with
+// the environment, so secrets stay out of paperboy.yaml. An unset variable is
+// an error; $$ writes a literal dollar sign.
+func expandConfig(cfg map[string]any) (map[string]any, error) {
+	out, err := expandValue(cfg)
+	if err != nil || out == nil {
+		return map[string]any{}, err
+	}
+	return out.(map[string]any), nil
+}
+
+func expandValue(v any) (any, error) {
+	switch x := v.(type) {
+	case nil:
+		return nil, nil
+	case string:
+		var missing []string
+		s := os.Expand(strings.ReplaceAll(x, "$$", "\x00"), func(name string) string {
+			val, ok := os.LookupEnv(name)
+			if !ok || val == "" {
+				missing = append(missing, name)
+			}
+			return val
+		})
+		if len(missing) > 0 {
+			return nil, fmt.Errorf("environment variable %s is not set", strings.Join(missing, ", "))
+		}
+		return strings.ReplaceAll(s, "\x00", "$"), nil
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			r, err := expandValue(e)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", k, err)
+			}
+			out[k] = r
+		}
+		return out, nil
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			r, err := expandValue(e)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = r
+		}
+		return out, nil
+	}
+	return v, nil
 }
 
 // device returns the configured device with this MAC address.

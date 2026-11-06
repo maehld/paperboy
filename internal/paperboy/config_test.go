@@ -11,8 +11,6 @@ import (
 const validConfig = `
 language: en
 timezone: Europe/Berlin
-server:
-  upload_token_env: TEST_UPLOAD_TOKEN
 defaults:
   refresh: 10m
   page_timeout: 3m
@@ -41,17 +39,16 @@ devices:
   flur:
     display_type: sticky
     mac: "aa:bb:cc:dd:ee:02"
-providers:
+plugins:
   weather:
-    command: [weather, -lat, "52.52"]
-    path: weather
-    interval: 30m
+    command: [weather]
     timeout: 20s
     env: { OPEN_METEO_KEY: secret }
+    config: { lat: 52.52, lon: 13.4, place: "${TEST_PLACE}", price: "5 $$", list: ["${TEST_PLACE}"] }
 `
 
 // loadConfig writes text as paperboy.yaml into a fresh instance directory and
-// loads it. The token comes from the environment.
+// loads it.
 func loadConfig(t *testing.T, text string) (*Config, string, error) {
 	t.Helper()
 	dir := t.TempDir()
@@ -64,15 +61,10 @@ func loadConfig(t *testing.T, text string) (*Config, string, error) {
 }
 
 func TestLoadConfig(t *testing.T) {
-	t.Setenv("TEST_UPLOAD_TOKEN", "0123456789abcdef")
-	t.Setenv("PAPERBOY_UPLOAD_TOKEN", "")
-	t.Setenv("DISPLAYD_UPLOAD_TOKEN", "")
+	t.Setenv("TEST_PLACE", "Berlin")
 	cfg, dir, err := loadConfig(t, validConfig)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if cfg.UploadToken != "0123456789abcdef" {
-		t.Fatalf("token: %q", cfg.UploadToken)
 	}
 	if cfg.Language != "en" {
 		t.Fatalf("language: %q", cfg.Language)
@@ -83,16 +75,20 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.Dir != dir || cfg.Pages != filepath.Join(dir, "pages") || cfg.Plans != filepath.Join(dir, "plans") {
 		t.Fatalf("instance layout: %q %q %q", cfg.Dir, cfg.Pages, cfg.Plans)
 	}
-	if cfg.ProvidersDir != filepath.Join(dir, "providers") {
-		t.Fatalf("providers directory: %q", cfg.ProvidersDir)
+	if cfg.PluginsDir != filepath.Join(dir, "plugins") {
+		t.Fatalf("plugins directory: %q", cfg.PluginsDir)
 	}
-	if len(cfg.Providers) != 1 {
-		t.Fatalf("providers: %+v", cfg.Providers)
+	if len(cfg.Plugins) != 1 {
+		t.Fatalf("plugins: %+v", cfg.Plugins)
 	}
-	if p := cfg.Providers[0]; p.Name != "weather" || p.Path != "weather" ||
-		len(p.Command) != 3 || p.Interval != Duration(30*time.Minute) || p.Timeout != Duration(20*time.Second) ||
-		p.Env["OPEN_METEO_KEY"] != "secret" {
-		t.Fatalf("provider: %+v", p)
+	if p := cfg.Plugins[0]; p.Name != "weather" || len(p.Command) != 1 || p.Timeout != Duration(20*time.Second) ||
+		p.Env["OPEN_METEO_KEY"] != "secret" || p.Config["lat"] != 52.52 || p.Config["place"] != "Berlin" ||
+		p.Config["price"] != "5 $" || p.Config["list"].([]any)[0] != "Berlin" {
+		t.Fatalf("plugin: %+v", p)
+	}
+	spec := cfg.pluginSpecs()["weather"]
+	if spec.Env["PAPERBOY_LANGUAGE"] != "en" || spec.Env["PAPERBOY_TIMEZONE"] != "Europe/Berlin" || spec.Dir != cfg.PluginsDir {
+		t.Fatalf("plugin spec: %+v", spec)
 	}
 	if cfg.Refresh != Duration(10*time.Minute) || cfg.PageTimeout != Duration(3*time.Minute) {
 		t.Fatalf("defaults: %v %v", cfg.Refresh, cfg.PageTimeout)
@@ -128,38 +124,16 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
-func TestLoadConfigToken(t *testing.T) {
-	t.Setenv("PAPERBOY_UPLOAD_TOKEN", "")
-	t.Setenv("DISPLAYD_UPLOAD_TOKEN", "")
-	// The direct token is used when upload_token_env is empty.
-	cfg, _, err := loadConfig(t, strings.Replace(validConfig, "  upload_token_env: TEST_UPLOAD_TOKEN", `  upload_token: "abcdef0123456789"`, 1))
-	if err != nil || cfg.UploadToken != "abcdef0123456789" {
-		t.Fatalf("direct token: %v %q", err, cfg.UploadToken)
-	}
-	// The environment still overrides it for existing installations.
-	t.Setenv("PAPERBOY_UPLOAD_TOKEN", "fedcba9876543210")
-	cfg, _, err = loadConfig(t, strings.Replace(validConfig, "  upload_token_env: TEST_UPLOAD_TOKEN", `  upload_token: "abcdef0123456789"`, 1))
-	if err != nil || cfg.UploadToken != "fedcba9876543210" {
-		t.Fatalf("environment token: %v %q", err, cfg.UploadToken)
-	}
-	// An empty upload_token_env is a startup error unless a token is configured.
-	t.Setenv("MISSING_TOKEN", "")
-	if _, _, err := loadConfig(t, strings.Replace(validConfig, "TEST_UPLOAD_TOKEN", "MISSING_TOKEN", 1)); err == nil || !strings.Contains(err.Error(), "MISSING_TOKEN") {
-		t.Fatalf("empty token env: %v", err)
-	}
-}
-
 func TestLoadConfigErrors(t *testing.T) {
-	t.Setenv("TEST_UPLOAD_TOKEN", "0123456789abcdef")
-	t.Setenv("PAPERBOY_UPLOAD_TOKEN", "")
-	t.Setenv("DISPLAYD_UPLOAD_TOKEN", "")
+	t.Setenv("TEST_PLACE", "Berlin")
 	tests := []struct {
 		name string
 		yaml string
 		want string
 	}{
-		{"unknown key", strings.Replace(validConfig, "  upload_token_env:", "  upload_token_en:", 1), "field upload_token_en not found"},
-		{"no token", strings.Replace(validConfig, "upload_token_env: TEST_UPLOAD_TOKEN", "", 1), "upload_token missing"},
+		{"unknown key", strings.Replace(validConfig, "  refresh: 10m", "  refrsh: 10m", 1), "field refrsh not found"},
+		{"server section", "server:\n  upload_token: abc\n" + validConfig, "no data API"},
+		{"providers section", "providers: {}\n" + validConfig, "replaced by plugins"},
 		{"opendisplay", strings.Replace(validConfig, "protocol: paperboy", "protocol: opendisplay", 1), "not supported yet"},
 		{"http protocol", strings.Replace(validConfig, "protocol: paperboy", "protocol: text-http", 1), "ADR 0044"},
 		{"text kind with gray levels", strings.Replace(validConfig, "kind: image", "kind: text", 1), "do not apply to kind text"},
@@ -171,24 +145,18 @@ func TestLoadConfigErrors(t *testing.T) {
 		{"bad language", strings.Replace(validConfig, "language: en", "language: fr", 1), "expected de or en"},
 		{"bad timezone", strings.Replace(validConfig, "timezone: Europe/Berlin", "timezone: Mars/Olympus", 1), "timezone"},
 		{"address", strings.Replace(validConfig, "mac: \"AA:BB:CC:DD:EE:01\"", "address: 10.0.0.1", 1), "opendisplay"},
-		{"provider command", strings.Replace(validConfig, "    command: [weather, -lat, \"52.52\"]\n", "", 1), "command missing"},
-		{"provider path", strings.Replace(validConfig, "    path: weather\n", "", 1), "path missing"},
-		{"provider root path", strings.Replace(validConfig, "    path: weather\n", "    path: /\n", 1), "not the whole document"},
-		{"provider bad path", strings.Replace(validConfig, "    path: weather\n", "    path: Weather/Now\n", 1), "segment"},
-		{"provider interval", strings.Replace(validConfig, "    interval: 30m\n", "    interval: 1s\n", 1), "at least"},
-		{"provider timeout", strings.Replace(validConfig, "    timeout: 20s\n", "    timeout: 60m\n", 1), "must not exceed interval"},
-		{"provider name", strings.Replace(validConfig, "  weather:\n", "  Weather:\n", 1), "name must use"},
-		{"provider overlap", strings.Replace(validConfig, "    path: weather\n", "    path: weather/current\n", 1) +
-			"  weather2:\n    command: [weather]\n    path: weather\n", "one owner"},
+		{"plugin command", strings.Replace(validConfig, "    command: [weather]\n", "", 1), "command missing"},
+		{"plugin name", strings.Replace(validConfig, "  weather:\n", "  Weather:\n", 1), "name must use"},
+		{"plugin reserved", strings.Replace(validConfig, "  weather:\n", "  paperboy:\n", 1), "reserved"},
+		{"plugin variable", strings.Replace(validConfig, "${TEST_PLACE}", "${TEST_MISSING}", 1), "TEST_MISSING is not set"},
 		{"gray levels", strings.Replace(validConfig, "gray_levels: 4", "gray_levels: 2", 1), ""},
 		{"directories", "directories:\n  pages: pages\n" + validConfig, "field directories not found"},
 		{"trmnl", strings.Replace(validConfig, "protocol: paperboy", "protocol: trmnl", 1), "protocol trmnl was removed"},
 		{"firmware update", strings.Replace(validConfig, "update: auto", "update: always", 1), "expected auto or off"},
 		{"firmware volts", strings.Replace(validConfig, "min_battery_volts: 3.7", "min_battery_volts: 7", 1), "min_battery_volts"},
 		{"firmware hold", strings.Replace(validConfig, "firmware: hold", "firmware: pin", 1), "only hold"},
-		{"public url", strings.Replace(validConfig, "server:\n", "server:\n  public_url: https://paper.example.com\n", 1), "public_url is no longer used"},
 		{"empty", "", "empty configuration"},
-		{"two documents", validConfig + "\n---\nserver: {}\n", "only one YAML document"},
+		{"two documents", validConfig + "\n---\ndefaults: {}\n", "only one YAML document"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -232,7 +200,7 @@ func TestLoadConfigRejectsFilePath(t *testing.T) {
 }
 
 func TestLoadConfigDefaultsLanguageAndTimezone(t *testing.T) {
-	t.Setenv("TEST_UPLOAD_TOKEN", "0123456789abcdef")
+	t.Setenv("TEST_PLACE", "Berlin")
 	text := strings.Replace(validConfig, "language: en\n", "", 1)
 	text = strings.Replace(text, "timezone: Europe/Berlin\n", "", 1)
 	cfg, _, err := loadConfig(t, text)

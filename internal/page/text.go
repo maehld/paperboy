@@ -1,20 +1,8 @@
 package page
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"strings"
-	"text/template"
-	"time"
 	"unicode/utf8"
-
-	"go.yaml.in/yaml/v3"
-
-	"github.com/maehld/paperboy/internal/data"
 )
 
 // Character sets of text displays (ADR 0044).
@@ -31,179 +19,6 @@ func ValidCharset(s string) bool {
 		return true
 	}
 	return false
-}
-
-// TextTemplate is a page for a text display (ADR 0027, ADR 0044): one Go text
-// template per line instead of blocks.
-type TextTemplate struct {
-	Title   string   `yaml:"title"`
-	Watch   []Watch  `yaml:"watch"`
-	Notices string   `yaml:"notices"` // mark (default) or none
-	Lines   []string `yaml:"lines"`
-}
-
-// TextDisplay describes the character grid a text page is rendered for.
-type TextDisplay struct {
-	Columns  int
-	Rows     int
-	Charset  string
-	Language string
-	Timezone *time.Location
-}
-
-// ParseText reads a text template and validates it.
-func ParseText(r io.Reader) (*TextTemplate, error) {
-	raw, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-	dec := yaml.NewDecoder(bytes.NewReader(raw))
-	dec.KnownFields(true)
-	var t TextTemplate
-	if err := dec.Decode(&t); err != nil {
-		if errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("empty template")
-		}
-		return nil, fmt.Errorf("%w (text display types use lines instead of rows and blocks)", err)
-	}
-	if err := t.validate(); err != nil {
-		return nil, err
-	}
-	return &t, nil
-}
-
-// LoadText reads pages/<name>.<display>.yaml for a text display type.
-func LoadText(dir, name, display string) (*TextTemplate, error) {
-	if !ValidName(name) || !ValidName(display) {
-		return nil, fmt.Errorf("%w: invalid page %q for display %q", ErrNotFound, name, display)
-	}
-	path := filepath.Join(dir, name+"."+display+".yaml")
-	f, err := os.Open(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("%w: %s", ErrNotFound, path)
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	t, err := ParseText(f)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-	return t, nil
-}
-
-func (t *TextTemplate) validate() error {
-	if len(t.Lines) == 0 {
-		return fmt.Errorf("lines missing")
-	}
-	switch t.Notices {
-	case "":
-		t.Notices = "mark"
-	case "mark", "none":
-	default:
-		return fmt.Errorf("notices %q: expected mark or none", t.Notices)
-	}
-	for i, l := range t.Lines {
-		if _, err := template.New("line").Funcs((&renderer{}).textFuncs()).Parse(l); err != nil {
-			return fmt.Errorf("line %d: %w", i+1, err)
-		}
-	}
-	for i := range t.Watch {
-		w := &t.Watch[i]
-		path, err := normalizePath(w.Path)
-		if err != nil {
-			return fmt.Errorf("watch: %w", err)
-		}
-		w.Path = path
-		if w.StaleAfter <= 0 {
-			return fmt.Errorf("watch %s: stale_after must be positive", path)
-		}
-	}
-	return nil
-}
-
-// Render expands the lines from the data document and fits them to the grid:
-// converted to the character set, cut to the column count and padded with
-// spaces. More lines than rows is an error.
-func (t *TextTemplate) Render(doc *data.Document, d TextDisplay, c Context) ([]string, error) {
-	if d.Columns < 1 || d.Rows < 1 {
-		return nil, fmt.Errorf("invalid text display size %dx%d", d.Columns, d.Rows)
-	}
-	if len(t.Lines) > d.Rows {
-		return nil, fmt.Errorf("%d lines but the display has %d rows", len(t.Lines), d.Rows)
-	}
-	raw, _ := doc.Get("")
-	root, ok := raw.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("data document is not an object")
-	}
-	disp := Display{Language: d.Language, Timezone: d.Timezone}
-	language, loc := disp.language(), disp.location()
-	if c.Page <= 0 {
-		c.Page = 1
-	}
-	if c.Pages <= 0 {
-		c.Pages = 1
-	}
-	r := &renderer{watch: t.Watch, doc: doc, root: root, f: formatter{comma: language != "en", loc: loc},
-		now: c.Now.In(loc), language: language, page: c.Page, pages: c.Pages}
-	out := make([]string, d.Rows)
-	for i, l := range t.Lines {
-		out[i] = r.expandLine(l)
-		if r.err != nil {
-			return nil, fmt.Errorf("line %d: %w", i+1, r.err)
-		}
-	}
-	for i := range out {
-		out[i] = fit(Convert(d.Charset, out[i]), d.Columns)
-	}
-	if t.Notices == "mark" && watchStale(t.Watch, doc) {
-		line := []rune(out[0])
-		line[len(line)-1] = '!'
-		out[0] = string(line)
-	}
-	return out, nil
-}
-
-// expandLine runs a line template without trimming, so alignment survives.
-func (r *renderer) expandLine(s string) string {
-	if !strings.Contains(s, "{{") {
-		return s
-	}
-	tmpl, err := template.New("line").Option("missingkey=zero").Funcs(r.textFuncs()).Parse(s)
-	if err != nil {
-		r.fail(err)
-		return ""
-	}
-	ensureBranches(r.root, tmpl.Tree)
-	var b strings.Builder
-	if err := tmpl.Execute(&b, r.root); err != nil {
-		r.fail(err)
-		return ""
-	}
-	return strings.ReplaceAll(b.String(), "<no value>", "—")
-}
-
-// textFuncs adds the fixed-width helpers of ADR 0027 to the template helpers.
-func (r *renderer) textFuncs() template.FuncMap {
-	m := r.funcs()
-	m["pad"] = func(n int, v any) string { return align(n, fmt.Sprint(v), 'l') }
-	m["right"] = func(n int, v any) string { return align(n, fmt.Sprint(v), 'r') }
-	m["center"] = func(n int, v any) string { return align(n, fmt.Sprint(v), 'c') }
-	m["fit"] = func(n int, kind string, v any, unitWidth ...int) (string, error) {
-		if !formats[kind] {
-			return "", fmt.Errorf("fit: unknown format %q", kind)
-		}
-		switch {
-		case len(unitWidth) == 0:
-			return r.f.fitValue(n, kind, v), nil
-		case len(unitWidth) > 1 || unitWidth[0] < 0:
-			return "", fmt.Errorf("fit: expected one unit width >= 0")
-		}
-		return r.f.fitAligned(n, unitWidth[0], kind, v), nil
-	}
-	return m
 }
 
 // align cuts or fills s to exactly n characters.
@@ -237,16 +52,6 @@ func fit(s string, n int) string {
 		return r
 	}, s)
 	return align(n, s, 'l')
-}
-
-func watchStale(watch []Watch, doc *data.Document) bool {
-	for _, w := range watch {
-		age, ok := doc.Age(w.Path)
-		if ok && age > time.Duration(w.StaleAfter) {
-			return true
-		}
-	}
-	return false
 }
 
 // hd44780Kept are the characters of the A00 ROM the firmware maps itself.
@@ -288,20 +93,20 @@ func Convert(charset, s string) string {
 }
 
 // NoticeLines word-wraps a notice title and text onto the grid.
-func NoticeLines(d TextDisplay, title, text string) []string {
+func NoticeLines(d Display, title, text string) []string {
 	var lines []string
 	for _, part := range []string{title, text} {
-		lines = append(lines, wrap(Convert(d.Charset, part), d.Columns)...)
+		lines = append(lines, wrap(Convert(d.Charset, part), d.Width)...)
 	}
-	if len(lines) > d.Rows {
-		lines = lines[:d.Rows]
+	if len(lines) > d.Height {
+		lines = lines[:d.Height]
 	}
-	out := make([]string, d.Rows)
+	out := make([]string, d.Height)
 	for i := range out {
 		if i < len(lines) {
 			out[i] = lines[i]
 		}
-		out[i] = fit(out[i], d.Columns)
+		out[i] = fit(out[i], d.Width)
 	}
 	return out
 }
