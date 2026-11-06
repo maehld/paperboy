@@ -36,12 +36,14 @@ type Server struct {
 	state map[string]*deviceState // device ID → state
 	plans *planLoader             // device plans (ADR 0025)
 
-	rendered map[string]*renderedPage // "<profile>/<page>" → last render
-	hints    map[string][]byte        // content hash → notice page
-	logs     *logSeen                 // delivered device log entries (own lock)
-	firmware *firmwareStore           // OTA images (ADR 0043; own lock)
-	fwNotes  map[string]string        // device ID → last logged reason for withholding an update
-	widgets  *widget.Host             // plugins and their widget cache (ADR 0049; own lock)
+	rendered  map[string]*renderedPage // "<profile>/<page>" → last render
+	hints     map[string][]byte        // content hash → notice page
+	logs      *logSeen                 // delivered device log entries (own lock)
+	firmware  *firmwareStore           // OTA images (ADR 0043; own lock)
+	fwNotes   map[string]string        // device ID → last logged reason for withholding an update
+	pages     *pageLoader              // pages by file, reloaded on change (own lock)
+	skipNotes map[string]string        // "<profile>/<page>" → last logged reason for skipping it
+	widgets   *widget.Host             // plugins and their widget cache (ADR 0049; own lock)
 }
 
 // config returns the current configuration, reloading it from paperboy.yaml
@@ -97,7 +99,7 @@ func New(cfg *Config) (*Server, error) {
 		widgets:     &widget.Host{Builtin: map[string]plugin.Handler{builtin.Name: builtin.Plugin{}}},
 		devicesPath: devicesPath, now: time.Now, state: state,
 		plans: newPlanLoader(), rendered: map[string]*renderedPage{}, hints: map[string][]byte{},
-		logs: newLogSeen(), fwNotes: map[string]string{}}
+		logs: newLogSeen(), fwNotes: map[string]string{}, pages: newPageLoader(), skipNotes: map[string]string{}}
 	s.firmware = newFirmwareStore(cfg.FirmwareDir)
 	// A plan named in the configuration is reported when it is missing or broken
 	// (ADR 0026); the device gets a notice page instead of an error, so a

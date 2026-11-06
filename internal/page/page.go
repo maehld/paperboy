@@ -26,6 +26,7 @@ var ErrNotFound = errors.New("page not found")
 // Template is one page.
 type Template struct {
 	Title   string `yaml:"title"`
+	Kind    string `yaml:"kind"`    // image (default) or text: the displays the page is for
 	Grid    [2]int `yaml:"grid"`    // columns, rows
 	Style   Style  `yaml:"style"`   // look passed to every widget
 	Notices string `yaml:"notices"` // show (default) or none: stale widgets
@@ -79,14 +80,29 @@ func Parse(r io.Reader) (*Template, error) {
 	return &t, nil
 }
 
-// Load reads pages/<name>.<display>.yaml, or pages/<name>.yaml when the page
-// has no variant for the display type. A missing page is ErrNotFound.
-func Load(dir, name, display string) (*Template, error) {
+// Kinds of pages and displays.
+const (
+	KindImage = "image"
+	KindText  = "text"
+)
+
+// Paths lists the files a page may come from for a display type, the variant
+// first: pages/<name>.<display>.yaml, then pages/<name>.yaml.
+func Paths(dir, name, display string) ([]string, error) {
 	if !ValidName(name) || !ValidName(display) {
 		return nil, fmt.Errorf("%w: invalid page %q for display %q", ErrNotFound, name, display)
 	}
-	for _, file := range []string{name + "." + display + ".yaml", name + ".yaml"} {
-		path := filepath.Join(dir, file)
+	return []string{filepath.Join(dir, name+"."+display+".yaml"), filepath.Join(dir, name+".yaml")}, nil
+}
+
+// Load reads pages/<name>.<display>.yaml, or pages/<name>.yaml when the page
+// has no variant for the display type. A missing page is ErrNotFound.
+func Load(dir, name, display string) (*Template, error) {
+	paths, err := Paths(dir, name, display)
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range paths {
 		f, err := os.Open(path)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -122,6 +138,13 @@ func (t *Template) validate() error {
 	cols, rows := t.Grid[0], t.Grid[1]
 	if cols < 1 || rows < 1 || cols > maxGrid || rows > maxGrid {
 		return fmt.Errorf("grid [%d, %d]: expected [columns, rows] between 1 and %d", cols, rows, maxGrid)
+	}
+	switch t.Kind {
+	case "":
+		t.Kind = KindImage
+	case KindImage, KindText:
+	default:
+		return fmt.Errorf("kind %q: expected image or text", t.Kind)
 	}
 	switch t.Notices {
 	case "":
@@ -164,6 +187,22 @@ func (t *Template) validate() error {
 				taken[y*cols+x] = i + 1
 			}
 		}
+	}
+	return nil
+}
+
+// Fits reports why the page cannot be shown on a display: a text page on an
+// image display or the other way round, or a text page whose grid is not the
+// display's character grid. nil means it fits.
+func (t *Template) Fits(d Display) error {
+	switch {
+	case d.Text && t.Kind != KindText:
+		return fmt.Errorf("page is for image displays (kind: %s)", t.Kind)
+	case !d.Text && t.Kind == KindText:
+		return fmt.Errorf("page is for text displays (kind: text)")
+	case d.Text && (t.Grid[0] != d.Width || t.Grid[1] != d.Height):
+		return fmt.Errorf("grid [%d, %d] does not match the text display (%d columns, %d rows)",
+			t.Grid[0], t.Grid[1], d.Width, d.Height)
 	}
 	return nil
 }

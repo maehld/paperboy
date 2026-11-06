@@ -227,6 +227,10 @@ inline std::string pb_hd44780(const std::string &s) {
     else if (c == 0xC3 && n == 0x9F) mapped = (char) 0xE2;  // ß
     else if (c == 0xC2 && n == 0xB0) mapped = (char) 0xDF;  // °
     else if (c == 0xC2 && n == 0xB5) mapped = (char) 0xE4;  // µ
+    // The A00 ROM has no capital umlauts: keep the base letter.
+    else if (c == 0xC3 && n == 0x84) mapped = 'A';          // Ä
+    else if (c == 0xC3 && n == 0x96) mapped = 'O';          // Ö
+    else if (c == 0xC3 && n == 0x9C) mapped = 'U';          // Ü
     out += mapped;
     // Skip the continuation bytes of this character.
     while (i + 1 < s.size() && ((unsigned char) s[i + 1] & 0xC0) == 0x80) {

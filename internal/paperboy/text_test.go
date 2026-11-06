@@ -21,13 +21,14 @@ func textServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 	dir := t.TempDir()
 	pages := filepath.Join(dir, "pages")
 	writePageFile(t, filepath.Join(pages, "eins.lcd.yaml"), `
+kind: text
 grid: [8, 2]
 cells:
   - { at: [0, 0], span: [8, 1], widget: value/pv }
   - { at: [0, 1], span: [8, 1], widget: paperboy/text, args: { text: Größe } }
 `)
-	writePageFile(t, filepath.Join(pages, "zwei.lcd.yaml"), "grid: [8, 2]\ncells: [{span: [8, 1], widget: paperboy/text, args: {text: zwei}}]\n")
-	writePageFile(t, filepath.Join(pages, "kaputt.lcd.yaml"), "grid: [9, 2]\ncells: [{widget: paperboy/text, args: {text: x}}]\n")
+	writePageFile(t, filepath.Join(pages, "zwei.lcd.yaml"), "kind: text\ngrid: [8, 2]\ncells: [{span: [8, 1], widget: paperboy/text, args: {text: zwei}}]\n")
+	writePageFile(t, filepath.Join(pages, "kaputt.lcd.yaml"), "kind: text\ngrid: [8, 2]\ncells: [{widget: paperboy/text, args: {text: x}, colour: red}]\n")
 	if planYAML != "" {
 		writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), planYAML)
 	}
@@ -210,5 +211,35 @@ func TestTextDeviceFirmwareOffer(t *testing.T) {
 	offer := offerOf(displayPage(t, s, dev))
 	if offer["version"] != "0.2.1" {
 		t.Fatalf("no offer for a text display: %v", offer)
+	}
+}
+
+// TestPlanSkipsPagesForOtherDisplays verifies that a plan shared by image and
+// text displays skips pages that do not fit the device (ADR 0049): an image
+// page without a text variant and a text page with the wrong grid.
+func TestPlanSkipsPagesForOtherDisplays(t *testing.T) {
+	s, _ := textServer(t, "rules: [{name: immer, pages: [bild, schmal, zwei]}]\n")
+	writePageFile(t, filepath.Join(s.config().Pages, "bild.yaml"), "grid: [8, 2]\ncells: [{widget: paperboy/text, args: {text: bild}}]\n")
+	writePageFile(t, filepath.Join(s.config().Pages, "schmal.lcd.yaml"), "kind: text\ngrid: [4, 2]\ncells: [{widget: paperboy/text, args: {text: x}}]\n")
+	dev := planDevice(t, s)
+	out := displayPage(t, s, dev)
+	if lines := anyStrings(out["text"].(map[string]any)["lines"]); lines[0] != "zwei    " {
+		t.Fatalf("first fitting page: %q", lines)
+	}
+	dev.req.Reason = "button"
+	dev.req.Events = []syncEvent{{Type: "button", Button: buttonNext}}
+	if lines := anyStrings(displayPage(t, s, dev)["text"].(map[string]any)["lines"]); lines[0] != "zwei    " {
+		t.Fatalf("paging must stay on the only fitting page: %q", lines)
+	}
+	if len(s.skipNotes) != 2 {
+		t.Fatalf("skip notes: %v", s.skipNotes)
+	}
+
+	writePageFile(t, filepath.Join(s.config().Plans, "zimmer.yaml"), "rules: [{name: bilder, pages: [bild]}]\n")
+	stamp := time.Now().Add(time.Minute)
+	os.Chtimes(filepath.Join(s.config().Plans, "zimmer.yaml"), stamp, stamp)
+	lines := strings.Join(anyStrings(displayPage(t, s, dev)["text"].(map[string]any)["lines"]), "|")
+	if !strings.Contains(lines, "passende") {
+		t.Fatalf("no fitting page must show a notice: %q", lines)
 	}
 }

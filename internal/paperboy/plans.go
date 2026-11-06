@@ -70,7 +70,7 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	if !ok {
 		return nil, fmt.Errorf("unknown display type %q", profile)
 	}
-	tmpl, err := page.Load(cfg.Pages, name, profile)
+	tmpl, err := s.pages.get(cfg.Pages, name, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, po
 	if !ok || !p.text() {
 		return nil, fmt.Errorf("unknown text display type %q", profile)
 	}
-	tmpl, err := page.Load(cfg.Pages, name, profile)
+	tmpl, err := s.pages.get(cfg.Pages, name, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +257,13 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 		title, text := cfg.texts().noSelection()
 		return planChoice{title: title, text: text}
 	}
-	n := len(sel.Pages)
+	pages, skipped := s.fittingPages(cfg, d.Profile, sel.Pages)
+	if len(pages) == 0 {
+		title, text := cfg.texts().noFittingPage(sel.Rule, d.Profile)
+		return planChoice{title: title, text: shorten(text + " " + joinReasons(skipped)),
+			err: fmt.Errorf("rule %s has no page for display type %s: %s", sel.Rule, d.Profile, joinReasons(skipped))}
+	}
+	n := len(pages)
 	if switched := st.Rule != sel.Rule; switched {
 		// A new rule starts at its first page, the previous position is dropped.
 		st.Rule, st.Page, st.LastInput = sel.Rule, 0, now
@@ -300,7 +306,7 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 	if !sel.Rotate && page != 0 {
 		refresh = min(refresh, max(floor, pageTimeout-now.Sub(st.LastInput)+5*time.Second))
 	}
-	c := planChoice{page: page, pages: n, name: sel.Pages[page], refresh: refresh}
+	c := planChoice{page: page, pages: n, name: pages[page], refresh: refresh}
 	if st.BatteryLevel == batteryWarn {
 		c.banners = append(c.banners, cfg.texts().lowBattery(voltageKey(st.BatteryVoltage)))
 	}

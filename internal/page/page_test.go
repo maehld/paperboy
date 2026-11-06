@@ -127,6 +127,7 @@ func TestRenderImageWithoutSource(t *testing.T) {
 
 func TestRenderText(t *testing.T) {
 	tmpl, err := Parse(strings.NewReader(`
+kind: text
 grid: [10, 3]
 cells:
   - { at: [0, 0], span: [10, 1], widget: paperboy/header }
@@ -175,5 +176,23 @@ func TestBannerOnTinyDisplayStaysBlack(t *testing.T) {
 	}
 	if white == 0 {
 		t.Fatal("a large bar must carry the text")
+	}
+}
+
+func TestFits(t *testing.T) {
+	img, _ := Parse(strings.NewReader("grid: [20, 4]\ncells: [{widget: a/b}]\n"))
+	txt, _ := Parse(strings.NewReader("kind: text\ngrid: [20, 4]\ncells: [{widget: a/b}]\n"))
+	lcd := Display{Width: 20, Height: 4, Text: true}
+	if img.Fits(lcd) == nil {
+		t.Error("an image page with a matching grid must not fit a text display")
+	}
+	if txt.Fits(lcd) != nil || txt.Fits(Display{Width: 16, Height: 2, Text: true}) == nil {
+		t.Error("text page fit")
+	}
+	if txt.Fits(Display{Width: 800, Height: 480}) == nil || img.Fits(Display{Width: 800, Height: 480}) != nil {
+		t.Error("image display fit")
+	}
+	if _, err := Parse(strings.NewReader("kind: led\ngrid: [1, 1]\ncells: [{widget: a/b}]\n")); err == nil {
+		t.Error("unknown kind accepted")
 	}
 }

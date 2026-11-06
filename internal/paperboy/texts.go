@@ -42,6 +42,11 @@ func (t texts) noSelection() (string, string) {
 		)
 }
 
+func (t texts) noFittingPage(rule, profile string) (string, string) {
+	return t.variant("Keine passende Seite", "No matching page"),
+		t.variant("Regel "+rule+" hat keine Seite für "+profile+".", "Rule "+rule+" has no page for "+profile+".")
+}
+
 func (t texts) pageError(name string) string {
 	return t.variant("Seite ", "Page ") + name
 }
