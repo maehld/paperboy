@@ -1,5 +1,6 @@
 # The overview on a 20x4 character display: the grid is the character grid.
 title: Übersicht
+kind: text
 grid: [20, 4]
 cells:
   - { at: [0, 0], span: [20, 1], widget: paperboy/header }

@@ -129,8 +129,8 @@ func (t *Template) pluginStyle(c Cell, d Display) plugin.Style {
 // RenderImage composes the page for an image display. A widget that fails
 // becomes a notice inside its cell; stale widgets add a notice bar.
 func (t *Template) RenderImage(d Display, c Context) (*image.Paletted, error) {
-	if d.Text {
-		return nil, fmt.Errorf("RenderImage on a text display")
+	if err := t.Fits(d); err != nil {
+		return nil, err
 	}
 	rects := t.cellRects(d.Width, d.Height)
 	batch := Batch{Levels: d.levels(), Page: t.pageInfo(d, c)}
@@ -278,12 +278,8 @@ func WithBanner(img *image.Paletted, texts ...string) *image.Paletted {
 // lines, cut and padded by Paperboy. A stale widget marks the last column of
 // the first line with "!".
 func (t *Template) RenderText(d Display, c Context) ([]string, error) {
-	if !d.Text {
-		return nil, fmt.Errorf("RenderText on an image display")
-	}
-	if t.Grid[0] != d.Width || t.Grid[1] != d.Height {
-		return nil, fmt.Errorf("grid [%d, %d] does not match the text display (%d columns, %d rows)",
-			t.Grid[0], t.Grid[1], d.Width, d.Height)
+	if err := t.Fits(d); err != nil {
+		return nil, err
 	}
 	batch := Batch{Text: true, Charset: d.Charset, Page: t.pageInfo(d, c)}
 	for _, cell := range t.Cells {
