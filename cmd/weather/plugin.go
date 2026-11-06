@@ -82,17 +82,17 @@ func (w *weather) Describe() plugin.Description {
 		Config: configKeys,
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "current", Title: "Current weather", Kinds: both, MinWidth: 160, MinHeight: 80,
-				Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 3, Rows: 2}},
+				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 3}},
 				Args: map[string]plugin.Arg{
 					"clothing": {Type: "bool", Default: false, Description: "T-shirt or pullover by apparent temperature and wind"},
 				}},
 			{Widget: "days", Title: "Daily forecast", Kinds: both, MinWidth: 200, MinHeight: 80,
-				Sizes: []plugin.Span{{Columns: 3, Rows: 1}, {Columns: 6, Rows: 2}},
+				Sizes: []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"days": {Type: "int", Default: 5, Description: "number of days, 1 to 5"},
 				}},
 			{Widget: "hours", Title: "Temperature today", Kinds: []string{plugin.KindImage}, MinWidth: 200, MinHeight: 80,
-				Sizes: []plugin.Span{{Columns: 3, Rows: 1}, {Columns: 6, Rows: 2}}},
+				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}}},
 		},
 	}
 }

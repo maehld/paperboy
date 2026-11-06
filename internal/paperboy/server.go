@@ -139,6 +139,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/device/text", s.handleText)
 	mux.HandleFunc("GET /{$}", s.handleRoot)
 	mux.HandleFunc("GET /ui", s.handleDashboard)
+	mux.HandleFunc("GET /ui/plugins", s.handleGallery)
+	mux.HandleFunc("GET /api/widget/{plugin}/{widget}", s.handleWidget)
 	return mux
 }
 

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paperboy · Widgets</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 1.5rem; font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: #f2f2f2; color: #111; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; margin-bottom: 1rem; }
+h1 { font-size: 1.5rem; margin: 0; }
+nav a, .switch a { color: #134e9c; text-decoration: none; }
+nav a.active, .switch a.active { font-weight: 700; color: #111; }
+.muted { color: #666; font-size: .85rem; }
+.build { margin-left: auto; font-variant-numeric: tabular-nums; }
+.switch { display: flex; flex-wrap: wrap; gap: .8rem; margin-bottom: 1rem; font-size: .95rem; }
+.card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
+.card h2 { font-size: 1.1rem; margin: 0 0 .3rem; }
+.widget { border-top: 1px solid #eee; padding-top: .7rem; margin-top: .7rem; }
+.widget h3 { font-size: 1rem; margin: 0 0 .4rem; }
+.previews { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+figure { margin: 0; }
+figcaption { font-size: .8rem; color: #666; margin-top: .2rem; }
+.preview { display: block; max-width: 100%; height: auto; border: 1px solid #ccc; background: #fff; image-rendering: pixelated; }
+.lcd { margin: 0; padding: .6rem .8rem; background: #2d4a12; color: #d8f5a0; font: 1.05rem/1.3 ui-monospace, Consolas, monospace; white-space: pre; overflow-x: auto; border-radius: 4px; }
+ul.args { margin: .3rem 0 0; padding-left: 1.2rem; font-size: .85rem; color: #444; }
+.error, .warn { margin: .5rem 0 0; padding: .5rem .6rem; font-size: .85rem; word-break: break-word; }
+.error { background: #fff2f2; border-left: 3px solid #c22; }
+.warn { background: #fff8e6; border-left: 3px solid #b80; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Paperboy</h1>
+  <nav><a href="/ui">Devices</a> · <a class="active" href="/ui/plugins">Widgets</a></nav>
+  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
+</header>
+<div class="switch">
+  <span class="muted">Display type:</span>
+  {{range .Displays}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
+  {{if not .Text}}<span class="muted">· sizes on a {{.Grid}} grid</span>{{end}}
+</div>
+{{if not .Displays}}<p class="muted">No display types configured.</p>{{end}}
+{{range .Plugins}}
+<section class="card">
+  <h2>{{.Name}}{{if .Title}} <span class="muted">{{.Title}}</span>{{end}}{{if .Builtin}} <span class="muted">· built-in</span>{{end}}</h2>
+  {{if .Config}}<div class="muted">Config:</div><ul class="args">{{range .Config}}<li>{{.}}</li>{{end}}</ul>{{end}}
+  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+  {{range .Widgets}}
+  <div class="widget">
+    <h3>{{.Name}}{{if .Title}} <span class="muted">{{.Title}} · {{.Kinds}}</span>{{end}}</h3>
+    {{if .Note}}<p class="muted">{{.Note}}</p>{{end}}
+    <div class="previews">
+      {{range .Previews}}
+      <figure>
+        {{if .ImageURL}}<img class="preview" src="{{.ImageURL}}" width="{{.Width}}" height="{{.Height}}" alt="{{.Span}}" loading="lazy">
+        <figcaption>{{.Span}} · {{.Width}}×{{.Height}} px</figcaption>
+        {{else}}<pre class="lcd">{{range $i, $l := .Text}}{{if $i}}
+{{end}}{{$l}}{{end}}</pre>{{end}}
+        {{if .Warning}}<p class="warn">{{.Warning}}</p>{{end}}
+      </figure>
+      {{end}}
+    </div>
+    {{if .Args}}<ul class="args">{{range .Args}}<li>{{.}}</li>{{end}}</ul>{{end}}
+  </div>
+  {{end}}
+</section>
+{{end}}
+</body>
+</html>

@@ -128,12 +128,12 @@ func (e *evcc) Describe() plugin.Description {
 		Config: configKeys,
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "site", Title: "Energy flow", Kinds: both, MinWidth: 200, MinHeight: 80,
-				Sizes: []plugin.Span{{Columns: 3, Rows: 2}, {Columns: 6, Rows: 2}},
+				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"columns": {Type: "int", Default: 2, Description: "tiles per row: 2 or 4"},
 				}},
 			{Widget: "loadpoint", Title: "Charging point", Kinds: both, MinWidth: 200, MinHeight: 100,
-				Sizes: []plugin.Span{{Columns: 3, Rows: 2}, {Columns: 3, Rows: 3}, {Columns: 6, Rows: 2}},
+				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 3}},
 				Args: map[string]plugin.Arg{
 					"index": {Type: "int", Default: 0, Description: "loadpoint, counted from 0"},
 				}},

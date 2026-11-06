@@ -133,8 +133,8 @@ type WidgetInfo struct {
 	Title  string   `json:"title"`
 	Kinds  []string `json:"kinds"` // image, text
 	// Sizes are the grid spans the widget is designed for, as columns x
-	// rows. They are hints for an editor and for warnings; Paperboy only
-	// enforces the minimum size.
+	// rows of the reference grid of 6 x 8 cells. They are hints for an
+	// editor and the widget gallery; Paperboy enforces none of it.
 	Sizes     []Span         `json:"sizes,omitempty"`
 	MinWidth  int            `json:"min_width,omitempty"`  // pixels
 	MinHeight int            `json:"min_height,omitempty"` // pixels
