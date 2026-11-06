@@ -242,7 +242,7 @@ func TestResolveCommand(t *testing.T) {
 	if err := os.WriteFile(program, []byte(""), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	got, err := resolveCommand(dir, "mytool")
+	got, err := ResolveCommand(dir, "mytool")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,10 +250,10 @@ func TestResolveCommand(t *testing.T) {
 		t.Fatalf("resolved %q, want %q", got, program)
 	}
 	abs := filepath.Join(dir, "other")
-	if got, err := resolveCommand(dir, abs); err != nil || got != abs {
+	if got, err := ResolveCommand(dir, abs); err != nil || got != abs {
 		t.Fatalf("absolute path: %q %v", got, err)
 	}
-	if got, err := resolveCommand(dir, "sub/tool"); err != nil || got != filepath.Join(dir, "sub", "tool") {
+	if got, err := ResolveCommand(dir, "sub/tool"); err != nil || got != filepath.Join(dir, "sub", "tool") {
 		t.Fatalf("relative path: %q %v", got, err)
 	}
 }

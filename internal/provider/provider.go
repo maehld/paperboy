@@ -114,7 +114,7 @@ func (r *Runner) RunOnce(ctx context.Context) error {
 	} else {
 		dir = "."
 	}
-	program, err := resolveCommand(dir, spec.Command[0])
+	program, err := ResolveCommand(dir, spec.Command[0])
 	if err != nil {
 		return err
 	}
@@ -127,7 +127,7 @@ func (r *Runner) RunOnce(ctx context.Context) error {
 
 	cmd := exec.CommandContext(runCtx, program, spec.Command[1:]...)
 	cmd.Dir = dir
-	cmd.Env = environ(spec.Env)
+	cmd.Env = Environ(spec.Env)
 	var stdout, stderr limitedBuffer
 	stdout.limit = maxOutput + 1
 	stderr.limit = maxStderr
@@ -201,10 +201,10 @@ func decode(raw []byte) (any, error) {
 	return value, nil
 }
 
-// resolveCommand finds the program of a provider: absolute paths are used as
+// ResolveCommand finds the program of a provider: absolute paths are used as
 // they are, relative ones are looked up in the providers directory, and a bare
 // name falls back to PATH so that shipped helpers such as "curl" still work.
-func resolveCommand(dir, name string) (string, error) {
+func ResolveCommand(dir, name string) (string, error) {
 	if filepath.IsAbs(name) {
 		return name, nil
 	}
@@ -217,9 +217,9 @@ func resolveCommand(dir, name string) (string, error) {
 	return exec.LookPath(name)
 }
 
-// environ returns the inherited environment plus the configured keys, sorted so
+// Environ returns the inherited environment plus the configured keys, sorted so
 // that a provider sees a stable order.
-func environ(extra map[string]string) []string {
+func Environ(extra map[string]string) []string {
 	if len(extra) == 0 {
 		return os.Environ()
 	}

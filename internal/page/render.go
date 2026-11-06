@@ -47,6 +47,9 @@ type Context struct {
 	Page    int // 1-based page index for the page indicator and templates
 	Pages   int // number of pages in the plan
 	Banners []string
+	// Fragments renders the plugin blocks of the page; nil leaves them as
+	// notices.
+	Fragments FragmentSource
 }
 
 // text picks the German or English variant of a built-in text.
@@ -70,6 +73,16 @@ var renderMu sync.Mutex
 
 // RenderContext draws the page with the full render context (ADR 0034).
 func (t *Template) RenderContext(doc *data.Document, d Display, c Context) (*image.Paletted, error) {
+	fragments := map[image.Rectangle]Fragment{}
+	staleFragments := false
+	if reqs, rects := t.collectFragments(d); len(reqs) > 0 && c.Fragments != nil {
+		for i, f := range c.Fragments(reqs, d.Gray) {
+			if i < len(rects) {
+				fragments[rects[i]] = f
+				staleFragments = staleFragments || f.Stale
+			}
+		}
+	}
 	renderMu.Lock()
 	defer renderMu.Unlock()
 	raw, _ := doc.Get("")
@@ -87,8 +100,8 @@ func (t *Template) RenderContext(doc *data.Document, d Display, c Context) (*ima
 		c.Pages = 1
 	}
 	r := &renderer{t: t, watch: t.Watch, doc: doc, root: root, f: formatter{comma: language != "en", loc: loc},
-		now: now, language: language, page: c.Page, pages: c.Pages, badge: t.noticeMode() == "badge"}
-	r.stale = t.isStale(doc, now)
+		now: now, language: language, page: c.Page, pages: c.Pages, badge: t.noticeMode() == "badge", fragments: fragments}
+	r.stale = t.isStale(doc, now) || staleFragments
 
 	img := newCanvas(d.Width, d.Height, d.Gray)
 	bands := t.bands(d)
@@ -104,6 +117,9 @@ func (t *Template) RenderContext(doc *data.Document, d Display, c Context) (*ima
 	var banners []string
 	if t.noticeMode() == "bar" {
 		banners = append(banners, t.staleBanners(doc, now, language)...)
+		if staleFragments {
+			banners = append(banners, text(language, "Plugin-Bilder veraltet", "Plugin images outdated"))
+		}
 	}
 	banners = append(banners, c.Banners...)
 	if len(banners) > 0 {
@@ -188,6 +204,8 @@ type renderer struct {
 	stale    bool
 	badge    bool
 	err      error
+
+	fragments map[image.Rectangle]Fragment
 }
 
 func (r *renderer) fail(err error) {
@@ -391,6 +409,8 @@ func (r *renderer) block(img *image.Paletted, rc image.Rectangle, b Block) {
 		r.icon(img, rc, b)
 	case b.Agenda != nil:
 		r.agenda(img, rc, b)
+	case b.Plugin != nil:
+		r.plugin(img, rc, b)
 	}
 	if b.Rule > 0 {
 		hline(img, rc.Min.X, rc.Max.Y-b.Rule, rc.Max.X, b.Rule)

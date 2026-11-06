@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/maehld/paperboy/internal/fragment"
 	"log/slog"
 	"net/http"
 	"os"
@@ -42,6 +43,7 @@ type Server struct {
 	logs     *logSeen                 // delivered device log entries (own lock)
 	firmware *firmwareStore           // OTA images (ADR 0043; own lock)
 	fwNotes  map[string]string        // device ID → last logged reason for withholding an update
+	plugins  fragment.Host            // fragment plugins and their image cache (spike; own lock)
 }
 
 // config returns the current configuration, reloading it from paperboy.yaml
@@ -129,6 +131,7 @@ func (s *Server) StartProviders(ctx context.Context) {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/profiles", s.handleProfiles)
+	mux.HandleFunc("GET /api/plugins", s.handlePlugins)
 	mux.HandleFunc("PUT /api/data", s.handlePutData)
 	mux.HandleFunc("PUT /api/data/{path...}", s.handlePutData)
 	mux.HandleFunc("GET /api/data", s.handleGetData)

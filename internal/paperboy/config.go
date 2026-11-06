@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/maehld/paperboy/internal/fragment"
 	"io"
 	"io/fs"
 	"net"
@@ -159,6 +160,7 @@ const (
 	pagesDirName     = "pages"
 	plansDirName     = "plans"
 	providersDirName = "providers"
+	pluginsDirName   = "plugins"
 	stateDirName     = "state"
 	devicesFileName  = "devices.json"
 	dataFileName     = "data.json"
@@ -175,11 +177,13 @@ type Config struct {
 	Pages        string // page templates: <dir>/pages
 	Plans        string // page plans: <dir>/plans
 	ProvidersDir string // provider programs: <dir>/providers
+	PluginsDir   string // fragment plugins: <dir>/plugins (spike)
 	FirmwareDir  string // firmware images: <dir>/firmware (ADR 0043)
 	Firmware     FirmwareConfig
 	Profiles     map[string]Profile
 	Devices      []Device
 	Providers    []Provider // exec providers (ADR 0036)
+	Plugins      []Plugin   // fragment plugins (spike)
 	Battery      *Battery   // default low-battery warning; nil = off
 
 	// degraded marks a start without a usable paperboy.yaml (ADR 0047). Such a
@@ -196,6 +200,15 @@ type Provider struct {
 	Interval Duration // pause between two runs
 	Timeout  Duration // hard limit for one run
 	Env      map[string]string
+}
+
+// Plugin is one fragment plugin (spike): a program in the plugins directory
+// that renders image fragments on request.
+type Plugin struct {
+	Name    string
+	Command []string
+	Timeout Duration
+	Env     map[string]string
 }
 
 // texts returns the built-in image texts for the configured language.
@@ -245,6 +258,11 @@ type fileConfig struct {
 		Timeout  Duration          `yaml:"timeout"`
 		Env      map[string]string `yaml:"env"`
 	} `yaml:"providers"`
+	Plugins map[string]struct {
+		Command []string          `yaml:"command"`
+		Timeout Duration          `yaml:"timeout"`
+		Env     map[string]string `yaml:"env"`
+	} `yaml:"plugins"`
 	DisplayTypes map[string]struct {
 		Kind       string   `yaml:"kind"`
 		Charset    string   `yaml:"charset"`
@@ -326,6 +344,7 @@ func LoadConfig(dir string) (*Config, error) {
 		Pages:        filepath.Join(dir, pagesDirName),
 		Plans:        filepath.Join(dir, plansDirName),
 		ProvidersDir: filepath.Join(dir, providersDirName),
+		PluginsDir:   filepath.Join(dir, pluginsDirName),
 		FirmwareDir:  filepath.Join(dir, firmwareDirName),
 		Firmware:     FirmwareConfig{Update: f.Firmware.Update, MinBatteryVolts: f.Firmware.MinBatteryVolts},
 		Profiles:     make(map[string]Profile, len(f.DisplayTypes)),
@@ -402,6 +421,15 @@ func LoadConfig(dir string) (*Config, error) {
 			Timeout:  p.Timeout,
 			Env:      p.Env,
 		})
+	}
+	pluginNames := make([]string, 0, len(f.Plugins))
+	for name := range f.Plugins {
+		pluginNames = append(pluginNames, name)
+	}
+	sort.Strings(pluginNames)
+	for _, name := range pluginNames {
+		p := f.Plugins[name]
+		c.Plugins = append(c.Plugins, Plugin{Name: name, Command: p.Command, Timeout: p.Timeout, Env: p.Env})
 	}
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -545,7 +573,27 @@ func (c *Config) validate() error {
 	if err := c.validateProviders(); err != nil {
 		return err
 	}
+	for _, p := range c.Plugins {
+		if !validName(p.Name) {
+			return fmt.Errorf("plugin %q: name must use a-z, 0-9 and -", p.Name)
+		}
+		if len(p.Command) == 0 || p.Command[0] == "" {
+			return fmt.Errorf("plugin %s: command missing", p.Name)
+		}
+		if p.Timeout < 0 {
+			return fmt.Errorf("plugin %s: timeout must not be negative", p.Name)
+		}
+	}
 	return nil
+}
+
+// pluginSpecs returns the plugins for the fragment host.
+func (c *Config) pluginSpecs() map[string]fragment.Spec {
+	out := make(map[string]fragment.Spec, len(c.Plugins))
+	for _, p := range c.Plugins {
+		out[p.Name] = fragment.Spec{Name: p.Name, Command: p.Command, Timeout: time.Duration(p.Timeout), Env: p.Env, Dir: c.PluginsDir}
+	}
+	return out
 }
 
 // validateProviders checks the exec providers (ADR 0036): every provider needs a

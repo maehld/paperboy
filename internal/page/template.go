@@ -58,18 +58,19 @@ type Watch struct {
 
 // Block is the content of one region; exactly one content field is set.
 type Block struct {
-	Name    string   `yaml:"name"`
-	Rule    int      `yaml:"rule"`    // separator at the bottom edge, px; 0 = none
-	Padding *int     `yaml:"padding"` // inner distance to the region edges, px
-	Header  *Header  `yaml:"header"`
-	Tiles   *Tiles   `yaml:"tiles"`
-	Rows    *Rows    `yaml:"rows"`
-	Chart   *Chart   `yaml:"chart"`
-	Text    *Text    `yaml:"text"`
-	Columns *Columns `yaml:"columns"`
-	Bar     *Bar     `yaml:"bar"`
-	Icon    *Icon    `yaml:"icon"`
-	Agenda  *Agenda  `yaml:"agenda"`
+	Name    string       `yaml:"name"`
+	Rule    int          `yaml:"rule"`    // separator at the bottom edge, px; 0 = none
+	Padding *int         `yaml:"padding"` // inner distance to the region edges, px
+	Header  *Header      `yaml:"header"`
+	Tiles   *Tiles       `yaml:"tiles"`
+	Rows    *Rows        `yaml:"rows"`
+	Chart   *Chart       `yaml:"chart"`
+	Text    *Text        `yaml:"text"`
+	Columns *Columns     `yaml:"columns"`
+	Bar     *Bar         `yaml:"bar"`
+	Icon    *Icon        `yaml:"icon"`
+	Agenda  *Agenda      `yaml:"agenda"`
+	Plugin  *PluginBlock `yaml:"plugin"`
 }
 
 // Header shows a title, an optional subtitle and a status area.
@@ -370,6 +371,11 @@ func normalizeBlock(b *yaml.Node) error {
 			if val.Kind == yaml.ScalarNode {
 				b.Content[i+1] = newMapping(newKey("events"), val)
 			}
+		case "plugin":
+			if val.Kind == yaml.ScalarNode {
+				name, img := splitPluginRef(val.Value)
+				b.Content[i+1] = newMapping(newKey("name"), newKey(name), newKey("image"), newKey(img))
+			}
 		case "chart":
 			normalizeChart(val)
 		case "columns":
@@ -515,13 +521,13 @@ func (b *Block) validateNested(nested bool) error {
 	}
 	kinds := 0
 	for _, set := range []bool{b.Header != nil, b.Tiles != nil, b.Rows != nil, b.Chart != nil,
-		b.Text != nil, b.Columns != nil, b.Bar != nil, b.Icon != nil, b.Agenda != nil} {
+		b.Text != nil, b.Columns != nil, b.Bar != nil, b.Icon != nil, b.Agenda != nil, b.Plugin != nil} {
 		if set {
 			kinds++
 		}
 	}
 	if kinds != 1 {
-		return fmt.Errorf("exactly one of header, tiles, rows, chart, text, columns, bar, icon or agenda is required")
+		return fmt.Errorf("exactly one of header, tiles, rows, chart, text, columns, bar, icon, agenda or plugin is required")
 	}
 	if nested && b.Columns != nil {
 		return fmt.Errorf("nested columns are not supported")
@@ -569,6 +575,11 @@ func (b *Block) validateNested(nested bool) error {
 	if b.Agenda != nil {
 		if err := b.Agenda.validate(); err != nil {
 			return fmt.Errorf("agenda: %w", err)
+		}
+	}
+	if b.Plugin != nil {
+		if err := b.Plugin.validate(); err != nil {
+			return fmt.Errorf("plugin: %w", err)
 		}
 	}
 	return nil

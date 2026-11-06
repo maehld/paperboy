@@ -24,6 +24,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/maehld/paperboy/pkg/plugin"
 )
 
 const (
@@ -50,6 +52,8 @@ type options struct {
 	language    string
 	location    *time.Location
 	passwordEnv string
+	icsFiles    []string
+	plugin      bool
 }
 
 func main() {
@@ -63,6 +67,10 @@ func run() error {
 	opts, err := parseFlags(os.Args[1:])
 	if err != nil {
 		return err
+	}
+	if opts.plugin {
+		plugin.Serve(&calendarPlugin{opts: opts})
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
@@ -85,13 +93,15 @@ func run() error {
 func parseFlags(args []string) (options, error) {
 	fs := flag.NewFlagSet("calendar", flag.ContinueOnError)
 	var o options
-	var calendars, ics, icsEnv listFlag
+	var calendars, ics, icsEnv, icsFiles listFlag
 	fs.StringVar(&o.caldav, "caldav", "", "CalDAV server or calendar URL, e.g. https://caldav.icloud.com")
 	fs.StringVar(&o.user, "user", "", "CalDAV user name, for iCloud the Apple ID")
 	fs.StringVar(&o.passwordEnv, "password-env", defaultPasswordEnv, "environment variable that holds the CalDAV password")
 	fs.Var(&calendars, "calendar", "name of a CalDAV calendar to include; repeatable; default all")
 	fs.Var(&ics, "ics", "iCalendar URL (https:// or webcal://); repeatable")
 	fs.Var(&icsEnv, "ics-env", "environment variable that holds an iCalendar URL; repeatable")
+	fs.Var(&icsFiles, "ics-file", "local iCalendar file; repeatable")
+	fs.BoolVar(&o.plugin, "plugin", false, "run as a fragment plugin: read a request on standard input and answer with images")
 	fs.IntVar(&o.days, "days", 14, "number of days from today to include")
 	fs.IntVar(&o.maxEvents, "max-events", 200, "maximum number of events in the output")
 	language := fs.String("language", envOr("PAPERBOY_LANGUAGE", "en"), `language of the day labels: "de" or "en"`)
@@ -104,6 +114,7 @@ func parseFlags(args []string) (options, error) {
 	}
 	o.calendars = calendars
 	o.ics = ics
+	o.icsFiles = icsFiles
 	for _, name := range icsEnv {
 		v := strings.TrimSpace(os.Getenv(name))
 		if v == "" {
@@ -111,8 +122,8 @@ func parseFlags(args []string) (options, error) {
 		}
 		o.ics = append(o.ics, v)
 	}
-	if o.caldav == "" && len(o.ics) == 0 {
-		return o, errors.New("-caldav or -ics is required")
+	if o.caldav == "" && len(o.ics) == 0 && len(o.icsFiles) == 0 {
+		return o, errors.New("-caldav, -ics or -ics-file is required")
 	}
 	if o.caldav != "" {
 		if o.user == "" {
@@ -203,6 +214,21 @@ func collect(ctx context.Context, o options, c *client, now time.Time) (branch, 
 			return branch{}, nil, fmt.Errorf("iCalendar link: %w", err)
 		}
 		name := calendarName(roots, link)
+		names = append(names, name)
+		occ, warn := occurrences(roots, name, z, from, to)
+		all = append(all, occ...)
+		warnings = append(warnings, prefix(name, warn)...)
+	}
+	for _, file := range o.icsFiles {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			return branch{}, nil, err
+		}
+		roots, err := parseICS(raw)
+		if err != nil {
+			return branch{}, nil, fmt.Errorf("%s: %w", file, err)
+		}
+		name := calendarName(roots, file)
 		names = append(names, name)
 		occ, warn := occurrences(roots, name, z, from, to)
 		all = append(all, occ...)

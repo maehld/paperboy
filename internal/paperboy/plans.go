@@ -75,7 +75,8 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	}
 	img, err := tmpl.RenderContext(s.doc, page.Display{
 		Width: p.Width, Height: p.Height, Gray: p.Gray, Language: cfg.Language, Timezone: cfg.Timezone,
-	}, page.Context{Now: now, Page: pos.index + 1, Pages: pos.count, Banners: banners})
+	}, page.Context{Now: now, Page: pos.index + 1, Pages: pos.count, Banners: banners,
+		Fragments: s.fragmentSource(cfg, now)})
 	if err != nil {
 		return nil, err
 	}

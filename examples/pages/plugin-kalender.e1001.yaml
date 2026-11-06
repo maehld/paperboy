@@ -1,0 +1,25 @@
+# Spike: plugin fragments. Same page as kalender.e1001.yaml, but the agenda
+# comes from the calendar plugin, next to a month grid that blocks cannot draw.
+title: Kalender
+notices: badge
+rows: [12, 88]
+blocks:
+  - name: kopf
+    header:
+      title: Termine
+      align: left
+      status: { label: '{{ time now }}' }
+      rule: 2
+  - name: inhalt
+    columns:
+      divider: 2
+      items:
+        - weight: 1
+          block:
+            plugin:
+              name: calendar
+              image: agenda
+              args: { lines: 10, location: true }
+        - weight: 1
+          block:
+            plugin: calendar/month
