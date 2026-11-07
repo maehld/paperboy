@@ -253,7 +253,9 @@ go vet ./...
 ./scripts/package-plugins.sh dist  # the plugin zip for the host platform (GOOS/GOARCH select another)
 ```
 
-The dashboard header shows version, commit and commit date, straight from Go's VCS stamping. `go build` and `scripts/build.ps1` embed them as long as the Git repository is present. The container image therefore keeps `.git` in the build context and installs the git binary in its build stage (the alpine Go image ships none); the final image contains only the Paperboy binary. Release builds check out full history and tags, because the version name comes from the tag.
+The dashboard header shows version, commit and commit date. The commit and its date come from Go's VCS stamping, which works as long as the Git repository is present; the container image therefore keeps `.git` in the build context and installs the git binary in its build stage (the alpine Go image ships none).
+
+The version name cannot come from VCS stamping: Go stamps any working-tree build with a pseudo-version derived from the commit (`v0.0.0-…`), even when the exact commit is tagged. Release builds therefore pass the tag in, `-ldflags "-X github.com/maehld/paperboy/internal/paperboy.version=v2.0.0"`, which `release.yml`, the container image (`--build-arg VERSION=…`) and `scripts/build.ps1 -Version` do. A build without it reports `dev` plus the short commit. `go version -m <binary>` shows what was stamped.
 
 The workflows follow the three deliverables (ADR 0056): *CI* runs formatting, vet, tests and a cross-build on every change, *Plugins* and *Firmware* build their artifacts (the firmware only when `firmware/esphome/` changes), *Docker* publishes the image and *Release* collects everything into one GitHub release on a tag.
 

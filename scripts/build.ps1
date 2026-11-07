@@ -6,16 +6,22 @@ Builds the programs for multiple target systems into bin/<os>-<arch>/.
 ./scripts/build.ps1                                  # all programs, all targets
 ./scripts/build.ps1 -Targets linux/amd64,linux/arm64  # Linux only
 ./scripts/build.ps1 -Apps paperboy -Targets linux/arm64
+./scripts/build.ps1 -Apps paperboy -Version v2.0.0   # a named release build
 #>
 param(
     [string[]]$Targets = @('linux/amd64', 'linux/arm64', 'windows/amd64'),
-    [string[]]$Apps = @('paperboy', 'odtest', 'weather', 'calendar', 'evcc', 'pokedex', 'xkcd', 'departures')
+    [string[]]$Apps = @('paperboy', 'odtest', 'weather', 'calendar', 'evcc', 'pokedex', 'xkcd', 'departures'),
+    # Release name baked into the Paperboy binary, e.g. v2.0.0. Empty builds
+    # report "dev" plus the commit: Go never stamps the tag itself.
+    [string]$Version = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $saved = @{ GOOS = $env:GOOS; GOARCH = $env:GOARCH; CGO_ENABLED = $env:CGO_ENABLED }
 $failed = @()
+$ldflags = '-s -w'
+if ($Version) { $ldflags += " -X github.com/maehld/paperboy/internal/paperboy.version=$Version" }
 
 Push-Location $root
 try {
@@ -26,7 +32,7 @@ try {
         foreach ($app in $Apps) {
             $out = Join-Path 'bin' "$goos-$goarch/$app$ext"
             Write-Host "Building $out"
-            go build -trimpath -ldflags '-s -w' -o $out "./cmd/$app"
+            go build -trimpath -ldflags $ldflags -o $out "./cmd/$app"
             if ($LASTEXITCODE -ne 0) { $failed += "$target/$app" }
         }
     }
