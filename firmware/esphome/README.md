@@ -96,10 +96,11 @@ else, including the rescue of a device that no longer syncs, goes over USB-C.
 
 The *Firmware* workflow compiles all three hardware types with the same pinned
 version whenever `firmware/esphome/` changes, so a broken configuration fails on
-a pull request. A release tag attaches the images as
-`paperboy-firmware-<hardware>-<version>.zip` (unpacked in the instance
-directory it creates `firmware/<hardware>/`) and as the `.bin` alone (ADR 0056);
-`fw_version` in `<hardware>.yaml` names the image in both cases.
+a pull request. A release tag attaches the images as one bundle,
+`paperboy-firmware-<version>.zip`: unpacked in the instance directory it creates
+`firmware/<hardware>/<hardware>-<version>.bin` for every hardware type (ADR 0043,
+0059). `fw_version` in `<hardware>.yaml` names the image inside the bundle, the
+tag names the bundle.
 
 A device that runs the TRMNL firmware is flashed over USB-C once. A device on
 the ESPHome experiment can switch without a cable through the experiment's own
@@ -117,8 +118,7 @@ open the address shown on the display and enter the Paperboy URL (for example
 Raise `fw_version` in `<hardware>.yaml` for every release and publish it with
 `-Instance`; Paperboy offers it in the sync once `firmware.update: auto` is set
 (ADR 0043). ESPHome keeps the previous image and `safe_mode` rolls back one
-that does not boot; test that with a deliberately broken image before turning
-updates on. Restoring the original firmware: Seeed's playground (Sticky) or the SenseCraft/TRMNL flasher
+that does not boot; that was tested with a deliberately broken image. Restoring the original firmware: Seeed's playground (Sticky) or the SenseCraft/TRMNL flasher
 (E1001).
 
 ## Hardware facts

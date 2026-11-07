@@ -19,7 +19,7 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
    curl -o page.png http://127.0.0.1:8090/api/preview/e1001/uebersicht
    ```
    Alternatively as a container: `Dockerfile` and `compose.example.yaml`. The image contains only Paperboy; use the `linux/amd64` plugin zip in the mounted instance directory.
-4. Flash the Paperboy firmware (ADR 0041, see [firmware/esphome/README.md](firmware/esphome/README.md)); release images are in `paperboy-firmware-<hardware>-<version>.zip` or the matching `.bin` release asset. Enter `http://<computer>:8090` as the Paperboy URL in the device's web UI. The device registers with its MAC address; unknown MACs are rejected and logged.
+4. Flash the Paperboy firmware (ADR 0041, see [firmware/esphome/README.md](firmware/esphome/README.md)); the release images are in `paperboy-firmware-<version>.zip`. Enter `http://<computer>:8090` as the Paperboy URL in the device's web UI. The device registers with its MAC address; unknown MACs are rejected and logged.
 
 **Migrating from Paperboy v1:** v2 has no data API, no exec providers and no upload token (ADR 0049). Remove the `server` and `providers` sections from `paperboy.yaml` (both abort the start with a hint) and add `plugins` instead; the weather and calendar providers are plugins now and take their settings from `config` instead of flags. Rewrite the pages as grids (see below); old templates with `rows` and `blocks` are rejected and show a notice page. `state/data.json` and the `icons/` directory are no longer used. Devices keep their keys as long as `state/devices.json` is kept.
 
@@ -31,16 +31,15 @@ GitHub releases are the distribution point (ADR 0056). Each tag names a tested c
 
 | Tag | Contains |
 |---|---|
-| `vX.Y.Z` | Paperboy binaries, plugin zips and firmware images |
+| `vX.Y.Z` | Paperboy binaries, plugin zips and the firmware bundle |
 | `plugins-vX.Y.Z` | plugin zips only |
-| `firmware-vX.Y.Z` | firmware images only (`X.Y.Z` is the highest `fw_version` in the bundle) |
+| `firmware-vX.Y.Z` | firmware bundle only (`X.Y.Z` is the highest `fw_version` in the bundle) |
 
 | Asset | Use |
 |---|---|
 | `paperboy-linux-amd64`, `paperboy-linux-arm64`, `paperboy-windows-amd64.exe` | the Paperboy binary for that platform |
 | `paperboy-plugins-<os>-<arch>.zip` | unpack in the instance directory: creates `plugins/` |
-| `paperboy-firmware-<hardware>-<version>.zip` | unpack in the instance directory: creates `firmware/<hardware>/` (ADR 0043) |
-| `paperboy-firmware-<hardware>-<version>.bin` | the same OTA image alone, for consumers that do not unzip |
+| `paperboy-firmware-<version>.zip` | unpack in the instance directory: creates `firmware/<hardware>/` with the image of every hardware type (ADR 0043, 0059) |
 | `SHA256SUMS` | checksums of all assets of the release |
 
 The container image is published separately as `ghcr.io/maehld/paperboy` (`X.Y.Z`, `X.Y` and `latest`). A release is created by pushing a tag, for example `git tag v2.1.0 && git push origin v2.1.0`; the *Release* workflow builds everything and attaches it to one release.
