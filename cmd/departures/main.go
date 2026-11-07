@@ -44,7 +44,7 @@ const (
 )
 
 var configKeys = map[string]plugin.Arg{
-	"backend":      {Type: "string", Default: "efa", Description: "data source; only efa (rapidJSON interface of an EFA installation) exists"},
+	"backend":      {Type: "string", Default: "efa", Description: "data source; only efa (rapidJSON interface of an EFA installation) exists", Enum: []any{"efa"}},
 	"base":         {Type: "string", Default: defaultBase, Description: "EFA base URL, without /XML_DM_REQUEST"},
 	"stop":         {Type: "string", Required: true, Description: "stop name or stop ID (e.g. de:00000:1001); a name is resolved once"},
 	"lines":        {Type: "list", Description: "only these lines (e.g. [355, R82]); default all"},
@@ -114,7 +114,7 @@ func (p *departures) Describe() plugin.Description {
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 3}, {Columns: 6, Rows: 4}},
 				Args: map[string]plugin.Arg{
 					"header": {Type: "bool", Default: false, Description: "show the stop name above the departures"},
-					"time":   {Type: "string", Default: "auto", Description: "auto: minutes, a clock time from one hour on; minutes; clock"},
+					"time":   {Type: "string", Default: "auto", Description: "auto: minutes, a clock time from one hour on; minutes; clock", Enum: []any{"auto", "minutes", "clock"}},
 				}},
 		},
 	}

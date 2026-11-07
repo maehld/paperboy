@@ -36,18 +36,18 @@ func (Plugin) Describe() plugin.Description {
 					"clock":          {Type: "bool", Default: true, Description: "current time on the right"},
 					"date":           {Type: "bool", Default: false, Description: "weekday and date on the right, long or short depending on the space"},
 					"page_indicator": {Type: "bool", Default: true, Description: "page number when the plan rule has several pages"},
-					"align":          {Type: "string", Default: "left", Description: "left, center or right"},
+					"align":          {Type: "string", Default: "left", Description: "left, center or right", Enum: []any{"left", "center", "right"}},
 				}},
 			{Widget: "text", Title: "Text", Kinds: both, Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 6, Rows: 1}},
 				Args: map[string]plugin.Arg{
 					"text":  {Type: "string", Required: true, Description: "lines separated by \\n"},
-					"align": {Type: "string", Default: "center"},
+					"align": {Type: "string", Default: "center", Enum: []any{"left", "center", "right"}},
 					"size":  {Type: "float", Default: 0.5, Description: "text height as a fraction of the line height"},
 					"bold":  {Type: "bool", Default: false},
 				}},
 			{Widget: "clock", Title: "Clock", Kinds: both, Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 3, Rows: 2}, {Columns: 6, Rows: 2}},
 				Args: map[string]plugin.Arg{
-					"format": {Type: "string", Default: "time", Description: "time, date or datetime"},
+					"format": {Type: "string", Default: "time", Description: "time, date or datetime", Enum: []any{"time", "date", "datetime"}},
 				}},
 		},
 	}
