@@ -37,7 +37,7 @@ cells:
 		dev.Plan = "zimmer"
 	}
 	cfg := &Config{Dir: dir, Timezone: time.UTC, Language: "de",
-		Profiles: map[string]Profile{"lcd": {Kind: kindText, Charset: "ascii", Width: 8, Height: 2}},
+		Profiles: map[string]Profile{"lcd": {Kind: kindText, Charset: "ascii", Width: 8, Height: 2, Power: powerMains}},
 		Devices:  []Device{dev}}
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)
@@ -105,8 +105,8 @@ func TestTextDeviceSyncAndPoll(t *testing.T) {
 	if out["refresh_s"].(float64) != 2 {
 		t.Fatalf("refresh_s from the plan: %v", out["refresh_s"])
 	}
-	if out["listen_s"].(float64) != 0 {
-		t.Fatalf("listen_s: %v", out["listen_s"])
+	if out["listen_s"].(float64) != 0 || out["sleep"] != false {
+		t.Fatalf("listen_s/sleep: %v %v", out["listen_s"], out["sleep"])
 	}
 
 	if rec := pollText(t, s, "", ""); rec.Code != http.StatusUnauthorized {

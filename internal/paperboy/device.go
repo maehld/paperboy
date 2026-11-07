@@ -31,6 +31,7 @@ type registerRequest struct {
 	MAC      string `json:"mac"`
 	Hardware string `json:"hardware"`
 	Firmware string `json:"firmware"`
+	Power    string `json:"power"` // battery or mains, if the hardware knows (ADR 0051)
 }
 
 type syncEvent struct {
@@ -57,6 +58,7 @@ type syncRequest struct {
 	Battery  *syncBattery     `json:"battery"`
 	RSSI     *int             `json:"rssi"`
 	Log      []deviceLogEntry `json:"log"`
+	Power    string           `json:"power"` // battery or mains, if the hardware knows (ADR 0051)
 }
 
 type syncImage struct {
@@ -75,6 +77,7 @@ type syncResponse struct {
 	Text     *syncText      `json:"text,omitempty"` // text displays only
 	RefreshS int            `json:"refresh_s"`
 	ListenS  int            `json:"listen_s"`
+	Sleep    bool           `json:"sleep"` // false: stay awake and sync again after refresh_s (ADR 0051)
 	Time     int64          `json:"time"`
 	Firmware *firmwareOffer `json:"firmware"` // update offer (ADR 0043); null when none
 }
@@ -106,7 +109,17 @@ func (r *syncRequest) validate() error {
 	if r.Battery != nil && (r.Battery.Volts <= 0 || r.Battery.Volts > 10) {
 		return errors.New("battery: volts missing or out of range")
 	}
-	return nil
+	return validReportedPower(r.Power)
+}
+
+// validReportedPower checks the power source a device reports; it may leave
+// it out, but never report auto or anything else.
+func validReportedPower(p string) error {
+	switch p {
+	case "", powerBattery, powerMains:
+		return nil
+	}
+	return fmt.Errorf("power %q: expected battery or mains", p)
 }
 
 // decodeDeviceJSON reads a size-limited JSON body; unknown fields are ignored
@@ -133,12 +146,19 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "device not configured", http.StatusForbidden)
 		return
 	}
+	if err := validReportedPower(req.Power); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	s.mu.Lock()
 	st := s.stateLocked(d.key())
 	if st.APIKey == "" {
 		st.APIKey = newAPIKey()
 	}
 	st.Hardware, st.Firmware = req.Hardware, req.Firmware
+	if req.Power != "" {
+		st.ReportedPower = req.Power
+	}
 	key := st.APIKey
 	stateData := s.stateSnapshotLocked()
 	s.mu.Unlock()
@@ -205,6 +225,9 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	if req.RSSI != nil {
 		st.RSSI = strconv.Itoa(*req.RSSI)
 	}
+	if req.Power != "" {
+		st.ReportedPower = req.Power
+	}
 	if b := req.Battery; b != nil {
 		st.BatteryVoltage = strconv.FormatFloat(b.Volts, 'f', 2, 64)
 		st.BatteryPercent, st.BatteryMAH = b.Percent, b.MAH
@@ -229,7 +252,8 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	floor := cfg.minRefresh(d.Profile)
+	power := cfg.power(d, st.ReportedPower)
+	floor := cfg.minRefresh(d, st.ReportedPower)
 	textDisplay := cfg.Profiles[d.Profile].text()
 	var choice planChoice
 	switch {
@@ -327,11 +351,12 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		attrs = append(attrs, "buttons", strings.Join(buttons, ","))
 	}
 	attrs = append(attrs, "changed", req.Shown != served.hash, "battery", logged.BatteryVoltage,
-		"rssi", logged.RSSI, "refresh", refresh)
+		"rssi", logged.RSSI, "refresh", refresh, "power", power)
 	slog.Info("display sync", attrs...)
 	resp := syncResponse{
 		RefreshS: int(refresh.Seconds()),
 		ListenS:  int(listen.Seconds()),
+		Sleep:    power == powerBattery,
 		Time:     now.Unix(),
 		Firmware: offer,
 	}
