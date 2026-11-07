@@ -18,15 +18,23 @@ type buildVersion struct {
 	Go       string // Go toolchain that built the binary
 }
 
+// version is the release name, injected with
+// -ldflags "-X github.com/maehld/paperboy/internal/paperboy.version=v2.0.0".
+// Go stamps a working-tree build with a pseudo-version derived from the commit,
+// never with the tag, so a release build has to pass the tag in (ADR 0056).
+var version string
+
 var build = readBuildInfo()
 
 func readBuildInfo() buildVersion {
-	v := buildVersion{Go: runtime.Version()}
+	v := buildVersion{Version: version, Go: runtime.Version()}
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return v
 	}
-	v.Version = info.Main.Version
+	if v.Version == "" {
+		v.Version = info.Main.Version
+	}
 	for _, s := range info.Settings {
 		switch s.Key {
 		case "vcs.revision":
