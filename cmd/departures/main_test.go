@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -39,9 +40,9 @@ func TestParseStopFinder(t *testing.T) {
 }
 
 func TestParseDepartures(t *testing.T) {
-	deps, name, err := parseDepartures(fixture(t, "dm.json"))
-	if err != nil || len(deps) != 10 || !strings.HasPrefix(name, "Beispiel") {
-		t.Fatalf("%d %q %v", len(deps), name, err)
+	deps, loc, err := parseDepartures(fixture(t, "dm.json"))
+	if err != nil || len(deps) != 10 || !strings.HasPrefix(loc.Name, "Beispiel") || loc.Parent.Name != "Beispielstadt" {
+		t.Fatalf("%d %+v %v", len(deps), loc, err)
 	}
 	d := deps[0]
 	if d.Line != "355" || d.Destination != "Beispielstadt, Depot" || d.delay() != 1 || d.Cancelled {
@@ -109,7 +110,7 @@ func TestResolveOnceAndText(t *testing.T) {
 		t.Fatalf("stop finder asked %d times: %v", atomic.LoadInt32(finds), err)
 	}
 	lines, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 20, Height: 4})
-	want := []string{"355 Depot      +7 11", "R82 Neustadt      20", "355 Hauptstraß Ausf.", "355 Depot   +1 14:05"}
+	want := []string{"355 Depot      +7 11", "R82 Neustadt      20", "355 Musterdorf Ausf.", "355 Depot   +1 14:05"}
 	if err != nil || strings.Join(lines, "|") != strings.Join(want, "|") {
 		t.Fatalf("%q (%v)", lines, err)
 	}
@@ -196,6 +197,71 @@ func TestConfigure(t *testing.T) {
 	p := &departures{}
 	if err := p.Configure(plugin.Values{"stop": "X"}, &plugin.Request{}); err != nil || p.stop != "X" || p.base != defaultBase {
 		t.Errorf("defaults: %+v %v", p, err)
+	}
+}
+
+func TestLocalityText(t *testing.T) {
+	p, req, _ := configured(t, plugin.Values{}, "dm_locality.json")
+	for mode, want := range map[string][]string{
+		"auto":   {"1 Depot", "355 Nachbarstadt, Bahnhof", "RE6 Fernstadt Hbf", "4 Universität Westfriedhof Lohmannshof Wendeschleife"},
+		"always": {"1 Depot", "355 Bahnhof", "RE6 Fernstadt Hbf", "4 Universität Westfriedhof Lohmannshof Wendeschleife"},
+		"never":  {"1 Beispielstadt, Depot", "355 Nachbarstadt, Bahnhof", "RE6 Fernstadt Hbf", "4 Beispielstadt, Universität Westfriedhof Lohmannshof Wendeschleife"},
+	} {
+		lines, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 80, Height: 4, Args: map[string]any{"locality": mode}})
+		if err != nil || len(lines) != 4 {
+			t.Fatalf("%s: %q %v", mode, lines, err)
+		}
+		for i, l := range lines {
+			if !strings.HasPrefix(l, want[i]+" ") {
+				t.Errorf("%s: %q does not start with %q", mode, l, want[i])
+			}
+		}
+	}
+	if _, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 20, Height: 4, Args: map[string]any{"locality": "x"}}); err == nil {
+		t.Error("bad locality accepted")
+	}
+	// The filter matches the full name, including the dropped locality.
+	p, _, _ = configured(t, plugin.Values{"directions": []any{"beispielstadt"}}, "dm_locality.json")
+	if len(p.cur) != 2 {
+		t.Errorf("directions on the locality: %+v", p.cur)
+	}
+}
+
+func TestLocalityImage(t *testing.T) {
+	p, req, _ := configured(t, plugin.Values{}, "dm_locality.json")
+	if p.curLocal != "Beispielstadt" {
+		t.Fatalf("locality %q", p.curLocal)
+	}
+	const size = 20.0
+	if s := destinationSize([]string{"Depot", "Bahnhof"}, size, 200); s != size {
+		t.Errorf("short names shrunk to %v", s)
+	}
+	long := p.destination(p.cur[3], "auto")
+	medium := "Universität Westf"
+	w := render.Measure(medium, size*0.9, false)
+	// One size for all rows: the medium name decides, the short one follows.
+	if s := destinationSize([]string{"Depot", medium}, size, w); s >= size || s < size*0.9-0.5 {
+		t.Errorf("medium name: %v", s)
+	}
+	s := destinationSize([]string{"Depot", medium, long}, size, w)
+	if s != size*minDestScale {
+		t.Errorf("long name shrank to %v, want the floor %v", s, size*minDestScale)
+	}
+	if name := render.Ellipsize(long, s, false, w); name == long || render.Measure(name, s, false) > w {
+		t.Errorf("long name not ellipsized: %q", name)
+	}
+	short, _, _ := configured(t, plugin.Values{"lines": []any{"1", "RE6"}}, "dm_locality.json")
+	for name, pp := range map[string]*departures{"DEPARTURES_PNG": p, "DEPARTURES_SHORT_PNG": short} {
+		img := render.NewCanvas(400, 240, 4)
+		if err := pp.Render(req, plugin.WidgetRequest{Widget: "departures", Width: 400, Height: 240,
+			Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 28}}, img); err != nil || !hasInk(img) {
+			t.Fatal(err)
+		}
+		if out := os.Getenv(name); out != "" {
+			f, _ := os.Create(out)
+			png.Encode(f, img)
+			f.Close()
+		}
 	}
 }
 

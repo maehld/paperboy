@@ -19,6 +19,10 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 	if err != nil {
 		return err
 	}
+	locMode, err := localityMode(w)
+	if err != nil {
+		return err
+	}
 	b := img.Bounds()
 	pad := w.Style.Padding
 	rule := max(w.Style.Rule, 1)
@@ -67,18 +71,20 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 	if delayW > 0 {
 		destEnd = delayX - gap/2 - delayW
 	}
+	destW := destEnd - gap/2 - destX
+	names := make([]string, len(deps))
+	for i, d := range deps {
+		names[i] = p.destination(d, locMode)
+	}
+	destSize := destinationSize(names, size, destW)
 	for i, d := range deps {
 		y := top + i*rowH
 		base := y + int(size)
 		render.Text(img, d.Line, left, base, render.Style{Size: size, Bold: true, Shrink: true}, lineW, color.Black, render.Left)
-		destW := destEnd - gap/2 - destX
-		dest := d.Destination
-		if render.Measure(dest, size, false) > destW {
-			dest = stripLocality(dest) // "Beispielstadt, Depot" -> "Depot"
-		}
-		render.Text(img, dest, destX, base, render.Style{Size: size, Shrink: true}, destW, color.Black, render.Left)
+		dest := render.Ellipsize(names[i], destSize, false, destW)
+		render.TextAt(img, dest, destX, base, destSize, false, color.Black, render.Left)
 		if d.Cancelled {
-			tw := min(render.Measure(dest, size, false), destW)
+			tw := min(render.Measure(dest, destSize, false), destW)
 			render.HLine(img, destX, base-int(size*0.3), destX+tw, rule)
 		}
 		if dl := delayText(d); dl != "" && !d.Cancelled {
@@ -144,6 +150,10 @@ func (p *departures) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string
 	if err != nil {
 		return nil, err
 	}
+	locMode, err := localityMode(w)
+	if err != nil {
+		return nil, err
+	}
 	var lines []string
 	if w.Arg().Bool("header", false) && p.curName != "" {
 		lines = append(lines, plugin.Align(p.curName, w.Width, "left"))
@@ -158,7 +168,7 @@ func (p *departures) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string
 		}
 		left := d.Line
 		if d.Destination != "" {
-			left += " " + stripLocality(d.Destination)
+			left += " " + p.destination(d, locMode)
 		}
 		lines = append(lines, plugin.Columns(left, right, w.Width))
 	}
@@ -168,8 +178,48 @@ func (p *departures) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string
 	return lines, nil
 }
 
-// stripLocality shortens "Beispielstadt, Depot" to "Depot" on narrow
-// character displays.
+func localityMode(w plugin.WidgetRequest) (string, error) {
+	m := w.Arg().String("locality", "auto")
+	switch m {
+	case "auto", "always", "never":
+		return m, nil
+	}
+	return "", fmt.Errorf("locality: %q is not auto, always or never", m)
+}
+
+// destination is the name shown for a departure. EFA names destinations
+// "City, Stop"; auto drops the city when it is the monitored stop's own.
+func (p *departures) destination(d departure, mode string) string {
+	switch mode {
+	case "never":
+		return d.Destination
+	case "always":
+		return stripLocality(d.Destination)
+	}
+	if city, after, ok := strings.Cut(d.Destination, ", "); ok && after != "" && p.curLocal != "" && strings.EqualFold(city, p.curLocal) {
+		return after
+	}
+	return d.Destination
+}
+
+// minDestScale is how far a destination may shrink before it is ellipsized.
+const minDestScale = 0.8
+
+// destinationSize is the one font size for all destinations of a widget: the
+// smallest any of them needs to fit width, but not below minDestScale of
+// size. Names still too long are ellipsized at that size.
+func destinationSize(names []string, size float64, width int) float64 {
+	floor := max(size*minDestScale, render.MinSize)
+	s := size
+	for _, n := range names {
+		for s > floor && render.Measure(n, s, false) > width {
+			s = max(s-0.5, floor)
+		}
+	}
+	return s
+}
+
+// stripLocality shortens "Beispielstadt, Depot" to "Depot".
 func stripLocality(name string) string {
 	if _, after, ok := strings.Cut(name, ", "); ok && after != "" {
 		return after
