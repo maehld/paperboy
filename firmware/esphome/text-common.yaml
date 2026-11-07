@@ -284,6 +284,7 @@ script:
                     id(fw_md5) = root["firmware"]["md5"] | "";
                     return true;
                   });
+                  pb_sync_done();
                   id(setup_shown) = "";
                   if (changed) {
                     id(text_display).update();

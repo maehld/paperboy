@@ -32,9 +32,11 @@ const (
 const (
 	// menuPerPage is how many actions the overlay shows at once.
 	menuPerPage = 3
-	// actionBudget bounds one action run inside a sync, so a slow plugin
-	// never holds the device open for its full timeout (ADR 0057).
+	// actionBudget bounds how long a sync waits for a running action, so a slow
+	// plugin never holds the device open for its full timeout (ADR 0057).
 	actionBudget = 5 * time.Second
+	// pluginActionTimeout bounds the background run of an action (ADR 0060).
+	pluginActionTimeout = 30 * time.Second
 )
 
 // menuAction is one plan action with the state the menu shows. It is stored
@@ -142,6 +144,90 @@ type menuInput struct {
 	buttons []string // roles in order
 	holds   []int    // hold_ms of the matching buttons
 	shown   string   // hash the device painted last
+}
+
+// tap applies one touch inside the overlay (ADR 0057, issue #54). It returns
+// an action to run when the tap confirms or selects one. A tap outside the
+// overlay, or in a cell that the current phase does not have, is ignored.
+// The geometry is derived from the phase and the display, so a tap always
+// hits the cells Paperboy last drew for that state.
+func (m *menuState) tap(x, y int, p Profile, shown string) *menuAction {
+	if !m.Open {
+		return nil
+	}
+	kinds := menuKinds(m.Phase, len(m.Actions))
+	cells, _, overlay := menuCells(p, kinds, m.Phase != menuListPhase)
+	at := image.Pt(x, y)
+	if !at.In(overlay) {
+		return nil
+	}
+	for i, c := range cells {
+		if !at.In(c.rect) {
+			continue
+		}
+		switch c.kind {
+		case cellClose:
+			m.close()
+		case cellPrev:
+			m.scroll(-menuPerPage)
+		case cellNext:
+			m.scroll(menuPerPage)
+		case cellYes:
+			if m.Phase != menuConfirmPhase || m.ConfirmHash == "" || shown != m.ConfirmHash {
+				return nil
+			}
+			m.Phase = menuRunningPhase
+			return m.selected()
+		case cellNo:
+			if m.Phase != menuConfirmPhase {
+				return nil
+			}
+			m.Phase = menuListPhase
+			m.ConfirmHash = ""
+		case cellAction:
+			if m.Phase != menuListPhase {
+				return nil
+			}
+			idx := m.Offset + i - 1
+			if idx < 0 || idx >= len(m.Actions) {
+				return nil
+			}
+			a := &m.Actions[idx]
+			m.Selected = a.Key
+			m.reveal(idx)
+			if a.Disabled != "" || !m.Resolved {
+				return nil
+			}
+			if a.Confirm {
+				m.Phase = menuConfirmPhase
+				m.ConfirmHash = ""
+				return nil
+			}
+			m.Phase = menuRunningPhase
+			return a
+		}
+		return nil
+	}
+	return nil
+}
+
+// scroll moves the visible window by delta actions and keeps the selection
+// inside it.
+func (m *menuState) scroll(delta int) {
+	n := len(m.Actions)
+	if n <= menuPerPage {
+		return
+	}
+	m.Offset += delta
+	if m.Offset > n-menuPerPage {
+		m.Offset = n - menuPerPage
+	}
+	if m.Offset < 0 {
+		m.Offset = 0
+	}
+	// Scrolling selects the first action of the new page, so a following
+	// "home" or tap acts on something the user sees.
+	m.Selected = m.Actions[m.Offset].Key
 }
 
 // step applies the wake's input to the menu and returns whether an action must
@@ -336,11 +422,8 @@ func (s *Server) hardwareOf(d *Device) string {
 	return ""
 }
 
-// invokeAction runs one action with the short budget of a sync. The result is
-// stored in the menu and shown by the following render.
-func (s *Server) invokeAction(cfg *Config, d *Device, a *menuAction, now time.Time) (ok bool, message string) {
-	ctx, cancel := context.WithTimeout(context.Background(), actionBudget)
-	defer cancel()
+// invokeAction runs one action with a bounded context and returns its outcome.
+func (s *Server) invokeAction(ctx context.Context, cfg *Config, d *Device, a *menuAction, now time.Time) (ok bool, message string) {
 	prof := cfg.Profiles[d.Profile]
 	req := plugin.Request{Version: plugin.Version, Language: cfg.Language, Timezone: cfg.timezoneName(),
 		Now: now, Page: plugin.PageInfo{Width: prof.Width, Height: prof.Height, PPI: prof.PPI},
@@ -353,6 +436,52 @@ func (s *Server) invokeAction(cfg *Config, d *Device, a *menuAction, now time.Ti
 	}
 	slog.Info("action run", "device", d.ID, "action", a.Action, "ok", out.OK, "message", out.Message)
 	return out.OK, out.Message
+}
+
+// actionRun is one action that is still running after its sync.
+type actionRun struct {
+	done    chan struct{}
+	ok      bool
+	message string
+}
+
+// startAction runs an action in the background (ADR 0060): the sync waits at
+// most actionBudget for it, and a longer run reports its result with the next
+// wake of reason "result".
+func (s *Server) startAction(cfg *Config, d *Device, a menuAction, now time.Time) *actionRun {
+	run := &actionRun{done: make(chan struct{})}
+	s.mu.Lock()
+	s.actionRuns[d.key()] = run
+	s.mu.Unlock()
+	go func() {
+		defer close(run.done)
+		ctx, cancel := context.WithTimeout(context.Background(), pluginActionTimeout)
+		defer cancel()
+		run.ok, run.message = s.invokeAction(ctx, cfg, d, &a, now)
+		s.finishAction(d.key(), a.Key, run)
+	}()
+	return run
+}
+
+// finishAction stores the outcome of a background action if its menu is still
+// waiting for it.
+func (s *Server) finishAction(key, identity string, run *actionRun) {
+	s.mu.Lock()
+	if s.actionRuns[key] != run {
+		s.mu.Unlock()
+		return
+	}
+	delete(s.actionRuns, key)
+	st := s.state[key]
+	if st == nil || !st.Menu.Open || st.Menu.Phase != menuRunningPhase || st.Menu.Selected != identity {
+		s.mu.Unlock()
+		return
+	}
+	st.Menu.Phase = menuResultPhase
+	st.Menu.Result, st.Menu.ResultOK, st.Menu.ConfirmHash = run.message, run.ok, ""
+	data := s.stateSnapshotLocked()
+	s.mu.Unlock()
+	s.saveState(data)
 }
 
 // menuCells lays the overlay out: the top half of the display, one row in
@@ -420,6 +549,24 @@ type menuView struct {
 	text    string // confirmation hint or result message
 }
 
+// menuKinds returns the cells of one phase in reading order.
+func menuKinds(phase string, count int) []string {
+	switch phase {
+	case menuConfirmPhase:
+		return []string{cellClose, cellYes, cellNo}
+	case menuRunningPhase, menuResultPhase:
+		return []string{cellClose}
+	}
+	kinds := []string{cellClose}
+	for i := 0; i < menuPerPage; i++ {
+		kinds = append(kinds, cellAction)
+	}
+	if count > menuPerPage {
+		kinds = append(kinds, cellPrev, cellNext)
+	}
+	return kinds
+}
+
 // drawMenu paints the overlay onto the page image (ADR 0057). The page stays
 // visible below the top half.
 func drawMenu(img *image.Paletted, p Profile, v menuView, t texts) {
@@ -429,28 +576,8 @@ func drawMenu(img *image.Paletted, p Profile, v menuView, t texts) {
 	}
 	bg := image.Rect(overlay.Min.X, overlay.Min.Y, min(overlay.Max.X, img.Rect.Max.X), min(overlay.Max.Y, img.Rect.Max.Y))
 	render.FillColor(img, bg, render.White)
-	var kinds []string
 	header := v.phase != menuListPhase
-	switch v.phase {
-	case menuConfirmPhase:
-		kinds = []string{cellClose, cellYes, cellNo}
-	case menuRunningPhase, menuResultPhase:
-		kinds = []string{cellClose}
-	default:
-		kinds = []string{cellClose}
-		visible := 0
-		for i := v.offset; i < len(v.actions) && visible < menuPerPage; i++ {
-			kinds = append(kinds, cellAction)
-			visible++
-		}
-		for visible < menuPerPage {
-			kinds = append(kinds, cellAction)
-			visible++
-		}
-		if len(v.actions) > menuPerPage {
-			kinds = append(kinds, cellPrev, cellNext)
-		}
-	}
+	kinds := menuKinds(v.phase, len(v.actions))
 	cells, headerRect, _ := menuCells(p, kinds, header)
 	size := max(render.MinSize, float64(overlay.Dy())/5)
 	if len(cells) > 0 {

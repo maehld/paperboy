@@ -33,9 +33,10 @@ type deviceState struct {
 	LastPageKind string    `json:"last_page_kind,omitempty"` // "page", "notice" or "battery"
 	LastPageHash string    `json:"last_page_hash,omitempty"` // content hash, the same as the sync response's image hash
 	LastPageTime time.Time `json:"last_page_time,omitempty"`
-	LastRefresh  int       `json:"last_refresh,omitempty"` // reported refresh in seconds
-	LastError    string    `json:"last_error,omitempty"`   // last render or plan error
-	LastText     []string  `json:"last_text,omitempty"`    // text displays: the last served lines (ADR 0044)
+	LastRefresh  int       `json:"last_refresh,omitempty"`  // reported refresh in seconds
+	LastError    string    `json:"last_error,omitempty"`    // last render or plan error
+	LastText     []string  `json:"last_text,omitempty"`     // text displays: the last served lines (ADR 0044)
+	LastEventID  int64     `json:"last_event_id,omitempty"` // highest applied event ID (ADR 0060)
 
 	// The device menu (ADR 0057): open/closed, phase, selection and the
 	// resolved actions.

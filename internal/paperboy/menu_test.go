@@ -138,8 +138,12 @@ func TestMenuOpensOnHomeWithoutRunning(t *testing.T) {
 	if st := s.state["test"]; !st.Menu.Open || st.Menu.Phase != menuListPhase {
 		t.Fatalf("menu state: %+v", st.Menu)
 	}
-	if out["refresh_s"].(float64) > 60 {
-		t.Fatalf("the menu must schedule its deadline: %v", out["refresh_s"])
+	wake, ok := out["wake"].(map[string]any)
+	if !ok || wake["reason"] != "menu" || wake["after_s"].(float64) > 30 {
+		t.Fatalf("the menu must schedule its deadline: %v", out["wake"])
+	}
+	if out["refresh_s"].(float64) != 600 {
+		t.Fatalf("the regular refresh must stay untouched: %v", out["refresh_s"])
 	}
 	// The page cursor did not move.
 	if st := s.state["test"]; st.Page != 0 {

@@ -142,6 +142,8 @@ touchscreen:
       swap_xy: true
       mirror_x: true
       mirror_y: true
+    # The panel reports a position continuously while a finger rests on it.
+    # pb_touch debounces, so one tap becomes one event (ADR 0060).
     on_touch:
       - script.execute: { id: touched, x: !lambda "return touch.x;", y: !lambda "return touch.y;" }
 

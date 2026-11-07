@@ -36,6 +36,8 @@ type Server struct {
 	mu    sync.Mutex
 	state map[string]*deviceState // device ID → state
 	plans *planLoader             // device plans (ADR 0025)
+	// actionRuns holds the actions that outlive their sync (ADR 0060).
+	actionRuns map[string]*actionRun
 
 	rendered  map[string]*renderedPage // "<profile>/<page>" → last render
 	hints     map[string][]byte        // content hash → notice page
@@ -100,7 +102,7 @@ func New(cfg *Config) (*Server, error) {
 	s := &Server{cfg: newConfigLoader(cfg.Dir, cfg), ctx: context.Background(),
 		widgets:     &widget.Host{Builtin: map[string]plugin.Handler{builtin.Name: builtin.Plugin{}}},
 		devicesPath: devicesPath, now: time.Now, state: state,
-		plans: newPlanLoader(), rendered: map[string]*renderedPage{}, hints: map[string][]byte{},
+		plans: newPlanLoader(), actionRuns: map[string]*actionRun{}, rendered: map[string]*renderedPage{}, hints: map[string][]byte{},
 		logs: newLogSeen(), fwNotes: map[string]string{}, pages: newPageLoader(), skipNotes: map[string]string{}}
 	s.firmware = newFirmwareStore(cfg.FirmwareDir)
 	s.download = newDownloadStatus()

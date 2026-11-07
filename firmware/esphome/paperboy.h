@@ -15,6 +15,17 @@ RTC_DATA_ATTR static char pb_shown_hash[32];  // hash of the image on the panel
 RTC_DATA_ATTR static int pb_refresh_s;         // last refresh_s from Paperboy
 RTC_DATA_ATTR static char pb_note[120];        // one warning for the next sync, e.g. a failed download
 
+// Event queue and identities (ADR 0060). They live in RTC memory so that a
+// failed sync keeps its events and resends them with the same IDs.
+RTC_DATA_ATTR static uint32_t pb_event_seq;      // last assigned event ID
+RTC_DATA_ATTR static char pb_event_queue[1200];  // queued events as JSON objects, comma separated
+RTC_DATA_ATTR static char pb_next_reason[16];    // reason of the next wake: menu or result
+RTC_DATA_ATTR static uint32_t pb_next_s;         // seconds until that one-shot wake
+
+// True while an image was downloaded and still has to be reported as shown,
+// after the panel painted it (ADR 0060).
+static bool pb_paint_pending = false;
+
 // Battery reading of this wake; NAN = not measured. Set by the device file's
 // read_battery script before any decision uses it.
 static float pb_bat_volts = NAN;
@@ -26,8 +37,8 @@ static float pb_bat_ma = NAN;
 // the hardware cannot tell. Set by the device file.
 static std::string pb_power;
 
-// Events since the last sync, as JSON objects, and log entries for the next sync.
-static std::vector<std::string> pb_events;
+// Events since the last sync are kept in RTC memory; log entries for the next
+// sync stay in RAM and are resent with the events.
 static std::vector<std::string> pb_logs;
 
 inline std::string pb_json_string(const std::string &s) {
@@ -54,12 +65,47 @@ inline std::string pb_json_string(const std::string &s) {
   return out + "\"";
 }
 
-inline void pb_button(const std::string &role) {
-  pb_events.push_back("{\"type\":\"button\",\"button\":" + pb_json_string(role) + "}");
+// Remembers a warning across deep sleep, so the next sync can report it.
+inline void pb_note_for_next_wake(const std::string &message) {
+  std::strncpy(pb_note, message.c_str(), sizeof(pb_note) - 1);
+  pb_note[sizeof(pb_note) - 1] = 0;
 }
 
+inline bool pb_queue_event(const std::string &json) {
+  size_t len = std::strlen(pb_event_queue);
+  if (len + json.size() + 2 >= sizeof(pb_event_queue)) {
+    return false;
+  }
+  if (len) {
+    pb_event_queue[len++] = ',';
+  }
+  std::memcpy(pb_event_queue + len, json.c_str(), json.size() + 1);
+  return true;
+}
+
+inline void pb_button(const std::string &role) {
+  pb_event_seq++;
+  if (!pb_queue_event("{\"id\":" + std::to_string(pb_event_seq) + ",\"type\":\"button\",\"button\":" +
+                      pb_json_string(role) + "}")) {
+    pb_note_for_next_wake("event queue full");
+  }
+}
+
+// One tap is one event: the panel reports a position continuously while a
+// finger rests on it, so the first report within touchGap is taken and the
+// rest are dropped (ADR 0060).
 inline void pb_touch(int x, int y) {
-  pb_events.push_back(esphome::str_sprintf("{\"type\":\"touch\",\"x\":%d,\"y\":%d}", x, y));
+  static uint32_t last_ms;
+  uint32_t now_ms = esphome::millis();
+  if (last_ms != 0 && now_ms - last_ms < 800) {
+    return;
+  }
+  last_ms = now_ms;
+  pb_event_seq++;
+  if (!pb_queue_event(esphome::str_sprintf("{\"id\":%lu,\"type\":\"touch\",\"x\":%d,\"y\":%d}",
+                                           (unsigned long) pb_event_seq, x, y))) {
+    pb_note_for_next_wake("event queue full");
+  }
 }
 
 inline void pb_log(const std::string &level, const std::string &message) {
@@ -69,15 +115,11 @@ inline void pb_log(const std::string &level, const std::string &message) {
   }
 }
 
-// Remembers a warning across deep sleep, so the next sync can report it.
-inline void pb_note_for_next_wake(const std::string &message) {
-  std::strncpy(pb_note, message.c_str(), sizeof(pb_note) - 1);
-  pb_note[sizeof(pb_note) - 1] = 0;
-}
+inline bool pb_has_events() { return pb_event_queue[0] != 0; }
 
-inline bool pb_has_events() { return !pb_events.empty(); }
-
-// Builds the sync body and empties the event and log queues.
+// pb_sync_body builds the sync body from the queued events; the queue is only
+// dropped by pb_sync_done after Paperboy accepted it (ADR 0060), so a failed
+// request resends the same events with the same IDs.
 inline std::string pb_sync_body(const std::string &firmware, const std::string &hardware, const std::string &reason,
                                 int rssi) {
   if (pb_note[0]) {
@@ -87,9 +129,7 @@ inline std::string pb_sync_body(const std::string &firmware, const std::string &
   std::string b = "{\"firmware\":" + pb_json_string(firmware) + ",\"hardware\":" + pb_json_string(hardware) +
                   ",\"reason\":" + pb_json_string(reason) + ",\"shown\":" + pb_json_string(pb_shown_hash);
   b += ",\"events\":[";
-  for (size_t i = 0; i < pb_events.size(); i++) {
-    b += (i ? "," : "") + pb_events[i];
-  }
+  b += pb_event_queue;
   b += "]";
   if (std::isfinite(pb_bat_volts) && pb_bat_volts > 0) {
     b += esphome::str_sprintf(",\"battery\":{\"volts\":%.3f", pb_bat_volts);
@@ -109,9 +149,40 @@ inline std::string pb_sync_body(const std::string &firmware, const std::string &
     b += (i ? "," : "") + pb_logs[i];
   }
   b += "]}";
-  pb_events.clear();
-  pb_logs.clear();
   return b;
+}
+
+// pb_sync_done drops what Paperboy confirmed: the event queue and the logs.
+inline void pb_sync_done() {
+  pb_event_queue[0] = 0;
+  pb_logs.clear();
+}
+
+// The next wake is a one-shot with its own reason and delay (ADR 0060).
+inline void pb_set_wake(const std::string &reason, uint32_t seconds) {
+  std::strncpy(pb_next_reason, reason.c_str(), sizeof(pb_next_reason) - 1);
+  pb_next_reason[sizeof(pb_next_reason) - 1] = 0;
+  pb_next_s = seconds;
+}
+
+// Seconds until the next sleep; the one-shot wake wins over refresh_s.
+inline uint32_t pb_sleep_seconds() {
+  if (pb_next_s > 0) {
+    return pb_next_s;
+  }
+  return pb_refresh_s > 0 ? (uint32_t) pb_refresh_s : 600;
+}
+
+// Takes the reason of this wake: a one-shot reason if the last sync asked for
+// one, otherwise the caller's default.
+inline std::string pb_take_reason(const std::string &fallback) {
+  if (!pb_next_reason[0]) {
+    return fallback;
+  }
+  std::string reason = pb_next_reason;
+  pb_next_reason[0] = 0;
+  pb_next_s = 0;
+  return reason;
 }
 
 inline bool pb_unchanged(const std::string &hash) { return !hash.empty() && hash == pb_shown_hash; }

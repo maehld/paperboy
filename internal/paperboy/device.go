@@ -47,6 +47,7 @@ type registerRequest struct {
 }
 
 type syncEvent struct {
+	ID     int64  `json:"id"`     // monotonically increasing per device (ADR 0060); 0 = no deduplication
 	Type   string `json:"type"`   // "button" or "touch"
 	Button string `json:"button"` // button role
 	HoldMS int    `json:"hold_ms"`
@@ -92,17 +93,30 @@ type syncResponse struct {
 	Sleep    bool           `json:"sleep"` // false: stay awake and sync again after refresh_s (ADR 0051)
 	Time     int64          `json:"time"`
 	Firmware *firmwareOffer `json:"firmware"` // update offer (ADR 0043); null when none
+	// Wake names the reason of the next wake and how long to sleep until then
+	// (ADR 0060). It overrides refresh_s for exactly one sleep, so the menu can
+	// close at its deadline and a slow action can report its result.
+	Wake *syncWake `json:"wake,omitempty"`
+}
+
+// syncWake is a one-shot wake instruction.
+type syncWake struct {
+	Reason string `json:"reason"`  // timer, menu or result
+	AfterS int    `json:"after_s"` // seconds until that wake
 }
 
 // validate checks the parts of a sync that change device state; anything the
 // firmware gets wrong is answered with 400 instead of being guessed.
 func (r *syncRequest) validate() error {
 	switch r.Reason {
-	case "timer", "button", "touch", "powercycle":
+	case "timer", "button", "touch", "powercycle", "menu", "result":
 	default:
-		return fmt.Errorf("reason %q: expected timer, button, touch or powercycle", r.Reason)
+		return fmt.Errorf("reason %q: expected timer, button, touch, powercycle, menu or result", r.Reason)
 	}
 	for i, e := range r.Events {
+		if e.ID < 0 {
+			return fmt.Errorf("event %d: id must not be negative", i)
+		}
 		switch e.Type {
 		case "button":
 			switch e.Button {
@@ -257,12 +271,30 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 
 	var buttons []string
 	var holds []int
-	input := req.Reason == "button" || req.Reason == "touch"
+	var touches []syncEvent
+	input := req.Reason == "button" || req.Reason == "touch" || req.Reason == "menu" || req.Reason == "result"
+	if req.Reason == "powercycle" {
+		// A power cycle clears the RTC event counter, so the IDs start again
+		// (ADR 0060).
+		st.LastEventID = 0
+		st.Menu.close()
+	}
 	for _, e := range req.Events {
+		// A retried sync resends the same event IDs; anything at or below the
+		// last applied ID is a repeat (ADR 0060).
+		if e.ID > 0 {
+			if e.ID <= st.LastEventID {
+				continue
+			}
+			st.LastEventID = e.ID
+		}
 		input = true
-		if e.Type == "button" {
+		switch e.Type {
+		case "button":
 			buttons = append(buttons, e.Button)
 			holds = append(holds, e.HoldMS)
+		case "touch":
+			touches = append(touches, e)
 		}
 	}
 
@@ -293,6 +325,13 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		invoke = menu.step(menuInput{buttons: buttons, holds: holds, shown: req.Shown}, acts, now)
+		if invoke == nil && menu.Open {
+			for _, e := range touches {
+				if a := menu.tap(e.X, e.Y, cfg.Profiles[d.Profile], req.Shown); a != nil {
+					invoke = a
+				}
+			}
+		}
 	}
 	menuOpen := menu.Open
 	pageButtons := buttons
@@ -329,17 +368,17 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	// Drawing and rendering happen without the lock: a slow page, a font problem
 	// or a panicking template must never block the other devices.
 	if invoke != nil {
-		ok, message := s.invokeAction(cfg, d, invoke, now)
-		menu.Phase = menuResultPhase
-		menu.Result, menu.ResultOK, menu.ConfirmHash = message, ok, ""
+		run := s.startAction(cfg, d, *invoke, now)
+		select {
+		case <-run.done:
+		case <-time.After(actionBudget):
+			slog.Info("action still running", "device", d.ID, "action", invoke.Action)
+		}
 		s.mu.Lock()
-		var data []byte
 		if st := s.state[d.key()]; st != nil {
-			st.Menu = menu
-			data = s.stateSnapshotLocked()
+			menu = st.Menu
 		}
 		s.mu.Unlock()
-		s.saveState(data)
 	}
 	var served servedPage
 	switch {
@@ -358,13 +397,6 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	}
 	if menu.Open && !critical && !textDisplay {
 		served = s.overlayMenu(cfg, d, served, &menu)
-	}
-	if menu.Open && !critical {
-		// Wake up when the menu expires, so it closes itself without waiting
-		// for the next regular refresh (ADR 0057).
-		if left := menu.OpenedAt.Add(time.Duration(d.MenuShowDuration)).Sub(now); left > 0 {
-			served.refresh = min(served.refresh, max(floor, left))
-		}
 	}
 	served.refresh = max(served.refresh, floor)
 	refresh := served.refresh
@@ -434,6 +466,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		Sleep:    power == powerBattery,
 		Time:     now.Unix(),
 		Firmware: offer,
+		Wake:     menuWake(menu, d, now, critical),
 	}
 	if textDisplay {
 		resp.Text = &syncText{Lines: served.lines, Hash: served.hash}
@@ -441,6 +474,26 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		resp.Image = &syncImage{Path: served.path, Hash: served.hash}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// menuWake names the one-shot wake the device needs (ADR 0060): the menu
+// deadline while it is open, or a short wake for the result of a running
+// action. Without an open menu the regular refresh applies.
+func menuWake(menu menuState, d *Device, now time.Time, critical bool) *syncWake {
+	if !menu.Open || critical {
+		return nil
+	}
+	switch menu.Phase {
+	case menuRunningPhase:
+		return &syncWake{Reason: "result", AfterS: int(actionBudget.Seconds())}
+	case menuResultPhase:
+		return nil // the next regular sync closes the result
+	}
+	left := menu.OpenedAt.Add(time.Duration(d.MenuShowDuration)).Sub(now)
+	if left < time.Second {
+		left = time.Second
+	}
+	return &syncWake{Reason: "menu", AfterS: int(left.Seconds())}
 }
 
 // handleText answers the text poll of a text display (ADR 0044, 0045): the

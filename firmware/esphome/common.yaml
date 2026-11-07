@@ -145,6 +145,10 @@ globals:
   - id: busy
     type: bool
     initial_value: "false"
+  # Sync attempts of this wake with their own retry (ADR 0060).
+  - id: sync_attempts
+    type: int
+    initial_value: "0"
 
 http_request:
   useragent: paperboy-esphome
@@ -158,7 +162,9 @@ online_image:
     type: GRAYSCALE
     update_interval: never
     on_download_finished:
-      - lambda: "pb_remember(id(image_hash));"
+      # The hash is stored after the paint (after_paint), so a sync that
+      # reports "shown" proves the panel really shows that image (ADR 0060).
+      - lambda: "pb_paint_pending = true;"
       - component.update: epaper_display
       - script.execute: after_paint
     on_error:
@@ -183,6 +189,9 @@ script:
       - lambda: "id(setup_mode) = false;"
       - script.stop: setup_limit
       - script.execute: awake_limit
+      # A one-shot wake reason from the last sync (menu, result) wins over the
+      # wake the hardware decoded (ADR 0060).
+      - lambda: "id(wake_reason) = pb_take_reason(id(wake_reason));"
       - if:
           condition:
             lambda: "return id(api_key).state.empty();"
@@ -318,8 +327,25 @@ script:
               - lambda: 'pb_note_for_next_wake("registration request failed");'
               - logger.log: "registration request failed"
 
-  # One POST /api/device/sync; the outcome is left in sync_result.
+  # One POST /api/device/sync per attempt; the outcome is left in sync_result.
+  # A failed request keeps the event queue and retries (ADR 0060).
   - id: do_sync
+    then:
+      - lambda: "id(sync_attempts) = 0;"
+      - while:
+          condition:
+            lambda: "return id(sync_result) != 1 && id(sync_attempts) < 3;"
+          then:
+            - lambda: "id(sync_attempts)++;"
+            - script.execute: do_sync_once
+            - script.wait: do_sync_once
+            - if:
+                condition:
+                  lambda: "return id(sync_result) != 1;"
+                then:
+                  - delay: 2s
+
+  - id: do_sync_once
     then:
       - script.execute: read_battery
       - script.wait: read_battery
@@ -362,8 +388,21 @@ script:
                     id(fw_offered) = root["firmware"]["version"] | "";
                     id(fw_path) = root["firmware"]["path"] | "";
                     id(fw_md5) = root["firmware"]["md5"] | "";
+                    // A one-shot wake reason (menu, result) overrides the next
+                    // sleep (ADR 0060).
+                    std::string wake = root["wake"]["reason"] | "";
+                    int after = root["wake"]["after_s"] | 0;
+                    if (!wake.empty() && after > 0) {
+                      pb_set_wake(wake, (uint32_t) after);
+                    } else {
+                      pb_next_reason[0] = 0;
+                      pb_next_s = 0;
+                    }
                     return true;
                   });
+                  if (ok) {
+                    pb_sync_done();
+                  }
                   if (ok && !id(image_path).empty()) {
                     id(sync_result) = 1;
                   }
@@ -445,7 +484,14 @@ script:
             not:
               epaper_spi.is_updating: epaper_display
           timeout: 15s
-      - lambda: "id(busy) = false;"
+      - lambda: |-
+          // The panel painted the new image: only now does the shown hash
+          // describe what the display really shows (ADR 0060).
+          if (pb_paint_pending) {
+            pb_remember(id(image_hash));
+            pb_paint_pending = false;
+          }
+          id(busy) = false;
       - if:
           condition:
             lambda: "return pb_has_events();"
@@ -473,13 +519,13 @@ script:
             lambda: "return id(stay_awake) && !id(setup_mode);"
           then:
             - script.stop: awake_limit
-            - delay: !lambda "return (uint32_t) (pb_refresh_s > 0 ? pb_refresh_s : 600) * 1000;"
-            - lambda: 'id(wake_reason) = "timer";'
+            - delay: !lambda "return pb_sleep_seconds() * 1000;"
+            - lambda: 'id(wake_reason) = pb_take_reason("timer");'
             - script.execute: run_cycle
           else:
             - deep_sleep.enter:
                 id: sleeper
-                sleep_duration: !lambda "return (uint32_t) (pb_refresh_s > 0 ? pb_refresh_s : 600) * 1000;"
+                sleep_duration: !lambda "return pb_sleep_seconds() * 1000;"
 
   # Never stay awake longer than this after the last input, whatever hangs.
   - id: awake_limit
