@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -48,10 +49,10 @@ func TestFlowText(t *testing.T) {
 func TestFlowImage(t *testing.T) {
 	for _, name := range []string{"flow_export", "flow_import", "flow_battery_charging", "flow_battery_discharging", "flow_no_battery", "flow_no_loadpoint"} {
 		for _, levels := range []int{2, 4} {
-			for _, size := range [][2]int{{400, 300}, {700, 500}} {
+			for _, size := range [][3]int{{400, 300, 20}, {700, 500, 20}, {792, 232, 28}, {260, 230, 16}} {
 				e := flowFixture(t, name)
 				img := render.NewCanvas(size[0], size[1], levels)
-				w := plugin.WidgetRequest{Widget: "flow", Width: size[0], Height: size[1], Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 20}}
+				w := plugin.WidgetRequest{Widget: "flow", Width: size[0], Height: size[1], Style: plugin.Style{Padding: 8, Rule: 1, TextPx: float64(size[2])}}
 				if err := e.Render(e.req, w, img); err != nil {
 					t.Fatalf("%s: %v", name, err)
 				}
@@ -59,7 +60,7 @@ func TestFlowImage(t *testing.T) {
 					t.Errorf("%s: empty", name)
 				}
 				if dir := os.Getenv("FLOW_PNG_DIR"); dir != "" {
-					f, _ := os.Create(filepath.Join(dir, name+"-"+string(rune('0'+levels))+"-"+string(rune('a'+size[0]/350))+".png"))
+					f, _ := os.Create(filepath.Join(dir, fmt.Sprintf("%s-%d-%dx%d.png", name, levels, size[0], size[1])))
 					png.Encode(f, img)
 					f.Close()
 				}
