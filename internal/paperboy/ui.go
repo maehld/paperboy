@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -20,21 +21,23 @@ var dashboardTmpl = template.Must(template.New("dashboard").Parse(dashboardTempl
 // dashboardDevice is one card of the overview. It carries display-ready texts
 // so the template holds no formatting logic.
 type dashboardDevice struct {
-	ID        string
-	Status    string // ok, late, never or unregistered
-	Plan      string // plan name, "no plan" when empty
-	Rule      string // active plan rule, empty when unknown
-	Content   string // page name, "notice", "battery warning" or empty
-	ImageURL  string // last served image, empty before the first request
-	Width     int
-	Height    int
-	Text      []string // text displays: the last served lines
-	Refresh   string   // "every 10 min", empty when unknown
-	SeenAgo   string   // last contact, "never" when unknown
-	ServedAgo string   // age of the last served page
-	Battery   string   // voltage and warning level, empty when unknown
-	Firmware  string   // running version, available version and update status
-	Error     string   // last render or plan error
+	ID          string
+	Status      string // ok, late, never or unregistered
+	Plan        string // plan name, "no plan" when empty
+	Rule        string // active plan rule, empty when unknown
+	Content     string // page name, "notice", "battery warning" or empty
+	ImageURL    string // last served image, else the current page's preview; empty for a placeholder
+	Waiting     string // placeholder text when there is neither an image nor text
+	Power       string // effective power source with the battery reading (ADR 0051)
+	PowerOrigin string // configured, reported or fallback
+	Width       int
+	Height      int
+	Text        []string // text displays: the last served lines
+	Refresh     string   // "every 10 min", empty when unknown
+	SeenAgo     string   // last contact, "never" when unknown
+	ServedAgo   string   // age of the last served page
+	Firmware    string   // running version, available version and update status
+	Error       string   // last render or plan error
 }
 
 type dashboardPage struct {
@@ -55,24 +58,31 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	cfg := s.config()
 	profiles := cfg.Profiles
+	devices := map[string]*Device{}
+	for i := range cfg.Devices {
+		devices[cfg.Devices[i].ID] = &cfg.Devices[i]
+	}
 	cards := []dashboardDevice{}
 	for _, d := range s.deviceInfos() {
+		image, waiting := imageText(d, profiles[d.Profile].text())
 		cards = append(cards, dashboardDevice{
-			ID:        d.ID,
-			Status:    d.Status,
-			Plan:      planText(d.Plan),
-			Rule:      d.Rule,
-			Content:   contentText(d.deviceState),
-			ImageURL:  d.LastPageURL,
-			Width:     profiles[d.Profile].Width,
-			Height:    profiles[d.Profile].Height,
-			Text:      d.LastText,
-			Refresh:   refreshText(d.LastRefresh),
-			SeenAgo:   agoText(d.LastSeen, now),
-			ServedAgo: agoText(d.LastPageTime, now),
-			Battery:   batteryText(d.deviceState),
-			Firmware:  firmwareText(d),
-			Error:     d.LastError,
+			ID:          d.ID,
+			Status:      d.Status,
+			Plan:        planText(d.Plan),
+			Rule:        d.Rule,
+			Content:     contentText(d.deviceState),
+			ImageURL:    image,
+			Waiting:     waiting,
+			Power:       powerSource(d.Power, d.deviceState),
+			PowerOrigin: powerOrigin(cfg, devices[d.ID], d.ReportedPower),
+			Width:       profiles[d.Profile].Width,
+			Height:      profiles[d.Profile].Height,
+			Text:        d.LastText,
+			Refresh:     refreshText(d.LastRefresh),
+			SeenAgo:     agoText(d.LastSeen, now),
+			ServedAgo:   agoText(d.LastPageTime, now),
+			Firmware:    firmwareText(d),
+			Error:       d.LastError,
 		})
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -91,6 +101,55 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	if err := dashboardTmpl.Execute(w, page); err != nil {
 		slog.Error("dashboard rendering failed", "error", err)
 	}
+}
+
+// imageText picks what the card shows for an image display. Rendered pages
+// live in memory only, so after a restart the last served image is gone; a
+// page then shows through its live preview, anything else as a placeholder.
+func imageText(d deviceInfo, text bool) (image, waiting string) {
+	switch {
+	case text && len(d.LastText) > 0:
+		return "", ""
+	case d.LastPageURL != "":
+		return d.LastPageURL, ""
+	case !text && d.LastPageKind == "page" && d.LastPage != "":
+		return "/api/preview/" + url.PathEscape(d.Profile) + "/" + url.PathEscape(d.LastPage), ""
+	case d.LastPageHash != "" || d.LastPageKind != "":
+		return "", "No image yet – waiting for the next sync"
+	}
+	return "", "Nothing served yet"
+}
+
+// powerOrigin names where the effective power source comes from (ADR 0051): set
+// on the device, set on the display type, reported by the firmware or the
+// battery fallback of auto.
+func powerOrigin(cfg *Config, d *Device, reported string) string {
+	if d == nil {
+		return ""
+	}
+	fixed := func(v string) bool { return v == powerBattery || v == powerMains }
+	switch {
+	case fixed(d.Power):
+		return "set on device"
+	case d.Power == "" && fixed(cfg.Profiles[d.Profile].Power):
+		return "set on display type"
+	case reported != "":
+		return "reported by firmware"
+	}
+	return "fallback"
+}
+
+// powerSource joins the effective power source with the battery reading, e.g.
+// "Battery · 3.79 V · 71 %" or just "Mains".
+func powerSource(power string, st deviceState) string {
+	text := "Battery"
+	if power == powerMains {
+		text = "Mains"
+	}
+	if b := batteryText(st); b != "" {
+		text += " · " + b
+	}
+	return text
 }
 
 func planText(plan string) string {
