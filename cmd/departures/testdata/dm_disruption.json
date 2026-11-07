@@ -1,0 +1,861 @@
+{
+    "version":  "11.0.6.72",
+    "systemMessages":  [
+
+                       ],
+    "locations":  [
+                      {
+                          "id":  "de:00000:1001",
+                          "isGlobalId":  true,
+                          "name":  "Beispielstadt, Marktplatz",
+                          "disassembledName":  "Marktplatz",
+                          "coord":  [
+                                        50.0,
+                                        8.0
+                                    ],
+                          "type":  "stop",
+                          "parent":  {
+                                         "id":  "placeID:0:1",
+                                         "name":  "Beispielstadt",
+                                         "type":  "locality"
+                                     },
+                          "assignedStops":  [
+                                                {
+                                                    "id":  "de:00000:1001",
+                                                    "isGlobalId":  true,
+                                                    "name":  "Bsp-Beispielstadt, Marktplatz",
+                                                    "disassembledName":  "Marktplatz",
+                                                    "type":  "stop",
+                                                    "coord":  [
+                                                                  50.0,
+                                                                  8.0
+                                                              ],
+                                                    "parent":  {
+                                                                   "name":  "Beispielstadt",
+                                                                   "type":  "locality"
+                                                               },
+                                                    "productClasses":  [
+                                                                           6
+                                                                       ],
+                                                    "connectingMode":  100,
+                                                    "properties":  {
+                                                                       "stopId":  "20001001"
+                                                                   }
+                                                }
+                                            ],
+                          "properties":  {
+                                             "stopId":  "20001001"
+                                         }
+                      }
+                  ],
+    "stopEvents":  [
+                       {
+                           "realtimeStatus":  [
+                                                  "EXTRA_STOPS",
+                                                  "DEVIATION",
+                                                  "MONITORED"
+                                              ],
+                           "isRealtimeControlled":  true,
+                           "location":  {
+                                            "id":  "de:00000:1001:0:1",
+                                            "isGlobalId":  true,
+                                            "name":  "Bsp-Beispielstadt, Marktplatz",
+                                            "type":  "platform",
+                                            "coord":  [
+                                                          50.0,
+                                                          8.0
+                                                      ],
+                                            "properties":  {
+                                                               "stopId":  "20001001",
+                                                               "area":  "0",
+                                                               "platform":  "1"
+                                                           },
+                                            "parent":  {
+                                                           "id":  "de:00000:1001",
+                                                           "isGlobalId":  true,
+                                                           "name":  "Bsp-Beispielstadt, Marktplatz",
+                                                           "disassembledName":  "Marktplatz",
+                                                           "type":  "stop",
+                                                           "parent":  {
+                                                                          "name":  "Beispielstadt",
+                                                                          "type":  "locality"
+                                                                      },
+                                                           "properties":  {
+                                                                              "stopId":  "20001001"
+                                                                          }
+                                                       }
+                                        },
+                           "departureTimePlanned":  "2026-11-07T11:34:00Z",
+                           "departureTimeBaseTimetable":  "2026-11-07T11:34:00Z",
+                           "departureTimeEstimated":  "2026-11-07T11:41:00Z",
+                           "transportation":  {
+                                                  "id":  "vph:72355: :R:6_1",
+                                                  "name":  "Regionalbus 355",
+                                                  "disassembledName":  "355",
+                                                  "number":  "355",
+                                                  "description":  "Ortsverkehr Beispielstadt Musterdorf - Beispielstadt - Neudorf - Beispielstadt",
+                                                  "product":  {
+                                                                  "id":  18,
+                                                                  "class":  6,
+                                                                  "name":  "Regionalbus",
+                                                                  "iconId":  3
+                                                              },
+                                                  "operator":  {
+                                                                   "code":  "bsp",
+                                                                   "id":  "19",
+                                                                   "name":  "Beispiel Verkehrs GmbH"
+                                                               },
+                                                  "destination":  {
+                                                                      "id":  "20001002",
+                                                                      "name":  "Beispielstadt, Depot",
+                                                                      "type":  "stop"
+                                                                  },
+                                                  "properties":  {
+                                                                     "isSTT":  true,
+                                                                     "isROP":  true,
+                                                                     "tripCode":  14,
+                                                                     "mtSubcode":  "315",
+                                                                     "lineDisplay":  "LINE",
+                                                                     "globalId":  "de:NWL:00000|Bus|355:",
+                                                                     "OperatorURL":  "example.org",
+                                                                     "FrequencyLine":  "1"
+                                                                 },
+                                                  "origin":  {
+                                                                 "id":  "20001003",
+                                                                 "name":  "Musterdorf, Hauptstraße",
+                                                                 "type":  "stop"
+                                                             }
+                                              },
+                           "properties":  {
+                                              "AVMSTripID":  "000355208"
+                                          }
+                       },
+                       {
+                           "realtimeStatus":  [
+                                                  "TRIP_CANCELLED"
+                                              ],
+                           "isRealtimeControlled":  true,
+                           "location":  {
+                                            "id":  "de:00000:1001:0:2",
+                                            "isGlobalId":  true,
+                                            "name":  "Bsp-Beispielstadt, Marktplatz",
+                                            "type":  "platform",
+                                            "coord":  [
+                                                          50.0,
+                                                          8.883188
+                                                      ],
+                                            "properties":  {
+                                                               "stopId":  "20001001",
+                                                               "area":  "0",
+                                                               "platform":  "2"
+                                                           },
+                                            "parent":  {
+                                                           "id":  "de:00000:1001",
+                                                           "isGlobalId":  true,
+                                                           "name":  "Bsp-Beispielstadt, Marktplatz",
+                                                           "disassembledName":  "Marktplatz",
+                                                           "type":  "stop",
+                                                           "parent":  {
+                                                                          "name":  "Beispielstadt",
+                                                                          "type":  "locality"
+                                                                      },
+                                                           "properties":  {
+                                                                              "stopId":  "20001001"
+                                                                          }
+                                                       }
+                                        },
+                           "departureTimePlanned":  "2026-11-07T12:33:00Z",
+                           "departureTimeBaseTimetable":  "2026-11-07T12:33:00Z",
+                           "transportation":  {
+                                                  "id":  "vph:72355: :H:6_1",
+                                                  "name":  "Regionalbus 355",
+                                                  "disassembledName":  "355",
+                                                  "number":  "355",
+                                                  "description":  "Ortsverkehr Beispielstadt Beispielstadt - Neudorf - Beispielstadt - Musterdorf",
+                                                  "product":  {
+                                                                  "id":  18,
+                                                                  "class":  6,
+                                                                  "name":  "Regionalbus",
+                                                                  "iconId":  3
+                                                              },
+                                                  "operator":  {
+                                                                   "code":  "bsp",
+                                                                   "id":  "19",
+                                                                   "name":  "Beispiel Verkehrs GmbH"
+                                                               },
+                                                  "destination":  {
+                                                                      "id":  "20001003",
+                                                                      "name":  "Musterdorf, Hauptstraße",
+                                                                      "type":  "stop"
+                                                                  },
+                                                  "properties":  {
+                                                                     "isSTT":  true,
+                                                                     "isROP":  true,
+                                                                     "tripCode":  41,
+                                                                     "mtSubcode":  "315",
+                                                                     "lineDisplay":  "LINE",
+                                                                     "globalId":  "de:NWL:00000|Bus|355:",
+                                                                     "OperatorURL":  "example.org",
+                                                                     "FrequencyLine":  "1"
+                                                                 },
+                                                  "origin":  {
+                                                                 "id":  "23008043",
+                                                                 "name":  "Beispielstadt, Zentrum",
+                                                                 "type":  "stop"
+                                                             }
+                                              },
+                           "properties":  {
+                                              "AVMSTripID":  "000355209"
+                                          }
+                       },
+                       {
+                           "location":  {
+                                            "id":  "de:00000:1001:0:2",
+                                            "isGlobalId":  true,
+                                            "name":  "Bsp-Beispielstadt, Marktplatz",
+                                            "type":  "platform",
+                                            "coord":  [
+                                                          50.0,
+                                                          8.883188
+                                                      ],
+                                            "properties":  {
+                                                               "stopId":  "20001001",
+                                                               "area":  "0",
+                                                               "platform":  "2"
+                                                           },
+                                            "parent":  {
+                                                           "id":  "de:00000:1001",
+                                                           "isGlobalId":  true,
+                                                           "name":  "Bsp-Beispielstadt, Marktplatz",
+                                                           "disassembledName":  "Marktplatz",
+                                                           "type":  "stop",
+                                                           "parent":  {
+                                                                          "name":  "Beispielstadt",
+                                                                          "type":  "locality"
+                                                                      },
+                                                           "properties":  {
+                                                                              "stopId":  "20001001"
+                                                                          }
+                                                       }
+                                        },
+                           "departureTimePlanned":  "2026-11-07T11:50:00Z",
+                           "departureTimeBaseTimetable":  "2026-11-07T14:03:00Z",
+                           "transportation":  {
+                                                  "id":  "vph:72355: :H:6_1",
+                                                  "name":  "Regionalbahn R82",
+                                                  "disassembledName":  "R82",
+                                                  "number":  "R82",
+                                                  "description":  "Ortsverkehr Beispielstadt Beispielstadt - Neudorf - Beispielstadt - Musterdorf",
+                                                  "product":  {
+                                                                  "id":  18,
+                                                                  "class":  6,
+                                                                  "name":  "Regionalbus",
+                                                                  "iconId":  3
+                                                              },
+                                                  "operator":  {
+                                                                   "code":  "bsp",
+                                                                   "id":  "19",
+                                                                   "name":  "Beispiel Verkehrs GmbH"
+                                                               },
+                                                  "destination":  {
+                                                                      "id":  "20001003",
+                                                                      "name":  "Neustadt",
+                                                                      "type":  "stop"
+                                                                  },
+                                                  "properties":  {
+                                                                     "isSTT":  true,
+                                                                     "isROP":  true,
+                                                                     "tripCode":  43,
+                                                                     "mtSubcode":  "315",
+                                                                     "lineDisplay":  "LINE",
+                                                                     "globalId":  "de:NWL:00000|Bus|355:",
+                                                                     "OperatorURL":  "example.org",
+                                                                     "FrequencyLine":  "1"
+                                                                 },
+                                                  "origin":  {
+                                                                 "id":  "23008043",
+                                                                 "name":  "Beispielstadt, Zentrum",
+                                                                 "type":  "stop"
+                                                             }
+                                              }
+                       },
+                       {
+                           "realtimeStatus":  [
+                                                  "EXTRA_STOPS",
+                                                  "DEVIATION",
+                                                  "MONITORED"
+                                              ],
+                           "isRealtimeControlled":  true,
+                           "location":  {
+                                            "id":  "de:00000:1001:0:1",
+                                            "isGlobalId":  true,
+                                            "name":  "Bsp-Beispielstadt, Marktplatz",
+                                            "type":  "platform",
+                                            "coord":  [
+                                                          50.0,
+                                                          8.0
+                                                      ],
+                                            "properties":  {
+                                                               "stopId":  "20001001",
+                                                               "area":  "0",
+                                                               "platform":  "1"
+                                                           },
+                                            "parent":  {
+                                                           "id":  "de:00000:1001",
+                                                           "isGlobalId":  true,
+                                                           "name":  "Bsp-Beispielstadt, Marktplatz",
+                                                           "disassembledName":  "Marktplatz",
+                                                           "type":  "stop",
+                                                           "parent":  {
+                                                                          "name":  "Beispielstadt",
+                                                                          "type":  "locality"
+                                                                      },
+                                                           "properties":  {
+                                                                              "stopId":  "20001001"
+                                                                          }
+                                                       }
+                                        },
+                           "departureTimePlanned":  "2026-11-07T13:04:00Z",
+                           "departureTimeBaseTimetable":  "2026-11-07T13:04:00Z",
+                           "departureTimeEstimated":  "2026-11-07T13:05:00Z",
+                           "transportation":  {
+                                                  "id":  "vph:72355: :R:6_1",
+                                                  "name":  "Regionalbus 355",
+                                                  "disassembledName":  "355",
+                                                  "number":  "355",
+                                                  "description":  "Ortsverkehr Beispielstadt Musterdorf - Beispielstadt - Neudorf - Beispielstadt",
+                                                  "product":  {
+                                                                  "id":  18,
+                                                                  "class":  6,
+                                                                  "name":  "Regionalbus",
+                                                                  "iconId":  3
+                                                              },
+                                                  "operator":  {
+                                                                   "code":  "bsp",
+                                                                   "id":  "19",
+                                                                   "name":  "Beispiel Verkehrs GmbH"
+                                                               },
+                                                  "destination":  {
+                                                                      "id":  "20001002",
+                                                                      "name":  "Beispielstadt, Depot",
+                                                                      "type":  "stop"
+                                                                  },
+                                                  "properties":  {
+                                                                     "isSTT":  true,
+                                                                     "isROP":  true,
+                                                                     "tripCode":  16,
+                                                                     "mtSubcode":  "315",
+                                                                     "lineDisplay":  "LINE",
+                                                                     "globalId":  "de:NWL:00000|Bus|355:",
+                                                                     "OperatorURL":  "example.org",
+                                                                     "FrequencyLine":  "1"
+                                                                 },
+                                                  "origin":  {
+                                                                 "id":  "20001003",
+                                                                 "name":  "Musterdorf, Hauptstraße",
+                                                                 "type":  "stop"
+                                                             }
+                                              },
+                           "properties":  {
+                                              "AVMSTripID":  "000355210"
+                                          }
+                       },
+                       {
+                           "location":  {
+                                            "id":  "de:00000:1001:0:2",
+                                            "isGlobalId":  true,
+                                            "name":  "Bsp-Beispielstadt, Marktplatz",
+                                            "type":  "platform",
+                                            "coord":  [
+                                                          50.0,
+                                                          8.883188
+                                                      ],
+                                            "properties":  {
+                                                               "stopId":  "20001001",
+                                                               "area":  "0",
+                                                               "platform":  "2"
+                                                           },
+                                            "parent":  {
+                                                           "id":  "de:00000:1001",
+                                                           "isGlobalId":  true,
+                                                           "name":  "Bsp-Beispielstadt, Marktplatz",
+                                                           "disassembledName":  "Marktplatz",
+                                                           "type":  "stop",
+                                                           "parent":  {
+                                                                          "name":  "Beispielstadt",
+                                                                          "type":  "locality"
+                                                                      },
+                                                           "properties":  {
+                                                                              "stopId":  "20001001"
+                                                                          }
+                                                       }
+                                        },
+                           "departureTimePlanned":  "2026-11-07T14:03:00Z",
+                           "departureTimeBaseTimetable":  "2026-11-07T14:03:00Z",
+                           "transportation":  {
+                                                  "id":  "vph:72355: :H:6_1",
+                                                  "name":  "Regionalbus 355",
+                                                  "disassembledName":  "355",
+                                                  "number":  "355",
+                                                  "description":  "Ortsverkehr Beispielstadt Beispielstadt - Neudorf - Beispielstadt - Musterdorf",
+                                                  "product":  {
+                                                                  "id":  18,
+                                                                  "class":  6,
+                                                                  "name":  "Regionalbus",
+                                                                  "iconId":  3
+                                                              },
+                                                  "operator":  {
+                                                                   "code":  "bsp",
+                                                                   "id":  "19",
+                                                                   "name":  "Beispiel Verkehrs GmbH"
+                                                               },
+                                                  "destination":  {
+                                                                      "id":  "20001003",
+                                                                      "name":  "Musterdorf, Hauptstraße",
+                                                                      "type":  "stop"
+                                                                  },
+                                                  "properties":  {
+                                                                     "isSTT":  true,
+                                                                     "isROP":  true,
+                                                                     "tripCode":  43,
+                                                                     "mtSubcode":  "315",
+                                                                     "lineDisplay":  "LINE",
+                                                                     "globalId":  "de:NWL:00000|Bus|355:",
+                                                                     "OperatorURL":  "example.org",
+                                                                     "FrequencyLine":  "1"
+                                                                 },
+                                                  "origin":  {
+                                                                 "id":  "23008043",
+                                                                 "name":  "Beispielstadt, Zentrum",
+                                                                 "type":  "stop"
+                                                             }
+                                              }
+                       },
+                       {
+                           "location":  {
+                                            "id":  "de:00000:1001:0:1",
+                                            "isGlobalId":  true,
+                                            "name":  "Bsp-Beispielstadt, Marktplatz",
+                                            "type":  "platform",
+                                            "coord":  [
+                                                          50.0,
+                                                          8.0
+                                                      ],
+                                            "properties":  {
+                                                               "stopId":  "20001001",
+                                                               "area":  "0",
+                                                               "platform":  "1"
+                                                           },
+                                            "parent":  {
+                                                           "id":  "de:00000:1001",
+                                                           "isGlobalId":  true,
+                                                           "name":  "Bsp-Beispielstadt, Marktplatz",
+                                                           "disassembledName":  "Marktplatz",
+                                                           "type":  "stop",
+                                                           "parent":  {
+                                                                          "name":  "Beispielstadt",
+                                                                          "type":  "locality"
+                                                                      },
+                                                           "properties":  {
+                                                                              "stopId":  "20001001"
+                                                                          }
+                                                       }
+                                        },
+                           "departureTimePlanned":  "2026-11-07T14:34:00Z",
+                           "departureTimeBaseTimetable":  "2026-11-07T14:34:00Z",
+                           "transportation":  {
+                                                  "id":  "vph:72355: :R:6_1",
+                                                  "name":  "Regionalbus 355",
+                                                  "disassembledName":  "355",
+                                                  "number":  "355",
+                                                  "description":  "Ortsverkehr Beispielstadt Musterdorf - Beispielstadt - Neudorf - Beispielstadt",
+                                                  "product":  {
+                                                                  "id":  18,
+                                                                  "class":  6,
+                                                                  "name":  "Regionalbus",
+                                                                  "iconId":  3
+                                                              },
+                                                  "operator":  {
+                                                                   "code":  "bsp",
+                                                                   "id":  "19",
+                                                                   "name":  "Beispiel Verkehrs GmbH"
+                                                               },
+                                                  "destination":  {
+                                                                      "id":  "20001002",
+                                                                      "name":  "Beispielstadt, Depot",
+                                                                      "type":  "stop"
+                                                                  },
+                                                  "properties":  {
+                                                                     "isSTT":  true,
+                                                                     "isROP":  true,
+                                                                     "tripCode":  20,
+                                                                     "mtSubcode":  "315",
+                                                                     "lineDisplay":  "LINE",
+                                                                     "globalId":  "de:NWL:00000|Bus|355:",
+                                                                     "OperatorURL":  "example.org",
+                                                                     "FrequencyLine":  "1"
+                                                                 },
+                                                  "origin":  {
+                                                                 "id":  "20001003",
+                                                                 "name":  "Musterdorf, Hauptstraße",
+                                                                 "type":  "stop"
+                                                             }
+                                              }
+                       },
+                       {
+                           "location":  {
+                                            "id":  "de:00000:1001:0:2",
+                                            "isGlobalId":  true,
+                                            "name":  "Bsp-Beispielstadt, Marktplatz",
+                                            "type":  "platform",
+                                            "coord":  [
+                                                          50.0,
+                                                          8.883188
+                                                      ],
+                                            "properties":  {
+                                                               "stopId":  "20001001",
+                                                               "area":  "0",
+                                                               "platform":  "2"
+                                                           },
+                                            "parent":  {
+                                                           "id":  "de:00000:1001",
+                                                           "isGlobalId":  true,
+                                                           "name":  "Bsp-Beispielstadt, Marktplatz",
+                                                           "disassembledName":  "Marktplatz",
+                                                           "type":  "stop",
+                                                           "parent":  {
+                                                                          "name":  "Beispielstadt",
+                                                                          "type":  "locality"
+                                                                      },
+                                                           "properties":  {
+                                                                              "stopId":  "20001001"
+                                                                          }
+                                                       }
+                                        },
+                           "departureTimePlanned":  "2026-11-07T15:33:00Z",
+                           "departureTimeBaseTimetable":  "2026-11-07T15:33:00Z",
+                           "transportation":  {
+                                                  "id":  "vph:72355: :H:6_1",
+                                                  "name":  "Regionalbus 355",
+                                                  "disassembledName":  "355",
+                                                  "number":  "355",
+                                                  "description":  "Ortsverkehr Beispielstadt Beispielstadt - Neudorf - Beispielstadt - Musterdorf",
+                                                  "product":  {
+                                                                  "id":  18,
+                                                                  "class":  6,
+                                                                  "name":  "Regionalbus",
+                                                                  "iconId":  3
+                                                              },
+                                                  "operator":  {
+                                                                   "code":  "bsp",
+                                                                   "id":  "19",
+                                                                   "name":  "Beispiel Verkehrs GmbH"
+                                                               },
+                                                  "destination":  {
+                                                                      "id":  "20001003",
+                                                                      "name":  "Musterdorf, Hauptstraße",
+                                                                      "type":  "stop"
+                                                                  },
+                                                  "properties":  {
+                                                                     "isSTT":  true,
+                                                                     "isROP":  true,
+                                                                     "tripCode":  44,
+                                                                     "mtSubcode":  "315",
+                                                                     "lineDisplay":  "LINE",
+                                                                     "globalId":  "de:NWL:00000|Bus|355:",
+                                                                     "OperatorURL":  "example.org",
+                                                                     "FrequencyLine":  "1"
+                                                                 },
+                                                  "origin":  {
+                                                                 "id":  "23008043",
+                                                                 "name":  "Beispielstadt, Zentrum",
+                                                                 "type":  "stop"
+                                                             }
+                                              }
+                       },
+                       {
+                           "location":  {
+                                            "id":  "de:00000:1001:0:1",
+                                            "isGlobalId":  true,
+                                            "name":  "Bsp-Beispielstadt, Marktplatz",
+                                            "type":  "platform",
+                                            "coord":  [
+                                                          50.0,
+                                                          8.0
+                                                      ],
+                                            "properties":  {
+                                                               "stopId":  "20001001",
+                                                               "area":  "0",
+                                                               "platform":  "1"
+                                                           },
+                                            "parent":  {
+                                                           "id":  "de:00000:1001",
+                                                           "isGlobalId":  true,
+                                                           "name":  "Bsp-Beispielstadt, Marktplatz",
+                                                           "disassembledName":  "Marktplatz",
+                                                           "type":  "stop",
+                                                           "parent":  {
+                                                                          "name":  "Beispielstadt",
+                                                                          "type":  "locality"
+                                                                      },
+                                                           "properties":  {
+                                                                              "stopId":  "20001001"
+                                                                          }
+                                                       }
+                                        },
+                           "departureTimePlanned":  "2026-11-07T16:04:00Z",
+                           "departureTimeBaseTimetable":  "2026-11-07T16:04:00Z",
+                           "transportation":  {
+                                                  "id":  "vph:72355: :R:6_1",
+                                                  "name":  "Regionalbus 355",
+                                                  "disassembledName":  "355",
+                                                  "number":  "355",
+                                                  "description":  "Ortsverkehr Beispielstadt Musterdorf - Beispielstadt - Neudorf - Beispielstadt",
+                                                  "product":  {
+                                                                  "id":  18,
+                                                                  "class":  6,
+                                                                  "name":  "Regionalbus",
+                                                                  "iconId":  3
+                                                              },
+                                                  "operator":  {
+                                                                   "code":  "bsp",
+                                                                   "id":  "19",
+                                                                   "name":  "Beispiel Verkehrs GmbH"
+                                                               },
+                                                  "destination":  {
+                                                                      "id":  "20001002",
+                                                                      "name":  "Beispielstadt, Depot",
+                                                                      "type":  "stop"
+                                                                  },
+                                                  "properties":  {
+                                                                     "isSTT":  true,
+                                                                     "isROP":  true,
+                                                                     "tripCode":  21,
+                                                                     "mtSubcode":  "315",
+                                                                     "lineDisplay":  "LINE",
+                                                                     "globalId":  "de:NWL:00000|Bus|355:",
+                                                                     "OperatorURL":  "example.org",
+                                                                     "FrequencyLine":  "1"
+                                                                 },
+                                                  "origin":  {
+                                                                 "id":  "20001003",
+                                                                 "name":  "Musterdorf, Hauptstraße",
+                                                                 "type":  "stop"
+                                                             }
+                                              }
+                       },
+                       {
+                           "location":  {
+                                            "id":  "de:00000:1001:0:2",
+                                            "isGlobalId":  true,
+                                            "name":  "Bsp-Beispielstadt, Marktplatz",
+                                            "type":  "platform",
+                                            "coord":  [
+                                                          50.0,
+                                                          8.883188
+                                                      ],
+                                            "properties":  {
+                                                               "stopId":  "20001001",
+                                                               "area":  "0",
+                                                               "platform":  "2"
+                                                           },
+                                            "parent":  {
+                                                           "id":  "de:00000:1001",
+                                                           "isGlobalId":  true,
+                                                           "name":  "Bsp-Beispielstadt, Marktplatz",
+                                                           "disassembledName":  "Marktplatz",
+                                                           "type":  "stop",
+                                                           "parent":  {
+                                                                          "name":  "Beispielstadt",
+                                                                          "type":  "locality"
+                                                                      },
+                                                           "properties":  {
+                                                                              "stopId":  "20001001"
+                                                                          }
+                                                       }
+                                        },
+                           "departureTimePlanned":  "2026-11-07T17:03:00Z",
+                           "departureTimeBaseTimetable":  "2026-11-07T17:03:00Z",
+                           "transportation":  {
+                                                  "id":  "vph:72355: :H:6_1",
+                                                  "name":  "Regionalbus 355",
+                                                  "disassembledName":  "355",
+                                                  "number":  "355",
+                                                  "description":  "Ortsverkehr Beispielstadt Beispielstadt - Neudorf - Beispielstadt - Musterdorf",
+                                                  "product":  {
+                                                                  "id":  18,
+                                                                  "class":  6,
+                                                                  "name":  "Regionalbus",
+                                                                  "iconId":  3
+                                                              },
+                                                  "operator":  {
+                                                                   "code":  "bsp",
+                                                                   "id":  "19",
+                                                                   "name":  "Beispiel Verkehrs GmbH"
+                                                               },
+                                                  "destination":  {
+                                                                      "id":  "20001003",
+                                                                      "name":  "Musterdorf, Hauptstraße",
+                                                                      "type":  "stop"
+                                                                  },
+                                                  "properties":  {
+                                                                     "isSTT":  true,
+                                                                     "isROP":  true,
+                                                                     "tripCode":  45,
+                                                                     "mtSubcode":  "315",
+                                                                     "lineDisplay":  "LINE",
+                                                                     "globalId":  "de:NWL:00000|Bus|355:",
+                                                                     "OperatorURL":  "example.org",
+                                                                     "FrequencyLine":  "1"
+                                                                 },
+                                                  "origin":  {
+                                                                 "id":  "23008043",
+                                                                 "name":  "Beispielstadt, Zentrum",
+                                                                 "type":  "stop"
+                                                             }
+                                              }
+                       },
+                       {
+                           "location":  {
+                                            "id":  "de:00000:1001:0:1",
+                                            "isGlobalId":  true,
+                                            "name":  "Bsp-Beispielstadt, Marktplatz",
+                                            "type":  "platform",
+                                            "coord":  [
+                                                          50.0,
+                                                          8.0
+                                                      ],
+                                            "properties":  {
+                                                               "stopId":  "20001001",
+                                                               "area":  "0",
+                                                               "platform":  "1"
+                                                           },
+                                            "parent":  {
+                                                           "id":  "de:00000:1001",
+                                                           "isGlobalId":  true,
+                                                           "name":  "Bsp-Beispielstadt, Marktplatz",
+                                                           "disassembledName":  "Marktplatz",
+                                                           "type":  "stop",
+                                                           "parent":  {
+                                                                          "name":  "Beispielstadt",
+                                                                          "type":  "locality"
+                                                                      },
+                                                           "properties":  {
+                                                                              "stopId":  "20001001"
+                                                                          }
+                                                       }
+                                        },
+                           "departureTimePlanned":  "2026-11-07T17:34:00Z",
+                           "departureTimeBaseTimetable":  "2026-11-07T17:34:00Z",
+                           "transportation":  {
+                                                  "id":  "vph:72355: :R:6_1",
+                                                  "name":  "Regionalbus 355",
+                                                  "disassembledName":  "355",
+                                                  "number":  "355",
+                                                  "description":  "Ortsverkehr Beispielstadt Musterdorf - Beispielstadt - Neudorf - Beispielstadt",
+                                                  "product":  {
+                                                                  "id":  18,
+                                                                  "class":  6,
+                                                                  "name":  "Regionalbus",
+                                                                  "iconId":  3
+                                                              },
+                                                  "operator":  {
+                                                                   "code":  "bsp",
+                                                                   "id":  "19",
+                                                                   "name":  "Beispiel Verkehrs GmbH"
+                                                               },
+                                                  "destination":  {
+                                                                      "id":  "20001002",
+                                                                      "name":  "Beispielstadt, Depot",
+                                                                      "type":  "stop"
+                                                                  },
+                                                  "properties":  {
+                                                                     "isSTT":  true,
+                                                                     "isROP":  true,
+                                                                     "tripCode":  23,
+                                                                     "mtSubcode":  "315",
+                                                                     "lineDisplay":  "LINE",
+                                                                     "globalId":  "de:NWL:00000|Bus|355:",
+                                                                     "OperatorURL":  "example.org",
+                                                                     "FrequencyLine":  "1"
+                                                                 },
+                                                  "origin":  {
+                                                                 "id":  "20001003",
+                                                                 "name":  "Musterdorf, Hauptstraße",
+                                                                 "type":  "stop"
+                                                             }
+                                              }
+                       },
+                       {
+                           "location":  {
+                                            "id":  "de:00000:1001:0:1",
+                                            "isGlobalId":  true,
+                                            "name":  "Bsp-Beispielstadt, Marktplatz",
+                                            "type":  "platform",
+                                            "coord":  [
+                                                          50.0,
+                                                          8.0
+                                                      ],
+                                            "properties":  {
+                                                               "stopId":  "20001001",
+                                                               "area":  "0",
+                                                               "platform":  "1"
+                                                           },
+                                            "parent":  {
+                                                           "id":  "de:00000:1001",
+                                                           "isGlobalId":  true,
+                                                           "name":  "Bsp-Beispielstadt, Marktplatz",
+                                                           "disassembledName":  "Marktplatz",
+                                                           "type":  "stop",
+                                                           "parent":  {
+                                                                          "name":  "Beispielstadt",
+                                                                          "type":  "locality"
+                                                                      },
+                                                           "properties":  {
+                                                                              "stopId":  "20001001"
+                                                                          }
+                                                       }
+                                        },
+                           "departureTimePlanned":  "2026-11-07T19:04:00Z",
+                           "departureTimeBaseTimetable":  "2026-11-07T19:04:00Z",
+                           "transportation":  {
+                                                  "id":  "vph:72355: :R:6_1",
+                                                  "name":  "Regionalbus 355",
+                                                  "disassembledName":  "355",
+                                                  "number":  "355",
+                                                  "description":  "Ortsverkehr Beispielstadt Musterdorf - Beispielstadt - Neudorf - Beispielstadt",
+                                                  "product":  {
+                                                                  "id":  18,
+                                                                  "class":  6,
+                                                                  "name":  "Regionalbus",
+                                                                  "iconId":  3
+                                                              },
+                                                  "operator":  {
+                                                                   "code":  "bsp",
+                                                                   "id":  "19",
+                                                                   "name":  "Beispiel Verkehrs GmbH"
+                                                               },
+                                                  "destination":  {
+                                                                      "id":  "20001002",
+                                                                      "name":  "Beispielstadt, Depot",
+                                                                      "type":  "stop"
+                                                                  },
+                                                  "properties":  {
+                                                                     "isSTT":  true,
+                                                                     "isROP":  true,
+                                                                     "tripCode":  3,
+                                                                     "mtSubcode":  "315",
+                                                                     "lineDisplay":  "LINE",
+                                                                     "globalId":  "de:NWL:00000|Bus|355:",
+                                                                     "OperatorURL":  "example.org",
+                                                                     "FrequencyLine":  "1"
+                                                                 },
+                                                  "origin":  {
+                                                                 "id":  "20001001",
+                                                                 "name":  "Bsp-Beispielstadt, Marktplatz",
+                                                                 "type":  "stop"
+                                                             }
+                                              }
+                       }
+                   ]
+}
