@@ -65,13 +65,14 @@ func TestWidgetGalleryArgs(t *testing.T) {
 	s, _ := testServer(t)
 	s.config().Timezone = time.UTC
 	body := preview(t, s, "/ui/plugins?display=small").Body.String()
-	for _, want := range []string{`id="paperboy-clock"`, `<select name="arg.format">`, `<option value="datetime">`,
+	for _, want := range []string{`id="paperboy-clock"`, `<select name="arg.format" id="paperboy-clock-arg.format">`, `<option value="datetime">`,
+		`<span class="desc">time, date or datetime</span>`, `<span class="req" title="required">*</span>`,
 		`name="arg.text" value="" placeholder=""`, `<option value="" selected>default (left)</option>`, `name="widget" value="paperboy/clock"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("form misses %q: %s", want, body)
 		}
 	}
-	if strings.Contains(body, "arg.format=") || strings.Contains(body, `class="snippet"`) {
+	if strings.Contains(body, "arg.format=") || strings.Contains(body, `class="snippet"`) || strings.Contains(body, `<ul class="args">`) {
 		t.Fatal("args or snippet without a chosen widget")
 	}
 	body = preview(t, s, "/ui/plugins?display=small&widget=paperboy/clock&span=6x1&arg.format=date&arg.align=").Body.String()
