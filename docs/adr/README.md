@@ -48,3 +48,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0049](0049-plugin-widgets.md) | Paperboy v2 – pages composed from plugin widgets | Accepted, implemented |
 | [0050](0050-physical-scaling-by-display-ppi.md) | Scale widget layout by display PPI | Accepted, implemented |
 | [0051](0051-power-source-refresh-policy.md) | Refresh policy by power source | Accepted, implemented (firmware not yet flashed) |
+| [0053](0053-departures-from-efa.md) | Real-time departures from an EFA installation | Accepted, implemented |
