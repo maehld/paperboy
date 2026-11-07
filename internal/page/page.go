@@ -31,6 +31,9 @@ type Template struct {
 	Style   Style  `yaml:"style"`   // look passed to every widget
 	Notices string `yaml:"notices"` // show (default) or none: stale widgets
 	Cells   []Cell `yaml:"cells"`
+	// Actions belong to the plan, not to a page. The field only exists to
+	// reject the key with a hint instead of "field not found".
+	Actions []any `yaml:"actions"`
 }
 
 // Style is the page's look in points (1/72 inch, ADR 0050); Paperboy
@@ -135,6 +138,9 @@ func ValidName(s string) bool {
 }
 
 func (t *Template) validate() error {
+	if len(t.Actions) > 0 {
+		return fmt.Errorf("actions belong to the plan, not to a page (ADR 0057)")
+	}
 	cols, rows := t.Grid[0], t.Grid[1]
 	if cols < 1 || rows < 1 || cols > maxGrid || rows > maxGrid {
 		return fmt.Errorf("grid [%d, %d]: expected [columns, rows] between 1 and %d", cols, rows, maxGrid)

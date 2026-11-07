@@ -27,6 +27,8 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
 
 **Migrating to program names (ADR 0060):** remove `command:` from every plugin section — it aborts the start with a hint. A plugin's program is now named after the plugin: `plugins/weather`, `plugins/weather-v2.1.0` (`.exe` on Windows), or `weather` on `PATH`; the unversioned file wins and stays yours (an unpacked plugin zip works as before), and the optional `version` key pins a downloaded one. Firmware images move from `firmware/<hardware>/<hardware>-<version>.bin` to `firmware/<hardware>-v<version>.bin`; the old layout is still read, so nothing has to move, and devices get the new path with the offer.
 
+**Migrating to plugin protocol version 4 (ADR 0057):** the action menu moves the protocol to version 4. Paperboy checks the version in every answer (ADR 0058) and refuses a plugin that reports version 3 or none, with the expected version in the error; unpack the current plugin zip after updating Paperboy. Plans without `actions` need no change.
+
 ## Releases
 
 GitHub releases are the distribution point (ADR 0056). Each tag names a tested combination of the three deliverables:
@@ -206,9 +208,9 @@ The pages in `examples/pages` (`uebersicht`, `kalender`, `wetter`, `laden` and t
 
 A plugin is a long-running program that provides widgets (ADR 0049). Paperboy starts it on first use, sends it its `config` section once (`configure`), and then asks it for widgets; it keeps the results until the plugin's `max_age` (default 5 minutes) or until the plugin reports a change, and renders widgets that are still in use again in the background, so a device never waits for a plugin. A plugin that exits or does not answer within `timeout` is restarted; meanwhile its last widgets are shown as stale, and a failing plugin is not asked again for a minute.
 
-**Protocol** (`pkg/plugin`): one JSON object per line on stdin, one answer per line on stdout with the same `id`. Actions are `configure`, `describe`, `render` (`levels` 2 or 4, `widgets: [{widget, width, height, args, style}]` → base64 PNGs) and `text` (the same in characters → `lines`). Every request carries `language`, `timezone`, `now` and the `page` (`title`, `number`, `count`, display `width`/`height`, and for image displays `ppi`). Protocol version 3 (ADR 0050): each widget's `style` holds `padding`, `rule` and `text_px` in pixels, already converted from the page's points; Go plugins use `Request.TextPx`, `PtPx` and `MMPx` for physical sizes. Between answers a plugin may print `{"event": "changed", "changed": ["agenda"]}`. It ends when stdin closes. Every plugin also sees `PAPERBOY_LANGUAGE` and `PAPERBOY_TIMEZONE` in its environment. Every answer names the protocol version the plugin was built against (`"version": 3`); Paperboy refuses a plugin that reports another version or none at all, with the mismatch as the cell's error and one log line (ADR 0058). Go plugins get this from `pkg/plugin` automatically; plugins in other languages must print the field.
+**Protocol** ([`docs/plugins/protocol.md`](docs/plugins/protocol.md), `pkg/plugin`): one JSON object per line on stdin, one answer per line on stdout with the same `id`. Actions are `configure`, `describe`, `render` (`levels` 2 or 4, `widgets: [{widget, width, height, args, style}]` → base64 PNGs), `text` (the same in characters → `lines`), `actions` (the state of concrete plan actions) and `action` (run one). Every request carries `language`, `timezone`, `now` and the `page` (`title`, `number`, `count`, display `width`/`height`, and for image displays `ppi`). Protocol version 4 (ADR 0050, 0057): each widget's `style` holds `padding`, `rule` and `text_px` in pixels, already converted from the page's points; Go plugins use `Request.TextPx`, `PtPx` and `MMPx` for physical sizes. `describe` lists widgets and, optionally, actions; an action request names a concrete `action` and its `args` and gets `actions` states (title, disabled reason, confirmation) or a `result` (`ok`, `message`, `changed`). Between answers a plugin may print `{"event": "changed", "changed": ["agenda"]}`. It ends when stdin closes. Every plugin also sees `PAPERBOY_LANGUAGE` and `PAPERBOY_TIMEZONE` in its environment. Every answer names the protocol version the plugin was built against (`"version": 4`); Paperboy refuses a plugin that reports another version or none at all, with the mismatch as the cell's error and one log line (ADR 0058). Go plugins get this from `pkg/plugin` automatically; plugins in other languages must print the field.
 
-A Go plugin implements `plugin.Handler` (`Describe`, `Configure`, `Render`), optionally `Texter`, `Preparer`, `Starter` (background work with a `notify` callback) and `Ager` (`max_age`), calls `plugin.Serve` and draws with `pkg/render` – the fonts, gray levels, fills and icon masks Paperboy itself uses, so its widgets look like the rest of the page. Plugins in other languages speak the same JSON lines.
+A Go plugin implements `plugin.Handler` (`Describe`, `Configure`, `Render`), optionally `Texter`, `Preparer`, `Starter` (background work with a `notify` callback), `Ager` (`max_age`) and `Actioner` (actions for the device menu), calls `plugin.Serve` and draws with `pkg/render` – the fonts, gray levels, fills and icon masks Paperboy itself uses, so its widgets look like the rest of the page. Plugins in other languages speak the same JSON lines.
 
 Shipped plugins (one zip per platform: `paperboy-plugins-linux-amd64.zip` and `paperboy-plugins-windows-amd64.zip`; unpacked in the instance directory they create `plugins/`). Each plugin has its own documentation under `docs/plugins/`:
 
@@ -249,6 +251,28 @@ fallback: nacht
 - `fallback` names the rule used when nothing matches; without a match and without a fallback the device gets a notice page.
 - Plans are reloaded on change without a restart; a broken file keeps the last valid version. A missing or broken page also leads to a notice page, so devices never see a server error.
 - Plans serve devices on the Paperboy firmware. Data conditions (`when.data`) follow later and are rejected when loading a plan.
+
+### Actions
+
+A plan may offer **actions** that plugins provide (ADR 0057): things a user starts from the device menu, such as switching the evcc charge mode. Actions belong to the plan, not to a page, so every rule and page of a plan offers the same list.
+
+```yaml
+actions:
+  - action: evcc/mode
+    args: { loadpoint: 0, mode: now }
+    id: charge-now
+    title: "Charge now"          # optional; otherwise the plugin's title
+  - action: evcc/mode
+    args: { loadpoint: 1, mode: now }
+    id: charge-now-2             # required: evcc/mode appears twice
+  - paperboy/refresh             # short form for actions without args
+```
+
+- `action` is `plugin/action`; `args` are the action's arguments from the plugin's `describe`.
+- `id` is optional and plan-local. It becomes mandatory for **every** entry of an action as soon as the same `action` appears more than once, and IDs must be unique. The menu keeps its selection by `id`, or by `plugin/action` when there is no `id`, so reordering the list or changing `args`/`title` does not change the identity.
+- Exact duplicates of `action` and `args` are rejected. An unknown plugin, action or argument disables the entry with a reason instead of breaking the plan. A plugin that reports another protocol version is refused as a whole (ADR 0058), not used without its actions.
+- A page-level or rule-level `actions` key is rejected with a hint.
+- The device menu itself is not implemented yet.
 
 ## OpenDisplay
 

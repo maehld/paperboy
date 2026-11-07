@@ -17,6 +17,9 @@
 //     pixel size and number of gray levels, returned as PNG.
 //   - "text": fill widgets of a text display, each with exactly the given
 //     number of lines and columns.
+//   - "actions": report the current state of concrete actions, one answer per
+//     requested action (ADR 0057).
+//   - "action": run exactly one concrete action and report the outcome.
 //
 // Plugins written in Go implement Handler, call Serve and draw with
 // pkg/render, so widgets share the fonts and gray levels of Paperboy.
@@ -49,10 +52,12 @@ import (
 )
 
 // Version is the protocol version a request carries. Version 3 (ADR 0050)
-// added page.ppi and style.text_px and dropped style.text_size. Plugins report
-// it in every answer (Message.Version); Paperboy refuses a plugin that speaks
-// another version (ADR 0058).
-const Version = 3
+// added page.ppi and style.text_px and dropped style.text_size. Version 4
+// (ADR 0057) added actions: describe.actions, the actions and action requests,
+// and action results. Plugins report the version in every answer
+// (Message.Version); Paperboy refuses a plugin that speaks another version
+// (ADR 0058).
+const Version = 4
 
 // Actions of a request.
 const (
@@ -60,6 +65,8 @@ const (
 	ActionDescribe  = "describe"
 	ActionRender    = "render"
 	ActionText      = "text"
+	ActionList      = "actions" // states of concrete actions
+	ActionInvoke    = "action"  // run one concrete action
 )
 
 // EventChanged tells Paperboy that widgets are out of date.
@@ -77,6 +84,17 @@ type Request struct {
 	Levels   int             `json:"levels,omitempty"` // render: gray levels, 2 or 4
 	Page     PageInfo        `json:"page"`
 	Widgets  []WidgetRequest `json:"widgets,omitempty"`
+	// Actions are the concrete actions of an actions or action request, in
+	// the plan's order. Device is set for both requests.
+	Actions []ActionCall `json:"actions,omitempty"`
+	Device  *DeviceInfo  `json:"device,omitempty"`
+}
+
+// DeviceInfo identifies the display an action is meant for.
+type DeviceInfo struct {
+	ID       string `json:"id"`
+	Name     string `json:"name,omitempty"`
+	Hardware string `json:"hardware,omitempty"` // firmware target, e.g. sticky
 }
 
 // Style carries the page's look so widgets match each other. Paperboy
@@ -108,6 +126,16 @@ type WidgetRequest struct {
 	Style  Style          `json:"style"`
 }
 
+// ActionCall is one concrete action: the plugin's action name without the
+// plugin prefix and the plan's arguments for it.
+type ActionCall struct {
+	Action string         `json:"action"`
+	Args   map[string]any `json:"args,omitempty"`
+}
+
+// Arg returns the action's arguments.
+func (c ActionCall) Arg() Values { return Values(c.Args) }
+
 // Message is one line a plugin prints: the answer to request ID, or an event
 // when ID is empty.
 type Message struct {
@@ -115,13 +143,15 @@ type Message struct {
 	// Version is the protocol version the plugin speaks. Handle fills it; a
 	// plugin written by hand must set it, and a missing version counts as one
 	// from before the field existed (ADR 0058).
-	Version     int          `json:"version,omitempty"`
-	Error       string       `json:"error,omitempty"` // the request failed as a whole
-	Widgets     []Result     `json:"widgets,omitempty"`
-	MaxAge      int          `json:"max_age,omitempty"` // seconds the results stay valid; 0 = Paperboy's default
-	Description *Description `json:"description,omitempty"`
-	Event       string       `json:"event,omitempty"`
-	Changed     []string     `json:"changed,omitempty"` // widgets of a "changed" event; empty = all
+	Version     int            `json:"version,omitempty"`
+	Error       string         `json:"error,omitempty"` // the request failed as a whole
+	Widgets     []Result       `json:"widgets,omitempty"`
+	Actions     []ActionState  `json:"actions,omitempty"` // answers to an actions request, in request order
+	Result      *ActionOutcome `json:"result,omitempty"`  // answer to an action request
+	MaxAge      int            `json:"max_age,omitempty"` // seconds the results stay valid; 0 = Paperboy's default
+	Description *Description   `json:"description,omitempty"`
+	Event       string         `json:"event,omitempty"`
+	Changed     []string       `json:"changed,omitempty"` // widgets of a "changed" event; empty = all
 }
 
 // Result is one widget: a PNG for render, lines for text, or an error.
@@ -135,7 +165,8 @@ type Result struct {
 type Description struct {
 	Title   string         `json:"title"`
 	Widgets []WidgetInfo   `json:"widgets"`
-	Config  map[string]Arg `json:"config,omitempty"` // keys of the plugin's config section
+	Actions []ActionSpec   `json:"actions,omitempty"` // actions a plan may list (ADR 0057)
+	Config  map[string]Arg `json:"config,omitempty"`  // keys of the plugin's config section
 }
 
 // Kinds of displays a widget supports.
@@ -162,6 +193,39 @@ type WidgetInfo struct {
 type Span struct {
 	Columns int `json:"columns"`
 	Rows    int `json:"rows"`
+}
+
+// ActionSpec describes one action a plugin offers (ADR 0057).
+type ActionSpec struct {
+	Name    string         `json:"name"`
+	Title   string         `json:"title"`
+	Args    map[string]Arg `json:"args,omitempty"` // the same schema as widget args
+	Confirm *Confirm       `json:"confirm,omitempty"`
+}
+
+// Confirm says whether an action needs a confirmation before it runs and which
+// text the confirmation shows. A nil Confirm means no confirmation.
+type Confirm struct {
+	Required bool   `json:"required"`
+	Text     string `json:"text,omitempty"` // optional; Paperboy has a generic text
+}
+
+// ActionState is the answer for one ActionCall, in the request's order.
+type ActionState struct {
+	Title string `json:"title,omitempty"` // current title, overrides the spec
+	// Disabled holds the reason why the action cannot run now; empty means
+	// it is available. The menu shows the action hatched with this reason.
+	Disabled string   `json:"disabled,omitempty"`
+	Confirm  *Confirm `json:"confirm,omitempty"` // overrides the spec
+}
+
+// ActionOutcome is the answer to an action request. A protocol or plugin
+// failure uses Message.Error; OK is false when the action itself failed, with
+// Message telling the user why.
+type ActionOutcome struct {
+	OK      bool   `json:"ok"`
+	Message string `json:"message,omitempty"`
+	Changed bool   `json:"changed,omitempty"` // widgets are out of date after the run
 }
 
 // Arg describes one argument or configuration key.
@@ -236,6 +300,14 @@ type Handler interface {
 // result may be shorter than the requested size; Paperboy pads and cuts.
 type Texter interface {
 	Text(req *Request, w WidgetRequest) ([]string, error)
+}
+
+// Actioner is implemented by plugins that offer actions the device menu can
+// run (ADR 0057). Actions answers each call of the request in order; Invoke
+// runs the one call of an action request.
+type Actioner interface {
+	Actions(req *Request) ([]ActionState, error)
+	Invoke(req *Request, call ActionCall) (ActionOutcome, error)
 }
 
 // Preparer is implemented by plugins that set up shared state once per
@@ -338,6 +410,8 @@ func Handle(h Handler, req *Request) (m Message) {
 		if a, ok := h.(Ager); ok {
 			m.MaxAge = int(a.MaxAge(req) / time.Second)
 		}
+	case ActionList, ActionInvoke:
+		handleActions(h, req, &m)
 	default:
 		m.Error = fmt.Sprintf("unknown action %q", req.Action)
 	}
@@ -387,6 +461,48 @@ func handleWidgets(h Handler, req *Request) ([]Result, error) {
 		}
 	}
 	return out, nil
+}
+
+// handleActions answers an actions or action request. Answers are positional:
+// the plugin returns one state per call, in the same order.
+func handleActions(h Handler, req *Request, m *Message) {
+	a, ok := h.(Actioner)
+	if !ok {
+		m.Error = "this plugin has no actions"
+		return
+	}
+	for _, c := range req.Actions {
+		if c.Action == "" {
+			m.Error = "actions: action missing"
+			return
+		}
+	}
+	if req.Action == ActionInvoke {
+		if len(req.Actions) != 1 {
+			m.Error = fmt.Sprintf("action: expected exactly one action, got %d", len(req.Actions))
+			return
+		}
+		out, err := a.Invoke(req, req.Actions[0])
+		if err != nil {
+			m.Error = err.Error()
+			return
+		}
+		m.Result = &out
+		return
+	}
+	states, err := a.Actions(req)
+	if err != nil {
+		m.Error = err.Error()
+		return
+	}
+	if len(states) != len(req.Actions) {
+		m.Error = fmt.Sprintf("actions: got %d states for %d actions", len(states), len(req.Actions))
+		return
+	}
+	m.Actions = states
+	if ag, ok := h.(Ager); ok {
+		m.MaxAge = int(ag.MaxAge(req) / time.Second)
+	}
 }
 
 func renderOne(h Handler, req *Request, w WidgetRequest) (res Result) {

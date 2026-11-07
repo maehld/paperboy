@@ -116,3 +116,98 @@ func TestEnums(t *testing.T) {
 		t.Fatalf("handle: %+v", m)
 	}
 }
+
+type actionHandler struct{ testHandler }
+
+var modeArgs = map[string]Arg{"mode": {Type: "string", Required: true, Enum: []any{"now", "off"}}}
+
+func (actionHandler) Describe() Description {
+	return Description{
+		Title: "a",
+		Actions: []ActionSpec{
+			{Name: "mode", Title: "Charge mode", Args: modeArgs, Confirm: &Confirm{Required: true, Text: "Change the mode?"}},
+			{Name: "refresh", Title: "Refresh"},
+		},
+	}
+}
+
+func (actionHandler) Actions(req *Request) ([]ActionState, error) {
+	out := make([]ActionState, len(req.Actions))
+	for i, c := range req.Actions {
+		out[i] = ActionState{Title: c.Action}
+		if c.Action == "mode" {
+			if err := c.Arg().Check(modeArgs); err != nil {
+				out[i].Disabled = err.Error()
+			}
+		}
+	}
+	return out, nil
+}
+
+func (actionHandler) Invoke(_ *Request, call ActionCall) (ActionOutcome, error) {
+	switch call.Action {
+	case "fail":
+		return ActionOutcome{}, errors.New("boom")
+	case "no":
+		return ActionOutcome{Message: "not now"}, nil
+	}
+	return ActionOutcome{OK: true, Message: "done", Changed: true}, nil
+}
+
+func TestActions(t *testing.T) {
+	h := &actionHandler{}
+	if d := h.Describe(); len(d.Actions) != 2 || d.Actions[0].Confirm == nil || !d.Actions[0].Confirm.Required {
+		t.Fatalf("describe: %+v", d)
+	}
+	m := Handle(h, &Request{Action: ActionList, Device: &DeviceInfo{ID: "kueche"},
+		Actions: []ActionCall{{Action: "mode", Args: map[string]any{"mode": "now"}}, {Action: "refresh"}}})
+	if m.Error != "" || len(m.Actions) != 2 || m.Actions[0].Disabled != "" || m.Actions[1].Title != "refresh" || m.MaxAge != 60 {
+		t.Fatalf("actions: %+v", m)
+	}
+	m = Handle(h, &Request{Action: ActionList,
+		Actions: []ActionCall{{Action: "mode", Args: map[string]any{"mode": "later"}}}})
+	if m.Error != "" || len(m.Actions) != 1 || m.Actions[0].Disabled == "" {
+		t.Fatalf("invalid args must disable the action: %+v", m)
+	}
+	m = Handle(h, &Request{Action: ActionInvoke, Actions: []ActionCall{{Action: "refresh"}}})
+	if m.Error != "" || m.Result == nil || !m.Result.OK || !m.Result.Changed || m.Result.Message != "done" {
+		t.Fatalf("invoke: %+v", m)
+	}
+	m = Handle(h, &Request{Action: ActionInvoke, Actions: []ActionCall{{Action: "no"}}})
+	if m.Error != "" || m.Result == nil || m.Result.OK || m.Result.Message != "not now" {
+		t.Fatalf("failed action: %+v", m)
+	}
+	m = Handle(h, &Request{Action: ActionInvoke, Actions: []ActionCall{{Action: "fail"}}})
+	if m.Error != "boom" || m.Result != nil {
+		t.Fatalf("plugin error: %+v", m)
+	}
+	if m = Handle(h, &Request{Action: ActionInvoke}); m.Error == "" {
+		t.Fatal("an action request must carry exactly one action")
+	}
+	if m = Handle(h, &Request{Action: ActionList}); m.Error != "" || len(m.Actions) != 0 {
+		t.Fatalf("empty actions request: %+v", m)
+	}
+	// A plugin without an Actioner offers no actions.
+	if m = Handle(&testHandler{}, &Request{Action: ActionList}); m.Error == "" {
+		t.Fatal("a plugin without actions must be rejected")
+	}
+}
+
+func TestActionStateCount(t *testing.T) {
+	m := Handle(&actionFewerStates{}, &Request{Action: ActionList, Actions: []ActionCall{{Action: "a"}, {Action: "b"}}})
+	if m.Error == "" || len(m.Actions) != 0 {
+		t.Fatalf("state count mismatch: %+v", m)
+	}
+}
+
+type actionFewerStates struct{ actionHandler }
+
+func (actionFewerStates) Actions(*Request) ([]ActionState, error) {
+	return []ActionState{{Title: "a"}}, nil
+}
+
+func TestVersion(t *testing.T) {
+	if Version != 4 {
+		t.Fatalf("protocol version = %d", Version)
+	}
+}
