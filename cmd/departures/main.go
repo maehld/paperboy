@@ -93,12 +93,14 @@ type departures struct {
 	mu       sync.Mutex
 	stopID   string // resolved once
 	stopName string
+	locality string // locality of the monitored stop, e.g. "Bielefeld"
 	data     []departure
 	loadErr  error
 	ready    chan struct{}
 
 	cur      []departure
 	curName  string
+	curLocal string
 	req      *plugin.Request
 	lang     string
 	location *time.Location
@@ -115,6 +117,8 @@ func (p *departures) Describe() plugin.Description {
 				Args: map[string]plugin.Arg{
 					"header": {Type: "bool", Default: false, Description: "show the stop name above the departures"},
 					"time":   {Type: "string", Default: "auto", Description: "auto: minutes, a clock time from one hour on; minutes; clock", Enum: []any{"auto", "minutes", "clock"}},
+					"locality": {Type: "string", Default: "auto", Description: "locality before a destination (\"City, Stop\"): auto drops it when it is the monitored stop's locality; always drops it; never keeps it",
+						Enum: []any{"auto", "always", "never"}},
 				}},
 		},
 	}
@@ -275,6 +279,9 @@ func (p *departures) resolve(ctx context.Context) (string, error) {
 		id = loc.ID
 		p.mu.Lock()
 		p.stopName = loc.Name
+		if loc.Parent.Type == "locality" {
+			p.locality = loc.Parent.Name
+		}
 		p.mu.Unlock()
 	}
 	p.mu.Lock()
@@ -288,6 +295,11 @@ type location struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
 	Best bool   `json:"isBest"`
+	// Parent is the locality of a stop: {"name":"Bielefeld","type":"locality"}.
+	Parent struct {
+		Name string `json:"name"`
+		Type string `json:"type"`
+	} `json:"parent"`
 }
 
 // parseStopFinder picks the best stop of an XML_STOPFINDER_REQUEST answer.
@@ -355,15 +367,18 @@ func (p *departures) fetch(ctx context.Context, _ time.Time) ([]departure, error
 	if err != nil {
 		return nil, err
 	}
-	deps, name, err := parseDepartures(body)
+	deps, loc, err := parseDepartures(body)
 	if err != nil {
 		return nil, err
 	}
-	if name != "" {
-		p.mu.Lock()
-		p.stopName = name
-		p.mu.Unlock()
+	p.mu.Lock()
+	if loc.Name != "" {
+		p.stopName = loc.Name
 	}
+	if loc.Parent.Type == "locality" && loc.Parent.Name != "" {
+		p.locality = loc.Parent.Name
+	}
+	p.mu.Unlock()
 	return deps, nil
 }
 
@@ -388,25 +403,23 @@ type stopEvent struct {
 }
 
 // parseDepartures decodes an XML_DM_REQUEST answer, sorted by the real
-// departure time, and returns the stop's name.
-func parseDepartures(body []byte) ([]departure, string, error) {
+// departure time, and returns the monitored stop with its locality.
+func parseDepartures(body []byte) ([]departure, location, error) {
 	var r struct {
 		SystemMessages []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"systemMessages"`
-		Locations []struct {
-			Name string `json:"name"`
-		} `json:"locations"`
+		Locations  []location  `json:"locations"`
 		StopEvents []stopEvent `json:"stopEvents"`
 	}
 	if err := json.Unmarshal(body, &r); err != nil {
-		return nil, "", fmt.Errorf("invalid departure monitor answer: %w", err)
+		return nil, location{}, fmt.Errorf("invalid departure monitor answer: %w", err)
 	}
 	if len(r.StopEvents) == 0 {
 		for _, m := range r.SystemMessages {
 			if m.Type == "error" {
-				return nil, "", fmt.Errorf("EFA: %s", m.Text)
+				return nil, location{}, fmt.Errorf("EFA: %s", m.Text)
 			}
 		}
 	}
@@ -427,11 +440,11 @@ func parseDepartures(body []byte) ([]departure, string, error) {
 		out = append(out, d)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].when().Before(out[j].when()) })
-	name := ""
+	var loc location
 	if len(r.Locations) > 0 {
-		name = r.Locations[0].Name
+		loc = r.Locations[0]
 	}
-	return out, name, nil
+	return out, loc, nil
 }
 
 func firstNonEmpty(s ...string) string {
@@ -456,6 +469,13 @@ func (p *departures) Prepare(req *plugin.Request) error {
 	}
 	p.cur = p.visible(p.data, req.Now)
 	p.curName = p.stopName
+	p.curLocal = p.locality
+	if p.curLocal == "" {
+		p.curLocal, _, _ = strings.Cut(p.stopName, ", ") // "City, Stop" without a parent
+		if p.curLocal == p.stopName {
+			p.curLocal = ""
+		}
+	}
 	p.req, p.lang, p.location = req, req.Lang(), req.Location()
 	return nil
 }
