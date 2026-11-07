@@ -23,6 +23,9 @@ plugins:
   pokedex:
     command: [pokedex]
     config: { mode: random, rotate: 24h }   # or: { pokemon: pikachu }
+  xkcd:
+    command: [xkcd]
+    config: { comic: latest }
   calendar:
     command: [calendar]
     timeout: 1m
