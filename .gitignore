@@ -1,6 +1,10 @@
 /bin/
 /paperboy
 /paperboy.exe
+# Binaries from `go build` inside a command directory.
+/cmd/*/*
+!/cmd/*/*.*
+!/cmd/*/*/
 
 # Configuration with token, operator content and service state of a local
 # instance (ADR 0037); the old displayd locations stay ignored.
