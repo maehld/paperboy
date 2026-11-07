@@ -110,7 +110,7 @@ func TestResolveOnceAndText(t *testing.T) {
 		t.Fatalf("stop finder asked %d times: %v", atomic.LoadInt32(finds), err)
 	}
 	lines, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 20, Height: 4})
-	want := []string{"355 Depot      +7 11", "R82 Neustadt      20", "355 Musterdorf Ausf.", "355 Depot   +1 14:05"}
+	want := []string{"355 Depot      +7 11", "R82 Neustadt      20", "355 Hauptstraß Ausf.", "355 Depot   +1 14:05"}
 	if err != nil || strings.Join(lines, "|") != strings.Join(want, "|") {
 		t.Fatalf("%q (%v)", lines, err)
 	}
@@ -119,9 +119,19 @@ func TestResolveOnceAndText(t *testing.T) {
 			t.Errorf("line %q is not 20 characters", l)
 		}
 	}
-	header, _ := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 20, Height: 2, Args: map[string]any{"header": true}})
-	if len(header) != 2 || !strings.HasPrefix(header[0], "Beispiel") {
+	header, _ := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 40, Height: 2, Args: map[string]any{"header": true}})
+	if len(header) != 2 || header[0] != "Marktplatz, Beispielstadt" {
 		t.Errorf("header: %q", header)
+	}
+	before, _ := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 40, Height: 2,
+		Args: map[string]any{"header": true, "locality_order": "before"}})
+	if len(before) != 2 || before[0] != "Beispielstadt, Marktplatz" {
+		t.Errorf("header before: %q", before)
+	}
+	none, _ := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 40, Height: 2,
+		Args: map[string]any{"header": true, "locality_order": "none"}})
+	if len(none) != 2 || none[0] != "Marktplatz" {
+		t.Errorf("header none: %q", none)
 	}
 }
 
@@ -202,23 +212,41 @@ func TestConfigure(t *testing.T) {
 
 func TestLocalityText(t *testing.T) {
 	p, req, _ := configured(t, plugin.Values{}, "dm_locality.json")
-	for mode, want := range map[string][]string{
-		"auto":   {"1 Depot", "355 Nachbarstadt, Bahnhof", "RE6 Fernstadt Hbf", "4 Universität Westfriedhof Lohmannshof Wendeschleife"},
-		"always": {"1 Depot", "355 Bahnhof", "RE6 Fernstadt Hbf", "4 Universität Westfriedhof Lohmannshof Wendeschleife"},
-		"never":  {"1 Beispielstadt, Depot", "355 Nachbarstadt, Bahnhof", "RE6 Fernstadt Hbf", "4 Beispielstadt, Universität Westfriedhof Lohmannshof Wendeschleife"},
+	for _, c := range []struct {
+		mode, order string
+		want        []string
+	}{
+		// default locality_order: after
+		{"auto", "", []string{"1 Depot", "355 Bahnhof, Nachbarstadt", "RE6 Fernstadt Hbf", "4 Universität Westfriedhof Lohmannshof Wendeschleife"}},
+		{"always", "", []string{"1 Depot", "355 Bahnhof", "RE6 Fernstadt Hbf", "4 Universität Westfriedhof Lohmannshof Wendeschleife"}},
+		{"never", "", []string{"1 Depot, Beispielstadt", "355 Bahnhof, Nachbarstadt", "RE6 Fernstadt Hbf", "4 Universität Westfriedhof Lohmannshof Wendeschleife, Beispielstadt"}},
+		// locality_order: before restores EFA's order
+		{"auto", "before", []string{"1 Depot", "355 Nachbarstadt, Bahnhof", "RE6 Fernstadt Hbf", "4 Universität Westfriedhof Lohmannshof Wendeschleife"}},
+		{"never", "before", []string{"1 Beispielstadt, Depot", "355 Nachbarstadt, Bahnhof", "RE6 Fernstadt Hbf", "4 Beispielstadt, Universität Westfriedhof Lohmannshof Wendeschleife"}},
+		// locality_order: none suppresses the town in every destination
+		{"auto", "none", []string{"1 Depot", "355 Bahnhof", "RE6 Fernstadt Hbf", "4 Universität Westfriedhof Lohmannshof Wendeschleife"}},
+		{"always", "none", []string{"1 Depot", "355 Bahnhof", "RE6 Fernstadt Hbf", "4 Universität Westfriedhof Lohmannshof Wendeschleife"}},
+		{"never", "none", []string{"1 Depot", "355 Bahnhof", "RE6 Fernstadt Hbf", "4 Universität Westfriedhof Lohmannshof Wendeschleife"}},
 	} {
-		lines, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 80, Height: 4, Args: map[string]any{"locality": mode}})
+		args := map[string]any{"locality": c.mode}
+		if c.order != "" {
+			args["locality_order"] = c.order
+		}
+		lines, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 80, Height: 4, Args: args})
 		if err != nil || len(lines) != 4 {
-			t.Fatalf("%s: %q %v", mode, lines, err)
+			t.Fatalf("%s/%s: %q %v", c.mode, c.order, lines, err)
 		}
 		for i, l := range lines {
-			if !strings.HasPrefix(l, want[i]+" ") {
-				t.Errorf("%s: %q does not start with %q", mode, l, want[i])
+			if !strings.HasPrefix(l, c.want[i]+" ") {
+				t.Errorf("%s/%s: %q does not start with %q", c.mode, c.order, l, c.want[i])
 			}
 		}
 	}
 	if _, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 20, Height: 4, Args: map[string]any{"locality": "x"}}); err == nil {
 		t.Error("bad locality accepted")
+	}
+	if _, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 20, Height: 4, Args: map[string]any{"locality_order": "x"}}); err == nil {
+		t.Error("bad locality_order accepted")
 	}
 	// The filter matches the full name, including the dropped locality.
 	p, _, _ = configured(t, plugin.Values{"directions": []any{"beispielstadt"}}, "dm_locality.json")
@@ -236,7 +264,7 @@ func TestLocalityImage(t *testing.T) {
 	if s := destinationSize([]string{"Depot", "Bahnhof"}, size, 200); s != size {
 		t.Errorf("short names shrunk to %v", s)
 	}
-	long := p.destination(p.cur[3], "auto")
+	long := p.destination(p.cur[3], "auto", "after")
 	medium := "Universität Westf"
 	w := render.Measure(medium, size*0.9, false)
 	// One size for all rows: the medium name decides, the short one follows.
