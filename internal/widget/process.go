@@ -248,7 +248,7 @@ func (p *process) read(stdout io.Reader, changed func(string, []string)) {
 
 // warnVersion logs a protocol mismatch once per process: the cells fail with
 // the error anyway, but the operator needs the reason once in the log
-// (ADR 0057).
+// (ADR 0058).
 func (p *process) warnVersion(err error) {
 	p.mu.Lock()
 	logged := p.versionLogged

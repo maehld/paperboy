@@ -34,7 +34,7 @@ func fakePlugin(mode string) {
 		os.Exit(1)
 	}
 	// The protocol version a plugin speaks; the modes below break it on
-	// purpose (ADR 0057).
+	// purpose (ADR 0058).
 	version := plugin.Version
 	switch mode {
 	case "noversion":

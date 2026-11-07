@@ -135,7 +135,7 @@ The container image stays `ghcr.io/maehld/paperboy` with `X.Y.Z`, `X.Y` and
 ### 6. Open prerequisites
 
 - A runtime check of the plugin protocol version was still missing when this
-  decision was written; ADR 0057 adds it and is the prerequisite for any
+  decision was written; ADR 0058 adds it and is the prerequisite for any
   repository split.
 - A manifest per release that lists assets, protocol version and firmware
   versions is unnecessary while names and tags carry the information; add it

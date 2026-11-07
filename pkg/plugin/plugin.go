@@ -51,7 +51,7 @@ import (
 // Version is the protocol version a request carries. Version 3 (ADR 0050)
 // added page.ppi and style.text_px and dropped style.text_size. Plugins report
 // it in every answer (Message.Version); Paperboy refuses a plugin that speaks
-// another version (ADR 0057).
+// another version (ADR 0058).
 const Version = 3
 
 // Actions of a request.
@@ -114,7 +114,7 @@ type Message struct {
 	ID string `json:"id,omitempty"`
 	// Version is the protocol version the plugin speaks. Handle fills it; a
 	// plugin written by hand must set it, and a missing version counts as one
-	// from before the field existed (ADR 0057).
+	// from before the field existed (ADR 0058).
 	Version     int          `json:"version,omitempty"`
 	Error       string       `json:"error,omitempty"` // the request failed as a whole
 	Widgets     []Result     `json:"widgets,omitempty"`
@@ -347,7 +347,7 @@ func Handle(h Handler, req *Request) (m Message) {
 // CheckVersion reports whether the answering plugin speaks the protocol of
 // this package. A plugin that names no version was built before the field
 // existed and is refused as well, so that a stale zip fails loudly instead of
-// being drawn with the wrong assumptions (ADR 0057).
+// being drawn with the wrong assumptions (ADR 0058).
 func (m Message) CheckVersion() error {
 	switch {
 	case m.Version == Version:

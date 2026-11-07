@@ -1,4 +1,4 @@
-# 0057: Check the plugin protocol version at runtime
+# 0058: Check the plugin protocol version at runtime
 
 - Status: Accepted
 - Date: 2026-11-07
@@ -41,6 +41,12 @@ a third-party plugin does not get that check (issue #57).
 
 - Updating Paperboy can make an old plugin fail visibly, with the version in
   the message and one log line, instead of drawing something wrong.
+- A protocol bump therefore invalidates every older plugin at once; the host
+  does not degrade them. There is no "older plugins keep rendering widgets"
+  mode. Plugins ship in the same release as Paperboy (ADR 0056), so the remedy
+  is to unpack the current plugin zip, and the error names the expected
+  version. This applies to protocol version 4 of the action menu as well: a
+  version 3 plugin is refused, not silently used without its actions.
 - The plugin gallery (`/ui/plugins`) and the device API surface the error as
   the cell notice, like any other plugin failure.
 - Plugin authors in other languages have to print `"version": 3` in every
