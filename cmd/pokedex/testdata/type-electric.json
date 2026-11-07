@@ -1,0 +1,17 @@
+{
+    "name":  "electric",
+    "names":  [
+                  {
+                      "name":  "Elektro",
+                      "language":  {
+                                       "name":  "de"
+                                   }
+                  },
+                  {
+                      "name":  "Electric",
+                      "language":  {
+                                       "name":  "en"
+                                   }
+                  }
+              ]
+}
