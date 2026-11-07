@@ -26,6 +26,9 @@ plugins:
   xkcd:
     command: [xkcd]
     config: { comic: latest }
+  departures:
+    command: [departures]
+    config: { stop: "City, Stop name", walk_minutes: 4 }   # Westfalenfahrplan by default, see README
   calendar:
     command: [calendar]
     timeout: 1m
