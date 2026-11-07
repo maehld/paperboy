@@ -71,12 +71,17 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 	if delayW > 0 {
 		destEnd = delayX - gap/2 - delayW
 	}
+	destW := destEnd - gap/2 - destX
+	names := make([]string, len(deps))
+	for i, d := range deps {
+		names[i] = p.destination(d, locMode)
+	}
+	destSize := destinationSize(names, size, destW)
 	for i, d := range deps {
 		y := top + i*rowH
 		base := y + int(size)
 		render.Text(img, d.Line, left, base, render.Style{Size: size, Bold: true, Shrink: true}, lineW, color.Black, render.Left)
-		destW := destEnd - gap/2 - destX
-		dest, destSize := fitDestination(p.destination(d, locMode), size, destW)
+		dest := render.Ellipsize(names[i], destSize, false, destW)
 		render.TextAt(img, dest, destX, base, destSize, false, color.Black, render.Left)
 		if d.Cancelled {
 			tw := min(render.Measure(dest, destSize, false), destW)
@@ -200,15 +205,18 @@ func (p *departures) destination(d departure, mode string) string {
 // minDestScale is how far a destination may shrink before it is ellipsized.
 const minDestScale = 0.8
 
-// fitDestination shrinks name down to minDestScale of size and ellipsizes it
-// when it still does not fit.
-func fitDestination(name string, size float64, width int) (string, float64) {
+// destinationSize is the one font size for all destinations of a widget: the
+// smallest any of them needs to fit width, but not below minDestScale of
+// size. Names still too long are ellipsized at that size.
+func destinationSize(names []string, size float64, width int) float64 {
 	floor := max(size*minDestScale, render.MinSize)
 	s := size
-	for s > floor && render.Measure(name, s, false) > width {
-		s = max(s-0.5, floor)
+	for _, n := range names {
+		for s > floor && render.Measure(n, s, false) > width {
+			s = max(s-0.5, floor)
+		}
 	}
-	return render.Ellipsize(name, s, false, width), s
+	return s
 }
 
 // stripLocality shortens "Beispielstadt, Depot" to "Depot".

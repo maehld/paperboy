@@ -233,30 +233,35 @@ func TestLocalityImage(t *testing.T) {
 		t.Fatalf("locality %q", p.curLocal)
 	}
 	const size = 20.0
-	name, s := fitDestination("Depot", size, 200)
-	if name != "Depot" || s != size {
-		t.Errorf("short name changed: %q %v", name, s)
+	if s := destinationSize([]string{"Depot", "Bahnhof"}, size, 200); s != size {
+		t.Errorf("short names shrunk to %v", s)
 	}
 	long := p.destination(p.cur[3], "auto")
-	name, s = fitDestination(long, size, 150)
-	if s < size*minDestScale || name == long || render.Measure(name, s, false) > 150 {
-		t.Errorf("long name: %q at %v (%d px)", name, s, render.Measure(name, s, false))
-	}
 	medium := "Universität Westf"
 	w := render.Measure(medium, size*0.9, false)
-	name, s = fitDestination(medium, size, w)
-	if name != medium || s >= size || s < size*minDestScale {
-		t.Errorf("medium name: %q at %v", name, s)
+	// One size for all rows: the medium name decides, the short one follows.
+	if s := destinationSize([]string{"Depot", medium}, size, w); s >= size || s < size*0.9-0.5 {
+		t.Errorf("medium name: %v", s)
 	}
-	img := render.NewCanvas(400, 240, 4)
-	if err := p.Render(req, plugin.WidgetRequest{Widget: "departures", Width: 400, Height: 240,
-		Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 28}}, img); err != nil || !hasInk(img) {
-		t.Fatal(err)
+	s := destinationSize([]string{"Depot", medium, long}, size, w)
+	if s != size*minDestScale {
+		t.Errorf("long name shrank to %v, want the floor %v", s, size*minDestScale)
 	}
-	if out := os.Getenv("DEPARTURES_PNG"); out != "" {
-		f, _ := os.Create(out)
-		png.Encode(f, img)
-		f.Close()
+	if name := render.Ellipsize(long, s, false, w); name == long || render.Measure(name, s, false) > w {
+		t.Errorf("long name not ellipsized: %q", name)
+	}
+	short, _, _ := configured(t, plugin.Values{"lines": []any{"1", "RE6"}}, "dm_locality.json")
+	for name, pp := range map[string]*departures{"DEPARTURES_PNG": p, "DEPARTURES_SHORT_PNG": short} {
+		img := render.NewCanvas(400, 240, 4)
+		if err := pp.Render(req, plugin.WidgetRequest{Widget: "departures", Width: 400, Height: 240,
+			Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 28}}, img); err != nil || !hasInk(img) {
+			t.Fatal(err)
+		}
+		if out := os.Getenv(name); out != "" {
+			f, _ := os.Create(out)
+			png.Encode(f, img)
+			f.Close()
+		}
 	}
 }
 
