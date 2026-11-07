@@ -16,6 +16,7 @@ Paperboy is a display service for ePaper and text displays (own firmware on ESPH
 - **Pull requests are always squash-merged**, so one PR becomes exactly one commit on `main` whose body keeps the PR commits as bullet points. The issue number goes at the end of the commit message: the subject ends with `[#<issue>]` and the message ends with `Closes #<issue>` before trailers such as `Co-authored-by`, e.g. `Reload configuration on change [#1]` (commit `8958866`).
 - When work on an issue starts (also by a subagent), assign the issue to the user (`gh issue edit <n> --add-assignee @me`).
 - Each shipped plugin is documented in `docs/plugins/<plugin>.md`; the README only links to it. Update that file when a plugin changes.
+- A new plugin also gets an example page in `examples/pages/` that shows its widgets, is added to the tour plan `examples/plans/tour.yaml` and is listed in `examples/README.md`.
 - Document significant decisions as ADRs under `docs/adr/` (template `0000-vorlage.md`, maintain the index `docs/adr/README.md`). ADRs 0012–0030 originate from SolarAI (0030 applies to both); new ADRs from 0032. Do not rewrite existing ADRs, supersede them with new ones.
 - `paperboy.yaml`, the local instance content (`pages/`, `plans/`, `plugins/`, the v1 leftovers `providers/` and `icons/`, `state/`), the old `paperboy.json`/`displayd.json`, `paperboy-data/`/`displayd-data/` and `.env` are excluded via `.gitignore` and must not be committed or deleted.
 

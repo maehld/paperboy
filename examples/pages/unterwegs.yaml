@@ -1,0 +1,8 @@
+# Before leaving the house: weather with clothing advice and the next departures.
+title: Unterwegs
+grid: [6, 8]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [6, 1], widget: paperboy/header, args: { clock: true } }
+  - { at: [0, 1], span: [6, 3], widget: weather/current, args: { clothing: true } }
+  - { at: [0, 4], span: [6, 4], widget: departures/departures, args: { header: true } }

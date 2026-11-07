@@ -1,18 +1,25 @@
 # Example pages and plans
 
 The pages under `pages/` are grids of widgets from the shipped plugins
-(ADR 0049): `weather`, `calendar`, `evcc` and the built-in `paperboy` plugin. Copy the files you
+(ADR 0049): `weather`, `calendar`, `evcc`, `departures`, `pokedex`, `xkcd` and the built-in `paperboy` plugin. Copy the files you
 need into the `pages/` directory of your instance and adapt the grid, the
 spans and the arguments.
 
-- `uebersicht.yaml` – weather, energy flow from evcc, agenda and a three-day
+- `uebersicht.yaml` - weather, energy flow from evcc, agenda and a three-day
   forecast.
-- `kalender.yaml` – agenda next to a month grid.
-- `wetter.yaml` – current weather with clothing advice, five days and today's
+- `kalender.yaml` - agenda next to a month grid.
+- `woche.yaml` - the next seven days as calendar columns.
+- `wetter.yaml` - current weather with clothing advice, five days and today's
   temperature curve.
-- `laden.yaml` – evcc: energy flow, the charging point and the forecast;
+- `laden.yaml` - evcc: energy flow, the charging point and the forecast;
   `laden.lcd2004.yaml` shows site and charging point on 20×4.
-- `uebersicht.lcd2004.yaml` – the overview on a 20×4 character display; its
+- `energie.yaml` - evcc energy flow with site values and the charging point.
+- `abfahrten.yaml` - real-time departures; `abfahrten.lcd2004.yaml` on 20×4.
+- `unterwegs.yaml` - current weather with clothing advice and the next
+  departures, for leaving the house.
+- `pokemon.yaml` - a full-screen Pokédex card.
+- `comic.yaml` - a full-screen xkcd comic with title and alt text.
+- `uebersicht.lcd2004.yaml` - the overview on a 20×4 character display; its
   grid is the character grid.
 
 A page without a display type suffix serves every display type that has no own
@@ -26,6 +33,11 @@ The plugin names in the pages are the keys under `plugins` in `paperboy.yaml`;
 `plans/standard.yaml` pages through the four pages during the day and shows
 the overview at night. Copy it into the `plans/` directory of your instance and
 point a device at it with `plan: standard`.
+
+`plans/tour.yaml` rotates through every example page and so through all
+shipped plugins: on weekday mornings weather, departures, the week and the
+energy flow every 5 minutes, during the day all pages every 10 minutes, at
+night only the overview.
 
 `plugins/demo.ics` is a small calendar for trying the calendar plugin without
 an account: `config: { ics_files: [/path/to/demo.ics] }`.

@@ -1,0 +1,9 @@
+# evcc: energy flow on top, site values and the charging point below.
+title: Energie
+grid: [6, 8]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [6, 1], widget: paperboy/header, args: { clock: true } }
+  - { at: [0, 1], span: [6, 4], widget: evcc/flow }
+  - { at: [0, 5], span: [3, 3], widget: evcc/site, args: { columns: 2 } }
+  - { at: [3, 5], span: [3, 3], widget: evcc/loadpoint, args: { index: 0 } }
