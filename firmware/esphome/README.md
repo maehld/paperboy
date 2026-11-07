@@ -20,12 +20,19 @@ installation, nothing installation-specific is compiled in.
 | Step | Request | Notes |
 |---|---|---|
 | First contact | `POST /api/device/register` with `mac`, `hardware`, `firmware` | the key is kept in flash; `403` shows "Paperboy does not know this display" with the MAC |
-| Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `rssi`, `log` | `401` drops the key, registers again and repeats the sync |
+| Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `rssi`, `power`, `log` | `401` drops the key, registers again and repeats the sync |
 | Unchanged content | `image.hash` equals the hash on the panel | no download, no paint |
 | Firmware offer | `firmware` in the sync answer (ADR 0043) | flash `<Paperboy URL><path>` with its MD5 and reboot; a failure is reported in the next sync's `log` |
 | Changed content | `GET <Paperboy URL><image.path>` | PNG, painted with the panel's gray mapping |
 | After painting | input that arrived meanwhile is sent in one more sync | Paperboy renders only the final page |
 | Sleep | stay awake `listen_s`, then deep sleep for `refresh_s` | wake on any button (EXT1) |
+| Mains power | the sync answers `sleep: false` (ADR 0051) | stay awake with Wi-Fi up, sync again after `refresh_s` as a `timer` wake; input syncs at once |
+
+The firmware reports its power source in every sync (ADR 0051). The Sticky
+measures USB power on GPIO9 (`PWR_IN_VOLT`, 5.1k/5.1k divider: about 2.5 V
+with USB) and reports `mains` above 1.5 V at the pin; the E1001 has no pin that
+sees USB power and always reports `battery`, so an E1001 on a charger needs
+`power: mains` in `paperboy.yaml`; text displays report `mains`.
 
 Buttons are sent by role. Sticky: **down = `next`, up = `previous`, ok =
 `home`**. E1001 from left to right: **`previous`, `next`, `home` (green)**. Sticky touches are

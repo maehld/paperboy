@@ -5,7 +5,7 @@
 
 substitutions:
   hardware: sticky
-  fw_version: "0.4.0"
+  fw_version: "0.5.0"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
 
@@ -165,6 +165,22 @@ script:
           pb_bat_percent = rd(0x2C, v) && v <= 100 ? (float) v : NAN;
           pb_bat_ma = rd(0x0C, v) ? (int16_t) v / 10.0f : NAN;
           pb_bat_mah = rd(0x10, v) ? v / 10.0f : NAN;
+      # USB 5 V reaches GPIO9 through a 5.1k/5.1k divider (PWR_IN_VOLT in the
+      # schematic): about 2.5 V with USB, 0 V without (ADR 0051).
+      - component.update: usb_volts
+      - lambda: |-
+          float usb = id(usb_volts).state;
+          pb_power = std::isfinite(usb) && usb > 3.0f ? "mains" : "battery";
+
+sensor:
+  - platform: adc
+    id: usb_volts
+    internal: true
+    pin: GPIO9
+    attenuation: 12db
+    update_interval: never
+    filters:
+      - multiply: 2.0   # divider
 
 deep_sleep:
   id: sleeper

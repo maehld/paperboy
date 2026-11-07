@@ -10,7 +10,7 @@
 
 substitutions:
   hardware: e1001
-  fw_version: "0.4.1"
+  fw_version: "0.5.0"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
 
@@ -109,6 +109,9 @@ script:
       - lambda: |-
           float v = id(battery_voltage).state;
           pb_bat_volts = std::isfinite(v) && v > 0 ? v : NAN;
+          // No GPIO sees USB power on the E1001 (ADR 0051); power: mains in
+          // paperboy.yaml overrides this for a device on a charger.
+          pb_power = "battery";
 
 deep_sleep:
   id: sleeper
