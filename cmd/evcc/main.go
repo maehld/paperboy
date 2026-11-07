@@ -130,7 +130,7 @@ func (e *evcc) Describe() plugin.Description {
 			{Widget: "site", Title: "Energy flow", Kinds: both, MinWidth: 200, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 2}},
 				Args: map[string]plugin.Arg{
-					"columns": {Type: "int", Default: 2, Description: "tiles per row: 2 or 4"},
+					"columns": {Type: "int", Default: 2, Description: "tiles per row: 2 or 4", Enum: []any{2, 4}},
 				}},
 			{Widget: "flow", Title: "Energy flow diagram", Kinds: both, MinWidth: 240, MinHeight: 200,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 4}}},

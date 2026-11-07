@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -205,6 +206,39 @@ type galleryWidget struct {
 	Args     []string
 	Previews []galleryPreview
 	Note     string // why there is no preview
+	Anchor   string // "<plugin>-<widget>"
+	Form     *galleryForm
+	Snippet  string // cell for a page with the chosen args, when there are any
+}
+
+// galleryForm configures one widget's args; it is submitted with GET and
+// reloads the gallery with the args applied to that widget only.
+type galleryForm struct {
+	Action string // URL path and anchor
+	Hidden []galleryOption
+	Fields []galleryField
+	Spans  []galleryOption // empty on text displays
+	Active bool            // the args of this form are applied
+	Reset  string
+}
+
+type galleryField struct {
+	Name        string // query key arg.<name>
+	Label       string
+	Type        string
+	Description string
+	Required    bool
+	Select      bool
+	Options     []galleryOption
+	Value       string
+	Placeholder string
+}
+
+type galleryOption struct {
+	Name     string
+	Value    string
+	Label    string
+	Selected bool
 }
 
 type galleryPlugin struct {
@@ -275,7 +309,7 @@ func (s *Server) handleGallery(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(plugins[1:])
 	for _, name := range plugins {
-		gp.Plugins = append(gp.Plugins, s.galleryPlugin(r.Context(), cfg, name, display, p, grid))
+		gp.Plugins = append(gp.Plugins, s.galleryPlugin(r.Context(), cfg, name, display, p, grid, q))
 	}
 	s.renderGallery(w, gp)
 }
@@ -298,6 +332,9 @@ func argList(args map[string]plugin.Arg) []string {
 		if a.Required {
 			s += ", required"
 		}
+		if len(a.Enum) > 0 {
+			s += ", one of " + enumText(a.Enum)
+		}
 		s += ")"
 		if a.Description != "" {
 			s += ": " + a.Description
@@ -308,7 +345,7 @@ func argList(args map[string]plugin.Arg) []string {
 	return out
 }
 
-func (s *Server) galleryPlugin(ctx context.Context, cfg *Config, name, display string, p Profile, grid [2]int) galleryPlugin {
+func (s *Server) galleryPlugin(ctx context.Context, cfg *Config, name, display string, p Profile, grid [2]int, q url.Values) galleryPlugin {
 	gp := galleryPlugin{Name: name, Builtin: name == builtin.Name}
 	d, err := s.widgets.Describe(ctx, name)
 	if err != nil {
@@ -320,16 +357,34 @@ func (s *Server) galleryPlugin(ctx context.Context, cfg *Config, name, display s
 	if p.text() {
 		kind = plugin.KindText
 	}
+	gridText := fmt.Sprintf("%dx%d", grid[0], grid[1])
 	for _, wi := range d.Widgets {
-		gw := galleryWidget{Name: wi.Widget, Title: wi.Title, Kinds: strings.Join(wi.Kinds, ", "), Args: argList(wi.Args)}
+		gw := galleryWidget{Name: wi.Widget, Title: wi.Title, Kinds: strings.Join(wi.Kinds, ", "), Args: argList(wi.Args),
+			Anchor: name + "-" + wi.Widget}
 		if len(wi.Kinds) > 0 && !contains(wi.Kinds, kind) {
 			gw.Note = "not available for " + kind + " displays"
 			gp.Widgets = append(gp.Widgets, gw)
 			continue
 		}
+		active := q.Get("widget") == name+"/"+wi.Widget
+		var chosen map[string]string
+		span := ""
+		if active {
+			chosen = galleryArgs(q)
+			span = q.Get("span")
+		}
+		gw.Form = galleryFormFor(name, wi, display, gridText, p.text(), chosen, span, active)
+		argQuery := previewArgs(chosen, wi.Args)
 		if p.text() {
-			wq, _ := s.parseWidgetQuery(cfg, name, wi.Widget, url.Values{"display": {display}})
+			v := url.Values{"display": {display}}
+			for k, a := range argQuery {
+				v[k] = a
+			}
+			wq, _ := s.parseWidgetQuery(cfg, name, wi.Widget, v)
 			gw.Previews = append(gw.Previews, galleryPreview{Text: page.TextCell(s.fetchWidget(ctx, cfg, wq), p.Charset, wq.req.Width, wq.req.Height)})
+			if active {
+				gw.Snippet = cellSnippet(name, wi.Widget, [2]int{p.Width, p.Height}, chosen, wi.Args)
+			}
 			gp.Widgets = append(gp.Widgets, gw)
 			continue
 		}
@@ -337,21 +392,214 @@ func (s *Server) galleryPlugin(ctx context.Context, cfg *Config, name, display s
 		if len(sizes) == 0 {
 			sizes = []plugin.Span{{Columns: 3, Rows: 2}}
 		}
+		if sz, err := parseSize(span); err == nil {
+			sizes = []plugin.Span{{Columns: sz[0], Rows: sz[1]}}
+		}
 		for _, sz := range sizes {
 			span := [2]int{min(sz.Columns, grid[0]), min(sz.Rows, grid[1])}
 			w, h := spanPixels(p, span, grid)
 			spanText := fmt.Sprintf("%dx%d", span[0], span[1])
+			v := url.Values{"display": {display}, "span": {spanText}, "grid": {gridText}}
+			for k, a := range argQuery {
+				v[k] = a
+			}
 			pv := galleryPreview{Span: spanText, Width: w, Height: h,
-				ImageURL: "/api/widget/" + name + "/" + wi.Widget + "?" +
-					url.Values{"display": {display}, "span": {spanText}, "grid": {fmt.Sprintf("%dx%d", grid[0], grid[1])}}.Encode()}
+				ImageURL: "/api/widget/" + name + "/" + wi.Widget + "?" + v.Encode()}
 			if w < wi.MinWidth || h < wi.MinHeight {
 				pv.Warning = fmt.Sprintf("below the minimum %dx%d px", wi.MinWidth, wi.MinHeight)
 			}
 			gw.Previews = append(gw.Previews, pv)
+			if active && gw.Snippet == "" {
+				gw.Snippet = cellSnippet(name, wi.Widget, span, chosen, wi.Args)
+			}
 		}
 		gp.Widgets = append(gp.Widgets, gw)
 	}
 	return gp
+}
+
+// galleryArgs reads the non-empty arg.<name> values the operator chose for
+// one widget; empty fields keep the default.
+func galleryArgs(q url.Values) map[string]string {
+	out := map[string]string{}
+	for k, vs := range q {
+		name, ok := strings.CutPrefix(k, "arg.")
+		if !ok || len(vs) == 0 || strings.TrimSpace(vs[0]) == "" {
+			continue
+		}
+		out[name] = strings.TrimSpace(vs[0])
+	}
+	return out
+}
+
+// argValue turns a form value into the value of an arg by its declared type:
+// strings and durations stay strings, lists are split at commas, everything
+// else is read as JSON when it parses (numbers, booleans).
+func argValue(raw string, a plugin.Arg) any {
+	switch a.Type {
+	case "string", "duration":
+		return raw
+	case "list":
+		out := []any{}
+		for _, part := range strings.Split(raw, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				out = append(out, jsonOrString(part))
+			}
+		}
+		return out
+	}
+	return jsonOrString(raw)
+}
+
+func jsonOrString(s string) any {
+	var v any
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return s
+	}
+	return v
+}
+
+// previewArgs encodes the chosen args as arg.<name> query values for
+// /api/widget, as JSON so strings like "2" keep their type.
+func previewArgs(chosen map[string]string, known map[string]plugin.Arg) url.Values {
+	v := url.Values{}
+	for name, raw := range chosen {
+		b, _ := json.Marshal(argValue(raw, known[name]))
+		v.Set("arg."+name, string(b))
+	}
+	return v
+}
+
+// isDefault reports whether a chosen value equals the declared default.
+func isDefault(raw string, a plugin.Arg) bool {
+	if a.Default == nil {
+		return false
+	}
+	return fmt.Sprint(argValue(raw, a)) == fmt.Sprint(a.Default)
+}
+
+// cellSnippet is a page cell in YAML flow style with the args that differ
+// from their defaults.
+func cellSnippet(pluginName, widget string, span [2]int, chosen map[string]string, known map[string]plugin.Arg) string {
+	var args []string
+	for name, raw := range chosen {
+		if isDefault(raw, known[name]) {
+			continue
+		}
+		args = append(args, name+": "+yamlValue(argValue(raw, known[name])))
+	}
+	sort.Strings(args)
+	s := fmt.Sprintf("{ at: [0, 0], span: [%d, %d], widget: %s/%s", span[0], span[1], pluginName, widget)
+	if len(args) > 0 {
+		s += ", args: { " + strings.Join(args, ", ") + " }"
+	}
+	return s + " }"
+}
+
+func yamlValue(v any) string {
+	switch x := v.(type) {
+	case string:
+		if plainYAML(x) {
+			return x
+		}
+		b, _ := json.Marshal(x)
+		return string(b)
+	case []any:
+		parts := make([]string, len(x))
+		for i, e := range x {
+			parts[i] = yamlValue(e)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	}
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+// plainYAML reports whether s can be written unquoted and still reads back as
+// the same string.
+func plainYAML(s string) bool {
+	if s == "" || jsonOrString(s) != any(s) {
+		return false
+	}
+	switch strings.ToLower(s) {
+	case "yes", "no", "on", "off", "null", "~", "true", "false", "y", "n":
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("_-./", r)) {
+			return false
+		}
+	}
+	return true
+}
+
+func enumText(values []any) string {
+	parts := make([]string, len(values))
+	for i, v := range values {
+		parts[i] = fmt.Sprint(v)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// galleryFormFor builds the form of one widget from its arg schema.
+func galleryFormFor(pluginName string, wi plugin.WidgetInfo, display, grid string, text bool, chosen map[string]string, span string, active bool) *galleryForm {
+	anchor := pluginName + "-" + wi.Widget
+	f := &galleryForm{Action: "/ui/plugins#" + anchor, Active: active,
+		Hidden: []galleryOption{{Name: "display", Value: display}, {Name: "grid", Value: grid}, {Name: "widget", Value: pluginName + "/" + wi.Widget}},
+		Reset:  "/ui/plugins?" + url.Values{"display": {display}, "grid": {grid}}.Encode() + "#" + anchor}
+	if !text {
+		f.Spans = append(f.Spans, galleryOption{Value: "", Label: "declared sizes", Selected: span == ""})
+		for _, sz := range wi.Sizes {
+			v := fmt.Sprintf("%dx%d", sz.Columns, sz.Rows)
+			f.Spans = append(f.Spans, galleryOption{Value: v, Label: v, Selected: v == span})
+		}
+		if !slices.ContainsFunc(f.Spans, func(o galleryOption) bool { return o.Selected }) {
+			f.Spans = append(f.Spans, galleryOption{Value: span, Label: span, Selected: true})
+		}
+	}
+	names := make([]string, 0, len(wi.Args))
+	for n := range wi.Args {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		a := wi.Args[n]
+		fd := galleryField{Name: "arg." + n, Label: n, Type: a.Type, Description: a.Description, Required: a.Required, Value: chosen[n]}
+		def := ""
+		if a.Default != nil {
+			def = fmt.Sprint(a.Default)
+		}
+		var values []string
+		switch {
+		case len(a.Enum) > 0 && a.Type != "list":
+			for _, e := range a.Enum {
+				values = append(values, fmt.Sprint(e))
+			}
+		case a.Type == "bool":
+			values = []string{"true", "false"}
+		}
+		if values != nil {
+			fd.Select = true
+			label := "default"
+			if def != "" {
+				label += " (" + def + ")"
+			}
+			fd.Options = append(fd.Options, galleryOption{Label: label, Selected: fd.Value == ""})
+			for _, v := range values {
+				fd.Options = append(fd.Options, galleryOption{Value: v, Label: v, Selected: v == fd.Value})
+			}
+		} else {
+			fd.Placeholder = def
+			if a.Type == "list" {
+				fd.Placeholder = "comma-separated"
+				if len(a.Enum) > 0 {
+					fd.Placeholder += ": " + enumText(a.Enum)
+				}
+			}
+		}
+		f.Fields = append(f.Fields, fd)
+	}
+	return f
 }
 
 func contains(list []string, s string) bool {
