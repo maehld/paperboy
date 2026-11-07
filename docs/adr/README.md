@@ -46,3 +46,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0047](0047-config-reload.md) | Reload the configuration on change | Accepted, implemented |
 | [0048](0048-calendar-provider-and-agenda.md) | Calendar provider over CalDAV and the agenda block | Accepted; provider and agenda block replaced by the calendar plugin (ADR-0049); not yet run against iCloud |
 | [0049](0049-plugin-widgets.md) | Paperboy v2 – pages composed from plugin widgets | Accepted, implemented |
+| [0052](0052-release-and-versioning.md) | Release and versioning of Paperboy, plugins and firmware | Proposed |
