@@ -49,7 +49,9 @@ import (
 )
 
 // Version is the protocol version a request carries. Version 3 (ADR 0050)
-// added page.ppi and style.text_px and dropped style.text_size.
+// added page.ppi and style.text_px and dropped style.text_size. Plugins report
+// it in every answer (Message.Version); Paperboy refuses a plugin that speaks
+// another version (ADR 0058).
 const Version = 3
 
 // Actions of a request.
@@ -109,7 +111,11 @@ type WidgetRequest struct {
 // Message is one line a plugin prints: the answer to request ID, or an event
 // when ID is empty.
 type Message struct {
-	ID          string       `json:"id,omitempty"`
+	ID string `json:"id,omitempty"`
+	// Version is the protocol version the plugin speaks. Handle fills it; a
+	// plugin written by hand must set it, and a missing version counts as one
+	// from before the field existed (ADR 0058).
+	Version     int          `json:"version,omitempty"`
 	Error       string       `json:"error,omitempty"` // the request failed as a whole
 	Widgets     []Result     `json:"widgets,omitempty"`
 	MaxAge      int          `json:"max_age,omitempty"` // seconds the results stay valid; 0 = Paperboy's default
@@ -282,7 +288,7 @@ func ServeIO(ctx context.Context, h Handler, in io.Reader, out io.Writer) error 
 		}
 		var req Request
 		if err := json.Unmarshal(line, &req); err != nil {
-			if err := send(Message{Error: "invalid request: " + err.Error()}); err != nil {
+			if err := send(Message{Version: Version, Error: "invalid request: " + err.Error()}); err != nil {
 				return err
 			}
 			continue
@@ -292,7 +298,7 @@ func ServeIO(ctx context.Context, h Handler, in io.Reader, out io.Writer) error 
 			started = true
 			if s, ok := h.(Starter); ok {
 				s.Start(ctx, func(widgets ...string) {
-					send(Message{Event: EventChanged, Changed: widgets})
+					send(Message{Version: Version, Event: EventChanged, Changed: widgets})
 				})
 			}
 		}
@@ -304,12 +310,14 @@ func ServeIO(ctx context.Context, h Handler, in io.Reader, out io.Writer) error 
 }
 
 // Handle answers one request. Serve uses it; Paperboy calls it directly for
-// its built-in plugin.
+// its built-in plugin. Every answer names the protocol version of this package,
+// which is the version the plugin was built against.
 func Handle(h Handler, req *Request) (m Message) {
 	m.ID = req.ID
+	m.Version = Version
 	defer func() {
 		if r := recover(); r != nil {
-			m = Message{ID: req.ID, Error: fmt.Sprintf("panic: %v", r)}
+			m = Message{ID: req.ID, Version: Version, Error: fmt.Sprintf("panic: %v", r)}
 		}
 	}()
 	switch req.Action {
@@ -334,6 +342,21 @@ func Handle(h Handler, req *Request) (m Message) {
 		m.Error = fmt.Sprintf("unknown action %q", req.Action)
 	}
 	return m
+}
+
+// CheckVersion reports whether the answering plugin speaks the protocol of
+// this package. A plugin that names no version was built before the field
+// existed and is refused as well, so that a stale zip fails loudly instead of
+// being drawn with the wrong assumptions (ADR 0058).
+func (m Message) CheckVersion() error {
+	switch {
+	case m.Version == Version:
+		return nil
+	case m.Version == 0:
+		return fmt.Errorf("plugin reports no protocol version; rebuild it against protocol version %d", Version)
+	default:
+		return fmt.Errorf("plugin speaks protocol version %d, Paperboy speaks %d", m.Version, Version)
+	}
 }
 
 func handleWidgets(h Handler, req *Request) ([]Result, error) {

@@ -1,0 +1,94 @@
+name: Firmware
+
+# Compiles the Paperboy firmware for every hardware type with the pinned
+# ESPHome version and packs one zip per hardware type in the instance layout
+# (ADR 0043). Runs on firmware changes and as the builder for release.yml,
+# which attaches the files to a release (ADR 0056).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - firmware/esphome/**
+      - .github/workflows/firmware.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - firmware/esphome/**
+      - .github/workflows/firmware.yml
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  # Keep in step with firmware/esphome/build.ps1.
+  ESPHOME_VERSION: "2026.10.1"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        hardware: [sticky, e1001, lcd2004]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The ESP32 platform and its toolchains dominate the build time and only
+      # change with the ESPHome pin above.
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-esphome-${{ env.ESPHOME_VERSION }}
+
+      - name: Cache ESPHome packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-esphome-${{ env.ESPHOME_VERSION }}
+
+      - name: Install ESPHome
+        run: |
+          python3 -m venv "$RUNNER_TEMP/esphome-venv"
+          "$RUNNER_TEMP/esphome-venv/bin/pip" install "esphome==${ESPHOME_VERSION}"
+          echo "$RUNNER_TEMP/esphome-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Compile
+        working-directory: firmware/esphome
+        run: esphome compile "${{ matrix.hardware }}.yaml"
+
+      - name: Package
+        id: package
+        working-directory: firmware/esphome
+        env:
+          HARDWARE: ${{ matrix.hardware }}
+        run: |
+          version=$(grep -m1 -E '^[[:space:]]*fw_version:' "$HARDWARE.yaml" \
+            | sed -E 's/.*fw_version:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/')
+          if [ -z "$version" ]; then
+            echo "no fw_version in $HARDWARE.yaml"
+            exit 1
+          fi
+          image=".esphome/build/$HARDWARE/build/firmware.ota.bin"
+          if [ ! -f "$image" ]; then
+            echo "no OTA image at $image"
+            exit 1
+          fi
+          # The zip unpacks in the instance directory and creates
+          # firmware/<hardware>/<hardware>-<version>.bin (ADR 0043).
+          out="$RUNNER_TEMP/dist"
+          mkdir -p "$out/stage/$HARDWARE"
+          cp "$image" "$out/stage/$HARDWARE/$HARDWARE-$version.bin"
+          (cd "$out/stage" && zip -qr "$out/paperboy-firmware-$HARDWARE-$version.zip" "$HARDWARE")
+          cp "$image" "$out/paperboy-firmware-$HARDWARE-$version.bin"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: paperboy-firmware-${{ matrix.hardware }}
+          path: ${{ runner.temp }}/dist/paperboy-firmware-${{ matrix.hardware }}-${{ steps.package.outputs.version }}.*

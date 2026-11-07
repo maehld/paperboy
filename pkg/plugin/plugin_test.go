@@ -47,7 +47,7 @@ func TestServeIO(t *testing.T) {
 		return m
 	}
 	enc.Encode(Request{ID: "1", Action: ActionConfigure, Config: map[string]any{"nme": "x"}})
-	if m := next(); m.ID != "1" || m.Error == "" {
+	if m := next(); m.ID != "1" || m.Error == "" || m.Version != Version {
 		t.Fatalf("bad config accepted: %+v", m)
 	}
 	enc.Encode(Request{ID: "2", Action: ActionConfigure, Config: map[string]any{"name": "x"}})
@@ -69,6 +69,20 @@ func TestServeIO(t *testing.T) {
 		t.Fatalf("event: %+v", m)
 	}
 	inW.Close()
+}
+
+func TestCheckVersion(t *testing.T) {
+	for _, ok := range []Message{{Version: Version}, {Version: Version, Error: "failed"}} {
+		if err := ok.CheckVersion(); err != nil {
+			t.Errorf("%+v: %v", ok, err)
+		}
+	}
+	if err := (Message{}).CheckVersion(); err == nil {
+		t.Error("a plugin without a version accepted")
+	}
+	if err := (Message{Version: Version + 1}).CheckVersion(); err == nil {
+		t.Error("a newer plugin accepted")
+	}
 }
 
 type enumHandler struct{ testHandler }
