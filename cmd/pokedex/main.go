@@ -39,9 +39,9 @@ func main() {
 
 var configKeys = map[string]plugin.Arg{
 	"pokemon":     {Type: "string", Description: "name or national dex number of the Pokémon (mode fixed)"},
-	"mode":        {Type: "string", Default: "fixed with pokemon, else random", Description: "fixed or random"},
+	"mode":        {Type: "string", Default: "fixed with pokemon, else random", Description: "fixed or random", Enum: []any{"fixed", "random"}},
 	"rotate":      {Type: "duration", Default: "24h", Description: "how often a random Pokémon changes, at least 1h"},
-	"generations": {Type: "list", Description: "only draw random Pokémon of these generations (1 to 9)"},
+	"generations": {Type: "list", Description: "only draw random Pokémon of these generations (1 to 9)", Enum: []any{1, 2, 3, 4, 5, 6, 7, 8, 9}},
 	"base":        {Type: "string", Default: defaultBase, Description: "PokéAPI base URL"},
 }
 

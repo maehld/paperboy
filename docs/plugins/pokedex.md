@@ -9,7 +9,7 @@ Pokémon from [PokéAPI](https://pokeapi.co), no API key needed.
 | `pokemon` | Name or national dex number |
 | `mode` | `fixed` (the default when `pokemon` is set) or `random` |
 | `rotate` | How often a random Pokémon changes, default `24h`, at least `1h`; aligned to local midnight and stable across restarts |
-| `generations` | E.g. `[1, 2, 3]`; limits the random pick |
+| `generations` | List of generations 1 to 9, e.g. `[1, 2, 3]`; limits the random pick |
 | `base` | Another PokéAPI address |
 
 ## Widget `card`

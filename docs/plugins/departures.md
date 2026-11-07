@@ -16,7 +16,7 @@ Real-time public transport departures from an EFA installation (ADR 0053). The d
 
 ## Widget `departures`
 
-Each line shows the line number, the destination, the minutes until departure (a clock time from one hour on; `time: auto|minutes|clock`) and the delay as `+N`. Cancelled trips are struck through with „Ausfall“. `header: true` adds the stop name. The text variant fits 20 × 4 displays (`examples/pages/abfahrten.lcd2004.yaml`).
+Each line shows the line number, the destination, the minutes until departure (a clock time from one hour on; `time`: `auto` (default), `minutes` or `clock`) and the delay as `+N`. Cancelled trips are struck through with „Ausfall“. `header: true` adds the stop name. The text variant fits 20 × 4 displays (`examples/pages/abfahrten.lcd2004.yaml`).
 
 The plugin reports a change when a departure, a delay or a cancellation changes.
 

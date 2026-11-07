@@ -63,3 +63,57 @@ func TestDashboardShowsDevices(t *testing.T) {
 		t.Fatalf("unknown path: %d", rec.Code)
 	}
 }
+
+// TestDashboardAfterRestart checks that a stored hash without its rendered
+// image never becomes a dead link: a page shows through its preview, a notice
+// as a placeholder.
+func TestDashboardAfterRestart(t *testing.T) {
+	s, _ := planServer(t, testPlan)
+	dev := planDevice(t, s)
+	served := pagePath(displayPage(t, s, dev))
+
+	s.mu.Lock()
+	s.rendered = map[string]*renderedPage{}
+	s.hints = map[string][]byte{}
+	s.mu.Unlock()
+	for _, d := range s.deviceInfos() {
+		if d.LastPageURL != "" {
+			t.Fatalf("dead image URL after restart: %q", d.LastPageURL)
+		}
+	}
+	body := htmlRequest(t, s, "/ui").Body.String()
+	if strings.Contains(body, served) || !strings.Contains(body, `src="/api/preview/`) {
+		t.Fatalf("page must fall back to the preview: %s", body)
+	}
+
+	s.mu.Lock()
+	s.state["test"].LastPageKind = "notice"
+	s.state["test"].LastPage = ""
+	s.mu.Unlock()
+	body = htmlRequest(t, s, "/ui").Body.String()
+	if strings.Contains(body, "/hints/") || !strings.Contains(body, "waiting for the next sync") {
+		t.Fatalf("notice must become a placeholder: %s", body)
+	}
+}
+
+func TestDashboardPower(t *testing.T) {
+	cfg := &Config{Profiles: map[string]Profile{"auto": {}, "fixed": {Power: powerMains}}}
+	volts := deviceState{BatteryVoltage: "4.12"}
+	for _, c := range []struct {
+		dev      Device
+		reported string
+		st       deviceState
+		want     string
+		origin   string
+	}{
+		{Device{Profile: "auto", Power: powerMains}, "", deviceState{}, "Mains", "set on device"},
+		{Device{Profile: "fixed"}, "", volts, "Mains · 4.12 V", "set on display type"},
+		{Device{Profile: "auto"}, powerMains, deviceState{}, "Mains", "reported by firmware"},
+		{Device{Profile: "auto"}, "", volts, "Battery · 4.12 V", "fallback"},
+	} {
+		got := powerSource(cfg.power(&c.dev, c.reported), c.st)
+		if origin := powerOrigin(cfg, &c.dev, c.reported); got != c.want || origin != c.origin {
+			t.Errorf("%+v %q: got %q (%s), want %q (%s)", c.dev, c.reported, got, origin, c.want, c.origin)
+		}
+	}
+}
