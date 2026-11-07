@@ -135,11 +135,11 @@ type flowNode struct {
 // the hub (below the home first, then above it). Like Home Assistant's energy
 // distribution the topology is fixed: every node has exactly one link to the
 // hub, drawn whether or not power flows. An idle link is a thin dashed line;
-// an active one is solid with an arrowhead in the direction of the node's net
-// power (into the hub for PV, grid import and battery discharge, out of it
-// for the home, the loadpoints, export and charging) and a width that grows
-// with that power. Only shapes, widths and labels carry the information, so
-// it reads in two gray levels.
+// an active one is a solid line of the same width everywhere, with an
+// arrowhead in the direction of the node's net power (into the hub for PV,
+// grid import and battery discharge, out of it for the home, the loadpoints,
+// export and charging). Solid vs dashed, the direction and the labels carry
+// the information, so it reads in two gray levels.
 func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
 	s := e.cur
 	b := img.Rect.Inset(w.Style.Padding)
@@ -208,8 +208,7 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
 	minArrow := max(e.req.MMPx(5), e.req.PtPx(7)*1.8, 12)
 	vgap := max(e.req.MMPx(1.5), 4)
 	gap := max(e.req.MMPx(0.8), 3)
-	minStroke := math.Max(e.req.PtPx(0.6), 1)
-	maxStroke := math.Max(e.req.PtPx(2.2), minStroke+1)
+	stroke := math.Max(e.req.PtPx(1.2), 1)
 	head := math.Max(e.req.PtPx(4.5), 7)
 	h, wd := float64(b.Dy()), float64(b.Dx())
 	dc := 2*gap + head*2.2
@@ -249,7 +248,7 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
 	}
 	// The gap right of the hub column carries one vertical lane per
 	// loadpoint above or below the home.
-	laneW := maxStroke + gap
+	laneW := stroke + gap
 	minGapR := minArrow
 	if len(lps) > 0 {
 		minGapR = math.Max(minArrow, float64(len(lpBelow))*laneW+2*gap)
@@ -327,10 +326,6 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
 		place(lpAbove, math.Min(oy, cy-d-boxH), cy-boxH/2-vgap, -1)
 	}
 
-	maxP := 0.0
-	for _, p := range net {
-		maxP = math.Max(maxP, math.Abs(p))
-	}
 	for i, path := range links {
 		if path == nil {
 			continue
@@ -347,8 +342,7 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
 			}
 			path = r
 		}
-		st := minStroke + (maxStroke-minStroke)*math.Abs(p)/maxP
-		arrowPath(img, path, st, math.Max(head, st*2.6))
+		arrowPath(img, path, stroke, head)
 	}
 
 	// Boxes, drawn over the lines.
