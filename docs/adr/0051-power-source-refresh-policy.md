@@ -17,7 +17,12 @@ Short intervals also cost server work: every sync chooses a page, composes it an
 
 ## Decision
 
-1. **`power: battery|mains`** on the display type, overridable per device. Strictly validated; other values are an error. Default: `mains` for `kind: text`, `battery` for `kind: image`, so existing configurations behave as before. The power source is not derived from the reported battery: a battery-backed device on a charger still reports a battery, and a guess would silently change sleep behaviour. A device configured `mains` that reports falling battery volts is only visible through the existing battery warning (ADR 0020).
+1. **`power: auto|battery|mains`** on the display type, overridable per device (device wins). Strictly validated; other values are an error. Default: `auto`.
+   - **The hardware reports its power source.** The sync body (and register) gains an optional `power: battery|mains`. The firmware sets it from the hardware: a compile-time substitution `power` per hardware file (`lcd2004`: `mains`; `sticky`, `e1001`: `battery`), replaced by runtime detection where the hardware allows it (e.g. charger/VBUS state, BQ27220 status on the Sticky). The last reported value is kept in `state/devices.json` (`reported_power`) and shown in `/api/devices` and the dashboard.
+   - **`auto`** uses the last reported value; when the device has never reported one (old firmware, before the first sync), it behaves as `battery`.
+   - `battery`/`mains` set explicitly override what the hardware reports, e.g. for hardware that cannot detect it.
+   - Consequence for existing text displays: their current firmware reports nothing, so under `auto` they fall back to the battery floor (one minute) until they run firmware that reports `mains`, or until `power: mains` is configured. This is intended: unknown means the safe behaviour.
+   - Deriving the power source from the presence of battery values is not used: a battery-backed device on a charger still reports a battery.
 2. **Floors per power source.** The interval floor (`minRefresh`) applies to `battery` only:
    - `battery`: `refresh_s` ≥ max(1 min, `min_refresh`), as today.
    - `mains`: `refresh_s` ≥ `min_refresh`, whose default becomes `1s` for text and `10s` for image displays (an ePaper redraw takes seconds; shorter wakes would only queue). An explicit `min_refresh` still wins and must be at least `1s`.
@@ -32,8 +37,10 @@ Short intervals also cost server work: every sync chooses a page, composes it an
 
 ## Consequences
 
-- Existing configurations keep their behaviour: image displays default to `battery`, text displays to `mains`.
+- Existing image displays keep their behaviour (`auto` without a report = `battery`). Existing text displays drop to a one-minute floor until they get firmware that reports `mains` or are configured `power: mains`; the README migration note must say so.
+- Since the sync body is strictly validated, Paperboy must accept `power` before firmware that sends it is flashed.
+- A device whose power source changes (charger plugged in or out) switches behaviour with its next sync when the hardware detects it.
 - A USB-powered ePaper device can refresh every 10 s on a fitting plan without deep sleep; a mistakenly configured `mains` on a battery device drains it quickly, which the battery warning will show but not prevent.
 - New config key and response field: README, AGENTS.md and the firmware README need updating; firmware needs a new version and has to be flashed per device to benefit.
-- Tests: refresh floor per power source and kind, plan refresh and rule boundaries for both, `sleep` in the sync response, validation of `power`, page reuse with an unchanged hash.
-- Open questions: is 10 s the right image default floor? Should a mains image device be allowed to skip `listen_s` entirely (it is always listening anyway)? Should the hardware substitution `power` default per hardware file (E1001 `battery`, LCD `mains`)?
+- Tests: refresh floor per effective power source (`auto` with and without report, explicit override), plan refresh and rule boundaries for both, `sleep` in the sync response, validation of `power`, page reuse with an unchanged hash.
+- Open questions: is 10 s the right image default floor? Should a mains image device be allowed to skip `listen_s` entirely (it is always listening anyway)? Which hardware can detect external power at runtime (Sticky via BQ27220, E1001 unknown)?
