@@ -20,6 +20,13 @@
 //
 // Plugins written in Go implement Handler, call Serve and draw with
 // pkg/render, so widgets share the fonts and gray levels of Paperboy.
+//
+// Physical sizes (ADR 0050): every render request carries the display's pixel
+// density in page.ppi, and each widget's style holds the page's padding, rule
+// and base text height already converted to pixels. Widgets size their texts
+// relative to Request.TextPx and convert other physical sizes with
+// Request.PtPx and Request.MMPx, so a widget looks the same on a small dense
+// panel and a large coarse one. Text displays get neither.
 package plugin
 
 import (
@@ -40,8 +47,9 @@ import (
 	"github.com/maehld/paperboy/pkg/render"
 )
 
-// Version is the protocol version a request carries.
-const Version = 2
+// Version is the protocol version a request carries. Version 3 (ADR 0050)
+// added page.ppi and style.text_px and dropped style.text_size.
+const Version = 3
 
 // Actions of a request.
 const (
@@ -68,21 +76,23 @@ type Request struct {
 	Widgets  []WidgetRequest `json:"widgets,omitempty"`
 }
 
-// Style carries the page's look so widgets match each other. Sizes are in
-// pixels; text displays get the zero value.
+// Style carries the page's look so widgets match each other. Paperboy
+// configures it in points and sends it converted to pixels with the
+// display's PPI (ADR 0050); text displays get the zero value.
 type Style struct {
-	Padding  int     `json:"padding"`   // inner margin of a widget
-	Rule     int     `json:"rule"`      // width of separator lines
-	TextSize float64 `json:"text_size"` // base text height as a fraction of the page height
+	Padding int     `json:"padding"` // inner margin of a widget, px
+	Rule    int     `json:"rule"`    // width of separator lines, px, at least 1
+	TextPx  float64 `json:"text_px"` // base text height, px
 }
 
 // PageInfo describes the page a widget is drawn for.
 type PageInfo struct {
-	Title  string `json:"title,omitempty"`
-	Number int    `json:"number"` // 1-based position in the plan rule
-	Count  int    `json:"count"`
-	Width  int    `json:"width"`  // pixels or columns of the whole display
-	Height int    `json:"height"` // pixels or rows of the whole display
+	Title  string  `json:"title,omitempty"`
+	Number int     `json:"number"` // 1-based position in the plan rule
+	Count  int     `json:"count"`
+	Width  int     `json:"width"`         // pixels or columns of the whole display
+	Height int     `json:"height"`        // pixels or rows of the whole display
+	PPI    float64 `json:"ppi,omitempty"` // pixels per inch; set for image displays, omitted for text displays
 }
 
 // WidgetRequest asks for one widget in an exact size: pixels for render,
@@ -350,15 +360,23 @@ func (r *Request) Location() *time.Location {
 	return time.Local
 }
 
-// TextPx is the base text height in pixels for a widget: the page style's
-// text_size times the display height. Widgets size their texts relative to it
-// so that neighbouring widgets match; 16 when no style is set.
+// TextPx is the base text height in pixels for a widget, from the page style
+// (ADR 0050). Widgets size their texts relative to it so that neighbouring
+// widgets match; 16 when no style is set (text displays, tests).
 func (r *Request) TextPx(w WidgetRequest) float64 {
-	if w.Style.TextSize <= 0 || r.Page.Height <= 0 {
+	if w.Style.TextPx <= 0 {
 		return 16
 	}
-	return w.Style.TextSize * float64(r.Page.Height)
+	return w.Style.TextPx
 }
+
+// PtPx converts points (1/72 inch) to pixels with the display's PPI. Without
+// a PPI (text displays) it returns 0.
+func (r *Request) PtPx(pt float64) float64 { return pt * r.Page.PPI / 72 }
+
+// MMPx converts millimetres to pixels with the display's PPI. Without a PPI
+// (text displays) it returns 0.
+func (r *Request) MMPx(mm float64) float64 { return mm * r.Page.PPI / 25.4 }
 
 // Lang returns "de" or "en".
 func (r *Request) Lang() string {

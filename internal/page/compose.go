@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -19,11 +20,33 @@ import (
 type Display struct {
 	Width    int
 	Height   int
-	Gray     bool   // four gray levels instead of black and white
-	Text     bool   // character display
-	Charset  string // text displays only
-	Language string // "de" or "en"; empty means "de"
+	Gray     bool    // four gray levels instead of black and white
+	Text     bool    // character display
+	Charset  string  // text displays only
+	PPI      float64 // pixels per inch of an image display (ADR 0050)
+	Language string  // "de" or "en"; empty means "de"
 	Timezone *time.Location
+}
+
+// Default page style in points (ADR 0050).
+const (
+	DefaultTextPt    = 16.0
+	DefaultPaddingPt = 4.5
+	DefaultRulePt    = 0.6
+	// maxTextShare caps the base text on physically tiny displays.
+	maxTextShare = 0.12
+)
+
+// px converts points to pixels for the display.
+func (d Display) px(pt float64) float64 { return pt * d.PPI / 72 }
+
+// pxAtLeast1 converts a positive width in points to whole pixels, at least
+// one; zero stays zero.
+func (d Display) pxAtLeast1(pt float64) int {
+	if pt <= 0 {
+		return 0
+	}
+	return max(int(math.Round(d.px(pt))), 1)
 }
 
 func (d Display) language() string {
@@ -105,25 +128,34 @@ func (t *Template) cellRects(w, h int) []image.Rectangle {
 }
 
 func (t *Template) pageInfo(d Display, c Context) plugin.PageInfo {
-	return plugin.PageInfo{Title: t.Title, Number: max(c.Page, 1), Count: max(c.Pages, 1), Width: d.Width, Height: d.Height}
+	p := plugin.PageInfo{Title: t.Title, Number: max(c.Page, 1), Count: max(c.Pages, 1), Width: d.Width, Height: d.Height}
+	if !d.Text {
+		p.PPI = d.PPI
+	}
+	return p
 }
 
-// pluginStyle resolves the style a widget gets.
+// pluginStyle resolves the style a widget gets: points converted to pixels
+// with the display's PPI (ADR 0050).
 func (t *Template) pluginStyle(c Cell, d Display) plugin.Style {
 	s := t.Style.merged(c.Style)
-	pad := 8
+	pad := DefaultPaddingPt
 	if s.Padding != nil {
 		pad = *s.Padding
 	}
 	rule := s.Rule
 	if rule == 0 {
-		rule = 1
+		rule = DefaultRulePt
 	}
 	size := s.TextSize
 	if size == 0 {
-		size = 0.06
+		size = DefaultTextPt
 	}
-	return plugin.Style{Padding: pad, Rule: rule, TextSize: size}
+	return plugin.Style{
+		Padding: int(math.Round(d.px(pad))),
+		Rule:    d.pxAtLeast1(rule),
+		TextPx:  min(d.px(size), maxTextShare*float64(d.Height)),
+	}
 }
 
 // RenderImage composes the page for an image display. A widget that fails
@@ -166,7 +198,7 @@ func (t *Template) RenderImage(d Display, c Context) (*image.Paletted, error) {
 			stale = append(stale, cell.Widget)
 		}
 	}
-	t.dividers(img, rects)
+	t.dividers(img, rects, d)
 	var banners []string
 	if len(stale) > 0 && t.Notices == "show" {
 		banners = append(banners, text(language, "Veraltet: ", "Outdated: ")+strings.Join(unique(stale), ", "))
@@ -195,8 +227,8 @@ func fetch(src WidgetSource, b Batch) []Result {
 }
 
 // dividers draws the configured lines along the inner edges of the cells.
-func (t *Template) dividers(img *image.Paletted, rects []image.Rectangle) {
-	w := t.Style.Divider
+func (t *Template) dividers(img *image.Paletted, rects []image.Rectangle, d Display) {
+	w := d.pxAtLeast1(t.Style.Divider)
 	if w <= 0 {
 		return
 	}
@@ -316,9 +348,10 @@ func (t *Template) RenderText(d Display, c Context) ([]string, error) {
 	return out, nil
 }
 
-// DefaultStyle is the style a widget gets on a page without a style section.
-func DefaultStyle() plugin.Style {
-	return (&Template{}).pluginStyle(Cell{}, Display{})
+// DefaultStyle is the style a widget gets on a page of display d without a
+// style section.
+func DefaultStyle(d Display) plugin.Style {
+	return (&Template{}).pluginStyle(Cell{}, d)
 }
 
 // NoticeImage is the hatched notice Paperboy shows for a widget without a

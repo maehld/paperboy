@@ -22,7 +22,7 @@ display_types:
     kind: image
     size: [800, 480]
     gray_levels: 4
-    width_mm: 163
+    ppi: 125
 devices:
   flur:
     display_type: e1001
@@ -78,6 +78,7 @@ func TestConfigReloadChangesDeviceList(t *testing.T) {
   e1001:
     kind: image
     size: [800, 480]
+    ppi: 236
     gray_levels: 4
 `
 	writeConfig(t, dir, noDevices)
@@ -266,6 +267,7 @@ display_types:
   e1001:
     kind: image
     size: [800, 480]
+    ppi: 236
 devices:
   flur:
     display_type: e1001

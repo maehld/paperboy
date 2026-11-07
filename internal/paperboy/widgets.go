@@ -118,7 +118,7 @@ func (s *Server) parseWidgetQuery(cfg *Config, pluginName, widgetName string, q 
 	}
 	wq.req = page.WidgetRequest{Plugin: pluginName, Widget: widgetName, Args: widgetArgs(q), Width: w, Height: h}
 	if !p.text() {
-		wq.req.Style = page.DefaultStyle()
+		wq.req.Style = page.DefaultStyle(s.display(cfg, p))
 	}
 	return wq, nil
 }
@@ -132,6 +132,9 @@ func (s *Server) fetchWidget(ctx context.Context, cfg *Config, wq widgetQuery) p
 	}
 	b := page.Batch{Text: d.Text, Levels: levels, Charset: d.Charset, Widgets: []page.WidgetRequest{wq.req},
 		Page: plugin.PageInfo{Title: wq.req.Plugin + "/" + wq.req.Widget, Number: 1, Count: 1, Width: d.Width, Height: d.Height}}
+	if !d.Text {
+		b.Page.PPI = d.PPI
+	}
 	if out := s.widgets.Fetch(ctx, b); len(out) == 1 {
 		return out[0]
 	}
