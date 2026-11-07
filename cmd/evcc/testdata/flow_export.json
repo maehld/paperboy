@@ -1,0 +1,1 @@
+{"pvPower":6200,"homePower":400,"grid":{"power":-2100},"battery":{"power":0,"soc":100,"capacity":9.6},"loadpoints":[{"title":"Garage","mode":"pv","vehicleTitle":"Octavia","vehicleSoc":64,"chargePower":3700,"charging":true,"connected":true}]}

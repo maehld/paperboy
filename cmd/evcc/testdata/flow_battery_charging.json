@@ -1,0 +1,1 @@
+{"pvPower":5000,"homePower":700,"grid":{"power":0},"battery":{"power":-3000,"soc":55,"capacity":9.6},"loadpoints":[{"title":"Garage","mode":"pv","chargePower":0,"charging":false,"connected":false}]}
