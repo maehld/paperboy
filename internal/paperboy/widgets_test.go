@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"image/png"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -98,5 +99,40 @@ func TestWidgetGalleryArgs(t *testing.T) {
 	rec := preview(t, s, "/api/widget/paperboy/clock?display=small&arg.format=%22year%22")
 	if !strings.Contains(rec.Header().Get("X-Widget-Error"), "format: year is not one of time, date, datetime") {
 		t.Fatalf("enum error: %q", rec.Header())
+	}
+}
+
+func TestWidgetGalleryBoolCheckbox(t *testing.T) {
+	s, _ := testServer(t)
+	s.config().Timezone = time.UTC
+	// defaults: clock true → checked, date false → unchecked
+	body := preview(t, s, "/ui/plugins?display=small").Body.String()
+	for _, want := range []string{
+		`<input type="hidden" name="arg.clock" value="false"><input type="checkbox" name="arg.clock" value="true" checked id="paperboy-header-arg.clock">`,
+		`<input type="hidden" name="arg.date" value="false"><input type="checkbox" name="arg.date" value="true" id="paperboy-header-arg.date">`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("checkbox missing %q", want)
+		}
+	}
+	// a submitted form: clock unchecked (only false), date checked (false then true)
+	body = preview(t, s, "/ui/plugins?display=small&widget=paperboy/header&arg.clock=false&arg.date=false&arg.date=true&arg.page_indicator=false&arg.page_indicator=true").Body.String()
+	for _, want := range []string{
+		`<input type="checkbox" name="arg.clock" value="true" id=`,
+		`<input type="checkbox" name="arg.date" value="true" checked id=`,
+		"args: { clock: false, date: true } }",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("submitted form misses %q: %s", want, body)
+		}
+	}
+	// the API takes the last value of a repeated key
+	if got := widgetArgs(url.Values{"arg.x": {"false", "true"}})["x"]; got != true {
+		t.Fatalf("last value: %v", got)
+	}
+	// bools equal to their default, or false without a default, stay out of the snippet
+	if got := cellSnippet("p", "w", [2]int{1, 1}, map[string]string{"a": "true", "b": "false"},
+		map[string]plugin.Arg{"a": {Type: "bool", Default: true}, "b": {Type: "bool"}}); got != "{ at: [0, 0], span: [1, 1], widget: p/w }" {
+		t.Fatalf("snippet: %s", got)
 	}
 }
