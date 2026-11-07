@@ -99,6 +99,8 @@ func (p *calendarPlugin) Describe() plugin.Description {
 					"lines":    {Type: "int", Description: "number of text lines on image displays; default: as many as the page's text size allows (text displays use the cell height)"},
 					"location": {Type: "bool", Default: false, Description: "append the location to the title"},
 					"headings": {Type: "bool", Default: true, Description: "day headings"},
+					"days":     {Type: "int", Description: "days to show starting today, 1 to the configured days (clamped); default: the configured days"},
+					"empty":    {Type: "bool", Description: "show days without events with \"No events\"; default true when days is set"},
 				},
 			},
 			{
@@ -179,7 +181,7 @@ func (p *calendarPlugin) Render(req *plugin.Request, w plugin.WidgetRequest, img
 func (p *calendarPlugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
 	switch w.Widget {
 	case "agenda":
-		lines, hidden := p.agendaLines(w.Height, w.Arg().Bool("headings", w.Height > 2), w.Arg().Bool("location", false))
+		lines, hidden := p.agendaLines(w.Height, p.agendaArgs(w.Arg(), w.Height > 2))
 		if len(lines) == 0 {
 			return []string{p.text("Keine Termine", "No events")}, nil
 		}
@@ -280,7 +282,7 @@ func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img
 	size := 0.6 * float64(lineH)
 	baseline := func(i int) int { return area.Min.Y + i*lineH + lineH/2 + int(size*0.36) }
 
-	all, hidden := p.agendaLines(lines, a.Bool("headings", true), a.Bool("location", false))
+	all, hidden := p.agendaLines(lines, p.agendaArgs(a, true))
 	if len(all) == 0 {
 		render.Text(img, p.text("Keine Termine", "No events"), area.Min.X+area.Dx()/2, baseline(0),
 			render.Style{Size: size, Shrink: true}, area.Dx(), color.Black, render.Center)
@@ -317,15 +319,36 @@ func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img
 	}
 }
 
-func (p *calendarPlugin) agendaLines(maxLines int, headings, location bool) ([]agendaLine, int) {
+// agendaOpts are the arguments of one agenda widget.
+type agendaOpts struct {
+	headings, location bool
+	days               int  // days from today, 1 to the configured days
+	empty              bool // show days without events
+}
+
+// agendaArgs reads the agenda arguments; days is clamped to 1..configured days.
+func (p *calendarPlugin) agendaArgs(a plugin.Values, headings bool) agendaOpts {
+	limit := max(p.opts.days, 1)
+	_, set := a["days"]
+	return agendaOpts{
+		headings: a.Bool("headings", headings),
+		location: a.Bool("location", false),
+		days:     min(max(a.Int("days", limit), 1), limit),
+		empty:    a.Bool("empty", set),
+	}
+}
+
+func (p *calendarPlugin) agendaLines(maxLines int, o agendaOpts) ([]agendaLine, int) {
+	headings, location := o.headings, o.location
 	now := p.now.In(p.loc)
 	today := midnight(now)
 	type dated struct {
 		parsedEvent
-		day time.Time
+		day   time.Time
+		empty bool
 	}
 	var upcoming []dated
-	horizon := today.AddDate(0, 0, p.opts.days)
+	horizon := today.AddDate(0, 0, o.days)
 	for _, e := range p.parsed() {
 		if !e.start.Before(horizon) {
 			continue
@@ -337,12 +360,26 @@ func (p *calendarPlugin) agendaLines(maxLines int, headings, location bool) ([]a
 		if day.Before(today) {
 			day = today
 		}
-		upcoming = append(upcoming, dated{e, day})
+		upcoming = append(upcoming, dated{parsedEvent: e, day: day})
+	}
+	if o.empty {
+		busy := map[time.Time]bool{}
+		for _, d := range upcoming {
+			busy[d.day] = true
+		}
+		for i := range o.days {
+			if day := today.AddDate(0, 0, i); !busy[day] {
+				upcoming = append(upcoming, dated{day: day, empty: true})
+			}
+		}
 	}
 	sort.SliceStable(upcoming, func(i, j int) bool {
 		a, b := upcoming[i], upcoming[j]
 		if !a.day.Equal(b.day) {
 			return a.day.Before(b.day)
+		}
+		if a.empty != b.empty {
+			return a.empty
 		}
 		if a.allDay != b.allDay {
 			return a.allDay
@@ -356,6 +393,14 @@ func (p *calendarPlugin) agendaLines(maxLines int, headings, location bool) ([]a
 		if headings && !d.day.Equal(lastDay) {
 			all = append(all, agendaLine{heading: true, text: p.dayLabel(d.day, today)})
 			lastDay = d.day
+		}
+		if d.empty {
+			line := agendaLine{text: p.text("Keine Termine", "No events")}
+			if !headings && !d.day.Equal(today) {
+				line.when = weekday(d.day, p.lang)
+			}
+			all = append(all, line)
+			continue
 		}
 		line := agendaLine{when: p.when(d.parsedEvent, d.day, today, headings), text: strings.TrimSpace(d.title)}
 		if location && strings.TrimSpace(d.location) != "" {
