@@ -6,7 +6,6 @@ import (
 	"image/color"
 	"image/png"
 	"math"
-	"sort"
 	"strings"
 	"sync"
 
@@ -125,25 +124,22 @@ func splitFlows(pv, grid, battery, home float64, lps []float64) []flowShare {
 
 // flowNode is one box of the flow diagram.
 type flowNode struct {
-	icon, label, value string
-	idle, small        bool
-	rect               image.Rectangle
-}
-
-func (n *flowNode) centre() fpt {
-	return fpt{float64(n.rect.Min.X+n.rect.Max.X) / 2, float64(n.rect.Min.Y+n.rect.Max.Y) / 2}
+	icon, label, short, value string
+	idle, small               bool
+	rect                      image.Rectangle
 }
 
 // flow draws the energy flow in the arrangement of SolarAI's dashboard: the
 // house connection (hub) in the middle, PV above it, the battery below, the
-// grid left and the home right, with the loadpoints as small nodes hanging off
-// the home (below it, or right of it in wide cells). Each flow of splitFlows
-// is an arrow from its source to its sink like in Home Assistant's energy
-// distribution: between opposite nodes straight through the hub, between
-// neighbours as an elbow around the hub's corner. Flows into loadpoints are
-// drawn into the home and on to the loadpoint. Arrow widths follow the power;
-// only shapes, widths and labels carry the information, so it reads in two
-// gray levels.
+// grid left and the home right. Loadpoints sit in the free corners right of
+// the hub (below the home first, then above it). Like Home Assistant's energy
+// distribution the topology is fixed: every node has exactly one link to the
+// hub, drawn whether or not power flows. An idle link is a thin dashed line;
+// an active one is solid with an arrowhead in the direction of the node's net
+// power (into the hub for PV, grid import and battery discharge, out of it
+// for the home, the loadpoints, export and charging) and a width that grows
+// with that power. Only shapes, widths and labels carry the information, so
+// it reads in two gray levels.
 func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
 	s := e.cur
 	b := img.Rect.Inset(w.Style.Padding)
@@ -154,56 +150,61 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
 	rule := max(w.Style.Rule, 1)
 
 	grid := s.gridPower()
-	gridLabel := e.t("Netz", "Grid")
+	gridLabel, gridShort := e.t("Netz", "Grid"), e.t("Netz", "Grid")
 	switch {
 	case grid >= flowIdle:
-		gridLabel = e.t("Netzbezug", "Grid import")
+		gridLabel, gridShort = e.t("Netzbezug", "Grid import"), e.t("Bezug", "Import")
 	case grid <= -flowIdle:
-		gridLabel = e.t("Einspeisung", "Grid export")
+		gridLabel, gridShort = e.t("Einspeisung", "Grid export"), e.t("Einsp.", "Export")
 	}
 	lps := s.activeLoadpoints()
 	if len(lps) > 3 {
 		lps = lps[:3]
 	}
 	nodes := make([]*flowNode, flowLP+len(lps))
-	nodes[flowPV] = &flowNode{icon: "sun", label: "PV", value: e.power(s.PVPower), idle: s.PVPower < flowIdle}
-	nodes[flowGrid] = &flowNode{icon: "grid", label: gridLabel, value: e.power(grid), idle: math.Abs(grid) < flowIdle}
-	nodes[flowHome] = &flowNode{icon: "home", label: e.t("Haus", "Home"), value: e.power(s.HomePower), idle: s.HomePower < flowIdle}
-	batPower := 0.0
+	// net is each node's power towards the hub: positive flows into it.
+	net := make([]float64, len(nodes))
+	nodes[flowPV] = &flowNode{icon: "sun", label: "PV", short: "PV", value: e.power(s.PVPower)}
+	net[flowPV] = s.PVPower
+	nodes[flowGrid] = &flowNode{icon: "grid", label: gridLabel, short: gridShort, value: e.power(grid)}
+	net[flowGrid] = grid
+	nodes[flowHome] = &flowNode{icon: "home", label: e.t("Haus", "Home"), short: e.t("Haus", "Home"), value: e.power(s.HomePower)}
+	net[flowHome] = -s.HomePower
 	if s.hasBattery() {
-		batPower = s.Battery.Power
 		nodes[flowBattery] = &flowNode{icon: "battery", label: e.t("Akku ", "Battery ") + e.num(s.Battery.SoC, 0) + " %",
-			value: e.power(batPower), idle: math.Abs(batPower) < flowIdle}
+			short: e.t("Akku", "Battery"), value: e.power(s.Battery.Power)}
+		net[flowBattery] = s.Battery.Power
 	}
-	lpPower := make([]float64, len(lps))
 	for i, lp := range lps {
-		n := &flowNode{icon: "car", label: lpName(lp), value: e.power(lp.ChargePower), idle: lp.ChargePower < flowIdle, small: true}
+		n := &flowNode{icon: "car", label: lpName(lp), short: lpName(lp), value: e.power(lp.ChargePower), small: true}
 		if lp.VehicleSoC > 0 {
 			n.label += " " + e.num(lp.VehicleSoC, 0) + " %"
 		}
 		nodes[flowLP+i] = n
-		lpPower[i] = lp.ChargePower
+		net[flowLP+i] = -lp.ChargePower
 	}
-	// Flows into loadpoints enter the home first.
-	into := map[[2]int]float64{}
-	for _, sh := range splitFlows(s.PVPower, grid, batPower, s.HomePower, lpPower) {
-		to := sh.to
-		if to >= flowLP {
-			to = flowHome
+	for i, n := range nodes {
+		if n != nil {
+			n.idle = math.Abs(net[i]) < flowIdle
 		}
-		into[[2]int{sh.from, to}] += sh.power
 	}
 	bat := nodes[flowBattery]
 	hub := &flowNode{icon: "hub"}
-	nl := float64(len(lps))
+	// Loadpoints below the home first, then above it.
+	var lpBelow, lpAbove []*flowNode
+	for i, n := range nodes[flowLP:] {
+		if i == 1 {
+			lpAbove = append(lpAbove, n)
+		} else {
+			lpBelow = append(lpBelow, n)
+		}
+	}
 
-	// Sizes. The hub sits between PV and battery; d is the distance from the
-	// hub's centre to the PV and battery boxes, long enough for an elbow and
-	// an arrowhead.
+	// Sizes. d is the distance from the hub's centre to the PV and battery
+	// boxes, long enough for a visible arrow.
 	labelSz := max(base*0.8, e.req.PtPx(5.8), render.MinSize)
 	valueSz := max(base*1.2, e.req.PtPx(6.5), render.MinSize)
 	boxH0 := flowTextHeight(labelSz, valueSz) + valueSz*0.9
-	const smallF = 0.72
 	minArrow := max(e.req.MMPx(5), e.req.PtPx(7)*1.8, 12)
 	vgap := max(e.req.MMPx(1.5), 4)
 	gap := max(e.req.MMPx(0.8), 3)
@@ -211,33 +212,34 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
 	maxStroke := math.Max(e.req.PtPx(4.0), minStroke+2)
 	head := math.Max(e.req.PtPx(7), 8)
 	h, wd := float64(b.Dy()), float64(b.Dx())
-	// q = 0.33 boxH + qc is the elbow offset from the hub's centre, d = q + dc.
-	qc := gap + maxStroke/2
-	dc := head * 1.6
-	height := func(bh float64) float64 { // diagram height without loadpoints below
-		d := 0.33*bh + qc + dc
-		if bat != nil {
+	dc := 2*gap + head*2.2
+	full := bat != nil || len(lps) > 0 // a bottom row is needed
+	height := func(bh float64) float64 {
+		d := 0.33*bh + dc
+		if full {
 			return 2*bh + 2*d
 		}
 		return bh + d + bh/2
 	}
 	k := 1.0
-	if t := height(boxH0); t > h {
+	if height(boxH0) > h {
 		k = (h - height(0)) / (height(boxH0) - height(0))
 	}
 	k = math.Max(k, 0.2)
 	boxH := boxH0 * k
 	labelSz, valueSz = max(labelSz*k, render.MinSize), max(valueSz*k, render.MinSize)
 	hubS := boxH * 0.66
-	q := 0.33*boxH + qc
-	d := q + dc
-	// Spare height lengthens the vertical arrows a little.
+	d := hubS/2 + dc
 	spare := h - height(boxH)
-	if bat != nil {
+	if full {
 		spare /= 2
 	}
 	grow := math.Max(0, math.Min(spare, 1.5*minArrow))
 	d += grow
+	diagH := height(boxH) + grow
+	if full {
+		diagH += grow
+	}
 	padX := valueSz * 0.5
 	needW := boxH * 2.2
 	for _, n := range nodes {
@@ -245,140 +247,108 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
 			needW = math.Max(needW, boxH*0.62+padX+float64(max(render.Measure(n.label, labelSz, false), render.Measure(n.value, valueSz, true)))+2*padX)
 		}
 	}
-	// Loadpoints go below the home when they fit there, else into a column
-	// right of it when the width allows, else below with less height.
-	diagH := height(boxH) + grow
-	if bat != nil {
-		diagH += grow
+	// The gap right of the hub column carries one vertical lane per
+	// loadpoint above or below the home.
+	laneW := maxStroke + gap
+	minGapR := minArrow
+	if len(lps) > 0 {
+		minGapR = math.Max(minArrow, float64(len(lpBelow))*laneW+2*gap)
 	}
-	below := diagH/2 - boxH/2 // from the home's bottom to the diagram's bottom
-	lpH := smallF * boxH
-	lpRight := false
-	if nl > 0 && below < nl*(lpH+vgap) {
-		if (wd-2*minArrow-head*3)/3.85 >= needW*0.8 {
-			lpRight = true
-		} else {
-			extra := math.Max(0, nl*(lpH+vgap)-below)
-			if diagH+extra > h {
-				lpH = math.Max((below+h-diagH)/nl-vgap, valueSz*1.3)
-			}
-		}
-	}
-	// A loadpoint column right of the home is narrower and needs room for
-	// the bus and the arrowheads.
-	lpW, lpGap := 0.0, 0.0
-	cols := 3.0
-	if lpRight {
-		lpW, lpGap = 0.85, head*2.4+maxStroke+2*gap
-	}
-	boxW := math.Min(needW*1.1, (wd-(cols-1)*minArrow-lpGap)/(cols+lpW))
-	hgap := math.Min((wd-(cols+lpW)*boxW-lpGap)/(cols-1), 3*minArrow)
-	ox := float64(b.Min.X) + (wd-(cols+lpW)*boxW-(cols-1)*hgap-lpGap)/2
-	col := func(c float64) float64 { return ox + c*(boxW+hgap) }
-	totalH := diagH
-	if nl > 0 && !lpRight {
-		totalH = math.Max(diagH, diagH/2+boxH/2+nl*(lpH+vgap))
-	}
-	oy := float64(b.Min.Y) + (h-totalH)/2
+	boxW := math.Min(needW*1.1, (wd-minArrow-minGapR)/3)
+	hgap := math.Min((wd-3*boxW-minGapR+minArrow)/2, 3*minArrow)
+	hgapR := math.Max(hgap, minGapR)
+	ox := float64(b.Min.X) + (wd-3*boxW-hgap-hgapR)/2
+	oy := float64(b.Min.Y) + (h-diagH)/2
 	rect := func(x, y, w, h float64) image.Rectangle {
 		return image.Rect(int(math.Round(x)), int(math.Round(y)), int(math.Round(x+w)), int(math.Round(y+h)))
 	}
-	cy := oy + boxH + d // hub centre
-	if bat == nil {
+	cy := oy + boxH + d
+	if !full {
 		cy = oy + diagH - boxH/2
 	}
-	cx := col(1) + boxW/2
-	hc := fpt{cx, cy}
-	nodes[flowPV].rect = rect(col(1), cy-d-boxH, boxW, boxH)
+	col1 := ox + boxW + hgap
+	col2 := col1 + boxW + hgapR
+	cx := col1 + boxW/2
+	nodes[flowPV].rect = rect(col1, cy-d-boxH, boxW, boxH)
 	if bat != nil {
-		bat.rect = rect(col(1), cy+d, boxW, boxH)
+		bat.rect = rect(col1, cy+d, boxW, boxH)
 	}
-	nodes[flowGrid].rect = rect(col(0), cy-boxH/2, boxW, boxH)
-	nodes[flowHome].rect = rect(col(2), cy-boxH/2, boxW, boxH)
+	nodes[flowGrid].rect = rect(ox, cy-boxH/2, boxW, boxH)
+	nodes[flowHome].rect = rect(col2, cy-boxH/2, boxW, boxH)
 	hub.rect = rect(cx-hubS/2, cy-hubS/2, hubS, hubS)
-	home := nodes[flowHome].rect
-	var lpPaths [][]fpt
-	if lpRight {
-		y := cy - (nl*lpH+(nl-1)*vgap)/2
-		busX := float64(home.Max.X) + gap + maxStroke
-		for _, n := range nodes[flowLP:] {
-			n.rect = rect(float64(home.Max.X)+lpGap, y, lpW*boxW, lpH)
-			ly := y + lpH/2
-			lpPaths = append(lpPaths, []fpt{{float64(home.Max.X) + gap, cy}, {busX, cy}, {busX, ly}, {float64(n.rect.Min.X) - gap, ly}})
-			y += lpH + vgap
+
+	// Links: path from the node to the hub.
+	links := make([][]fpt, len(nodes))
+	hubR := hub.rect
+	links[flowPV] = []fpt{{cx, float64(nodes[flowPV].rect.Max.Y) + gap}, {cx, float64(hubR.Min.Y) - gap}}
+	links[flowGrid] = []fpt{{float64(nodes[flowGrid].rect.Max.X) + gap, cy}, {float64(hubR.Min.X) - gap, cy}}
+	links[flowHome] = []fpt{{float64(nodes[flowHome].rect.Min.X) - gap, cy}, {float64(hubR.Max.X) + gap, cy}}
+	if bat != nil {
+		links[flowBattery] = []fpt{{cx, float64(bat.rect.Min.Y) - gap}, {cx, float64(hubR.Max.Y) + gap}}
+	}
+	// Loadpoint slots: the corner regions right of the hub column. Each link
+	// leaves the hub's right side above or below the home link, turns in the
+	// gap and enters the loadpoint from the left.
+	indent := head*1.6 + gap
+	place := func(ns []*flowNode, top, bottom float64, sign float64) {
+		if len(ns) == 0 {
+			return
 		}
-	} else {
-		y := float64(home.Max.Y) + vgap
-		indent := math.Max(boxW*0.18, head*2.2+maxStroke)
-		busX := float64(home.Min.X) + maxStroke
-		for _, n := range nodes[flowLP:] {
-			n.rect = rect(float64(home.Min.X)+indent, y, boxW-indent, lpH)
-			ly := y + lpH/2
-			lpPaths = append(lpPaths, []fpt{{busX, float64(home.Max.Y) + gap}, {busX, ly}, {float64(n.rect.Min.X) - gap, ly}})
-			y += lpH + vgap
+		n := float64(len(ns))
+		lh := math.Min(0.72*boxH, (bottom-top-(n-1)*vgap)/n)
+		y := top + (bottom-top-(n*lh+(n-1)*vgap))/2
+		for j, nd := range ns {
+			nd.rect = rect(col2+indent, y, boxW-indent, lh)
+			ly := y + lh/2
+			off := hubS * (0.3 + 0.18*float64(j)) * sign
+			laneX := col1 + boxW + hgapR - gap - (float64(j)+0.5)*laneW
+			if sign < 0 {
+				laneX = col1 + boxW + hgapR - gap - 0.5*laneW
+			}
+			idx := 0
+			for i, m := range nodes {
+				if m == nd {
+					idx = i
+				}
+			}
+			links[idx] = []fpt{{float64(nd.rect.Min.X) - gap, ly}, {laneX, ly}, {laneX, cy + off}, {float64(hubR.Max.X) + gap, cy + off}}
+			y += lh + vgap
 		}
+	}
+	if len(lpBelow) > 0 {
+		top := cy + boxH/2 + vgap
+		bottom := oy + diagH
+		if len(lpBelow) == 1 {
+			top = math.Max(top, cy+d+boxH/2-0.36*boxH)
+		}
+		place(lpBelow, top, bottom, 1)
+	}
+	if len(lpAbove) > 0 {
+		place(lpAbove, math.Min(oy, cy-d-boxH), cy-boxH/2-vgap, -1)
 	}
 
-	// Arrows. Each node lies in one direction from the hub.
-	dir := map[int]fpt{flowPV: {0, -1}, flowGrid: {-1, 0}, flowBattery: {0, 1}, flowHome: {1, 0}}
-	edge := func(n int, along fpt) fpt { // point on n's side facing the hub, at the given cross offset
-		r := nodes[n].rect
-		switch n {
-		case flowPV:
-			return fpt{along.x, float64(r.Max.Y) + gap}
-		case flowBattery:
-			return fpt{along.x, float64(r.Min.Y) - gap}
-		case flowGrid:
-			return fpt{float64(r.Max.X) + gap, along.y}
-		}
-		return fpt{float64(r.Min.X) - gap, along.y}
-	}
 	maxP := 0.0
-	for _, p := range into {
-		maxP = math.Max(maxP, p)
+	for _, p := range net {
+		maxP = math.Max(maxP, math.Abs(p))
 	}
-	for _, p := range lpPower {
-		maxP = math.Max(maxP, p)
-	}
-	strokeOf := func(p float64) float64 { return minStroke + (maxStroke-minStroke)*p/maxP }
-	used := map[int]bool{}
-	keys := make([][2]int, 0, len(into))
-	for k := range into {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool { return into[keys[i]] < into[keys[j]] })
-	for _, key := range keys {
-		p := into[key]
-		if p < flowIdle || nodes[key[0]] == nil || nodes[key[1]] == nil {
+	for i, path := range links {
+		if path == nil {
 			continue
 		}
-		used[key[0]], used[key[1]] = true, true
-		ds, dt := dir[key[0]], dir[key[1]]
-		var path []fpt
-		if ds.x+dt.x == 0 && ds.y+dt.y == 0 {
-			path = []fpt{edge(key[0], hc), edge(key[1], hc)}
-		} else {
-			c := fpt{hc.x + q*(ds.x+dt.x), hc.y + q*(ds.y+dt.y)}
-			path = []fpt{edge(key[0], c), c, edge(key[1], c)}
-		}
-		st := strokeOf(p)
-		arrowPath(img, path, st, math.Max(head, st*2.6))
-	}
-	for i, path := range lpPaths {
-		if lpPower[i] < flowIdle {
+		p := net[i]
+		if math.Abs(p) < flowIdle {
 			dashedPath(img, path, float64(rule), math.Max(e.req.MMPx(1), 3))
 			continue
 		}
-		st := strokeOf(lpPower[i])
-		arrowPath(img, path, st, math.Max(head, st*2.6))
-		used[flowHome] = true
-	}
-	// Nodes without any flow get a dashed link to the hub.
-	for _, i := range []int{flowPV, flowGrid, flowBattery, flowHome} {
-		if nodes[i] == nil || used[i] {
-			continue
+		if p < 0 { // out of the hub: reverse the path
+			r := make([]fpt, len(path))
+			for j := range path {
+				r[j] = path[len(path)-1-j]
+			}
+			path = r
 		}
-		dashedLine(img, edge(i, hc), boxExit(hub.rect, nodes[i].centre(), 0), float64(rule), math.Max(e.req.MMPx(1), 3))
+		st := minStroke + (maxStroke-minStroke)*math.Abs(p)/maxP
+		arrowPath(img, path, st, math.Max(head, st*2.6))
 	}
 
 	// Boxes, drawn over the lines.
@@ -388,6 +358,7 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
 	render.FillColor(img, hub.rect, color.White)
 	drawFrame(img, hub.rect, frame)
 	icon("hub").Draw(img, hub.rect.Inset(max(hub.rect.Dy()/7, 1)), hub.rect.Dy()*5/7, render.Center)
+	minLabel := max(e.req.PtPx(5.5), render.MinSize)
 	for i, n := range nodes {
 		if n == nil {
 			continue
@@ -409,25 +380,33 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
 		}
 		lsz, vsz := labelSz, valueSz
 		if f := float64(r.Dy()) / boxH; f < 0.999 {
-			lsz, vsz = max(lsz*f, render.MinSize), max(vsz*f, render.MinSize)
+			lsz, vsz = max(lsz*f, minLabel), max(vsz*f, minLabel*1.2)
 		}
 		th := flowTextHeight(lsz, vsz)
-		twoLines := float64(r.Dy()) >= th+vsz*0.3 && lsz >= max(e.req.PtPx(5), render.MinSize+1)
-		// Pictogram on the left when the text still fits beside it.
+		inner0 := float64(r.Dx()) - padX
+		// Label: the full one, then without the state of charge, then none.
+		label := ""
+		for _, l := range []string{n.label, n.short} {
+			if l != "" && float64(render.Measure(l, lsz, false)) <= inner0 {
+				label = l
+				break
+			}
+		}
+		if float64(r.Dy()) < th+vsz*0.2 {
+			label = ""
+		}
+		// Pictogram on the left only when the text still fits beside it.
 		tx0, tx1 := float64(r.Min.X)+padX/2, float64(r.Max.X)-padX/2
 		iw := float64(r.Dy()) * 0.62
-		textW := float64(render.Measure(n.value, vsz*0.9, true))
-		if twoLines {
-			textW = math.Max(textW, float64(render.Measure(n.label, lsz*0.9, false)))
-		}
-		if iw >= 10 && tx1-tx0-iw-padX >= textW {
+		textW := math.Max(float64(render.Measure(n.value, vsz, true)), float64(render.Measure(label, lsz, false)))
+		if iw >= 12 && tx1-tx0-iw-padX >= textW {
 			ir := image.Rect(r.Min.X+int(padX), r.Min.Y, r.Min.X+int(padX+iw), r.Max.Y)
 			icon(n.icon).Draw(img, ir, int(iw), render.Center)
 			tx0 = float64(ir.Max.X) + padX/2
 		}
 		tcx := int((tx0 + tx1) / 2)
 		inner := int(tx1 - tx0)
-		if !twoLines {
+		if label == "" {
 			vb := int(math.Round(float64(r.Min.Y+r.Max.Y)/2 + vsz*0.36))
 			render.Text(img, n.value, tcx, vb, render.Style{Size: vsz, Bold: true, Shrink: true}, inner, ink, render.Center)
 			continue
@@ -435,7 +414,7 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
 		top := float64(r.Min.Y+r.Max.Y)/2 - th/2
 		lb := int(math.Round(top + lsz*0.72))
 		vb := int(math.Round(top + th))
-		render.Text(img, n.label, tcx, lb, render.Style{Size: lsz, Shrink: true}, inner, ink, render.Center)
+		render.Text(img, label, tcx, lb, render.Style{Size: lsz, Shrink: true}, inner, ink, render.Center)
 		render.Text(img, n.value, tcx, vb, render.Style{Size: vsz, Bold: true, Shrink: true}, inner, ink, render.Center)
 	}
 }
@@ -462,25 +441,6 @@ func unit(p fpt) fpt {
 		return fpt{}
 	}
 	return fpt{p.x / l, p.y / l}
-}
-
-// boxExit returns the point where the ray from the centre of r towards p
-// leaves r, moved gap further out.
-func boxExit(r image.Rectangle, p fpt, gap float64) fpt {
-	c := fpt{float64(r.Min.X+r.Max.X) / 2, float64(r.Min.Y+r.Max.Y) / 2}
-	d := sub(p, c)
-	hw, hh := float64(r.Dx())/2+gap, float64(r.Dy())/2+gap
-	t := math.Inf(1)
-	if d.x != 0 {
-		t = math.Min(t, hw/math.Abs(d.x))
-	}
-	if d.y != 0 {
-		t = math.Min(t, hh/math.Abs(d.y))
-	}
-	if math.IsInf(t, 1) {
-		return c
-	}
-	return fpt{c.x + d.x*t, c.y + d.y*t}
 }
 
 func drawFrame(img *image.Paletted, r image.Rectangle, t int) {
