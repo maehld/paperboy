@@ -20,6 +20,9 @@ plugins:
   weather:
     command: [weather]
     config: { lat: 52.52, lon: 13.40 }
+  pokedex:
+    command: [pokedex]
+    config: { mode: random, rotate: 24h }   # or: { pokemon: pikachu }
   calendar:
     command: [calendar]
     timeout: 1m
