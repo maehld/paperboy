@@ -51,6 +51,8 @@ func spanPixels(p Profile, span, grid [2]int) (int, int) {
 
 // widgetArgs reads the query keys arg.<name>; a value that is valid JSON
 // (numbers, booleans, lists) keeps its type, everything else is a string.
+// A repeated key takes its last value, as a checkbox after its hidden
+// "false" input does.
 func widgetArgs(q url.Values) map[string]any {
 	args := map[string]any{}
 	for k, vs := range q {
@@ -58,9 +60,10 @@ func widgetArgs(q url.Values) map[string]any {
 		if !ok || len(vs) == 0 {
 			continue
 		}
+		raw := vs[len(vs)-1]
 		var v any
-		if err := json.Unmarshal([]byte(vs[0]), &v); err != nil {
-			v = vs[0]
+		if err := json.Unmarshal([]byte(raw), &v); err != nil {
+			v = raw
 		}
 		args[name] = v
 	}
@@ -229,6 +232,8 @@ type galleryField struct {
 	Description string
 	Required    bool
 	Select      bool
+	Checkbox    bool // hidden "false" followed by a "true" checkbox
+	Checked     bool
 	Options     []galleryOption
 	Value       string
 	Placeholder string
@@ -419,15 +424,20 @@ func (s *Server) galleryPlugin(ctx context.Context, cfg *Config, name, display s
 }
 
 // galleryArgs reads the non-empty arg.<name> values the operator chose for
-// one widget; empty fields keep the default.
+// one widget; empty fields keep the default and a repeated key takes its
+// last value (checkbox after its hidden "false").
 func galleryArgs(q url.Values) map[string]string {
 	out := map[string]string{}
 	for k, vs := range q {
 		name, ok := strings.CutPrefix(k, "arg.")
-		if !ok || len(vs) == 0 || strings.TrimSpace(vs[0]) == "" {
+		if !ok || len(vs) == 0 {
 			continue
 		}
-		out[name] = strings.TrimSpace(vs[0])
+		raw := strings.TrimSpace(vs[len(vs)-1])
+		if raw == "" {
+			continue
+		}
+		out[name] = raw
 	}
 	return out
 }
@@ -470,8 +480,12 @@ func previewArgs(chosen map[string]string, known map[string]plugin.Arg) url.Valu
 	return v
 }
 
-// isDefault reports whether a chosen value equals the declared default.
+// isDefault reports whether a chosen value equals the declared default; a
+// bool without a default defaults to false.
 func isDefault(raw string, a plugin.Arg) bool {
+	if a.Default == nil && a.Type == "bool" {
+		return argValue(raw, a) == false
+	}
 	if a.Default == nil {
 		return false
 	}
@@ -570,15 +584,19 @@ func galleryFormFor(pluginName string, wi plugin.WidgetInfo, display, grid strin
 			def = fmt.Sprint(a.Default)
 		}
 		var values []string
-		switch {
-		case len(a.Enum) > 0 && a.Type != "list":
+		if len(a.Enum) > 0 && a.Type != "list" {
 			for _, e := range a.Enum {
 				values = append(values, fmt.Sprint(e))
 			}
-		case a.Type == "bool":
-			values = []string{"true", "false"}
 		}
-		if values != nil {
+		if a.Type == "bool" && values == nil {
+			fd.Checkbox = true
+			v := fd.Value
+			if v == "" {
+				v = def
+			}
+			fd.Checked = jsonOrString(v) == true
+		} else if values != nil {
 			fd.Select = true
 			label := "default"
 			if def != "" {
