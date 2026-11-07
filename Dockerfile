@@ -12,7 +12,12 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/paperboy ./cmd/paperboy
+# The release tag reaches the binary only through VERSION: Go stamps a working
+# tree build with a pseudo-version, never with the tag (ADR 0056).
+ARG VERSION=
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags="-s -w -X github.com/maehld/paperboy/internal/paperboy.version=${VERSION}" \
+    -o /out/paperboy ./cmd/paperboy
 
 FROM alpine:3.22
 RUN apk add --no-cache tzdata && mkdir /config && chown 65532:65532 /config

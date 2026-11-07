@@ -32,6 +32,21 @@ func TestVersionText(t *testing.T) {
 	}
 }
 
+// TestVersionOverride checks that a release build's injected version wins over
+// the pseudo-version Go stamps into a working-tree build.
+func TestVersionOverride(t *testing.T) {
+	old := version
+	version = "v2.0.0"
+	t.Cleanup(func() { version = old })
+	v := readBuildInfo()
+	if v.Version != "v2.0.0" {
+		t.Fatalf("version %q, want v2.0.0", v.Version)
+	}
+	if got := versionText(v, time.UTC); !strings.HasPrefix(got, "v2.0.0") {
+		t.Fatalf("label %q", got)
+	}
+}
+
 // TestDashboardShowsBuildInfo checks that the overview names the running build.
 func TestDashboardShowsBuildInfo(t *testing.T) {
 	s, _ := planServer(t, testPlan)
