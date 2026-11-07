@@ -176,6 +176,18 @@ func unescapeText(s string) string {
 	return b.String()
 }
 
+// oneLine joins the lines of a decoded TEXT value with ", " for single-line
+// display; Apple puts name, street and city of a location on separate lines.
+func oneLine(s string) string {
+	var parts []string
+	for _, l := range strings.FieldsFunc(s, func(r rune) bool { return r == '\n' || r == '\r' }) {
+		if l = strings.TrimSpace(l); l != "" {
+			parts = append(parts, l)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
 // zones resolves TZID parameters. Most servers, iCloud included, use IANA
 // names; Exchange and Outlook use Windows names, which are mapped for the
 // common European and US zones. Unknown names fall back to the configured
