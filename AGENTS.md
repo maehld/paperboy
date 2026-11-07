@@ -13,6 +13,7 @@ Paperboy is a display service for ePaper and text displays (own firmware on ESPH
 ## Versioning and decisions
 
 - Git repository `github.com/maehld/paperboy`, branch `main`. After **every completed work step** create a commit with an **English** commit message in the imperative (ADR 0031). Run the appropriate checks before committing.
+- **Work goes through issues and pull requests by default:** create (or reuse) an issue, work on a branch, open a PR and leave merging to the user. For small changes ask whether a direct commit to `main` is fine; without an explicit yes keep the default.
 - **Pull requests are always squash-merged**, so one PR becomes exactly one commit on `main` whose body keeps the PR commits as bullet points. The issue number goes at the end of the commit message: the subject ends with `[#<issue>]` and the message ends with `Closes #<issue>` before trailers such as `Co-authored-by`, e.g. `Reload configuration on change [#1]` (commit `8958866`).
 - When work on an issue starts (also by a subagent), assign the issue to the user (`gh issue edit <n> --add-assignee @me`).
 - Each shipped plugin is documented in `docs/plugins/<plugin>.md`; the README only links to it. Update that file when a plugin changes.
