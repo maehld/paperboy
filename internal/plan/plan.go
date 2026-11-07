@@ -151,6 +151,15 @@ func (p *Plan) Select(now time.Time) (Selection, bool) {
 	return Selection{}, false
 }
 
+// Matches reports whether the time window of rule i matches now, without the
+// fallback. It lets a viewer tell a matching rule from the fallback.
+func (p *Plan) Matches(i int, now time.Time) bool {
+	if i < 0 || i >= len(p.Rules) {
+		return false
+	}
+	return p.Rules[i].When.matches(now.In(p.loc))
+}
+
 // UntilNextBoundary returns the time until the next window starts or ends, so
 // a sleeping device wakes up when its rule changes. 0 means no window exists.
 func (p *Plan) UntilNextBoundary(now time.Time) time.Duration {

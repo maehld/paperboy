@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan {{.Plan}} · {{.Device}} · Paperboy</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 1.5rem; font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: #f2f2f2; color: #111; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; margin-bottom: 1rem; }
+h1 { font-size: 1.5rem; margin: 0; }
+.muted { color: #666; font-size: .85rem; }
+nav a { color: #134e9c; text-decoration: none; }
+form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
+.summary { margin: 0 0 1rem; }
+.rule { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
+.rule.active { border: 2px solid #17692c; }
+.rule h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.badge { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; padding: .12rem .45rem; border-radius: 999px; border: 1px solid currentColor; font-weight: 600; }
+.badge.active { color: #17692c; }
+.badge.fallback { color: #666; }
+.pages { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+figure { margin: 0; }
+figcaption { font-size: .9rem; margin-bottom: .3rem; }
+.preview { display: block; width: 100%; height: auto; border: 1px solid #ccc; background: #fff; image-rendering: pixelated; }
+.lcd { margin: 0; padding: .6rem .8rem; background: #2d4a12; color: #d8f5a0; font: 1.05rem/1.3 ui-monospace, Consolas, monospace; white-space: pre; overflow-x: auto; border-radius: 4px; }
+.skipped { margin: 0; padding: 1rem; color: #666; border: 1px dashed #ccc; font-size: .85rem; }
+.error { margin: 0 0 1rem; padding: .5rem .6rem; background: #fff2f2; border-left: 3px solid #c22; font-size: .85rem; word-break: break-word; }
+figure .error { margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>{{.Device}} · plan {{.Plan}}</h1>
+  <nav><a href="/ui">Devices</a> · <a href="/ui/plugins">Widgets</a></nav>
+  <span class="muted">display type {{.Profile}}</span>
+</header>
+<form method="get" action="/ui/plan">
+  <input type="hidden" name="device" value="{{.Device}}">
+  <label>Time <input type="datetime-local" name="at" value="{{.At}}"></label>
+  <button type="submit">Show</button>
+  <a href="/ui/plan?device={{.Device}}">Now</a>
+</form>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+{{if .Rules}}
+<p class="summary">{{if .Now}}Now{{else}}At{{end}} ({{.AtText}}):
+  {{if .Active}}rule <strong>{{.Active}}</strong>{{if .ByFallback}} (fallback){{end}}{{else}}no rule applies, the device shows a notice{{end}}{{if .Next}} · next change {{.Next}}{{end}}</p>
+{{range .Rules}}
+<section class="rule{{if .Active}} active{{end}}">
+  <h2>{{.Name}}
+    {{if .Active}}<span class="badge active">active</span>{{end}}
+    {{if .Fallback}}<span class="badge fallback">fallback</span>{{end}}
+    <span class="muted">{{.When}}{{if .Rotate}} · rotate{{end}}{{if .Refresh}} · {{.Refresh}}{{end}}</span>
+  </h2>
+  <div class="pages">
+    {{range .Pages}}
+    <figure>
+      <figcaption>{{.Name}}</figcaption>
+      {{if .Skipped}}<p class="skipped">Skipped: {{.Skipped}}</p>
+      {{else if .Error}}<p class="error">{{.Error}}</p>
+      {{else if .ImageURL}}<img class="preview" src="{{.ImageURL}}" alt="{{.Name}}" width="{{.Width}}" height="{{.Height}}" loading="lazy">
+      {{else}}<pre class="lcd">{{range $i, $l := .Text}}{{if $i}}
+{{end}}{{$l}}{{end}}</pre>{{end}}
+    </figure>
+    {{end}}
+  </div>
+</section>
+{{end}}
+{{end}}
+</body>
+</html>
