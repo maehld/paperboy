@@ -27,9 +27,11 @@ nav a.active { font-weight: 700; color: #111; }
 .screen .empty { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
 .empty { margin: 0; padding: 2rem 1rem; text-align: center; color: #888; border: 1px dashed #ccc; }
 .lcd { margin: 0; padding: .6rem .8rem; background: #2d4a12; color: #d8f5a0; font: 1.05rem/1.3 ui-monospace, Consolas, monospace; white-space: pre; overflow-x: auto; border-radius: 4px; }
-dl { display: grid; grid-template-columns: auto 1fr; align-content: end; gap: .15rem .7rem; margin: .7rem 0 0; flex: 1; font-size: .9rem; }
+dl { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); align-content: start; gap: .15rem .7rem; margin: .7rem 0 0; font-size: .9rem; }
 dt { color: #666; }
-dd { margin: 0; }
+dd { margin: 0; min-width: 0; }
+dd.oneline { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+dd.oneline .muted { font-size: .78rem; }
 .error { margin: .7rem 0 0; padding: .5rem .6rem; background: #fff2f2; border-left: 3px solid #c22; font-size: .85rem; word-break: break-word; }
 </style>
 </head>
@@ -62,7 +64,7 @@ dd { margin: 0; }
       {{if .Refresh}}<dt>Refresh</dt><dd>{{.Refresh}}</dd>{{end}}
       <dt>Last seen</dt>
       <dd>{{.SeenAgo}}</dd>
-      <dt>Power</dt><dd>{{.Power}}{{if .PowerOrigin}} <span class="muted">({{.PowerOrigin}})</span>{{end}}</dd>
+      <dt>Power</dt><dd class="oneline" title="{{.Power}}{{if .PowerOrigin}} ({{.PowerOrigin}}){{end}}">{{.Power}}{{if .PowerOrigin}} <span class="muted">({{.PowerOrigin}})</span>{{end}}</dd>
       {{if .Firmware}}<dt>Firmware</dt><dd>{{.Firmware}}</dd>{{end}}
     </dl>
     {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
