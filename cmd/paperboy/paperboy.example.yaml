@@ -28,7 +28,7 @@ plugins:
     config: { comic: latest }
   departures:
     command: [departures]
-    config: { stop: "City, Stop name", walk_minutes: 4 }   # Westfalenfahrplan by default, see README
+    config: { stop: "City, Stop name", walk_minutes: 4 }   # Westfalenfahrplan by default, see docs/plugins/departures.md
   calendar:
     command: [calendar]
     timeout: 1m
