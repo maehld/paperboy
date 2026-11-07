@@ -438,6 +438,104 @@ func (h *Host) Describe(ctx context.Context, name string) (*plugin.Description, 
 	return msg.Description, nil
 }
 
+// Actions asks a plugin for the state of concrete actions (ADR 0057). The
+// answer has one entry per call, in the same order. Unlike widgets, action
+// states are not cached here: the menu asks again whenever it opens, and the
+// answer depends on a device and a moment rather than on a page.
+func (h *Host) Actions(ctx context.Context, name string, req plugin.Request) ([]plugin.ActionState, error) {
+	req.Action = plugin.ActionList
+	if handler, ok := h.Builtin[name]; ok {
+		h.builtMu.Lock()
+		defer h.builtMu.Unlock()
+		msg := plugin.Handle(handler, &req)
+		if msg.Error != "" {
+			return nil, errors.New(msg.Error)
+		}
+		if len(msg.Actions) != len(req.Actions) {
+			return nil, fmt.Errorf("%d states for %d actions", len(msg.Actions), len(req.Actions))
+		}
+		return msg.Actions, nil
+	}
+	spec, err := h.spec(name)
+	if err != nil {
+		return nil, err
+	}
+	lock := h.pluginLock(name)
+	lock.Lock()
+	defer lock.Unlock()
+	req.Version = plugin.Version
+	if req.Now.IsZero() {
+		req.Now = h.now()
+	}
+	msg, err := h.call(ctx, spec, req)
+	if err != nil {
+		h.fail(name, err)
+		return nil, err
+	}
+	if len(msg.Actions) != len(req.Actions) {
+		err := fmt.Errorf("%d states for %d actions", len(msg.Actions), len(req.Actions))
+		h.fail(name, err)
+		return nil, err
+	}
+	h.recover(name)
+	return msg.Actions, nil
+}
+
+// Invoke runs one concrete action (ADR 0057). The plugin decides whether it
+// needs a confirmation; the menu has asked before calling this.
+func (h *Host) Invoke(ctx context.Context, name string, req plugin.Request) (plugin.ActionOutcome, error) {
+	req.Action = plugin.ActionInvoke
+	if handler, ok := h.Builtin[name]; ok {
+		h.builtMu.Lock()
+		defer h.builtMu.Unlock()
+		msg := plugin.Handle(handler, &req)
+		if msg.Error != "" {
+			return plugin.ActionOutcome{}, errors.New(msg.Error)
+		}
+		if msg.Result == nil {
+			return plugin.ActionOutcome{}, errors.New("answer without result")
+		}
+		return *msg.Result, nil
+	}
+	spec, err := h.spec(name)
+	if err != nil {
+		return plugin.ActionOutcome{}, err
+	}
+	lock := h.pluginLock(name)
+	lock.Lock()
+	defer lock.Unlock()
+	req.Version = plugin.Version
+	if req.Now.IsZero() {
+		req.Now = h.now()
+	}
+	msg, err := h.call(ctx, spec, req)
+	if err != nil {
+		h.fail(name, err)
+		return plugin.ActionOutcome{}, err
+	}
+	if msg.Result == nil {
+		err := errors.New("answer without result")
+		h.fail(name, err)
+		return plugin.ActionOutcome{}, err
+	}
+	if msg.Result.Changed {
+		h.expire(name, nil)
+	}
+	h.recover(name)
+	return *msg.Result, nil
+}
+
+// spec returns the configuration of a running plugin.
+func (h *Host) spec(name string) (Spec, error) {
+	h.mu.Lock()
+	spec, ok := h.specs[name]
+	h.mu.Unlock()
+	if !ok {
+		return Spec{}, fmt.Errorf("plugin %q is not configured", name)
+	}
+	return spec, nil
+}
+
 // maintain drops idle results and renders results again that are still in
 // use and expire soon or were marked changed.
 func (h *Host) maintain(ctx context.Context) {

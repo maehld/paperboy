@@ -39,6 +39,7 @@ plugins:
 defaults:
   refresh: 5m
   page_timeout: 5m
+  # menu_show_duration: 30s  # how long the device menu stays open (ADR 0057), 5s-60s
   # battery: { warn_volts: 3.45, critical_volts: 3.3, hysteresis_volts: 0.1 }
 
 # Optional firmware updates (ADR 0043) from firmware/<hardware>-v<version>.bin
@@ -80,6 +81,7 @@ devices:
     plan: standard     # plans/standard.yaml must exist; otherwise a notice page
     # firmware: hold   # keep this device on its firmware version
     # power: mains     # the E1001 cannot detect USB power; set mains when it runs on a charger
+    # actions: deny    # do not open the device menu (ADR 0057); default allow
   flur:
     display_type: sticky
     protocol: paperboy   # Paperboy firmware (ADR 0041, 0042)

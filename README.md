@@ -105,6 +105,7 @@ plugins:
 defaults:
   refresh: 5m          # regular sleep time; plans may override it
   page_timeout: 5m     # back to the first page after this
+  menu_show_duration: 30s  # how long the device menu stays open (ADR 0057), 5s–60s
   battery: { warn_volts: 3.45, critical_volts: 3.3, hysteresis_volts: 0.1 }
 firmware:
   update: auto         # auto or off (default); offers the images in firmware/ (ADR 0043)
@@ -132,6 +133,8 @@ devices:
     power: mains                          # optional, overrides the display type (E1001 on USB)
     battery: { warn_volts: 3.5 }          # optional, 0 inherits the default
     firmware: hold                        # optional, keeps the device on its firmware
+    actions: allow                        # optional: allow (default) or deny the device menu
+    menu_show_duration: 30s               # optional, overrides the default
 ```
 
 - The map key under `devices` is the stable device ID (a-z, 0-9, `-`). It appears in logs, in `GET /api/devices` and in `state/devices.json`; existing MAC-keyed state is migrated automatically at startup.
@@ -152,7 +155,7 @@ devices:
 - **Power source** (ADR 0051): `power: auto|battery|mains` on the display type, overridable per device; default `auto`. The firmware reports `power` (`battery` or `mains`) in register and sync: the Sticky measures USB power on GPIO9, the E1001 cannot detect it and reports `battery`, text displays report `mains`. `auto` uses the last report (`reported_power` in `/api/devices`, next to the effective `power`) and behaves as `battery` until the device reports one, so text displays with older firmware fall back to a one-minute floor until they are updated or set to `power: mains`. The sync answers `sleep: false` for mains devices: the ePaper firmware then stays awake with Wi-Fi up and syncs again after `refresh_s` instead of deep sleeping. A page whose composition did not change keeps its PNG and hash, so short intervals cause no redraw.
 - **Device API** (ADR 0042): `POST /api/device/register` with `{"mac", "hardware", "firmware"}` (optionally `power`) returns `{"key", "device"}` for a configured MAC (an existing key is kept) and `403` otherwise. Every wake sends one `POST /api/device/sync` with `Authorization: Bearer <key>`: `reason` (`timer`, `button`, `touch`, `powercycle`), `events` (buttons by role `next`, `previous`, `home`, optionally `hold_ms`; touches with `x`/`y`), `shown` (hash on the panel), `battery` (`volts` required, `percent`, `mah`, `ma` optional), `rssi`, `power` and `log` entries. The answer names the image (`image.path` relative to the Paperboy URL, `image.hash`), the deep-sleep time `refresh_s`, `listen_s` (0 after a timer wake, 20 s after input), `sleep` (`false` for mains devices, ADR 0051), the server `time` in Unix seconds and `firmware` (an update offer, otherwise `null`). An unknown key gets `401` and the device registers again; an invalid body gets `400`.
 - **Text displays** (ADR 0044): register and sync like ePaper displays, but the sync answers `"image": null` and `"text": {"lines", "hash"}`, and `listen_s` is always 0 (they run on mains power and never sleep). Between syncs they poll `GET /api/device/text?shown=<hash>` with their key every `refresh_s`, which the plan decides (ADR 0045; the firmware syncs at most once a minute and uses one minute until its first sync): the answer is `{"lines", "hash"}`, unchanged text gets `204`. The poll renders the page the cursor points to without advancing it and writes nothing to `state/devices.json`, but updates the shown content in memory for `/api/devices` and the dashboard; an image display gets `409`. Notices (no plan, broken page, critical battery) are word-wrapped into the lines.
-- **Buttons**: events apply in order before rendering. `next` = next page, `previous` = one page back (wrapping), `home` = first page of the active rule. After `page_timeout` (5 min) back to the first page. Touches and long presses are logged but change nothing yet.
+- **Buttons**: events apply in order before rendering. `next` = next page, `previous` = one page back (wrapping), `home` = first page of the active rule — or, when the plan offers actions and the device allows them, the device menu (ADR 0057, see [Actions](#actions)): short `home` opens it, `next`/`previous` move the selection, `home` confirms, long `home` closes it and goes to page 1. After `page_timeout` (5 min) back to the first page. Touches are logged and change nothing yet (the Sticky's touch menu follows in #54).
 - **Stale widgets**: when a plugin fails, Paperboy keeps showing its last widgets and marks the page: a bar „Veraltet: calendar/agenda“ (“Outdated: …”) on image displays, `!` in the last column of the first line on text displays (`notices: none` turns both off). A widget that never rendered becomes a hatched notice inside its cell with the reason.
 - **Battery warning** (ADR 0020): fed by `battery.volts` of the sync. With `battery` in `defaults` or on a device, every page below `warn_volts` gets the bar „Akku schwach – bitte laden“ (“Battery low – please charge”); below `critical_volts` a full-screen image „Akku fast leer“ (“Battery almost empty”) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` no warning. All texts use the configured `language`.
 - **Firmware updates** (ADR 0043): put OTA images into `firmware/<hardware>-v<version>.bin` of the instance (`firmware/esphome/build.ps1 -Hardware sticky -Instance <dir>` does it). The highest version (compared part by part as numbers; a `firmware.version` pin narrows it to exactly that image, ADR 0060) is offered in the sync as `{"version", "path", "md5"}` when `firmware.update` is `auto`, the device has no `firmware: hold`, its reported version differs (a lower file is a rollback), its battery reading is at least `min_battery_volts` and not at warning level (text displays run on mains power and skip the battery condition), and the version has not failed three times on that device. A sync that still reports the old version after an offer counts as a failure; a changed image (new MD5) or clearing `firmware_failures` in `state/devices.json` allows new attempts. Images are served at `GET /firmware/<file>` without a token; other file names are ignored and listed in the log and on the dashboard. `GET /api/devices` adds `firmware_available` and `firmware_status` (`current`, `offered`, `available`, `failed`, `held`, `none`). Test the rollback with a broken image before using `update: auto`.
@@ -272,7 +275,19 @@ actions:
 - `id` is optional and plan-local. It becomes mandatory for **every** entry of an action as soon as the same `action` appears more than once, and IDs must be unique. The menu keeps its selection by `id`, or by `plugin/action` when there is no `id`, so reordering the list or changing `args`/`title` does not change the identity.
 - Exact duplicates of `action` and `args` are rejected. An unknown plugin, action or argument disables the entry with a reason instead of breaking the plan. A plugin that reports another protocol version is refused as a whole (ADR 0058), not used without its actions.
 - A page-level or rule-level `actions` key is rejected with a hint.
-- The device menu itself is not implemented yet.
+
+#### The device menu
+
+Short `home` opens the menu when the plan has actions and the device does not set `actions: deny`. Paperboy draws it as an overlay over the top half of the current page — one row of `X`, up to three actions and `<`/`>`, stacked in the same order on portrait displays. The page below stays visible, and the menu pauses rotation and `page_timeout`.
+
+- `next`/`previous` move the selection and wrap; `<`/`>`, drawn on touch, page through the list in steps of three.
+- `home` runs the selected action. If the plugin asks for a confirmation (`confirm` in its `describe`), Paperboy shows a confirmation screen first and runs the action only after the device reports that screen as painted (`shown` hash): the first `home` opens the menu or the confirmation, never runs an action blind.
+- A long `home` closes the menu and goes to page 1; `X` (drawn only; touch support follows in #54) closes it and keeps the page.
+- Unavailable actions stay visible, hatched, with the plugin's reason. A plugin that is down keeps its actions visible as unavailable instead of hiding them.
+- The menu closes itself after `menu_show_duration` (default 30 s, at most 60 s) and reports the deadline as its next wake, but never below the floor of the device's power source, so a battery device may keep it for up to a minute.
+- An action gets about five seconds inside the sync. If it is not done by then the menu shows "running" and the result appears with the next sync.
+- A device with `actions: deny` keeps the old meaning of `home` (page 1); the dashboard marks it as denied.
+- Plugin actions set target states (e.g. `mode: now`), never toggles, so a repeated sync is safe.
 
 ## OpenDisplay
 

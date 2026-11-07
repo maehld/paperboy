@@ -37,6 +37,10 @@ type deviceState struct {
 	LastError    string    `json:"last_error,omitempty"`   // last render or plan error
 	LastText     []string  `json:"last_text,omitempty"`    // text displays: the last served lines (ADR 0044)
 
+	// The device menu (ADR 0057): open/closed, phase, selection and the
+	// resolved actions.
+	Menu menuState `json:"menu,omitempty"`
+
 	// Firmware updates (ADR 0043): the last offered version and its image
 	// checksum, whether the offer is still unanswered, and failed attempts for
 	// that version. Clearing firmware_failures lets Paperboy offer it again.
