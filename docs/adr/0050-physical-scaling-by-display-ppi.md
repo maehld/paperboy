@@ -59,7 +59,7 @@ height`. `padding` and `rule` accept decimals; pages that set pixel values
 there keep parsing but now mean points, which the README migration notes
 call out. Text displays ignore the style as today.
 
-### Plugin protocol (version stays 2)
+### Plugin protocol (version 3)
 
 The protocol keeps sending pixels, so plugins do not convert anything they
 already use:
@@ -72,10 +72,11 @@ already use:
   its meaning no longer exists in the page style.
 - `Request.TextPx(w)` returns `text_px`.
 - New helpers `Request.PtPx(pt)` and `Request.MMPx(mm)` convert physical sizes
-  with `page.ppi`. Only for a new plugin talking to an old Paperboy that does
-  not send `ppi` they fall back to 125 PPI (and `TextPx` to 0.06 × height
-  when `text_px` is missing); this emergency default is documented in
-  `pkg/plugin` and never used by Paperboy itself.
+  with `page.ppi`.
+- `plugin.Version` becomes 3. There is no compatibility with version 2
+  plugins or fallback for a missing `ppi`: Paperboy has a single operator and
+  ships the bundled plugins together with the server, so both sides are
+  updated at once.
 
 ### Reference grid and widget sizes
 
@@ -104,8 +105,9 @@ pixel minimums (e.g. the 10 px label minimum) with `PtPx`.
   `padding` or `rule` rewritten in points.
 - Pages on dense panels (the Sticky) get larger text and fewer lines per
   widget; this is the point of the change.
-- Plugins built against the old helper keep drawing with `TextPx`'s fallback
-  until they are rebuilt; the bundled plugins are rebuilt with Paperboy.
+- Plugins have to be rebuilt against protocol version 3; the bundled plugins
+  are rebuilt with Paperboy. Old pixel values in `padding`/`rule` are not
+  detected (no reliable threshold); the README migration notes cover them.
 - Rejected: deriving the PPI from `width_mm` (orientation trap), a fallback
   PPI in Paperboy (silently wrong sizes), a separate `text_pt` key next to
   fractional `text_size` (two units), physical widget `sizes`, and scaling
