@@ -23,6 +23,7 @@ for app in calendar weather evcc pokedex xkcd departures; do
     go build -trimpath -ldflags="-s -w" -o "$stage/plugins/$app$ext" "./cmd/$app")
 done
 cp "$root/cmd/weather/icons/README.md" "$stage/plugins/weather-icons-LICENSE.md"
+cp "$root/cmd/evcc/icons/README.md" "$stage/plugins/evcc-icons-LICENSE.md"
 
 out=$(cd "$out" && pwd)
 rm -f "$out/$name.zip"
