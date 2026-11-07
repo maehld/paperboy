@@ -94,6 +94,13 @@ that Paperboy offers in the sync (ADR 0043); there is no native ESPHome OTA and
 no upload in the web UI, so nobody on the LAN can push an image. Everything
 else, including the rescue of a device that no longer syncs, goes over USB-C.
 
+The *Firmware* workflow compiles all three hardware types with the same pinned
+version whenever `firmware/esphome/` changes, so a broken configuration fails on
+a pull request. A release tag attaches the images as
+`paperboy-firmware-<hardware>-<version>.zip` (unpacked in the instance
+directory it creates `firmware/<hardware>/`) and as the `.bin` alone (ADR 0056);
+`fw_version` in `<hardware>.yaml` names the image in both cases.
+
 A device that runs the TRMNL firmware is flashed over USB-C once. A device on
 the ESPHome experiment can switch without a cable through the experiment's own
 manifest update: serve the built `firmware.ota.bin` together with a

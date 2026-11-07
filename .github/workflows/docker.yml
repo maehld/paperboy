@@ -4,8 +4,20 @@ on:
   push:
     branches: [main]
     tags: ["v*.*.*"]
+    # The image only carries the Paperboy binary; firmware, docs and examples
+    # do not change it (ADR 0056). Paths are not evaluated for tags.
+    paths-ignore:
+      - firmware/**
+      - docs/**
+      - examples/**
+      - "**/*.md"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - firmware/**
+      - docs/**
+      - examples/**
+      - "**/*.md"
   workflow_dispatch:
 
 permissions:

@@ -19,11 +19,31 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
    curl -o page.png http://127.0.0.1:8090/api/preview/e1001/uebersicht
    ```
    Alternatively as a container: `Dockerfile` and `compose.example.yaml`. The image contains only Paperboy; use the `linux/amd64` plugin zip in the mounted instance directory.
-4. Flash the Paperboy firmware (ADR 0041, see [firmware/esphome/README.md](firmware/esphome/README.md)) and enter `http://<computer>:8090` as the Paperboy URL in the device's web UI. The device registers with its MAC address; unknown MACs are rejected and logged.
+4. Flash the Paperboy firmware (ADR 0041, see [firmware/esphome/README.md](firmware/esphome/README.md)); release images are in `paperboy-firmware-<hardware>-<version>.zip` or the matching `.bin` release asset. Enter `http://<computer>:8090` as the Paperboy URL in the device's web UI. The device registers with its MAC address; unknown MACs are rejected and logged.
 
 **Migrating from Paperboy v1:** v2 has no data API, no exec providers and no upload token (ADR 0049). Remove the `server` and `providers` sections from `paperboy.yaml` (both abort the start with a hint) and add `plugins` instead; the weather and calendar providers are plugins now and take their settings from `config` instead of flags. Rewrite the pages as grids (see below); old templates with `rows` and `blocks` are rejected and show a notice page. `state/data.json` and the `icons/` directory are no longer used. Devices keep their keys as long as `state/devices.json` is kept.
 
 **Migrating to physical sizes (ADR 0050):** replace `width_mm` with `ppi` in every image display type (`ppi = pixels × 25.4 / mm` of the same side; a leftover `width_mm` aborts the start with a hint) and rewrite page styles in points: `text_size` is no longer a fraction (`0.06` is rejected; at 125 ppi, 0.06 of 480 px is about 16 pt), and `padding`, `rule` and `divider` are points now (8 px ≈ 4.5 pt, 1 px ≈ 0.6 pt at 125 ppi). Old pixel values there still parse but get bigger, so check them. Third-party plugins have to be rebuilt against protocol version 3 (`style.text_size` is gone; use `text_px` or `Request.TextPx`).
+
+## Releases
+
+GitHub releases are the distribution point (ADR 0056). Each tag names a tested combination of the three deliverables:
+
+| Tag | Contains |
+|---|---|
+| `vX.Y.Z` | Paperboy binaries, plugin zips and firmware images |
+| `plugins-vX.Y.Z` | plugin zips only |
+| `firmware-vX.Y.Z` | firmware images only (`X.Y.Z` is the highest `fw_version` in the bundle) |
+
+| Asset | Use |
+|---|---|
+| `paperboy-linux-amd64`, `paperboy-linux-arm64`, `paperboy-windows-amd64.exe` | the Paperboy binary for that platform |
+| `paperboy-plugins-<os>-<arch>.zip` | unpack in the instance directory: creates `plugins/` |
+| `paperboy-firmware-<hardware>-<version>.zip` | unpack in the instance directory: creates `firmware/<hardware>/` (ADR 0043) |
+| `paperboy-firmware-<hardware>-<version>.bin` | the same OTA image alone, for consumers that do not unzip |
+| `SHA256SUMS` | checksums of all assets of the release |
+
+The container image is published separately as `ghcr.io/maehld/paperboy` (`X.Y.Z`, `X.Y` and `latest`). A release is created by pushing a tag, for example `git tag v2.1.0 && git push origin v2.1.0`; the *Release* workflow builds everything and attaches it to one release.
 
 ## Instance directory
 
@@ -233,7 +253,9 @@ go vet ./...
 ./scripts/package-plugins.sh dist  # the plugin zip for the host platform (GOOS/GOARCH select another)
 ```
 
-The dashboard header shows version, commit and commit date, straight from Go's VCS stamping. `go build` and `scripts/build.ps1` embed them as long as the Git repository is present. The container image therefore keeps `.git` in the build context and installs the git binary in its build stage (the alpine Go image ships none); the final image contains only the Paperboy binary. The *Plugins* workflow builds the plugin zips.
+The dashboard header shows version, commit and commit date, straight from Go's VCS stamping. `go build` and `scripts/build.ps1` embed them as long as the Git repository is present. The container image therefore keeps `.git` in the build context and installs the git binary in its build stage (the alpine Go image ships none); the final image contains only the Paperboy binary. Release builds check out full history and tags, because the version name comes from the tag.
+
+The workflows follow the three deliverables (ADR 0056): *CI* runs formatting, vet, tests and a cross-build on every change, *Plugins* and *Firmware* build their artifacts (the firmware only when `firmware/esphome/` changes), *Docker* publishes the image and *Release* collects everything into one GitHub release on a tag.
 
 A build without a repository or with `-buildvcs=false` reports `dev`. `go version -m <binary>` shows what was stamped. Untagged builds show `dev` plus commit; `git tag v0.1.0` gives release builds a version name.
 
