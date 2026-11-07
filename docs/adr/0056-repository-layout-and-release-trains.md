@@ -134,12 +134,8 @@ The container image stays `ghcr.io/maehld/paperboy` with `X.Y.Z`, `X.Y` and
 
 ### 6. Open prerequisites
 
-- There is no runtime check of the plugin protocol version: the host sends
-  `plugin.Version` (currently 3) but neither Paperboy nor `pkg/plugin` compares
-  it. Inside one repository a mismatch shows up in `go test ./...`; as soon as
-  artifacts are released independently (and generally for third-party
-  plugins) a plugin should answer with its protocol version and Paperboy
-  should refuse incompatible ones. Follow-up issue, prerequisite for any
+- A runtime check of the plugin protocol version was still missing when this
+  decision was written; ADR 0057 adds it and is the prerequisite for any
   repository split.
 - A manifest per release that lists assets, protocol version and firmware
   versions is unnecessary while names and tags carry the information; add it

@@ -33,6 +33,15 @@ func fakePlugin(mode string) {
 		os.Stderr.WriteString("broken")
 		os.Exit(1)
 	}
+	// The protocol version a plugin speaks; the modes below break it on
+	// purpose (ADR 0057).
+	version := plugin.Version
+	switch mode {
+	case "noversion":
+		version = 0
+	case "oldversion":
+		version = plugin.Version - 1
+	}
 	enc := json.NewEncoder(os.Stdout)
 	sc := bufio.NewScanner(os.Stdin)
 	for sc.Scan() {
@@ -40,17 +49,17 @@ func fakePlugin(mode string) {
 		json.Unmarshal(sc.Bytes(), &req)
 		if req.Action == plugin.ActionConfigure {
 			if mode == "badconfig" || req.Config["ok"] != true {
-				enc.Encode(plugin.Message{ID: req.ID, Error: "config rejected"})
+				enc.Encode(plugin.Message{ID: req.ID, Version: version, Error: "config rejected"})
 				continue
 			}
-			enc.Encode(plugin.Message{ID: req.ID})
+			enc.Encode(plugin.Message{ID: req.ID, Version: version})
 			continue
 		}
 		appendFile(os.Getenv("FAKE_COUNT"))
 		if mode == "hang" {
 			continue
 		}
-		msg := plugin.Message{ID: req.ID, MaxAge: 60}
+		msg := plugin.Message{ID: req.ID, Version: version, MaxAge: 60}
 		for _, w := range req.Widgets {
 			if req.Action == plugin.ActionText {
 				msg.Widgets = append(msg.Widgets, plugin.Result{Lines: []string{w.Widget}})
@@ -66,7 +75,7 @@ func fakePlugin(mode string) {
 		}
 		enc.Encode(msg)
 		if mode == "changed" {
-			enc.Encode(plugin.Message{Event: plugin.EventChanged, Changed: []string{"a"}})
+			enc.Encode(plugin.Message{Version: version, Event: plugin.EventChanged, Changed: []string{"a"}})
 		}
 	}
 }
@@ -192,6 +201,33 @@ func TestHostRejectsWrongSizeAndUnknownPlugins(t *testing.T) {
 	out := h.Fetch(context.Background(), batch(w("fake", "a", 10, 5), w("nope", "a", 1, 1)))
 	if out[0].Err == nil || !strings.Contains(out[0].Err.Error(), "requested 10x5") || out[1].Err == nil {
 		t.Fatalf("want errors, got %+v", out)
+	}
+}
+
+func TestHostRejectsOtherProtocolVersions(t *testing.T) {
+	for mode, want := range map[string]string{
+		"noversion":  "reports no protocol version",
+		"oldversion": "speaks protocol version",
+		"ok":         "", // control: the same plugin with the right version works
+	} {
+		f := newFake(t)
+		h := newHost(t, f.spec(mode))
+		out := h.Fetch(context.Background(), batch(w("fake", "a", 1, 1)))
+		if want == "" {
+			if out[0].Err != nil {
+				t.Errorf("%s: %v", mode, out[0].Err)
+			}
+			continue
+		}
+		if out[0].Err == nil || !strings.Contains(out[0].Err.Error(), want) {
+			t.Errorf("%s: want %q, got %+v", mode, want, out[0])
+		}
+		h.mu.Lock()
+		n := len(h.procs)
+		h.mu.Unlock()
+		if n != 0 {
+			t.Errorf("%s: incompatible plugin still registered", mode)
+		}
 	}
 }
 
