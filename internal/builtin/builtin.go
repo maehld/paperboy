@@ -34,6 +34,7 @@ func (Plugin) Describe() plugin.Description {
 					"title":          {Type: "string", Description: "title; default the page title"},
 					"subtitle":       {Type: "string"},
 					"clock":          {Type: "bool", Default: true, Description: "current time on the right"},
+					"date":           {Type: "bool", Default: false, Description: "weekday and date on the right, long or short depending on the space"},
 					"page_indicator": {Type: "bool", Default: true, Description: "page number when the plan rule has several pages"},
 					"align":          {Type: "string", Default: "left", Description: "left, center or right"},
 				}},
@@ -90,13 +91,12 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 	if a.Bool("page_indicator", true) && req.Page.Count > 1 {
 		title += fmt.Sprintf(" – %d/%d", req.Page.Number, req.Page.Count)
 	}
-	status := ""
-	if a.Bool("clock", true) {
-		status = req.Now.In(req.Location()).Format("15:04")
-	}
 	base := req.TextPx(w)
 	titleSize := min(float64(h)*0.5, base*1.4)
 	statusSize := min(float64(h)*0.45, base*1.1)
+	status := headerStatus(req, a, func(s string) bool {
+		return render.Measure(s, statusSize, false) <= b.Dx()/2-2*pad
+	})
 	right := b.Max.X - pad
 	if status != "" {
 		right -= render.Measure(status, statusSize, false) + 2*pad
@@ -150,6 +150,54 @@ func (Plugin) text(w plugin.WidgetRequest, img *image.Paletted) {
 	}
 }
 
+var (
+	daysDE   = [7]string{"Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"}
+	monthsDE = [12]string{"Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"}
+)
+
+// dateForms returns the date of now from the longest to the shortest form.
+func dateForms(req *plugin.Request) []string {
+	now := req.Now.In(req.Location())
+	if req.Lang() == "en" {
+		return []string{
+			now.Format("Monday, January 2, 2006"),
+			now.Format("Mon, Jan 2, 2006"),
+			now.Format("Mon, Jan 2"),
+			now.Format("Jan 2"),
+		}
+	}
+	day := daysDE[now.Weekday()]
+	return []string{
+		fmt.Sprintf("%s, %d. %s %d", day, now.Day(), monthsDE[now.Month()-1], now.Year()),
+		fmt.Sprintf("%s, %d.%d.%d", day[:2], now.Day(), int(now.Month()), now.Year()),
+		fmt.Sprintf("%s, %d.%d.", day[:2], now.Day(), int(now.Month())),
+		fmt.Sprintf("%d.%d.", now.Day(), int(now.Month())),
+	}
+}
+
+// headerStatus builds the right side of the header: the date (arg date,
+// in the longest form that fits) followed by the time (arg clock). When even
+// the shortest date does not fit, the date is left out.
+func headerStatus(req *plugin.Request, a plugin.Values, fits func(string) bool) string {
+	clock := ""
+	if a.Bool("clock", true) {
+		clock = req.Now.In(req.Location()).Format("15:04")
+	}
+	if !a.Bool("date", false) {
+		return clock
+	}
+	for _, d := range dateForms(req) {
+		s := d
+		if clock != "" {
+			s += "  " + clock
+		}
+		if fits(s) {
+			return s
+		}
+	}
+	return clock
+}
+
 func clockText(req *plugin.Request, format string) string {
 	now := req.Now.In(req.Location())
 	date := now.Format("2.1.2006")
@@ -187,10 +235,12 @@ func (Plugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error
 		if a.Bool("page_indicator", true) && req.Page.Count > 1 {
 			title += fmt.Sprintf(" %d/%d", req.Page.Number, req.Page.Count)
 		}
-		if !a.Bool("clock", true) {
+		room := w.Width - len([]rune(title)) - 1
+		status := headerStatus(req, a, func(s string) bool { return len([]rune(s)) <= room })
+		if status == "" {
 			return []string{title}, nil
 		}
-		return []string{plugin.Columns(title, req.Now.In(req.Location()).Format("15:04"), w.Width)}, nil
+		return []string{plugin.Columns(title, status, w.Width)}, nil
 	case "text":
 		var out []string
 		for _, l := range strings.Split(a.String("text", ""), "\n") {
