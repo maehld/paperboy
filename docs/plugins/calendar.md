@@ -20,7 +20,7 @@ The plugin expands recurring events itself. If an event uses a rule it does not 
 
 ## Widgets
 
-- `agenda`: day headings, all-day events first, events running into the range from earlier days count, ended events disappear, „+N weitere“ when there are more events than fit. Args: `lines`, `headings`, `location`; `days` limits the range to today plus the following days, 1 to the configured `days` (values outside are clamped), e.g. `days: 2` for today and tomorrow; `empty` (default true when `days` is set) keeps days without events with „Keine Termine“/"No events".
+- `agenda`: day headings, all-day events first, events running into the range from earlier days count, ended events disappear, „+N weitere“ when there are more events than fit. Args: `lines`, `headings`, `location` (multi-line locations such as Apple's name, street and city are joined with commas); `days` limits the range to today plus the following days, 1 to the configured `days` (values outside are clamped), e.g. `days: 2` for today and tomorrow; `empty` (default true when `days` is set) keeps days without events with „Keine Termine“/"No events".
 - `month`: month grid with titles or event bars. Args: `titles: false`.
 - `week`: one column per day. Args: `days` 1-14 (default 7, e.g. 5 for a work week) and `start` (`week` or `today`, default `week`; `today` on text displays); the week starts on Monday for German and on Sunday otherwise. Headings show the weekday and date, today inverted. All-day and multi-day events appear as bars across their days, timed events with their start time and an ellipsized title, and „+N weitere“ marks events that did not fit. The text variant lists one line per day starting today.
 

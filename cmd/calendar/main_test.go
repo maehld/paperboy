@@ -78,6 +78,23 @@ func TestParseLineUnfoldAndEscapes(t *testing.T) {
 	}
 }
 
+func TestParseLineBreaksInTextJoined(t *testing.T) {
+	data := ics(vevent(
+		"UID:1",
+		`SUMMARY:Physio\nTermin`,
+		`LOCATION:MZG-Therapiezentrum\nHauptstraße 1\n\n 33602 Bielefeld`,
+		"DTSTART;TZID=Europe/Berlin:20261105T090000",
+		"DTEND;TZID=Europe/Berlin:20261105T093000",
+	))
+	list, _ := expandICS(t, data, time.Date(2026, 11, 5, 0, 0, 0, 0, berlin), time.Date(2026, 11, 6, 0, 0, 0, 0, berlin))
+	if len(list) != 1 {
+		t.Fatalf("got %v", list)
+	}
+	if o := list[0]; o.Title != "Physio, Termin" || o.Location != "MZG-Therapiezentrum, Hauptstraße 1, 33602 Bielefeld" {
+		t.Fatalf("title %q location %q", o.Title, o.Location)
+	}
+}
+
 func TestParseDuration(t *testing.T) {
 	cases := map[string]struct {
 		days int

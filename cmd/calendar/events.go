@@ -148,10 +148,10 @@ func readEvent(c *component, z *zones) (*master, error) {
 		m.uid = strings.TrimSpace(p.Value)
 	}
 	if p, ok := c.prop("SUMMARY"); ok {
-		m.title = strings.TrimSpace(unescapeText(p.Value))
+		m.title = oneLine(unescapeText(p.Value))
 	}
 	if p, ok := c.prop("LOCATION"); ok {
-		m.location = strings.TrimSpace(unescapeText(p.Value))
+		m.location = oneLine(unescapeText(p.Value))
 	}
 	if p, ok := c.prop("STATUS"); ok && strings.EqualFold(strings.TrimSpace(p.Value), "CANCELLED") {
 		m.cancel = true
