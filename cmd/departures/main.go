@@ -93,6 +93,7 @@ type departures struct {
 	mu       sync.Mutex
 	stopID   string // resolved once
 	stopName string
+	stopOnly string // stop without its locality, e.g. "Marktplatz"
 	locality string // locality of the monitored stop, e.g. "Bielefeld"
 	data     []departure
 	loadErr  error
@@ -100,6 +101,7 @@ type departures struct {
 
 	cur      []departure
 	curName  string
+	curStop  string
 	curLocal string
 	req      *plugin.Request
 	lang     string
@@ -117,8 +119,10 @@ func (p *departures) Describe() plugin.Description {
 				Args: map[string]plugin.Arg{
 					"header": {Type: "bool", Default: false, Description: "show the stop name above the departures"},
 					"time":   {Type: "string", Default: "auto", Description: "auto: minutes, a clock time from one hour on; minutes; clock", Enum: []any{"auto", "minutes", "clock"}},
-					"locality": {Type: "string", Default: "auto", Description: "locality before a destination (\"City, Stop\"): auto drops it when it is the monitored stop's locality; always drops it; never keeps it",
+					"locality": {Type: "string", Default: "auto", Description: "locality of a destination (\"City, Stop\"): auto drops it when it is the monitored stop's locality; always drops it; never keeps it",
 						Enum: []any{"auto", "always", "never"}},
+					"locality_order": {Type: "string", Default: "after", Description: "where the locality sits: after the stop (\"Stop, City\"), before it (\"City, Stop\") or nowhere; for the header and the destinations",
+						Enum: []any{"after", "before", "none"}},
 				}},
 		},
 	}
@@ -279,6 +283,7 @@ func (p *departures) resolve(ctx context.Context) (string, error) {
 		id = loc.ID
 		p.mu.Lock()
 		p.stopName = loc.Name
+		p.stopOnly = loc.stopNameOnly()
 		if loc.Parent.Type == "locality" {
 			p.locality = loc.Parent.Name
 		}
@@ -291,15 +296,28 @@ func (p *departures) resolve(ctx context.Context) (string, error) {
 }
 
 type location struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Type string `json:"type"`
-	Best bool   `json:"isBest"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	DisassembledName string `json:"disassembledName"` // name without the locality, e.g. "Marktplatz"
+	Type             string `json:"type"`
+	Best             bool   `json:"isBest"`
 	// Parent is the locality of a stop: {"name":"Bielefeld","type":"locality"}.
 	Parent struct {
 		Name string `json:"name"`
 		Type string `json:"type"`
 	} `json:"parent"`
+}
+
+// stopNameOnly is the stop name without its locality: EFA's disassembledName
+// ("Marktplatz") when present, else the part after "City, ".
+func (l location) stopNameOnly() string {
+	if l.DisassembledName != "" {
+		return l.DisassembledName
+	}
+	if _, after, ok := strings.Cut(l.Name, ", "); ok && after != "" {
+		return after
+	}
+	return l.Name
 }
 
 // parseStopFinder picks the best stop of an XML_STOPFINDER_REQUEST answer.
@@ -374,6 +392,7 @@ func (p *departures) fetch(ctx context.Context, _ time.Time) ([]departure, error
 	p.mu.Lock()
 	if loc.Name != "" {
 		p.stopName = loc.Name
+		p.stopOnly = loc.stopNameOnly()
 	}
 	if loc.Parent.Type == "locality" && loc.Parent.Name != "" {
 		p.locality = loc.Parent.Name
@@ -469,11 +488,19 @@ func (p *departures) Prepare(req *plugin.Request) error {
 	}
 	p.cur = p.visible(p.data, req.Now)
 	p.curName = p.stopName
+	p.curStop = p.stopOnly
 	p.curLocal = p.locality
 	if p.curLocal == "" {
 		p.curLocal, _, _ = strings.Cut(p.stopName, ", ") // "City, Stop" without a parent
 		if p.curLocal == p.stopName {
 			p.curLocal = ""
+		}
+	}
+	if p.curStop == "" {
+		if _, after, ok := strings.Cut(p.stopName, ", "); ok && after != "" {
+			p.curStop = after
+		} else {
+			p.curStop = p.stopName
 		}
 	}
 	p.req, p.lang, p.location = req, req.Lang(), req.Location()

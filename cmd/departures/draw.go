@@ -23,6 +23,10 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 	if err != nil {
 		return err
 	}
+	order, err := localityOrder(w)
+	if err != nil {
+		return err
+	}
 	b := img.Bounds()
 	pad := w.Style.Padding
 	rule := max(w.Style.Rule, 1)
@@ -33,7 +37,7 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 	left, right := b.Min.X+pad, b.Max.X-pad
 
 	if w.Arg().Bool("header", false) && p.curName != "" {
-		render.Text(img, p.curName, left, top+int(size), render.Style{Size: size, Bold: true, Shrink: true}, right-left, color.Black, render.Left)
+		render.Text(img, p.header(order), left, top+int(size), render.Style{Size: size, Bold: true, Shrink: true}, right-left, color.Black, render.Left)
 		top += rowH
 		render.HLine(img, left, top-rule-int(size*0.2), right, rule)
 	}
@@ -74,7 +78,7 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 	destW := destEnd - gap/2 - destX
 	names := make([]string, len(deps))
 	for i, d := range deps {
-		names[i] = p.destination(d, locMode)
+		names[i] = p.destination(d, locMode, order)
 	}
 	destSize := destinationSize(names, size, destW)
 	for i, d := range deps {
@@ -154,9 +158,13 @@ func (p *departures) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string
 	if err != nil {
 		return nil, err
 	}
+	order, err := localityOrder(w)
+	if err != nil {
+		return nil, err
+	}
 	var lines []string
 	if w.Arg().Bool("header", false) && p.curName != "" {
-		lines = append(lines, plugin.Align(p.curName, w.Width, "left"))
+		lines = append(lines, plugin.Align(p.header(order), w.Width, "left"))
 	}
 	if len(p.cur) == 0 {
 		lines = append(lines, p.t("Keine Abfahrten", "No departures"))
@@ -168,7 +176,7 @@ func (p *departures) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string
 		}
 		left := d.Line
 		if d.Destination != "" {
-			left += " " + p.destination(d, locMode)
+			left += " " + p.destination(d, locMode, order)
 		}
 		lines = append(lines, plugin.Columns(left, right, w.Width))
 	}
@@ -187,19 +195,48 @@ func localityMode(w plugin.WidgetRequest) (string, error) {
 	return "", fmt.Errorf("locality: %q is not auto, always or never", m)
 }
 
+func localityOrder(w plugin.WidgetRequest) (string, error) {
+	o := w.Arg().String("locality_order", "after")
+	switch o {
+	case "after", "before", "none":
+		return o, nil
+	}
+	return "", fmt.Errorf("locality_order: %q is not after, before or none", o)
+}
+
+// header is the monitored stop as shown above the departures.
+func (p *departures) header(order string) string {
+	if p.curStop == "" {
+		return p.curName
+	}
+	if order == "none" || p.curLocal == "" {
+		return p.curStop
+	}
+	if order == "before" {
+		return p.curLocal + ", " + p.curStop
+	}
+	return p.curStop + ", " + p.curLocal
+}
+
 // destination is the name shown for a departure. EFA names destinations
-// "City, Stop"; auto drops the city when it is the monitored stop's own.
-func (p *departures) destination(d departure, mode string) string {
-	switch mode {
-	case "never":
+// "City, Stop"; locality decides whether the city stays, locality_order where
+// it sits.
+func (p *departures) destination(d departure, mode, order string) string {
+	city, stop, ok := splitLocality(d.Destination)
+	if !ok {
 		return d.Destination
-	case "always":
-		return stripLocality(d.Destination)
 	}
-	if city, after, ok := strings.Cut(d.Destination, ", "); ok && after != "" && p.curLocal != "" && strings.EqualFold(city, p.curLocal) {
-		return after
+	keep := mode == "never"
+	if mode == "auto" {
+		keep = p.curLocal == "" || !strings.EqualFold(city, p.curLocal)
 	}
-	return d.Destination
+	if !keep || order == "none" {
+		return stop
+	}
+	if order == "before" {
+		return city + ", " + stop
+	}
+	return stop + ", " + city
 }
 
 // minDestScale is how far a destination may shrink before it is ellipsized.
@@ -219,10 +256,12 @@ func destinationSize(names []string, size float64, width int) float64 {
 	return s
 }
 
-// stripLocality shortens "Beispielstadt, Depot" to "Depot".
-func stripLocality(name string) string {
-	if _, after, ok := strings.Cut(name, ", "); ok && after != "" {
-		return after
+// splitLocality splits EFA's "City, Stop" into its two parts. Without a
+// comma the name is the stop and there is no city.
+func splitLocality(name string) (city, stop string, ok bool) {
+	city, stop, ok = strings.Cut(name, ", ")
+	if !ok || city == "" || stop == "" {
+		return "", name, false
 	}
-	return name
+	return city, stop, true
 }
