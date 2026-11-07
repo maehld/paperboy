@@ -208,9 +208,9 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
 	minArrow := max(e.req.MMPx(5), e.req.PtPx(7)*1.8, 12)
 	vgap := max(e.req.MMPx(1.5), 4)
 	gap := max(e.req.MMPx(0.8), 3)
-	minStroke := math.Max(e.req.PtPx(1.0), 2)
-	maxStroke := math.Max(e.req.PtPx(4.0), minStroke+2)
-	head := math.Max(e.req.PtPx(7), 8)
+	minStroke := math.Max(e.req.PtPx(0.6), 1)
+	maxStroke := math.Max(e.req.PtPx(2.2), minStroke+1)
+	head := math.Max(e.req.PtPx(4.5), 7)
 	h, wd := float64(b.Dy()), float64(b.Dx())
 	dc := 2*gap + head*2.2
 	full := bat != nil || len(lps) > 0 // a bottom row is needed
