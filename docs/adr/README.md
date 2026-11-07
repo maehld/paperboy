@@ -51,5 +51,6 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0053](0053-departures-from-efa.md) | Real-time departures from an EFA installation | Accepted, implemented |
 | [0054](0054-plan-preview-in-the-web-ui.md) | Plan preview per device in the web UI | Accepted, implemented |
 | [0055](0055-allowed-arg-values-and-gallery-form.md) | Allowed argument values and the gallery form | Accepted, implemented |
-| [0056](0056-repository-layout-and-release-trains.md) | One repository with separate release trains | Accepted, implemented |
+| [0056](0056-repository-layout-and-release-trains.md) | One repository with separate release trains | Accepted, implemented; firmware assets amended by ADR-0059 |
 | [0058](0058-plugin-protocol-version-check.md) | Check the plugin protocol version at runtime | Accepted, implemented |
+| [0059](0059-firmware-bundle.md) | One firmware bundle per release | Accepted, implemented |
