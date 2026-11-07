@@ -140,6 +140,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.handleRoot)
 	mux.HandleFunc("GET /ui", s.handleDashboard)
 	mux.HandleFunc("GET /ui/plugins", s.handleGallery)
+	mux.HandleFunc("GET /ui/plan", s.handlePlanView)
 	mux.HandleFunc("GET /api/widget/{plugin}/{widget}", s.handleWidget)
 	return mux
 }
@@ -298,8 +299,21 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	now := s.now()
+	if v := r.URL.Query().Get("at"); v != "" {
+		loc := cfg.Timezone
+		if loc == nil {
+			loc = time.Local
+		}
+		t, err := time.ParseInLocation(atLayout, v, loc)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("at: expected %s, got %q", atLayout, v), http.StatusBadRequest)
+			return
+		}
+		now = t
+	}
 	if p.text() {
-		lines, err := s.renderText(cfg, display, name, s.now(), pagePosition{index: 0, count: 1})
+		lines, err := s.renderText(cfg, display, name, now, pagePosition{index: 0, count: 1})
 		if errors.Is(err, page.ErrNotFound) {
 			http.NotFound(w, r)
 			return
@@ -313,7 +327,7 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(strings.Join(lines, "\n") + "\n"))
 		return
 	}
-	rp, err := s.renderPage(cfg, display, name, s.now(), pagePosition{index: 0, count: 1})
+	rp, err := s.renderPage(cfg, display, name, now, pagePosition{index: 0, count: 1})
 	if errors.Is(err, page.ErrNotFound) {
 		http.NotFound(w, r)
 		return
