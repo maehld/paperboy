@@ -96,7 +96,7 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				Sizes:    []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 3, Rows: 7}, {Columns: 6, Rows: 4}},
 				MinWidth: 160, MinHeight: 80,
 				Args: map[string]plugin.Arg{
-					"lines":    {Type: "int", Default: 10, Description: "number of text lines (image displays; text displays use the cell height)"},
+					"lines":    {Type: "int", Description: "number of text lines on image displays; default: as many as the page's text size allows (text displays use the cell height)"},
 					"location": {Type: "bool", Default: false, Description: "append the location to the title"},
 					"headings": {Type: "bool", Default: true, Description: "day headings"},
 				},
@@ -154,9 +154,9 @@ func (p *calendarPlugin) Prepare(req *plugin.Request) error {
 func (p *calendarPlugin) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	switch w.Widget {
 	case "agenda":
-		p.agenda(w, img)
+		p.agenda(req, w, img)
 	case "month":
-		p.month(w, img)
+		p.month(req, w, img)
 	default:
 		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 	}
@@ -252,12 +252,14 @@ func (p *calendarPlugin) parsed() []parsedEvent {
 	return out
 }
 
-func (p *calendarPlugin) agenda(w plugin.WidgetRequest, img *image.Paletted) {
+func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) {
 	a := w.Arg()
-	lines := max(a.Int("lines", 10), 1)
 	pad := w.Style.Padding
 	rule := w.Style.Rule
 	area := img.Rect.Inset(pad)
+	// Without a lines argument as many lines as the page's base text allows
+	// (ADR 0050), so the text has the same physical size on every display.
+	lines := max(a.Int("lines", area.Dy()*10/max(int(req.TextPx(w)*10), 1)), 1)
 	lineH := area.Dy() / lines
 	if area.Empty() || lineH < 1 {
 		return
@@ -414,7 +416,7 @@ var monthNames = map[string][12]string{
 // month draws the current month as a grid from Monday to Sunday. Today is
 // inverted; days with events show their titles when the cell is tall enough,
 // otherwise a bar under the day number.
-func (p *calendarPlugin) month(w plugin.WidgetRequest, img *image.Paletted) {
+func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) {
 	pad := w.Style.Padding
 	area := img.Rect.Inset(pad)
 	if area.Dx() < 70 || area.Dy() < 60 {
@@ -454,7 +456,7 @@ func (p *calendarPlugin) month(w plugin.WidgetRequest, img *image.Paletted) {
 
 	byDay := p.eventsByDay(gridStart, weeks*7)
 	numSize := min(float64(cellH)*0.32, float64(cellW)*0.42)
-	lineSize := max(float64(cellH)*0.22, 11)
+	lineSize := max(min(float64(cellH)*0.22, req.TextPx(w)*0.8), req.PtPx(6.3), render.MinSize)
 	for i := range weeks * 7 {
 		day := gridStart.AddDate(0, 0, i)
 		c, r := i%7, i/7

@@ -33,13 +33,13 @@ type Template struct {
 	Cells   []Cell `yaml:"cells"`
 }
 
-// Style is the page's look. Image displays use pixels; text displays ignore
-// it.
+// Style is the page's look in points (1/72 inch, ADR 0050); Paperboy
+// converts it with the display's PPI. Text displays ignore it.
 type Style struct {
-	Padding  *int    `yaml:"padding"`   // inner margin of a widget, px; default 8
-	Rule     int     `yaml:"rule"`      // separator width a widget draws, px; default 1
-	TextSize float64 `yaml:"text_size"` // base text height, fraction of the page height; default 0.06
-	Divider  int     `yaml:"divider"`   // lines Paperboy draws between cells, px; default 0
+	Padding  *float64 `yaml:"padding"`   // inner margin of a widget, pt; default 4.5 (1.6 mm)
+	Rule     float64  `yaml:"rule"`      // separator width a widget draws, pt; default 0.6 (0.2 mm), at least 1 px
+	TextSize float64  `yaml:"text_size"` // base text height, pt; default 16, capped at 0.12 of the display height
+	Divider  float64  `yaml:"divider"`   // lines Paperboy draws between cells, pt; default 0 (none), at least 1 px
 }
 
 // Cell places one widget on the grid.
@@ -214,11 +214,20 @@ func (s *Style) validate() error {
 	if s.Rule < 0 || s.Divider < 0 {
 		return fmt.Errorf("rule and divider must not be negative")
 	}
-	if s.TextSize < 0 || s.TextSize > 0.5 {
-		return fmt.Errorf("text_size %g: expected a fraction of the page height, e.g. 0.06", s.TextSize)
+	if s.TextSize != 0 && s.TextSize < MinTextPt {
+		return fmt.Errorf("text_size %g: text_size is in points since ADR 0050 (e.g. 16), not a fraction of the height", s.TextSize)
+	}
+	if s.TextSize > MaxTextPt {
+		return fmt.Errorf("text_size %g: at most %g pt", s.TextSize, MaxTextPt)
 	}
 	return nil
 }
+
+// Limits of text_size in points.
+const (
+	MinTextPt = 4.0
+	MaxTextPt = 144.0
+)
 
 // merged returns the page style with a cell's overrides applied.
 func (s Style) merged(o *Style) Style {

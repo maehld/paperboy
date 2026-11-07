@@ -45,13 +45,13 @@ display_types:
     kind: image
     size: [800, 480]
     gray_levels: 4
-    width_mm: 163
+    ppi: 125          # pixels per inch: 800 px / 163 mm active width
     min_refresh: 60s
   sticky:
     kind: image
     size: [800, 480]
     gray_levels: 4
-    width_mm: 86
+    ppi: 236          # 800 px / 86 mm
   lcd2004:            # HD44780 text display (ADR 0044); pages use lines instead of blocks
     kind: text
     size: [20, 4]     # columns, rows

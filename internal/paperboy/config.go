@@ -55,9 +55,9 @@ type Profile struct {
 	Charset    string   `json:"charset,omitempty"` // text displays: utf8, ascii or hd44780
 	Width      int      `json:"width"`
 	Height     int      `json:"height"`
-	Gray       bool     `json:"gray"`        // four gray levels instead of black/white
-	WidthMM    int      `json:"width_mm"`    // physical panel width
-	MinRefresh Duration `json:"min_refresh"` // reported intervals never go below this
+	Gray       bool     `json:"gray"`          // four gray levels instead of black/white
+	PPI        float64  `json:"ppi,omitempty"` // image displays: pixels per inch (ADR 0050)
+	MinRefresh Duration `json:"min_refresh"`   // reported intervals never go below this
 }
 
 const (
@@ -245,7 +245,8 @@ type fileConfig struct {
 		Charset    string   `yaml:"charset"`
 		Size       [2]int   `yaml:"size"`
 		GrayLevels int      `yaml:"gray_levels"`
-		WidthMM    int      `yaml:"width_mm"`
+		PPI        float64  `yaml:"ppi"`
+		WidthMM    *int     `yaml:"width_mm"` // removed by ADR 0050, rejected with a hint
 		MinRefresh Duration `yaml:"min_refresh"`
 	} `yaml:"display_types"`
 	Devices map[string]struct {
@@ -336,11 +337,14 @@ func LoadConfig(dir string) (*Config, error) {
 			Width:      t.Size[0],
 			Height:     t.Size[1],
 			Gray:       t.GrayLevels == 4,
-			WidthMM:    t.WidthMM,
+			PPI:        t.PPI,
 			MinRefresh: t.MinRefresh,
 		}
-		if t.Kind == kindText && (t.GrayLevels != 0 || t.WidthMM != 0) {
-			return nil, fmt.Errorf("%s: display type %s: gray_levels and width_mm do not apply to kind text", path, name)
+		if t.WidthMM != nil {
+			return nil, fmt.Errorf("%s: display type %s: width_mm was replaced by ppi (ADR 0050): replace it with ppi = pixels × 25.4 / mm of the same side", path, name)
+		}
+		if t.Kind == kindText && (t.GrayLevels != 0 || t.PPI != 0) {
+			return nil, fmt.Errorf("%s: display type %s: gray_levels and ppi do not apply to kind text", path, name)
 		}
 		if t.GrayLevels != 0 && t.GrayLevels != 1 && t.GrayLevels != 4 {
 			return nil, fmt.Errorf("%s: display type %s: gray_levels must be 1 or 4", path, name)
@@ -454,6 +458,8 @@ func (c *Config) validate() error {
 			}
 		} else if p.Charset != "" {
 			return fmt.Errorf("display type %s: charset only applies to kind text", name)
+		} else if p.PPI < 20 || p.PPI > 1000 {
+			return fmt.Errorf("display type %s: ppi is required for image displays: pixels per inch between 20 and 1000, e.g. 125 (ADR 0050)", name)
 		}
 		if p.Width < 1 || p.Height < 1 || p.Width > 4096 || p.Height > 4096 {
 			return fmt.Errorf("display type %s: invalid size", name)

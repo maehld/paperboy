@@ -190,7 +190,7 @@ func (e *evcc) drawLoadpoint(w plugin.WidgetRequest, lp *loadpoint, img *image.P
 
 	// State of charge bar with the limit as a tick.
 	barTop := y + int(title*0.6)
-	barH := max(int(h*0.22), 8)
+	barH := max(int(h*0.22), int(e.req.PtPx(4.6)), 4)
 	bar := image.Rect(b.Min.X, barTop, b.Max.X, barTop+barH)
 	render.HLine(img, bar.Min.X, bar.Min.Y, bar.Max.X, 2)
 	render.HLine(img, bar.Min.X, bar.Max.Y-2, bar.Max.X, 2)
@@ -251,7 +251,7 @@ func (e *evcc) forecast(w plugin.WidgetRequest, img *image.Paletted) {
 	loc := e.req.Location()
 	now := e.req.Now.In(loc)
 	start, end := now, now.Add(time.Duration(hours)*time.Hour)
-	label := max(min(e.req.TextPx(w)*0.6, float64(b.Dy())*0.12), 10)
+	label := max(min(e.req.TextPx(w)*0.6, float64(b.Dy())*0.12), e.req.PtPx(5.8), render.MinSize)
 
 	var solar [][2]float64
 	maxW := 0.0

@@ -1,6 +1,6 @@
 # 0050: Scale widget layout by display PPI
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-07
 - Amends: ADR 0049 (page style and plugin protocol), ADR 0026 (display types: `width_mm` replaced by `ppi`)
 
@@ -49,6 +49,7 @@ points (1 pt = 1/72 in):
 | `text_size` | base text height in pt | 16 pt, capped at 0.12 × display height |
 | `padding` | inner margin of a widget in pt | 4.5 pt (≈ 1.6 mm) |
 | `rule` | width of separator lines in pt | 0.6 pt (≈ 0.2 mm), never thinner than 1 px |
+| `divider` | lines Paperboy draws between cells, pt (page only) | 0 (none), at least 1 px when set |
 
 Paperboy converts them with the display's PPI (`px = pt × ppi / 72`, rounded,
 padding at least 0, rule at least 1 px). On the E1001 this is almost today's
@@ -88,13 +89,15 @@ into a physically small cell shows less, as today.
 
 `paperboy`, `weather`, `calendar` and `evcc` take the base text from
 `TextPx`, padding and rule from the style (as today) and replace hard-coded
-pixel minimums (e.g. the 10 px label minimum) with `PtPx`.
+pixel minimums (e.g. the 10 px label minimum) with `PtPx`. The calendar
+`agenda` without a `lines` argument shows as many lines as the base text
+allows (one line per `TextPx`) instead of a fixed 10, and the `month` grid
+caps its event titles at the base text.
 
 ### Other places
 
-- The widget gallery (`/ui/plugins`, `/api/widget/...`) uses the `ppi` of the
-  selected display type; requests with plain `width`/`height` need a `ppi`
-  query parameter.
+- The widget gallery (`/ui/plugins`, `/api/widget/...`) always names a display
+  type and uses its `ppi`, also for plain `width`/`height` sizes.
 - The widget cache key contains the style and the page info, and therefore
   the PPI.
 
