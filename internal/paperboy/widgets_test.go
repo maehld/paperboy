@@ -90,6 +90,10 @@ func TestWidgetGalleryArgs(t *testing.T) {
 		t.Fatalf("snippet: %s", got)
 	}
 	// an invalid enum value comes back as the widget error
+	body = preview(t, s, "/ui/plugins?display=small&widget=paperboy/clock&arg.format=year").Body.String()
+	if !strings.Contains(body, `<option value="year" selected>year (not allowed)</option>`) {
+		t.Fatalf("invalid value not kept in the form: %s", body)
+	}
 	rec := preview(t, s, "/api/widget/paperboy/clock?display=small&arg.format=%22year%22")
 	if !strings.Contains(rec.Header().Get("X-Widget-Error"), "format: year is not one of time, date, datetime") {
 		t.Fatalf("enum error: %q", rec.Header())

@@ -588,6 +588,10 @@ func galleryFormFor(pluginName string, wi plugin.WidgetInfo, display, grid strin
 			for _, v := range values {
 				fd.Options = append(fd.Options, galleryOption{Value: v, Label: v, Selected: v == fd.Value})
 			}
+			if fd.Value != "" && !slices.Contains(values, fd.Value) {
+				fd.Options = append(fd.Options, galleryOption{Value: fd.Value, Label: fd.Value + " (not allowed)", Selected: true})
+				fd.Options[0].Selected = false
+			}
 		} else {
 			fd.Placeholder = def
 			if a.Type == "list" {
