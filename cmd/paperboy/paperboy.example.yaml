@@ -50,6 +50,7 @@ display_types:
     gray_levels: 4
     ppi: 125          # pixels per inch: 800 px / 163 mm active width
     min_refresh: 60s
+    # power: auto      # auto (default: what the firmware reports, else battery), battery or mains (ADR 0051)
   sticky:
     kind: image
     size: [800, 480]
@@ -66,6 +67,7 @@ devices:
     mac: "AA:BB:CC:DD:EE:01"
     plan: standard     # plans/standard.yaml must exist; otherwise a notice page
     # firmware: hold   # keep this device on its firmware version
+    # power: mains     # the E1001 cannot detect USB power; set mains when it runs on a charger
   flur:
     display_type: sticky
     protocol: paperboy   # Paperboy firmware (ADR 0041, 0042)

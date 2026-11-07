@@ -118,7 +118,7 @@ func TestDeviceFlow(t *testing.T) {
 	}
 	profiles := call(t, s, "/api/profiles", nil)["profiles"].([]any)
 	p := profiles[0].(map[string]any)
-	if p["name"] != "small" || p["min_refresh"] != "1m0s" {
+	if _, set := p["min_refresh"]; p["name"] != "small" || set || p["power"] != powerAuto {
 		t.Fatalf("profiles API: %v", p)
 	}
 	// The TRMNL endpoints are gone.

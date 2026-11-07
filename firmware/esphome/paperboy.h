@@ -22,6 +22,10 @@ static float pb_bat_percent = NAN;
 static float pb_bat_mah = NAN;
 static float pb_bat_ma = NAN;
 
+// Power source for the next sync (ADR 0051): "battery", "mains" or empty when
+// the hardware cannot tell. Set by the device file.
+static std::string pb_power;
+
 // Events since the last sync, as JSON objects, and log entries for the next sync.
 static std::vector<std::string> pb_events;
 static std::vector<std::string> pb_logs;
@@ -98,6 +102,8 @@ inline std::string pb_sync_body(const std::string &firmware, const std::string &
     b += "}";
   }
   b += esphome::str_sprintf(",\"rssi\":%d", rssi);
+  if (!pb_power.empty())
+    b += ",\"power\":" + pb_json_string(pb_power);
   b += ",\"log\":[";
   for (size_t i = 0; i < pb_logs.size(); i++) {
     b += (i ? "," : "") + pb_logs[i];
