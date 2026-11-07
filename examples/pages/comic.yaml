@@ -1,0 +1,6 @@
+# xkcd comic with title and alt text.
+title: Comic
+grid: [6, 8]
+style: { padding: 4.5 }
+cells:
+  - { at: [0, 0], span: [6, 8], widget: xkcd/comic, args: { title: true, alt: true } }

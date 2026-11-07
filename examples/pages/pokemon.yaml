@@ -1,0 +1,6 @@
+# Pokémon of the day as a full-screen card.
+title: Pokémon
+grid: [6, 8]
+style: { padding: 4.5 }
+cells:
+  - { at: [0, 0], span: [6, 8], widget: pokedex/card }

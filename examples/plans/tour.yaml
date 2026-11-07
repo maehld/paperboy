@@ -1,0 +1,19 @@
+# Tour through all shipped plugins. During the day the device turns to the
+# next page with every refresh; on weekday mornings it shows what matters
+# before leaving the house, and at night it stays on the overview.
+rules:
+  - name: morning
+    when: { from: "06:00", to: "09:00", days: [mon, tue, wed, thu, fri] }
+    pages: [unterwegs, uebersicht, woche, energie]
+    rotate: true
+    refresh: 5m
+  - name: day
+    when: { from: "07:00", to: "22:00" }
+    pages: [uebersicht, energie, unterwegs, woche, kalender, wetter, laden, abfahrten, pokemon, comic]
+    rotate: true
+    refresh: 10m
+  - name: night
+    when: { from: "22:00", to: "07:00" }
+    pages: [uebersicht]
+    refresh: 30m
+fallback: day
