@@ -16,7 +16,7 @@ import (
 	"github.com/maehld/paperboy/pkg/render"
 )
 
-// calendarPlugin draws the calendar widgets "agenda" and "month".
+// calendarPlugin draws the calendar widgets "agenda", "month" and "week".
 type calendarPlugin struct {
 	opts options
 	loc  *time.Location
@@ -109,6 +109,15 @@ func (p *calendarPlugin) Describe() plugin.Description {
 					"titles": {Type: "bool", Default: true, Description: "event titles in the day cells when they fit"},
 				},
 			},
+			{
+				Widget: "week", Title: "Week view", Kinds: both,
+				Sizes:    []plugin.Span{{Columns: 6, Rows: 4}, {Columns: 6, Rows: 7}},
+				MinWidth: 320, MinHeight: 160,
+				Args: map[string]plugin.Arg{
+					"days":  {Type: "int", Default: 7, Description: "number of day columns, 1 to 14 (5 for a work week); text displays show as many days as lines"},
+					"start": {Type: "string", Default: "week", Description: "first column: week = start of the week (Monday for German, Sunday otherwise), today = today (default week; today on text displays)"},
+				},
+			},
 		},
 	}
 }
@@ -157,6 +166,8 @@ func (p *calendarPlugin) Render(req *plugin.Request, w plugin.WidgetRequest, img
 		p.agenda(req, w, img)
 	case "month":
 		p.month(req, w, img)
+	case "week":
+		p.week(req, w, img)
 	default:
 		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 	}
@@ -187,6 +198,8 @@ func (p *calendarPlugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]st
 			}
 		}
 		return out, nil
+	case "week":
+		return p.weekLines(w), nil
 	case "month":
 		now := p.now.In(p.loc)
 		today := midnight(now)
