@@ -1,0 +1,110 @@
+name: Release
+
+# Builds the artifacts for a tag and attaches them to one GitHub release
+# (ADR 0056). The tag prefix selects the release train:
+#
+#   v2.1.0          Paperboy, plugins and firmware
+#   plugins-v2.1.0  plugins only
+#   firmware-v0.5.0 firmware images only (bundle version: highest fw_version)
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "plugins-v*"
+      - "firmware-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  paperboy:
+    if: startsWith(github.ref_name, 'v')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+          - os: linux
+            arch: arm64
+          - os: windows
+            arch: amd64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # The version label comes from Go's VCS stamping, which needs the tag.
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: |
+          ext=""
+          [ "${{ matrix.os }}" = windows ] && ext=".exe"
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} \
+            go build -trimpath -ldflags="-s -w" \
+            -o "dist/paperboy-${{ matrix.os }}-${{ matrix.arch }}$ext" ./cmd/paperboy
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: paperboy-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/paperboy-${{ matrix.os }}-${{ matrix.arch }}*
+
+  plugins:
+    if: startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'plugins-v')
+    uses: ./.github/workflows/plugins.yml
+
+  firmware:
+    if: startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'firmware-v')
+    uses: ./.github/workflows/firmware.yml
+
+  release:
+    needs: [paperboy, plugins, firmware]
+    # Skipped jobs are fine, a failed build must not publish a partial release.
+    if: >
+      always() && !cancelled() &&
+      needs.paperboy.result != 'failure' &&
+      needs.plugins.result != 'failure' &&
+      needs.firmware.result != 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum * > "$RUNNER_TEMP/SHA256SUMS"
+          mv "$RUNNER_TEMP/SHA256SUMS" SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Release with generated notes
+        if: startsWith(github.ref_name, 'v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*
+
+      - name: Release with asset notes
+        if: "!startsWith(github.ref_name, 'v')"
+        uses: softprops/action-gh-release@v2
+        with:
+          body: |
+            Release of a single release train (ADR 0056).
+
+            - `paperboy-plugins-<os>-<arch>.zip`: unpack in the instance directory, creates `plugins/`.
+            - `paperboy-firmware-<hardware>-<version>.zip`: unpack in the instance directory, creates `firmware/<hardware>/` (ADR 0043).
+            - `paperboy-firmware-<hardware>-<version>.bin`: the same OTA image alone.
+            - `SHA256SUMS`: checksums of all assets.
+          files: dist/*

@@ -5,8 +5,9 @@
 # home (ADR 0042; confirmed on the device in 0.4.0, where left and middle were
 # swapped).
 #
-# ESPHome drives the E1001 panel in black and white only, so Paperboy's two
-# gray levels are drawn as a fixed 2x2 pattern (pb_draw_dithered).
+# The panel (GDEY075T7, UC8179) supports four gray levels, but ESPHome's
+# Seeed-reTerminal-E1001 model drives it in black and white only (1 bpp), so
+# Paperboy's gray levels are drawn as a fixed 2x2 pattern (pb_draw_dithered).
 
 substitutions:
   hardware: e1001

@@ -2,6 +2,7 @@
 # Builds the shipped plugins for GOOS/GOARCH (default: the host) and packs
 # them into <out>/paperboy-plugins-<os>-<arch>.zip. Unpacked in an instance
 # directory, the zip creates plugins/ with the binaries (ADR 0049).
+# release.yml attaches the zip to a release (ADR 0056).
 #
 #   GOOS=linux GOARCH=arm64 ./scripts/package-plugins.sh dist
 set -eu

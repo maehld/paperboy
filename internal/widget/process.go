@@ -34,6 +34,8 @@ type process struct {
 	pending map[string]chan plugin.Message
 	done    chan struct{} // closed when the process has exited
 	stderr  *tailBuffer
+
+	versionLogged bool // the protocol mismatch was already logged
 }
 
 func (h *Host) stopAll() {
@@ -112,6 +114,10 @@ func (p *process) request(ctx context.Context, req plugin.Request) (plugin.Messa
 	defer timer.Stop()
 	select {
 	case m := <-ch:
+		if err := m.CheckVersion(); err != nil {
+			p.warnVersion(err)
+			return m, err
+		}
 		if m.Error != "" {
 			return m, errors.New(m.Error)
 		}
@@ -238,6 +244,19 @@ func (p *process) read(stdout io.Reader, changed func(string, []string)) {
 	err := p.cmd.Wait()
 	slog.Info("plugin exited", "plugin", p.spec.Name, "error", p.exitError(err))
 	close(p.done)
+}
+
+// warnVersion logs a protocol mismatch once per process: the cells fail with
+// the error anyway, but the operator needs the reason once in the log
+// (ADR 0058).
+func (p *process) warnVersion(err error) {
+	p.mu.Lock()
+	logged := p.versionLogged
+	p.versionLogged = true
+	p.mu.Unlock()
+	if !logged {
+		slog.Error("plugin protocol mismatch", "plugin", p.spec.Name, "error", err)
+	}
 }
 
 func (p *process) exited() bool {
