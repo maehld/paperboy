@@ -23,6 +23,8 @@ func (e *evcc) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Pa
 			return err
 		}
 		e.drawLoadpoint(w, lp, img)
+	case "flow":
+		e.flow(w, img)
 	case "forecast":
 		e.forecast(w, img)
 	default:
@@ -357,6 +359,8 @@ func (e *evcc) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, erro
 			out = append(out, plugin.Columns(t.label, value, w.Width))
 		}
 		return out, nil
+	case "flow":
+		return e.flowText(w), nil
 	case "loadpoint":
 		lp, err := e.loadpoint(w)
 		if err != nil {

@@ -2,11 +2,11 @@
 // polls the evcc REST API (/api/state) in the background and draws:
 //
 //   - "site": PV, home, grid and home battery as tiles,
-//   - "loadpoint": one charging point with vehicle, mode, state of charge,
+//   - "flow": an energy flow diagram, boxes for PV, grid, home, battery and\n//     active loadpoints joined by arrows whose width shows the power,\n//   - "loadpoint": one charging point with vehicle, mode, state of charge,
 //     charge power and session energy,
 //   - "forecast": the solar forecast and the grid price of the coming hours.
 //
-// "site" and "loadpoint" have text variants for character displays.
+// "site", "flow" and "loadpoint" have text variants for character displays.
 //
 //	plugins:
 //	  evcc:
@@ -132,6 +132,8 @@ func (e *evcc) Describe() plugin.Description {
 				Args: map[string]plugin.Arg{
 					"columns": {Type: "int", Default: 2, Description: "tiles per row: 2 or 4"},
 				}},
+			{Widget: "flow", Title: "Energy flow diagram", Kinds: both, MinWidth: 240, MinHeight: 200,
+				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 4}}},
 			{Widget: "loadpoint", Title: "Charging point", Kinds: both, MinWidth: 200, MinHeight: 100,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 3}},
 				Args: map[string]plugin.Arg{
