@@ -23,8 +23,9 @@ type deviceState struct {
 	Firmware       string    `json:"firmware,omitempty"`
 	Hardware       string    `json:"hardware,omitempty"` // firmware image type, e.g. "sticky"
 	WakeReason     string    `json:"wake_reason,omitempty"`
-	BatteryLevel   string    `json:"battery_level,omitempty"` // "", "warn" or "critical"
-	Rule           string    `json:"rule,omitempty"`          // name of the active plan rule
+	BatteryLevel   string    `json:"battery_level,omitempty"`  // "", "warn" or "critical"
+	Rule           string    `json:"rule,omitempty"`           // name of the active plan rule
+	ReportedPower  string    `json:"reported_power,omitempty"` // power source the hardware last reported (ADR 0051)
 
 	// What the device was last pointed at; set after rendering, so a failed
 	// render shows up as a notice instead of a page that was never drawn.

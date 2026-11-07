@@ -97,10 +97,11 @@ func TestLoadConfig(t *testing.T) {
 	if p := cfg.Profiles["e1001"]; p.Width != 800 || p.Height != 480 || !p.Gray || p.PPI != 125 || p.MinRefresh != Duration(2*time.Minute) {
 		t.Fatalf("e1001: %+v", p)
 	}
-	if p := cfg.Profiles["sticky"]; p.Gray || p.MinRefresh != Duration(time.Minute) {
+	if p := cfg.Profiles["sticky"]; p.Gray || p.MinRefresh != 0 || p.Power != powerAuto {
 		t.Fatalf("sticky: %+v", p)
 	}
-	if cfg.minRefresh("e1001") != 2*time.Minute || cfg.minRefresh("sticky") != time.Minute {
+	devFlur, devWohnzimmer := &cfg.Devices[0], &cfg.Devices[1]
+	if cfg.minRefresh(devWohnzimmer, "") != 2*time.Minute || cfg.minRefresh(devFlur, "") != time.Minute {
 		t.Fatal("min refresh floor")
 	}
 	if len(cfg.Devices) != 2 || cfg.Devices[0].ID != "flur" || cfg.Devices[1].ID != "wohnzimmer" {

@@ -38,6 +38,8 @@ type servedPage struct {
 type renderedPage struct {
 	data []byte
 	hash string
+	pix  []byte          // composed palette indexes; an identical composition reuses data and hash
+	rect image.Rectangle // bounds of pix
 }
 
 func hashBytes(data []byte) string {
@@ -82,8 +84,17 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	if took := time.Since(start); took > 2*time.Second {
 		slog.Warn("page rendering is slow", "profile", profile, "page", name, "took", took)
 	}
+	// Short intervals compose the same page again and again (ADR 0051): when
+	// the pixels match the last render, its PNG and hash are reused instead of
+	// encoding again, so the device sees an unchanged hash and does not redraw.
+	s.mu.Lock()
+	prev := s.rendered[profile+"/"+name]
+	s.mu.Unlock()
+	if prev != nil && prev.rect == img.Rect && bytes.Equal(prev.pix, img.Pix) {
+		return prev, nil
+	}
 	data := encodePNG(img)
-	return &renderedPage{data: data, hash: hashBytes(data)}, nil
+	return &renderedPage{data: data, hash: hashBytes(data), pix: img.Pix, rect: img.Rect}, nil
 }
 
 // display describes a display type for the page package.
@@ -293,7 +304,7 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 		st.Page = 0
 	}
 	page := st.Page
-	floor := cfg.minRefresh(d.Profile)
+	floor := cfg.minRefresh(d, st.ReportedPower)
 	refresh := time.Duration(sel.Refresh)
 	if refresh == 0 {
 		refresh = d.refresh()

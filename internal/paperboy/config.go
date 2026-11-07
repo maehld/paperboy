@@ -55,10 +55,25 @@ type Profile struct {
 	Charset    string   `json:"charset,omitempty"` // text displays: utf8, ascii or hd44780
 	Width      int      `json:"width"`
 	Height     int      `json:"height"`
-	Gray       bool     `json:"gray"`          // four gray levels instead of black/white
-	PPI        float64  `json:"ppi,omitempty"` // image displays: pixels per inch (ADR 0050)
-	MinRefresh Duration `json:"min_refresh"`   // reported intervals never go below this
+	Gray       bool     `json:"gray"`                  // four gray levels instead of black/white
+	PPI        float64  `json:"ppi,omitempty"`         // image displays: pixels per inch (ADR 0050)
+	MinRefresh Duration `json:"min_refresh,omitempty"` // configured floor; 0 = default of the power source (ADR 0051)
+	Power      string   `json:"power"`                 // auto, battery or mains (ADR 0051)
 }
+
+// Power sources (ADR 0051). auto follows what the hardware reports and falls
+// back to battery when it reports nothing.
+const (
+	powerAuto    = "auto"
+	powerBattery = "battery"
+	powerMains   = "mains"
+)
+
+// mainsImageMinRefresh is the default floor of a mains-powered image display:
+// an ePaper redraw takes seconds, shorter intervals would only queue up.
+const mainsImageMinRefresh = 10 * time.Second
+
+func validPower(p string) bool { return p == powerAuto || p == powerBattery || p == powerMains }
 
 const (
 	kindImage = "image"
@@ -81,6 +96,7 @@ type Device struct {
 	Battery *Battery // overrides the defaults
 	Plan    string   // page plan under plans/; empty = notice page
 	Hold    bool     // firmware: hold keeps the device on its firmware version (ADR 0043)
+	Power   string   // auto, battery or mains; empty = the display type's (ADR 0051)
 }
 
 // FirmwareConfig controls firmware updates offered in the sync (ADR 0043).
@@ -150,7 +166,6 @@ const (
 	minRefresh         = time.Minute
 	defaultRefresh     = 5 * time.Minute
 	defaultPageTimeout = 5 * time.Minute
-	defaultMinRefresh  = time.Minute
 )
 
 // Fixed names of the instance directory (ADR 0037).
@@ -208,15 +223,41 @@ func (c *Config) battery(d *Device) *Battery {
 	return c.Battery
 }
 
-// minRefresh returns the shortest interval reported for a display type. Image
-// displays never go below one minute; text displays may poll down to their
-// min_refresh, by default one second (ADR 0045).
-func (c *Config) minRefresh(profile string) time.Duration {
-	p := c.Profiles[profile]
-	if p.text() {
-		return max(time.Second, time.Duration(p.MinRefresh))
+// power returns the effective power source of d (ADR 0051): the device's
+// setting, else the display type's; auto takes what the hardware reported
+// and falls back to battery when it reported nothing.
+func (c *Config) power(d *Device, reported string) string {
+	p := d.Power
+	if p == "" {
+		p = c.Profiles[d.Profile].Power
 	}
-	return max(minRefresh, time.Duration(p.MinRefresh))
+	if p == powerBattery || p == powerMains {
+		return p
+	}
+	if reported == powerMains {
+		return powerMains
+	}
+	return powerBattery
+}
+
+// minRefresh returns the shortest interval reported to d (ADR 0045, 0051).
+// Battery devices never go below one minute or their min_refresh; mains
+// devices go down to min_refresh, by default one second for text and ten
+// seconds for image displays.
+func (c *Config) minRefresh(d *Device, reported string) time.Duration {
+	p := c.Profiles[d.Profile]
+	set := time.Duration(p.MinRefresh)
+	if c.power(d, reported) == powerBattery {
+		return max(minRefresh, set)
+	}
+	switch {
+	case set > 0:
+		return set
+	case p.text():
+		return time.Second
+	default:
+		return mainsImageMinRefresh
+	}
 }
 
 // fileConfig mirrors paperboy.yaml.
@@ -248,6 +289,7 @@ type fileConfig struct {
 		PPI        float64  `yaml:"ppi"`
 		WidthMM    *int     `yaml:"width_mm"` // removed by ADR 0050, rejected with a hint
 		MinRefresh Duration `yaml:"min_refresh"`
+		Power      string   `yaml:"power"`
 	} `yaml:"display_types"`
 	Devices map[string]struct {
 		DisplayType string   `yaml:"display_type"`
@@ -259,6 +301,7 @@ type fileConfig struct {
 		Refresh     Duration `yaml:"refresh"`
 		Battery     *Battery `yaml:"battery"`
 		Firmware    string   `yaml:"firmware"`
+		Power       string   `yaml:"power"`
 	} `yaml:"devices"`
 }
 
@@ -339,6 +382,7 @@ func LoadConfig(dir string) (*Config, error) {
 			Gray:       t.GrayLevels == 4,
 			PPI:        t.PPI,
 			MinRefresh: t.MinRefresh,
+			Power:      t.Power,
 		}
 		if t.WidthMM != nil {
 			return nil, fmt.Errorf("%s: display type %s: width_mm was replaced by ppi (ADR 0050): replace it with ppi = pixels × 25.4 / mm of the same side", path, name)
@@ -373,6 +417,7 @@ func LoadConfig(dir string) (*Config, error) {
 			Battery: mergeBattery(f.Defaults.Battery, d.Battery),
 			Plan:    d.Plan,
 			Hold:    d.Firmware == firmwareHold,
+			Power:   d.Power,
 		})
 	}
 	pluginNames := make([]string, 0, len(f.Plugins))
@@ -464,14 +509,16 @@ func (c *Config) validate() error {
 		if p.Width < 1 || p.Height < 1 || p.Width > 4096 || p.Height > 4096 {
 			return fmt.Errorf("display type %s: invalid size", name)
 		}
-		if p.MinRefresh == 0 {
-			p.MinRefresh = Duration(defaultMinRefresh)
-			if p.Kind == kindText {
-				p.MinRefresh = Duration(time.Second)
-			}
-		}
-		if time.Duration(p.MinRefresh) < time.Second {
+		// An unset min_refresh stays 0: its default depends on the power
+		// source, which may only be known from the device's report (ADR 0051).
+		if p.MinRefresh != 0 && time.Duration(p.MinRefresh) < time.Second {
 			return fmt.Errorf("display type %s: min_refresh must be at least 1s", name)
+		}
+		if p.Power == "" {
+			p.Power = powerAuto
+		}
+		if !validPower(p.Power) {
+			return fmt.Errorf("display type %s: power %q: expected auto, battery or mains", name, p.Power)
 		}
 		c.Profiles[name] = p
 	}
@@ -519,8 +566,12 @@ func (c *Config) validate() error {
 		if d.Refresh == 0 {
 			d.Refresh = c.Refresh
 		}
-		if time.Duration(d.Refresh) < minRefresh {
-			return fmt.Errorf("device %s: refresh must be at least 1m", d.ID)
+		// The floor of the power source applies at runtime (ADR 0051).
+		if time.Duration(d.Refresh) < time.Second {
+			return fmt.Errorf("device %s: refresh must be at least 1s", d.ID)
+		}
+		if d.Power != "" && !validPower(d.Power) {
+			return fmt.Errorf("device %s: power %q: expected auto, battery or mains", d.ID, d.Power)
 		}
 		if d.Plan != "" && !validName(d.Plan) {
 			return fmt.Errorf("device %s: plan %q: only a-z, 0-9 and -", d.ID, d.Plan)

@@ -2,7 +2,9 @@
 # included as a package by the hardware files. The hardware file supplies the
 # board and the display (id text_display) whose lambda prints pb_lines.
 #
-# Text displays run on mains power and never sleep (ADR 0044, ADR 0045):
+# Text displays run on mains power and never sleep (ADR 0044, ADR 0045,
+# ADR 0051); every sync reports power: mains, and the sleep field of the
+# answer is ignored because there is no deep sleep path:
 # - boot -> register (retried once a minute) -> POST /api/device/sync, again
 #   every refresh_s but at most once a minute;
 # - GET /api/device/text?shown=<hash> every refresh_s, which the plan decides
@@ -27,6 +29,7 @@ esphome:
       then:
         - lambda: |-
             id(mac) = get_mac_address_pretty();
+            pb_power = "mains";  // text displays have no battery (ADR 0051)
             pb_show_message("Paperboy\nstarting ...");
         - component.update: text_display
 

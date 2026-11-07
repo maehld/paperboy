@@ -16,6 +16,9 @@
 # offers firmware (ADR 0043) -> download and paint only if the hash changed ->
 # stay awake listen_s for further input -> deep sleep for refresh_s. Presses made while a sync or paint is running are queued and sent
 # together in the next sync, so Paperboy renders only the final page.
+# Mains-powered devices (sleep: false in the sync, ADR 0051) skip the deep
+# sleep: they stay awake and sync again after refresh_s. The hardware file
+# sets pb_power so Paperboy learns the power source.
 
 esphome:
   # Network name paperboy-<last three MAC bytes>; the build directory is per
@@ -119,6 +122,11 @@ globals:
   - id: listen_s
     type: int
     initial_value: "0"
+  # sleep: false in the last sync (ADR 0051): the device is on mains, stays
+  # awake and syncs again after refresh_s instead of deep sleeping.
+  - id: stay_awake
+    type: bool
+    initial_value: "false"
   # Firmware offer from the last sync; empty path = no offer.
   - id: fw_path
     type: std::string
@@ -349,6 +357,8 @@ script:
                     int refresh = root["refresh_s"] | 600;
                     pb_refresh_s = refresh > 0 ? refresh : 600;
                     id(listen_s) = root["listen_s"] | 0;
+                    // Older servers send no sleep field: keep deep sleeping.
+                    id(stay_awake) = !(root["sleep"] | true);
                     id(fw_offered) = root["firmware"]["version"] | "";
                     id(fw_path) = root["firmware"]["path"] | "";
                     id(fw_md5) = root["firmware"]["md5"] | "";
@@ -357,8 +367,8 @@ script:
                   if (ok && !id(image_path).empty()) {
                     id(sync_result) = 1;
                   }
-                  ESP_LOGI("paperboy", "image %s, refresh %d s, listen %d s", id(image_path).c_str(),
-                           pb_refresh_s, id(listen_s));
+                  ESP_LOGI("paperboy", "image %s, refresh %d s, listen %d s, sleep %s", id(image_path).c_str(),
+                           pb_refresh_s, id(listen_s), id(stay_awake) ? "no" : "yes");
           on_error:
             then:
               - lambda: 'pb_note_for_next_wake("sync request failed");'
@@ -452,12 +462,24 @@ script:
                   - delay: !lambda "return (uint32_t) std::max(0, id(listen_s)) * 1000;"
             - script.execute: go_sleep
 
+  # Battery devices deep sleep for refresh_s. Mains devices (sleep: false in
+  # the sync, ADR 0051) stay awake with Wi-Fi up, wait refresh_s and sync
+  # again as a timer wake; input meanwhile syncs at once and restarts the wait.
   - id: go_sleep
-    mode: single
+    mode: restart
     then:
-      - deep_sleep.enter:
-          id: sleeper
-          sleep_duration: !lambda "return (uint32_t) (pb_refresh_s > 0 ? pb_refresh_s : 600) * 1000;"
+      - if:
+          condition:
+            lambda: "return id(stay_awake) && !id(setup_mode);"
+          then:
+            - script.stop: awake_limit
+            - delay: !lambda "return (uint32_t) (pb_refresh_s > 0 ? pb_refresh_s : 600) * 1000;"
+            - lambda: 'id(wake_reason) = "timer";'
+            - script.execute: run_cycle
+          else:
+            - deep_sleep.enter:
+                id: sleeper
+                sleep_duration: !lambda "return (uint32_t) (pb_refresh_s > 0 ? pb_refresh_s : 600) * 1000;"
 
   # Never stay awake longer than this after the last input, whatever hangs.
   - id: awake_limit

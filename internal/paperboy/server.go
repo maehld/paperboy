@@ -180,6 +180,7 @@ type deviceInfo struct {
 	LastPageURL       string `json:"last_page_url,omitempty"`      // where the last served image sits
 	FirmwareAvailable string `json:"firmware_available,omitempty"` // newest image for the hardware (ADR 0043)
 	FirmwareStatus    string `json:"firmware_status"`              // current, offered, available, failed, held or none
+	Power             string `json:"power"`                        // effective power source: battery or mains (ADR 0051)
 }
 
 func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
@@ -201,6 +202,7 @@ func (s *Server) deviceInfos() []deviceInfo {
 			info.Registered = st.APIKey != ""
 		}
 		info.Status = deviceStatus(d, info.deviceState, now)
+		info.Power = cfg.power(&d, info.ReportedPower)
 		if info.LastPageHash != "" && !cfg.Profiles[d.Profile].text() {
 			if info.LastPageKind == "page" && info.LastPage != "" {
 				info.LastPageURL = fmt.Sprintf("/pages/%s/%s/%s.png", d.Profile, info.LastPage, info.LastPageHash)
