@@ -117,7 +117,7 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				MinWidth: 320, MinHeight: 160,
 				Args: map[string]plugin.Arg{
 					"days":  {Type: "int", Default: 7, Description: "number of day columns, 1 to 14 (5 for a work week); text displays show as many days as lines"},
-					"start": {Type: "string", Default: "week", Description: "first column: week = start of the week (Monday for German, Sunday otherwise), today = today (default week; today on text displays)"},
+					"start": {Type: "string", Default: "week", Description: "first column: week = start of the week (Monday for German, Sunday otherwise), today = today (default week; today on text displays)", Enum: []any{"week", "today"}},
 				},
 			},
 		},

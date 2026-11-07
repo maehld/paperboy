@@ -70,3 +70,35 @@ func TestServeIO(t *testing.T) {
 	}
 	inW.Close()
 }
+
+type enumHandler struct{ testHandler }
+
+func (enumHandler) Describe() Description {
+	return Description{Widgets: []WidgetInfo{{Widget: "w", Args: map[string]Arg{
+		"align":   {Type: "string", Enum: []any{"left", "right"}},
+		"columns": {Type: "int", Enum: []any{2, 4}},
+	}}}}
+}
+
+func TestEnums(t *testing.T) {
+	known := enumHandler{}.Describe().Widgets[0].Args
+	for _, ok := range []Values{{}, {"align": "left"}, {"columns": float64(4)}, {"other": "x"}} {
+		if err := ok.CheckEnums(known); err != nil {
+			t.Errorf("%v: %v", ok, err)
+		}
+	}
+	for _, bad := range []Values{{"align": "middle"}, {"columns": 3}} {
+		if err := bad.CheckEnums(known); err == nil {
+			t.Errorf("%v accepted", bad)
+		}
+	}
+	if err := (Values{"align": "up"}).Check(known); err == nil || err.Error() != "align: up is not one of left, right" {
+		t.Errorf("check: %v", err)
+	}
+	m := Handle(&enumHandler{}, &Request{Action: ActionRender, Levels: 2, Widgets: []WidgetRequest{
+		{Widget: "w", Width: 2, Height: 2, Args: map[string]any{"align": "right"}},
+		{Widget: "w", Width: 2, Height: 2, Args: map[string]any{"columns": float64(3)}}}})
+	if len(m.Widgets) != 2 || m.Widgets[0].Error != "" || m.Widgets[1].Error != "columns: 3 is not one of 2, 4" {
+		t.Fatalf("handle: %+v", m)
+	}
+}

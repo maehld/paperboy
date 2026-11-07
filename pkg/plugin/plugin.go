@@ -40,6 +40,7 @@ import (
 	"image/png"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -163,6 +164,57 @@ type Arg struct {
 	Default     any    `json:"default,omitempty"`
 	Required    bool   `json:"required,omitempty"`
 	Description string `json:"description,omitempty"`
+	// Enum lists the allowed values, if there is a fixed set (ADR 0055);
+	// for a list, the allowed elements. Optional: editors offer a choice,
+	// Check and Handle reject other values.
+	Enum []any `json:"enum,omitempty"`
+}
+
+// Allows reports whether value (or, for a list, each element) is one of the
+// arg's Enum values; any value is allowed without an Enum.
+func (a Arg) Allows(value any) bool {
+	if len(a.Enum) == 0 {
+		return true
+	}
+	if list, ok := value.([]any); ok {
+		for _, e := range list {
+			if !a.Allows(e) {
+				return false
+			}
+		}
+		return true
+	}
+	s := fmt.Sprint(value)
+	for _, e := range a.Enum {
+		if fmt.Sprint(e) == s {
+			return true
+		}
+	}
+	return false
+}
+
+func (a Arg) enumText() string {
+	parts := make([]string, len(a.Enum))
+	for i, e := range a.Enum {
+		parts[i] = fmt.Sprint(e)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// CheckEnums rejects values outside the Enum of their arg; keys without a
+// description are left alone.
+func (v Values) CheckEnums(known map[string]Arg) error {
+	names := make([]string, 0, len(v))
+	for k := range v {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, k := range names {
+		if a, ok := known[k]; ok && !a.Allows(v[k]) {
+			return fmt.Errorf("%s: %v is not one of %s", k, v[k], a.enumText())
+		}
+	}
+	return nil
 }
 
 // Handler is implemented by a plugin.
@@ -298,8 +350,14 @@ func handleWidgets(h Handler, req *Request) ([]Result, error) {
 		}
 	}
 	out := make([]Result, 0, len(req.Widgets))
+	args := map[string]map[string]Arg{}
+	for _, wi := range h.Describe().Widgets {
+		args[wi.Widget] = wi.Args
+	}
 	for _, w := range req.Widgets {
-		if req.Action == ActionText {
+		if err := w.Arg().CheckEnums(args[w.Widget]); err != nil {
+			out = append(out, Result{Error: err.Error()})
+		} else if req.Action == ActionText {
 			out = append(out, textOne(t, req, w))
 		} else {
 			out = append(out, renderOne(h, req, w))
@@ -488,7 +546,7 @@ func (v Values) Check(known map[string]Arg) error {
 			return fmt.Errorf("%s is required", k)
 		}
 	}
-	return nil
+	return v.CheckEnums(known)
 }
 
 // Columns puts left and right into one line of width characters; the left
