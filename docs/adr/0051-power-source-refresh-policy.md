@@ -18,7 +18,7 @@ Short intervals also cost server work: every sync chooses a page, composes it an
 ## Decision
 
 1. **`power: auto|battery|mains`** on the display type, overridable per device (device wins). Strictly validated; other values are an error. Default: `auto`.
-   - **The hardware reports its power source.** The sync body (and register) gains an optional `power: battery|mains`. The firmware sets it from the hardware: a compile-time substitution `power` per hardware file (`lcd2004`: `mains`; `sticky`, `e1001`: `battery`), replaced by runtime detection where the hardware allows it (e.g. charger/VBUS state, BQ27220 status on the Sticky). The last reported value is kept in `state/devices.json` (`reported_power`) and shown in `/api/devices` and the dashboard.
+   - **The hardware reports its power source.** The sync body (and register) gains an optional `power: battery|mains`. The firmware sets it from the hardware: a compile-time substitution `power` per hardware file (`lcd2004`: `mains`; `sticky`, `e1001`: `battery`), replaced by runtime detection where the hardware allows it. The last reported value is kept in `state/devices.json` (`reported_power`) and shown in `/api/devices` and the dashboard.
    - **`auto`** uses the last reported value; when the device has never reported one (old firmware, before the first sync), it behaves as `battery`.
    - `battery`/`mains` set explicitly override what the hardware reports, e.g. for hardware that cannot detect it.
    - Consequence for existing text displays: their current firmware reports nothing, so under `auto` they fall back to the battery floor (one minute) until they run firmware that reports `mains`, or until `power: mains` is configured. This is intended: unknown means the safe behaviour.
@@ -43,4 +43,10 @@ Short intervals also cost server work: every sync chooses a page, composes it an
 - A USB-powered ePaper device can refresh every 10 s on a fitting plan without deep sleep; a mistakenly configured `mains` on a battery device drains it quickly, which the battery warning will show but not prevent.
 - New config key and response field: README, AGENTS.md and the firmware README need updating; firmware needs a new version and has to be flashed per device to benefit.
 - Tests: refresh floor per effective power source (`auto` with and without report, explicit override), plan refresh and rule boundaries for both, `sleep` in the sync response, validation of `power`, page reuse with an unchanged hash.
-- Open questions: is 10 s the right image default floor? Should a mains image device be allowed to skip `listen_s` entirely (it is always listening anyway)? Which hardware can detect external power at runtime (Sticky via BQ27220, E1001 unknown)?
+- Open questions: is 10 s the right image default floor? Should a mains image device be allowed to skip `listen_s` entirely (it is always listening anyway)?
+
+## Hardware detection (checked 2026-11-07 against the Seeed schematics)
+
+- **reTerminal Sticky** (schematic `reTerminal_Sticky_Schematic_diagram_260609.pdf`): USB `VIN_5V` reaches **GPIO9** as `PWR_IN_VOLT` through a 5.1 kΩ/5.1 kΩ divider (about 2.5 V with USB, 0 V without; GPIO9 is ADC1). The BQ25616 charger's `STAT` is on GPIO40 (`CHARGE_STATE`), its charge enable on GPIO39 (`EN_BAT_CHGn`). The firmware reads GPIO9 with the ADC at every wake and reports `mains` above about 1.5 V. `STAT` and the BQ27220 current (Seeed's playground treats > 20 mA as charging) only show charging, not a full battery on USB, and are not used.
+- **reTerminal E1001** (schematic `202004307_reTerminal_E1001_V1.0_SCH_250805.pdf`): the ETA6003 charger's `STAT` drives only the red LED, its `USB_DET` is an input of the charger, and no ESP32 GPIO sees VBUS (the ADC on GPIO1 measures the battery). The only hint is the CH340C USB-UART bridge, which is powered from USB, but its TX idles on UART0 that the logger uses; this is not reliable. The E1001 firmware therefore reports the compile-time value `battery`; an E1001 on USB needs `power: mains` in the configuration.
+- **lcd2004**: reports `mains` (no battery).
