@@ -204,10 +204,14 @@ func (s *Server) deviceInfos() []deviceInfo {
 		}
 		info.Status = deviceStatus(d, info.deviceState, now)
 		info.Power = cfg.power(&d, info.ReportedPower)
+		// Rendered images live in memory only: after a restart the stored
+		// hash points nowhere, so the URL is left out instead of a dead link.
 		if info.LastPageHash != "" && !cfg.Profiles[d.Profile].text() {
 			if info.LastPageKind == "page" && info.LastPage != "" {
-				info.LastPageURL = fmt.Sprintf("/pages/%s/%s/%s.png", d.Profile, info.LastPage, info.LastPageHash)
-			} else {
+				if s.rendered[d.Profile+"/"+info.LastPage] != nil {
+					info.LastPageURL = fmt.Sprintf("/pages/%s/%s/%s.png", d.Profile, info.LastPage, info.LastPageHash)
+				}
+			} else if s.hints[info.LastPageHash] != nil {
 				info.LastPageURL = "/hints/" + info.LastPageHash + ".png"
 			}
 		}
