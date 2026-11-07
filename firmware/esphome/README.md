@@ -10,7 +10,7 @@ installation, nothing installation-specific is compiled in.
 | `common.yaml` | Shared cycle and device API (register, sync, download, sleep), included as a package |
 | `paperboy.h` | C++ helpers: sync body, event and log queue, RTC state, gray-level mapping, dithering, text lines and HD44780 character mapping |
 | `sticky.yaml` | reTerminal Sticky: pins, gray4 panel, touch, BQ27220 fuel gauge |
-| `e1001.yaml` | reTerminal E1001: pins, black-and-white panel, ADC battery |
+| `e1001.yaml` | reTerminal E1001: pins, panel currently driven in black and white, ADC battery |
 | `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep |
 | `lcd2004.yaml` | ESP32 dev board with a 20×4 HD44780 LCD behind a PCF8574 (I²C 0x27, SDA GPIO21, SCL GPIO22) |
 | `build.ps1` | Builds one hardware type with the pinned ESPHome version, optionally publishes it to an instance |
@@ -126,9 +126,12 @@ sleep. BQ27220 fuel gauge at 0x55 on I²C GPIO0/1: state of charge 0x2C,
 voltage 0x08, current 0x0C, remaining capacity 0x10; currents and capacities
 read ten times too large and are divided by ten.
 
-**E1001**: ESP32-S3, octal PSRAM; panel UC8179 800×480, ESPHome model
-`Seeed-reTerminal-E1001`, black and white only: Paperboy's gray levels are
-drawn as a fixed 2×2 pattern (`pb_draw_dithered`). Buttons left to right GPIO5 (`previous`),
+**E1001**: ESP32-S3, octal PSRAM; panel GDEY075T7 (UC8179) 800×480, which
+supports four gray levels (2 bpp, custom LUTs, roughly 4× slower refresh). ESPHome's
+model `Seeed-reTerminal-E1001` drives it in black and white only (1 bpp, the same
+UC8179 driver as the Waveshare 7.5in V2), so Paperboy's gray levels are drawn as a
+fixed 2×2 pattern (`pb_draw_dithered`) until the firmware uses the panel's gray mode.
+Buttons left to right GPIO5 (`previous`),
 GPIO4 (`next`), GPIO3 (green, `home`). Battery voltage on ADC GPIO1 through a 1:2 divider,
 enabled by GPIO21; no fuel gauge.
 
