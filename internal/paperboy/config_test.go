@@ -23,10 +23,11 @@ display_types:
     kind: image
     size: [800, 480]
     gray_levels: 4
-    width_mm: 163
+    ppi: 125
     min_refresh: 2m
   sticky:
     size: [800, 480]
+    ppi: 236
     gray_levels: 1
 devices:
   wohnzimmer:
@@ -93,7 +94,7 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.Refresh != Duration(10*time.Minute) || cfg.PageTimeout != Duration(3*time.Minute) {
 		t.Fatalf("defaults: %v %v", cfg.Refresh, cfg.PageTimeout)
 	}
-	if p := cfg.Profiles["e1001"]; p.Width != 800 || p.Height != 480 || !p.Gray || p.WidthMM != 163 || p.MinRefresh != Duration(2*time.Minute) {
+	if p := cfg.Profiles["e1001"]; p.Width != 800 || p.Height != 480 || !p.Gray || p.PPI != 125 || p.MinRefresh != Duration(2*time.Minute) {
 		t.Fatalf("e1001: %+v", p)
 	}
 	if p := cfg.Profiles["sticky"]; p.Gray || p.MinRefresh != Duration(time.Minute) {
@@ -141,6 +142,10 @@ func TestLoadConfigErrors(t *testing.T) {
 		{"unknown display type", strings.Replace(validConfig, "display_type: sticky", "display_type: fehlt", 1), "unknown display_type"},
 		{"duplicate mac", strings.Replace(validConfig, `"aa:bb:cc:dd:ee:02"`, `"AA:BB:CC:DD:EE:01"`, 1), "duplicate device"},
 		{"bad size", strings.Replace(validConfig, "size: [800, 480]", "size: [0, 480]", 1), "invalid size"},
+		{"width_mm", strings.Replace(validConfig, "ppi: 125", "width_mm: 163", 1), "width_mm was replaced by ppi"},
+		{"missing ppi", strings.Replace(validConfig, "    ppi: 236\n", "", 1), "ppi is required"},
+		{"bad ppi", strings.Replace(validConfig, "ppi: 236", "ppi: 5000", 1), "ppi is required"},
+		{"text kind with ppi", strings.Replace(validConfig, "    kind: image\n    size: [800, 480]\n    gray_levels: 4\n", "    kind: text\n    size: [20, 4]\n", 1), "do not apply to kind text"},
 		{"bad plan", strings.Replace(validConfig, "plan: standard", `plan: "Standard"`, 1), "only a-z"},
 		{"bad language", strings.Replace(validConfig, "language: en", "language: fr", 1), "expected de or en"},
 		{"bad timezone", strings.Replace(validConfig, "timezone: Europe/Berlin", "timezone: Mars/Olympus", 1), "timezone"},

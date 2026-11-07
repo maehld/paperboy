@@ -286,7 +286,7 @@ func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) {
 		return
 	}
 	b := img.Rect.Inset(wr.Style.Padding)
-	label := max(min(w.req.TextPx(wr)*0.6, float64(b.Dy())*0.15), 10)
+	label := max(min(w.req.TextPx(wr)*0.6, float64(b.Dy())*0.15), w.req.PtPx(5.8), render.MinSize)
 	left := b.Min.X + render.Measure("-10°", label, false) + 6
 	right := b.Max.X - render.Measure("00", label, false)/2
 	top := b.Min.Y + int(label*1.4)

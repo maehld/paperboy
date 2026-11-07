@@ -23,6 +23,8 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
 
 **Migrating from Paperboy v1:** v2 has no data API, no exec providers and no upload token (ADR 0049). Remove the `server` and `providers` sections from `paperboy.yaml` (both abort the start with a hint) and add `plugins` instead; the weather and calendar providers are plugins now and take their settings from `config` instead of flags. Rewrite the pages as grids (see below); old templates with `rows` and `blocks` are rejected and show a notice page. `state/data.json` and the `icons/` directory are no longer used. Devices keep their keys as long as `state/devices.json` is kept.
 
+**Migrating to physical sizes (ADR 0050):** replace `width_mm` with `ppi` in every image display type (`ppi = pixels × 25.4 / mm` of the same side; a leftover `width_mm` aborts the start with a hint) and rewrite page styles in points: `text_size` is no longer a fraction (`0.06` is rejected; at 125 ppi, 0.06 of 480 px is about 16 pt), and `padding`, `rule` and `divider` are points now (8 px ≈ 4.5 pt, 1 px ≈ 0.6 pt at 125 ppi). Old pixel values there still parse but get bigger, so check them. Third-party plugins have to be rebuilt against protocol version 3 (`style.text_size` is gone; use `text_px` or `Request.TextPx`).
+
 ## Instance directory
 
 Paperboy is configured with one instance directory, `-config <dir>` (default `.`). Its layout is fixed (ADR 0037, ADR 0049):
@@ -69,7 +71,7 @@ display_types:
     kind: image
     size: [800, 480]
     gray_levels: 4     # 1 or 4
-    width_mm: 163
+    ppi: 125           # pixels per inch, required for image displays (800 px / 163 mm)
     min_refresh: 60s   # never report a shorter interval
 devices:
   wohnzimmer:
@@ -86,7 +88,8 @@ devices:
 - `plugins` declares the plugins (ADR 0049). `config` is the plugin's own section; string values expand `${VAR}` from Paperboy's environment (an unset variable aborts loading, `$$` is a literal `$`), so secrets stay out of the file. The plugin checks its keys and rejects unknown ones; a rejected configuration shows up as a notice in the plugin's cells and in the log. The name `paperboy` is reserved for the built-in plugin.
 - `language` (`de` or `en`) selects the language of the built-in image texts, the number format and the language plugins draw in. Without it Paperboy uses the system language (Windows UI language, otherwise `LANG`/`LC_ALL`/`LC_MESSAGES`) and falls back to English. `timezone` (IANA name) applies to plans and built-in dates; without it the system timezone is used.
 - `protocol` accepts only `paperboy` (the default) for now: devices running the Paperboy firmware (ADR 0042). `trmnl` was removed and aborts the start, as do the v1 sections `server` and `providers` (ADR 0049). `opendisplay` is rejected until plans cover it; `text-http`/`image-http` were replaced by the device API (ADR 0044) and abort the start.
-- A display type with `kind: text` is a text display (ADR 0044): `size: [columns, rows]` in characters (at most 80 × 24) and `charset: utf8|ascii|hd44780` (default `utf8`); `gray_levels` and `width_mm` are rejected for it.
+- A display type with `kind: text` is a text display (ADR 0044): `size: [columns, rows]` in characters (at most 80 × 24) and `charset: utf8|ascii|hd44780` (default `utf8`); `gray_levels` and `ppi` are rejected for it.
+- An image display type needs `ppi`, its pixel density (pixels per inch, 20–1000; ADR 0050). It does not depend on the orientation: compute it from either side, `ppi = pixels × 25.4 / millimetres` of the active area. Page styles are in points and are converted with it, so a widget has the same physical size on a small dense panel and a large coarse one.
 - `plan` should name an existing `plans/<name>.yaml`; a missing or broken plan is logged and shows a notice page instead of aborting the start, so a plan file can be added while the server runs (ADR 0047). Without `plan` the device shows a notice page in the configured language („Kein Plan konfiguriert“ / “No plan configured”).
 - `-config` names the instance directory (default `.`); Paperboy reads `<dir>/paperboy.yaml` and finds all other directories there. A file argument is rejected with an explanation, and a `.json` configuration is no longer read.
 - The configuration is reloaded on change without a restart (ADR 0047): handlers pick up a modified `paperboy.yaml` on the next request, plugins whose section changed are restarted (their cached widgets are dropped), and a broken file keeps the last valid configuration while a missing one leaves the current configuration alone. With no usable file at startup in an existing instance directory the server still starts (degraded: no display types, no devices) and applies the file as soon as it loads, even when its mod time did not change; a wrong `-config` stays fatal.
@@ -114,19 +117,19 @@ A page is a grid of cells, and every cell shows one widget (ADR 0049): `pages/<p
 ```yaml
 title: Übersicht
 grid: [6, 8]                 # columns, rows
-style: { padding: 8, rule: 1, text_size: 0.06, divider: 1 }
+style: { padding: 4.5, rule: 0.6, text_size: 16, divider: 0.6 }   # points
 notices: show                # show (default) or none
 cells:
   - { at: [0, 0], span: [6, 1], widget: paperboy/header }
   - { at: [0, 1], span: [3, 3], widget: weather/current, args: { clothing: true } }
   - { at: [3, 1], span: [3, 3], widget: evcc/site }
-  - { at: [0, 4], span: [3, 4], widget: calendar/agenda, args: { lines: 7 }, style: { padding: 4 } }
+  - { at: [0, 4], span: [3, 4], widget: calendar/agenda, args: { lines: 7 }, style: { padding: 2 } }
   - { at: [3, 4], span: [3, 4], widget: weather/days, args: { days: 3 } }
 ```
 
 - `widget` is `<plugin>/<widget>`; `args` go to the widget unchanged. `at` is the top-left cell (column, row, from 0), `span` the size in cells (default `[1, 1]`). Cells must stay inside the grid and must not overlap; empty cells stay white.
 - On an image display the grid divides the pixels. Paperboy asks every plugin for its widgets in exactly the pixel size of the cell and the panel's gray levels, quantizes the PNG to the palette (nearest gray, no dithering) and pastes it 1:1, so nothing is ever scaled. A plugin that answers with another size gets a notice in its cell.
-- `style` is passed to every widget: `padding` (inner margin, px, default 8), `rule` (separator width, px, default 1) and `text_size` (base text height as a fraction of the display height, default 0.06), so widgets of different plugins match. A cell's `style` overrides it. `divider` draws lines between the cells (Paperboy, not the widgets).
+- `style` is in points (1 pt = 1/72 inch, ADR 0050) and is passed to every widget, converted to pixels with the display type's `ppi`: `padding` (inner margin, default 4.5 pt ≈ 1.6 mm), `rule` (separator width, default 0.6 pt ≈ 0.2 mm, never thinner than 1 px) and `text_size` (base text height, 4–144 pt, default 16 pt, at most 0.12 of the display height), so widgets of different plugins match. A cell's `style` overrides it. `divider` (points, at least 1 px) draws lines between the cells (Paperboy, not the widgets).
 - The **built-in plugin** `paperboy` needs no configuration: `paperboy/header` (args `title` – default the page title –, `subtitle`, `clock`, `page_indicator`, `align`), `paperboy/text` (`text` with `\n` for line breaks, `align`, `size`, `bold`) and `paperboy/clock` (`format: time|date|datetime`).
 - `kind: image` (default) or `kind: text` says which displays a page is for. A plan may serve image and text displays alike: when a device pages through a rule, pages that do not fit its display type are skipped – no variant and no shared page, the other kind, or a text grid that is not the display's character grid. Each skip is logged once per display type and page. When no page of the rule fits, the device gets a notice „Keine passende Seite“. A broken page is not skipped; it shows its error as a notice.
 - Preview without a device: `GET /api/preview/<display type>/<page>` (PNG, or `text/plain` for text displays). `GET /api/plugins` lists every plugin with its widgets, the sizes they are designed for, their arguments and the plugin's config keys.
@@ -153,7 +156,7 @@ The pages in `examples/pages` (`uebersicht`, `kalender`, `wetter`, `laden` and t
 
 A plugin is a long-running program that provides widgets (ADR 0049). Paperboy starts it on first use, sends it its `config` section once (`configure`), and then asks it for widgets; it keeps the results until the plugin's `max_age` (default 5 minutes) or until the plugin reports a change, and renders widgets that are still in use again in the background, so a device never waits for a plugin. A plugin that exits or does not answer within `timeout` is restarted; meanwhile its last widgets are shown as stale, and a failing plugin is not asked again for a minute.
 
-**Protocol** (`pkg/plugin`): one JSON object per line on stdin, one answer per line on stdout with the same `id`. Actions are `configure`, `describe`, `render` (`levels` 2 or 4, `widgets: [{widget, width, height, args, style}]` → base64 PNGs) and `text` (the same in characters → `lines`). Every request carries `language`, `timezone`, `now` and the `page` (`title`, `number`, `count`, display `width`/`height`). Between answers a plugin may print `{"event": "changed", "changed": ["agenda"]}`. It ends when stdin closes. Every plugin also sees `PAPERBOY_LANGUAGE` and `PAPERBOY_TIMEZONE` in its environment.
+**Protocol** (`pkg/plugin`): one JSON object per line on stdin, one answer per line on stdout with the same `id`. Actions are `configure`, `describe`, `render` (`levels` 2 or 4, `widgets: [{widget, width, height, args, style}]` → base64 PNGs) and `text` (the same in characters → `lines`). Every request carries `language`, `timezone`, `now` and the `page` (`title`, `number`, `count`, display `width`/`height`, and for image displays `ppi`). Protocol version 3 (ADR 0050): each widget's `style` holds `padding`, `rule` and `text_px` in pixels, already converted from the page's points; Go plugins use `Request.TextPx`, `PtPx` and `MMPx` for physical sizes. Between answers a plugin may print `{"event": "changed", "changed": ["agenda"]}`. It ends when stdin closes. Every plugin also sees `PAPERBOY_LANGUAGE` and `PAPERBOY_TIMEZONE` in its environment.
 
 A Go plugin implements `plugin.Handler` (`Describe`, `Configure`, `Render`), optionally `Texter`, `Preparer`, `Starter` (background work with a `notify` callback) and `Ager` (`max_age`), calls `plugin.Serve` and draws with `pkg/render` – the fonts, gray levels, fills and icon masks Paperboy itself uses, so its widgets look like the rest of the page. Plugins in other languages speak the same JSON lines.
 

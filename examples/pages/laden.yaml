@@ -1,7 +1,7 @@
 # Charging with evcc: energy flow, the charging point and the forecast.
 title: Laden
 grid: [6, 8]
-style: { padding: 8, divider: 1 }
+style: { padding: 4.5, divider: 0.6 }
 cells:
   - { at: [0, 0], span: [6, 1], widget: paperboy/header }
   - { at: [0, 1], span: [3, 4], widget: evcc/site }

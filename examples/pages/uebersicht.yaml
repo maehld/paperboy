@@ -2,7 +2,7 @@
 # without its own variant (ADR 0049). The grid has 6 columns and 8 rows.
 title: Übersicht
 grid: [6, 8]
-style: { padding: 8, divider: 1 }
+style: { padding: 4.5, divider: 0.6 }
 cells:
   - { at: [0, 0], span: [6, 1], widget: paperboy/header }
   - { at: [0, 1], span: [3, 3], widget: weather/current, args: { clothing: true } }
