@@ -96,9 +96,9 @@ func zipOf(t *testing.T, entries map[string]string) []byte {
 // pluginEntry is how the test program appears in the plugin zip.
 func pluginEntry() string {
 	if runtime.GOOS == "windows" {
-		return "plugins/test.exe"
+		return "plugins/testplugin.exe"
 	}
-	return "plugins/test"
+	return "plugins/testplugin"
 }
 
 // downloadConfig builds an instance configuration with the download section.
@@ -111,7 +111,7 @@ firmware:
   update: auto
 ` + firmware + `
 plugins:
-  test:
+  testplugin:
 ` + plugins + `
     env: { PAPERBOY_TEST_PLUGIN: "1" }
     config: { secret: "x" }
@@ -144,8 +144,8 @@ func TestDownloadInstallsPluginsAndFirmware(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := s.config()
-	program, version := pluginProgram(cfg.PluginsDir, "test", "")
-	if !strings.HasSuffix(program, "test-v2.1.0"+exeSuffix()) || version != "v2.1.0" {
+	program, version := pluginProgram(cfg.PluginsDir, "testplugin", "")
+	if !strings.HasSuffix(program, "testplugin-v2.1.0"+exeSuffix()) || version != "v2.1.0" {
 		t.Fatalf("plugin program: %q %q", program, version)
 	}
 	if _, err := os.Stat(filepath.Join(cfg.FirmwareDir, "e1001-v1.0.0.bin")); err != nil {
@@ -155,8 +155,8 @@ func TestDownloadInstallsPluginsAndFirmware(t *testing.T) {
 		t.Fatal("an image of an unconfigured display type must not be installed")
 	}
 	// The host now runs the downloaded program (spec changed, ADR 0049).
-	spec := cfg.pluginSpecs()["test"]
-	if spec.Version != "v2.1.0" || !strings.HasSuffix(spec.Command[0], "test-v2.1.0"+exeSuffix()) {
+	spec := cfg.pluginSpecs()["testplugin"]
+	if spec.Version != "v2.1.0" || !strings.HasSuffix(spec.Command[0], "testplugin-v2.1.0"+exeSuffix()) {
 		t.Fatalf("plugin spec: %+v", spec)
 	}
 	// A device of the display type gets the downloaded image offered.
@@ -168,7 +168,7 @@ func TestDownloadInstallsPluginsAndFirmware(t *testing.T) {
 		t.Fatalf("firmware offer: %v", offer)
 	}
 	body := htmlRequest(t, s, "/ui").Body.String()
-	for _, want := range []string{"Downloads", "test v2.1.0", "e1001 1.0.0"} {
+	for _, want := range []string{"Downloads", "testplugin v2.1.0", "e1001 1.0.0"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("dashboard lacks %q: %s", want, body)
 		}
@@ -191,8 +191,8 @@ func TestDownloadHonoursPins(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := s.config()
-	program, version := pluginProgram(cfg.PluginsDir, "test", "v2.0.0")
-	if !strings.HasSuffix(program, "test-v2.0.0"+exeSuffix()) || version != "v2.0.0" {
+	program, version := pluginProgram(cfg.PluginsDir, "testplugin", "v2.0.0")
+	if !strings.HasSuffix(program, "testplugin-v2.0.0"+exeSuffix()) || version != "v2.0.0" {
 		t.Fatalf("pinned plugin: %q %q", program, version)
 	}
 	if _, err := os.Stat(filepath.Join(cfg.FirmwareDir, "e1001-v0.9.0.bin")); err != nil {
@@ -220,7 +220,7 @@ func TestDownloadSkipsHandPlacedProgram(t *testing.T) {
 	if err := os.MkdirAll(s.config().PluginsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	own := filepath.Join(s.config().PluginsDir, "test"+exeSuffix())
+	own := filepath.Join(s.config().PluginsDir, "testplugin"+exeSuffix())
 	if err := os.WriteFile(own, []byte("own build"), 0o755); err != nil {
 		t.Fatal(err)
 	}
