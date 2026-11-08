@@ -57,7 +57,7 @@ func replaceDisplay(name, old, new string) map[string]string {
 const deviceWohnzimmer = `
 display_type: e1001
 protocol: paperboy
-mac: "44:1B:F6:85:AA:1C"
+mac: "AA:BB:CC:DD:EE:01"
 plan: standard
 battery: { warn_volts: 3.5 }
 firmware: hold
@@ -65,7 +65,7 @@ firmware: hold
 
 const deviceFlur = `
 display_type: sticky
-mac: "44:1b:f6:85:aa:1d"
+mac: "AA:BB:CC:DD:EE:02"
 `
 
 var validDevices = map[string]string{"wohnzimmer": deviceWohnzimmer, "flur": deviceFlur}
@@ -164,10 +164,10 @@ func TestLoadConfig(t *testing.T) {
 		t.Fatalf("devices: %+v", cfg.Devices)
 	}
 	flur, living := cfg.Devices[0], cfg.Devices[1]
-	if flur.Type != TypePaperboy || flur.MAC != "44:1B:F6:85:AA:1D" || flur.Refresh != Duration(10*time.Minute) || flur.Plan != "" {
+	if flur.Type != TypePaperboy || flur.MAC != "AA:BB:CC:DD:EE:02" || flur.Refresh != Duration(10*time.Minute) || flur.Plan != "" {
 		t.Fatalf("flur: %+v", flur)
 	}
-	if living.Type != TypePaperboy || living.MAC != "44:1B:F6:85:AA:1C" || living.Plan != "standard" || !living.Hold || flur.Hold {
+	if living.Type != TypePaperboy || living.MAC != "AA:BB:CC:DD:EE:01" || living.Plan != "standard" || !living.Hold || flur.Hold {
 		t.Fatalf("wohnzimmer: %+v", living)
 	}
 	if cfg.Firmware.Update != firmwareAuto || cfg.Firmware.MinBatteryVolts != 3.7 || cfg.FirmwareDir != filepath.Join(dir, "firmware") {
@@ -200,11 +200,11 @@ func TestLoadConfigErrors(t *testing.T) {
 		{"opendisplay", validConfig, nil, replaceDevice("wohnzimmer", "protocol: paperboy", "protocol: opendisplay"), "not supported yet"},
 		{"http protocol", validConfig, nil, replaceDevice("wohnzimmer", "protocol: paperboy", "protocol: text-http"), "ADR 0044"},
 		{"trmnl", validConfig, nil, replaceDevice("wohnzimmer", "protocol: paperboy", "protocol: trmnl"), "protocol trmnl was removed"},
-		{"address", validConfig, nil, replaceDevice("wohnzimmer", `mac: "44:1B:F6:85:AA:1C"`, "address: 10.0.0.1"), "opendisplay"},
+		{"address", validConfig, nil, replaceDevice("wohnzimmer", `mac: "AA:BB:CC:DD:EE:01"`, "address: 10.0.0.1"), "opendisplay"},
 		{"text kind with gray levels", validConfig, replaceDisplay("e1001", "kind: image\nsize: [800, 480]", "kind: text\nsize: [20, 4]"), nil, "do not apply to kind text"},
 		{"unknown kind", validConfig, replaceDisplay("e1001", "kind: image", "kind: led"), nil, "unknown kind"},
 		{"unknown display type", validConfig, nil, replaceDevice("flur", "display_type: sticky", "display_type: fehlt"), "unknown display_type"},
-		{"duplicate mac", validConfig, nil, replaceDevice("flur", `"44:1b:f6:85:aa:1d"`, `"44:1B:F6:85:AA:1C"`), "duplicate device"},
+		{"duplicate mac", validConfig, nil, replaceDevice("flur", `"AA:BB:CC:DD:EE:02"`, `"AA:BB:CC:DD:EE:01"`), "duplicate device"},
 		{"bad size", validConfig, replaceDisplay("e1001", "size: [800, 480]", "size: [0, 480]"), nil, "invalid size"},
 		{"width_mm", validConfig, replaceDisplay("e1001", "ppi: 125", "width_mm: 163"), nil, "width_mm was replaced by ppi"},
 		{"missing ppi", validConfig, replaceDisplay("sticky", "ppi: 236\n", ""), nil, "ppi is required"},

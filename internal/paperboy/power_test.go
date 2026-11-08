@@ -57,7 +57,7 @@ func TestPowerFloor(t *testing.T) {
 
 func TestPowerConfigValidation(t *testing.T) {
 	base := "size: [800, 480]\nppi: 125\n%s\n"
-	device := "display_type: e\nmac: \"44:1B:F6:85:AA:1C\"\n%s\n"
+	device := "display_type: e\nmac: \"AA:BB:CC:DD:EE:01\"\n%s\n"
 	for _, tc := range []struct {
 		typ, dev, err string
 	}{

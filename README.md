@@ -160,7 +160,7 @@ A device is `devices/<id>.yaml` (ADR 0070). The file name is the stable device I
 ```yaml
 display_type: e1001
 protocol: paperboy      # the default; devices running the Paperboy firmware (ADR 0042)
-mac: "44:1B:F6:85:AA:1C"
+mac: "AA:BB:CC:DD:EE:01"
 plan: standard          # plans/standard.yaml; without one a notice page
 refresh: 10m            # optional, else defaults.refresh
 power: mains            # optional, overrides the display type (E1001 on USB, ADR 0051)
@@ -378,3 +378,11 @@ internal/opendisplay/    OpenDisplay protocol; odble = Bluetooth transport
 firmware/esphome/        Paperboy firmware on ESPHome for Sticky and E1001 (ADR 0041)
 docs/adr/                Architecture decisions
 ```
+
+## Licence
+
+Paperboy is published under the [MIT licence](LICENSE). Third-party material keeps its own licence:
+
+- The OpenMoji pictograms in `cmd/weather/icons/` and `cmd/evcc/icons/` are [CC BY-SA 4.0](cmd/weather/icons/README.md); the licence travels with the plugin zip.
+- The firmware in `firmware/esphome/` is a Paperboy configuration for [ESPHome](https://esphome.io). The images built from it contain ESPHome's runtime, whose C++ parts are GPLv3; the sources are in this repository. The bundled Go fonts (`pkg/render`) come with their own BSD-style licence.
+- The examples and the plugin test fixtures are fictional; xkcd comics are CC BY-NC 2.5 and are fetched at runtime, never shipped.

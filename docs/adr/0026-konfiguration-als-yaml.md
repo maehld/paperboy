@@ -54,12 +54,12 @@ devices:
   wohnzimmer:
     display_type: e1001
     protocol: trmnl
-    mac: "44:1B:F6:85:AA:1C"
+    mac: "AA:BB:CC:DD:EE:01"
     plan: standard
   kueche:
     display_type: sticky
     protocol: trmnl
-    mac: "B8:1F:3F:D8:6A:FC"
+    mac: "AA:BB:CC:DD:EE:03"
     plan: standard
     battery: { warn_volts: 3.5 }          # überschreibt einzelne Standardwerte
   flur:

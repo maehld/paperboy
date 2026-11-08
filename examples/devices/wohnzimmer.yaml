@@ -3,5 +3,5 @@
 # the display type from displays/.
 display_type: e1001
 protocol: paperboy
-mac: "44:1B:F6:85:AA:1C"
+mac: "AA:BB:CC:DD:EE:01"
 plan: tour

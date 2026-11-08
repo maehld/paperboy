@@ -31,7 +31,7 @@ Devices are configured with `protocol: paperboy` and their `mac`; `trmnl` is no 
 `POST /api/device/register` with a JSON body:
 
 ```json
-{ "mac": "B8:1F:3F:D8:6A:FC", "hardware": "sticky", "firmware": "0.4.0" }
+{ "mac": "AA:BB:CC:DD:EE:03", "hardware": "sticky", "firmware": "0.4.0" }
 ```
 
 - Known MAC → `200 {"key": "…", "device": "sticky1"}`. The key is the existing one from `state/devices.json` if there is one.

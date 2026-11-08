@@ -78,7 +78,7 @@ firmware: hold
 // TestDeviceFileValidation verifies what the file alone decides and what needs
 // the configuration.
 func TestDeviceFileValidation(t *testing.T) {
-	f, err := parseDeviceFile([]byte("display_type: e1001\nmac: \"44:1b:f6:85:aa:1c\"\n"))
+	f, err := parseDeviceFile([]byte("display_type: e1001\nmac: \"aa:bb:cc:dd:ee:01\"\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,16 +88,16 @@ func TestDeviceFileValidation(t *testing.T) {
 	if err := cfg.validateDevice(&dev); err != nil {
 		t.Fatal(err)
 	}
-	if dev.MAC != "44:1B:F6:85:AA:1C" || dev.Profile != "e1001" || dev.Type != TypePaperboy ||
+	if dev.MAC != "AA:BB:CC:DD:EE:01" || dev.Profile != "e1001" || dev.Type != TypePaperboy ||
 		dev.Refresh != Duration(5*time.Minute) || dev.Actions != actionsAllow || dev.MenuShowDuration != Duration(20*time.Second) {
 		t.Fatalf("device defaults: %+v", dev)
 	}
 
-	hold, _ := parseDeviceFile([]byte("display_type: e1001\nmac: \"44:1b:f6:85:aa:1c\"\nfirmware: pin\n"))
+	hold, _ := parseDeviceFile([]byte("display_type: e1001\nmac: \"aa:bb:cc:dd:ee:01\"\nfirmware: pin\n"))
 	if err := hold.validate("kueche"); err == nil || !strings.Contains(err.Error(), "only hold") {
 		t.Fatalf("firmware pin: %v", err)
 	}
-	unknown, _ := parseDeviceFile([]byte("display_type: fehlt\nmac: \"44:1b:f6:85:aa:1c\"\n"))
+	unknown, _ := parseDeviceFile([]byte("display_type: fehlt\nmac: \"aa:bb:cc:dd:ee:01\"\n"))
 	dev = unknown.device("kueche", nil)
 	if err := cfg.validateDevice(&dev); err == nil || !strings.Contains(err.Error(), "unknown display_type") {
 		t.Fatalf("unknown display type: %v", err)
