@@ -18,6 +18,7 @@
     grid: start.grid, // grid a new page starts with
     shared: !!start.shared, // a new page is written as pages/<name>.yaml
     playground: !!start.playground, // the widgets page: one widget, no page
+    usedBy: start.usedBy || [], // plans that name the page, for the delete warning
     fileDisplay: '', // display variant the file belongs to; empty: shared page
     hash: '',
     template: null,
@@ -62,6 +63,8 @@
     const hasCell = !!state.template && !state.readOnly &&
       (!state.playground || state.template.cells.length > 0);
     el('save').disabled = !hasCell;
+    const del = el('delete');
+    if (del) del.hidden = state.playground || !state.hash;
     const specialize = el('specialize');
     if (!specialize) return;
     specialize.hidden = state.playground || !(hasCell && state.fileDisplay === '');
@@ -903,6 +906,41 @@
     updateSave();
   }
 
+  // remove deletes the file that was opened, after naming the plans that use
+  // the page; the server refuses one that changed since it was read (ADR 0073).
+  async function remove() {
+    if (!state.hash) return;
+    const used = state.usedBy || [];
+    const warn = 'Delete ' + targetPath() + '?' +
+      (used.length ? '\n\nPlans that name it: ' + used.join(', ') + '.' : '\n\nNo plan names this page.') +
+      (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
+      '\n\nA copy stays under state/editor/.';
+    if (!confirm(warn)) return;
+    setStatus('deleting…', '');
+    let res;
+    try {
+      res = await fetch('/api/pages/' + encodeURIComponent(state.name) +
+        '?display=' + encodeURIComponent(state.fileDisplay) +
+        '&hash=' + encodeURIComponent(state.hash), { method: 'DELETE' });
+    } catch (e) {
+      setStatus('delete failed: ' + e, 'error');
+      return;
+    }
+    if (!res.ok) {
+      const body = await res.text();
+      let doc = {};
+      try {
+        doc = JSON.parse(body);
+      } catch (e) {
+        doc.error = body.trim();
+      }
+      setStatus(doc.error || 'delete failed (' + res.status + ')', 'error');
+      return;
+    }
+    state.dirty = false;
+    location.href = '/ui/editor?tab=pages';
+  }
+
   function renderAll() {
     renderSettings();
     renderPalette();
@@ -925,6 +963,7 @@
   on('save', 'click', save);
   on('reload', 'click', () => location.reload());
   on('specialize', 'click', specialize);
+  on('delete', 'click', remove);
   on('palette-filter', 'input', () => {
     state.filter = el('palette-filter').value;
     renderPalette();

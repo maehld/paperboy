@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/maehld/paperboy/internal/plan"
 )
 
 const testEditablePlan = `rules:
@@ -113,6 +115,44 @@ func TestPlanEditorScript(t *testing.T) {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("script lacks %q", want)
 		}
+	}
+}
+
+// TestPlanEditorCreatesPlan opens a plan that does not exist as a new one and
+// writes it with the first save (ADR 0073).
+func TestPlanEditorCreatesPlan(t *testing.T) {
+	s := planEditorServer(t)
+
+	rec := request(t, s, http.MethodGet, "/ui/editor/plan?name=neu&new=1", nil, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("new plan: %d %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"name":"neu"`) || !strings.Contains(body, `"new":true`) {
+		t.Fatalf("new plan data:\n%s", body)
+	}
+	if !strings.Contains(body, `"devices":[]`) || !strings.Contains(body, `"displays":[]`) {
+		t.Fatalf("a new plan has no devices:\n%s", body)
+	}
+	// The pages are there to pick from even before the plan has a device.
+	if !strings.Contains(body, `"name":"solar"`) || !strings.Contains(body, `"name":"lcd"`) {
+		t.Fatalf("page list missing:\n%s", body)
+	}
+
+	// The first save writes the file; a plan needs one rule with a page.
+	created := plan.Plan{Rules: []plan.Rule{{Name: "day", Pages: []string{"solar"}}}}
+	if rec := request(t, s, http.MethodPut, "/api/plans/neu", planSave{Plan: &created}, nil); rec.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body)
+	}
+	if _, err := os.Stat(filepath.Join(s.config().Plans, "neu.yaml")); err != nil {
+		t.Fatalf("created plan: %v", err)
+	}
+	if rec := request(t, s, http.MethodGet, "/ui/editor/plan?name=neu", nil, nil); rec.Code != http.StatusOK {
+		t.Fatalf("open the created plan: %d %s", rec.Code, rec.Body)
+	}
+	// Without &new=1 a missing plan stays an error.
+	if rec := request(t, s, http.MethodGet, "/ui/editor/plan?name=neu2", nil, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing plan without new: %d", rec.Code)
 	}
 }
 

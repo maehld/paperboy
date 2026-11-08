@@ -56,11 +56,12 @@ type editorPage struct {
 
 // editorPlanFile is one plan file in the list.
 type editorPlanFile struct {
-	Name     string `json:"name"`
-	Hash     string `json:"hash"`
-	Rules    int    `json:"rules"`
-	Fallback string `json:"fallback,omitempty"`
-	Error    string `json:"error,omitempty"`
+	Name     string   `json:"name"`
+	Hash     string   `json:"hash"`
+	Rules    int      `json:"rules"`
+	Pages    []string `json:"pages,omitempty"` // pages the rules name, for the delete warning
+	Fallback string   `json:"fallback,omitempty"`
+	Error    string   `json:"error,omitempty"`
 }
 
 // editorPlan is one plan file with its model.
@@ -325,6 +326,9 @@ func planFiles(dir string, loc *time.Location) ([]editorPlanFile, error) {
 			f.Error = shortError(err)
 		} else {
 			f.Rules, f.Fallback = len(p.Rules), p.Fallback
+			for _, r := range p.Rules {
+				f.Pages = append(f.Pages, r.Pages...)
+			}
 		}
 		list = append(list, f)
 	}
@@ -684,6 +688,93 @@ func (s *Server) handleSaveDisplay(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, editorDisplayType{Name: name, Path: relativePath(cfg, path), Hash: fileHash(data),
 		YAML: string(data), Display: &written})
+}
+
+// handleDeletePage removes one page file (ADR 0073). The display type names
+// the variant exactly; the shared page is removed without one. A variant is
+// never resolved to the shared page here, so a delete hits the file the row
+// names and nothing else.
+func (s *Server) handleDeletePage(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	name, display := r.PathValue("name"), r.URL.Query().Get("display")
+	path, err := pageFilePath(cfg.Pages, name, display)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	s.deleteFile(w, cfg, "pages", backupLabel(name, display), path, r.URL.Query().Get("hash"), "page")
+}
+
+// handleDeletePlan removes one plan file.
+func (s *Server) handleDeletePlan(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	name := r.PathValue("name")
+	path, err := planFilePath(cfg.Plans, name)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	s.deleteFile(w, cfg, "plans", name, path, r.URL.Query().Get("hash"), "plan")
+}
+
+// handleDeleteDevice removes one device file. Its state stays in
+// state/devices.json, so a recreated file with the same ID picks the page
+// cursor up again.
+func (s *Server) handleDeleteDevice(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	id := r.PathValue("id")
+	path, err := deviceFilePath(cfg.DevicesDir, id)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	s.deleteFile(w, cfg, "devices", id, path, r.URL.Query().Get("hash"), "device")
+}
+
+// handleDeleteDisplay removes one display type file. Its page variants and
+// device files stay and are listed with their error afterwards.
+func (s *Server) handleDeleteDisplay(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	name := r.PathValue("name")
+	path, err := displayFilePath(cfg.DisplaysDir, name)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	s.deleteFile(w, cfg, "displays", name, path, r.URL.Query().Get("hash"), "display type")
+}
+
+// deleteEditedFile removes one file an editor read, after a copy under
+// state/editor/ (ADR 0073). A hash that no longer matches refuses the delete,
+// so a hand edit is never lost. References are not checked: the editor names
+// them in its confirmation and the operator decides.
+func (s *Server) deleteEditedFile(cfg *Config, kind, label, path, hash, noun string) (int, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return http.StatusNotFound, fmt.Errorf("there is no such %s", noun)
+	}
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	if hash != "" && fileHash(data) != hash {
+		return http.StatusConflict, fmt.Errorf("the %s changed on disk; read it again before deleting", noun)
+	}
+	s.backupFile(cfg, kind, label, data)
+	if err := os.Remove(path); err != nil {
+		return http.StatusInternalServerError, err
+	}
+	return 0, nil
+}
+
+// deleteFile answers a delete: the removed path as JSON, or the status and the
+// reason why nothing was removed.
+func (s *Server) deleteFile(w http.ResponseWriter, cfg *Config, kind, label, path, hash, noun string) {
+	status, err := s.deleteEditedFile(cfg, kind, label, path, hash, noun)
+	if err != nil {
+		writeAPIError(w, status, "%v", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"deleted": relativePath(cfg, path)})
 }
 
 // handleDraftPreview renders a page that is not saved yet, so an editor can

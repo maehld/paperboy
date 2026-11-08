@@ -42,6 +42,9 @@ td.file { font-family: ui-monospace, Consolas, monospace; font-size: .85rem; }
 td.num { font-variant-numeric: tabular-nums; }
 .error { margin: .4rem 0 0; padding: .4rem .6rem; background: #fff2f2; border-left: 3px solid #c22; font-size: .85rem; word-break: break-word; }
 input, select, button { font: inherit; padding: .2rem .35rem; }
+button.delete { border: 0; background: none; color: #b00; font-size: .85rem; padding: 0; margin-left: .6rem; cursor: pointer; text-decoration: underline; }
+button.delete:hover { color: #800; }
+button.delete:disabled { color: #999; cursor: default; text-decoration: none; }
 details.new summary { list-style: none; display: inline-block; padding: .25rem .7rem; border: 1px solid #134e9c; border-radius: 6px; background: #134e9c; color: #fff; font-size: .9rem; cursor: pointer; user-select: none; }
 details.new summary::-webkit-details-marker { display: none; }
 details.new summary:hover { background: #0e3d7c; }
@@ -102,7 +105,7 @@ details.new .hint { flex-basis: 100%; margin: 0; }
         <td>{{.Kind}}</td>
         <td class="num">{{.Grid}}</td>
         <td>{{.Title}}</td>
-        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
+        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
       {{if .Error}}<tr><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
@@ -120,6 +123,15 @@ details.new .hint { flex-basis: 100%; margin: 0; }
     <h2>Plans{{if .Plans}} <span class="count">{{len .Plans}}</span>{{end}}</h2>
     <span class="spacer"></span>
     <input class="filter" type="search" placeholder="Filter plans…" data-filter="plan-table" aria-label="Filter plans">
+    <details class="new">
+      <summary>New plan</summary>
+      <form method="get" action="/ui/editor/plan">
+        <input type="hidden" name="new" value="1">
+        <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. tour" title="lower case letters, digits and -"></label>
+        <button type="submit">Create</button>
+        <p class="hint">Lower case letters, digits and <code>-</code>. The first save writes <code>plans/&lt;name&gt;.yaml</code>; a plan needs at least one rule with a page, and a device shows it once its file names the plan.</p>
+      </form>
+    </details>
   </div>
   {{if .Plans}}
   <table id="plan-table">
@@ -130,13 +142,13 @@ details.new .hint { flex-basis: 100%; margin: 0; }
         <td>{{.Name}}</td>
         <td class="num">{{.Rules}}</td>
         <td>{{.Fallback}}</td>
-        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
+        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
       {{if .Error}}<tr><td colspan="4"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
     </tbody>
   </table>
-  <p class="hint">A plan is <code>plans/&lt;name&gt;.yaml</code>: rules for the time of day and the pages a device shows. Plans are written by hand; the editor only changes them.</p>
+  <p class="hint">A plan is <code>plans/&lt;name&gt;.yaml</code>: rules for the time of day and the pages a device shows. Deleting keeps a copy under <code>state/editor/</code>.</p>
   {{else}}
   <p class="empty">No plans yet. A plan is <code>plans/&lt;name&gt;.yaml</code>.</p>
   {{end}}
@@ -168,7 +180,7 @@ details.new .hint { flex-basis: 100%; margin: 0; }
         <td>{{.Display}}</td>
         <td class="num">{{.MAC}}</td>
         <td>{{.Plan}}</td>
-        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
+        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
       {{if .Error}}<tr><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
@@ -207,13 +219,13 @@ details.new .hint { flex-basis: 100%; margin: 0; }
         <td>{{.Density}}</td>
         <td class="num">{{.Gray}}</td>
         <td>{{.Power}}</td>
-        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
+        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
       {{if .Error}}<tr><td colspan="7"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
     </tbody>
   </table>
-  <p class="hint">A display type is <code>displays/&lt;name&gt;.yaml</code>: kind, size, gray levels, pixel density and refresh floor. Removing or renaming its file stays a manual step.</p>
+  <p class="hint">A display type is <code>displays/&lt;name&gt;.yaml</code>: kind, size, gray levels, pixel density and refresh floor. Renaming its file stays a manual step; deleting works here and keeps a copy under <code>state/editor/</code>.</p>
   {{else}}
   <p class="empty">No display types yet. A display type is <code>displays/&lt;name&gt;.yaml</code>.</p>
   {{end}}
@@ -235,6 +247,33 @@ for (const input of document.querySelectorAll('input[data-filter]')) {
       }
       body.hidden = shown === 0;
     }
+  });
+}
+
+// Deleting a file asks first and names what still references it (ADR 0073);
+// the server refuses a file that changed since the row was read.
+for (const b of document.querySelectorAll('button[data-delete]')) {
+  b.addEventListener('click', async () => {
+    if (!confirm((b.dataset.warn || 'Delete this file?') + '\n\nA copy stays under state/editor/.')) return;
+    b.disabled = true;
+    let res;
+    try {
+      res = await fetch(b.dataset.delete, { method: 'DELETE' });
+    } catch (e) {
+      alert('Delete failed: ' + e);
+      b.disabled = false;
+      return;
+    }
+    if (res.ok) {
+      location.reload();
+      return;
+    }
+    let msg = '(' + res.status + ')';
+    try {
+      msg = (await res.json()).error || msg;
+    } catch (e) { /* not JSON */ }
+    alert('Delete failed: ' + msg);
+    b.disabled = false;
   });
 }
 </script>
