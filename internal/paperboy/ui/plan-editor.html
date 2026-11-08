@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Name}} · Plan editor · Paperboy</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 1.2rem 1.5rem 2rem; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: #f2f2f2; color: #111; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; margin-bottom: .8rem; }
+h1 { font-size: 1.4rem; margin: 0; }
+.muted { color: #666; font-size: .85rem; }
+nav a { color: #134e9c; text-decoration: none; }
+nav a.active { font-weight: 700; color: #111; }
+.build { margin-left: auto; font-variant-numeric: tabular-nums; }
+a { color: #134e9c; }
+code { font: .85rem ui-monospace, Consolas, monospace; background: #f2f2f2; padding: 0 .2rem; border-radius: 3px; }
+.bar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-bottom: .9rem; }
+.bar h2 { font-size: 1.15rem; margin: 0; }
+.bar .spacer { margin-left: auto; }
+button { font: inherit; font-size: .9rem; padding: .25rem .7rem; border-radius: 6px; border: 1px solid #bbb; background: #fafafa; cursor: pointer; }
+button:hover { background: #eee; }
+button.primary { border-color: #134e9c; background: #134e9c; color: #fff; }
+button.primary:hover { background: #0e3d7c; }
+button:disabled { color: #888; cursor: default; background: #f2f2f2; border-color: #ccc; }
+button.small { padding: .05rem .45rem; font-size: .8rem; line-height: 1.3; }
+.status { font-size: .85rem; }
+.status.ok { color: #17692c; }
+.status.error { color: #b00; }
+.error { margin: .5rem 0; padding: .5rem .6rem; background: #fff2f2; border-left: 3px solid #c22; font-size: .85rem; word-break: break-word; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; gap: 1rem; align-items: start; }
+@media (max-width: 62rem) { main { grid-template-columns: minmax(0, 1fr); } }
+.col { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+.panel { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .8rem; }
+.panel-head { display: flex; align-items: center; gap: .6rem; margin-bottom: .4rem; }
+.panel-head h3 { font-size: .95rem; margin: 0; }
+.panel-head button { margin-left: auto; }
+.panel h3 { font-size: .95rem; margin: 0 0 .4rem; }
+.hint { margin: .3rem 0 0; font-size: .8rem; color: #666; }
+label.field { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); gap: .3rem .5rem; align-items: center; font-size: .85rem; }
+label.field > span:first-child { color: #555; }
+input, select { font: inherit; padding: .15rem .3rem; min-width: 0; width: 100%; }
+input[type=checkbox] { width: auto; }
+/* rules */
+.rule { border: 1px solid #e1e7f0; border-radius: 8px; padding: .6rem; margin-top: .6rem; background: #fcfdff; }
+.rule.shadowed { border-color: #e0b34a; background: #fffdf4; }
+.rule-head { display: flex; align-items: center; gap: .4rem; margin-bottom: .4rem; }
+.rule-head .num { font-size: .8rem; color: #666; font-variant-numeric: tabular-nums; }
+.rule-head .badge { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: .05rem .4rem; border-radius: 999px; border: 1px solid #b80; color: #8a5a00; }
+.rule-head .buttons { margin-left: auto; display: flex; gap: .3rem; }
+.rule-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: .4rem .8rem; }
+.days { display: flex; flex-wrap: wrap; gap: .35rem; font-size: .82rem; }
+.days label { display: flex; gap: .15rem; align-items: center; }
+.pages { margin: .5rem 0 0; display: flex; flex-direction: column; gap: .2rem; }
+.pages .empty { margin: 0; font-size: .82rem; color: #888; }
+.page-row { display: flex; gap: .35rem; align-items: center; background: #f5f8fd; border: 1px solid #e1e7f0; border-radius: 4px; padding: .1rem .35rem; font-size: .84rem; }
+.page-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-row.missing { background: #fff5f5; border-color: #f0c9c9; }
+.add-page { display: flex; gap: .4rem; align-items: center; margin-top: .4rem; font-size: .84rem; }
+.add-page select { flex: 1; }
+.warn { margin: .35rem 0 0; padding: .3rem .55rem; font-size: .8rem; background: #fff8e6; border-left: 3px solid #b80; }
+.warn ul { margin: 0; padding-left: 1rem; }
+.warn p { margin: 0; }
+/* actions */
+.action { border: 1px solid #e1e7f0; border-radius: 8px; padding: .6rem; margin-top: .6rem; background: #fcfdff; }
+.action-head { display: flex; gap: .4rem; align-items: center; margin-bottom: .4rem; }
+.action-head select { flex: 1; }
+.action .arg { margin-top: .35rem; }
+.action .arg .name { font-size: .78rem; color: #555; display: block; }
+.action .arg .desc { font-size: .72rem; color: #888; display: block; }
+.action .note { font-size: .75rem; color: #666; }
+/* devices */
+#devices a { display: block; font-size: .88rem; padding: .1rem 0; }
+#devices p { margin: 0; font-size: .85rem; color: #888; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Paperboy</h1>
+  <nav><a href="/ui">Devices</a> · <a href="/ui/plugins">Widgets</a> · <a class="active" href="/ui/editor">Editor</a></nav>
+  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
+</header>
+{{if .Error}}
+<p class="error">{{.Error}}</p>
+<p><a href="/ui/editor">← Pages and plans</a></p>
+{{else}}
+<div class="bar">
+  <a href="/ui/editor">← Pages and plans</a>
+  <h2>plan {{.Name}}</h2>
+  <span class="muted" id="where"></span>
+  <span class="spacer"></span>
+  <span class="status" id="status"></span>
+  <button id="reload" type="button">Reload</button>
+  <button class="primary" id="save" type="button">Save</button>
+</div>
+<main>
+  <div class="col">
+    <section class="panel">
+      <div class="panel-head">
+        <h3>Rules</h3>
+        <button id="add-rule" type="button">Add rule</button>
+      </div>
+      <p class="hint">The first matching rule wins; a rule without from/to matches at any time. Pages are shown in this order, times are in {{.Timezone}}.</p>
+      <div id="rules"></div>
+    </section>
+    <section class="panel">
+      <h3>Fallback</h3>
+      <select id="fallback"></select>
+      <p class="hint">A device shows the fallback when no rule matches; without one it gets a notice page.</p>
+      <div id="fallback-warnings"></div>
+    </section>
+  </div>
+  <div class="col">
+    <section class="panel">
+      <div class="panel-head">
+        <h3>Actions</h3>
+        <button id="add-action" type="button">Add action</button>
+      </div>
+      <p class="hint">Offered by the device menu to every device that uses this plan (ADR 0057).</p>
+      <div id="actions"></div>
+      <div id="action-warnings"></div>
+    </section>
+    <section class="panel">
+      <h3>Devices</h3>
+      <div id="devices"></div>
+    </section>
+  </div>
+</main>
+<script id="plan-data" type="application/json">{{.Data}}</script>
+<script src="/ui/editor/plan.js"></script>
+{{end}}
+</body>
+</html>

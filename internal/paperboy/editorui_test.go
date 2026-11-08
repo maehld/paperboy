@@ -1,0 +1,148 @@
+package paperboy
+
+import (
+	"net/http"
+	"strings"
+	"testing"
+)
+
+// TestEditorOverview lists the page files by page and opens a shared page for
+// the selected display type (ADR 0068).
+func TestEditorOverview(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "solar", "small", previewTemplate)
+	writePage(t, s, "shared", "", previewTemplate)
+
+	rec := request(t, s, http.MethodGet, "/ui/editor?display=small", nil, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("editor: %d %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"<h2>solar</h2>", "<h2>shared</h2>",
+		"/ui/editor/page?display=small&amp;name=solar",  // the variant keeps its display type
+		"/ui/editor/page?display=small&amp;name=shared", // the shared page follows the selection
+		"all display types", "New page", "Devices</a> · <a href=\"/ui/plugins\">Widgets</a> · <a class=\"active\" href=\"/ui/editor\">Editor",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("overview lacks %q:\n%s", want, body)
+		}
+	}
+
+	// Without a selection the editor works on the first image display type.
+	if rec := request(t, s, http.MethodGet, "/ui/editor", nil, nil); !strings.Contains(rec.Body.String(), "href=\"/ui/editor?display=small\"") {
+		t.Fatalf("default display missing:\n%s", rec.Body.String())
+	}
+
+	// A broken page is listed with its error and cannot be opened; a variant of
+	// a display type that is not configured is listed as well.
+	writePage(t, s, "broken", "small", "title: x\nnope: 1\n")
+	writePage(t, s, "solar", "old", previewTemplate)
+	body = request(t, s, http.MethodGet, "/ui/editor?display=small", nil, nil).Body.String()
+	if !strings.Contains(body, "<h2>broken</h2>") || !strings.Contains(body, "yaml: unmarshal errors") {
+		t.Fatalf("broken page not reported:\n%s", body)
+	}
+	if !strings.Contains(body, `display type &#34;old&#34; is not configured`) {
+		t.Fatalf("unknown variant not reported:\n%s", body)
+	}
+	if strings.Contains(body, "/ui/editor/page?display=old") {
+		t.Fatalf("a variant of an unknown display type is offered:\n%s", body)
+	}
+}
+
+// TestEditorPage opens one page for a display type and starts a new page when
+// there is no file yet.
+func TestEditorPage(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "solar", "small", previewTemplate)
+
+	rec := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("editor page: %d %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`<script id="editor-data" type="application/json">{"name":"solar","display":"small","kind":"image","width":40,"height":20,"new":false,"shared":false,"grid":[6,8],"reference":[6,8]}</script>`,
+		`<script src="/ui/editor.js"></script>`, `id="board"`, `id="palette"`, `id="inspector"`, `id="preview-img"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("editor page lacks %q:\n%s", want, body)
+		}
+	}
+
+	// The page has no variant for the text display: it is not there for it.
+	if rec := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=lcd", nil, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing variant: %d %s", rec.Code, rec.Body)
+	}
+	// Asked as a new page it starts with the kind and character grid of the display.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=lcd&new=1", nil, nil).Body.String()
+	if !strings.Contains(body, `"kind":"text","width":20,"height":4,"new":true,"shared":false,"grid":[20,4]`) {
+		t.Fatalf("new text page:\n%s", body)
+	}
+
+	// A shared page says so, so the editor writes the shared file again.
+	writePage(t, s, "shared", "", previewTemplate)
+	if body := request(t, s, http.MethodGet, "/ui/editor/page?name=shared&display=lcd", nil, nil).Body.String(); !strings.Contains(body, `"shared":true`) {
+		t.Fatalf("shared page:\n%s", body)
+	}
+	// Without a display type the first configured one is used.
+	if body := request(t, s, http.MethodGet, "/ui/editor/page?name=shared", nil, nil).Body.String(); !strings.Contains(body, `"display":"small"`) {
+		t.Fatalf("default display:\n%s", body)
+	}
+
+	for _, path := range []string{
+		"/ui/editor/page?name=Nope&display=small", // invalid name
+		"/ui/editor/page?name=solar&display=nope", // unknown display type
+		"/ui/editor/page?name=..%2Fx&display=small",
+	} {
+		if rec := request(t, s, http.MethodGet, path, nil, nil); rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
+		}
+	}
+}
+
+// TestEditorPageWithoutDisplayTypes explains a configuration that has no
+// display type instead of drawing an empty editor.
+func TestEditorPageWithoutDisplayTypes(t *testing.T) {
+	cfg := &Config{Dir: t.TempDir()}
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := request(t, s, http.MethodGet, "/ui/editor", nil, nil).Body.String(); !strings.Contains(body, "No display types configured") {
+		t.Fatalf("overview lacks the hint:\n%s", body)
+	}
+	rec := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&new=1", nil, nil)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "no display type is configured") {
+		t.Fatalf("editor page: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// TestEditorScript is served from the binary, so the editor needs no separate
+// file next to it.
+func TestEditorScript(t *testing.T) {
+	s, _ := testServer(t)
+	rec := request(t, s, http.MethodGet, "/ui/editor.js", nil, nil)
+	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
+		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "PUT"} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("script lacks %q", want)
+		}
+	}
+}
+
+// TestEditorNavigation links the editor from the other views.
+func TestEditorNavigation(t *testing.T) {
+	s, _ := testServer(t)
+	for _, path := range []string{"/ui", "/ui/plugins?", "/ui/plan?device=test"} {
+		rec := request(t, s, http.MethodGet, path, nil, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
+		}
+		if !strings.Contains(rec.Body.String(), `href="/ui/editor"`) {
+			t.Fatalf("%s does not link the editor", path)
+		}
+	}
+}

@@ -63,3 +63,5 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0065](0065-plugin-state-directory.md) | A state directory per plugin | Accepted, implemented |
 | [0066](0066-page-and-plan-api.md) | A page and plan API for an editor | Accepted, implemented |
 | [0067](0067-buttons-and-the-menu.md) | Buttons – home opens the menu, long presses page | Accepted, implemented |
+| [0068](0068-page-editor-ui.md) | A page editor in the web UI | Accepted, implemented |
+| [0069](0069-plan-editor-ui.md) | A plan editor in the web UI | Accepted, implemented |
