@@ -121,10 +121,11 @@ func TestEditorOverviewPlans(t *testing.T) {
 	s := planEditorServer(t)
 	writePlanFile(t, s, "broken", "rules:\n  - name: day\n    pages: [solar]\n    nope: 1\n")
 
-	body := request(t, s, http.MethodGet, "/ui/editor", nil, nil).Body.String()
+	body := request(t, s, http.MethodGet, "/ui/editor?tab=plans", nil, nil).Body.String()
 	for _, want := range []string{
-		"<h2>Plans</h2>", "/ui/editor/plan?name=tour", "<td>tour</td>", "<td>night</td>",
+		"<h2>Plans", "/ui/editor/plan?name=tour", "<td>tour</td>", "<td>night</td>",
 		"<td>broken</td>", "yaml: unmarshal errors",
+		`href="/ui/editor?display=small&amp;tab=pages"`, // the way back to the pages
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, body)

@@ -61,12 +61,12 @@ download:
   interval: 24h                              # optional: between checks, at least 1h
 ```
 
-- It runs at startup and then after `interval` (default 24 h), in the background; the *Downloads* card has a **Check now** button that starts a check at once. An instance without internet keeps working as before, and nothing else needs the section.
+- It runs at startup and then after `interval` (default 24 h), in the background; the *Downloads* page (`/ui/downloads`) has a **Check now** button that starts a check at once. An instance without internet keeps working as before, and nothing else needs the section.
 - **Plugins**: a configured plugin whose program is missing gets the newest one as `plugins/<plugin>-v<version>` (`weather-v2.1.0`, `weather-v2.1.0.exe` on Windows). A downloaded program is updated when a release ships a newer version; the old file stays and only that plugin restarts. A `version` pin in the plugin section selects exactly that version and is never moved.
 - **Firmware**: every image of the bundle lands in `firmware/<hardware>-v<version>.bin` (ADR 0061); a `firmware.version` pin picks the release that carries exactly that image, which is also how a rollback is pinned. Devices are still only offered an update with `firmware.update: auto`.
 - A program **without** a version in `plugins/` (`weather`) always wins - it is your build - and is neither replaced nor pinned; download it by hand or delete it to hand the plugin back to the releases.
 - Existing files are never overwritten or deleted, so versions pile up and are removed by hand. Deleting a newer plugin file rolls back to the older one for the rest of the server run; a `version` pin keeps the older one across restarts, and a firmware pin keeps the older image on offer.
-- The dashboard shows the source, the last check, the running check, the versions in use and the last error.
+- The *Downloads* page shows the source, the last check, the running check, the program and version behind every plugin, the images in `firmware/` and the firmware each device reports; the devices page only warns when the last check failed.
 
 ## Instance directory
 

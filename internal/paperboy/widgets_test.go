@@ -62,6 +62,49 @@ func TestWidgetGallery(t *testing.T) {
 	}
 }
 
+// TestPlayground is the widgets page without a page: the palette and the
+// inspector of the page editor around one widget, with the cell to copy
+// (ADR 0055).
+func TestPlayground(t *testing.T) {
+	s, _ := testServer(t)
+	s.config().Profiles["lcd"] = Profile{Kind: kindText, Charset: "ascii", Width: 20, Height: 4}
+	s.config().Timezone = time.UTC
+
+	body := preview(t, s, "/ui/plugins?tab=playground").Body.String()
+	for _, want := range []string{
+		`"playground":true`, `"display":"small"`, `id="palette"`, `id="inspector"`, `id="snippet"`,
+		"Copy cell", `href="/ui/plugins?display=small&amp;tab=gallery"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("playground misses %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, `id="board"`) {
+		t.Fatalf("the playground draws a board: %s", body)
+	}
+
+	// The link carries the widget, its size and its args.
+	body = preview(t, s, "/ui/plugins?tab=playground&display=small&widget=paperboy/clock&span=3x2&arg.format=date").Body.String()
+	for _, want := range []string{`"widget":"paperboy/clock"`, `"span":[3,2]`, `"format":"date"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("playground link misses %q: %s", want, body)
+		}
+	}
+
+	// A text display starts from its character grid.
+	body = preview(t, s, "/ui/plugins?tab=playground&display=lcd&widget=paperboy/text").Body.String()
+	for _, want := range []string{`"kind":"text"`, `"width":20`, `"height":4`, `"grid":[20,4]`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("text playground misses %q: %s", want, body)
+		}
+	}
+	// The gallery keeps its tabs and is still the default.
+	if body := preview(t, s, "/ui/plugins?tab=gallery").Body.String(); !strings.Contains(body, `href="/ui/plugins?display=small&amp;tab=playground"`) {
+		t.Fatalf("gallery misses the playground tab: %s", body)
+	}
+}
+
+// TestWidgetGalleryArgs covers the gallery's per-widget form.
 func TestWidgetGalleryArgs(t *testing.T) {
 	s, _ := testServer(t)
 	s.config().Timezone = time.UTC

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="{{if .Downloads}}{{if .Downloads.Running}}5{{else}}30{{end}}{{else}}30{{end}}">
+<meta http-equiv="refresh" content="30">
 <title>Paperboy</title>
 <style>
 :root { color-scheme: light; }
@@ -42,10 +42,11 @@ dd.oneline .muted { font-size: .78rem; }
 <body>
 <header>
   <h1>Paperboy</h1>
-  <nav><a class="active" href="/ui">Devices</a> · <a href="/ui/plugins">Widgets</a> · <a href="/ui/editor">Editor</a></nav>
+  <nav><a class="active" href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/plugins">Widgets</a> · <a href="/ui/editor">Editor</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
   <span class="muted">{{len .Devices}} device(s) · updated {{.Now}}</span>
 </header>
+{{if .Downloads}}{{if .Downloads.Error}}<p class="error">The last release check failed · <a href="/ui/downloads">Downloads</a></p>{{else if .Downloads.Running}}<p class="muted">Checking for releases… · <a href="/ui/downloads">Downloads</a></p>{{end}}{{end}}
 {{if .Devices}}
 <div class="grid">
   {{range .Devices}}
@@ -81,21 +82,5 @@ dd.oneline .muted { font-size: .78rem; }
 {{else}}
 <p class="empty">No devices configured.</p>
 {{end}}
-{{if .Downloads}}
-<section class="card downloads">
-  <h2>Downloads</h2>
-  <dl>
-    <dt>Source</dt><dd>{{.Downloads.Source}}</dd>
-    <dt>Last check</dt><dd>{{.Downloads.LastCheck}}{{if .Downloads.Running}} <span class="muted">· checking…</span>{{else if .Downloads.LastOK}} <span class="muted">· last success {{.Downloads.LastOK}}</span>{{end}}</dd>
-    {{if .Downloads.Plugins}}<dt>Plugins</dt><dd>{{range $i, $p := .Downloads.Plugins}}{{if $i}}, {{end}}{{$p}}{{end}}</dd>{{end}}
-    {{if .Downloads.Firmware}}<dt>Firmware</dt><dd>{{range $i, $f := .Downloads.Firmware}}{{if $i}}, {{end}}{{$f}}{{end}}</dd>{{end}}
-  </dl>
-  {{if .Downloads.Error}}<p class="error">{{.Downloads.Error}}</p>{{end}}
-  <div class="actions">
-    <form method="post" action="/ui/download"><button type="submit"{{if .Downloads.Running}} disabled{{end}}>Check now</button></form>
-  </div>
-</section>
-{{end}}
-{{if .FirmwareIssues}}<p class="error">Ignored firmware files (expected &lt;hardware&gt;-v&lt;version&gt;.bin): {{range $i, $f := .FirmwareIssues}}{{if $i}}, {{end}}{{$f}}{{end}}</p>{{end}}
 </body>
 </html>

@@ -16,9 +16,9 @@ func TestDeviceEditorOverview(t *testing.T) {
 	writeDeviceFile(t, dir, "kueche", "display_type: small\nmac: \"aa:bb:cc:dd:ee:02\"\nplan: tour\n")
 	writeDeviceFile(t, dir, "kaputt", "display_typ: small\n")
 
-	body := request(t, s, http.MethodGet, "/ui/editor", nil, nil).Body.String()
+	body := request(t, s, http.MethodGet, "/ui/editor?tab=devices", nil, nil).Body.String()
 	for _, want := range []string{
-		"<h2>Devices</h2>", "<td>kueche</td>", "<td>small</td>", "<td>tour</td>",
+		"<h2>Devices", "<td>kueche</td>", "<td>small</td>", "<td>tour</td>",
 		"/ui/editor/device?id=kueche", "New device", `action="/ui/editor/device"`,
 	} {
 		if !strings.Contains(body, want) {

@@ -43,20 +43,25 @@ ul.args { margin: .3rem 0 0; padding-left: 1.2rem; font-size: .85rem; color: #44
   .args-form .desc { grid-column: 2; margin-top: -.2rem; }
 }
 .snippet { margin: .3rem 0 0; padding: .4rem .6rem; background: #f6f6f6; border: 1px solid #ddd; border-radius: 4px; font: .85rem ui-monospace, Consolas, monospace; white-space: pre-wrap; user-select: all; }
+.tabs { display: flex; flex-wrap: wrap; gap: .25rem; border-bottom: 1px solid #ddd; margin: 0 0 1rem; }
+.tabs a { padding: .4rem .8rem; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; text-decoration: none; font-size: .95rem; }
+.tabs a.active { background: #fff; border-color: #ddd; color: #111; font-weight: 600; margin-bottom: -1px; }
 </style>
 </head>
 <body>
 <header>
   <h1>Paperboy</h1>
-  <nav><a href="/ui">Devices</a> · <a class="active" href="/ui/plugins">Widgets</a> · <a href="/ui/editor">Editor</a></nav>
+  <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a class="active" href="/ui/plugins">Widgets</a> · <a href="/ui/editor">Editor</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
 </header>
+<nav class="tabs">
+  {{range .Tabs}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Label}}</a>{{end}}
+</nav>
 <div class="switch">
   <span class="muted">Display type:</span>
   {{range .Displays}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
   {{if not .Text}}<span class="muted">· sizes on a {{.Grid}} grid</span>{{end}}
-</div>
-{{if not .Displays}}<p class="muted">No display types configured.</p>{{end}}
+</div>{{if not .Displays}}<p class="muted">No display types configured.</p>{{end}}
 {{range .Plugins}}
 <section class="card">
   <h2>{{.Name}}{{if .Version}} <span class="muted">· {{.Version}}</span>{{end}}{{if .Title}} <span class="muted">{{.Title}}</span>{{end}}{{if .Builtin}} <span class="muted">· built-in</span>{{end}}</h2>
