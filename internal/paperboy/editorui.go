@@ -36,24 +36,33 @@ var editorPageTmpl = template.Must(template.New("editor-page").Parse(editorPageT
 //go:embed ui/editor.js
 var editorJS []byte
 
-// editorVariant is one page file of the overview: the shared page or the
-// variant of one display type.
+// editorVariant is one file of a page in the overview's variants column.
 type editorVariant struct {
-	Label     string // "all display types" or the display type
-	Kind      string
-	Grid      string
-	Title     string
-	Error     string // why the file cannot be opened, empty when it can
-	OpenURL   string
-	DeleteURL string // DELETE of this exact file (ADR 0073)
+	Label    string // the display type, "shared" for pages/<name>.yaml
+	URL      string // opens that file for its display type, empty when it cannot be opened
+	Selected bool   // the file the row shows
+	Title    string // why a file cannot be opened
+	// DeleteURL is only set when neither the row nor the display type switch can
+	// reach the file: a variant of an unknown display type and a shared page
+	// next to a variant (ADR 0073).
+	DeleteURL string
 	Warn      string // what the delete confirmation says
 }
 
-// editorPageGroup gathers the files of one page name, so the variants of a page
-// stand next to each other.
+// editorPageGroup is one page in the overview: the file the selected display
+// type resolves to, with the files the page has next to it.
 type editorPageGroup struct {
-	Name     string
-	Variants []editorVariant
+	Name      string
+	File      string // pages/<name>[.<display type>].yaml, empty when there is none for the display type
+	Shared    bool   // File is the shared page
+	Kind      string
+	Grid      string
+	Title     string
+	Error     string // why the shown file cannot be opened, empty when it can
+	Variants  []editorVariant
+	OpenURL   string
+	DeleteURL string // DELETE of the shown file (ADR 0073)
+	Warn      string // what the delete confirmation says
 }
 
 type editorListPage struct {
@@ -179,46 +188,107 @@ func editorDisplay(cfg *Config, requested string) string {
 	return ""
 }
 
-// groupPageFiles arranges the files by page and resolves what the overview
-// shows for each of them: a shared page is opened for the chosen display type,
-// a variant for its own. A file whose display type is not configured stays
-// listed but cannot be opened, because a save would be rejected.
+// groupPageFiles shows every page once: the file the selected display type
+// resolves to (its variant, else the shared page) with the files the page has
+// in its variants column. A variant of a display type that is not configured
+// stays listed, so an orphaned file stays visible and can be deleted, but it
+// cannot be opened because a save would be rejected.
 func groupPageFiles(files []editorPageFile, displays map[string]Profile, display string, usedBy map[string][]string) []editorPageGroup {
-	groups := []editorPageGroup{}
-	index := map[string]int{}
+	order := []string{}
+	byName := map[string][]editorPageFile{}
 	for _, f := range files {
-		i, ok := index[f.Name]
-		if !ok {
-			i = len(groups)
-			index[f.Name] = i
-			groups = append(groups, editorPageGroup{Name: f.Name})
+		if _, ok := byName[f.Name]; !ok {
+			order = append(order, f.Name)
 		}
-		v := editorVariant{Label: "all display types", Kind: f.Kind, Title: f.Title}
-		if f.Grid != [2]int{} {
-			v.Grid = fmt.Sprintf("%dx%d", f.Grid[0], f.Grid[1])
+		byName[f.Name] = append(byName[f.Name], f)
+	}
+	groups := make([]editorPageGroup, 0, len(order))
+	for _, name := range order {
+		groups = append(groups, pageRow(name, byName[name], displays, display, usedBy[name]))
+	}
+	return groups
+}
+
+// pageRow resolves one page for the selected display type: its variant, else
+// the shared page, else nothing. The row's Open and Delete act on that file;
+// its kind, grid and title describe it.
+func pageRow(name string, files []editorPageFile, displays map[string]Profile, display string, usedBy []string) editorPageGroup {
+	shown := -1
+	if display != "" {
+		for i, f := range files {
+			if f.Display == display {
+				shown = i
+				break
+			}
 		}
+	}
+	if shown < 0 {
+		for i, f := range files {
+			if f.Display == "" {
+				shown = i
+				break
+			}
+		}
+	}
+	g := editorPageGroup{Name: name}
+	for i, f := range files {
+		openable := f.Error == "" && (f.Display == "" || knownProfile(displays, f.Display))
+		v := editorVariant{Label: "shared", Selected: i == shown}
 		if f.Display != "" {
 			v.Label = f.Display
 		}
-		v.DeleteURL = pageDeleteURL(f.Name, f.Display, f.Hash)
-		v.Warn = pageDeleteWarning(f.Name, f.Display, usedBy[f.Name])
+		switch {
+		case f.Error != "":
+			v.Title = f.Error
+		case f.Display != "" && !knownProfile(displays, f.Display):
+			v.Title = fmt.Sprintf("display type %q is not configured", f.Display)
+		}
 		target := f.Display
 		if target == "" {
 			target = display
 		}
-		switch {
-		case f.Error != "":
-			v.Error = f.Error
-		case f.Display != "" && !knownProfile(displays, f.Display):
-			v.Error = fmt.Sprintf("display type %q is not configured", f.Display)
-		case target == "":
-			v.Error = "no display type configured to open it with"
-		default:
-			v.OpenURL = "/ui/editor/page?" + url.Values{"name": {f.Name}, "display": {target}}.Encode()
+		if openable && target != "" {
+			v.URL = "/ui/editor/page?" + url.Values{"name": {name}, "display": {target}}.Encode()
 		}
-		groups[i].Variants = append(groups[i].Variants, v)
+		// A variant is reachable through the display type switch, the shared page
+		// through the row when it is the shown file; anything else keeps its own
+		// Delete so no file is stranded.
+		if i != shown && (f.Display == "" || !knownProfile(displays, f.Display)) {
+			v.DeleteURL, v.Warn = pageDeleteURL(name, f.Display, f.Hash), pageDeleteWarning(name, f.Display, usedBy)
+		}
+		g.Variants = append(g.Variants, v)
 	}
-	return groups
+	// The variants come first, the shared page last: the variants are what the
+	// page is for, and their order keeps the display types together.
+	for i, v := range g.Variants {
+		if v.Label != "shared" || i == len(g.Variants)-1 {
+			continue
+		}
+		rest := append(append([]editorVariant{}, g.Variants[:i]...), g.Variants[i+1:]...)
+		g.Variants = append(rest, v)
+		break
+	}
+	if shown < 0 {
+		g.Error = fmt.Sprintf("no file for display type %q and no shared page", display)
+		return g
+	}
+	f := files[shown]
+	g.File, g.Shared = pageFileName(name, f.Display), f.Display == ""
+	g.Kind, g.Title = f.Kind, f.Title
+	if f.Grid != [2]int{} {
+		g.Grid = fmt.Sprintf("%dx%d", f.Grid[0], f.Grid[1])
+	}
+	g.Warn = pageDeleteWarning(name, f.Display, usedBy)
+	switch {
+	case f.Error != "":
+		g.Error = f.Error
+	case display == "":
+		g.Error = "no display type configured to open it with"
+	default:
+		g.OpenURL = "/ui/editor/page?" + url.Values{"name": {name}, "display": {display}}.Encode()
+	}
+	g.DeleteURL = pageDeleteURL(name, f.Display, f.Hash)
+	return g
 }
 
 // pageFileName names a page file the way the operator sees it; an empty

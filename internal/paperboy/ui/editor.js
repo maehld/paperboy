@@ -661,7 +661,9 @@
   }
 
   // updateURL keeps the playground's link in step with the widget, so the view
-  // can be shared and a reload comes back to it.
+  // can be shared and a reload comes back to it. Args travel as the plain text
+  // the gallery forms send, not as JSON: the script reads them back by their
+  // declared type, so a JSON-quoted string would keep its quotes.
   function updateURL() {
     if (!state.playground) return;
     const c = state.template && state.template.cells[0];
@@ -669,7 +671,9 @@
     if (c) {
       params.set('widget', c.widget);
       params.set('span', c.span[0] + 'x' + c.span[1]);
-      for (const [name, value] of Object.entries(c.args || {})) params.set('arg.' + name, JSON.stringify(value));
+      for (const [name, value] of Object.entries(c.args || {})) {
+        params.set('arg.' + name, Array.isArray(value) ? value.join(', ') : String(value));
+      }
     }
     history.replaceState(null, '', '/ui/plugins?' + params.toString());
   }
