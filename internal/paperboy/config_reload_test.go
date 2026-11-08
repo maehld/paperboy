@@ -18,12 +18,14 @@ import (
 
 const reloadConfig = `
 language: de
-display_types:
-  e1001:
-    kind: image
-    size: [800, 480]
-    gray_levels: 4
-    ppi: 125
+`
+
+// reloadDisplay is the display type file of reloadConfig (ADR 0071).
+const reloadDisplay = `
+kind: image
+size: [800, 480]
+gray_levels: 4
+ppi: 125
 `
 
 // reloadDevice is the device file of reloadConfig (ADR 0070).
@@ -61,6 +63,7 @@ func TestConfigReloadChangesDeviceList(t *testing.T) {
 	dir := t.TempDir()
 	writePageFile(t, filepath.Join(dir, "pages", "seite.e1001.yaml"), textPage("eins"))
 	writeConfig(t, dir, reloadConfig)
+	writeDisplayFile(t, dir, "e1001", reloadDisplay)
 	writeDeviceFile(t, dir, "flur", reloadDevice)
 	s := configServer(t, dir)
 
@@ -96,11 +99,43 @@ func TestConfigReloadChangesDeviceList(t *testing.T) {
 	}
 }
 
+// TestConfigReloadReloadsDisplayTypes verifies that a changed or added display
+// type file applies without a restart (ADR 0047, 0071).
+func TestConfigReloadReloadsDisplayTypes(t *testing.T) {
+	dir := t.TempDir()
+	writeConfig(t, dir, reloadConfig)
+	writeDisplayFile(t, dir, "e1001", reloadDisplay)
+	s := configServer(t, dir)
+
+	ppi := func() float64 {
+		profiles := call(t, s, "/api/profiles", nil)["profiles"].([]any)
+		for _, p := range profiles {
+			if p.(map[string]any)["name"] == "e1001" {
+				return p.(map[string]any)["ppi"].(float64)
+			}
+		}
+		t.Fatal("display type e1001 is missing")
+		return 0
+	}
+	if got := ppi(); got != 125 {
+		t.Fatalf("ppi before the change: %v", got)
+	}
+	writeDisplayFile(t, dir, "e1001", strings.Replace(reloadDisplay, "ppi: 125", "ppi: 236", 1))
+	if got := ppi(); got != 236 {
+		t.Fatalf("ppi after the change: %v", got)
+	}
+	writeDisplayFile(t, dir, "small", "size: [40, 20]\nppi: 150\n")
+	if n := len(call(t, s, "/api/profiles", nil)["profiles"].([]any)); n != 2 {
+		t.Fatalf("profiles after adding a display type: %d", n)
+	}
+}
+
 // TestConfigReloadKeepsLastValidOnBrokenDevice verifies that a broken device
 // file keeps the last valid configuration active (ADR 0047, 0070).
 func TestConfigReloadKeepsLastValidOnBrokenDevice(t *testing.T) {
 	dir := t.TempDir()
 	writeConfig(t, dir, reloadConfig)
+	writeDisplayFile(t, dir, "e1001", reloadDisplay)
 	writeDeviceFile(t, dir, "flur", reloadDevice)
 	s := configServer(t, dir)
 
@@ -116,9 +151,10 @@ func TestConfigReloadKeepsLastValidOnBrokenDevice(t *testing.T) {
 func TestConfigReloadKeepsLastValid(t *testing.T) {
 	dir := t.TempDir()
 	writeConfig(t, dir, reloadConfig)
+	writeDisplayFile(t, dir, "e1001", reloadDisplay)
 	s := configServer(t, dir)
 
-	writeConfig(t, dir, "display_types: [\n") // truncated, invalid YAML
+	writeConfig(t, dir, "language: [\n") // truncated, invalid YAML
 	if resp := call(t, s, "/api/profiles", nil); len(resp["profiles"].([]any)) != 1 {
 		t.Fatalf("broken config must keep the last valid one: %#v", resp)
 	}
@@ -148,6 +184,7 @@ func TestDegradedStartAppliesConfig(t *testing.T) {
 	}
 
 	writeConfig(t, dir, reloadConfig)
+	writeDisplayFile(t, dir, "e1001", reloadDisplay)
 	writeDeviceFile(t, dir, "flur", reloadDevice)
 	if resp := call(t, s, "/api/profiles", nil); len(resp["profiles"].([]any)) != 1 {
 		t.Fatalf("configuration not applied after a reload: %#v", resp)
@@ -232,6 +269,7 @@ plugins:
 	}
 	installTestPlugin(t, dir, "test")
 	writeConfig(t, dir, pluginYAML(true))
+	writeDisplayFile(t, dir, "e1001", reloadDisplay)
 	writeDeviceFile(t, dir, "flur", planDeviceFile)
 	s := configServer(t, dir)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -270,6 +308,7 @@ func TestDegradedStartRetriesUnchangedFile(t *testing.T) {
 	if len(broken) != len(reloadConfig) {
 		t.Fatal("test setup: broken and valid file must have the same length")
 	}
+	writeDisplayFile(t, dir, "e1001", reloadDisplay)
 	writeConfig(t, dir, broken)
 	if _, err := LoadConfig(dir); err == nil {
 		t.Fatal("unexpected: the broken configuration loads")
@@ -302,11 +341,13 @@ func TestDegradedStartRetriesUnchangedFile(t *testing.T) {
 // timezoneConfig is one device on a plan, parameterized by the global timezone.
 const timezoneConfig = `
 timezone: %s
-display_types:
-  e1001:
-    kind: image
-    size: [800, 480]
-    ppi: 236
+`
+
+// timezoneDisplay is the display type file of timezoneConfig (ADR 0071).
+const timezoneDisplay = `
+kind: image
+size: [800, 480]
+ppi: 236
 `
 
 // planDeviceFile is the device of timezoneConfig (ADR 0070).
@@ -335,6 +376,7 @@ rules:
 fallback: frueh
 `)
 	writeConfig(t, dir, fmt.Sprintf(timezoneConfig, "UTC"))
+	writeDisplayFile(t, dir, "e1001", timezoneDisplay)
 	writeDeviceFile(t, dir, "flur", planDeviceFile)
 	s := configServer(t, dir) // 08:00 UTC
 	dev := planDevice(t, s)

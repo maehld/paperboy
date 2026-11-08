@@ -554,6 +554,138 @@ func (s *Server) handleSaveDevice(w http.ResponseWriter, r *http.Request) {
 		YAML: string(data), Device: &written})
 }
 
+// editorDisplayType is one display type file with its model, the answer of a
+// read and of a successful write (ADR 0071).
+type editorDisplayType struct {
+	Name    string       `json:"name"`
+	Path    string       `json:"path"` // relative to the instance directory
+	Hash    string       `json:"hash"`
+	YAML    string       `json:"yaml"`
+	Display *displayFile `json:"display,omitempty"`
+	Error   string       `json:"error,omitempty"`
+}
+
+// displaySave is the body of a display type write: the model and the hash of
+// the file the editor read, like a page, plan or device save (ADR 0066).
+type displaySave struct {
+	Hash    string       `json:"hash"`
+	Display *displayFile `json:"display"`
+}
+
+// handleDisplays lists the display type files (ADR 0071).
+func (s *Server) handleDisplays(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	list, err := displayFileList(cfg.DisplaysDir)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"displays": list})
+}
+
+// handleDisplay reads one display type file. A broken file still answers, so an
+// editor can show and repair it.
+func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	name := r.PathValue("name")
+	path, err := displayFilePath(cfg.DisplaysDir, name)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	out := editorDisplayType{Name: name, Path: relativePath(cfg, path), Hash: fileHash(data), YAML: string(data)}
+	if f, err := parseDisplayFile(data); err != nil {
+		out.Error = shortError(err)
+	} else {
+		out.Display = &f
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleSaveDisplay validates a display type like the runtime would on a
+// reload, then writes the file. The name comes from the path and cannot be
+// changed here: it is the suffix of page files and a value in device files.
+func (s *Server) handleSaveDisplay(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	name := r.PathValue("name")
+	path, err := displayFilePath(cfg.DisplaysDir, name)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	var body displaySave
+	if err := decodeBody(w, r, &body); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	if body.Display == nil {
+		writeAPIError(w, http.StatusBadRequest, "display missing")
+		return
+	}
+	if body.Display.WidthMM != nil {
+		writeAPIError(w, http.StatusBadRequest, "display type %s: width_mm was replaced by ppi (ADR 0050): use ppi = pixels × 25.4 / mm of the same side", name)
+		return
+	}
+	data, err := encodeDisplayFile(body.Display)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	written, err := parseDisplayFile(data)
+	if err != nil { // never expected: encodeDisplayFile wrote what parseDisplayFile reads
+		writeAPIError(w, http.StatusInternalServerError, "written display type does not read back: %v", err)
+		return
+	}
+	if err := written.check(name); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	p := written.profile()
+	if err := validateProfile(name, &p); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	cur, err := os.ReadFile(path)
+	exists := err == nil
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	if exists && body.Hash != "" && fileHash(cur) != body.Hash {
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error": "the display type changed on disk; read it again before saving",
+			"hash":  fileHash(cur),
+		})
+		return
+	}
+	if !exists && body.Hash != "" {
+		writeAPIError(w, http.StatusConflict, "the display type was removed on disk; read it again before saving")
+		return
+	}
+	if exists {
+		s.backupFile(cfg, "displays", name, cur)
+	}
+	if err := os.MkdirAll(cfg.DisplaysDir, 0o755); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	if err := writeAtomic(path, data); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, editorDisplayType{Name: name, Path: relativePath(cfg, path), Hash: fileHash(data),
+		YAML: string(data), Display: &written})
+}
+
 // handleDraftPreview renders a page that is not saved yet, so an editor can
 // show a draft without writing a file (ADR 0066).
 func (s *Server) handleDraftPreview(w http.ResponseWriter, r *http.Request) {

@@ -214,7 +214,7 @@ func encodeDeviceFile(f *deviceFile) ([]byte, error) {
 	if f.Firmware != "" {
 		set("firmware", plainScalar(f.Firmware))
 	}
-	return marshalDeviceFile(root)
+	return marshalFile(root)
 }
 
 func mapping() *yaml.Node { return &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"} }
@@ -233,7 +233,8 @@ func quotedScalar(value string) *yaml.Node {
 
 func durationValue(d time.Duration) *yaml.Node { return plainScalar(durationText(d)) }
 
-func marshalDeviceFile(node *yaml.Node) ([]byte, error) {
+// marshalFile writes a node tree as the YAML file layout the editors write.
+func marshalFile(node *yaml.Node) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
