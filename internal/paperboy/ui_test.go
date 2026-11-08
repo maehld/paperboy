@@ -44,7 +44,7 @@ func TestDashboardShowsDevices(t *testing.T) {
 	if want := pagePath(out); !strings.Contains(body, want) {
 		t.Fatalf("dashboard must preview the served page %q: %s", want, body)
 	}
-	for _, want := range []string{"zimmer", "eins", "every 10 min", "3.74 V · 61 %"} {
+	for _, want := range []string{"zimmer", "eins", "every 10 min", "3.74 V · 61 %", "small <span class=\"muted\">(sticky)</span>"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("dashboard misses %q: %s", want, body)
 		}

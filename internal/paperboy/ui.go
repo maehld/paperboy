@@ -24,6 +24,8 @@ var dashboardTmpl = template.Must(template.New("dashboard").Parse(dashboardTempl
 type dashboardDevice struct {
 	ID          string
 	Status      string // ok, late, never or unregistered
+	Type        string // display type: the operator's label for the page layout
+	Hardware    string // hardware the device reports; empty until it registered
 	Plan        string // plan name, "no plan" when empty
 	Rule        string // active plan rule, empty when unknown
 	Content     string // page name, "notice", "battery warning" or empty
@@ -80,6 +82,8 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		cards = append(cards, dashboardDevice{
 			ID:          d.ID,
 			Status:      d.Status,
+			Type:        d.Profile,
+			Hardware:    d.Hardware,
 			Plan:        planText(d.Plan),
 			Rule:        d.Rule,
 			Content:     contentText(d.deviceState),
