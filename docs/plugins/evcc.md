@@ -17,3 +17,28 @@ Shows data from [evcc](https://evcc.io) over its REST API (`/api/state`). The pl
 - `forecast`: solar forecast as an area and the grid price as steps for the next `hours` (default 24). Image only.
 
 `site`, `flow` and `loadpoint` have text variants. In the `flow` variant you get PV, home, one `Car` line per active loadpoint, the grid with + for import and - for export, and the battery with its state of charge and + for discharging / - for charging.
+
+## Actions
+
+The plugin offers one action, `mode`, which sets an evcc charge mode from the device menu (ADR 0057). A mode change affects the car, so Paperboy asks for a confirmation before the action runs.
+
+| Argument | Description |
+|---|---|
+| `loadpoint` | Required. Index into `loadpoints` of `/api/state`, the same order the `loadpoint` widget uses. |
+| `mode` | Required. One of `off`, `minpv`, `pv`, `now`. |
+
+The title names the loadpoint and the mode, e.g. "Wohnmobil: jetzt laden"; a plan's `title` overrides it. The action is unavailable while evcc has no data yet, the loadpoint index does not exist or evcc already runs that mode. When evcc is down the entry stays visible as unavailable with the reason; nothing else breaks.
+
+```yaml
+actions:
+  - action: evcc/mode
+    args: { loadpoint: 0, mode: now }
+    id: charge-now
+    title: "Jetzt laden"
+  - action: evcc/mode
+    args: { loadpoint: 1, mode: pv }
+    id: charge-pv
+    title: "Nur PV"
+```
+
+A successful action reads `/api/state` again at once instead of waiting for the next poll, so the `loadpoint` widget shows the new mode after the next sync. Actions set a target state and never toggle, so a repeated sync is safe.

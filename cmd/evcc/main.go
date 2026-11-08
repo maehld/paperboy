@@ -126,6 +126,9 @@ func (e *evcc) Describe() plugin.Description {
 	return plugin.Description{
 		Title:  "evcc",
 		Config: configKeys,
+		Actions: []plugin.ActionSpec{
+			{Name: "mode", Title: "Charge mode", Args: actionArgs, Confirm: &plugin.Confirm{Required: true}},
+		},
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "site", Title: "Energy flow", Kinds: both, MinWidth: 200, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 2}},
