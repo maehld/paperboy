@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"sort"
 	"time"
 )
 
@@ -46,23 +45,18 @@ type dashboardDevice struct {
 }
 
 type dashboardPage struct {
-	Now            string
-	Version        string // build label: version, commit and commit date
-	GoVersion      string
-	Devices        []dashboardDevice
-	FirmwareIssues []string            // ignored files in the firmware directory
-	Downloads      *dashboardDownloads // release checks (ADR 0060), nil without a download section
+	Now       string
+	Version   string // build label: version, commit and commit date
+	GoVersion string
+	Devices   []dashboardDevice
+	Downloads *dashboardDownloads // hint about the release checks (ADR 0060), nil without a download section
 }
 
-// dashboardDownloads is the release card: source, checks and what came from it.
+// dashboardDownloads is the hint above the device grid: the details live on the
+// downloads page, so a running check no longer reloads every card.
 type dashboardDownloads struct {
-	Source    string
-	Running   bool     // a check is running right now
-	LastCheck string   // time of the last check, "never" before the first one
-	LastOK    string   // time of the last successful check, empty when unknown
-	Error     string   // last error, empty when the check succeeded
-	Plugins   []string // "weather v2.1.0"
-	Firmware  []string // "sticky 1.0.0"
+	Running bool   // a check is running right now
+	Error   string // last error, empty when the check succeeded
 }
 
 // handleRoot sends the bare root to the dashboard so that the instance needs
@@ -113,21 +107,20 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		loc = time.UTC
 	}
 	page := dashboardPage{
-		Now:            now.In(loc).Format("15:04:05"),
-		Version:        versionText(build, loc),
-		GoVersion:      build.Go,
-		Devices:        cards,
-		FirmwareIssues: s.firmware.invalidNames(),
-		Downloads:      s.downloadCard(cfg, loc),
+		Now:       now.In(loc).Format("15:04:05"),
+		Version:   versionText(build, loc),
+		GoVersion: build.Go,
+		Devices:   cards,
+		Downloads: s.downloadHint(cfg),
 	}
 	if err := dashboardTmpl.Execute(w, page); err != nil {
 		slog.Error("dashboard rendering failed", "error", err)
 	}
 }
 
-// handleDownloadCheck starts a release check in the background and returns the
-// dashboard at once; a second request while one runs changes nothing (ADR 0062).
-// It is the dashboard's only action, so it needs no form token.
+// handleDownloadCheck starts a release check in the background and returns to
+// the downloads page at once; a second request while one runs changes nothing
+// (ADR 0062). It is the page's only action, so it needs no form token.
 func (s *Server) handleDownloadCheck(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	if cfg.Download != nil && s.download.begin() {
@@ -135,26 +128,17 @@ func (s *Server) handleDownloadCheck(w http.ResponseWriter, r *http.Request) {
 			s.finishDownloadCheck(cfg, s.downloadOnce(s.ctx, cfg))
 		}()
 	}
-	http.Redirect(w, r, "/ui", http.StatusSeeOther)
+	http.Redirect(w, r, "/ui/downloads", http.StatusSeeOther)
 }
 
-// downloadCard summarizes the release checks for the dashboard; nil without a
-// download section.
-func (s *Server) downloadCard(cfg *Config, loc *time.Location) *dashboardDownloads {
+// downloadHint is the dashboard's line about the release checks; nil without a
+// download section. Details are on the downloads page.
+func (s *Server) downloadHint(cfg *Config) *dashboardDownloads {
 	if cfg.Download == nil {
 		return nil
 	}
-	running, lastCheck, lastOK, lastErr, plugins, firmware := s.download.view()
-	card := &dashboardDownloads{Source: cfg.Download.Source, Error: lastErr,
-		Running:   running,
-		LastCheck: downloadTime(lastCheck, loc), LastOK: downloadTime(lastOK, loc)}
-	for _, name := range sortedStringKeys(plugins) {
-		card.Plugins = append(card.Plugins, name+" "+plugins[name])
-	}
-	for _, hw := range sortedStringKeys(firmware) {
-		card.Firmware = append(card.Firmware, hw+" "+firmware[hw])
-	}
-	return card
+	running, _, _, lastErr, _, _ := s.download.view()
+	return &dashboardDownloads{Running: running, Error: lastErr}
 }
 
 // downloadTime prints a time of the day, with the date when it is not today.
@@ -167,15 +151,6 @@ func downloadTime(t time.Time, loc *time.Location) string {
 		return t.In(loc).Format("15:04")
 	}
 	return t.In(loc).Format("2006-01-02 15:04")
-}
-
-func sortedStringKeys(m map[string]string) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 // imageText picks what the card shows for an image display. Rendered pages

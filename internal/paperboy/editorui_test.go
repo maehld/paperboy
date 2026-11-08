@@ -22,7 +22,7 @@ func TestEditorOverview(t *testing.T) {
 		"<h2>solar</h2>", "<h2>shared</h2>",
 		"/ui/editor/page?display=small&amp;name=solar",  // the variant keeps its display type
 		"/ui/editor/page?display=small&amp;name=shared", // the shared page follows the selection
-		"all display types", "New page", "Devices</a> · <a href=\"/ui/plugins\">Widgets</a> · <a class=\"active\" href=\"/ui/editor\">Editor",
+		"all display types", "New page", "<a href=\"/ui/downloads\">Downloads</a> · <a href=\"/ui/plugins\">Widgets</a> · <a class=\"active\" href=\"/ui/editor\">Editor",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, body)

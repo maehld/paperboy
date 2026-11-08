@@ -190,6 +190,53 @@ func (f *firmwareStore) latest(hardware, pin string) (*firmwareImage, []string) 
 	return best, invalid
 }
 
+// installed lists the images in the firmware directory for the releases page:
+// the flat files of every hardware type and the images in the old <hardware>/
+// directories, which are still read (ADR 0060). Ignored names stay with
+// invalidNames. Newest version first per hardware type.
+func (f *firmwareStore) installed() []firmwareImage {
+	if f == nil {
+		return nil
+	}
+	entries, err := os.ReadDir(f.dir)
+	if err != nil {
+		return nil
+	}
+	var out []firmwareImage
+	add := func(hardware, file, path string) {
+		version, parts, ok := parseFirmwareName(hardware, file)
+		if !ok {
+			return
+		}
+		out = append(out, firmwareImage{Hardware: hardware, Version: version, File: file, path: path, parts: parts})
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			sub, err := os.ReadDir(filepath.Join(f.dir, e.Name()))
+			if err != nil {
+				continue
+			}
+			for _, se := range sub {
+				if se.IsDir() {
+					continue
+				}
+				add(e.Name(), e.Name()+"/"+se.Name(), filepath.Join(f.dir, e.Name(), se.Name()))
+			}
+			continue
+		}
+		if hardware, ok := splitFirmwareName(e.Name()); ok {
+			add(hardware, e.Name(), filepath.Join(f.dir, e.Name()))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Hardware != out[j].Hardware {
+			return out[i].Hardware < out[j].Hardware
+		}
+		return compareVersions(out[i].parts, out[j].parts) > 0
+	})
+	return out
+}
+
 // invalidNames lists ignored files for the dashboard: entries that are no
 // image name of any hardware type, and old <hardware>/ directories (still read,
 // ADR 0060). It does not consult the configuration: an image is named after the
