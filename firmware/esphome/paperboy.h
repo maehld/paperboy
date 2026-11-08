@@ -119,10 +119,12 @@ inline bool pb_queue_event(const std::string &json) {
   return true;
 }
 
-inline void pb_button(const std::string &role) {
+// pb_button queues one button event. hold_ms is the measured press duration;
+// the server decides from it whether the press was short or long (ADR 0067).
+inline void pb_button(const std::string &role, uint32_t hold_ms) {
   pb_event_seq++;
   if (!pb_queue_event("{\"id\":" + std::to_string(pb_event_seq) + ",\"type\":\"button\",\"button\":" +
-                      pb_json_string(role) + "}")) {
+                      pb_json_string(role) + ",\"hold_ms\":" + std::to_string(hold_ms) + "}")) {
     pb_note_for_next_wake("event queue full");
   }
 }

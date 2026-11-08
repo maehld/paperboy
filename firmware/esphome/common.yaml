@@ -166,6 +166,14 @@ globals:
   - id: reg_attempts
     type: int
     initial_value: "0"
+  # Button that woke the device: its role and GPIO for the press measurement
+  # (ADR 0067). Empty role = no button wake.
+  - id: wake_role
+    type: std::string
+    initial_value: '""'
+  - id: wake_gpio
+    type: int
+    initial_value: "0"
 
 http_request:
   useragent: paperboy-esphome
@@ -249,19 +257,30 @@ script:
             - logger.log: "no Wi-Fi, sleeping"
             - script.execute: go_sleep
 
-  # Called by the buttons with their role (next, previous, home). The event is
-  # queued; a sync starts at once unless one is already running.
+  # Called by the buttons with their role (next, previous, home), the GPIO they
+  # read and their press time. The event carries the measured press duration;
+  # the server decides what counts as a long press (ADR 0067), so a press is
+  # queued when the button is released or after the hold timeout and a sync
+  # starts at once unless one is already running.
   - id: button_pressed
     mode: queued
     parameters:
       role: string
+      gpio: int
+      start: int
     then:
       - if:
           condition:
             lambda: "return !id(setup_mode) && !id(api_key).state.empty();"
           then:
+            - wait_until:
+                condition:
+                  lambda: "return gpio_get_level((gpio_num_t) gpio) != 0;"
+                timeout: 700ms
             - lambda: |-
-                pb_button(role);
+                uint32_t ms = esphome::millis() - (uint32_t) start;
+                if (ms > 60000) ms = 60000;
+                pb_button(role, ms);
                 pb_time("button");
                 id(wake_reason) = "button";
             - script.execute: awake_limit

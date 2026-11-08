@@ -196,8 +196,9 @@ func TestPlanRuleSwitchAndKeys(t *testing.T) {
 	if !strings.Contains(pagePath(out), "/zwei/") || out["listen_s"].(float64) != listenAfterInput.Seconds() {
 		t.Fatalf("next must page and keep the device listening: %v", out)
 	}
-	if got := pagePath(press(t, s, dev, buttonHome)); !strings.Contains(got, "/eins/") {
-		t.Fatalf("home: %q", got)
+	// A long previous goes back to the first page of the rule (ADR 0067).
+	if got := pagePath(pressShown(t, s, dev, "", []int{800}, buttonPrevious)); !strings.Contains(got, "/eins/") {
+		t.Fatalf("long previous: %q", got)
 	}
 	// previous wraps around within the rule.
 	if got := pagePath(press(t, s, dev, buttonPrevious)); !strings.Contains(got, "/zwei/") {
