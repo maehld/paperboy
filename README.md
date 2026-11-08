@@ -59,7 +59,7 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
     devices.json     device register with API keys, page cursor and battery level
 ```
 
-- `paperboy.yaml`, `pages/`, `plans/`, `plugins/` and `firmware/` are yours: Paperboy only reads them and never creates them.
+- `paperboy.yaml`, `pages/`, `plans/`, `plugins/` and `firmware/` are yours. Paperboy only reads them; only the download feature (ADR 0060) adds plugin and firmware files there.
 - `state/` is created at startup and is the only directory Paperboy writes. Back up `state/devices.json` anyway: it holds the page cursor, battery level and last served page; without it the devices get new keys on their next sync (401, then registration by MAC).
 
 ## Configuration
@@ -70,8 +70,8 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
 language: de            # de or en; default: system language
 timezone: Europe/Berlin # IANA zone; default: system timezone
 plugins:
-  calendar:
-    command: [calendar]  # argv; looked up in plugins/, then on PATH
+  calendar:              # the program is plugins/calendar or calendar on PATH (ADR 0060)
+    version: v2.1.0      # optional: pin plugins/calendar-v2.1.0, else the highest version
     timeout: 1m          # per request; default 30s
     env: { HTTPS_PROXY: "http://proxy:3128" }   # optional extra environment
     config:              # sent to the plugin once after its start

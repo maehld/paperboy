@@ -59,7 +59,7 @@ ul.args { margin: .3rem 0 0; padding-left: 1.2rem; font-size: .85rem; color: #44
 {{if not .Displays}}<p class="muted">No display types configured.</p>{{end}}
 {{range .Plugins}}
 <section class="card">
-  <h2>{{.Name}}{{if .Title}} <span class="muted">{{.Title}}</span>{{end}}{{if .Builtin}} <span class="muted">· built-in</span>{{end}}</h2>
+  <h2>{{.Name}}{{if .Version}} <span class="muted">· {{.Version}}</span>{{end}}{{if .Title}} <span class="muted">{{.Title}}</span>{{end}}{{if .Builtin}} <span class="muted">· built-in</span>{{end}}</h2>
   {{if .Config}}<div class="muted">Config:</div><ul class="args">{{range .Config}}<li>{{.}}</li>{{end}}</ul>{{end}}
   {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
   {{range .Widgets}}

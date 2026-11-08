@@ -204,11 +204,12 @@ type Config struct {
 }
 
 // Plugin is one plugin (ADR 0049): a long-running program in the plugins
-// directory that provides widgets. Config is its section of paperboy.yaml,
-// with ${VAR} already replaced from the environment.
+// directory that provides widgets, named after the plugin and — when it was
+// downloaded — carrying its version in the file name (ADR 0060). Config is its
+// section of paperboy.yaml, with ${VAR} already replaced from the environment.
 type Plugin struct {
 	Name    string
-	Command []string
+	Version string // pinned version, e.g. v2.1.0; empty = the highest available
 	Timeout Duration
 	Env     map[string]string
 	Config  map[string]any
@@ -279,7 +280,8 @@ type fileConfig struct {
 		Version         string  `yaml:"version"` // pin for downloads and offers (ADR 0060)
 	} `yaml:"firmware"`
 	Plugins map[string]struct {
-		Command []string          `yaml:"command"`
+		Command any               `yaml:"command"` // removed by ADR 0060; rejected with a hint
+		Version string            `yaml:"version"` // downloaded/pinned program version
 		Timeout Duration          `yaml:"timeout"`
 		Env     map[string]string `yaml:"env"`
 		Config  map[string]any    `yaml:"config"`
@@ -430,11 +432,14 @@ func LoadConfig(dir string) (*Config, error) {
 	sort.Strings(pluginNames)
 	for _, name := range pluginNames {
 		p := f.Plugins[name]
+		if p.Command != nil {
+			return nil, fmt.Errorf("%s: plugin %s: command is no longer supported (ADR 0060); name the program %s-v<version> in the plugins directory", path, name, name)
+		}
 		cfg, err := expandConfig(p.Config)
 		if err != nil {
 			return nil, fmt.Errorf("%s: plugin %s: config: %w", path, name, err)
 		}
-		c.Plugins = append(c.Plugins, Plugin{Name: name, Command: p.Command, Timeout: p.Timeout, Env: p.Env, Config: cfg})
+		c.Plugins = append(c.Plugins, Plugin{Name: name, Version: p.Version, Timeout: p.Timeout, Env: p.Env, Config: cfg})
 	}
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -588,15 +593,20 @@ func (c *Config) validate() error {
 			return fmt.Errorf("device %s: plan %q: only a-z, 0-9 and -", d.ID, d.Plan)
 		}
 	}
-	for _, p := range c.Plugins {
+	for i := range c.Plugins {
+		p := &c.Plugins[i]
 		if !validName(p.Name) {
 			return fmt.Errorf("plugin %q: name must use a-z, 0-9 and -", p.Name)
 		}
 		if p.Name == builtin.Name {
 			return fmt.Errorf("plugin %q: the name is reserved for the built-in plugin", p.Name)
 		}
-		if len(p.Command) == 0 || p.Command[0] == "" {
-			return fmt.Errorf("plugin %s: command missing", p.Name)
+		if p.Version != "" {
+			v, ok := pluginPin(p.Version)
+			if !ok {
+				return fmt.Errorf("plugin %s: version %q: expected a version like v2.1.0", p.Name, p.Version)
+			}
+			p.Version = v
 		}
 		if p.Timeout < 0 {
 			return fmt.Errorf("plugin %s: timeout must not be negative", p.Name)
@@ -605,8 +615,19 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// pluginPin normalizes a pinned plugin version to the form in the file name
+// (ADR 0060): "2.1.0" and "v2.1.0" both become "v2.1.0".
+func pluginPin(pin string) (string, bool) {
+	v := strings.TrimPrefix(strings.TrimSpace(pin), "v")
+	if !firmwareVersionPattern.MatchString(v) {
+		return "", false
+	}
+	return "v" + v, true
+}
+
 // pluginSpecs returns the plugins for the widget host, with the global
-// language and timezone in their environment.
+// language and timezone in their environment and the program resolved from the
+// plugins directory (ADR 0060).
 func (c *Config) pluginSpecs() map[string]widget.Spec {
 	out := make(map[string]widget.Spec, len(c.Plugins))
 	for _, p := range c.Plugins {
@@ -614,8 +635,15 @@ func (c *Config) pluginSpecs() map[string]widget.Spec {
 		for k, v := range p.Env {
 			env[k] = v
 		}
-		out[p.Name] = widget.Spec{Name: p.Name, Command: p.Command, Timeout: time.Duration(p.Timeout), Env: env,
-			Dir: c.PluginsDir, Config: p.Config}
+		program, version := pluginProgram(c.PluginsDir, p.Name, p.Version)
+		command := []string{program}
+		if program == "" {
+			// Left unresolved so that the host reports the missing program in
+			// the cell; a download may deliver it later.
+			command = []string{p.Name}
+		}
+		out[p.Name] = widget.Spec{Name: p.Name, Command: command, Version: version,
+			Timeout: time.Duration(p.Timeout), Env: env, Dir: c.PluginsDir, Config: p.Config}
 	}
 	return out
 }
