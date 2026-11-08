@@ -31,6 +31,7 @@ Every editing surface shows exactly one bar, in this order:
 
 - The back link names the list, not its contents: `← Pages`, `← Plans`, `← Devices`, `← Display types`, `← Widgets`, and each goes to that list's tab (`/ui/editor?tab=plans`), which the old links did not.
 - `Delete` disappears where there is nothing to delete, `Save` where nothing is saved (the widgets page copies a cell instead), and the page editor keeps `Save as <type> variant`.
+- The widgets page has no object and no action of its own, so it shows **no bar at all**: its status sits next to the display type switch, and the widget it shows is named in the preview head.
 - The sub-tab strip stays the way back only where a page has tabs; editors have the bar.
 
 ### 3. The widgets page is an editor

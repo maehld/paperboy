@@ -115,9 +115,15 @@ func TestEditorBarsShareThePattern(t *testing.T) {
 		}
 	}
 
-	// The widgets page is an editor without a file: one bar with Reload, no Save.
+	// The widgets page has no object and no action of its own, so it has no
+	// bar: its status sits next to the display type switch (ADR 0076).
 	body := htmlRequest(t, s, "/ui/plugins").Body.String()
-	if strings.Count(body, `class="bar"`) != 1 || strings.Contains(body, `id="save"`) {
-		t.Fatal("the widgets page bar differs from the editors")
+	for _, unwanted := range []string{`class="bar"`, `id="reload"`, `id="save"`, `id="delete"`} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("the widgets page grew an action bar (%s)", unwanted)
+		}
+	}
+	if !strings.Contains(body, `id="status"`) {
+		t.Fatal("the widgets page lost its status line")
 	}
 }
