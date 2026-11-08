@@ -112,8 +112,9 @@ type FirmwareConfig struct {
 // DownloadConfig enables fetching plugins and firmware from releases (ADR 0060).
 // Its presence in paperboy.yaml is the opt-in.
 type DownloadConfig struct {
-	Source string // release origin; empty = the official repository
-	Token  string // optional bearer token for the release API
+	Source   string        // release origin; empty = the official repository
+	Token    string        // optional bearer token for the release API
+	Interval time.Duration // between release checks; default 24h, at least 1h
 }
 
 const (
@@ -290,8 +291,9 @@ type fileConfig struct {
 		Version         string  `yaml:"version"` // pin for downloads and offers (ADR 0060)
 	} `yaml:"firmware"`
 	Download *struct {
-		Source string `yaml:"source"`
-		Token  string `yaml:"token"`
+		Source   string   `yaml:"source"`
+		Token    string   `yaml:"token"`
+		Interval Duration `yaml:"interval"`
 	} `yaml:"download"`
 	Plugins map[string]struct {
 		Command any               `yaml:"command"` // removed by ADR 0060; rejected with a hint
@@ -464,7 +466,8 @@ func LoadConfig(dir string) (*Config, error) {
 			}
 			token, _ = v.(string)
 		}
-		c.Download = &DownloadConfig{Source: f.Download.Source, Token: token}
+		c.Download = &DownloadConfig{Source: f.Download.Source, Token: token,
+			Interval: time.Duration(f.Download.Interval)}
 	}
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -520,6 +523,12 @@ func (c *Config) validate() error {
 	if d := c.Download; d != nil {
 		if d.Source == "" {
 			d.Source = download.OfficialSource
+		}
+		if d.Interval == 0 {
+			d.Interval = defaultDownloadInterval
+		}
+		if d.Interval < minDownloadInterval {
+			return fmt.Errorf("download: interval %s: expected at least %s", d.Interval, minDownloadInterval)
 		}
 		u, err := url.Parse(d.Source)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {

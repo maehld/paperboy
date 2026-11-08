@@ -19,7 +19,7 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
    curl -o page.png http://127.0.0.1:8090/api/preview/e1001/uebersicht
    ```
    Alternatively as a container: `Dockerfile` and `compose.example.yaml`. The image contains only Paperboy; use the `linux/amd64` plugin zip in the mounted instance directory.
-4. Flash the Paperboy firmware (ADR 0041, see [firmware/esphome/README.md](firmware/esphome/README.md)); the release images are in `paperboy-firmware-<version>.zip`, or let Paperboy fetch them (see [Downloads](#downloads)). Enter `http://<computer>:8090` as the Paperboy URL in the device's web UI. The device registers with its MAC address; unknown MACs are rejected and logged.
+4. Flash the Paperboy firmware (ADR 0041, see [firmware/esphome/README.md](firmware/esphome/README.md)); the release images are in `paperboy-firmware.zip`, or let Paperboy fetch them (see [Downloads](#downloads)). Enter `http://<computer>:8090` as the Paperboy URL in the device's web UI. The device registers with its MAC address; unknown MACs are rejected and logged.
 
 **Migrating from Paperboy v1:** v2 has no data API, no exec providers and no upload token (ADR 0049). Remove the `server` and `providers` sections from `paperboy.yaml` (both abort the start with a hint) and add `plugins` instead; the weather and calendar providers are plugins now and take their settings from `config` instead of flags. Rewrite the pages as grids (see below); old templates with `rows` and `blocks` are rejected and show a notice page. `state/data.json` and the `icons/` directory are no longer used. Devices keep their keys as long as `state/devices.json` is kept.
 
@@ -41,7 +41,7 @@ GitHub releases are the distribution point (ADR 0056). Each tag names a tested c
 |---|---|
 | `paperboy-linux-amd64`, `paperboy-linux-arm64`, `paperboy-windows-amd64.exe` | the Paperboy binary for that platform |
 | `paperboy-plugins-<os>-<arch>.zip` | unpack in the instance directory: creates `plugins/` |
-| `paperboy-firmware-<version>.zip` | unpack in the instance directory: creates `firmware/` with `<hardware>-v<version>.bin` of every hardware type (ADR 0043, 0059, 0060) |
+| `paperboy-firmware.zip` | unpack in the instance directory: creates `firmware/` with `<hardware>-v<version>.bin` of every hardware type (ADR 0043, 0059, 0060, 0063) |
 | `SHA256SUMS` | checksums of all assets of the release |
 
 The container image is published separately as `ghcr.io/maehld/paperboy` (`X.Y.Z`, `X.Y` and `latest`). A release is created by pushing a tag, for example `git tag v2.1.0 && git push origin v2.1.0`; the *Release* workflow builds everything and attaches it to one release.
@@ -54,13 +54,15 @@ With a `download` section Paperboy fetches the plugin programs and firmware imag
 download:
   source: https://github.com/maehld/paperboy  # optional, this is the default
   token: ${GITHUB_TOKEN}                     # optional: rate limits, private forks
+  interval: 24h                              # optional: between checks, at least 1h
 ```
 
-- It runs at startup and then once a day, in the background; an instance without internet keeps working as before, and nothing else needs the section.
-- **Plugins**: a configured plugin whose program is missing gets the newest one as `plugins/<plugin>-v<version>` (`weather-v2.1.0`, `weather-v2.1.0.exe` on Windows). A `version` pin in the plugin section selects exactly that version.
+- It runs at startup and then after `interval` (default 24 h), in the background; the *Downloads* card has a **Check now** button that starts a check at once. An instance without internet keeps working as before, and nothing else needs the section.
+- **Plugins**: a configured plugin whose program is missing gets the newest one as `plugins/<plugin>-v<version>` (`weather-v2.1.0`, `weather-v2.1.0.exe` on Windows). A downloaded program is updated when a release ships a newer version; the old file stays and only that plugin restarts. A `version` pin in the plugin section selects exactly that version and is never moved.
 - **Firmware**: every image of the bundle lands in `firmware/<hardware>-v<version>.bin` (ADR 0061); a `firmware.version` pin picks the release that carries exactly that image, which is also how a rollback is pinned. Devices are still only offered an update with `firmware.update: auto`.
-- A program **without** a version in `plugins/` (`weather`) always wins — it is your build — and is neither replaced nor pinned; download it by hand or delete it to hand the plugin back to the releases.
-- A new plugin version restarts only that plugin on its next use; existing files are never overwritten or deleted, so versions pile up and are removed by hand (deleting an image is the firmware rollback of ADR 0043).
+- A program **without** a version in `plugins/` (`weather`) always wins - it is your build - and is neither replaced nor pinned; download it by hand or delete it to hand the plugin back to the releases.
+- Existing files are never overwritten or deleted, so versions pile up and are removed by hand. Deleting a newer plugin file rolls back to the older one for the rest of the server run; a `version` pin keeps the older one across restarts, and a firmware pin keeps the older image on offer.
+- The dashboard shows the source, the last check, the running check, the versions in use and the last error.
 - The dashboard shows the source, the last check, the versions in use and the last error.
 
 ## Instance directory
@@ -109,6 +111,7 @@ firmware:
 download:              # optional: fetch plugins and firmware from the releases (ADR 0060)
   source: https://github.com/maehld/paperboy
   token: ${GITHUB_TOKEN}
+  interval: 24h        # optional: between checks, at least 1h (ADR 0062)
 display_types:
   e1001:
     kind: image
