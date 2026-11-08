@@ -82,11 +82,12 @@ text for `charset: hd44780` and keeps only `ä ö ü ß ° µ`, which the firmwa
 maps to the A00 character ROM (`pb_hd44780`); a display with the A02 ROM would
 show other glyphs for them.
 
-The display type in `paperboy.yaml`:
+The display type as `displays/lcd2004.yaml` (ADR 0071):
 
 ```yaml
-display_types:
-  lcd2004: { kind: text, size: [20, 4], charset: hd44780 }
+kind: text
+size: [20, 4]
+charset: hd44780
 ```
 
 A display that still runs a Home Assistant configuration with native ESPHome

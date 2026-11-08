@@ -1,5 +1,5 @@
 # A 20x4 text display (ADR 0044, 0070): it runs on mains power, so the refresh
-# may be short. The display type comes from paperboy.yaml.
+# may be short. The display type comes from displays/lcd2004.yaml.
 display_type: lcd2004
 mac: "44:1B:F6:85:AA:1D"
 plan: standard

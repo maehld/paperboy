@@ -1,0 +1,5 @@
+# The Sticky panel (ADR 0071): 800 x 480 pixels at 236 ppi, four gray levels.
+kind: image
+size: [800, 480]
+gray_levels: 4
+ppi: 236          # 800 px / 86 mm
