@@ -1,0 +1,20 @@
+{
+  "vehicle": {
+    "vin": "TMBJB9NY5RF999999",
+    "name": "Enyaq",
+    "renderUrl": "https://render.example/enyaq.png",
+    "parkingPosition": { "state": "IN_MOTION", "carCapturedTimestamp": "2026-11-08T09:20:00Z" },
+    "charging": {
+      "isVehicleInSavedLocation": false,
+      "status": {
+        "chargeType": "OFF",
+        "plugConnectionState": "DISCONNECTED",
+        "battery": { "stateOfChargeInPercent": 42, "remainingCruisingRangeInMeters": 180000 }
+      },
+      "settings": { "targetStateOfChargeInPercent": 80, "preferredChargeMode": "MANUAL" },
+      "carCapturedTimestamp": "2026-11-08T09:20:00Z"
+    },
+    "operations": []
+  },
+  "errors": []
+}
