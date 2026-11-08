@@ -42,6 +42,13 @@ label.field > span:first-child { color: #555; }
 input, select { font: inherit; padding: .15rem .3rem; min-width: 0; width: 100%; }
 .size { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
 .size label { display: flex; flex-direction: column; gap: .15rem; font-size: .8rem; color: #555; }
+.from-panel { margin: .1rem 0 .7rem; padding: .5rem .6rem .45rem; border: 1px solid #e1e7f0; border-radius: 6px; background: #f7f9fc; }
+.from-panel h4 { margin: 0 0 .35rem; font-size: .8rem; font-weight: 600; color: #555; }
+.from-panel .row { display: grid; grid-template-columns: 4.5rem 6rem 1.5rem 3rem; gap: .3rem; align-items: center; font-size: .8rem; margin-bottom: .25rem; }
+.from-panel .row span:first-child { color: #555; }
+.from-panel .unit { color: #666; }
+.from-panel button { font-size: .78rem; padding: .1rem .45rem; }
+.from-panel .hint { margin: .35rem 0 0; font-size: .78rem; }
 pre.file { margin: 0; padding: .5rem .6rem; background: #f7f9fc; border: 1px solid #e1e7f0; border-radius: 6px; font: .8rem/1.35 ui-monospace, Consolas, monospace; overflow-x: auto; white-space: pre; }
 #pages a, #devices a { display: block; font-size: .88rem; padding: .1rem 0; }
 #pages .empty, #devices .empty { color: #888; font-size: .85rem; margin: 0; }
@@ -80,6 +87,23 @@ pre.file { margin: 0; padding: .5rem .6rem; background: #f7f9fc; border: 1px sol
       <label class="field image-only"><span>gray_levels</span><select id="gray"></select></label>
       <label class="field image-only"><span>ppi</span><input id="ppi" type="number" min="20" max="1000" step="0.1"></label>
       <p class="hint image-only" id="ppi-note"></p>
+      <div class="from-panel image-only">
+        <h4>From the panel's physical size</h4>
+        <div class="row">
+          <span>diagonal</span><input id="panel-diagonal" type="number" min="0.1" step="0.01" placeholder="3.7">
+          <span class="unit">in</span><button type="button" id="use-diagonal">use</button>
+        </div>
+        <div class="row">
+          <span>width</span><input id="panel-width" type="number" min="1" step="0.1" placeholder="86">
+          <span class="unit">mm</span><button type="button" id="use-width">use</button>
+        </div>
+        <div class="row">
+          <span>height</span><input id="panel-height" type="number" min="1" step="0.1" placeholder="51.6">
+          <span class="unit">mm</span><button type="button" id="use-height">use</button>
+        </div>
+        <p class="hint" id="panel-hint"></p>
+        <p class="hint">ppi = √(width² + height²) / diagonal in inches, or ppi = pixels × 25.4 / mm of that side. The millimetre figure is exact; an inch diagonal is usually rounded.</p>
+      </div>
       <label class="field text-only"><span>charset</span><select id="charset"></select></label>
       <label class="field"><span>min_refresh</span><input id="min_refresh" autocomplete="off" spellcheck="false" placeholder="e.g. 60s"></label>
       <p class="hint">The shortest interval the device is told to use; empty keeps the default of the power source (ADR 0051).</p>
