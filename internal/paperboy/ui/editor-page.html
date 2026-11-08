@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Name}} · Editor · Paperboy</title>
+<title>{{if .Playground}}Widgets{{else}}{{.Name}} · Editor{{end}} · Paperboy</title>
 <style>
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; padding: 1.2rem 1.5rem 2rem; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: #f2f2f2; color: #111; }
 /* The editor fills the window: the toolbar stays put and the three columns
    scroll on their own, so a long palette never carries the board away. */
@@ -74,6 +75,7 @@ input[type=search] { margin-bottom: .4rem; }
 .palette button.widget.active { border-color: #134e9c; background: #e2ecfb; }
 .palette .note { display: block; color: #888; font-size: .72rem; }
 .preview img { display: block; width: 100%; height: auto; border: 1px solid #ccc; background: #fff; image-rendering: pixelated; }
+.preview.playground img { width: auto; max-width: 100%; }
 .lcd { margin: 0; padding: .5rem .6rem; background: #2d4a12; color: #d8f5a0; font: .95rem/1.25 ui-monospace, Consolas, monospace; white-space: pre; overflow-x: auto; border-radius: 4px; }
 .inspector .empty { margin: 0; color: #888; font-size: .85rem; }
 .inspector .arg { margin-bottom: .35rem; }
@@ -81,35 +83,43 @@ input[type=search] { margin-bottom: .4rem; }
 .inspector .arg .desc { font-size: .72rem; color: #888; display: block; }
 .inspector .row-buttons { display: flex; gap: .5rem; margin-top: .6rem; }
 .inspector .muted { margin: 0 0 .4rem; }
+.tabs { display: flex; flex-wrap: wrap; gap: .25rem; border-bottom: 1px solid #ddd; margin: 0 1.5rem .9rem; }
+.tabs a { padding: .4rem .8rem; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; text-decoration: none; font-size: .95rem; }
+.tabs a.active { background: #fff; border-color: #ddd; color: #111; font-weight: 600; margin-bottom: -1px; }
+.snippet { margin: 0; padding: .4rem .6rem; background: #f6f6f6; border: 1px solid #ddd; border-radius: 4px; font: .85rem ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-word; user-select: all; }
+code { font: .85rem ui-monospace, Consolas, monospace; background: #f2f2f2; padding: 0 .2rem; border-radius: 3px; }
 </style>
 </head>
 <body class="editor">
 <header>
   <h1>Paperboy</h1>
-  <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/plugins">Widgets</a> · <a class="active" href="/ui/editor">Editor</a></nav>
+  <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/plugins"{{if .Playground}} class="active"{{end}}>Widgets</a> · <a href="/ui/editor"{{if not .Playground}} class="active"{{end}}>Editor</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
 </header>
 {{if .Error}}
 <p class="error">{{.Error}}</p>
-<p><a href="/ui/editor">← Pages</a></p>
+<p><a href="{{if .Playground}}/ui/plugins{{else}}/ui/editor{{end}}">← {{if .Playground}}Widgets{{else}}Pages{{end}}</a></p>
 {{else}}
 <div class="bar">
-  <a href="/ui/editor">← Pages</a>
-  <h2>{{.Name}}</h2>
+  {{if not .Playground}}<a href="/ui/editor">← Pages</a>{{end}}
+  <h2>{{if .Playground}}Playground{{else}}{{.Name}}{{end}}</h2>
   <span class="muted" id="where"></span>
   <span class="spacer"></span>
   <span class="status" id="status"></span>
   <button id="specialize" type="button" hidden></button>
   <button id="reload" type="button">Reload</button>
-  <button class="primary" id="save" type="button">Save</button>
+  <button class="primary" id="save" type="button">{{if .Playground}}Copy cell{{else}}Save{{end}}</button>
 </div>
+{{if .Playground}}<nav class="tabs">
+  {{range .Tabs}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Label}}</a>{{end}}
+</nav>{{end}}
 <div class="switch">
   <span class="muted">Display type:</span>
   {{range .Displays}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
 </div>
 <main>
   <div class="col">
-    <section class="panel">
+    {{if not .Playground}}<section class="panel">
       <h3>Page</h3>
       <label class="field"><span>Title</span><input id="title" autocomplete="off"></label>
       <label class="field"><span>Grid</span><span class="grid2"><input id="cols" type="number" min="1" max="80" title="columns"><input id="rows" type="number" min="1" max="80" title="rows"></span></label>
@@ -121,20 +131,20 @@ input[type=search] { margin-bottom: .4rem; }
       <label class="field"><span>divider</span><input id="divider" type="number" step="0.1" min="0"></label>
       <h4>Stale widgets</h4>
       <select id="notices"><option value="show">show a bar</option><option value="none">do not show</option></select>
-    </section>
+    </section>{{end}}
     <section class="panel palette">
       <h3>Widgets</h3>
       <input id="palette-filter" type="search" placeholder="Filter widgets…" autocomplete="off" aria-label="Filter widgets">
-      <p class="hint">Click a widget, then a free cell. Dragging it onto a cell works too.</p>
+      <p class="hint">{{if .Playground}}Click a widget to show it on the right.{{else}}Click a widget, then a free cell. Dragging it onto a cell works too.{{end}}</p>
       <div id="palette"></div>
     </section>
   </div>
   <div class="col">
-    <section class="panel board-panel">
+    {{if not .Playground}}<section class="panel board-panel">
       <div id="board"></div>
       <p class="hint" id="board-note"></p>
-    </section>
-    <section class="panel preview">
+    </section>{{end}}
+    <section class="panel preview{{if .Playground}} playground{{end}}">
       <h3>Preview</h3>
       <img id="preview-img" alt="Preview of the page" hidden>
       <pre class="lcd" id="preview-text" hidden></pre>
@@ -143,6 +153,11 @@ input[type=search] { margin-bottom: .4rem; }
   </div>
   <div class="col">
     <section class="panel inspector" id="inspector"></section>
+    {{if .Playground}}<section class="panel">
+      <h3>Snippet</h3>
+      <pre class="snippet" id="snippet"></pre>
+      <p class="hint">Paste it into <code>cells:</code> of a page.</p>
+    </section>{{end}}
   </div>
 </main>
 <script id="editor-data" type="application/json">{{.Data}}</script>
