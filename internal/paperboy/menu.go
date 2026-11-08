@@ -42,13 +42,14 @@ const (
 // menuAction is one plan action with the state the menu shows. It is stored
 // in state/devices.json, so it stays plain JSON.
 type menuAction struct {
-	Key         string         `json:"key"`                // identity: id or plugin/action
-	Action      string         `json:"action"`             // plugin/action
-	Plugin      string         `json:"plugin"`             // part before the slash
-	Name        string         `json:"name"`               // part after the slash
-	Args        map[string]any `json:"args,omitempty"`     // the plan's arguments
-	Title       string         `json:"title"`              // plugin title, overridden by the plan
-	Disabled    string         `json:"disabled,omitempty"` // reason the action cannot run now
+	Key         string         `json:"key"`                  // identity: id or plugin/action
+	Action      string         `json:"action"`               // plugin/action
+	Plugin      string         `json:"plugin"`               // part before the slash
+	Name        string         `json:"name"`                 // part after the slash
+	Args        map[string]any `json:"args,omitempty"`       // the plan's arguments
+	Title       string         `json:"title"`                // plugin title, overridden by the plan
+	PlanTitle   bool           `json:"plan_title,omitempty"` // Title came from the plan
+	Disabled    string         `json:"disabled,omitempty"`   // reason the action cannot run now
 	Confirm     bool           `json:"confirm,omitempty"`
 	ConfirmText string         `json:"confirm_text,omitempty"`
 }
@@ -334,7 +335,7 @@ func planActions(acts []plan.PlanAction) []menuAction {
 	out := make([]menuAction, 0, len(acts))
 	for _, a := range acts {
 		p, n, _ := strings.Cut(a.Action, "/")
-		out = append(out, menuAction{Key: a.Key(), Action: a.Action, Plugin: p, Name: n, Args: a.Args, Title: a.Title})
+		out = append(out, menuAction{Key: a.Key(), Action: a.Action, Plugin: p, Name: n, Args: a.Args, Title: a.Title, PlanTitle: a.Title != ""})
 	}
 	return out
 }
@@ -391,15 +392,18 @@ func (s *Server) resolveActions(ctx context.Context, cfg *Config, d *Device, ent
 				a.Disabled = fmt.Sprintf("unknown action %s/%s", a.Plugin, a.Name)
 				continue
 			}
-			if a.Title == "" {
-				a.Title = spec.Title
-			}
-			if a.Title == "" {
-				a.Title = a.Name
-			}
+			// A title from the plan wins; otherwise the plugin's state names
+			// the concrete action, and the spec is the fallback.
 			st := states[n]
-			if st.Title != "" {
-				a.Title = st.Title
+			if !a.PlanTitle {
+				switch {
+				case st.Title != "":
+					a.Title = st.Title
+				case spec.Title != "":
+					a.Title = spec.Title
+				default:
+					a.Title = a.Name
+				}
 			}
 			if err := plugin.Values(a.Args).Check(spec.Args); err != nil {
 				a.Disabled = err.Error()

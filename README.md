@@ -217,7 +217,7 @@ A Go plugin implements `plugin.Handler` (`Describe`, `Configure`, `Render`), opt
 
 Shipped plugins (one zip per platform: `paperboy-plugins-linux-amd64.zip` and `paperboy-plugins-windows-amd64.zip`; unpacked in the instance directory they create `plugins/`). Each plugin has its own documentation under `docs/plugins/`:
 
-- [`evcc`](docs/plugins/evcc.md) – PV, home, grid, battery, energy flow, loadpoints and forecast from [evcc](https://evcc.io).
+- [`evcc`](docs/plugins/evcc.md) – PV, home, grid, battery, energy flow, loadpoints and forecast from [evcc](https://evcc.io); the first shipped plugin with actions, `evcc/mode` switches a charge mode from the device menu.
 - [`departures`](docs/plugins/departures.md) – real-time public transport departures from an EFA installation.
 - [`weather`](docs/plugins/weather.md) – current weather and forecast from [Open-Meteo](https://open-meteo.com/).
 - [`calendar`](docs/plugins/calendar.md) – agenda, week and month from CalDAV and iCalendar.

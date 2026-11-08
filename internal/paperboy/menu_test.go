@@ -38,6 +38,7 @@ func (p *menuPlugin) Render(*plugin.Request, plugin.WidgetRequest, *image.Palett
 func (p *menuPlugin) Actions(req *plugin.Request) ([]plugin.ActionState, error) {
 	out := make([]plugin.ActionState, len(req.Actions))
 	for i, c := range req.Actions {
+		out[i].Title = "State " + c.Action
 		if c.Action == "off" {
 			out[i].Disabled = "not now"
 		}
@@ -221,6 +222,27 @@ func TestMenuSkipsDisabledAction(t *testing.T) {
 	}
 	if st := s.state["test"]; st.Menu.Phase != menuListPhase {
 		t.Fatalf("menu state: %+v", st.Menu)
+	}
+}
+
+func TestMenuPlanTitleWins(t *testing.T) {
+	s, _, _ := menuServer(t, `actions:
+  - action: act/quick
+    title: "Schnell laden"
+  - action: act/go
+`, nil)
+	dev := menuDevice(t, s)
+	displayPage(t, s, dev)
+	press(t, s, dev, buttonHome)
+	acts := s.state["test"].Menu.Actions
+	if len(acts) != 2 {
+		t.Fatalf("actions: %+v", acts)
+	}
+	if acts[0].Title != "Schnell laden" {
+		t.Errorf("the plan title must win: %q", acts[0].Title)
+	}
+	if acts[1].Title != "State go" {
+		t.Errorf("the plugin's state must fill in without a plan title: %q", acts[1].Title)
 	}
 }
 
