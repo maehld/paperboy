@@ -96,8 +96,10 @@ func TestFirmwareOfferAndDownload(t *testing.T) {
 	if info["firmware_status"] != fwOffered || info["firmware_available"] != "0.10.0" || info["firmware"] != "0.4.0" {
 		t.Fatalf("devices API: %v", info)
 	}
-	if body := htmlRequest(t, s, "/ui").Body.String(); !strings.Contains(body, "notes.txt") ||
-		!strings.Contains(body, "0.4.0 → 0.10.0 · offered") {
+	if body := htmlRequest(t, s, "/ui/downloads").Body.String(); !strings.Contains(body, "notes.txt") {
+		t.Fatalf("downloads page: %s", body)
+	}
+	if body := htmlRequest(t, s, "/ui").Body.String(); !strings.Contains(body, "0.4.0 → 0.10.0 · offered") {
 		t.Fatalf("dashboard: %s", body)
 	}
 	if !strings.Contains(logs(), "firmware file ignored") {
@@ -135,7 +137,7 @@ func TestFirmwareOldLayout(t *testing.T) {
 	if offer := offerOf(displayPage(t, s, dev)); offer == nil || offer["md5"] != md5Hex("flat image") {
 		t.Fatalf("flat file must win the tie: %v", offer)
 	}
-	if body := htmlRequest(t, s, "/ui").Body.String(); !strings.Contains(body, "sticky/ (old layout)") {
+	if body := htmlRequest(t, s, "/ui/downloads").Body.String(); !strings.Contains(body, "sticky/ (old layout)") {
 		t.Fatal("the old directory must be reported")
 	}
 }
@@ -165,9 +167,14 @@ func TestFirmwarePin(t *testing.T) {
 func TestFirmwareImagesOfUnknownHardwareAreValid(t *testing.T) {
 	s, _ := firmwareServer(t)
 	writePageFile(t, filepath.Join(s.config().FirmwareDir, "lcd2004-v1.0.0.bin"), "image")
-	body := htmlRequest(t, s, "/ui").Body.String()
-	if strings.Contains(body, "lcd2004-v1.0.0.bin") {
-		t.Fatalf("a valid image must not be reported as ignored: %s", body)
+	body := htmlRequest(t, s, "/ui/downloads").Body.String()
+	if !strings.Contains(body, "lcd2004-v1.0.0.bin") {
+		t.Fatalf("a valid image is not listed: %s", body)
+	}
+	// Only the file that is no image is reported as ignored.
+	_, issues, ok := strings.Cut(body, "Ignored firmware files")
+	if !ok || !strings.Contains(issues, "notes.txt") || strings.Contains(issues, "lcd2004-v1.0.0.bin") {
+		t.Fatalf("ignored files: %s", body)
 	}
 }
 

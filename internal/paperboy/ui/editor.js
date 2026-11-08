@@ -17,12 +17,15 @@
     reference: start.reference, // grid plugins declare their sizes on
     grid: start.grid, // grid a new page starts with
     shared: !!start.shared, // a new page is written as pages/<name>.yaml
+    playground: !!start.playground, // the widgets page: one widget, no page
     fileDisplay: '', // display variant the file belongs to; empty: shared page
     hash: '',
     template: null,
     readOnly: false,
     selected: -1,
     placing: null, // {plugin, widget} waiting for a cell
+    filter: '', // text of the palette filter
+    collapsed: new Set(), // plugins whose widgets the palette hides
     plugins: [],
     dirty: false,
     previewURL: '',
@@ -41,6 +44,14 @@
   }
 
   function updateWhere() {
+    if (state.playground) {
+      const c = state.template && state.template.cells[0];
+      el('where').textContent = [
+        c ? c.widget + ' · ' + c.span[0] + '×' + c.span[1] : 'no widget yet',
+        state.display + ' display',
+      ].join(' · ');
+      return;
+    }
     const parts = [targetPath()];
     parts.push(state.fileDisplay === '' ? 'shared by all display types' : 'only for ' + state.fileDisplay);
     if (state.dirty) parts.push('unsaved changes');
@@ -48,29 +59,37 @@
   }
 
   function updateSave() {
-    const canSave = !!state.template && !state.readOnly;
-    el('save').disabled = !canSave;
+    const hasCell = !!state.template && !state.readOnly &&
+      (!state.playground || state.template.cells.length > 0);
+    el('save').disabled = !hasCell;
     const specialize = el('specialize');
-    specialize.hidden = !(canSave && state.fileDisplay === '');
+    if (!specialize) return;
+    specialize.hidden = state.playground || !(hasCell && state.fileDisplay === '');
     if (!specialize.hidden) specialize.textContent = 'Save as ' + state.display + ' variant';
   }
 
   // Rebuilding the board and the preview after a change, without touching the
   // inputs the operator is typing in.
   function changed() {
-    state.dirty = true;
-    setStatus('unsaved changes', '');
-    updateWhere();
+    if (!state.playground) {
+      state.dirty = true;
+      setStatus('unsaved changes', '');
+      updateWhere();
+    } else {
+      updateURL();
+      updateWhere();
+    }
     updateSave();
     renderBoard();
+    renderInspector();
     schedulePreview();
   }
 
   // ---- model ----
 
   function blank() {
-    const grid = text() ? [state.width, state.height] : state.grid.slice();
-    return { title: state.name, kind: state.kind, grid: grid, style: {}, cells: [] };
+    const grid = text() ? [state.width, state.height] : (state.playground ? state.reference.slice() : state.grid.slice());
+    return { title: state.playground ? '' : state.name, kind: state.kind, grid: grid, style: {}, cells: [] };
   }
 
   // normalize keeps the model in the shape serialize writes back: two-element
@@ -136,6 +155,7 @@
   // ---- page settings ----
 
   function renderSettings() {
+    if (state.playground) return;
     const t = state.template;
     const off = !t || state.readOnly;
     for (const id of ['title', 'cols', 'rows', 'padding', 'rule', 'text-size', 'divider', 'notices']) el(id).disabled = off;
@@ -195,21 +215,47 @@
       return;
     }
     const kind = text() ? 'text' : 'image';
+    const filter = state.filter.trim().toLowerCase();
+    let shown = 0;
     for (const p of state.plugins) {
+      const widgets = (p.description && p.description.widgets) || [];
+      const fitting = widgets.filter((w) => !w.kinds || !w.kinds.length || w.kinds.includes(kind));
+      const matches = fitting.filter((w) => !filter ||
+        (p.name + ' ' + w.widget + ' ' + (w.title || '')).toLowerCase().includes(filter));
+      if (filter && !matches.length) continue;
       const section = document.createElement('div');
       section.className = 'plugin';
-      const head = document.createElement('h4');
-      head.textContent = p.name + (p.description && p.description.title ? ' · ' + p.description.title : '');
+      const head = document.createElement('div');
+      head.className = 'plugin-head';
+      head.title = 'Show or hide the widgets of this plugin';
+      const collapsed = state.collapsed.has(p.name);
+      const chev = document.createElement('span');
+      chev.className = 'chev';
+      chev.textContent = collapsed ? '▸' : '▾';
+      const name = document.createElement('span');
+      name.textContent = p.name + (p.description && p.description.title ? ' · ' + p.description.title : '');
+      const count = document.createElement('span');
+      count.className = 'count';
+      count.textContent = String(matches.length);
+      head.append(chev, name, count);
+      head.addEventListener('click', () => {
+        if (collapsed) state.collapsed.delete(p.name);
+        else state.collapsed.add(p.name);
+        renderPalette();
+      });
       section.appendChild(head);
+      if (collapsed) {
+        box.appendChild(section);
+        continue;
+      }
       if (p.error) {
         const note = document.createElement('span');
         note.className = 'note';
         note.textContent = p.error;
         section.appendChild(note);
       }
-      const widgets = (p.description && p.description.widgets) || [];
-      const fitting = widgets.filter((w) => !w.kinds || !w.kinds.length || w.kinds.includes(kind));
-      for (const w of fitting) {
+      for (const w of matches) {
+        shown++;
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'widget' + (state.placing && state.placing.plugin === p.name && state.placing.widget === w.widget ? ' active' : '');
@@ -236,14 +282,40 @@
       }
       box.appendChild(section);
     }
+    if (!shown && filter) {
+      const p = document.createElement('p');
+      p.className = 'hint';
+      p.textContent = 'No widget matches “' + state.filter.trim() + '”.';
+      box.appendChild(p);
+    }
   }
 
   function pick(plugin, widget) {
     if (!state.template) return;
+    if (state.playground) {
+      showWidget(plugin, widget);
+      return;
+    }
     const same = state.placing && state.placing.plugin === plugin && state.placing.widget === widget;
     state.placing = same ? null : { plugin: plugin, widget: widget };
     renderPalette();
     renderBoard();
+  }
+
+  // showWidget puts one widget into the playground's single cell, at the first
+  // size its plugin declares (the whole display for text).
+  function showWidget(plugin, widget) {
+    const info = widgetInfo(plugin, widget);
+    let span = text()
+      ? [state.width, state.height]
+      : (info && info.sizes && info.sizes.length ? [info.sizes[0].columns, info.sizes[0].rows] : [2, 1]);
+    const grid = state.template.grid;
+    span = [Math.max(1, Math.min(span[0], grid[0])), Math.max(1, Math.min(span[1], grid[1]))];
+    state.template.cells = [{ at: [0, 0], span: span, widget: plugin + '/' + widget, args: {}, style: {} }];
+    state.selected = 0;
+    setStatus('');
+    changed();
+    renderPalette();
   }
 
   function place(plugin, widget, x, y) {
@@ -271,6 +343,7 @@
   // ---- board ----
 
   function renderBoard() {
+    if (state.playground) return;
     const board = el('board');
     board.innerHTML = '';
     board.className = state.placing ? 'placing' : '';
@@ -386,15 +459,19 @@
     const box = el('inspector');
     box.innerHTML = '';
     const head = document.createElement('h3');
-    head.textContent = 'Cell';
+    head.textContent = state.playground ? 'Widget' : 'Cell';
     box.appendChild(head);
     const t = state.template;
     const c = t && state.selected >= 0 ? t.cells[state.selected] : null;
     if (!c) {
       const p = document.createElement('p');
       p.className = 'empty';
-      p.textContent = 'Select a cell to change its size, its arguments and its style.';
+      p.textContent = state.playground
+        ? 'Pick a widget from the palette to change its size and its arguments.'
+        : 'Select a cell to change its size, its arguments and its style.';
       box.appendChild(p);
+      updateSnippet();
+      updateSave();
       return;
     }
     const where = document.createElement('p');
@@ -515,10 +592,11 @@
     buttons.className = 'row-buttons';
     const remove = document.createElement('button');
     remove.type = 'button';
-    remove.textContent = 'Delete cell';
+    remove.textContent = state.playground ? 'Clear' : 'Delete cell';
     remove.addEventListener('click', removeCell);
     buttons.appendChild(remove);
     box.appendChild(buttons);
+    updateSnippet();
     updateSave();
   }
 
@@ -530,6 +608,81 @@
     renderInspector();
   }
 
+  // ---- playground ----
+
+  // cellSnippet writes the playground's cell the way a page file has it: YAML
+  // flow style with the args that differ from their defaults, like the gallery
+  // snippet the server builds (ADR 0055).
+  function cellSnippet(c) {
+    if (!c) return '';
+    const [plugin, widget] = c.widget.split('/');
+    const info = widgetInfo(plugin, widget);
+    const known = (info && info.args) || {};
+    const args = [];
+    for (const [name, value] of Object.entries(c.args || {})) {
+      if (isDefaultArg(value, known[name])) continue;
+      args.push(name + ': ' + yamlValue(value));
+    }
+    args.sort();
+    let s = '{ at: [0, 0], span: [' + c.span[0] + ', ' + c.span[1] + '], widget: ' + plugin + '/' + widget;
+    if (args.length) s += ', args: { ' + args.join(', ') + ' }';
+    return s + ' }';
+  }
+
+  // isDefaultArg keeps an arg out of the snippet when it already has the
+  // value the plugin declares.
+  function isDefaultArg(value, arg) {
+    if (!arg || arg.default === undefined || arg.default === null) return false;
+    return String(value) === String(arg.default);
+  }
+
+  function yamlValue(value) {
+    if (typeof value === 'string') return plainYAML(value) ? value : JSON.stringify(value);
+    if (Array.isArray(value)) return '[' + value.map(yamlValue).join(', ') + ']';
+    return JSON.stringify(value);
+  }
+
+  // plainYAML reports whether a string can stand unquoted and still read back
+  // as the same string.
+  function plainYAML(s) {
+    if (s === '' || jsonOrString(s) !== s) return false;
+    if (['yes', 'no', 'on', 'off', 'null', '~', 'true', 'false', 'y', 'n'].includes(s.toLowerCase())) return false;
+    return /^[A-Za-z0-9_\-\/.]+$/.test(s);
+  }
+
+  function updateSnippet() {
+    const pre = el('snippet');
+    if (!pre) return;
+    const c = state.template && state.template.cells[0];
+    pre.textContent = c ? cellSnippet(c) : '';
+  }
+
+  // updateURL keeps the playground's link in step with the widget, so the view
+  // can be shared and a reload comes back to it.
+  function updateURL() {
+    if (!state.playground) return;
+    const c = state.template && state.template.cells[0];
+    const params = new URLSearchParams({ tab: 'playground', display: state.display });
+    if (c) {
+      params.set('widget', c.widget);
+      params.set('span', c.span[0] + 'x' + c.span[1]);
+      for (const [name, value] of Object.entries(c.args || {})) params.set('arg.' + name, JSON.stringify(value));
+    }
+    history.replaceState(null, '', '/ui/plugins?' + params.toString());
+  }
+
+  async function copyCell() {
+    const c = state.template && state.template.cells[0];
+    if (!c) return;
+    const text = cellSnippet(c);
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus('cell copied', 'ok');
+    } catch (e) {
+      setStatus('copy failed — the cell text on the right is selected for copying', 'error');
+    }
+  }
+
   // ---- preview ----
 
   function schedulePreview() {
@@ -537,34 +690,12 @@
     state.previewTimer = setTimeout(preview, 350);
   }
 
-  async function preview() {
+  // showResult puts an answer of /api/preview or /api/widget into the preview
+  // panel: an image, text lines or the error.
+  async function showResult(res) {
     const img = el('preview-img');
     const pre = el('preview-text');
     const error = el('preview-error');
-    if (!state.template) {
-      img.hidden = pre.hidden = error.hidden = true;
-      return;
-    }
-    if (!state.template.cells.length) {
-      img.hidden = pre.hidden = true;
-      error.hidden = false;
-      error.textContent = 'Add a widget to see a preview.';
-      return;
-    }
-    let res;
-    try {
-      res = await fetch('/api/preview/' + encodeURIComponent(state.display), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ template: serialize() }),
-        cache: 'no-store',
-      });
-    } catch (e) {
-      img.hidden = pre.hidden = true;
-      error.hidden = false;
-      error.textContent = 'preview failed: ' + e;
-      return;
-    }
     if (!res.ok) {
       let message = (await res.text()).trim();
       try {
@@ -592,6 +723,60 @@
     pre.hidden = true;
   }
 
+  async function preview() {
+    const img = el('preview-img');
+    const pre = el('preview-text');
+    const error = el('preview-error');
+    if (!state.template) {
+      img.hidden = pre.hidden = error.hidden = true;
+      return;
+    }
+    if (!state.template.cells.length) {
+      img.hidden = pre.hidden = true;
+      error.hidden = false;
+      error.textContent = state.playground ? 'Pick a widget from the palette.' : 'Add a widget to see a preview.';
+      return;
+    }
+    if (state.playground) return previewWidget();
+    let res;
+    try {
+      res = await fetch('/api/preview/' + encodeURIComponent(state.display), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template: serialize() }),
+        cache: 'no-store',
+      });
+    } catch (e) {
+      img.hidden = pre.hidden = true;
+      error.hidden = false;
+      error.textContent = 'preview failed: ' + e;
+      return;
+    }
+    await showResult(res);
+  }
+
+  // previewWidget renders the playground's widget in its own size, not the page
+  // around it.
+  async function previewWidget() {
+    const img = el('preview-img');
+    const pre = el('preview-text');
+    const error = el('preview-error');
+    const c = state.template.cells[0];
+    const [plugin, widget] = c.widget.split('/');
+    const params = new URLSearchParams({ display: state.display, span: c.span[0] + 'x' + c.span[1] });
+    for (const [name, value] of Object.entries(c.args || {})) params.set('arg.' + name, JSON.stringify(value));
+    let res;
+    try {
+      res = await fetch('/api/widget/' + encodeURIComponent(plugin) + '/' + encodeURIComponent(widget) + '?' + params.toString(), { cache: 'no-store' });
+    } catch (e) {
+      img.hidden = pre.hidden = true;
+      error.hidden = false;
+      error.textContent = 'preview failed: ' + e;
+      return;
+    }
+    await showResult(res);
+  }
+
   // ---- load and save ----
 
   async function loadPlugins() {
@@ -606,6 +791,10 @@
 
   async function load() {
     setStatus('');
+    if (state.playground) {
+      loadPlayground();
+      return;
+    }
     const res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '?display=' + encodeURIComponent(state.display), { cache: 'no-store' });
     if (res.status === 404) {
       state.template = blank();
@@ -639,8 +828,35 @@
     renderAll();
   }
 
+  // loadPlayground starts the widgets page: one cell, filled from the link when
+  // it names a widget.
+  function loadPlayground() {
+    state.template = blank();
+    state.fileDisplay = '';
+    state.hash = '';
+    state.readOnly = false;
+    state.dirty = false;
+    state.selected = -1;
+    if (start.widget) {
+      const [plugin, widget] = String(start.widget).split('/');
+      if (plugin && widget) {
+        showWidget(plugin, widget);
+        const c = state.template.cells[0];
+        const info = widgetInfo(plugin, widget);
+        const known = (info && info.args) || {};
+        for (const [name, raw] of Object.entries(start.args || {})) c.args[name] = argValue(raw, known[name]);
+        if (Array.isArray(start.span) && start.span[0] > 0) {
+          const grid = state.template.grid;
+          c.span = [Math.max(1, Math.min(start.span[0], grid[0])), Math.max(1, Math.min(start.span[1], grid[1]))];
+        }
+      }
+    }
+    renderAll();
+  }
+
   async function save() {
     if (!state.template) return;
+    if (state.playground) return copyCell();
     setStatus('saving…', '');
     let res;
     try {
@@ -699,17 +915,28 @@
 
   // ---- wiring ----
 
-  el('save').addEventListener('click', save);
-  el('reload').addEventListener('click', () => location.reload());
-  el('specialize').addEventListener('click', specialize);
-  el('title').addEventListener('input', () => {
+  // The playground shares this script but not every panel, so each hook asks
+  // whether its element is there.
+  const on = (id, event, handler) => {
+    const node = el(id);
+    if (node) node.addEventListener(event, handler);
+  };
+
+  on('save', 'click', save);
+  on('reload', 'click', () => location.reload());
+  on('specialize', 'click', specialize);
+  on('palette-filter', 'input', () => {
+    state.filter = el('palette-filter').value;
+    renderPalette();
+  });
+  on('title', 'input', () => {
     if (!state.template) return;
     state.template.title = el('title').value;
     changed();
   });
-  for (const id of ['cols', 'rows']) el(id).addEventListener('change', applyGrid);
+  for (const id of ['cols', 'rows']) on(id, 'change', applyGrid);
   for (const [id, key] of [['padding', 'padding'], ['rule', 'rule'], ['text-size', 'text_size'], ['divider', 'divider']]) {
-    el(id).addEventListener('input', () => {
+    on(id, 'input', () => {
       if (!state.template) return;
       state.template.style = state.template.style || {};
       const v = num(el(id).value);
@@ -718,7 +945,7 @@
       changed();
     });
   }
-  el('notices').addEventListener('change', () => {
+  on('notices', 'change', () => {
     if (!state.template) return;
     if (el('notices').value === 'none') state.template.notices = 'none';
     else delete state.template.notices;

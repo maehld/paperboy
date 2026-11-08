@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="{{if .Running}}3{{else}}60{{end}}">
+<title>Paperboy · Downloads</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 1.5rem; font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: #f2f2f2; color: #111; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; margin-bottom: 1rem; }
+h1 { font-size: 1.5rem; margin: 0; }
+.muted { color: #666; font-size: .85rem; }
+nav a { color: #134e9c; text-decoration: none; }
+nav a.active { font-weight: 700; color: #111; }
+.build { margin-left: auto; font-variant-numeric: tabular-nums; }
+a { color: #134e9c; }
+.card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
+.card h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; align-items: baseline; gap: .5rem; }
+.card h2 .muted { font-weight: 400; }
+dl { display: grid; grid-template-columns: 8rem minmax(0, 1fr); align-content: start; gap: .15rem .7rem; margin: 0; font-size: .9rem; }
+dt { color: #666; }
+dd { margin: 0; min-width: 0; word-break: break-word; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid #eee; vertical-align: baseline; }
+tr:first-child th { border-top: 0; }
+th { font-weight: 600; color: #666; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+td.file, td.program { font-family: ui-monospace, Consolas, monospace; font-size: .85rem; word-break: break-all; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.empty { margin: 0; padding: 1.2rem 1rem; text-align: center; color: #888; border: 1px dashed #ccc; border-radius: 6px; }
+.error { margin: 0 0 .7rem; padding: .5rem .6rem; background: #fff2f2; border-left: 3px solid #c22; font-size: .85rem; word-break: break-word; }
+.actions { margin-top: .8rem; }
+.actions button { font: inherit; font-size: .9rem; padding: .25rem .7rem; border-radius: 6px; border: 1px solid #bbb; background: #fafafa; cursor: pointer; }
+.actions button:hover { background: #eee; }
+.actions button:disabled { color: #888; cursor: default; background: #f2f2f2; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Paperboy</h1>
+  <nav><a href="/ui">Devices</a> · <a class="active" href="/ui/downloads">Downloads</a> · <a href="/ui/plugins">Widgets</a> · <a href="/ui/editor">Editor</a></nav>
+  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
+</header>
+{{if .Configured}}
+<section class="card">
+  <h2>Release checks</h2>
+  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+  <dl>
+    <dt>Source</dt><dd>{{.Source}}</dd>
+    <dt>Interval</dt><dd>{{.Interval}}</dd>
+    <dt>Last check</dt><dd>{{.LastCheck}}{{if .Running}} <span class="muted">· checking now</span>{{else if .LastOK}} <span class="muted">· last success {{.LastOK}}</span>{{end}}</dd>
+  </dl>
+  <div class="actions">
+    <form method="post" action="/ui/download"><button type="submit"{{if .Running}} disabled{{end}}>Check now</button></form>
+  </div>
+</section>
+{{else}}
+<p class="empty">No download section in <code>paperboy.yaml</code>. Add <code>download: {source: …}</code> to let Paperboy check for releases (ADR 0060).</p>
+{{end}}
+<section class="card">
+  <h2>Plugins{{if .Plugins}} <span class="muted">{{len .Plugins}}</span>{{end}}</h2>
+  {{if .Plugins}}
+  <table>
+    <tr><th>Plugin</th><th>Version</th><th>Pin</th><th>Program</th></tr>
+    {{range .Plugins}}
+    <tr>
+      <td>{{.Name}}</td>
+      <td class="num">{{if .Version}}{{.Version}}{{else if eq .Program "not found"}}<span class="muted">missing</span>{{else}}<span class="muted">unversioned</span>{{end}}</td>
+      <td class="num">{{if .Pin}}{{.Pin}}{{else}}<span class="muted">–</span>{{end}}</td>
+      <td class="program">{{if eq .Program "not found"}}<span class="muted">–</span>{{else}}{{.Program}}{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p class="empty">No plugins configured.</p>
+  {{end}}
+</section>
+<section class="card">
+  <h2>Firmware images{{if .Firmware}} <span class="muted">{{len .Firmware}}</span>{{end}}</h2>
+  {{if .Firmware}}
+  <table>
+    <tr><th>Hardware</th><th>Version</th><th>File</th></tr>
+    {{range .Firmware}}
+    <tr><td>{{.Hardware}}</td><td class="num">{{.Version}}</td><td class="file">{{.File}}</td></tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p class="empty">No images in <code>firmware/</code>.</p>
+  {{end}}
+</section>
+<section class="card">
+  <h2>Devices</h2>
+  {{if .Devices}}
+  <table>
+    <tr><th>ID</th><th>Hardware</th><th>Firmware</th></tr>
+    {{range .Devices}}
+    <tr>
+      <td><a href="/ui/editor/device?id={{.ID}}">{{.ID}}</a></td>
+      <td>{{if .Hardware}}{{.Hardware}}{{else}}<span class="muted">unknown</span>{{end}}</td>
+      <td>{{if .Firmware}}{{.Firmware}}{{else}}<span class="muted">never reported</span>{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p class="empty">No devices configured.</p>
+  {{end}}
+</section>
+{{if .Issues}}<p class="error">Ignored firmware files (expected &lt;hardware&gt;-v&lt;version&gt;.bin): {{range $i, $f := .Issues}}{{if $i}}, {{end}}{{$f}}{{end}}</p>{{end}}
+</body>
+</html>

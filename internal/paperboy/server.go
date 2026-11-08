@@ -150,6 +150,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/device/text", s.handleText)
 	mux.HandleFunc("GET /{$}", s.handleRoot)
 	mux.HandleFunc("GET /ui", s.handleDashboard)
+	mux.HandleFunc("GET /ui/downloads", s.handleDownloads)
 	mux.HandleFunc("GET /ui/plugins", s.handleGallery)
 	mux.HandleFunc("GET /ui/plan", s.handlePlanView)
 	mux.HandleFunc("GET /ui/editor", s.handleEditor)

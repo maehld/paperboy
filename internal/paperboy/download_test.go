@@ -177,11 +177,17 @@ func TestDownloadInstallsPluginsAndFirmware(t *testing.T) {
 		offer["path"] != "/firmware/e1001-v1.0.0.bin" {
 		t.Fatalf("firmware offer: %v", offer)
 	}
-	body := htmlRequest(t, s, "/ui").Body.String()
-	for _, want := range []string{"Downloads", "testplugin v2.1.0", "e1001 1.0.0"} {
+	body := htmlRequest(t, s, "/ui/downloads").Body.String()
+	for _, want := range []string{"Release checks", "testplugin", "v2.1.0", "e1001", "e1001-v1.0.0.bin"} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("dashboard lacks %q: %s", want, body)
+			t.Fatalf("downloads page lacks %q: %s", want, body)
 		}
+	}
+	// The dashboard keeps a link, not the card: a running check must not
+	// reload every device card.
+	dash := htmlRequest(t, s, "/ui").Body.String()
+	if strings.Contains(dash, "Check now") || !strings.Contains(dash, "href=\"/ui/downloads\"") {
+		t.Fatalf("dashboard still carries the download card: %s", dash)
 	}
 }
 
@@ -347,8 +353,8 @@ func TestDownloadIntervalValidation(t *testing.T) {
 	}
 }
 
-// TestDownloadCheckEndpoint verifies that the dashboard button starts a check
-// in the background and returns at once (ADR 0062).
+// TestDownloadCheckEndpoint verifies that the downloads page's button starts a
+// check in the background and returns at once (ADR 0062).
 func TestDownloadCheckEndpoint(t *testing.T) {
 	feed, srv := newReleaseFeed(t, "v2.1.0")
 	feed.add("v2.1.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry(): "program"}))
@@ -358,7 +364,7 @@ func TestDownloadCheckEndpoint(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/ui/download", nil)
 	s.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/ui" {
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/ui/downloads" {
 		t.Fatalf("response: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 	deadline := time.Now().Add(5 * time.Second)
@@ -374,9 +380,24 @@ func TestDownloadCheckEndpoint(t *testing.T) {
 	if _, version := pluginProgram(s.config().PluginsDir, "testplugin", ""); version != "v2.1.0" {
 		t.Fatalf("the button must install the plugin, got %q", version)
 	}
-	body := htmlRequest(t, s, "/ui").Body.String()
+	body := htmlRequest(t, s, "/ui/downloads").Body.String()
 	if !strings.Contains(body, "Check now") {
-		t.Fatalf("the dashboard lacks the check button: %s", body)
+		t.Fatalf("the downloads page lacks the check button: %s", body)
+	}
+}
+
+// TestDownloadsPageWithoutDownloadSection explains the missing section instead
+// of drawing an empty page, and the dashboard links the page.
+func TestDownloadsPageWithoutDownloadSection(t *testing.T) {
+	s, _ := testServer(t)
+	body := htmlRequest(t, s, "/ui/downloads").Body.String()
+	for _, want := range []string{"Downloads", "No download section", "Plugins", "Firmware images", "Devices"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("downloads page lacks %q: %s", want, body)
+		}
+	}
+	if !strings.Contains(htmlRequest(t, s, "/ui").Body.String(), `href="/ui/downloads"`) {
+		t.Fatal("the dashboard does not link the downloads page")
 	}
 }
 

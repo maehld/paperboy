@@ -264,13 +264,19 @@ type galleryPage struct {
 	Grid      string
 	Displays  []galleryDisplay
 	Plugins   []galleryPlugin
+	Tabs      []uiTab // playground and gallery
 }
 
 // handleGallery shows every widget of every plugin in the sizes the plugin
-// declares, on one display type: a preview of what a page editor offers.
+// declares, on one display type. Its sibling tab is the playground, which edits
+// one widget with the palette and the inspector of the page editor.
 func (s *Server) handleGallery(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	q := r.URL.Query()
+	if q.Get("tab") == "playground" {
+		s.handlePlayground(w, r)
+		return
+	}
 	names := make([]string, 0, len(cfg.Profiles))
 	for name := range cfg.Profiles {
 		names = append(names, name)
@@ -298,10 +304,11 @@ func (s *Server) handleGallery(w http.ResponseWriter, r *http.Request) {
 	if loc == nil {
 		loc = time.UTC
 	}
-	gp := galleryPage{Version: versionText(build, loc), GoVersion: build.Go, Display: display, Grid: gridText}
+	gp := galleryPage{Version: versionText(build, loc), GoVersion: build.Go, Display: display, Grid: gridText,
+		Tabs: widgetTabs("gallery", display)}
 	for _, n := range names {
 		gp.Displays = append(gp.Displays, galleryDisplay{Name: n, Selected: n == display,
-			URL: "/ui/plugins?" + url.Values{"display": {n}, "grid": {gridText}}.Encode()})
+			URL: "/ui/plugins?" + url.Values{"display": {n}, "grid": {gridText}, "tab": {"gallery"}}.Encode()})
 	}
 	if display == "" {
 		s.renderGallery(w, gp)
@@ -321,6 +328,58 @@ func (s *Server) handleGallery(w http.ResponseWriter, r *http.Request) {
 		gp.Plugins = append(gp.Plugins, g)
 	}
 	s.renderGallery(w, gp)
+}
+
+// widgetTabURL links one sub-tab of the widgets page.
+func widgetTabURL(tab, display string) string {
+	params := url.Values{"tab": {tab}}
+	if display != "" {
+		params.Set("display", display)
+	}
+	return "/ui/plugins?" + params.Encode()
+}
+
+// widgetTabs are the two faces of the widgets page: the playground edits one
+// widget, the gallery lists all of them with their declared sizes.
+func widgetTabs(selected, display string) []uiTab {
+	tabs := []uiTab{
+		{Name: "playground", Label: "Playground", URL: widgetTabURL("playground", display)},
+		{Name: "gallery", Label: "Gallery", URL: widgetTabURL("gallery", display)},
+	}
+	for i := range tabs {
+		tabs[i].Selected = tabs[i].Name == selected
+	}
+	return tabs
+}
+
+// handlePlayground is the widgets page without a page: the palette and the
+// inspector of the page editor around one widget, its rendered preview and the
+// cell to paste into a page (ADR 0055, 0068). The link keeps the widget, its
+// size and its args, so a playground view can be shared.
+func (s *Server) handlePlayground(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	q := r.URL.Query()
+	display := editorDisplay(cfg, q.Get("display"))
+	version, goVersion := editorVersion(cfg)
+	v := editorPageView{Version: version, GoVersion: goVersion, Display: display, Playground: true,
+		Tabs: widgetTabs("playground", display)}
+	p, ok := cfg.Profiles[display]
+	if !ok {
+		v.Error = "no display type is configured; add one under display_types"
+		renderEditorPage(w, v, http.StatusBadRequest)
+		return
+	}
+	v.Text = p.text()
+	for _, n := range displayNames(cfg) {
+		v.Displays = append(v.Displays, galleryDisplay{Name: n, Selected: n == display,
+			URL: "/ui/plugins?" + url.Values{"display": {n}, "tab": {"playground"}}.Encode()})
+	}
+	var span [2]int
+	if sz, err := parseSize(q.Get("span")); err == nil {
+		span = sz
+	}
+	v.Data = playgroundStateData(display, p, q.Get("widget"), span, galleryArgs(q))
+	renderEditorPage(w, v, http.StatusOK)
 }
 
 func (s *Server) renderGallery(w http.ResponseWriter, gp galleryPage) {
