@@ -23,6 +23,8 @@
     readOnly: false,
     selected: -1,
     placing: null, // {plugin, widget} waiting for a cell
+    filter: '', // text of the palette filter
+    collapsed: new Set(), // plugins whose widgets the palette hides
     plugins: [],
     dirty: false,
     previewURL: '',
@@ -195,21 +197,47 @@
       return;
     }
     const kind = text() ? 'text' : 'image';
+    const filter = state.filter.trim().toLowerCase();
+    let shown = 0;
     for (const p of state.plugins) {
+      const widgets = (p.description && p.description.widgets) || [];
+      const fitting = widgets.filter((w) => !w.kinds || !w.kinds.length || w.kinds.includes(kind));
+      const matches = fitting.filter((w) => !filter ||
+        (p.name + ' ' + w.widget + ' ' + (w.title || '')).toLowerCase().includes(filter));
+      if (filter && !matches.length) continue;
       const section = document.createElement('div');
       section.className = 'plugin';
-      const head = document.createElement('h4');
-      head.textContent = p.name + (p.description && p.description.title ? ' · ' + p.description.title : '');
+      const head = document.createElement('div');
+      head.className = 'plugin-head';
+      head.title = 'Show or hide the widgets of this plugin';
+      const collapsed = state.collapsed.has(p.name);
+      const chev = document.createElement('span');
+      chev.className = 'chev';
+      chev.textContent = collapsed ? '▸' : '▾';
+      const name = document.createElement('span');
+      name.textContent = p.name + (p.description && p.description.title ? ' · ' + p.description.title : '');
+      const count = document.createElement('span');
+      count.className = 'count';
+      count.textContent = String(matches.length);
+      head.append(chev, name, count);
+      head.addEventListener('click', () => {
+        if (collapsed) state.collapsed.delete(p.name);
+        else state.collapsed.add(p.name);
+        renderPalette();
+      });
       section.appendChild(head);
+      if (collapsed) {
+        box.appendChild(section);
+        continue;
+      }
       if (p.error) {
         const note = document.createElement('span');
         note.className = 'note';
         note.textContent = p.error;
         section.appendChild(note);
       }
-      const widgets = (p.description && p.description.widgets) || [];
-      const fitting = widgets.filter((w) => !w.kinds || !w.kinds.length || w.kinds.includes(kind));
-      for (const w of fitting) {
+      for (const w of matches) {
+        shown++;
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'widget' + (state.placing && state.placing.plugin === p.name && state.placing.widget === w.widget ? ' active' : '');
@@ -235,6 +263,12 @@
         section.appendChild(note);
       }
       box.appendChild(section);
+    }
+    if (!shown && filter) {
+      const p = document.createElement('p');
+      p.className = 'hint';
+      p.textContent = 'No widget matches “' + state.filter.trim() + '”.';
+      box.appendChild(p);
     }
   }
 
@@ -702,6 +736,10 @@
   el('save').addEventListener('click', save);
   el('reload').addEventListener('click', () => location.reload());
   el('specialize').addEventListener('click', specialize);
+  el('palette-filter').addEventListener('input', () => {
+    state.filter = el('palette-filter').value;
+    renderPalette();
+  });
   el('title').addEventListener('input', () => {
     if (!state.template) return;
     state.template.title = el('title').value;
