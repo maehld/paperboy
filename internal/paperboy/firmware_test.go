@@ -158,6 +158,19 @@ func TestFirmwarePin(t *testing.T) {
 	}
 }
 
+// TestFirmwareImagesOfUnknownHardwareAreValid verifies that an image of a
+// hardware type without a display type of that name is not reported as ignored:
+// the download installs every image of a bundle (ADR 0061), and the file name
+// follows the hardware a device reports, not the display type's label.
+func TestFirmwareImagesOfUnknownHardwareAreValid(t *testing.T) {
+	s, _ := firmwareServer(t)
+	writePageFile(t, filepath.Join(s.config().FirmwareDir, "lcd2004-v1.0.0.bin"), "image")
+	body := htmlRequest(t, s, "/ui").Body.String()
+	if strings.Contains(body, "lcd2004-v1.0.0.bin") {
+		t.Fatalf("a valid image must not be reported as ignored: %s", body)
+	}
+}
+
 func TestFirmwareStopsAfterFailures(t *testing.T) {
 	logs := captureLog(t)
 	s, dev := firmwareServer(t)
