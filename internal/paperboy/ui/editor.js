@@ -64,7 +64,11 @@
   function updateSave() {
     const hasCell = !!state.template && !state.readOnly &&
       (!state.playground || state.template.cells.length > 0);
-    el('save').disabled = !hasCell;
+    // The page editor saves, the playground copies the cell: one button each.
+    const save = el('save');
+    if (save) save.disabled = !hasCell;
+    const copy = el('copy-cell');
+    if (copy) copy.disabled = !hasCell;
     const del = el('delete');
     if (del) del.hidden = state.playground || !state.hash;
     const specialize = el('specialize');
@@ -1188,6 +1192,7 @@
   };
 
   on('save', 'click', save);
+  on('copy-cell', 'click', copyCell);
   on('reload', 'click', () => location.reload());
   on('specialize', 'click', specialize);
   on('delete', 'click', remove);
