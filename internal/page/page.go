@@ -23,35 +23,36 @@ import (
 // ErrNotFound reports a page template that does not exist for a display type.
 var ErrNotFound = errors.New("page not found")
 
-// Template is one page.
+// Template is one page. The JSON tags carry the same model to the editor API
+// (ADR 0066).
 type Template struct {
-	Title   string `yaml:"title"`
-	Kind    string `yaml:"kind"`    // image (default) or text: the displays the page is for
-	Grid    [2]int `yaml:"grid"`    // columns, rows
-	Style   Style  `yaml:"style"`   // look passed to every widget
-	Notices string `yaml:"notices"` // show (default) or none: stale widgets
-	Cells   []Cell `yaml:"cells"`
+	Title   string `yaml:"title" json:"title"`
+	Kind    string `yaml:"kind" json:"kind,omitempty"`       // image (default) or text: the displays the page is for
+	Grid    [2]int `yaml:"grid" json:"grid"`                 // columns, rows
+	Style   Style  `yaml:"style" json:"style"`               // look passed to every widget
+	Notices string `yaml:"notices" json:"notices,omitempty"` // show (default) or none: stale widgets
+	Cells   []Cell `yaml:"cells" json:"cells"`
 	// Actions belong to the plan, not to a page. The field only exists to
 	// reject the key with a hint instead of "field not found".
-	Actions []any `yaml:"actions"`
+	Actions []any `yaml:"actions" json:"-"`
 }
 
 // Style is the page's look in points (1/72 inch, ADR 0050); Paperboy
 // converts it with the display's PPI. Text displays ignore it.
 type Style struct {
-	Padding  *float64 `yaml:"padding"`   // inner margin of a widget, pt; default 4.5 (1.6 mm)
-	Rule     float64  `yaml:"rule"`      // separator width a widget draws, pt; default 0.6 (0.2 mm), at least 1 px
-	TextSize float64  `yaml:"text_size"` // base text height, pt; default 16, capped at 0.12 of the display height
-	Divider  float64  `yaml:"divider"`   // lines Paperboy draws between cells, pt; default 0 (none), at least 1 px
+	Padding  *float64 `yaml:"padding" json:"padding,omitempty"`     // inner margin of a widget, pt; default 4.5 (1.6 mm)
+	Rule     float64  `yaml:"rule" json:"rule,omitempty"`           // separator width a widget draws, pt; default 0.6 (0.2 mm), at least 1 px
+	TextSize float64  `yaml:"text_size" json:"text_size,omitempty"` // base text height, pt; default 16, capped at 0.12 of the display height
+	Divider  float64  `yaml:"divider" json:"divider,omitempty"`     // lines Paperboy draws between cells, pt; default 0 (none), at least 1 px
 }
 
 // Cell places one widget on the grid.
 type Cell struct {
-	At     [2]int         `yaml:"at"`     // column, row of the top-left cell
-	Span   [2]int         `yaml:"span"`   // columns, rows; default 1x1
-	Widget string         `yaml:"widget"` // plugin/widget
-	Args   map[string]any `yaml:"args"`
-	Style  *Style         `yaml:"style"` // overrides the page style for this widget
+	At     [2]int         `yaml:"at" json:"at"`                 // column, row of the top-left cell
+	Span   [2]int         `yaml:"span" json:"span"`             // columns, rows; default 1x1
+	Widget string         `yaml:"widget" json:"widget"`         // plugin/widget
+	Args   map[string]any `yaml:"args" json:"args,omitempty"`   // widget arguments
+	Style  *Style         `yaml:"style" json:"style,omitempty"` // overrides the page style for this widget
 }
 
 // Plugin and widget name of the cell.

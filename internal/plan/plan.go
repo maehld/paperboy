@@ -34,19 +34,27 @@ func (d *Duration) UnmarshalYAML(v *yaml.Node) error {
 // Clock is a local time of day written as "HH:MM".
 type Clock int // minutes since midnight
 
+func parseClock(s string) (Clock, error) {
+	if len(s) != 5 || s[2] != ':' {
+		return 0, fmt.Errorf("expected a time of day as \"HH:MM\", got %q", s)
+	}
+	t, err := time.Parse("15:04", s)
+	if err != nil {
+		return 0, fmt.Errorf("expected a time of day as \"HH:MM\", got %q", s)
+	}
+	return Clock(t.Hour()*60 + t.Minute()), nil
+}
+
 func (c *Clock) UnmarshalYAML(v *yaml.Node) error {
 	var s string
 	if err := v.Decode(&s); err != nil {
 		return fmt.Errorf("expected a time of day as \"HH:MM\"")
 	}
-	if len(s) != 5 || s[2] != ':' {
-		return fmt.Errorf("expected a time of day as \"HH:MM\", got %q", s)
-	}
-	t, err := time.Parse("15:04", s)
+	clock, err := parseClock(s)
 	if err != nil {
-		return fmt.Errorf("expected a time of day as \"HH:MM\", got %q", s)
+		return err
 	}
-	*c = Clock(t.Hour()*60 + t.Minute())
+	*c = clock
 	return nil
 }
 
@@ -78,25 +86,26 @@ func (d *Day) UnmarshalYAML(v *yaml.Node) error {
 	return nil
 }
 
-// Plan is one file under plans/.
+// Plan is one file under plans/. The JSON tags carry the same model to the
+// editor API (ADR 0066).
 type Plan struct {
-	Rules    []Rule       `yaml:"rules"`
-	Fallback string       `yaml:"fallback"`
-	Actions  []PlanAction `yaml:"actions"` // offered by the device menu (ADR 0057)
+	Rules    []Rule       `yaml:"rules" json:"rules"`
+	Fallback string       `yaml:"fallback" json:"fallback,omitempty"`
+	Actions  []PlanAction `yaml:"actions" json:"actions,omitempty"` // offered by the device menu (ADR 0057)
 
 	loc *time.Location
 }
 
 // Rule shows Pages while When matches.
 type Rule struct {
-	Name    string   `yaml:"name"`
-	When    When     `yaml:"when"`
-	Pages   []string `yaml:"pages"`
-	Rotate  bool     `yaml:"rotate"`
-	Refresh Duration `yaml:"refresh"`
+	Name    string   `yaml:"name" json:"name"`
+	When    When     `yaml:"when" json:"when"`
+	Pages   []string `yaml:"pages" json:"pages"`
+	Rotate  bool     `yaml:"rotate" json:"rotate,omitempty"`
+	Refresh Duration `yaml:"refresh" json:"refresh,omitempty"`
 	// Actions belong to the plan, not to a rule. The field only exists to
 	// reject the key with a hint instead of "field not found".
-	Actions []any `yaml:"actions"`
+	Actions []any `yaml:"actions" json:"-"`
 }
 
 // PlanAction is one action a plan offers to every device that uses it
@@ -104,10 +113,10 @@ type Rule struct {
 // unchanged. ID is optional and becomes mandatory when Action appears more
 // than once. Title overrides the plugin's own title in the menu.
 type PlanAction struct {
-	Action string         `yaml:"action"`
-	Args   map[string]any `yaml:"args"`
-	ID     string         `yaml:"id"`
-	Title  string         `yaml:"title"`
+	Action string         `yaml:"action" json:"action"`
+	Args   map[string]any `yaml:"args" json:"args,omitempty"`
+	ID     string         `yaml:"id" json:"id,omitempty"`
+	Title  string         `yaml:"title" json:"title,omitempty"`
 }
 
 // Key is the plan-local identity of the action: its ID when set, otherwise
@@ -144,12 +153,12 @@ func (a *PlanAction) UnmarshalYAML(v *yaml.Node) error {
 // When is a time window. Days apply to the day the window starts, so a window
 // across midnight belongs to its start day. All conditions are combined.
 type When struct {
-	From *Clock `yaml:"from"`
-	To   *Clock `yaml:"to"`
-	Days []Day  `yaml:"days"`
+	From *Clock `yaml:"from" json:"from,omitempty"`
+	To   *Clock `yaml:"to" json:"to,omitempty"`
+	Days []Day  `yaml:"days" json:"days,omitempty"`
 	// Data conditions are specified in ADR 0025 but not implemented yet.
 	// Rejecting them keeps operators from relying on something that is ignored.
-	Data []any `yaml:"data"`
+	Data []any `yaml:"data" json:"data,omitempty"`
 }
 
 // Selection is the evaluated rule.
