@@ -197,6 +197,29 @@ outside `enum`. `Values.CheckEnums(known)` only checks the enums and leaves
 unknown keys alone; `Handle` applies it per widget before calling `Render` or
 `Text`.
 
+## State between restarts
+
+A plugin process ends when it exits, when a request times out, and when its
+configuration changes; Paperboy itself restarts on every deployment. Everything
+a plugin keeps in memory is lost then, and Paperboy's widget cache is no help
+because it holds drawn results, not data.
+
+Paperboy therefore starts every plugin with `PAPERBOY_STATE_DIR`, the absolute
+path of `<instance>/state/plugins/<plugin>/` (ADR 0065). The directory exists
+before `configure`, and an `env:` key of the same name in the plugin's section
+cannot override it.
+
+The files inside belong to the plugin; Paperboy never reads, writes or deletes
+them, and a plugin that is no longer configured leaves its directory behind.
+A plugin keeps what lets it skip work after a restart — when it loaded last, a
+wait a server asked for, a downloaded picture — under these rules: no secrets
+(a fingerprint of a key is enough), a version number in the file, atomic writes
+(temporary file, then rename), and a file that does not fit is ignored with one
+log line instead of failing the plugin.
+
+`plugin.StateDir()` returns the path in Go; it is `""` for the built-in plugin
+and in tests.
+
 ## Go helper
 
 A Go plugin implements `plugin.Handler`:

@@ -91,6 +91,9 @@ func TestLoadConfig(t *testing.T) {
 	if spec.Env["PAPERBOY_LANGUAGE"] != "en" || spec.Env["PAPERBOY_TIMEZONE"] != "Europe/Berlin" || spec.Dir != cfg.PluginsDir {
 		t.Fatalf("plugin spec: %+v", spec)
 	}
+	if want := filepath.Join(dir, "state", "plugins", "weather"); spec.StateDir != want {
+		t.Fatalf("state directory: %q, want %q", spec.StateDir, want)
+	}
 	if cfg.Refresh != Duration(10*time.Minute) || cfg.PageTimeout != Duration(3*time.Minute) {
 		t.Fatalf("defaults: %v %v", cfg.Refresh, cfg.PageTimeout)
 	}
