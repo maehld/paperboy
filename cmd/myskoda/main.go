@@ -974,25 +974,6 @@ func (m *myskoda) temperature(t temperature) string {
 	return m.num(*t.Value, 1) + " " + unit
 }
 
-// plugText names the cable state for the charging widget.
-func (m *myskoda) plugText() string {
-	c := m.cur.Charging
-	if c == nil || c.Status == nil || c.Status.PlugState == nil {
-		return ""
-	}
-	switch *c.Status.PlugState {
-	case "CONNECTED":
-		if c.Status.PlugLock != nil && *c.Status.PlugLock == "LOCKED" {
-			return m.t("Kabel verriegelt", "Cable locked")
-		}
-		return m.t("Kabel angeschlossen", "Cable connected")
-	case "DISCONNECTED":
-		return m.t("Kabel getrennt", "Cable disconnected")
-	default:
-		return *c.Status.PlugState
-	}
-}
-
 // profileName returns the profile the car is currently in.
 func (m *myskoda) currentProfile() *currentProfile {
 	if m.cur.ChargingProfiles == nil {
