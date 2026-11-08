@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paperboy · Pages</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 1.5rem; font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: #f2f2f2; color: #111; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; margin-bottom: 1rem; }
+h1 { font-size: 1.5rem; margin: 0; }
+.muted { color: #666; font-size: .85rem; }
+nav a { color: #134e9c; text-decoration: none; }
+nav a.active { font-weight: 700; color: #111; }
+.build { margin-left: auto; font-variant-numeric: tabular-nums; }
+a { color: #134e9c; }
+.switch { display: flex; flex-wrap: wrap; gap: .8rem; margin-bottom: 1rem; font-size: .95rem; }
+.switch a { text-decoration: none; }
+.switch a.active { font-weight: 700; color: #111; }
+.card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
+.card h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid #eee; vertical-align: baseline; }
+tr:first-child th { border-top: 0; }
+th { font-weight: 600; color: #666; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+td.open { text-align: right; white-space: nowrap; }
+.error { margin: .4rem 0 0; padding: .4rem .6rem; background: #fff2f2; border-left: 3px solid #c22; font-size: .85rem; word-break: break-word; }
+form.new { display: flex; flex-wrap: wrap; gap: .8rem; align-items: center; font-size: .9rem; }
+form.new input, form.new select { font: inherit; padding: .2rem .3rem; }
+.empty { margin: 0; padding: 2rem 1rem; text-align: center; color: #888; border: 1px dashed #ccc; background: #fff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Paperboy</h1>
+  <nav><a href="/ui">Devices</a> · <a href="/ui/plugins">Widgets</a> · <a class="active" href="/ui/editor">Editor</a></nav>
+  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
+</header>
+{{if .Displays}}
+<div class="switch">
+  <span class="muted">Display type:</span>
+  {{range .Displays}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
+  <span class="muted">· a shared page is opened for the selected display type</span>
+</div>
+{{else}}
+<p class="empty">No display types configured.</p>
+{{end}}
+{{if .Groups}}
+{{range .Groups}}
+<section class="card">
+  <h2>{{.Name}}</h2>
+  <table>
+    <tr><th>File</th><th>Kind</th><th>Grid</th><th>Title</th><th></th></tr>
+    {{range .Variants}}
+    <tr>
+      <td>{{.Label}}</td>
+      <td>{{.Kind}}</td>
+      <td>{{.Grid}}</td>
+      <td>{{.Title}}</td>
+      <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
+    </tr>
+    {{if .Error}}<tr><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
+    {{end}}
+  </table>
+</section>
+{{end}}
+{{else}}
+<p class="empty">No pages yet.</p>
+{{end}}
+{{if .Plans}}
+<section class="card">
+  <h2>Plans</h2>
+  <table>
+    <tr><th>Name</th><th>Rules</th><th>Fallback</th><th></th></tr>
+    {{range .Plans}}
+    <tr>
+      <td>{{.Name}}</td>
+      <td>{{.Rules}}</td>
+      <td>{{.Fallback}}</td>
+      <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
+    </tr>
+    {{if .Error}}<tr><td colspan="4"><p class="error">{{.Error}}</p></td></tr>{{end}}
+    {{end}}
+  </table>
+</section>
+{{else}}
+<p class="empty">No plans yet. A plan is <code>plans/&lt;name&gt;.yaml</code>.</p>
+{{end}}
+{{if .Displays}}
+<section class="card">
+  <h2>New page</h2>
+  <form class="new" method="get" action="/ui/editor/page">
+    <input type="hidden" name="new" value="1">
+    <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. solar" title="lower case letters, digits and -"></label>
+    <label>Display type <select name="display">
+      <option value="">shared page, all display types</option>
+      {{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+    </select></label>
+    <button type="submit">Create</button>
+  </form>
+  <p class="muted">Lower case letters, digits and <code>-</code>. A page is saved as <code>pages/&lt;name&gt;.&lt;display type&gt;.yaml</code>, a shared page as <code>pages/&lt;name&gt;.yaml</code>; a new page starts with the kind and grid of the chosen display type.</p>
+</section>
+{{end}}
+</body>
+</html>
