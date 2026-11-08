@@ -36,6 +36,19 @@ to the line before. A button press wakes the chip from deep sleep, so these
 numbers start at the press and show where a page change spends its time;
 `unchanged` replaces `image`/`paint` when the hash still matches the panel.
 
+Measured on the Sticky (firmware 2.1.0, 2026-11-08): boot 228 ms, Wi-Fi 4.0 s,
+sync 0.2 s, image 2.6 s, paint 2.1 s — about 4.9 s per page change. Wi-Fi and
+download dominated and were independent of what was transferred (the server
+answers the PNG in 1.5 ms), so the firmware now connects with `fast_connect`
+(saved BSSID and channel, no scan before every wake) and downloads with a
+2048-byte client buffer instead of 512.
+
+Only one cycle runs at a time. A second trigger — the flash-restored Paperboy
+URL at boot used to start one while `on_boot` was already running the cycle —
+is dropped with `a cycle is already running, keeping its page`. Otherwise the
+second sync moves Paperboy's page cursor (with `rotate` in the plan) while the
+first image is still downloading, and the panel never shows that page.
+
 The firmware reports its power source in every sync (ADR 0051). The Sticky
 measures USB power on GPIO9 (`PWR_IN_VOLT`, 5.1k/5.1k divider: about 2.5 V
 with USB) and reports `mains` above 1.5 V at the pin; the E1001 has no pin that
