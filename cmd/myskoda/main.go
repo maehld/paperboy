@@ -13,8 +13,9 @@
 // All widgets except "card" have text variants for character displays.
 //
 // The API is rate-limited to 20 requests per hour per VIN and needs an API key
-// created in the MyŠkoda app. It is meant for personal use only; the plugin is
-// read-only, remote commands are not part of it (see the issue).
+// created in the MyŠkoda app. It is meant for personal use only. Besides the
+// widgets it offers two device-menu actions (ADR 0057): start and stop
+// charging, and start and stop air conditioning.
 //
 //	plugins:
 //	  myskoda:
@@ -321,6 +322,10 @@ func (m *myskoda) Describe() plugin.Description {
 		Title:   "MyŠkoda",
 		Version: version(),
 		Config:  configKeys,
+		Actions: []plugin.ActionSpec{
+			{Name: "charging", Title: "Charging", Args: chargingActionArgs, Confirm: &plugin.Confirm{Required: true}},
+			{Name: "climate", Title: "Air conditioning", Args: climateActionArgs, Confirm: &plugin.Confirm{Required: true}},
+		},
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "battery", Title: "Battery and range", Kinds: both, MinWidth: 160, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 2}, {Columns: 2, Rows: 2}},

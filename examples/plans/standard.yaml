@@ -18,3 +18,11 @@ fallback: tag
 #   - { action: evcc/mode, args: { loadpoint: 0, mode: pv }, id: charge-pv, title: "PV only" }
 #   - { action: evcc/mode, args: { loadpoint: 1, mode: now }, id: charge-now-2, title: "Charge now" }
 #   - { action: paperboy/refresh }
+#
+# The myskoda plugin starts and stops charging and air conditioning of the car
+# (docs/plugins/myskoda.md); temperature is optional and defaults to the car's
+# current target.
+#   - { action: myskoda/charging, args: { state: start }, id: charge-start, title: "Laden starten" }
+#   - { action: myskoda/charging, args: { state: stop }, id: charge-stop, title: "Laden stoppen" }
+#   - { action: myskoda/climate, args: { state: start }, id: climate-start, title: "Klima starten" }
+#   - { action: myskoda/climate, args: { state: stop }, id: climate-stop, title: "Klima stoppen" }
