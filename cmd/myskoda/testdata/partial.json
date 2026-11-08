@@ -1,0 +1,27 @@
+{
+  "vehicle": {
+    "vin": "TMBJB9NY5RF999999",
+    "name": "Enyaq",
+    "licensePlate": "1MB 1234",
+    "status": {
+      "overall": {
+        "doorsLocked": "NO",
+        "locked": "NO",
+        "doors": "CLOSED",
+        "windows": "OPEN",
+        "lights": "OFF",
+        "reliableLockStatus": "UNLOCKED"
+      },
+      "detail": { "sunroof": "CLOSED", "trunk": "CLOSED", "bonnet": "CLOSED" },
+      "carCapturedTimestamp": "2026-11-08T09:20:00Z"
+    },
+    "odometer": { "mileageInKm": 42000, "carCapturedTimestamp": "2026-11-08T09:20:00Z" },
+    "operations": []
+  },
+  "errors": [
+    { "type": "RENDER_UNAVAILABLE", "description": "The vehicle render image URL could not be retrieved." },
+    { "type": "CHARGING_UNSUPPORTED", "description": "Charging status is not supported." },
+    { "type": "PARKING_POSITION_UNAVAILABLE", "description": "Parking position could not be retrieved." },
+    { "type": "AIR_CONDITIONING_UNSUPPORTED", "description": "Air conditioning information is not supported." }
+  ]
+}
