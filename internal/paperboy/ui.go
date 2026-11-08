@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"time"
 )
 
@@ -45,7 +46,18 @@ type dashboardPage struct {
 	Version        string // build label: version, commit and commit date
 	GoVersion      string
 	Devices        []dashboardDevice
-	FirmwareIssues []string // ignored files in the firmware directory
+	FirmwareIssues []string            // ignored files in the firmware directory
+	Downloads      *dashboardDownloads // release checks (ADR 0060), nil without a download section
+}
+
+// dashboardDownloads is the release card: source, checks and what came from it.
+type dashboardDownloads struct {
+	Source    string
+	LastCheck string   // time of the last check, "never" before the first one
+	LastOK    string   // time of the last successful check, empty when unknown
+	Error     string   // last error, empty when the check succeeded
+	Plugins   []string // "weather v2.1.0"
+	Firmware  []string // "sticky 1.0.0"
 }
 
 // handleRoot sends the bare root to the dashboard so that the instance needs
@@ -97,10 +109,50 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		GoVersion:      build.Go,
 		Devices:        cards,
 		FirmwareIssues: s.firmware.invalidNames(cfg.profileNames()),
+		Downloads:      s.downloadCard(cfg, loc),
 	}
 	if err := dashboardTmpl.Execute(w, page); err != nil {
 		slog.Error("dashboard rendering failed", "error", err)
 	}
+}
+
+// downloadCard summarizes the release checks for the dashboard; nil without a
+// download section.
+func (s *Server) downloadCard(cfg *Config, loc *time.Location) *dashboardDownloads {
+	if cfg.Download == nil {
+		return nil
+	}
+	lastCheck, lastOK, lastErr, plugins, firmware := s.download.view()
+	card := &dashboardDownloads{Source: cfg.Download.Source, Error: lastErr,
+		LastCheck: downloadTime(lastCheck, loc), LastOK: downloadTime(lastOK, loc)}
+	for _, name := range sortedStringKeys(plugins) {
+		card.Plugins = append(card.Plugins, name+" "+plugins[name])
+	}
+	for _, hw := range sortedStringKeys(firmware) {
+		card.Firmware = append(card.Firmware, hw+" "+firmware[hw])
+	}
+	return card
+}
+
+// downloadTime prints a time of the day, with the date when it is not today.
+func downloadTime(t time.Time, loc *time.Location) string {
+	if t.IsZero() {
+		return "never"
+	}
+	now := time.Now().In(loc)
+	if t.In(loc).Format("2006-01-02") == now.Format("2006-01-02") {
+		return t.In(loc).Format("15:04")
+	}
+	return t.In(loc).Format("2006-01-02 15:04")
+}
+
+func sortedStringKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // imageText picks what the card shows for an image display. Rendered pages

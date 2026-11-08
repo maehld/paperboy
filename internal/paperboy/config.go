@@ -9,11 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/maehld/paperboy/internal/builtin"
-	"github.com/maehld/paperboy/internal/widget"
 	"io"
 	"io/fs"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -23,7 +22,10 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/maehld/paperboy/internal/builtin"
+	"github.com/maehld/paperboy/internal/download"
 	"github.com/maehld/paperboy/internal/page"
+	"github.com/maehld/paperboy/internal/widget"
 )
 
 // Duration accepts Go duration strings such as "5m" in YAML.
@@ -105,6 +107,13 @@ type FirmwareConfig struct {
 	Update          string  // "auto" or "off"
 	MinBatteryVolts float64 // no offer below this voltage
 	Version         string  // pinned image version ("v1.0.0" or "1.0.0"); empty = newest
+}
+
+// DownloadConfig enables fetching plugins and firmware from releases (ADR 0060).
+// Its presence in paperboy.yaml is the opt-in.
+type DownloadConfig struct {
+	Source string // release origin; empty = the official repository
+	Token  string // optional bearer token for the release API
 }
 
 const (
@@ -193,6 +202,7 @@ type Config struct {
 	PluginsDir  string // plugin programs: <dir>/plugins (ADR 0049)
 	FirmwareDir string // firmware images: <dir>/firmware (ADR 0043)
 	Firmware    FirmwareConfig
+	Download    *DownloadConfig // nil = fetch nothing (ADR 0060)
 	Profiles    map[string]Profile
 	Devices     []Device
 	Plugins     []Plugin // plugins (ADR 0049)
@@ -279,6 +289,10 @@ type fileConfig struct {
 		MinBatteryVolts float64 `yaml:"min_battery_volts"`
 		Version         string  `yaml:"version"` // pin for downloads and offers (ADR 0060)
 	} `yaml:"firmware"`
+	Download *struct {
+		Source string `yaml:"source"`
+		Token  string `yaml:"token"`
+	} `yaml:"download"`
 	Plugins map[string]struct {
 		Command any               `yaml:"command"` // removed by ADR 0060; rejected with a hint
 		Version string            `yaml:"version"` // downloaded/pinned program version
@@ -441,12 +455,22 @@ func LoadConfig(dir string) (*Config, error) {
 		}
 		c.Plugins = append(c.Plugins, Plugin{Name: name, Version: p.Version, Timeout: p.Timeout, Env: p.Env, Config: cfg})
 	}
+	if f.Download != nil {
+		token := ""
+		if f.Download.Token != "" {
+			v, err := expandValue(f.Download.Token)
+			if err != nil {
+				return nil, fmt.Errorf("%s: download: token: %w", path, err)
+			}
+			token, _ = v.(string)
+		}
+		c.Download = &DownloadConfig{Source: f.Download.Source, Token: token}
+	}
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return c, nil
 }
-
 func (c *Config) validate() error {
 	if c.Timezone == nil {
 		c.Timezone = time.Local
@@ -492,6 +516,15 @@ func (c *Config) validate() error {
 		c.Firmware.Version = v
 	} else {
 		c.Firmware.Version = ""
+	}
+	if d := c.Download; d != nil {
+		if d.Source == "" {
+			d.Source = download.OfficialSource
+		}
+		u, err := url.Parse(d.Source)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("download: source %q: expected an http(s) address", d.Source)
+		}
 	}
 	if len(c.Profiles) == 0 {
 		return fmt.Errorf("display_types missing")

@@ -44,6 +44,7 @@ type Server struct {
 	pages     *pageLoader              // pages by file, reloaded on change (own lock)
 	skipNotes map[string]string        // "<profile>/<page>" → last logged reason for skipping it
 	widgets   *widget.Host             // plugins and their widget cache (ADR 0049; own lock)
+	download  *downloadStatus          // release checks (ADR 0060; own lock)
 }
 
 // config returns the current configuration, reloading it from paperboy.yaml
@@ -101,6 +102,7 @@ func New(cfg *Config) (*Server, error) {
 		plans: newPlanLoader(), rendered: map[string]*renderedPage{}, hints: map[string][]byte{},
 		logs: newLogSeen(), fwNotes: map[string]string{}, pages: newPageLoader(), skipNotes: map[string]string{}}
 	s.firmware = newFirmwareStore(cfg.FirmwareDir)
+	s.download = newDownloadStatus()
 	// A plan named in the configuration is reported when it is missing or broken
 	// (ADR 0026); the device gets a notice page instead of an error, so a
 	// reloaded configuration never aborts the server.
@@ -118,11 +120,13 @@ func New(cfg *Config) (*Server, error) {
 	return s, nil
 }
 
-// Start runs the plugins and the configuration reload loop until ctx is done
-// (ADR 0047, 0049). Plugins start on first use and stop with ctx.
+// Start runs the plugins, the configuration reload loop and the release checks
+// until ctx is done (ADR 0047, 0049, 0060). Plugins start on first use and stop
+// with ctx.
 func (s *Server) Start(ctx context.Context) {
 	s.widgets.Start(ctx)
 	go s.configLoop(ctx)
+	go s.downloadLoop(ctx)
 }
 
 func (s *Server) Handler() http.Handler {

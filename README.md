@@ -12,14 +12,14 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
 
 1. Create an instance directory with the fixed layout (ADR 0037): `paperboy.yaml` plus `pages/`, `plans/` and, for your own plugins, `plugins/`. Copy `cmd/paperboy/paperboy.example.yaml` to `<instance>/paperboy.yaml`, configure the plugins and enter the MAC addresses of the displays (allow list; unknown devices are rejected and reported with their MAC in the log).
 2. Copy pages from `examples/pages` and a plan from `examples/plans` into the instance, then set `plan: standard` on the device. Without a plan a device only shows a notice page.
-3. Put the plugins into the instance's `plugins/`: unpack `paperboy-plugins-<os>-<arch>.zip` (attached to each release, otherwise an artifact of the *Plugins* workflow) in the instance directory, or build them yourself (`./scripts/package-plugins.sh` builds the zip locally). Then start:
+3. Put the plugins into the instance's `plugins/`: unpack `paperboy-plugins-<os>-<arch>.zip` (attached to each release, otherwise an artifact of the *Plugins* workflow) in the instance directory, or build them yourself (`./scripts/package-plugins.sh` builds the zip locally), or let Paperboy fetch them with a `download` section (see [Downloads](#downloads)). Then start:
    ```sh
    go run ./cmd/paperboy -config . -listen :8090
    # look at a page without a device:
    curl -o page.png http://127.0.0.1:8090/api/preview/e1001/uebersicht
    ```
    Alternatively as a container: `Dockerfile` and `compose.example.yaml`. The image contains only Paperboy; use the `linux/amd64` plugin zip in the mounted instance directory.
-4. Flash the Paperboy firmware (ADR 0041, see [firmware/esphome/README.md](firmware/esphome/README.md)); the release images are in `paperboy-firmware-<version>.zip`. Enter `http://<computer>:8090` as the Paperboy URL in the device's web UI. The device registers with its MAC address; unknown MACs are rejected and logged.
+4. Flash the Paperboy firmware (ADR 0041, see [firmware/esphome/README.md](firmware/esphome/README.md)); the release images are in `paperboy-firmware-<version>.zip`, or let Paperboy fetch them (see [Downloads](#downloads)). Enter `http://<computer>:8090` as the Paperboy URL in the device's web UI. The device registers with its MAC address; unknown MACs are rejected and logged.
 
 **Migrating from Paperboy v1:** v2 has no data API, no exec providers and no upload token (ADR 0049). Remove the `server` and `providers` sections from `paperboy.yaml` (both abort the start with a hint) and add `plugins` instead; the weather and calendar providers are plugins now and take their settings from `config` instead of flags. Rewrite the pages as grids (see below); old templates with `rows` and `blocks` are rejected and show a notice page. `state/data.json` and the `icons/` directory are no longer used. Devices keep their keys as long as `state/devices.json` is kept.
 
@@ -44,6 +44,23 @@ GitHub releases are the distribution point (ADR 0056). Each tag names a tested c
 
 The container image is published separately as `ghcr.io/maehld/paperboy` (`X.Y.Z`, `X.Y` and `latest`). A release is created by pushing a tag, for example `git tag v2.1.0 && git push origin v2.1.0`; the *Release* workflow builds everything and attaches it to one release.
 
+## Downloads
+
+With a `download` section Paperboy fetches the plugin programs and firmware images from the releases itself (ADR 0060) and verifies every file against the release's `SHA256SUMS`:
+
+```yaml
+download:
+  source: https://github.com/maehld/paperboy  # optional, this is the default
+  token: ${GITHUB_TOKEN}                     # optional: rate limits, private forks
+```
+
+- It runs at startup and then once a day, in the background; an instance without internet keeps working as before, and nothing else needs the section.
+- **Plugins**: a configured plugin whose program is missing gets the newest one as `plugins/<plugin>-v<version>` (`weather-v2.1.0`, `weather-v2.1.0.exe` on Windows). A `version` pin in the plugin section selects exactly that version.
+- **Firmware**: the images of the hardware types in `display_types` land in `firmware/<hardware>-v<version>.bin`; a `firmware.version` pin picks the release that carries exactly that image, which is also how a rollback is pinned. Devices are still only offered an update with `firmware.update: auto`.
+- A program **without** a version in `plugins/` (`weather`) always wins — it is your build — and is neither replaced nor pinned; download it by hand or delete it to hand the plugin back to the releases.
+- A new plugin version restarts only that plugin on its next use; existing files are never overwritten or deleted, so versions pile up and are removed by hand (deleting an image is the firmware rollback of ADR 0043).
+- The dashboard shows the source, the last check, the versions in use and the last error.
+
 ## Instance directory
 
 Paperboy is configured with one instance directory, `-config <dir>` (default `.`). Its layout is fixed (ADR 0037, ADR 0049):
@@ -57,6 +74,7 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
   firmware/          OTA images <hardware>-v<version>.bin (ADR 0043, 0060)
   state/             written by Paperboy only
     devices.json     device register with API keys, page cursor and battery level
+    download/        cached release list and downloads (ADR 0060)
 ```
 
 - `paperboy.yaml`, `pages/`, `plans/`, `plugins/` and `firmware/` are yours. Paperboy only reads them; only the download feature (ADR 0060) adds plugin and firmware files there.
@@ -85,6 +103,10 @@ defaults:
 firmware:
   update: auto         # auto or off (default); offers the images in firmware/ (ADR 0043)
   min_battery_volts: 3.6
+  version: v1.0.0      # optional: pin the offered image version (ADR 0060)
+download:              # optional: fetch plugins and firmware from the releases (ADR 0060)
+  source: https://github.com/maehld/paperboy
+  token: ${GITHUB_TOKEN}
 display_types:
   e1001:
     kind: image
