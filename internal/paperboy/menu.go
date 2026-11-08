@@ -161,6 +161,15 @@ func (m *menuState) tap(x, y int, p Profile, shown string) *menuAction {
 	if !at.In(overlay) {
 		return nil
 	}
+	if m.Phase == menuRunningPhase {
+		// Nothing to dismiss while the action runs.
+		return nil
+	}
+	if m.Phase == menuResultPhase {
+		// The result is a banner: any tap acknowledges it.
+		m.close()
+		return nil
+	}
 	for i, c := range cells {
 		if !at.In(c.rect) {
 			continue
@@ -507,6 +516,13 @@ func overlayRect(p Profile) image.Rectangle {
 	return image.Rect(0, 0, p.Width, max(1, p.Height/2))
 }
 
+// bannerRect is the strip that shows a running action or its result. It is
+// not a menu screen: it needs no selection and no close box, and it leaves
+// almost the whole page visible.
+func bannerRect(p Profile) image.Rectangle {
+	return image.Rect(0, 0, p.Width, max(28, p.Height/8))
+}
+
 // menuCells splits the top half into equal cells. header reserves a strip for
 // the confirmation or result text.
 func menuCells(p Profile, kinds []string, header bool) (cells []menuCell, headerRect, overlay image.Rectangle) {
@@ -555,7 +571,7 @@ func menuKinds(phase string, count int) []string {
 	case menuConfirmPhase:
 		return []string{cellClose, cellYes, cellNo}
 	case menuRunningPhase, menuResultPhase:
-		return []string{cellClose}
+		return nil // drawn as one text screen, no cells
 	}
 	kinds := []string{cellClose}
 	for i := 0; i < menuPerPage; i++ {
@@ -577,6 +593,10 @@ func drawMenu(img *image.Paletted, p Profile, v menuView, t texts) {
 	bg := image.Rect(overlay.Min.X, overlay.Min.Y, min(overlay.Max.X, img.Rect.Max.X), min(overlay.Max.Y, img.Rect.Max.Y))
 	render.FillColor(img, bg, render.White)
 	header := v.phase != menuListPhase
+	if v.phase == menuRunningPhase || v.phase == menuResultPhase {
+		drawBanner(img, p, v)
+		return
+	}
 	kinds := menuKinds(v.phase, len(v.actions))
 	cells, headerRect, _ := menuCells(p, kinds, header)
 	size := max(render.MinSize, float64(overlay.Dy())/5)
@@ -667,6 +687,36 @@ func drawCell(img *image.Paletted, c menuCell, label string, size float64, selec
 	if disabled && selected {
 		frameCell(img, c.rect, 2)
 	}
+}
+
+// drawBanner paints the running action and its result as a strip at the top:
+// the outcome is an announcement, not a dialog, so it has no cells and no
+// close box. A running action is outlined, a result is filled.
+func drawBanner(img *image.Paletted, p Profile, v menuView) {
+	r := bannerRect(p)
+	r = r.Intersect(img.Rect)
+	if r.Empty() {
+		return
+	}
+	text := v.title
+	if v.text != "" {
+		if text == "" {
+			text = v.text
+		} else {
+			text += ": " + v.text
+		}
+	}
+	ink := render.White
+	if v.phase == menuRunningPhase {
+		render.FillColor(img, r, render.White)
+		frameCell(img, r, 2)
+		ink = render.Black
+	} else {
+		render.FillColor(img, r, render.Black)
+	}
+	size := max(render.MinSize, float64(r.Dy())*0.52)
+	render.Text(img, text, r.Min.X+12, r.Min.Y+r.Dy()/2+int(size*0.36),
+		render.Style{Size: size, Bold: true, Shrink: true}, r.Dx()-24, ink, render.Left)
 }
 
 // frameCell draws a border of the given thickness inside r.

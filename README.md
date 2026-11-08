@@ -285,7 +285,7 @@ Short `home` opens the menu when the plan has actions and the device does not se
 - A long `home` closes the menu and goes to page 1; `X` closes it and keeps the page. On the Sticky every cell of the overlay is a touch target — `X`, the actions, `<`/`>` and `Ja`/`Nein` — and a tap on a confirming action opens its confirmation first; a tap never opens the menu.
 - Unavailable actions stay visible, hatched, with the plugin's reason. A plugin that is down keeps its actions visible as unavailable instead of hiding them.
 - The menu closes itself after `menu_show_duration` (default 30 s, at most 60 s) and asks for a one-shot wake at that deadline (`wake` in the sync answer, ADR 0061), so it closes without waiting for the next regular refresh.
-- An action gets about five seconds inside the sync. If it is not done by then the menu shows "running" and Paperboy schedules one result wake (`reason: result`) for the outcome.
+- An action gets about five seconds inside the sync. If it is not done by then a thin banner at the top says "running", and Paperboy schedules one result wake (`reason: result`) for the outcome. The outcome itself is a banner too ("Erledigt: …" or "Fehlgeschlagen: …") without cells or a close box; the next input or the next regular sync clears it.
 - A device with `actions: deny` keeps the old meaning of `home` (page 1); the dashboard marks it as denied.
 - Plugin actions set target states (e.g. `mode: now`), never toggles, so a repeated sync is safe.
 
