@@ -58,7 +58,7 @@ download:
 
 - It runs at startup and then once a day, in the background; an instance without internet keeps working as before, and nothing else needs the section.
 - **Plugins**: a configured plugin whose program is missing gets the newest one as `plugins/<plugin>-v<version>` (`weather-v2.1.0`, `weather-v2.1.0.exe` on Windows). A `version` pin in the plugin section selects exactly that version.
-- **Firmware**: the images of the hardware types in `display_types` land in `firmware/<hardware>-v<version>.bin`; a `firmware.version` pin picks the release that carries exactly that image, which is also how a rollback is pinned. Devices are still only offered an update with `firmware.update: auto`.
+- **Firmware**: every image of the bundle lands in `firmware/<hardware>-v<version>.bin` (ADR 0061); a `firmware.version` pin picks the release that carries exactly that image, which is also how a rollback is pinned. Devices are still only offered an update with `firmware.update: auto`.
 - A program **without** a version in `plugins/` (`weather`) always wins — it is your build — and is neither replaced nor pinned; download it by hand or delete it to hand the plugin back to the releases.
 - A new plugin version restarts only that plugin on its next use; existing files are never overwritten or deleted, so versions pile up and are removed by hand (deleting an image is the firmware rollback of ADR 0043).
 - The dashboard shows the source, the last check, the versions in use and the last error.
