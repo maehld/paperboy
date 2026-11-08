@@ -15,20 +15,41 @@ nav a { color: #134e9c; text-decoration: none; }
 nav a.active { font-weight: 700; color: #111; }
 .build { margin-left: auto; font-variant-numeric: tabular-nums; }
 a { color: #134e9c; }
-.switch { display: flex; flex-wrap: wrap; gap: .8rem; margin-bottom: 1rem; font-size: .95rem; }
+.tabs { display: flex; flex-wrap: wrap; gap: .25rem; border-bottom: 1px solid #ddd; margin: 0 0 1rem; }
+.tabs a { padding: .4rem .8rem; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; text-decoration: none; font-size: .95rem; }
+.tabs a.active { background: #fff; border-color: #ddd; color: #111; font-weight: 600; margin-bottom: -1px; }
+.tabs .count { margin-left: .35rem; color: #888; font-weight: 400; font-size: .8rem; }
+.card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
+.card h2 { font-size: 1.1rem; margin: 0; display: flex; align-items: baseline; gap: .4rem; }
+.card h2 .count { color: #888; font-size: .85rem; font-weight: 400; }
+.card-head { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-bottom: .7rem; }
+.card-head .spacer { margin-left: auto; }
+.card-head .filter { max-width: 18rem; }
+.switch { display: flex; flex-wrap: wrap; gap: .8rem; margin-bottom: .6rem; font-size: .9rem; }
 .switch a { text-decoration: none; }
 .switch a.active { font-weight: 700; color: #111; }
-.card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
-.card h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
 table { border-collapse: collapse; width: 100%; font-size: .92rem; }
 th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid #eee; vertical-align: baseline; }
-tr:first-child th { border-top: 0; }
+thead th { border-top: 0; }
 th { font-weight: 600; color: #666; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
 td.open { text-align: right; white-space: nowrap; }
+tbody.group { border-top: 2px solid #eee; }
+tbody.group th { background: #f7f9fc; padding: .35rem .5rem; font-size: .95rem; text-transform: none; letter-spacing: 0; color: #111; border-top: 0; }
+tbody.group td.open { background: #f7f9fc; padding: .35rem .5rem; }
+tbody.group tr:not(:first-child) td.open { background: transparent; padding: .3rem .8rem .3rem 0; }
+tbody.group tr:first-child th, tbody.group tr:first-child td { border-top: 0; }
+td.file { font-family: ui-monospace, Consolas, monospace; font-size: .85rem; }
+td.num { font-variant-numeric: tabular-nums; }
 .error { margin: .4rem 0 0; padding: .4rem .6rem; background: #fff2f2; border-left: 3px solid #c22; font-size: .85rem; word-break: break-word; }
-form.new { display: flex; flex-wrap: wrap; gap: .8rem; align-items: center; font-size: .9rem; }
-form.new input, form.new select { font: inherit; padding: .2rem .3rem; }
-.empty { margin: 0; padding: 2rem 1rem; text-align: center; color: #888; border: 1px dashed #ccc; background: #fff; }
+input, select, button { font: inherit; padding: .2rem .35rem; }
+details.new summary { list-style: none; display: inline-block; padding: .25rem .7rem; border: 1px solid #134e9c; border-radius: 6px; background: #134e9c; color: #fff; font-size: .9rem; cursor: pointer; user-select: none; }
+details.new summary::-webkit-details-marker { display: none; }
+details.new summary:hover { background: #0e3d7c; }
+details.new[open] summary { background: #fafafa; color: #134e9c; }
+details.new form { display: flex; flex-wrap: wrap; gap: .8rem; align-items: center; margin-top: .7rem; font-size: .9rem; padding: .6rem; background: #f8fafd; border: 1px solid #e1e7f0; border-radius: 6px; }
+details.new .hint { flex-basis: 100%; margin: 0; }
+.hint { margin: .6rem 0 0; font-size: .85rem; color: #666; }
+.empty { margin: 0; padding: 2rem 1rem; text-align: center; color: #888; border: 1px dashed #ccc; }
 </style>
 </head>
 <body>
@@ -37,99 +58,145 @@ form.new input, form.new select { font: inherit; padding: .2rem .3rem; }
   <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/plugins">Widgets</a> · <a class="active" href="/ui/editor">Editor</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
 </header>
-{{if .Displays}}
-<div class="switch">
-  <span class="muted">Display type:</span>
-  {{range .Displays}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
-  <span class="muted">· a shared page is opened for the selected display type</span>
-</div>
-{{else}}
-<p class="empty">No display types configured.</p>
-{{end}}
-{{if .Groups}}
-{{range .Groups}}
+<nav class="tabs">
+  {{range .Tabs}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Label}}<span class="count">{{.Count}}</span></a>{{end}}
+</nav>
+{{if eq .Tab "pages"}}
 <section class="card">
-  <h2>{{.Name}}</h2>
-  <table>
-    <tr><th>File</th><th>Kind</th><th>Grid</th><th>Title</th><th></th></tr>
-    {{range .Variants}}
-    <tr>
-      <td>{{.Label}}</td>
-      <td>{{.Kind}}</td>
-      <td>{{.Grid}}</td>
-      <td>{{.Title}}</td>
-      <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
-    </tr>
-    {{if .Error}}<tr><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
+  <div class="card-head">
+    <h2>Pages{{if .Groups}} <span class="count">{{len .Groups}}</span>{{end}}</h2>
+    <span class="spacer"></span>
+    <input class="filter" type="search" placeholder="Filter pages…" data-filter="page-table" aria-label="Filter pages">
+    {{if .Displays}}<details class="new">
+      <summary>New page</summary>
+      <form method="get" action="/ui/editor/page">
+        <input type="hidden" name="new" value="1">
+        <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. solar" title="lower case letters, digits and -"></label>
+        <label>Display type <select name="display">
+          <option value="">shared page, all display types</option>
+          {{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+        </select></label>
+        <button type="submit">Create</button>
+        <p class="hint">Lower case letters, digits and <code>-</code>. A page is saved as <code>pages/&lt;name&gt;.&lt;display type&gt;.yaml</code>, a shared page as <code>pages/&lt;name&gt;.yaml</code>; a new page starts with the kind and grid of the chosen display type.</p>
+      </form>
+    </details>{{end}}
+  </div>
+  {{if .Displays}}
+  <div class="switch">
+    <span class="muted">Display type:</span>
+    {{range .Displays}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
+    <span class="muted">· a shared page is opened for the selected display type</span>
+  </div>
+  {{else}}
+  <p class="empty">No display types configured. Add one under <code>display_types</code> in <code>paperboy.yaml</code>.</p>
+  {{end}}
+  {{if .Groups}}
+  <table id="page-table">
+    <thead><tr><th>File</th><th>Kind</th><th>Grid</th><th>Title</th><th></th></tr></thead>
+    {{range .Groups}}
+    <tbody class="group">
+      <tr><th colspan="4">{{.Name}}</th><td class="open"></td></tr>
+      {{range .Variants}}
+      <tr>
+        <td class="file">{{.Label}}</td>
+        <td>{{.Kind}}</td>
+        <td class="num">{{.Grid}}</td>
+        <td>{{.Title}}</td>
+        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
+      </tr>
+      {{if .Error}}<tr><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
+      {{end}}
+    </tbody>
     {{end}}
   </table>
+  {{else}}
+  <p class="empty">No pages yet. A page is <code>pages/&lt;name&gt;.yaml</code>.</p>
+  {{end}}
 </section>
 {{end}}
-{{else}}
-<p class="empty">No pages yet.</p>
-{{end}}
-{{if .Plans}}
+{{if eq .Tab "plans"}}
 <section class="card">
-  <h2>Plans</h2>
-  <table>
-    <tr><th>Name</th><th>Rules</th><th>Fallback</th><th></th></tr>
-    {{range .Plans}}
-    <tr>
-      <td>{{.Name}}</td>
-      <td>{{.Rules}}</td>
-      <td>{{.Fallback}}</td>
-      <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
-    </tr>
-    {{if .Error}}<tr><td colspan="4"><p class="error">{{.Error}}</p></td></tr>{{end}}
-    {{end}}
+  <div class="card-head">
+    <h2>Plans{{if .Plans}} <span class="count">{{len .Plans}}</span>{{end}}</h2>
+    <span class="spacer"></span>
+    <input class="filter" type="search" placeholder="Filter plans…" data-filter="plan-table" aria-label="Filter plans">
+  </div>
+  {{if .Plans}}
+  <table id="plan-table">
+    <thead><tr><th>Name</th><th>Rules</th><th>Fallback</th><th></th></tr></thead>
+    <tbody>
+      {{range .Plans}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td class="num">{{.Rules}}</td>
+        <td>{{.Fallback}}</td>
+        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
+      </tr>
+      {{if .Error}}<tr><td colspan="4"><p class="error">{{.Error}}</p></td></tr>{{end}}
+      {{end}}
+    </tbody>
   </table>
+  <p class="hint">A plan is <code>plans/&lt;name&gt;.yaml</code>: rules for the time of day and the pages a device shows. Plans are written by hand; the editor only changes them.</p>
+  {{else}}
+  <p class="empty">No plans yet. A plan is <code>plans/&lt;name&gt;.yaml</code>.</p>
+  {{end}}
 </section>
-{{else}}
-<p class="empty">No plans yet. A plan is <code>plans/&lt;name&gt;.yaml</code>.</p>
 {{end}}
-{{if .Devices}}
+{{if eq .Tab "devices"}}
 <section class="card">
-  <h2>Devices</h2>
-  <table>
-    <tr><th>ID</th><th>Display type</th><th>MAC</th><th>Plan</th><th></th></tr>
-    {{range .Devices}}
-    <tr>
-      <td>{{.ID}}</td>
-      <td>{{.Display}}</td>
-      <td>{{.MAC}}</td>
-      <td>{{.Plan}}</td>
-      <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
-    </tr>
-    {{if .Error}}<tr><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
-    {{end}}
+  <div class="card-head">
+    <h2>Devices{{if .Devices}} <span class="count">{{len .Devices}}</span>{{end}}</h2>
+    <span class="spacer"></span>
+    <input class="filter" type="search" placeholder="Filter devices…" data-filter="device-table" aria-label="Filter devices">
+    <details class="new">
+      <summary>New device</summary>
+      <form method="get" action="/ui/editor/device">
+        <input type="hidden" name="new" value="1">
+        <label>ID <input name="id" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. wohnzimmer" title="lower case letters, digits and -"></label>
+        <button type="submit">Create</button>
+        <p class="hint">Lower case letters, digits and <code>-</code>. The ID becomes the file name and the device's stable ID; the display type and the MAC address follow on the device page.</p>
+      </form>
+    </details>
+  </div>
+  {{if .Devices}}
+  <table id="device-table">
+    <thead><tr><th>ID</th><th>Display type</th><th>MAC</th><th>Plan</th><th></th></tr></thead>
+    <tbody>
+      {{range .Devices}}
+      <tr>
+        <td>{{.ID}}</td>
+        <td>{{.Display}}</td>
+        <td class="num">{{.MAC}}</td>
+        <td>{{.Plan}}</td>
+        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
+      </tr>
+      {{if .Error}}<tr><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
+      {{end}}
+    </tbody>
   </table>
-</section>
-{{else}}
-<p class="empty">No devices yet. A device is <code>devices/&lt;id&gt;.yaml</code>.</p>
-{{end}}
-{{if .Displays}}
-<section class="card">
-  <h2>New device</h2>
-  <form class="new" method="get" action="/ui/editor/device">
-    <input type="hidden" name="new" value="1">
-    <label>ID <input name="id" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. wohnzimmer" title="lower case letters, digits and -"></label>
-    <button type="submit">Create</button>
-  </form>
-  <p class="muted">Lower case letters, digits and <code>-</code>. The ID becomes the file name and the device's stable ID; the display type and the MAC address follow on the device page.</p>
-</section>
-<section class="card">
-  <h2>New page</h2>
-  <form class="new" method="get" action="/ui/editor/page">
-    <input type="hidden" name="new" value="1">
-    <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. solar" title="lower case letters, digits and -"></label>
-    <label>Display type <select name="display">
-      <option value="">shared page, all display types</option>
-      {{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
-    </select></label>
-    <button type="submit">Create</button>
-  </form>
-  <p class="muted">Lower case letters, digits and <code>-</code>. A page is saved as <code>pages/&lt;name&gt;.&lt;display type&gt;.yaml</code>, a shared page as <code>pages/&lt;name&gt;.yaml</code>; a new page starts with the kind and grid of the chosen display type.</p>
+  {{else}}
+  <p class="empty">No devices yet. A device is <code>devices/&lt;id&gt;.yaml</code>.</p>
+  {{end}}
 </section>
 {{end}}
+<script>
+// The filter keeps the group rows of the page list in step with their variants.
+for (const input of document.querySelectorAll('input[data-filter]')) {
+  const table = document.getElementById(input.dataset.filter);
+  if (!table) continue;
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    for (const body of table.tBodies) {
+      let shown = 0;
+      for (const row of body.rows) {
+        const hit = !q || row.textContent.toLowerCase().includes(q);
+        row.hidden = !hit;
+        if (hit) shown++;
+      }
+      body.hidden = shown === 0;
+    }
+  });
+}
+</script>
 </body>
 </html>

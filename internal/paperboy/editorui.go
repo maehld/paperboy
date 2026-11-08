@@ -61,6 +61,19 @@ type editorListPage struct {
 	Options   []galleryOption   // display types of the new-page form
 	Plans     []editorPlanRow   // the plan files next to the pages (ADR 0069)
 	Devices   []editorDeviceRow // the device files (ADR 0070)
+	Tabs      []editorTab       // pages, plans and devices as sub-tabs
+	Tab       string            // the open sub-tab
+}
+
+// editorTab is one sub-tab of the overview. The overview used to stack every
+// object type on one page; one tab per type keeps each list with its own
+// filter and its own way to create something.
+type editorTab struct {
+	Name     string
+	Label    string
+	Count    int
+	URL      string
+	Selected bool
 }
 
 // editorDeviceRow is one device file in the overview.
@@ -191,17 +204,25 @@ func editorVersion(cfg *Config) (version, goVersion string) {
 }
 
 // handleEditor lists the page files by page name, with the variants of each
-// page, and offers a new page (ADR 0068).
+// page, the plans and the device files, one object type per sub-tab; the pages
+// tab offers a new page (ADR 0068).
 func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
-	display := editorDisplay(cfg, r.URL.Query().Get("display"))
+	q := r.URL.Query()
+	display := editorDisplay(cfg, q.Get("display"))
+	tab := q.Get("tab")
+	switch tab {
+	case "plans", "devices":
+	default:
+		tab = "pages"
+	}
 	files, err := pageFiles(cfg.Pages)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	version, goVersion := editorVersion(cfg)
-	v := editorListPage{Version: version, GoVersion: goVersion, Display: display,
+	v := editorListPage{Version: version, GoVersion: goVersion, Display: display, Tab: tab,
 		Groups: groupPageFiles(files, cfg.Profiles, display)}
 	plans, err := planFiles(cfg.Plans, cfg.Timezone)
 	if err != nil {
@@ -230,11 +251,28 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 			URL: "/ui/editor?" + url.Values{"display": {n}}.Encode()})
 		v.Options = append(v.Options, galleryOption{Value: n, Label: n, Selected: n == display})
 	}
+	v.Tabs = []editorTab{
+		{Name: "pages", Label: "Pages", Count: len(v.Groups), URL: editorTabURL("pages", display)},
+		{Name: "plans", Label: "Plans", Count: len(v.Plans), URL: editorTabURL("plans", "")},
+		{Name: "devices", Label: "Devices", Count: len(v.Devices), URL: editorTabURL("devices", "")},
+	}
+	for i := range v.Tabs {
+		v.Tabs[i].Selected = v.Tabs[i].Name == tab
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	if err := editorListTmpl.Execute(w, v); err != nil {
 		slog.Error("page overview rendering failed", "error", err)
 	}
+}
+
+// editorTabURL links one sub-tab; the pages tab keeps the chosen display type.
+func editorTabURL(tab, display string) string {
+	params := url.Values{"tab": {tab}}
+	if tab == "pages" && display != "" {
+		params.Set("display", display)
+	}
+	return "/ui/editor?" + params.Encode()
 }
 
 // handleEditorPage opens one page for a display type. A page without a file

@@ -7,7 +7,8 @@ import (
 )
 
 // TestEditorOverview lists the page files by page and opens a shared page for
-// the selected display type (ADR 0068).
+// the selected display type (ADR 0068); the other object types sit in their own
+// sub-tab.
 func TestEditorOverview(t *testing.T) {
 	s := editorServer(t)
 	writePage(t, s, "solar", "small", previewTemplate)
@@ -19,14 +20,21 @@ func TestEditorOverview(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		"<h2>solar</h2>", "<h2>shared</h2>",
+		`<th colspan="4">solar</th>`, `<th colspan="4">shared</th>`,
 		"/ui/editor/page?display=small&amp;name=solar",  // the variant keeps its display type
 		"/ui/editor/page?display=small&amp;name=shared", // the shared page follows the selection
-		"all display types", "New page", "<a href=\"/ui/downloads\">Downloads</a> · <a href=\"/ui/plugins\">Widgets</a> · <a class=\"active\" href=\"/ui/editor\">Editor",
+		"all display types", "New page",
+		`href="/ui/editor?display=small&amp;tab=pages" class="active">Pages<span class="count">2</span>`,
+		`href="/ui/editor?tab=plans">Plans<span class="count">`,
+		"<a href=\"/ui/downloads\">Downloads</a> · <a href=\"/ui/plugins\">Widgets</a> · <a class=\"active\" href=\"/ui/editor\">Editor",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, body)
 		}
+	}
+	// The plans and the device files are no longer stacked below the pages.
+	if strings.Contains(body, "A plan is <code>plans/") {
+		t.Fatalf("the pages tab carries the plan list:\n%s", body)
 	}
 
 	// Without a selection the editor works on the first image display type.
@@ -39,7 +47,7 @@ func TestEditorOverview(t *testing.T) {
 	writePage(t, s, "broken", "small", "title: x\nnope: 1\n")
 	writePage(t, s, "solar", "old", previewTemplate)
 	body = request(t, s, http.MethodGet, "/ui/editor?display=small", nil, nil).Body.String()
-	if !strings.Contains(body, "<h2>broken</h2>") || !strings.Contains(body, "yaml: unmarshal errors") {
+	if !strings.Contains(body, `<th colspan="4">broken</th>`) || !strings.Contains(body, "yaml: unmarshal errors") {
 		t.Fatalf("broken page not reported:\n%s", body)
 	}
 	if !strings.Contains(body, `display type &#34;old&#34; is not configured`) {
@@ -47,6 +55,34 @@ func TestEditorOverview(t *testing.T) {
 	}
 	if strings.Contains(body, "/ui/editor/page?display=old") {
 		t.Fatalf("a variant of an unknown display type is offered:\n%s", body)
+	}
+}
+
+// TestEditorTabs shows one object type per sub-tab, with its own filter.
+func TestEditorTabs(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "solar", "small", previewTemplate)
+	writePlanFile(t, s, "zimmer", testPlan)
+	writeDeviceFile(t, s.config().Dir, "wohnzimmer", "display_type: small\nmac: aa:bb:cc:dd:ee:02\nplan: zimmer\n")
+
+	tab := func(name string) string {
+		return request(t, s, http.MethodGet, "/ui/editor?tab="+name, nil, nil).Body.String()
+	}
+	plans := tab("plans")
+	if !strings.Contains(plans, `id="plan-table"`) || !strings.Contains(plans, "<td>zimmer</td>") {
+		t.Fatalf("plans tab:\n%s", plans)
+	}
+	if strings.Contains(plans, `id="page-table"`) {
+		t.Fatalf("plans tab carries the page list:\n%s", plans)
+	}
+	devices := tab("devices")
+	if !strings.Contains(devices, `id="device-table"`) || !strings.Contains(devices, "<td>wohnzimmer</td>") ||
+		!strings.Contains(devices, "New device") {
+		t.Fatalf("devices tab:\n%s", devices)
+	}
+	// An unknown tab falls back to the pages.
+	if body := tab("nope"); !strings.Contains(body, `id="page-table"`) {
+		t.Fatalf("unknown tab:\n%s", body)
 	}
 }
 
