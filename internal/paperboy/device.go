@@ -306,6 +306,10 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	menu := st.Menu
 	var invoke *menuAction
 	menuConsumed := false
+	// A menu that closes without user input (the wake at its deadline, a
+	// replaced result screen) still paused the page while it was open, so that
+	// sync must not turn it either (ADR 0057).
+	menuClosed := false
 	switch {
 	case req.Reason == "powercycle", critical, textDisplay, d.Actions == actionsDeny, d.Plan == "":
 		menu.close()
@@ -313,6 +317,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		if menu.Open && !now.Before(menu.OpenedAt.Add(menuDeadline(menu, d))) {
 			slog.Info("menu expired", "device", d.ID)
 			menu.close()
+			menuClosed = true
 		}
 		// A result stays until the next input or the next regular sync; the
 		// result wake itself is the one that brings it, so it must not close
@@ -320,6 +325,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		if menu.Open && menu.Phase == menuResultPhase && len(buttons) == 0 &&
 			req.Reason != "button" && req.Reason != "touch" && req.Reason != "result" {
 			menu.close()
+			menuClosed = true
 		}
 		var acts []plan.PlanAction
 		if p, _ := s.plans.get(cfg.Plans, d.Plan, cfg.Timezone); p != nil {
@@ -341,9 +347,12 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	menuOpen := menu.Open
+	// A sync the menu took part in never pages: it is modal, and its own
+	// buttons belong to it even when they close it (ADR 0067).
+	menuSync := menuOpen || menuConsumed || menuClosed
 	var pageButtons []string
 	switch {
-	case menuConsumed || menuOpen:
+	case menuSync:
 		// The menu consumed the input, so it never pages.
 	case d.Actions != actionsDeny:
 		// A long next/previous jumps to the first page of the rule; a long
@@ -362,7 +371,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	case critical: // the warning replaces all pages; buttons only show it again
 		st.Page = 0
 	case d.Plan != "":
-		choice = s.choosePlanPage(cfg, d, st, now, firstContact, pageButtons, pageTimeout, menuOpen, false)
+		choice = s.choosePlanPage(cfg, d, st, now, firstContact, pageButtons, pageTimeout, menuSync, false)
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
 	}
