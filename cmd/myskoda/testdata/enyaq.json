@@ -1,0 +1,118 @@
+{
+  "vehicle": {
+    "vin": "TMBJB9NY5RF999999",
+    "name": "Enyaq",
+    "licensePlate": "1MB 1234",
+    "renderUrl": "https://render.example/enyaq.png",
+    "status": {
+      "overall": {
+        "doorsLocked": "YES",
+        "locked": "YES",
+        "doors": "CLOSED",
+        "windows": "CLOSED",
+        "lights": "OFF",
+        "reliableLockStatus": "LOCKED"
+      },
+      "detail": { "sunroof": "CLOSED", "trunk": "CLOSED", "bonnet": "CLOSED" },
+      "carCapturedTimestamp": "2026-11-08T09:20:00Z"
+    },
+    "odometer": { "mileageInKm": 12753, "carCapturedTimestamp": "2026-11-08T09:20:00Z" },
+    "parkingPosition": {
+      "state": "PARKED",
+      "gpsCoordinates": { "latitude": 51.9607, "longitude": 7.6261 },
+      "formattedAddress": "Prinzipalmarkt 1, 48143 Münster, Germany",
+      "carCapturedTimestamp": "2026-11-08T08:05:00Z"
+    },
+    "airConditioning": {
+      "state": "HEATING",
+      "targetTemperature": { "value": 22.5, "unit": "CELSIUS" },
+      "estimatedReachOfTargetTemperatureAt": "2026-11-08T09:30:00Z",
+      "airConditioningWithoutExternalPower": true,
+      "airConditioningAtUnlock": false,
+      "windowHeating": { "enabled": true, "front": "ON", "rear": "OFF" },
+      "carCapturedTimestamp": "2026-11-08T09:20:00Z"
+    },
+    "auxiliaryHeating": {
+      "state": "OFF",
+      "startMode": "HEATING",
+      "durationInSeconds": 600,
+      "targetTemperature": { "value": 22.0, "unit": "CELSIUS" },
+      "carCapturedTimestamp": "2026-11-08T09:20:00Z"
+    },
+    "activeVentilation": { "state": "OFF", "durationInSeconds": 600, "carCapturedTimestamp": "2026-11-08T09:20:00Z" },
+    "charging": {
+      "isVehicleInSavedLocation": true,
+      "status": {
+        "chargePowerInKw": 20.2,
+        "chargingRateInKilometersPerHour": 120.5,
+        "remainingTimeToFullyChargedInMinutes": 75,
+        "fullyChargedAt": "2026-11-08T10:35:00Z",
+        "state": "CHARGING",
+        "chargeType": "DC",
+        "plugConnectionState": "CONNECTED",
+        "plugLockState": "LOCKED",
+        "battery": { "stateOfChargeInPercent": 71, "remainingCruisingRangeInMeters": 249000 }
+      },
+      "settings": {
+        "targetStateOfChargeInPercent": 80,
+        "preferredChargeMode": "PREFERRED_CHARGING_TIMES",
+        "availableChargeModes": ["MANUAL", "PREFERRED_CHARGING_TIMES"],
+        "chargingCareMode": "DEACTIVATED",
+        "batteryCareModeTargetValueInPercent": 80,
+        "autoUnlockPlugWhenCharged": "OFF",
+        "maxChargeCurrentAc": "MAXIMUM",
+        "maxChargeCurrentAcAmpere": 32
+      },
+      "carCapturedTimestamp": "2026-11-08T09:20:00Z"
+    },
+    "chargingProfiles": {
+      "profiles": [
+        {
+          "id": 1,
+          "name": "Zuhause",
+          "settings": {
+            "maxChargingCurrent": "MAXIMUM",
+            "targetStateOfChargeInPercent": 80,
+            "autoUnlockPlugWhenCharged": "OFF"
+          },
+          "preferredChargingTimes": [{ "id": 1, "enabled": true, "startTime": "22:00", "endTime": "06:00" }],
+          "timers": [
+            {
+              "id": 1,
+              "enabled": true,
+              "time": "04:30",
+              "type": "RECURRING",
+              "recurringOn": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"]
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "Arbeit",
+          "settings": {
+            "maxChargingCurrent": "REDUCED",
+            "targetStateOfChargeInPercent": 90,
+            "autoUnlockPlugWhenCharged": "PERMANENT"
+          },
+          "preferredChargingTimes": [],
+          "timers": []
+        }
+      ],
+      "currentVehiclePositionProfile": {
+        "id": 1,
+        "name": "Zuhause",
+        "targetStateOfChargeInPercent": 80,
+        "nextChargingTime": "04:30"
+      },
+      "carCapturedTimestamp": "2026-11-08T09:20:00Z"
+    },
+    "operations": [
+      { "name": "startCharging" },
+      { "name": "stopCharging" },
+      { "name": "setChargingLimit" },
+      { "name": "startAirConditioning" },
+      { "name": "stopAirConditioning" }
+    ]
+  },
+  "errors": []
+}

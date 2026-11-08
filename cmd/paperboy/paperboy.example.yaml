@@ -28,6 +28,11 @@ plugins:
     config: { comic: latest }
   departures:
     config: { stop: "City, Stop name", walk_minutes: 4 }   # Westfalenfahrplan by default, see docs/plugins/departures.md
+  myskoda:
+    config:
+      api_key: ${SKODA_API_KEY}     # created in the MyŠkoda app, bound to the vehicle
+      vin: TMBJB9NY5RF999999
+      refresh: 1h                   # default; at least 10m (20 requests per hour)
   calendar:
     timeout: 1m
     config:

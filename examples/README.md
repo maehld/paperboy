@@ -1,7 +1,8 @@
 # Example pages and plans
 
 The pages under `pages/` are grids of widgets from the shipped plugins
-(ADR 0049): `weather`, `calendar`, `evcc`, `departures`, `pokedex`, `xkcd` and the built-in `paperboy` plugin. Copy the files you
+(ADR 0049): `weather`, `calendar`, `evcc`, `departures`, `pokedex`, `xkcd`,
+`myskoda` and the built-in `paperboy` plugin. Copy the files you
 need into the `pages/` directory of your instance and adapt the grid, the
 spans and the arguments.
 
@@ -13,6 +14,8 @@ spans and the arguments.
   temperature curve.
 - `laden.yaml` - evcc: energy flow, the charging point and the forecast;
   `laden.lcd2004.yaml` shows site and charging point on 20×4.
+- `auto.yaml` - myskoda: battery, charging, climate, the vehicle image, charging
+  plans and position; `auto.lcd2004.yaml` shows the overview on 20×4.
 - `energie.yaml` - evcc energy flow with site values and the charging point.
 - `abfahrten.yaml` - real-time departures; `abfahrten.lcd2004.yaml` on 20×4.
 - `unterwegs.yaml` - current weather with clothing advice and the next
