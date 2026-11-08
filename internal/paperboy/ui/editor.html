@@ -88,7 +88,7 @@ details.new .hint { flex-basis: 100%; margin: 0; }
     <span class="muted">· a shared page is opened for the selected display type</span>
   </div>
   {{else}}
-  <p class="empty">No display types configured. Add one under <code>display_types</code> in <code>paperboy.yaml</code>.</p>
+  <p class="empty">No display types configured. Add one under <code>displays/</code>.</p>
   {{end}}
   {{if .Groups}}
   <table id="page-table">
@@ -176,6 +176,46 @@ details.new .hint { flex-basis: 100%; margin: 0; }
   </table>
   {{else}}
   <p class="empty">No devices yet. A device is <code>devices/&lt;id&gt;.yaml</code>.</p>
+  {{end}}
+</section>
+{{end}}
+{{if eq .Tab "displays"}}
+<section class="card">
+  <div class="card-head">
+    <h2>Display types{{if .Types}} <span class="count">{{len .Types}}</span>{{end}}</h2>
+    <span class="spacer"></span>
+    <input class="filter" type="search" placeholder="Filter display types…" data-filter="display-table" aria-label="Filter display types">
+    <details class="new">
+      <summary>New display type</summary>
+      <form method="get" action="/ui/editor/display">
+        <input type="hidden" name="new" value="1">
+        <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. wohnzimmer" title="lower case letters, digits and -"></label>
+        <button type="submit">Create</button>
+        <p class="hint">Lower case letters, digits and <code>-</code>. The name becomes the file name and cannot be changed later: it is the suffix of page variants and a value in device files.</p>
+      </form>
+    </details>
+  </div>
+  {{if .Types}}
+  <table id="display-table">
+    <thead><tr><th>Name</th><th>Kind</th><th>Size</th><th>ppi / charset</th><th>Grays</th><th>Power</th><th></th></tr></thead>
+    <tbody>
+      {{range .Types}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td>{{.Kind}}</td>
+        <td class="num">{{.Size}}</td>
+        <td>{{.Density}}</td>
+        <td class="num">{{.Gray}}</td>
+        <td>{{.Power}}</td>
+        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
+      </tr>
+      {{if .Error}}<tr><td colspan="7"><p class="error">{{.Error}}</p></td></tr>{{end}}
+      {{end}}
+    </tbody>
+  </table>
+  <p class="hint">A display type is <code>displays/&lt;name&gt;.yaml</code>: kind, size, gray levels, pixel density and refresh floor. Removing or renaming its file stays a manual step.</p>
+  {{else}}
+  <p class="empty">No display types yet. A display type is <code>displays/&lt;name&gt;.yaml</code>.</p>
   {{end}}
 </section>
 {{end}}
