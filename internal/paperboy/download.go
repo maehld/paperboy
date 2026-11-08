@@ -233,13 +233,11 @@ func (s *Server) installPlugins(ctx context.Context, cfg *Config, c *download.Cl
 	return installed, nil
 }
 
-// downloadFirmware installs the images of the configured display types. A pin
-// picks the release whose bundle carries exactly that version (ADR 0060).
+// downloadFirmware installs the images of the release's bundle: all of them,
+// because a display type's name says nothing about the hardware a device
+// reports. A pin picks the release whose bundle carries that image version
+// (ADR 0060, 0061).
 func (s *Server) downloadFirmware(ctx context.Context, cfg *Config, c *download.Client) error {
-	want := cfg.profileNames()
-	if len(want) == 0 {
-		return nil
-	}
 	pin := cfg.Firmware.Version
 	if pin == "" {
 		rel, ok, err := c.Latest(ctx, func(a download.Asset) bool {
@@ -251,7 +249,7 @@ func (s *Server) downloadFirmware(ctx context.Context, cfg *Config, c *download.
 		if !ok {
 			return errors.New("firmware: no release with a bundle")
 		}
-		return s.installFirmware(ctx, cfg, c, rel, want, "")
+		return s.installFirmware(ctx, cfg, c, rel, "")
 	}
 	releases, err := c.List(ctx)
 	if err != nil {
@@ -262,61 +260,53 @@ func (s *Server) downloadFirmware(ctx context.Context, cfg *Config, c *download.
 		if err != nil {
 			return err
 		}
-		if archive == "" || !bundleHas(entries, want, pin) {
+		if archive == "" || !bundleHas(entries, pin) {
 			continue
 		}
-		return s.installFirmwareFiles(cfg, archive, want, pin)
+		return s.installFirmwareFiles(cfg, archive, pin)
 	}
 	return fmt.Errorf("firmware: no release carries images of %s", pin)
 }
 
-// installFirmware unpacks the images of the wanted hardware types from a
-// release's bundle; pin narrows them to that version.
-func (s *Server) installFirmware(ctx context.Context, cfg *Config, c *download.Client, rel download.Release, want []string, pin string) error {
+// installFirmware unpacks a release's bundle; pin narrows it to that version.
+func (s *Server) installFirmware(ctx context.Context, cfg *Config, c *download.Client, rel download.Release, pin string) error {
 	entries, archive, err := c.Bundle(ctx, rel)
 	if err != nil {
 		return err
 	}
-	if archive == "" || !bundleHas(entries, want, pin) {
-		return fmt.Errorf("%s: no images for %s", rel.Tag, strings.Join(want, ", "))
+	if archive == "" {
+		return fmt.Errorf("%s: no images", rel.Tag)
 	}
-	return s.installFirmwareFiles(cfg, archive, want, pin)
+	if !bundleHas(entries, pin) {
+		return fmt.Errorf("%s: no images of %s", rel.Tag, pin)
+	}
+	return s.installFirmwareFiles(cfg, archive, pin)
 }
 
-// bundleHas reports whether the bundle entries cover every wanted hardware type
-// with the given version (empty = any).
-func bundleHas(entries, want []string, pin string) bool {
-	for _, hw := range want {
-		found := false
-		for _, entry := range entries {
-			name := filepath.Base(entry)
-			version, _, ok := parseFirmwareName(hw, name)
-			if !ok {
-				continue
-			}
-			if pin == "" || version == pin {
-				found = true
-				break
-			}
+// bundleHas reports whether the bundle carries an image of the given version
+// (empty = any image).
+func bundleHas(entries []string, pin string) bool {
+	for _, entry := range entries {
+		name := filepath.Base(entry)
+		hw, ok := splitFirmwareName(name)
+		if !ok {
+			continue
 		}
-		if !found {
-			return false
+		if version, _, ok := parseFirmwareName(hw, name); ok && (pin == "" || version == pin) {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // installFirmwareFiles extracts the images from the bundle into the firmware
-// directory. Existing files are never overwritten.
-func (s *Server) installFirmwareFiles(cfg *Config, archive string, want []string, pin string) error {
-	known := map[string]bool{}
-	for _, hw := range want {
-		known[hw] = true
-	}
+// directory, all hardware types or only those of the pinned version. Existing
+// files are never overwritten.
+func (s *Server) installFirmwareFiles(cfg *Config, archive, pin string) error {
 	installed := map[string]string{}
 	names, err := download.Extract(archive, cfg.FirmwareDir, func(name string) bool {
 		hw, ok := splitFirmwareName(name)
-		if !ok || !known[hw] {
+		if !ok {
 			return false
 		}
 		version, _, ok := parseFirmwareName(hw, name)
