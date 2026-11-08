@@ -1,6 +1,6 @@
 # myskoda plugin
 
-Shows the state of a Škoda with a connected-vehicle subscription over the [MyŠkoda Public API](https://public.api.connect.skoda-auto.cz/docs). The plugin reads the vehicle in the background, keeps the last answer in memory and sends a change event when a shown value moves. It is read-only; remote commands are not part of it (see [Remote commands](#remote-commands) below).
+Shows the state of a Škoda with a connected-vehicle subscription over the [MyŠkoda Public API](https://public.api.connect.skoda-auto.cz/docs). The plugin reads the vehicle in the background, keeps the last answer in memory and sends a change event when a shown value moves. It offers two device-menu actions: start and stop charging, and start and stop air conditioning (see [Actions](#actions)).
 
 The API returns a snapshot: every part carries its own `carCapturedTimestamp`, so the widget shows when the car last sent its data. Parts a vehicle does not support are absent, and a field without a usable value is omitted — the widgets show `–` or leave the line out instead of inventing a value.
 
@@ -57,15 +57,38 @@ Text variants:
 | `climate` | state and target temperature, expected time, window heating and auxiliary states |
 | `car` | name and state of charge, range and charging state with lock state, odometer |
 
+## Actions
+
+The plugin offers two actions for the device menu (ADR 0057). Both target a state instead of toggling, so a retried request is safe, and both ask for confirmation before they run.
+
+| Action | Args | Endpoint |
+|---|---|---|
+| `charging` | `state: start\|stop` | `POST /api/v1/vehicles/{vin}/charging/{start\|stop}` |
+| `climate` | `state: start\|stop`, `temperature` (optional) | `POST /api/v1/vehicles/{vin}/air-conditioning/{start\|stop}` |
+
+A plan lists them as `myskoda/charging` or `myskoda/climate`:
+
+```yaml
+actions:
+  - { action: myskoda/charging, args: { state: start }, id: charge-start, title: "Laden starten" }
+  - { action: myskoda/charging, args: { state: stop }, id: charge-stop, title: "Laden stoppen" }
+  - { action: myskoda/climate, args: { state: start }, id: climate-start, title: "Klima starten" }
+  - { action: myskoda/climate, args: { state: stop, temperature: 21 }, id: climate-stop, title: "Klima stoppen" }
+```
+
+`temperature` is the target in °C, 16 to 30 in 0.5 steps; without it the car's current target is used, rounded to 0.5 °C. Air conditioning does not need a security PIN — only auxiliary heating does, and that command is not part of the plugin.
+
+An action is disabled in the menu when there is no data yet, when the vehicle does not list the command in `operations`, or when the target state already holds: `start` charging needs a connected cable and no running charge, `stop` charging needs a running one; `start` air conditioning needs it to be off, `stop` needs it to run. A `202` answer counts as success, other errors (`403`, `422`, `429`) become a short message. After a successful command the plugin reloads the state at once and reports `changed`; each command counts against the same 20 requests per hour as a read.
+
 ## Differences from the MyŠkoda app
 
 The API also offers:
 
-- remote commands: start and stop charging, start and stop air conditioning (with target temperature and "without external power"), charging limit, charge mode, charging profile updates, auxiliary heating (needs the security PIN `spin`) and active ventilation;
+- further remote commands: charging limit, charge mode, charging profile updates, auxiliary heating (needs the security PIN `spin`) and active ventilation;
 - fuel status for combustion and plug-in hybrid cars;
 - door, window, sunroof and light detail, tire pressure is not part of the API.
 
-Doors, windows and lights beyond the overall lock state, fuel status and all commands are not implemented yet. The plan for commands is recorded in issue #77: they become actions of the device menu (ADR 0057).
+Doors, windows and lights beyond the overall lock state, fuel status and those further commands are not implemented yet.
 
 ## Example
 
