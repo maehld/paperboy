@@ -47,13 +47,13 @@ func TestWidgetGallery(t *testing.T) {
 	s, _ := testServer(t)
 	s.config().Profiles["lcd"] = Profile{Kind: kindText, Charset: "ascii", Width: 20, Height: 4}
 	s.config().Timezone = time.UTC
-	body := preview(t, s, "/ui/plugins").Body.String()
+	body := preview(t, s, "/ui/plugins?tab=gallery").Body.String()
 	for _, want := range []string{"Display type", "header", "/api/widget/paperboy/header?display=small", "6x1"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("gallery misses %q: %s", want, body)
 		}
 	}
-	text := preview(t, s, "/ui/plugins?display=lcd").Body.String()
+	text := preview(t, s, "/ui/plugins?display=lcd&tab=gallery").Body.String()
 	if !strings.Contains(text, `<pre class="lcd">`) {
 		t.Fatalf("text gallery: %s", text)
 	}
@@ -70,7 +70,7 @@ func TestPlayground(t *testing.T) {
 	s.config().Profiles["lcd"] = Profile{Kind: kindText, Charset: "ascii", Width: 20, Height: 4}
 	s.config().Timezone = time.UTC
 
-	body := preview(t, s, "/ui/plugins?tab=playground").Body.String()
+	body := preview(t, s, "/ui/plugins").Body.String()
 	for _, want := range []string{
 		`"playground":true`, `"display":"small"`, `id="palette"`, `id="inspector"`, `id="snippet"`,
 		"Copy cell", `href="/ui/plugins?display=small&amp;tab=gallery"`,
@@ -78,6 +78,9 @@ func TestPlayground(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("playground misses %q: %s", want, body)
 		}
+	}
+	if !strings.Contains(body, `<a href="/ui/plugins?display=small&amp;tab=playground" class="active">Playground</a>`) {
+		t.Fatalf("the playground is not the default tab: %s", body)
 	}
 	if strings.Contains(body, `id="board"`) {
 		t.Fatalf("the playground draws a board: %s", body)
@@ -98,7 +101,7 @@ func TestPlayground(t *testing.T) {
 			t.Fatalf("text playground misses %q: %s", want, body)
 		}
 	}
-	// The gallery keeps its tabs and is still the default.
+	// The gallery keeps its tabs.
 	if body := preview(t, s, "/ui/plugins?tab=gallery").Body.String(); !strings.Contains(body, `href="/ui/plugins?display=small&amp;tab=playground"`) {
 		t.Fatalf("gallery misses the playground tab: %s", body)
 	}
@@ -108,7 +111,7 @@ func TestPlayground(t *testing.T) {
 func TestWidgetGalleryArgs(t *testing.T) {
 	s, _ := testServer(t)
 	s.config().Timezone = time.UTC
-	body := preview(t, s, "/ui/plugins?display=small").Body.String()
+	body := preview(t, s, "/ui/plugins?display=small&tab=gallery").Body.String()
 	for _, want := range []string{`id="paperboy-clock"`, `<select name="arg.format" id="paperboy-clock-arg.format">`, `<option value="datetime">`,
 		`<span class="desc">time, date or datetime</span>`, `<span class="req" title="required">*</span>`,
 		`name="arg.text" value="" placeholder=""`, `<option value="" selected>default (left)</option>`, `name="widget" value="paperboy/clock"`} {
@@ -119,7 +122,7 @@ func TestWidgetGalleryArgs(t *testing.T) {
 	if strings.Contains(body, "arg.format=") || strings.Contains(body, `class="snippet"`) || strings.Contains(body, `<ul class="args">`) {
 		t.Fatal("args or snippet without a chosen widget")
 	}
-	body = preview(t, s, "/ui/plugins?display=small&widget=paperboy/clock&span=6x1&arg.format=date&arg.align=").Body.String()
+	body = preview(t, s, "/ui/plugins?display=small&tab=gallery&widget=paperboy/clock&span=6x1&arg.format=date&arg.align=").Body.String()
 	for _, want := range []string{`<option value="date" selected>`, "/api/widget/paperboy/clock?arg.format=%22date%22&amp;display=small&amp;grid=6x8&amp;span=6x1",
 		"{ at: [0, 0], span: [6, 1], widget: paperboy/clock, args: { format: date } }", `<option value="6x1" selected>`} {
 		if !strings.Contains(body, want) {
@@ -135,7 +138,7 @@ func TestWidgetGalleryArgs(t *testing.T) {
 		t.Fatalf("snippet: %s", got)
 	}
 	// an invalid enum value comes back as the widget error
-	body = preview(t, s, "/ui/plugins?display=small&widget=paperboy/clock&arg.format=year").Body.String()
+	body = preview(t, s, "/ui/plugins?display=small&tab=gallery&widget=paperboy/clock&arg.format=year").Body.String()
 	if !strings.Contains(body, `<option value="year" selected>year (not allowed)</option>`) {
 		t.Fatalf("invalid value not kept in the form: %s", body)
 	}
@@ -149,7 +152,7 @@ func TestWidgetGalleryBoolCheckbox(t *testing.T) {
 	s, _ := testServer(t)
 	s.config().Timezone = time.UTC
 	// defaults: clock true → checked, date false → unchecked
-	body := preview(t, s, "/ui/plugins?display=small").Body.String()
+	body := preview(t, s, "/ui/plugins?display=small&tab=gallery").Body.String()
 	for _, want := range []string{
 		`<input type="hidden" name="arg.clock" value="false"><input type="checkbox" name="arg.clock" value="true" checked id="paperboy-header-arg.clock">`,
 		`<input type="hidden" name="arg.date" value="false"><input type="checkbox" name="arg.date" value="true" id="paperboy-header-arg.date">`,
@@ -159,7 +162,7 @@ func TestWidgetGalleryBoolCheckbox(t *testing.T) {
 		}
 	}
 	// a submitted form: clock unchecked (only false), date checked (false then true)
-	body = preview(t, s, "/ui/plugins?display=small&widget=paperboy/header&arg.clock=false&arg.date=false&arg.date=true&arg.page_indicator=false&arg.page_indicator=true").Body.String()
+	body = preview(t, s, "/ui/plugins?display=small&tab=gallery&widget=paperboy/header&arg.clock=false&arg.date=false&arg.date=true&arg.page_indicator=false&arg.page_indicator=true").Body.String()
 	for _, want := range []string{
 		`<input type="checkbox" name="arg.clock" value="true" id=`,
 		`<input type="checkbox" name="arg.date" value="true" checked id=`,

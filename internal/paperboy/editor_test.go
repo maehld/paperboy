@@ -3,7 +3,9 @@ package paperboy
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"image/png"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -262,6 +264,96 @@ func TestPlansListReadAndSave(t *testing.T) {
 	}
 	if rec := request(t, s, http.MethodGet, "/api/plans/unknown", nil, nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown plan: %d", rec.Code)
+	}
+}
+
+// TestDeleteFiles removes a page, a plan, a device and a display type file. A
+// hash that no longer matches refuses the delete, and every removed file stays
+// under state/editor/ (ADR 0073).
+func TestDeleteFiles(t *testing.T) {
+	s := editorServer(t)
+	backups := func(kind, label string) []string {
+		t.Helper()
+		files, err := filepath.Glob(filepath.Join(s.config().Dir, "state", "editor", kind, label, "*.yaml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return files
+	}
+
+	// A page: the stale hash is a conflict, the right one removes the file.
+	writePage(t, s, "solar", "small", previewTemplate)
+	var read editorPage
+	request(t, s, http.MethodGet, "/api/pages/solar?display=small", nil, &read)
+	pagePath := filepath.Join(s.config().Pages, "solar.small.yaml")
+	if rec := request(t, s, http.MethodDelete, "/api/pages/solar?display=small&hash=stale", nil, nil); rec.Code != http.StatusConflict {
+		t.Fatalf("stale hash: %d %s", rec.Code, rec.Body)
+	}
+	if _, err := os.Stat(pagePath); err != nil {
+		t.Fatalf("a conflicted delete removed the page: %v", err)
+	}
+	var deleted struct{ Deleted string }
+	rec := request(t, s, http.MethodDelete, "/api/pages/solar?display=small&hash="+read.Hash, nil, &deleted)
+	if rec.Code != http.StatusOK || deleted.Deleted != "pages/solar.small.yaml" {
+		t.Fatalf("delete page: %d %s", rec.Code, rec.Body)
+	}
+	if _, err := os.Stat(pagePath); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("page still there: %v", err)
+	}
+	if files := backups("pages", "solar.small"); len(files) != 1 {
+		t.Fatalf("page backup: %v", files)
+	}
+	if rec := request(t, s, http.MethodDelete, "/api/pages/solar?display=small", nil, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("deleted page again: %d", rec.Code)
+	}
+	// The shared page is a file of its own and is not touched by that.
+	writePage(t, s, "solar", "", previewTemplate)
+	if _, err := os.Stat(filepath.Join(s.config().Pages, "solar.yaml")); err != nil {
+		t.Fatalf("shared page: %v", err)
+	}
+
+	// A plan: no hash deletes it deliberately, like an overwrite without one.
+	writePlanFile(t, s, "tour", testEditablePlan)
+	if rec := request(t, s, http.MethodDelete, "/api/plans/tour", nil, nil); rec.Code != http.StatusOK {
+		t.Fatalf("delete plan: %d %s", rec.Code, rec.Body)
+	}
+	if _, err := os.Stat(filepath.Join(s.config().Plans, "tour.yaml")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("plan still there: %v", err)
+	}
+	if files := backups("plans", "tour"); len(files) != 1 {
+		t.Fatalf("plan backup: %v", files)
+	}
+
+	// A device.
+	model := &deviceFile{DisplayType: "small", MAC: "aa:bb:cc:dd:ee:09", Refresh: Duration(5 * time.Minute)}
+	var created editorDevice
+	if rec := request(t, s, http.MethodPut, "/api/devices/kueche", deviceSave{Device: model}, &created); rec.Code != http.StatusOK {
+		t.Fatalf("create device: %d %s", rec.Code, rec.Body)
+	}
+	if rec := request(t, s, http.MethodDelete, "/api/devices/kueche?hash="+created.Hash, nil, nil); rec.Code != http.StatusOK {
+		t.Fatalf("delete device: %d %s", rec.Code, rec.Body)
+	}
+	if _, err := os.Stat(filepath.Join(s.config().DevicesDir, "kueche.yaml")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("device still there: %v", err)
+	}
+	if files := backups("devices", "kueche"); len(files) != 1 {
+		t.Fatalf("device backup: %v", files)
+	}
+
+	// A display type.
+	disp := &displayFile{Kind: kindImage, Size: [2]int{40, 20}, GrayLevels: 4, PPI: 125}
+	var made editorDisplayType
+	if rec := request(t, s, http.MethodPut, "/api/displays/extra", displaySave{Display: disp}, &made); rec.Code != http.StatusOK {
+		t.Fatalf("create display type: %d %s", rec.Code, rec.Body)
+	}
+	if rec := request(t, s, http.MethodDelete, "/api/displays/extra?hash="+made.Hash, nil, nil); rec.Code != http.StatusOK {
+		t.Fatalf("delete display type: %d %s", rec.Code, rec.Body)
+	}
+	if _, err := os.Stat(filepath.Join(s.config().DisplaysDir, "extra.yaml")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("display type still there: %v", err)
+	}
+	if files := backups("displays", "extra"); len(files) != 1 {
+		t.Fatalf("display type backup: %v", files)
 	}
 }
 

@@ -86,6 +86,44 @@ func TestEditorTabs(t *testing.T) {
 	}
 }
 
+// TestEditorDeleteWarnings names the references in the delete confirmations and
+// carries them to the editors (ADR 0073).
+func TestEditorDeleteWarnings(t *testing.T) {
+	s := planEditorServer(t)
+	s.config().Devices[0].Plan = "tour"
+
+	plans := request(t, s, http.MethodGet, "/ui/editor?tab=plans", nil, nil).Body.String()
+	for _, want := range []string{
+		"New plan", `action="/ui/editor/plan"`,
+		`data-delete="/api/plans/tour?hash=`,
+		"Delete plans/tour.yaml?", "Devices that use it: test",
+	} {
+		if !strings.Contains(plans, want) {
+			t.Fatalf("plans tab lacks %q:\n%s", want, plans)
+		}
+	}
+	body := request(t, s, http.MethodGet, "/ui/editor?display=small", nil, nil).Body.String()
+	for _, want := range []string{
+		`data-delete="/api/pages/solar?display=small&amp;hash=`,
+		"Delete pages/solar.small.yaml?", "Plans that name it: tour",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("pages tab lacks %q:\n%s", want, body)
+		}
+	}
+
+	// The page editor knows the plans that name its page, the display type
+	// editor the page variants that use the type.
+	page := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil).Body.String()
+	if !strings.Contains(page, `"usedBy":["tour"]`) {
+		t.Fatalf("page editor warning:\n%s", page)
+	}
+	display := request(t, s, http.MethodGet, "/ui/editor/display?name=small&new=1", nil, nil).Body.String()
+	if !strings.Contains(display, `"pages":["solar"]`) || !strings.Contains(display, `id="delete"`) {
+		t.Fatalf("display editor warning:\n%s", display)
+	}
+}
+
 // TestEditorPage opens one page for a display type and starts a new page when
 // there is no file yet.
 func TestEditorPage(t *testing.T) {

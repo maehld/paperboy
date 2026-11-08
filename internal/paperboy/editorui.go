@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/maehld/paperboy/internal/page"
@@ -38,12 +39,14 @@ var editorJS []byte
 // editorVariant is one page file of the overview: the shared page or the
 // variant of one display type.
 type editorVariant struct {
-	Label   string // "all display types" or the display type
-	Kind    string
-	Grid    string
-	Title   string
-	Error   string // why the file cannot be opened, empty when it can
-	OpenURL string
+	Label     string // "all display types" or the display type
+	Kind      string
+	Grid      string
+	Title     string
+	Error     string // why the file cannot be opened, empty when it can
+	OpenURL   string
+	DeleteURL string // DELETE of this exact file (ADR 0073)
+	Warn      string // what the delete confirmation says
 }
 
 // editorPageGroup gathers the files of one page name, so the variants of a page
@@ -69,33 +72,39 @@ type editorListPage struct {
 
 // editorDisplayRow is one display type file in the overview.
 type editorDisplayRow struct {
-	Name    string
-	Kind    string
-	Size    string
-	Density string // ppi of an image display, charset of a text display
-	Gray    string
-	Power   string
-	Error   string
-	OpenURL string
+	Name      string
+	Kind      string
+	Size      string
+	Density   string // ppi of an image display, charset of a text display
+	Gray      string
+	Power     string
+	Error     string
+	OpenURL   string
+	DeleteURL string
+	Warn      string
 }
 
 // editorDeviceRow is one device file in the overview.
 type editorDeviceRow struct {
-	ID      string
-	Display string
-	MAC     string
-	Plan    string
-	Error   string
-	OpenURL string
+	ID        string
+	Display   string
+	MAC       string
+	Plan      string
+	Error     string
+	OpenURL   string
+	DeleteURL string
+	Warn      string
 }
 
 // editorPlanRow is one plan file in the overview.
 type editorPlanRow struct {
-	Name     string
-	Rules    int
-	Fallback string
-	Error    string
-	OpenURL  string
+	Name      string
+	Rules     int
+	Fallback  string
+	Error     string
+	OpenURL   string
+	DeleteURL string
+	Warn      string
 }
 
 // editorPageView is the shell of one page; the script reads the model, the
@@ -139,6 +148,7 @@ type editorState struct {
 	Widget     string            `json:"widget,omitempty"` // plugin/widget the playground starts with
 	Span       *[2]int           `json:"span,omitempty"`   // its size on the reference grid
 	Args       map[string]string `json:"args,omitempty"`   // the args from the link, still as text
+	UsedBy     []string          `json:"usedBy,omitempty"` // plans that name the page, for the delete warning
 }
 
 // displayNames lists the configured display types alphabetically.
@@ -173,7 +183,7 @@ func editorDisplay(cfg *Config, requested string) string {
 // shows for each of them: a shared page is opened for the chosen display type,
 // a variant for its own. A file whose display type is not configured stays
 // listed but cannot be opened, because a save would be rejected.
-func groupPageFiles(files []editorPageFile, displays map[string]Profile, display string) []editorPageGroup {
+func groupPageFiles(files []editorPageFile, displays map[string]Profile, display string, usedBy map[string][]string) []editorPageGroup {
 	groups := []editorPageGroup{}
 	index := map[string]int{}
 	for _, f := range files {
@@ -190,6 +200,8 @@ func groupPageFiles(files []editorPageFile, displays map[string]Profile, display
 		if f.Display != "" {
 			v.Label = f.Display
 		}
+		v.DeleteURL = pageDeleteURL(f.Name, f.Display, f.Hash)
+		v.Warn = pageDeleteWarning(f.Name, f.Display, usedBy[f.Name])
 		target := f.Display
 		if target == "" {
 			target = display
@@ -207,6 +219,93 @@ func groupPageFiles(files []editorPageFile, displays map[string]Profile, display
 		groups[i].Variants = append(groups[i].Variants, v)
 	}
 	return groups
+}
+
+// pageFileName names a page file the way the operator sees it; an empty
+// display type is the shared page.
+func pageFileName(name, display string) string {
+	if display == "" {
+		return "pages/" + name + ".yaml"
+	}
+	return "pages/" + name + "." + display + ".yaml"
+}
+
+// pageDeleteURL names exactly the file of a row, so a shared page is never
+// mistaken for the variant of the selected display type.
+func pageDeleteURL(name, display, hash string) string {
+	return "/api/pages/" + url.PathEscape(name) + "?" + url.Values{
+		"display": {display}, "hash": {hash}}.Encode()
+}
+
+// pageDeleteWarning is the confirmation text of a page: the file and the plans
+// that name it (ADR 0073).
+func pageDeleteWarning(name, display string, plans []string) string {
+	msg := "Delete " + pageFileName(name, display) + "?"
+	if len(plans) == 0 {
+		return msg + "\n\nNo plan names this page."
+	}
+	return msg + "\n\nPlans that name it: " + strings.Join(plans, ", ") + "."
+}
+
+// planDeleteWarning is the confirmation text of a plan: the file and the
+// devices that use it.
+func planDeleteWarning(name string, devices []string) string {
+	msg := "Delete plans/" + name + ".yaml?"
+	if len(devices) == 0 {
+		return msg + "\n\nNo device uses this plan."
+	}
+	return msg + "\n\nDevices that use it: " + strings.Join(devices, ", ") + "."
+}
+
+// deviceDeleteWarning is the confirmation text of a device.
+func deviceDeleteWarning(id string) string {
+	return "Delete devices/" + id + ".yaml?" +
+		"\n\nThe device cannot sync until a device file with its MAC exists again."
+}
+
+// displayDeleteWarning is the confirmation text of a display type: the file and
+// the page variants and devices that reference it.
+func displayDeleteWarning(name string, pages, devices []displayReference) string {
+	msg := "Delete displays/" + name + ".yaml?"
+	var refs []string
+	if len(pages) > 0 {
+		refs = append(refs, "page variants: "+referenceLabels(pages))
+	}
+	if len(devices) > 0 {
+		refs = append(refs, "devices: "+referenceLabels(devices))
+	}
+	if len(refs) == 0 {
+		return msg + "\n\nNo page variant or device uses this display type."
+	}
+	return msg + "\n\nAlso uses it → " + strings.Join(refs, "; ") + "."
+}
+
+func referenceLabels(refs []displayReference) string {
+	labels := make([]string, 0, len(refs))
+	for _, r := range refs {
+		labels = append(labels, r.Label)
+	}
+	return strings.Join(labels, ", ")
+}
+
+// plansByPage maps a page name to the plans whose rules name it, once each.
+// The delete confirmation and the page editor name the consequences (ADR 0073).
+func plansByPage(plans []editorPlanFile) map[string][]string {
+	index := map[string][]string{}
+	seen := map[string]map[string]bool{}
+	for _, p := range plans {
+		for _, pageName := range p.Pages {
+			if seen[pageName] == nil {
+				seen[pageName] = map[string]bool{}
+			}
+			if seen[pageName][p.Name] {
+				continue
+			}
+			seen[pageName][p.Name] = true
+			index[pageName] = append(index[pageName], p.Name)
+		}
+	}
+	return index
 }
 
 func knownProfile(displays map[string]Profile, name string) bool {
@@ -241,14 +340,22 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	version, goVersion := editorVersion(cfg)
-	v := editorListPage{Version: version, GoVersion: goVersion, Display: display, Tab: tab,
-		Groups: groupPageFiles(files, cfg.Profiles, display)}
 	plans, err := planFiles(cfg.Plans, cfg.Timezone)
 	if err != nil {
 		slog.Warn("plan list for the page overview failed", "error", err)
 	}
+	v := editorListPage{Version: version, GoVersion: goVersion, Display: display, Tab: tab,
+		Groups: groupPageFiles(files, cfg.Profiles, display, plansByPage(plans))}
+	devicesByPlan := map[string][]string{}
+	for _, d := range cfg.Devices {
+		if d.Plan != "" {
+			devicesByPlan[d.Plan] = append(devicesByPlan[d.Plan], d.ID)
+		}
+	}
 	for _, p := range plans {
-		row := editorPlanRow{Name: p.Name, Rules: p.Rules, Fallback: p.Fallback, Error: p.Error}
+		row := editorPlanRow{Name: p.Name, Rules: p.Rules, Fallback: p.Fallback, Error: p.Error,
+			DeleteURL: "/api/plans/" + url.PathEscape(p.Name) + "?" + url.Values{"hash": {p.Hash}}.Encode(),
+			Warn:      planDeleteWarning(p.Name, devicesByPlan[p.Name])}
 		if p.Error == "" {
 			row.OpenURL = "/ui/editor/plan?" + url.Values{"name": {p.Name}}.Encode()
 		}
@@ -259,7 +366,9 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("device list for the page overview failed", "error", err)
 	}
 	for _, d := range devices {
-		row := editorDeviceRow{ID: d.ID, Display: d.Display, MAC: d.MAC, Plan: d.Plan, Error: d.Error}
+		row := editorDeviceRow{ID: d.ID, Display: d.Display, MAC: d.MAC, Plan: d.Plan, Error: d.Error,
+			DeleteURL: "/api/devices/" + url.PathEscape(d.ID) + "?" + url.Values{"hash": {d.Hash}}.Encode(),
+			Warn:      deviceDeleteWarning(d.ID)}
 		if d.Error == "" {
 			row.OpenURL = "/ui/editor/device?" + url.Values{"id": {d.ID}}.Encode()
 		}
@@ -270,7 +379,10 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("display type list for the page overview failed", "error", err)
 	}
 	for _, d := range displays {
-		row := editorDisplayRow{Name: d.Name, Kind: d.Kind, Power: d.Power, Error: d.Error}
+		row := editorDisplayRow{Name: d.Name, Kind: d.Kind, Power: d.Power, Error: d.Error,
+			DeleteURL: "/api/displays/" + url.PathEscape(d.Name) + "?" + url.Values{"hash": {d.Hash}}.Encode()}
+		pages, used := displayReferences(cfg, d.Name)
+		row.Warn = displayDeleteWarning(d.Name, pages, used)
 		if d.Size[0] > 0 && d.Size[1] > 0 {
 			row.Size = fmt.Sprintf("%d × %d", d.Size[0], d.Size[1])
 		}
@@ -375,7 +487,11 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	// the overview asks for a shared page.
 	wantsShared := q.Get("shared") == "1" || (q.Get("new") == "1" && q.Get("display") == "")
 	shared := fileDisplay == "" && (!missing || wantsShared)
-	v.Data = editorStateData(name, display, p, missing, shared)
+	plans, err := planFiles(cfg.Plans, cfg.Timezone)
+	if err != nil {
+		slog.Warn("plan list for the page editor failed", "error", err)
+	}
+	v.Data = editorStateData(name, display, p, missing, shared, plansByPage(plans)[name])
 	for _, n := range displayNames(cfg) {
 		params := url.Values{"name": {name}, "display": {n}}
 		if q.Get("new") == "1" {
@@ -393,9 +509,9 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 // editorStateData encodes the starting state for the script. The JSON is safe
 // to inline: encoding/json escapes <, > and &, so a page title can never close
 // the script element.
-func editorStateData(name, display string, p Profile, missing, shared bool) template.JS {
+func editorStateData(name, display string, p Profile, missing, shared bool, usedBy []string) template.JS {
 	state := editorState{Name: name, Display: display, Width: p.Width, Height: p.Height,
-		New: missing, Shared: shared, Reference: defaultGrid}
+		New: missing, Shared: shared, Reference: defaultGrid, UsedBy: usedBy}
 	if p.text() {
 		state.Kind = page.KindText
 		state.Grid = [2]int{p.Width, p.Height}

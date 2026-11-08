@@ -268,12 +268,12 @@ type galleryPage struct {
 }
 
 // handleGallery shows every widget of every plugin in the sizes the plugin
-// declares, on one display type. Its sibling tab is the playground, which edits
-// one widget with the palette and the inspector of the page editor.
+// declares, on one display type. Its sibling and default tab is the playground,
+// which edits one widget with the palette and the inspector of the page editor.
 func (s *Server) handleGallery(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	q := r.URL.Query()
-	if q.Get("tab") == "playground" {
+	if q.Get("tab") != "gallery" {
 		s.handlePlayground(w, r)
 		return
 	}
@@ -340,7 +340,8 @@ func widgetTabURL(tab, display string) string {
 }
 
 // widgetTabs are the two faces of the widgets page: the playground edits one
-// widget, the gallery lists all of them with their declared sizes.
+// widget and comes first, the gallery lists all of them with their declared
+// sizes.
 func widgetTabs(selected, display string) []uiTab {
 	tabs := []uiTab{
 		{Name: "playground", Label: "Playground", URL: widgetTabURL("playground", display)},
@@ -621,9 +622,9 @@ func enumText(values []any) string {
 // galleryFormFor builds the form of one widget from its arg schema.
 func galleryFormFor(pluginName string, wi plugin.WidgetInfo, display, grid string, text bool, chosen map[string]string, span string, active bool) *galleryForm {
 	anchor := pluginName + "-" + wi.Widget
-	f := &galleryForm{Action: "/ui/plugins#" + anchor, Active: active,
+	f := &galleryForm{Action: "/ui/plugins?" + url.Values{"tab": {"gallery"}}.Encode() + "#" + anchor, Active: active,
 		Hidden: []galleryOption{{Name: "display", Value: display}, {Name: "grid", Value: grid}, {Name: "widget", Value: pluginName + "/" + wi.Widget}},
-		Reset:  "/ui/plugins?" + url.Values{"display": {display}, "grid": {grid}}.Encode() + "#" + anchor}
+		Reset:  "/ui/plugins?" + url.Values{"display": {display}, "grid": {grid}, "tab": {"gallery"}}.Encode() + "#" + anchor}
 	if !text {
 		f.Spans = append(f.Spans, galleryOption{Value: "", Label: "declared sizes", Selected: span == ""})
 		for _, sz := range wi.Sizes {
