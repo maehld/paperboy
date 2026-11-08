@@ -65,7 +65,7 @@ firmware: hold
 
 const deviceFlur = `
 display_type: sticky
-mac: "aa:bb:cc:dd:ee:02"
+mac: "AA:BB:CC:DD:EE:02"
 `
 
 var validDevices = map[string]string{"wohnzimmer": deviceWohnzimmer, "flur": deviceFlur}
@@ -204,7 +204,7 @@ func TestLoadConfigErrors(t *testing.T) {
 		{"text kind with gray levels", validConfig, replaceDisplay("e1001", "kind: image\nsize: [800, 480]", "kind: text\nsize: [20, 4]"), nil, "do not apply to kind text"},
 		{"unknown kind", validConfig, replaceDisplay("e1001", "kind: image", "kind: led"), nil, "unknown kind"},
 		{"unknown display type", validConfig, nil, replaceDevice("flur", "display_type: sticky", "display_type: fehlt"), "unknown display_type"},
-		{"duplicate mac", validConfig, nil, replaceDevice("flur", `"aa:bb:cc:dd:ee:02"`, `"AA:BB:CC:DD:EE:01"`), "duplicate device"},
+		{"duplicate mac", validConfig, nil, replaceDevice("flur", `"AA:BB:CC:DD:EE:02"`, `"AA:BB:CC:DD:EE:01"`), "duplicate device"},
 		{"bad size", validConfig, replaceDisplay("e1001", "size: [800, 480]", "size: [0, 480]"), nil, "invalid size"},
 		{"width_mm", validConfig, replaceDisplay("e1001", "ppi: 125", "width_mm: 163"), nil, "width_mm was replaced by ppi"},
 		{"missing ppi", validConfig, replaceDisplay("sticky", "ppi: 236\n", ""), nil, "ppi is required"},
