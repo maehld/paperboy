@@ -29,17 +29,6 @@ display_types:
     size: [800, 480]
     ppi: 236
     gray_levels: 1
-devices:
-  wohnzimmer:
-    display_type: e1001
-    protocol: paperboy
-    mac: "AA:BB:CC:DD:EE:01"
-    plan: standard
-    battery: { warn_volts: 3.5 }
-    firmware: hold
-  flur:
-    display_type: sticky
-    mac: "aa:bb:cc:dd:ee:02"
 plugins:
   weather:
     version: 2.1.0
@@ -48,14 +37,51 @@ plugins:
     config: { lat: 52.52, lon: 13.4, place: "${TEST_PLACE}", price: "5 $$", list: ["${TEST_PLACE}"] }
 `
 
+// The device files of validConfig (ADR 0070).
+const deviceWohnzimmer = `
+display_type: e1001
+protocol: paperboy
+mac: "AA:BB:CC:DD:EE:01"
+plan: standard
+battery: { warn_volts: 3.5 }
+firmware: hold
+`
+
+const deviceFlur = `
+display_type: sticky
+mac: "aa:bb:cc:dd:ee:02"
+`
+
+var validDevices = map[string]string{"wohnzimmer": deviceWohnzimmer, "flur": deviceFlur}
+
+// replaceDevice returns validDevices with one file edited, for the error cases.
+func replaceDevice(id, old, new string) map[string]string {
+	out := make(map[string]string, len(validDevices))
+	for k, v := range validDevices {
+		out[k] = v
+	}
+	out[id] = strings.Replace(out[id], old, new, 1)
+	return out
+}
+
 // loadConfig writes text as paperboy.yaml into a fresh instance directory and
 // loads it.
 func loadConfig(t *testing.T, text string) (*Config, string, error) {
+	t.Helper()
+	return loadConfigWith(t, text, nil)
+}
+
+// loadConfigWith writes paperboy.yaml and the given device files into a fresh
+// instance directory and loads it (ADR 0070).
+func loadConfigWith(t *testing.T, text string, devices map[string]string) (*Config, string, error) {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "paperboy.yaml")
 	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	for id, content := range devices {
+		writeDeviceFile(t, dir, id, content)
 	}
 	cfg, err := LoadConfig(dir)
 	return cfg, dir, err
@@ -63,7 +89,7 @@ func loadConfig(t *testing.T, text string) (*Config, string, error) {
 
 func TestLoadConfig(t *testing.T) {
 	t.Setenv("TEST_PLACE", "Berlin")
-	cfg, dir, err := loadConfig(t, validConfig)
+	cfg, dir, err := loadConfigWith(t, validConfig, validDevices)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,8 +99,9 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.Timezone == nil || cfg.Timezone.String() != "Europe/Berlin" {
 		t.Fatalf("timezone: %v", cfg.Timezone)
 	}
-	if cfg.Dir != dir || cfg.Pages != filepath.Join(dir, "pages") || cfg.Plans != filepath.Join(dir, "plans") {
-		t.Fatalf("instance layout: %q %q %q", cfg.Dir, cfg.Pages, cfg.Plans)
+	if cfg.Dir != dir || cfg.Pages != filepath.Join(dir, "pages") || cfg.Plans != filepath.Join(dir, "plans") ||
+		cfg.DevicesDir != filepath.Join(dir, "devices") {
+		t.Fatalf("instance layout: %q %q %q %q", cfg.Dir, cfg.Pages, cfg.Plans, cfg.DevicesDir)
 	}
 	if cfg.PluginsDir != filepath.Join(dir, "plugins") {
 		t.Fatalf("plugins directory: %q", cfg.PluginsDir)
@@ -132,46 +159,54 @@ func TestLoadConfig(t *testing.T) {
 func TestLoadConfigErrors(t *testing.T) {
 	t.Setenv("TEST_PLACE", "Berlin")
 	tests := []struct {
-		name string
-		yaml string
-		want string
+		name    string
+		yaml    string
+		devices map[string]string
+		want    string
 	}{
-		{"unknown key", strings.Replace(validConfig, "  refresh: 10m", "  refrsh: 10m", 1), "field refrsh not found"},
-		{"server section", "server:\n  upload_token: abc\n" + validConfig, "no data API"},
-		{"providers section", "providers: {}\n" + validConfig, "replaced by plugins"},
-		{"opendisplay", strings.Replace(validConfig, "protocol: paperboy", "protocol: opendisplay", 1), "not supported yet"},
-		{"http protocol", strings.Replace(validConfig, "protocol: paperboy", "protocol: text-http", 1), "ADR 0044"},
-		{"text kind with gray levels", strings.Replace(validConfig, "kind: image", "kind: text", 1), "do not apply to kind text"},
-		{"unknown kind", strings.Replace(validConfig, "kind: image", "kind: led", 1), "unknown kind"},
-		{"unknown display type", strings.Replace(validConfig, "display_type: sticky", "display_type: fehlt", 1), "unknown display_type"},
-		{"duplicate mac", strings.Replace(validConfig, `"aa:bb:cc:dd:ee:02"`, `"AA:BB:CC:DD:EE:01"`, 1), "duplicate device"},
-		{"bad size", strings.Replace(validConfig, "size: [800, 480]", "size: [0, 480]", 1), "invalid size"},
-		{"width_mm", strings.Replace(validConfig, "ppi: 125", "width_mm: 163", 1), "width_mm was replaced by ppi"},
-		{"missing ppi", strings.Replace(validConfig, "    ppi: 236\n", "", 1), "ppi is required"},
-		{"bad ppi", strings.Replace(validConfig, "ppi: 236", "ppi: 5000", 1), "ppi is required"},
-		{"text kind with ppi", strings.Replace(validConfig, "    kind: image\n    size: [800, 480]\n    gray_levels: 4\n", "    kind: text\n    size: [20, 4]\n", 1), "do not apply to kind text"},
-		{"bad plan", strings.Replace(validConfig, "plan: standard", `plan: "Standard"`, 1), "only a-z"},
-		{"bad language", strings.Replace(validConfig, "language: en", "language: fr", 1), "expected de or en"},
-		{"bad timezone", strings.Replace(validConfig, "timezone: Europe/Berlin", "timezone: Mars/Olympus", 1), "timezone"},
-		{"address", strings.Replace(validConfig, "mac: \"AA:BB:CC:DD:EE:01\"", "address: 10.0.0.1", 1), "opendisplay"},
-		{"plugin command", strings.Replace(validConfig, "    version: 2.1.0\n", "    command: [weather]\n", 1), "command is no longer supported"},
-		{"plugin version", strings.Replace(validConfig, "version: 2.1.0", "version: latest", 1), "expected a version like v2.1.0"},
-		{"firmware version", strings.Replace(validConfig, "min_battery_volts: 3.7", "min_battery_volts: 3.7\n  version: main", 1), "expected a version like 1.0.0"},
-		{"plugin name", strings.Replace(validConfig, "  weather:\n", "  Weather:\n", 1), "name must use"},
-		{"plugin reserved", strings.Replace(validConfig, "  weather:\n", "  paperboy:\n", 1), "reserved"},
-		{"plugin variable", strings.Replace(validConfig, "${TEST_PLACE}", "${TEST_MISSING}", 1), "TEST_MISSING is not set"},
-		{"gray levels", strings.Replace(validConfig, "gray_levels: 4", "gray_levels: 2", 1), ""},
-		{"directories", "directories:\n  pages: pages\n" + validConfig, "field directories not found"},
-		{"trmnl", strings.Replace(validConfig, "protocol: paperboy", "protocol: trmnl", 1), "protocol trmnl was removed"},
-		{"firmware update", strings.Replace(validConfig, "update: auto", "update: always", 1), "expected auto or off"},
-		{"firmware volts", strings.Replace(validConfig, "min_battery_volts: 3.7", "min_battery_volts: 7", 1), "min_battery_volts"},
-		{"firmware hold", strings.Replace(validConfig, "firmware: hold", "firmware: pin", 1), "only hold"},
-		{"empty", "", "empty configuration"},
-		{"two documents", validConfig + "\n---\ndefaults: {}\n", "only one YAML document"},
+		{"unknown key", strings.Replace(validConfig, "  refresh: 10m", "  refrsh: 10m", 1), nil, "field refrsh not found"},
+		{"server section", "server:\n  upload_token: abc\n" + validConfig, nil, "no data API"},
+		{"providers section", "providers: {}\n" + validConfig, nil, "replaced by plugins"},
+		{"devices section", validConfig + "devices: {}\n", nil, "devices moved to files of their own"},
+		{"opendisplay", validConfig, replaceDevice("wohnzimmer", "protocol: paperboy", "protocol: opendisplay"), "not supported yet"},
+		{"http protocol", validConfig, replaceDevice("wohnzimmer", "protocol: paperboy", "protocol: text-http"), "ADR 0044"},
+		{"trmnl", validConfig, replaceDevice("wohnzimmer", "protocol: paperboy", "protocol: trmnl"), "protocol trmnl was removed"},
+		{"address", validConfig, replaceDevice("wohnzimmer", `mac: "AA:BB:CC:DD:EE:01"`, "address: 10.0.0.1"), "opendisplay"},
+		{"text kind with gray levels", strings.Replace(validConfig, "kind: image", "kind: text", 1), nil, "do not apply to kind text"},
+		{"unknown kind", strings.Replace(validConfig, "kind: image", "kind: led", 1), nil, "unknown kind"},
+		{"unknown display type", validConfig, replaceDevice("flur", "display_type: sticky", "display_type: fehlt"), "unknown display_type"},
+		{"duplicate mac", validConfig, replaceDevice("flur", `"aa:bb:cc:dd:ee:02"`, `"AA:BB:CC:DD:EE:01"`), "duplicate device"},
+		{"bad size", strings.Replace(validConfig, "size: [800, 480]", "size: [0, 480]", 1), nil, "invalid size"},
+		{"width_mm", strings.Replace(validConfig, "ppi: 125", "width_mm: 163", 1), nil, "width_mm was replaced by ppi"},
+		{"missing ppi", strings.Replace(validConfig, "    ppi: 236\n", "", 1), nil, "ppi is required"},
+		{"bad ppi", strings.Replace(validConfig, "ppi: 236", "ppi: 5000", 1), nil, "ppi is required"},
+		{"text kind with ppi", strings.Replace(validConfig, "    kind: image\n    size: [800, 480]\n    gray_levels: 4\n", "    kind: text\n    size: [20, 4]\n", 1), nil, "do not apply to kind text"},
+		{"bad plan", validConfig, replaceDevice("wohnzimmer", "plan: standard", `plan: "Standard"`), "only a-z"},
+		{"bad language", strings.Replace(validConfig, "language: en", "language: fr", 1), nil, "expected de or en"},
+		{"bad timezone", strings.Replace(validConfig, "timezone: Europe/Berlin", "timezone: Mars/Olympus", 1), nil, "timezone"},
+		{"plugin command", strings.Replace(validConfig, "    version: 2.1.0\n", "    command: [weather]\n", 1), nil, "command is no longer supported"},
+		{"plugin version", strings.Replace(validConfig, "version: 2.1.0", "version: latest", 1), nil, "expected a version like v2.1.0"},
+		{"firmware version", strings.Replace(validConfig, "min_battery_volts: 3.7", "min_battery_volts: 3.7\n  version: main", 1), nil, "expected a version like 1.0.0"},
+		{"plugin name", strings.Replace(validConfig, "  weather:\n", "  Weather:\n", 1), nil, "name must use"},
+		{"plugin reserved", strings.Replace(validConfig, "  weather:\n", "  paperboy:\n", 1), nil, "reserved"},
+		{"plugin variable", strings.Replace(validConfig, "${TEST_PLACE}", "${TEST_MISSING}", 1), nil, "TEST_MISSING is not set"},
+		{"gray levels", strings.Replace(validConfig, "gray_levels: 4", "gray_levels: 2", 1), nil, ""},
+		{"directories", "directories:\n  pages: pages\n" + validConfig, nil, "field directories not found"},
+		{"firmware update", strings.Replace(validConfig, "update: auto", "update: always", 1), nil, "expected auto or off"},
+		{"firmware volts", strings.Replace(validConfig, "min_battery_volts: 3.7", "min_battery_volts: 7", 1), nil, "min_battery_volts"},
+		{"firmware hold", validConfig, replaceDevice("wohnzimmer", "firmware: hold", "firmware: pin"), "only hold"},
+		{"device unknown key", validConfig, replaceDevice("flur", "display_type: sticky", "display_typ: sticky"), "field display_typ not found"},
+		{"device id", validConfig, map[string]string{"Flur": deviceFlur}, "id must use a-z, 0-9 and -"},
+		{"empty", "", nil, "empty configuration"},
+		{"two documents", validConfig + "\n---\ndefaults: {}\n", nil, "only one YAML document"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := loadConfig(t, tt.yaml)
+			devices := tt.devices
+			if devices == nil {
+				devices = validDevices
+			}
+			_, _, err := loadConfigWith(t, tt.yaml, devices)
 			if err == nil {
 				t.Fatal("expected an error")
 			}

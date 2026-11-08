@@ -24,11 +24,13 @@ display_types:
     size: [800, 480]
     gray_levels: 4
     ppi: 125
-devices:
-  flur:
-    display_type: e1001
-    protocol: paperboy
-    mac: "AA:BB:CC:DD:EE:01"
+`
+
+// reloadDevice is the device file of reloadConfig (ADR 0070).
+const reloadDevice = `
+display_type: e1001
+protocol: paperboy
+mac: "AA:BB:CC:DD:EE:01"
 `
 
 func writeConfig(t *testing.T, dir, content string) {
@@ -59,6 +61,7 @@ func TestConfigReloadChangesDeviceList(t *testing.T) {
 	dir := t.TempDir()
 	writePageFile(t, filepath.Join(dir, "pages", "seite.e1001.yaml"), textPage("eins"))
 	writeConfig(t, dir, reloadConfig)
+	writeDeviceFile(t, dir, "flur", reloadDevice)
 	s := configServer(t, dir)
 
 	if rec := register(t, s, `{"mac":"AA:BB:CC:DD:EE:01","hardware":"sticky"}`); rec.Code != http.StatusOK {
@@ -73,22 +76,37 @@ func TestConfigReloadChangesDeviceList(t *testing.T) {
 		t.Fatalf("profile width not reloaded: %#v", p)
 	}
 
-	// The device disappears from the configuration; without a restart it must
-	// no longer register.
-	noDevices := `display_types:
-  e1001:
-    kind: image
-    size: [800, 480]
-    ppi: 236
-    gray_levels: 4
-`
-	writeConfig(t, dir, noDevices)
+	// A second device file registers without a restart.
+	writeDeviceFile(t, dir, "kueche", strings.Replace(reloadDevice, "AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:02", 1))
+	if rec := register(t, s, `{"mac":"AA:BB:CC:DD:EE:02","hardware":"sticky"}`); rec.Code != http.StatusOK {
+		t.Fatalf("added device does not register: %d %s", rec.Code, rec.Body)
+	}
+
+	// The device file disappears from devices/; without a restart it must no
+	// longer register.
+	if err := os.Remove(filepath.Join(dir, devicesDirName, "flur.yaml")); err != nil {
+		t.Fatal(err)
+	}
 	if rec := register(t, s, `{"mac":"AA:BB:CC:DD:EE:01","hardware":"sticky"}`); rec.Code != http.StatusForbidden {
 		t.Fatalf("removed device still registers: %d %s", rec.Code, rec.Body)
 	}
 	// The display type stays; only the device list changed.
 	if resp := call(t, s, "/api/profiles", nil); len(resp["profiles"].([]any)) != 1 {
 		t.Fatalf("profiles after removal: %#v", resp)
+	}
+}
+
+// TestConfigReloadKeepsLastValidOnBrokenDevice verifies that a broken device
+// file keeps the last valid configuration active (ADR 0047, 0070).
+func TestConfigReloadKeepsLastValidOnBrokenDevice(t *testing.T) {
+	dir := t.TempDir()
+	writeConfig(t, dir, reloadConfig)
+	writeDeviceFile(t, dir, "flur", reloadDevice)
+	s := configServer(t, dir)
+
+	writeDeviceFile(t, dir, "flur", "display_type: [\n") // truncated, invalid YAML
+	if rec := register(t, s, `{"mac":"AA:BB:CC:DD:EE:01","hardware":"sticky"}`); rec.Code != http.StatusOK {
+		t.Fatalf("broken device file must keep the last valid configuration: %d %s", rec.Code, rec.Body)
 	}
 }
 
@@ -130,6 +148,7 @@ func TestDegradedStartAppliesConfig(t *testing.T) {
 	}
 
 	writeConfig(t, dir, reloadConfig)
+	writeDeviceFile(t, dir, "flur", reloadDevice)
 	if resp := call(t, s, "/api/profiles", nil); len(resp["profiles"].([]any)) != 1 {
 		t.Fatalf("configuration not applied after a reload: %#v", resp)
 	}
@@ -213,6 +232,7 @@ plugins:
 	}
 	installTestPlugin(t, dir, "test")
 	writeConfig(t, dir, pluginYAML(true))
+	writeDeviceFile(t, dir, "flur", planDeviceFile)
 	s := configServer(t, dir)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -287,12 +307,14 @@ display_types:
     kind: image
     size: [800, 480]
     ppi: 236
-devices:
-  flur:
-    display_type: e1001
-    protocol: paperboy
-    mac: "AA:BB:CC:DD:EE:01"
-    plan: zimmer
+`
+
+// planDeviceFile is the device of timezoneConfig (ADR 0070).
+const planDeviceFile = `
+display_type: e1001
+protocol: paperboy
+mac: "AA:BB:CC:DD:EE:01"
+plan: zimmer
 `
 
 // TestConfigReloadMovesPlanRules verifies that the global timezone is part of
@@ -313,6 +335,7 @@ rules:
 fallback: frueh
 `)
 	writeConfig(t, dir, fmt.Sprintf(timezoneConfig, "UTC"))
+	writeDeviceFile(t, dir, "flur", planDeviceFile)
 	s := configServer(t, dir) // 08:00 UTC
 	dev := planDevice(t, s)
 	if got := pagePath(displayPage(t, s, dev)); !strings.HasPrefix(got, "/pages/e1001/eins/") {

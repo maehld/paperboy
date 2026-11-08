@@ -10,8 +10,8 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
 
 ## Quick start
 
-1. Create an instance directory with the fixed layout (ADR 0037): `paperboy.yaml` plus `pages/`, `plans/` and, for your own plugins, `plugins/`. Copy `cmd/paperboy/paperboy.example.yaml` to `<instance>/paperboy.yaml`, configure the plugins and enter the MAC addresses of the displays (allow list; unknown devices are rejected and reported with their MAC in the log).
-2. Copy pages from `examples/pages` and a plan from `examples/plans` into the instance, then set `plan: standard` on the device. Without a plan a device only shows a notice page.
+1. Create an instance directory with the fixed layout (ADR 0037): `paperboy.yaml` plus `pages/`, `plans/`, `devices/` and, for your own plugins, `plugins/`. Copy `cmd/paperboy/paperboy.example.yaml` to `<instance>/paperboy.yaml`, configure the plugins and create one file per display under `devices/` (ADR 0070): the MAC address is the allow list, unknown devices are rejected and reported with their MAC in the log.
+2. Copy pages from `examples/pages`, a plan from `examples/plans` and a device from `examples/devices` into the instance, then set `plan: standard` on the device (or assign it in the editor). Without a plan a device only shows a notice page.
 3. Put the plugins into the instance's `plugins/`: unpack `paperboy-plugins-<os>-<arch>.zip` (attached to each release, otherwise an artifact of the *Plugins* workflow) in the instance directory, or build them yourself (`./scripts/package-plugins.sh` builds the zip locally), or let Paperboy fetch them with a `download` section (see [Downloads](#downloads)). Then start:
    ```sh
    go run ./cmd/paperboy -config . -listen :8090
@@ -28,6 +28,8 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
 **Migrating to program names (ADR 0060):** remove `command:` from every plugin section — it aborts the start with a hint. A plugin's program is now named after the plugin: `plugins/weather`, `plugins/weather-v2.1.0` (`.exe` on Windows), or `weather` on `PATH`; the unversioned file wins and stays yours (an unpacked plugin zip works as before), and the optional `version` key pins a downloaded one. Firmware images move from `firmware/<hardware>/<hardware>-<version>.bin` to `firmware/<hardware>-v<version>.bin`; the old layout is still read, so nothing has to move, and devices get the new path with the offer.
 
 **Migrating to plugin protocol version 4 (ADR 0057):** the action menu moves the protocol to version 4. Paperboy checks the version in every answer (ADR 0058) and refuses a plugin that reports version 3 or none, with the expected version in the error; unpack the current plugin zip after updating Paperboy. Plans without `actions` need no change.
+
+**Migrating devices to `devices/` (ADR 0070):** the `devices:` section of `paperboy.yaml` moved into `devices/<id>.yaml`, one file per device. A leftover section aborts the start with a hint. For every entry, create `devices/<id>.yaml` with the keys of the entry (without the map level) and remove the section, or create the devices in the editor at `/ui/editor` and delete the section afterwards:
 
 ## Releases
 
@@ -75,14 +77,16 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
   paperboy.yaml      configuration
   pages/             pages <page>.<display type>.yaml or <page>.yaml
   plans/             plans <name>.yaml
+  devices/           devices <id>.yaml (ADR 0070)
   plugins/           plugin programs, e.g. from paperboy-plugins-<os>-<arch>.zip
   firmware/          OTA images <hardware>-v<version>.bin (ADR 0043, 0060)
   state/             written by Paperboy only
     devices.json     device register with API keys, page cursor and battery level
     download/        cached release list and downloads (ADR 0060)
+    editor/          backups of pages, plans and devices written by the editor (ADR 0066)
 ```
 
-- `paperboy.yaml`, `pages/`, `plans/`, `plugins/` and `firmware/` are yours. Paperboy only reads them; only the download feature (ADR 0060) adds plugin and firmware files there.
+- `paperboy.yaml`, `pages/`, `plans/`, `devices/`, `plugins/` and `firmware/` are yours. Paperboy only reads them; only the download feature (ADR 0060) adds plugin and firmware files there. The editor writes pages, plans and devices through the API (ADR 0066, 0070).
 - `state/` is created at startup and is the only directory Paperboy writes. Back up `state/devices.json` anyway: it holds the page cursor, battery level and last served page; without it the devices get new keys on their next sync (401, then registration by MAC).
 
 ## Configuration
@@ -122,29 +126,37 @@ display_types:
     ppi: 125           # pixels per inch, required for image displays (800 px / 163 mm)
     min_refresh: 60s   # never report a shorter interval
     power: auto        # auto (default), battery or mains (ADR 0051)
-devices:
-  wohnzimmer:
-    display_type: e1001
-    protocol: paperboy
-    mac: "AA:BB:CC:DD:EE:01"
-    plan: standard
-    refresh: 10m                          # optional
-    power: mains                          # optional, overrides the display type (E1001 on USB)
-    battery: { warn_volts: 3.5 }          # optional, 0 inherits the default
-    firmware: hold                        # optional, keeps the device on its firmware
-    actions: allow                        # optional: allow (default) or deny the device menu
-    menu_show_duration: 30s               # optional, overrides the default
+# No devices here: they are files under devices/ (ADR 0070), see below.
 ```
 
-- The map key under `devices` is the stable device ID (a-z, 0-9, `-`). It appears in logs, in `GET /api/devices` and in `state/devices.json`; existing MAC-keyed state is migrated automatically at startup.
+- The devices moved out of this file into `devices/<id>.yaml`, one file per device (ADR 0070); a leftover `devices:` section aborts the start with a hint. The device files are listed under [Devices](#devices).
 - `plugins` declares the plugins (ADR 0049). `config` is the plugin's own section; string values expand `${VAR}` from Paperboy's environment (an unset variable aborts loading, `$$` is a literal `$`), so secrets stay out of the file. The plugin checks its keys and rejects unknown ones; a rejected configuration shows up as a notice in the plugin's cells and in the log. The name `paperboy` is reserved for the built-in plugin.
 - `language` (`de` or `en`) selects the language of the built-in image texts, the number format and the language plugins draw in. Without it Paperboy uses the system language (Windows UI language, otherwise `LANG`/`LC_ALL`/`LC_MESSAGES`) and falls back to English. `timezone` (IANA name) applies to plans and built-in dates; without it the system timezone is used.
-- `protocol` accepts only `paperboy` (the default) for now: devices running the Paperboy firmware (ADR 0042). `trmnl` was removed and aborts the start, as do the v1 sections `server` and `providers` (ADR 0049). `opendisplay` is rejected until plans cover it; `text-http`/`image-http` were replaced by the device API (ADR 0044) and abort the start.
 - A display type with `kind: text` is a text display (ADR 0044): `size: [columns, rows]` in characters (at most 80 × 24) and `charset: utf8|ascii|hd44780` (default `utf8`); `gray_levels` and `ppi` are rejected for it.
 - An image display type needs `ppi`, its pixel density (pixels per inch, 20–1000; ADR 0050). It does not depend on the orientation: compute it from either side, `ppi = pixels × 25.4 / millimetres` of the active area. Page styles are in points and are converted with it, so a widget has the same physical size on a small dense panel and a large coarse one.
-- `plan` should name an existing `plans/<name>.yaml`; a missing or broken plan is logged and shows a notice page instead of aborting the start, so a plan file can be added while the server runs (ADR 0047). Without `plan` the device shows a notice page in the configured language („Kein Plan konfiguriert“ / “No plan configured”).
 - `-config` names the instance directory (default `.`); Paperboy reads `<dir>/paperboy.yaml` and finds all other directories there. A file argument is rejected with an explanation, and a `.json` configuration is no longer read.
-- The configuration is reloaded on change without a restart (ADR 0047): handlers pick up a modified `paperboy.yaml` on the next request, plugins whose section changed are restarted (their cached widgets are dropped), and a broken file keeps the last valid configuration while a missing one leaves the current configuration alone. With no usable file at startup in an existing instance directory the server still starts (degraded: no display types, no devices) and applies the file as soon as it loads, even when its mod time did not change; a wrong `-config` stays fatal.
+- The configuration is reloaded on change without a restart (ADR 0047): handlers pick up a modified `paperboy.yaml` or a changed file under `devices/` on the next request, plugins whose section changed are restarted (their cached widgets are dropped), and a broken file keeps the last valid configuration while a missing one leaves the current configuration alone. With no usable file at startup in an existing instance directory the server still starts (degraded: no display types, no devices) and applies the file as soon as it loads, even when its mod time did not change; a wrong `-config` stays fatal.
+
+## Devices
+
+A device is `devices/<id>.yaml` (ADR 0070). The file name is the stable device ID (a-z, 0-9, `-`); it appears in logs, in `GET /api/devices` and in `state/devices.json`. The files are parsed as strictly as pages and plans, a broken one aborts the start and names the file:
+
+```yaml
+display_type: e1001
+protocol: paperboy      # the default; devices running the Paperboy firmware (ADR 0042)
+mac: "AA:BB:CC:DD:EE:01"
+plan: standard          # plans/standard.yaml; without one a notice page
+refresh: 10m            # optional, else defaults.refresh
+power: mains            # optional, overrides the display type (E1001 on USB, ADR 0051)
+battery: { warn_volts: 3.5 }   # optional; empty values inherit defaults.battery
+firmware: hold          # optional: keep the device on its firmware (ADR 0043)
+actions: allow          # optional: allow (default) or deny the device menu (ADR 0057)
+menu_show_duration: 30s # optional, overrides defaults.menu_show_duration
+```
+
+- `protocol` accepts only `paperboy` (the default) for now: devices running the Paperboy firmware (ADR 0042). `trmnl` was removed and aborts the start, as do the v1 sections `server` and `providers` (ADR 0049). `opendisplay` is rejected until plans cover it; `text-http`/`image-http` were replaced by the device API (ADR 0044) and abort the start.
+- `plan` should name an existing `plans/<name>.yaml`; a missing or broken plan is logged and shows a notice page instead of aborting the start, so a plan file can be added while the server runs (ADR 0047). Without `plan` the device shows a notice page in the configured language („Kein Plan konfiguriert“ / “No plan configured”).
+- Devices are created and assigned in the editor at `/ui/editor` (ADR 0070); the files stay the source of truth, so a hand edit is picked up on the next request.
 
 ## Behavior
 
@@ -189,7 +201,8 @@ cells:
 - Preview without a device: `GET /api/preview/<display type>/<page>` (PNG, or `text/plain` for text displays; optional `?at=YYYY-MM-DDTHH:MM` renders the page as at that time in the configured timezone). `GET /api/plugins` lists every plugin with its widgets, the sizes they are designed for, their arguments and the plugin's config keys.
 - **Widget gallery:** `/ui/plugins` (linked from the dashboard) shows every widget of every plugin on a chosen display type, in each size the plugin declares, with its arguments and the plugin's config keys; text displays show the lines. Sizes are spans on a reference grid of 6 × 8 cells (`?grid=` changes it), and a size below the widget's minimum is flagged. A single widget is available as `GET /api/widget/<plugin>/<widget>?display=<type>` with `span=3x2` (and `grid=6x8`) or `width`/`height` in pixels, and arguments as `arg.<name>=<value>` (JSON values keep their type, e.g. `arg.days=3`); it answers a PNG or `text/plain`, and a failing widget the notice a page would show, with the reason in `X-Widget-Error`. Neither needs a token.
 - **Page editor:** `/ui/editor` (linked from every view) lists the files of `pages/` grouped by page with their display variants, kind, grid, title and parse error, and creates a new page. `/ui/editor/page?name=<page>&display=<type>` builds one page for a display type (ADR 0068): title, grid (fixed to the character grid on text displays), style, the widget palette from `/api/plugins` filtered by the display's kind – click a widget and then a free cell, or drag it –, the span, the arguments and the style of the selected cell, and a live draft preview. Nothing is written before *Save*: the editor sends the model with the hash it read, so a file changed on disk answers `409` and asks for a reload; a shared page stays the shared file until *Save as … variant*. A file that does not parse is listed with its error and opens read-only, because the API takes a model, not text.
-- **Plan editor:** the same overview lists the plans next to the pages; `/ui/editor/plan?name=<plan>` edits one (ADR 0069): rules in their order with name, time window (`from`/`to` as times of day, days as checkboxes), pages in their order with `rotate` and `refresh`, the fallback, and the actions the device menu offers, built from the plugins' actions with their arguments and confirmation. Rules that an earlier rule always overrides are marked, pages that the plan's own devices would skip are named, each device links to its `/ui/plan` preview, and a save works like the page editor's.
+- **Plan editor:** the same overview lists the plans next to the pages; `/ui/editor/plan?name=<plan>` edits one (ADR 0069): rules in their order with name, time window (`from`/`to` as times of day, days as checkboxes), pages in their order with `rotate` and `refresh`, the fallback, and the actions the device menu offers, built from the plugins' actions with their arguments and confirmation. Rules that an earlier rule always overrides are marked, pages that the plan's own devices would skip are named, each device links to its `/ui/plan` preview and to its device page, and a save works like the page editor's.
+- **Device editor:** the overview also lists the files under `devices/` and creates new ones; `/ui/editor/device?id=<id>` edits one (ADR 0070): display type, MAC address, plan chosen from the plan files, `refresh`, the device menu (`actions`, `menu_show_duration`), the power source, the firmware hold and the battery thresholds, with a link to the device's plan preview and the current file text. Assigning a plan is this single small write, so `paperboy.yaml` is never touched; a save works like the page editor's, and a new device file needs a display type and a MAC address.
 
 ### Text pages
 
@@ -230,7 +243,7 @@ Shipped plugins (one zip per platform: `paperboy-plugins-linux-amd64.zip` and `p
 
 ## Plans
 
-Which pages a device shows is decided by a plan, `<name>.yaml` in `plans/`. A device points to it with `plan: wohnzimmer`; several devices may share a plan. A plan only names pages, so it works for devices of different display types. A plan is edited in the browser at `/ui/editor/plan?name=<plan>`, linked from `/ui/editor` (ADR 0069).
+Which pages a device shows is decided by a plan, `<name>.yaml` in `plans/`. A device points to it with `plan: wohnzimmer` in its `devices/<id>.yaml`; several devices may share a plan. A plan only names pages, so it works for devices of different display types. A plan is edited in the browser at `/ui/editor/plan?name=<plan>`, linked from `/ui/editor` (ADR 0069), and assigned on the device's page there (ADR 0070).
 
 ```yaml
 rules:

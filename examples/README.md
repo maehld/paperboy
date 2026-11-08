@@ -1,4 +1,4 @@
-# Example pages and plans
+# Example pages, plans and devices
 
 The pages under `pages/` are grids of widgets from the shipped plugins
 (ADR 0049): `weather`, `calendar`, `evcc`, `departures`, `pokedex`, `xkcd`,
@@ -43,6 +43,11 @@ only" entry per loadpoint; uncomment the ones you need.
 shipped plugins: on weekday mornings weather, departures, the week and the
 energy flow every 5 minutes, during the day all pages every 10 minutes, at
 night only the overview.
+
+`devices/wohnzimmer.yaml` and `devices/lcd.yaml` are two devices (ADR 0070):
+an ePaper display on the tour plan and a 20×4 text display on the standard plan.
+Copy one into the `devices/` directory of your instance, set the MAC address and
+the display type, or create the device in the editor at `/ui/editor`.
 
 `plugins/demo.ics` is a small calendar for trying the calendar plugin without
 an account: `config: { ics_files: [/path/to/demo.ics] }`.

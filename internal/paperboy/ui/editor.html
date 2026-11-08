@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Paperboy · Pages</title>
+<title>Paperboy · Editor</title>
 <style>
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
@@ -87,7 +87,36 @@ form.new input, form.new select { font: inherit; padding: .2rem .3rem; }
 {{else}}
 <p class="empty">No plans yet. A plan is <code>plans/&lt;name&gt;.yaml</code>.</p>
 {{end}}
+{{if .Devices}}
+<section class="card">
+  <h2>Devices</h2>
+  <table>
+    <tr><th>ID</th><th>Display type</th><th>MAC</th><th>Plan</th><th></th></tr>
+    {{range .Devices}}
+    <tr>
+      <td>{{.ID}}</td>
+      <td>{{.Display}}</td>
+      <td>{{.MAC}}</td>
+      <td>{{.Plan}}</td>
+      <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
+    </tr>
+    {{if .Error}}<tr><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
+    {{end}}
+  </table>
+</section>
+{{else}}
+<p class="empty">No devices yet. A device is <code>devices/&lt;id&gt;.yaml</code>.</p>
+{{end}}
 {{if .Displays}}
+<section class="card">
+  <h2>New device</h2>
+  <form class="new" method="get" action="/ui/editor/device">
+    <input type="hidden" name="new" value="1">
+    <label>ID <input name="id" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. wohnzimmer" title="lower case letters, digits and -"></label>
+    <button type="submit">Create</button>
+  </form>
+  <p class="muted">Lower case letters, digits and <code>-</code>. The ID becomes the file name and the device's stable ID; the display type and the MAC address follow on the device page.</p>
+</section>
 <section class="card">
   <h2>New page</h2>
   <form class="new" method="get" action="/ui/editor/page">

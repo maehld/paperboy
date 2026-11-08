@@ -1,0 +1,184 @@
+package paperboy
+
+import (
+	"net/http"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+)
+
+// writeDeviceFile writes devices/<id>.yaml into an instance directory (ADR 0070).
+func writeDeviceFile(t *testing.T, dir, id, content string) {
+	t.Helper()
+	path := filepath.Join(dir, devicesDirName, id+".yaml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDeviceFileRoundTrip verifies that a device file survives parse and encode
+// unchanged, that the encoder keeps the operator's layout and leaves unset
+// fields out, and that parsing is strict.
+func TestDeviceFileRoundTrip(t *testing.T) {
+	src := `display_type: e1001
+protocol: paperboy
+mac: "AA:BB:CC:DD:EE:01"
+plan: standard
+refresh: 10m
+power: mains
+actions: deny
+menu_show_duration: 45s
+battery: { warn_volts: 3.5, critical_volts: 3.3 }
+firmware: hold
+`
+	f, err := parseDeviceFile([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := encodeDeviceFile(&f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "refresh: 10m\n") || !strings.Contains(string(data), "menu_show_duration: 45s\n") {
+		t.Fatalf("durations:\n%s", data)
+	}
+	again, err := parseDeviceFile(data)
+	if err != nil {
+		t.Fatalf("written device:\n%s\n%v", data, err)
+	}
+	if !reflect.DeepEqual(f, again) {
+		t.Fatalf("round trip changed the model:\n%+v\n%+v\n%s", f, again, data)
+	}
+
+	// A minimal file writes only what it needs, and the default protocol is
+	// filled in.
+	minimal, err := encodeDeviceFile(&deviceFile{DisplayType: "sticky", MAC: "AA:BB:CC:DD:EE:02"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "display_type: sticky\nprotocol: paperboy\nmac: 'AA:BB:CC:DD:EE:02'\n"
+	if string(minimal) != want {
+		t.Fatalf("minimal device file:\n%s\nwant:\n%s", minimal, want)
+	}
+
+	// Unknown keys and a second document are errors, like in pages and plans.
+	for _, bad := range []string{"color: red\n", "display_type: sticky\n---\nmac: x\n", ""} {
+		if _, err := parseDeviceFile([]byte(bad)); err == nil {
+			t.Fatalf("%q parses as a device", bad)
+		}
+	}
+}
+
+// TestDeviceFileValidation verifies what the file alone decides and what needs
+// the configuration.
+func TestDeviceFileValidation(t *testing.T) {
+	f, err := parseDeviceFile([]byte("display_type: e1001\nmac: \"aa:bb:cc:dd:ee:01\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &Config{Profiles: map[string]Profile{"e1001": {Width: 800, Height: 480, PPI: 125, Power: powerAuto}},
+		Refresh: Duration(5 * time.Minute), MenuShow: Duration(20 * time.Second)}
+	dev := f.device("kueche", nil)
+	if err := cfg.validateDevice(&dev); err != nil {
+		t.Fatal(err)
+	}
+	if dev.MAC != "AA:BB:CC:DD:EE:01" || dev.Profile != "e1001" || dev.Type != TypePaperboy ||
+		dev.Refresh != Duration(5*time.Minute) || dev.Actions != actionsAllow || dev.MenuShowDuration != Duration(20*time.Second) {
+		t.Fatalf("device defaults: %+v", dev)
+	}
+
+	hold, _ := parseDeviceFile([]byte("display_type: e1001\nmac: \"aa:bb:cc:dd:ee:01\"\nfirmware: pin\n"))
+	if err := hold.validate("kueche"); err == nil || !strings.Contains(err.Error(), "only hold") {
+		t.Fatalf("firmware pin: %v", err)
+	}
+	unknown, _ := parseDeviceFile([]byte("display_type: fehlt\nmac: \"aa:bb:cc:dd:ee:01\"\n"))
+	dev = unknown.device("kueche", nil)
+	if err := cfg.validateDevice(&dev); err == nil || !strings.Contains(err.Error(), "unknown display_type") {
+		t.Fatalf("unknown display type: %v", err)
+	}
+}
+
+// TestDeviceAPI covers read, create, save, conflicts and validation of the
+// device API (ADR 0066, 0070).
+func TestDeviceAPI(t *testing.T) {
+	s := editorServer(t)
+	dir := s.config().DevicesDir
+
+	if rec := request(t, s, http.MethodGet, "/api/devices/kueche", nil, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing device: %d", rec.Code)
+	}
+	model := &deviceFile{DisplayType: "small", MAC: "aa:bb:cc:dd:ee:02", Plan: "tour", Refresh: Duration(10 * time.Minute)}
+	var created editorDevice
+	rec := request(t, s, http.MethodPut, "/api/devices/kueche", deviceSave{Device: model}, &created)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body)
+	}
+	if created.Hash == "" || created.Path != "devices/kueche.yaml" || created.Device == nil || created.Device.Refresh != Duration(10*time.Minute) {
+		t.Fatalf("created: %+v", created)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "kueche.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "refresh: 10m") || !strings.Contains(string(data), "display_type: small") {
+		t.Fatalf("file:\n%s", data)
+	}
+
+	var read editorDevice
+	if rec := request(t, s, http.MethodGet, "/api/devices/kueche", nil, &read); rec.Code != http.StatusOK ||
+		read.Hash != created.Hash || read.Device == nil || read.Device.MAC != "aa:bb:cc:dd:ee:02" {
+		t.Fatalf("read: %d %+v %s", rec.Code, read, rec.Body)
+	}
+
+	// A second save keeps a backup under state/editor; a stale hash is a
+	// conflict afterwards.
+	edited := *read.Device
+	edited.Plan = "standard"
+	if rec := request(t, s, http.MethodPut, "/api/devices/kueche", deviceSave{Hash: read.Hash, Device: &edited}, nil); rec.Code != http.StatusOK {
+		t.Fatalf("save: %d %s", rec.Code, rec.Body)
+	}
+	if saved, err := os.ReadFile(filepath.Join(dir, "kueche.yaml")); err != nil || !strings.Contains(string(saved), "plan: standard") {
+		t.Fatalf("saved file: %s %v", saved, err)
+	}
+	backups, err := filepath.Glob(filepath.Join(s.config().Dir, "state", "editor", "devices", "kueche", "*.yaml"))
+	if err != nil || len(backups) != 1 {
+		t.Fatalf("backups: %v %v", backups, err)
+	}
+	if rec := request(t, s, http.MethodPut, "/api/devices/kueche", deviceSave{Hash: read.Hash, Device: &edited}, nil); rec.Code != http.StatusConflict {
+		t.Fatalf("stale hash: %d %s", rec.Code, rec.Body)
+	}
+
+	// The API rejects what a reload would reject: an unknown display type, a
+	// MAC that another device already uses, an invalid MAC and unknown fields.
+	bad := edited
+	bad.DisplayType = "nope"
+	if rec := request(t, s, http.MethodPut, "/api/devices/kueche", deviceSave{Device: &bad}, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown display type: %d", rec.Code)
+	}
+	bad = edited
+	bad.MAC = "aa:bb:cc:dd:ee:01" // the test device of editorServer
+	if rec := request(t, s, http.MethodPut, "/api/devices/kueche", deviceSave{Device: &bad}, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate MAC: %d %s", rec.Code, rec.Body)
+	}
+	bad = edited
+	bad.MAC = "nope"
+	if rec := request(t, s, http.MethodPut, "/api/devices/kueche", deviceSave{Device: &bad}, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid MAC: %d", rec.Code)
+	}
+	if rec := request(t, s, http.MethodPut, "/api/devices/kueche", `{"device":{"display_type":"small","mac":"aa:bb:cc:dd:ee:03"},"nope":1}`, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown field: %d", rec.Code)
+	}
+	if rec := request(t, s, http.MethodPut, "/api/devices/Not%20An%20ID", deviceSave{Device: &edited}, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad id: %d", rec.Code)
+	}
+	// The dashboard device list is a different endpoint and still answers.
+	if rec := request(t, s, http.MethodGet, "/api/devices", nil, nil); rec.Code != http.StatusOK {
+		t.Fatalf("device list: %d", rec.Code)
+	}
+}

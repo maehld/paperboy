@@ -431,6 +431,129 @@ func (s *Server) handleSavePlan(w http.ResponseWriter, r *http.Request) {
 		YAML: string(data), Plan: p})
 }
 
+// editorDevice is one device file with its model, the answer of a read and of a
+// successful write (ADR 0070).
+type editorDevice struct {
+	ID     string      `json:"id"`
+	Path   string      `json:"path"` // relative to the instance directory
+	Hash   string      `json:"hash"`
+	YAML   string      `json:"yaml"`
+	Device *deviceFile `json:"device,omitempty"`
+	Error  string      `json:"error,omitempty"`
+}
+
+// deviceSave is the body of a device write: the model and the hash of the file
+// the editor read, like a page or a plan save (ADR 0066).
+type deviceSave struct {
+	Hash   string      `json:"hash"`
+	Device *deviceFile `json:"device"`
+}
+
+// handleDevice reads one device file. A broken file still answers, so an editor
+// can show and repair it.
+func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	id := r.PathValue("id")
+	path, err := deviceFilePath(cfg.DevicesDir, id)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	out := editorDevice{ID: id, Path: relativePath(cfg, path), Hash: fileHash(data), YAML: string(data)}
+	if f, err := parseDeviceFile(data); err != nil {
+		out.Error = shortError(err)
+	} else {
+		out.Device = &f
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleSaveDevice validates a device like the runtime would on a reload, then
+// writes the file. The plan stays on the device, so assigning one is a single
+// small write that never touches paperboy.yaml (ADR 0070).
+func (s *Server) handleSaveDevice(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	id := r.PathValue("id")
+	path, err := deviceFilePath(cfg.DevicesDir, id)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	var body deviceSave
+	if err := decodeBody(w, r, &body); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	if body.Device == nil {
+		writeAPIError(w, http.StatusBadRequest, "device missing")
+		return
+	}
+	data, err := encodeDeviceFile(body.Device)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	written, err := parseDeviceFile(data)
+	if err != nil { // never expected: encodeDeviceFile wrote what parseDeviceFile reads
+		writeAPIError(w, http.StatusInternalServerError, "written device does not read back: %v", err)
+		return
+	}
+	if err := written.validate(id); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	dev := written.device(id, cfg.Battery)
+	if err := cfg.validateDevice(&dev); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	for i := range cfg.Devices {
+		if other := &cfg.Devices[i]; other.ID != id && other.MAC == dev.MAC {
+			writeAPIError(w, http.StatusBadRequest, "MAC %s is already used by %s", dev.MAC, other.ID)
+			return
+		}
+	}
+	cur, err := os.ReadFile(path)
+	exists := err == nil
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	if exists && body.Hash != "" && fileHash(cur) != body.Hash {
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error": "the device changed on disk; read it again before saving",
+			"hash":  fileHash(cur),
+		})
+		return
+	}
+	if !exists && body.Hash != "" {
+		writeAPIError(w, http.StatusConflict, "the device was removed on disk; read it again before saving")
+		return
+	}
+	if exists {
+		s.backupFile(cfg, "devices", id, cur)
+	}
+	if err := os.MkdirAll(cfg.DevicesDir, 0o755); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	if err := writeAtomic(path, data); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, editorDevice{ID: id, Path: relativePath(cfg, path), Hash: fileHash(data),
+		YAML: string(data), Device: &written})
+}
+
 // handleDraftPreview renders a page that is not saved yet, so an editor can
 // show a draft without writing a file (ADR 0066).
 func (s *Server) handleDraftPreview(w http.ResponseWriter, r *http.Request) {

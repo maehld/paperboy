@@ -33,13 +33,14 @@ type configLoader struct {
 
 	mu      sync.Mutex
 	entry   configEntry
+	devices string // stamp of the device files (ADR 0070)
 	cfg     *Config
 	lastErr string // message of the last load failure; the same failure logs once
 	missing bool   // the last stat failed; the problem is logged once
 }
 
 func newConfigLoader(dir string, cfg *Config) *configLoader {
-	l := &configLoader{dir: dir, cfg: cfg}
+	l := &configLoader{dir: dir, cfg: cfg, devices: devicesStamp(filepath.Join(dir, devicesDirName))}
 	if info, err := os.Stat(filepath.Join(dir, configFileName)); err == nil {
 		l.entry = configEntry{mod: info.ModTime(), size: info.Size()}
 	} else {
@@ -69,6 +70,12 @@ func (l *configLoader) get() *Config {
 	}
 	l.missing = false
 	changed := l.entry.size != info.Size() || !l.entry.mod.Equal(info.ModTime())
+	// The devices live in their own files (ADR 0070), so a change there has to
+	// reload the configuration as well.
+	if stamp := devicesStamp(filepath.Join(l.dir, devicesDirName)); stamp != l.devices {
+		changed = true
+		l.devices = stamp
+	}
 	// A changed file reloads at once. A degraded start retries the file on
 	// every access even when it did not change, so a repaired file or a fixed
 	// permission applies without touching it; the same failure is logged once
