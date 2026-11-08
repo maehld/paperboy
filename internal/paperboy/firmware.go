@@ -190,12 +190,12 @@ func (f *firmwareStore) latest(hardware, pin string) (*firmwareImage, []string) 
 	return best, invalid
 }
 
-// invalidNames lists ignored files for the dashboard: files in the flat
-// directory that match no known hardware type, invalid names inside an old
-// <hardware>/ directory, and the old directories themselves (read with a hint,
-// ADR 0060).
-func (f *firmwareStore) invalidNames(hardware []string) []string {
-	if f == nil || len(hardware) == 0 {
+// invalidNames lists ignored files for the dashboard: entries that are no
+// image name of any hardware type, and old <hardware>/ directories (still read,
+// ADR 0060). It does not consult the configuration: an image is named after the
+// hardware a device reports, which no display type has to match (ADR 0061).
+func (f *firmwareStore) invalidNames() []string {
+	if f == nil {
 		return nil
 	}
 	entries, err := os.ReadDir(f.dir)
@@ -220,7 +220,7 @@ func (f *firmwareStore) invalidNames(hardware []string) []string {
 			}
 			continue
 		}
-		if !parsesFor(hardware, name) {
+		if _, ok := splitFirmwareName(name); !ok {
 			all = append(all, name)
 			f.note(name, "firmware file ignored: expected <hardware>-v<version>.bin")
 		}
@@ -238,25 +238,6 @@ func (f *firmwareStore) note(name, msg string) {
 	}
 	f.reported[name] = true
 	slog.Warn(msg, "file", name)
-}
-
-// parsesFor reports whether name is an image of one of the hardware types.
-func parsesFor(hardware []string, name string) bool {
-	for _, hw := range hardware {
-		if _, _, ok := parseFirmwareName(hw, name); ok {
-			return true
-		}
-	}
-	return false
-}
-
-func containsString(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 func (f *firmwareStore) checksum(path string) (string, error) {
