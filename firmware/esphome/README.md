@@ -51,7 +51,7 @@ the last input forces deep sleep otherwise.
 | Setting | Source | Kept in |
 |---|---|---|
 | Wi-Fi | captive portal on the hotspot `paperboy-<id>`, or Improv over USB | flash (ESPHome) |
-| Paperboy URL | device web UI `http://<device>/`, field "Paperboy URL" (`default_paperboy_url` can preset it) | flash |
+| Paperboy URL | device web UI `http://<device>/`, field "Paperboy URL" (`default_paperboy_url` can preset it); saving it starts the cycle at once | flash |
 | Device key | `POST /api/device/register` by MAC | flash |
 
 While Wi-Fi or the Paperboy URL is missing, or Paperboy does not know the MAC,

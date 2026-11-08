@@ -83,6 +83,17 @@ text:
     restore_value: true
     initial_value: "${default_paperboy_url}"
     max_length: 120
+    # Saving a new URL starts the cycle at once. Otherwise a device that sits
+    # in setup waits for its next wake, and a corrected URL would take up to an
+    # hour to be used.
+    on_value:
+      - lambda: |-
+          std::string url = pb_base(x);
+          if (id(busy) || url.empty() || !wifi::global_wifi_component->is_connected()) {
+            return;
+          }
+          ESP_LOGI("paperboy", "Paperboy URL set to %s, starting the cycle", url.c_str());
+      - script.execute: run_cycle
   - platform: template
     id: api_key
     internal: true
@@ -181,7 +192,7 @@ script:
   # ---------------------------------------------------------------- cycle
 
   - id: run_cycle
-    mode: single
+    mode: restart
     then:
       - if:
           condition:
