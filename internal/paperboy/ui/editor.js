@@ -349,6 +349,56 @@
     renderInspector();
   }
 
+  // moveCell puts a placed box on another cell and keeps its span. A drop near
+  // an edge lands as far as the box still fits, an occupied stretch refuses it.
+  function moveCell(i, x, y) {
+    const t = state.template;
+    const c = t && t.cells[i];
+    if (!c) return;
+    const span = [Math.min(c.span[0], t.grid[0]), Math.min(c.span[1], t.grid[1])];
+    const at = [
+      Math.max(0, Math.min(t.grid[0] - span[0], x)),
+      Math.max(0, Math.min(t.grid[1] - span[1], y)),
+    ];
+    if (overlaps(at[0], at[1], span[0], span[1], i)) {
+      setStatus('that cell is taken', 'error');
+      return;
+    }
+    if (at[0] === c.at[0] && at[1] === c.at[1] && span[0] === c.span[0] && span[1] === c.span[1]) return;
+    c.at = at;
+    c.span = span;
+    state.selected = i;
+    setStatus('');
+    changed();
+  }
+
+  // boardDrop handles every drop on the board: the cell under the pointer takes
+  // a widget from the palette, a dragged box moves there. The board itself is
+  // the target because the boxes lie over the slots and would swallow a drop
+  // that hits one of them.
+  function boardDrop(e) {
+    e.preventDefault();
+    const t = state.template;
+    const board = el('board');
+    if (!t || !board) return;
+    const r = board.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const x = Math.floor(((e.clientX - r.left) / r.width) * t.grid[0]);
+    const y = Math.floor(((e.clientY - r.top) / r.height) * t.grid[1]);
+    const at = [
+      Math.max(0, Math.min(t.grid[0] - 1, x)),
+      Math.max(0, Math.min(t.grid[1] - 1, y)),
+    ];
+    const id = e.dataTransfer.getData('text/plain');
+    const moved = /^cell:(\d+)$/.exec(id);
+    if (moved) {
+      moveCell(Number(moved[1]), at[0], at[1]);
+      return;
+    }
+    const [plugin, widget] = id.split('/');
+    if (plugin && widget) place(plugin, widget, at[0], at[1]);
+  }
+
   // ---- board ----
 
   // boardClasses keeps the board's state classes together: a text display draws
@@ -402,13 +452,6 @@
           if (state.placing) place(state.placing.plugin, state.placing.widget, x, y);
           else select(-1);
         });
-        slot.addEventListener('dragover', (e) => e.preventDefault());
-        slot.addEventListener('drop', (e) => {
-          e.preventDefault();
-          const id = e.dataTransfer.getData('text/plain');
-          const [plugin, widget] = id.split('/');
-          if (plugin && widget) place(plugin, widget, x, y);
-        });
         board.appendChild(slot);
       }
     }
@@ -426,6 +469,12 @@
       cell.addEventListener('click', (e) => {
         e.stopPropagation();
         select(i);
+      });
+      // A box is dragged onto another cell, where the board's drop moves it.
+      cell.draggable = !state.placing;
+      cell.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', 'cell:' + i);
+        e.dataTransfer.effectAllowed = 'move';
       });
       board.appendChild(cell);
     });
@@ -570,6 +619,31 @@
     };
     cols.addEventListener('change', applySpan);
     rows.addEventListener('change', applySpan);
+
+    // position, for a precise move without the mouse; it clamps like a drag
+    const posWrap = document.createElement('span');
+    posWrap.className = 'grid2';
+    const atX = numberInput(c.at[0], 1, 0);
+    atX.max = String(t.grid[0] - c.span[0]);
+    const atY = numberInput(c.at[1], 1, 0);
+    atY.max = String(t.grid[1] - c.span[1]);
+    posWrap.append(atX, atY);
+    box.appendChild(field('Position', posWrap));
+    const applyPos = () => {
+      const x = Math.max(0, Math.min(t.grid[0] - c.span[0], Math.round(num(atX.value) || 0)));
+      const y = Math.max(0, Math.min(t.grid[1] - c.span[1], Math.round(num(atY.value) || 0)));
+      if (overlaps(x, y, c.span[0], c.span[1], state.selected)) {
+        setStatus('that position overlaps another widget', 'error');
+        atX.value = c.at[0];
+        atY.value = c.at[1];
+        return;
+      }
+      atX.value = x;
+      atY.value = y;
+      if (x !== c.at[0] || y !== c.at[1]) moveCell(state.selected, x, y);
+    };
+    atX.addEventListener('change', applyPos);
+    atY.addEventListener('change', applyPos);
 
     // arguments from the plugin's schema (ADR 0055)
     const info = widgetInfo(c.widget.split('/')[0], c.widget.split('/')[1]);
@@ -1132,6 +1206,10 @@
     el('show-cells').checked = saved !== '0';
     on('show-cells', 'change', () => setCellsVisible(el('show-cells').checked));
   }
+  // The board takes every drop: a palette widget is placed on the cell under
+  // the pointer, a dragged box moves there.
+  on('board', 'dragover', (e) => e.preventDefault());
+  on('board', 'drop', boardDrop);
   on('title', 'input', () => {
     if (!state.template) return;
     state.template.title = el('title').value;
