@@ -365,7 +365,7 @@ func (s *Server) handlePlayground(w http.ResponseWriter, r *http.Request) {
 		Tabs: widgetTabs("playground", display)}
 	p, ok := cfg.Profiles[display]
 	if !ok {
-		v.Error = "no display type is configured; add one under display_types"
+		v.Error = "no display type is configured; add one under displays/"
 		renderEditorPage(w, v, http.StatusBadRequest)
 		return
 	}

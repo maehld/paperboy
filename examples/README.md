@@ -44,6 +44,12 @@ shipped plugins: on weekday mornings weather, departures, the week and the
 energy flow every 5 minutes, during the day all pages every 10 minutes, at
 night only the overview.
 
+`displays/e1001.yaml`, `displays/sticky.yaml` and `displays/lcd2004.yaml` are
+three display types (ADR 0071): an 800 x 480 ePaper panel, the Sticky's denser
+panel and a 20x4 text display. Copy them into the `displays/` directory of your
+instance; the file name is what pages and devices use, and the editor at
+`/ui/editor?tab=displays` creates more.
+
 `devices/wohnzimmer.yaml` and `devices/lcd.yaml` are two devices (ADR 0070):
 an ePaper display on the tour plan and a 20×4 text display on the standard plan.
 Copy one into the `devices/` directory of your instance, set the MAC address and

@@ -66,3 +66,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0068](0068-page-editor-ui.md) | A page editor in the web UI | Accepted, implemented |
 | [0069](0069-plan-editor-ui.md) | A plan editor in the web UI | Accepted, implemented |
 | [0070](0070-devices-in-their-own-files.md) | Devices in files of their own | Accepted, implemented |
+| [0071](0071-display-types-in-files-of-their-own.md) | Display types in files of their own | Accepted, implemented |

@@ -228,6 +228,7 @@ const (
 	configFileName  = "paperboy.yaml"
 	pagesDirName    = "pages"
 	plansDirName    = "plans"
+	displaysDirName = "displays"
 	devicesDirName  = "devices"
 	pluginsDirName  = "plugins"
 	stateDirName    = "state"
@@ -245,6 +246,7 @@ type Config struct {
 	MenuShow    Duration // default time the device menu stays open (ADR 0057)
 	Pages       string   // page templates: <dir>/pages
 	Plans       string   // page plans: <dir>/plans
+	DisplaysDir string   // display type files: <dir>/displays (ADR 0071)
 	DevicesDir  string   // device files: <dir>/devices (ADR 0070)
 	PluginsDir  string   // plugin programs: <dir>/plugins (ADR 0049)
 	FirmwareDir string   // firmware images: <dir>/firmware (ADR 0043)
@@ -349,17 +351,8 @@ type fileConfig struct {
 		Env     map[string]string `yaml:"env"`
 		Config  map[string]any    `yaml:"config"`
 	} `yaml:"plugins"`
-	DisplayTypes map[string]struct {
-		Kind       string   `yaml:"kind"`
-		Charset    string   `yaml:"charset"`
-		Size       [2]int   `yaml:"size"`
-		GrayLevels int      `yaml:"gray_levels"`
-		PPI        float64  `yaml:"ppi"`
-		WidthMM    *int     `yaml:"width_mm"` // removed by ADR 0050, rejected with a hint
-		MinRefresh Duration `yaml:"min_refresh"`
-		Power      string   `yaml:"power"`
-	} `yaml:"display_types"`
-	Devices any `yaml:"devices"` // removed by ADR 0070; rejected with a hint
+	DisplayTypes any `yaml:"display_types"` // moved to displays/ (ADR 0071); rejected with a hint
+	Devices      any `yaml:"devices"`       // removed by ADR 0070; rejected with a hint
 }
 
 // LoadConfig reads and validates the configuration of an instance directory
@@ -420,11 +413,11 @@ func LoadConfig(dir string) (*Config, error) {
 		Battery:     f.Defaults.Battery,
 		Pages:       filepath.Join(dir, pagesDirName),
 		Plans:       filepath.Join(dir, plansDirName),
+		DisplaysDir: filepath.Join(dir, displaysDirName),
 		DevicesDir:  filepath.Join(dir, devicesDirName),
 		PluginsDir:  filepath.Join(dir, pluginsDirName),
 		FirmwareDir: filepath.Join(dir, firmwareDirName),
 		Firmware:    FirmwareConfig{Update: f.Firmware.Update, MinBatteryVolts: f.Firmware.MinBatteryVolts, Version: f.Firmware.Version},
-		Profiles:    make(map[string]Profile, len(f.DisplayTypes)),
 	}
 	if f.Server != nil {
 		return nil, fmt.Errorf("%s: the server section was removed in Paperboy v2: there is no data API and no token any more (ADR 0049); remove it", path)
@@ -432,26 +425,12 @@ func LoadConfig(dir string) (*Config, error) {
 	if f.Old != nil {
 		return nil, fmt.Errorf("%s: providers were replaced by plugins in Paperboy v2 (ADR 0049); move them to plugins with a config section", path)
 	}
-	for name, t := range f.DisplayTypes {
-		c.Profiles[name] = Profile{
-			Kind:       t.Kind,
-			Charset:    t.Charset,
-			Width:      t.Size[0],
-			Height:     t.Size[1],
-			Gray:       t.GrayLevels == 4,
-			PPI:        t.PPI,
-			MinRefresh: t.MinRefresh,
-			Power:      t.Power,
-		}
-		if t.WidthMM != nil {
-			return nil, fmt.Errorf("%s: display type %s: width_mm was replaced by ppi (ADR 0050): replace it with ppi = pixels × 25.4 / mm of the same side", path, name)
-		}
-		if t.Kind == kindText && (t.GrayLevels != 0 || t.PPI != 0) {
-			return nil, fmt.Errorf("%s: display type %s: gray_levels and ppi do not apply to kind text", path, name)
-		}
-		if t.GrayLevels != 0 && t.GrayLevels != 1 && t.GrayLevels != 4 {
-			return nil, fmt.Errorf("%s: display type %s: gray_levels must be 1 or 4", path, name)
-		}
+	if f.DisplayTypes != nil {
+		return nil, fmt.Errorf("%s: display types moved to files of their own: create displays/<name>.yaml for every display type and remove the display_types section (ADR 0071)", path)
+	}
+	c.Profiles, err = loadDisplays(c.DisplaysDir)
+	if err != nil {
+		return nil, err
 	}
 	if f.Devices != nil {
 		return nil, fmt.Errorf("%s: devices moved to files of their own: create devices/<id>.yaml for every device and remove the devices section (ADR 0070)", path)
@@ -556,47 +535,11 @@ func (c *Config) validate() error {
 		}
 	}
 	if len(c.Profiles) == 0 {
-		return fmt.Errorf("display_types missing")
+		return fmt.Errorf("no display type: create displays/<name>.yaml (ADR 0071)")
 	}
 	for name, p := range c.Profiles {
-		if !validName(name) {
-			return fmt.Errorf("display type %q: only a-z, 0-9 and -", name)
-		}
-		switch p.Kind {
-		case "":
-			p.Kind = kindImage
-		case kindImage, kindText:
-		default:
-			return fmt.Errorf("display type %s: unknown kind %q: expected image or text", name, p.Kind)
-		}
-		if p.text() {
-			if p.Width < 1 || p.Height < 1 || p.Width > 80 || p.Height > 24 {
-				return fmt.Errorf("display type %s: size [columns, rows] must be at most [80, 24]", name)
-			}
-			if !page.ValidCharset(p.Charset) {
-				return fmt.Errorf("display type %s: charset %q: expected utf8, ascii or hd44780", name, p.Charset)
-			}
-			if p.Charset == "" {
-				p.Charset = page.CharsetUTF8
-			}
-		} else if p.Charset != "" {
-			return fmt.Errorf("display type %s: charset only applies to kind text", name)
-		} else if p.PPI < 20 || p.PPI > 1000 {
-			return fmt.Errorf("display type %s: ppi is required for image displays: pixels per inch between 20 and 1000, e.g. 125 (ADR 0050)", name)
-		}
-		if p.Width < 1 || p.Height < 1 || p.Width > 4096 || p.Height > 4096 {
-			return fmt.Errorf("display type %s: invalid size", name)
-		}
-		// An unset min_refresh stays 0: its default depends on the power
-		// source, which may only be known from the device's report (ADR 0051).
-		if p.MinRefresh != 0 && time.Duration(p.MinRefresh) < time.Second {
-			return fmt.Errorf("display type %s: min_refresh must be at least 1s", name)
-		}
-		if p.Power == "" {
-			p.Power = powerAuto
-		}
-		if !validPower(p.Power) {
-			return fmt.Errorf("display type %s: power %q: expected auto, battery or mains", name, p.Power)
+		if err := validateProfile(name, &p); err != nil {
+			return err
 		}
 		c.Profiles[name] = p
 	}
@@ -634,6 +577,55 @@ func (c *Config) validate() error {
 		if p.Timeout < 0 {
 			return fmt.Errorf("plugin %s: timeout must not be negative", p.Name)
 		}
+	}
+	return nil
+}
+
+// validateProfile checks one display type and fills its defaults; the loader
+// and the display type API both use it, so a written file is as valid as a
+// loaded one (ADR 0071).
+func validateProfile(name string, p *Profile) error {
+	if !validName(name) {
+		return fmt.Errorf("display type %q: only a-z, 0-9 and -", name)
+	}
+	switch p.Kind {
+	case "":
+		p.Kind = kindImage
+	case kindImage, kindText:
+	default:
+		return fmt.Errorf("display type %s: unknown kind %q: expected image or text", name, p.Kind)
+	}
+	if p.text() {
+		if p.Width < 1 || p.Height < 1 || p.Width > 80 || p.Height > 24 {
+			return fmt.Errorf("display type %s: size [columns, rows] must be at most [80, 24]", name)
+		}
+		if !page.ValidCharset(p.Charset) {
+			return fmt.Errorf("display type %s: charset %q: expected utf8, ascii or hd44780", name, p.Charset)
+		}
+		if p.Charset == "" {
+			p.Charset = page.CharsetUTF8
+		}
+		if p.PPI != 0 || p.Gray {
+			return fmt.Errorf("display type %s: gray_levels and ppi do not apply to kind text", name)
+		}
+	} else if p.Charset != "" {
+		return fmt.Errorf("display type %s: charset only applies to kind text", name)
+	} else if p.PPI < 20 || p.PPI > 1000 {
+		return fmt.Errorf("display type %s: ppi is required for image displays: pixels per inch between 20 and 1000, e.g. 125 (ADR 0050)", name)
+	}
+	if p.Width < 1 || p.Height < 1 || p.Width > 4096 || p.Height > 4096 {
+		return fmt.Errorf("display type %s: invalid size", name)
+	}
+	// An unset min_refresh stays 0: its default depends on the power source,
+	// which may only be known from the device's report (ADR 0051).
+	if p.MinRefresh != 0 && time.Duration(p.MinRefresh) < time.Second {
+		return fmt.Errorf("display type %s: min_refresh must be at least 1s", name)
+	}
+	if p.Power == "" {
+		p.Power = powerAuto
+	}
+	if !validPower(p.Power) {
+		return fmt.Errorf("display type %s: power %q: expected auto, battery or mains", name, p.Power)
 	}
 	return nil
 }

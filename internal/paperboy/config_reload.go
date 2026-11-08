@@ -31,16 +31,19 @@ type configEntry struct {
 type configLoader struct {
 	dir string
 
-	mu      sync.Mutex
-	entry   configEntry
-	devices string // stamp of the device files (ADR 0070)
-	cfg     *Config
-	lastErr string // message of the last load failure; the same failure logs once
-	missing bool   // the last stat failed; the problem is logged once
+	mu       sync.Mutex
+	entry    configEntry
+	displays string // stamp of the display type files (ADR 0071)
+	devices  string // stamp of the device files (ADR 0070)
+	cfg      *Config
+	lastErr  string // message of the last load failure; the same failure logs once
+	missing  bool   // the last stat failed; the problem is logged once
 }
 
 func newConfigLoader(dir string, cfg *Config) *configLoader {
-	l := &configLoader{dir: dir, cfg: cfg, devices: devicesStamp(filepath.Join(dir, devicesDirName))}
+	l := &configLoader{dir: dir, cfg: cfg,
+		displays: displaysStamp(filepath.Join(dir, displaysDirName)),
+		devices:  devicesStamp(filepath.Join(dir, devicesDirName))}
 	if info, err := os.Stat(filepath.Join(dir, configFileName)); err == nil {
 		l.entry = configEntry{mod: info.ModTime(), size: info.Size()}
 	} else {
@@ -70,8 +73,12 @@ func (l *configLoader) get() *Config {
 	}
 	l.missing = false
 	changed := l.entry.size != info.Size() || !l.entry.mod.Equal(info.ModTime())
-	// The devices live in their own files (ADR 0070), so a change there has to
-	// reload the configuration as well.
+	// Display types and devices live in their own files (ADR 0070, 0071), so a
+	// change there has to reload the configuration as well.
+	if stamp := displaysStamp(filepath.Join(l.dir, displaysDirName)); stamp != l.displays {
+		changed = true
+		l.displays = stamp
+	}
 	if stamp := devicesStamp(filepath.Join(l.dir, devicesDirName)); stamp != l.devices {
 		changed = true
 		l.devices = stamp

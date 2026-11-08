@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/maehld/paperboy/internal/page"
@@ -58,11 +59,24 @@ type editorListPage struct {
 	Display   string // the display type shared pages are opened with
 	Displays  []galleryDisplay
 	Groups    []editorPageGroup
-	Options   []galleryOption   // display types of the new-page form
-	Plans     []editorPlanRow   // the plan files next to the pages (ADR 0069)
-	Devices   []editorDeviceRow // the device files (ADR 0070)
-	Tabs      []uiTab           // pages, plans and devices as sub-tabs
-	Tab       string            // the open sub-tab
+	Options   []galleryOption    // display types of the new-page form
+	Plans     []editorPlanRow    // the plan files next to the pages (ADR 0069)
+	Devices   []editorDeviceRow  // the device files (ADR 0070)
+	Types     []editorDisplayRow // the display type files (ADR 0071)
+	Tabs      []uiTab            // the object types as sub-tabs
+	Tab       string             // the open sub-tab
+}
+
+// editorDisplayRow is one display type file in the overview.
+type editorDisplayRow struct {
+	Name    string
+	Kind    string
+	Size    string
+	Density string // ppi of an image display, charset of a text display
+	Gray    string
+	Power   string
+	Error   string
+	OpenURL string
 }
 
 // editorDeviceRow is one device file in the overview.
@@ -217,7 +231,7 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	display := editorDisplay(cfg, q.Get("display"))
 	tab := q.Get("tab")
 	switch tab {
-	case "plans", "devices":
+	case "plans", "devices", "displays":
 	default:
 		tab = "pages"
 	}
@@ -251,6 +265,38 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 		}
 		v.Devices = append(v.Devices, row)
 	}
+	displays, err := displayFileList(cfg.DisplaysDir)
+	if err != nil {
+		slog.Warn("display type list for the page overview failed", "error", err)
+	}
+	for _, d := range displays {
+		row := editorDisplayRow{Name: d.Name, Kind: d.Kind, Power: d.Power, Error: d.Error}
+		if d.Size[0] > 0 && d.Size[1] > 0 {
+			row.Size = fmt.Sprintf("%d × %d", d.Size[0], d.Size[1])
+		}
+		if d.Kind == kindText {
+			row.Density = d.Charset
+			if row.Density == "" {
+				row.Density = page.CharsetUTF8
+			}
+			row.Gray = "—"
+		} else {
+			if d.PPI > 0 {
+				row.Density = strconv.FormatFloat(d.PPI, 'f', -1, 64) + " ppi"
+			}
+			row.Gray = "1"
+			if d.Gray == 4 {
+				row.Gray = "4"
+			}
+		}
+		if row.Power == "" {
+			row.Power = powerAuto
+		}
+		if d.Error == "" {
+			row.OpenURL = "/ui/editor/display?" + url.Values{"name": {d.Name}}.Encode()
+		}
+		v.Types = append(v.Types, row)
+	}
 	for _, n := range displayNames(cfg) {
 		v.Displays = append(v.Displays, galleryDisplay{Name: n, Selected: n == display,
 			URL: "/ui/editor?" + url.Values{"display": {n}}.Encode()})
@@ -260,6 +306,7 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 		{Name: "pages", Label: "Pages", Count: len(v.Groups), URL: editorTabURL("pages", display)},
 		{Name: "plans", Label: "Plans", Count: len(v.Plans), URL: editorTabURL("plans", "")},
 		{Name: "devices", Label: "Devices", Count: len(v.Devices), URL: editorTabURL("devices", "")},
+		{Name: "displays", Label: "Displays", Count: len(v.Types), URL: editorTabURL("displays", "")},
 	}
 	for i := range v.Tabs {
 		v.Tabs[i].Selected = v.Tabs[i].Name == tab
@@ -306,7 +353,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	}
 	p, ok := cfg.Profiles[display]
 	if !ok {
-		v.Error = "no display type is configured; add one under display_types"
+		v.Error = "no display type is configured; add one under displays/"
 		renderEditorPage(w, v, http.StatusBadRequest)
 		return
 	}

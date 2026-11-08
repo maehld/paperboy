@@ -1,0 +1,9 @@
+# A display type (ADR 0071): the file name is its stable name. Copy it into the
+# displays/ directory of your instance. Pages name it as a suffix
+# (pages/<page>.e1001.yaml) and devices with display_type: e1001.
+kind: image
+size: [800, 480]
+gray_levels: 4
+ppi: 125          # pixels per inch: 800 px / 163 mm active width
+min_refresh: 60s
+# power: auto      # auto (default: what the firmware reports, else battery), battery or mains (ADR 0051)
