@@ -1,0 +1,59 @@
+/* The chrome every operator page shares (ADR 0076): brand, navigation, the
+   action bar of the editors, buttons, panels and tabs. A page links this file
+   and keeps only what is specific to it, so one page cannot drift from the
+   others. Rules here are the union of the nine pages that carried their own
+   copy before. */
+
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+
+/* `hidden` must win over a rule that gives an element a display, otherwise a
+   field of the other display kind stays visible (ADR 0076). */
+[hidden] { display: none !important; }
+
+body { margin: 0; padding: 1.5rem; font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: #f2f2f2; color: #111; }
+
+/* The header: brand, the four sections, the build label. The active entry is
+   bold and dark. */
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; margin-bottom: 1rem; }
+h1 { font-size: 1.5rem; margin: 0; }
+.muted { color: #666; font-size: .85rem; }
+nav { font-size: 1rem; }
+header nav { flex: 1 1 auto; }
+nav a { color: #134e9c; text-decoration: none; }
+nav a.active { font-weight: 700; color: #111; }
+.build { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* The action bar of an editor: back link, object name, where, status, actions. */
+.bar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-bottom: .9rem; }
+.bar h2 { font-size: 1.15rem; margin: 0; }
+.bar .spacer { margin-left: auto; }
+
+.status { font-size: .85rem; }
+.status.ok { color: #17692c; }
+.status.error { color: #b00; }
+
+button { font: inherit; font-size: .9rem; padding: .25rem .7rem; border-radius: 6px; border: 1px solid #bbb; background: #fafafa; cursor: pointer; }
+button:hover { background: #eee; }
+button.primary { border-color: #134e9c; background: #134e9c; color: #fff; }
+button.primary:hover { background: #0e3d7c; }
+button.danger { border-color: #c22; color: #b00; }
+button.danger:hover { background: #fff2f2; }
+button:disabled { color: #888; cursor: default; background: #f2f2f2; border-color: #ccc; }
+
+.panel { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .8rem; }
+.panel h3 { font-size: .95rem; margin: 0 0 .5rem; }
+.panel-head { display: flex; align-items: center; gap: .6rem; margin: 0 0 .5rem; }
+.panel-head h3 { margin: 0; }
+.hint { margin: .4rem 0 0; font-size: .8rem; color: #666; }
+code { font: .85rem ui-monospace, Consolas, monospace; background: #f2f2f2; padding: 0 .2rem; border-radius: 3px; }
+
+/* Sub-tabs of a section (the editor's object types). */
+.tabs { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; border-bottom: 1px solid #ddd; margin: 0 0 1rem; }
+.tabs a { padding: .4rem .8rem; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; text-decoration: none; font-size: .95rem; }
+.tabs a.active { background: #fff; border-color: #ddd; color: #111; font-weight: 600; margin-bottom: -1px; }
+
+/* A row of links that chooses between display types. */
+.switch { display: flex; flex-wrap: wrap; gap: .8rem; margin: 0 0 .9rem; font-size: .95rem; }
+.switch a { color: #134e9c; text-decoration: none; }
+.switch a.active { font-weight: 700; color: #111; }

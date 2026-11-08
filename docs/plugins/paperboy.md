@@ -8,4 +8,4 @@ The built-in plugin `paperboy` runs inside Paperboy and needs no configuration. 
 - `text`: fixed text. Args: `text` (with `\n` for line breaks), `align` (`left`, `center` or `right`, default `center`), `size`, `bold`.
 - `clock`: the current time. Args: `format` (`time`, `date` or `datetime`, default `time`).
 
-Arguments with a fixed set of values reject anything else (ADR 0055); the widget gallery offers them as choices.
+Arguments with a fixed set of values reject anything else (ADR 0055); the widgets page offers them as choices.

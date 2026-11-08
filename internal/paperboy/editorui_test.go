@@ -191,7 +191,7 @@ func TestEditorPage(t *testing.T) {
 		}
 	}
 	// The board carries the preview itself, so the page editor has no separate
-	// preview panel (ADR 0074); the playground keeps it.
+	// preview panel (ADR 0074); the widgets page keeps it.
 	if strings.Contains(body, `id="preview-img"`) {
 		t.Fatalf("the page editor still has a preview panel:\n%s", body)
 	}

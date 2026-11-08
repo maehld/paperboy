@@ -69,9 +69,9 @@ type editorListPage struct {
 	Version   string
 	GoVersion string
 	Display   string // the display type shared pages are opened with
-	Displays  []galleryDisplay
+	Displays  []displayLink
 	Groups    []editorPageGroup
-	Options   []galleryOption    // display types of the new-page form
+	Options   []uiOption         // display types of the new-page form
 	Plans     []editorPlanRow    // the plan files next to the pages (ADR 0069)
 	Devices   []editorDeviceRow  // the device files (ADR 0070)
 	Types     []editorDisplayRow // the display type files (ADR 0071)
@@ -119,20 +119,18 @@ type editorPlanRow struct {
 // editorPageView is the shell of one page; the script reads the model, the
 // plugin list and the profiles from the API.
 type editorPageView struct {
-	Version    string
-	GoVersion  string
-	Name       string
-	Display    string
-	Text       bool
-	Error      string
-	Playground bool             // the widgets page without a page (ADR 0055)
-	Displays   []galleryDisplay // display types this page can be opened for
-	Tabs       []uiTab          // playground and gallery, on the widgets page only
-	Data       template.JS      // the starting state of the script
+	Version     string
+	GoVersion   string
+	Name        string
+	Display     string
+	Text        bool
+	Error       string
+	WidgetsPage bool          // the widgets page without a page (ADR 0055)
+	Displays    []displayLink // display types this page can be opened for
+	Data        template.JS   // the starting state of the script
 }
 
-// uiTab is one sub-tab of a view: the editor's object types and the widgets
-// page's playground and gallery.
+// uiTab is one sub-tab of a view: the editor's object types.
 type uiTab struct {
 	Name     string
 	Label    string
@@ -141,23 +139,38 @@ type uiTab struct {
 	Selected bool
 }
 
+// displayLink is one entry of the display type switch a page shows.
+type displayLink struct {
+	Name     string
+	URL      string
+	Selected bool
+}
+
+// uiOption is one entry of a select in an editor form.
+type uiOption struct {
+	Name     string
+	Value    string
+	Label    string
+	Selected bool
+}
+
 // editorState is what the script starts from, so it does not have to guess the
 // kind, the size or the grid of a page that does not exist yet.
 type editorState struct {
-	Name       string            `json:"name"`
-	Display    string            `json:"display"`
-	Kind       string            `json:"kind"`  // image or text
-	Width      int               `json:"width"` // characters of a text display, pixels of an image display
-	Height     int               `json:"height"`
-	New        bool              `json:"new"`    // there is no file yet
-	Shared     bool              `json:"shared"` // a new page is written as pages/<name>.yaml
-	Grid       [2]int            `json:"grid"`   // grid a new page starts with
-	Reference  [2]int            `json:"reference"`
-	Playground bool              `json:"playground,omitempty"`
-	Widget     string            `json:"widget,omitempty"` // plugin/widget the playground starts with
-	Span       *[2]int           `json:"span,omitempty"`   // its size on the reference grid
-	Args       map[string]string `json:"args,omitempty"`   // the args from the link, still as text
-	UsedBy     []string          `json:"usedBy,omitempty"` // plans that name the page, for the delete warning
+	Name        string            `json:"name"`
+	Display     string            `json:"display"`
+	Kind        string            `json:"kind"`  // image or text
+	Width       int               `json:"width"` // characters of a text display, pixels of an image display
+	Height      int               `json:"height"`
+	New         bool              `json:"new"`    // there is no file yet
+	Shared      bool              `json:"shared"` // a new page is written as pages/<name>.yaml
+	Grid        [2]int            `json:"grid"`   // grid a new page starts with
+	Reference   [2]int            `json:"reference"`
+	WidgetsPage bool              `json:"widgets_page,omitempty"`
+	Widget      string            `json:"widget,omitempty"` // plugin/widget the widgets page starts with
+	Span        *[2]int           `json:"span,omitempty"`   // its size on the reference grid
+	Args        map[string]string `json:"args,omitempty"`   // the args from the link, still as text
+	UsedBy      []string          `json:"usedBy,omitempty"` // plans that name the page, for the delete warning
 }
 
 // displayNames lists the configured display types alphabetically.
@@ -480,9 +493,9 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 		v.Types = append(v.Types, row)
 	}
 	for _, n := range displayNames(cfg) {
-		v.Displays = append(v.Displays, galleryDisplay{Name: n, Selected: n == display,
+		v.Displays = append(v.Displays, displayLink{Name: n, Selected: n == display,
 			URL: "/ui/editor?" + url.Values{"display": {n}}.Encode()})
-		v.Options = append(v.Options, galleryOption{Value: n, Label: n, Selected: n == display})
+		v.Options = append(v.Options, uiOption{Value: n, Label: n, Selected: n == display})
 	}
 	v.Tabs = []uiTab{
 		{Name: "pages", Label: "Pages", Count: len(v.Groups), URL: editorTabURL("pages", display)},
@@ -570,7 +583,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 		if shared {
 			params.Set("shared", "1")
 		}
-		v.Displays = append(v.Displays, galleryDisplay{Name: n, Selected: n == display,
+		v.Displays = append(v.Displays, displayLink{Name: n, Selected: n == display,
 			URL: "/ui/editor/page?" + params.Encode()})
 	}
 	renderEditorPage(w, v, http.StatusOK)
@@ -597,11 +610,11 @@ func editorStateData(name, display string, p Profile, missing, shared bool, used
 	return template.JS(data)
 }
 
-// playgroundStateData encodes the starting state of the playground: the display
+// widgetsStateData encodes the starting state of the widgets page: the display
 // type plus the widget, its size and its args when the link carries them. The
 // types of the args are read in the script, where the plugin schema is known.
-func playgroundStateData(display string, p Profile, widget string, span [2]int, args map[string]string) template.JS {
-	state := editorState{Display: display, Playground: true, Widget: widget, Args: args,
+func widgetsStateData(display string, p Profile, widget string, span [2]int, args map[string]string) template.JS {
+	state := editorState{Display: display, WidgetsPage: true, Widget: widget, Args: args,
 		Reference: defaultGrid, Width: p.Width, Height: p.Height}
 	if span[0] > 0 && span[1] > 0 {
 		state.Span = &span
@@ -615,7 +628,7 @@ func playgroundStateData(display string, p Profile, widget string, span [2]int, 
 	}
 	data, err := json.Marshal(state)
 	if err != nil { // never expected: only strings and numbers
-		slog.Error("playground state encoding failed", "error", err)
+		slog.Error("widgets page state encoding failed", "error", err)
 		return "{}"
 	}
 	return template.JS(data)

@@ -18,6 +18,19 @@ var dashboardTemplate string
 
 var dashboardTmpl = template.Must(template.New("dashboard").Parse(dashboardTemplate))
 
+// uiCSS is the stylesheet every operator page links, so the header, the action
+// bar and the buttons cannot drift apart between the pages (ADR 0076).
+//
+//go:embed ui/ui.css
+var uiCSS []byte
+
+// handleUICSS serves the shared stylesheet.
+func (s *Server) handleUICSS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(uiCSS)
+}
+
 // dashboardDevice is one card of the overview. It carries display-ready texts
 // so the template holds no formatting logic.
 type dashboardDevice struct {
@@ -45,7 +58,6 @@ type dashboardDevice struct {
 }
 
 type dashboardPage struct {
-	Now       string
 	Version   string // build label: version, commit and commit date
 	GoVersion string
 	Devices   []dashboardDevice
@@ -107,7 +119,6 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		loc = time.UTC
 	}
 	page := dashboardPage{
-		Now:       now.In(loc).Format("15:04:05"),
 		Version:   versionText(build, loc),
 		GoVersion: build.Go,
 		Devices:   cards,
