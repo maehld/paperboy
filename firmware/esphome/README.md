@@ -97,10 +97,10 @@ else, including the rescue of a device that no longer syncs, goes over USB-C.
 The *Firmware* workflow compiles all three hardware types with the same pinned
 version whenever `firmware/esphome/` changes, so a broken configuration fails on
 a pull request. A release tag attaches the images as one bundle,
-`paperboy-firmware-<version>.zip`: unpacked in the instance directory it creates
-`firmware/<hardware>/<hardware>-<version>.bin` for every hardware type (ADR 0043,
-0059). `fw_version` in `<hardware>.yaml` names the image inside the bundle, the
-tag names the bundle.
+`paperboy-firmware.zip`: unpacked in the instance directory it creates
+`firmware/<hardware>-v<version>.bin` for every hardware type (ADR 0043, 0059,
+0060, 0063). `fw_version` in `<hardware>.yaml` names the image inside the bundle,
+the release tag names the release.
 
 A device that runs the TRMNL firmware is flashed over USB-C once. A device on
 the ESPHome experiment can switch without a cable through the experiment's own

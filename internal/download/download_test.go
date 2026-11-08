@@ -145,31 +145,53 @@ func TestVersionOf(t *testing.T) {
 	}
 }
 
-func TestFetchVerifiesChecksum(t *testing.T) {
+func TestBundleUsesConstantName(t *testing.T) {
 	rs, srv := newReleaseServer(t, "v2.1.0")
-	rs.add(t, "v2.1.0", "paperboy-firmware-2.1.0.zip", []byte("bundle"))
-	rs.files["v2.1.0/SHA256SUMS"] = []byte("0000  paperboy-firmware-2.1.0.zip\n")
+	rs.add(t, "v2.1.0", FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
 	c := New(srv.URL+"/repos/me/paperboy/releases", "", t.TempDir())
-
-	rel, ok, err := c.Latest(context.Background(), func(a Asset) bool { return a.Name == "paperboy-firmware-2.1.0.zip" })
+	rel, ok, err := c.Latest(context.Background(), func(a Asset) bool { return a.Name == FirmwareAsset })
 	if err != nil || !ok {
 		t.Fatalf("latest: %v %v", ok, err)
 	}
-	if _, err := c.Fetch(context.Background(), rel, "paperboy-firmware-2.1.0.zip"); err == nil ||
-		!strings.Contains(err.Error(), "checksum mismatch") {
-		t.Fatalf("wrong checksum must fail: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(c.Dir, "v2.1.0-paperboy-firmware-2.1.0.zip")); !os.IsNotExist(err) {
-		t.Fatal("a file with a wrong checksum must be removed")
-	}
-
-	rs.add(t, "v2.1.0", "paperboy-firmware-2.1.0.zip", []byte("bundle"))
-	c = New(srv.URL+"/repos/me/paperboy/releases", "", t.TempDir()) // a check starts with fresh checksums
-	again, _, err := c.Latest(context.Background(), func(a Asset) bool { return a.Name == "paperboy-firmware-2.1.0.zip" })
+	entries, path, err := c.Bundle(context.Background(), rel)
 	if err != nil {
 		t.Fatal(err)
 	}
-	path, err := c.Fetch(context.Background(), again, "paperboy-firmware-2.1.0.zip")
+	if filepath.Base(path) != "v2.1.0-"+FirmwareAsset || len(entries) != 1 {
+		t.Fatalf("bundle: %q %v", path, entries)
+	}
+	// The old versioned name is no longer a bundle (ADR 0063).
+	legacy := Release{Tag: "v2.1.0", Assets: []Asset{{Name: "paperboy-firmware-2.1.0.zip"}}}
+	if bundleName(legacy) != "" {
+		t.Fatalf("legacy bundle name must not match: %q", bundleName(legacy))
+	}
+}
+
+func TestFetchVerifiesChecksum(t *testing.T) {
+	rs, srv := newReleaseServer(t, "v2.1.0")
+	rs.add(t, "v2.1.0", FirmwareAsset, []byte("bundle"))
+	rs.files["v2.1.0/SHA256SUMS"] = []byte("0000  " + FirmwareAsset + "\n")
+	c := New(srv.URL+"/repos/me/paperboy/releases", "", t.TempDir())
+
+	rel, ok, err := c.Latest(context.Background(), func(a Asset) bool { return a.Name == FirmwareAsset })
+	if err != nil || !ok {
+		t.Fatalf("latest: %v %v", ok, err)
+	}
+	if _, err := c.Fetch(context.Background(), rel, FirmwareAsset); err == nil ||
+		!strings.Contains(err.Error(), "checksum mismatch") {
+		t.Fatalf("wrong checksum must fail: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(c.Dir, "v2.1.0-"+FirmwareAsset)); !os.IsNotExist(err) {
+		t.Fatal("a file with a wrong checksum must be removed")
+	}
+
+	rs.add(t, "v2.1.0", FirmwareAsset, []byte("bundle"))
+	c = New(srv.URL+"/repos/me/paperboy/releases", "", t.TempDir()) // a check starts with fresh checksums
+	again, _, err := c.Latest(context.Background(), func(a Asset) bool { return a.Name == FirmwareAsset })
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := c.Fetch(context.Background(), again, FirmwareAsset)
 	if err != nil {
 		t.Fatal(err)
 	}

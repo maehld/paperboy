@@ -55,6 +55,7 @@ type dashboardPage struct {
 // dashboardDownloads is the release card: source, checks and what came from it.
 type dashboardDownloads struct {
 	Source    string
+	Running   bool     // a check is running right now
 	LastCheck string   // time of the last check, "never" before the first one
 	LastOK    string   // time of the last successful check, empty when unknown
 	Error     string   // last error, empty when the check succeeded
@@ -120,14 +121,28 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleDownloadCheck starts a release check in the background and returns the
+// dashboard at once; a second request while one runs changes nothing (ADR 0062).
+// It is the dashboard's only action, so it needs no form token.
+func (s *Server) handleDownloadCheck(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	if cfg.Download != nil && s.download.begin() {
+		go func() {
+			s.finishDownloadCheck(cfg, s.downloadOnce(s.ctx, cfg))
+		}()
+	}
+	http.Redirect(w, r, "/ui", http.StatusSeeOther)
+}
+
 // downloadCard summarizes the release checks for the dashboard; nil without a
 // download section.
 func (s *Server) downloadCard(cfg *Config, loc *time.Location) *dashboardDownloads {
 	if cfg.Download == nil {
 		return nil
 	}
-	lastCheck, lastOK, lastErr, plugins, firmware := s.download.view()
+	running, lastCheck, lastOK, lastErr, plugins, firmware := s.download.view()
 	card := &dashboardDownloads{Source: cfg.Download.Source, Error: lastErr,
+		Running:   running,
 		LastCheck: downloadTime(lastCheck, loc), LastOK: downloadTime(lastOK, loc)}
 	for _, name := range sortedStringKeys(plugins) {
 		card.Plugins = append(card.Plugins, name+" "+plugins[name])

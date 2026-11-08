@@ -25,6 +25,10 @@ import (
 	"time"
 )
 
+// FirmwareAsset is the firmware bundle of a release; its name is constant
+// because the release tag carries the version (ADR 0063).
+const FirmwareAsset = "paperboy-firmware.zip"
+
 // OfficialSource is the repository Paperboy comes from.
 const OfficialSource = "https://github.com/maehld/paperboy"
 
@@ -219,7 +223,12 @@ func (c *Client) Fetch(ctx context.Context, rel Release, name string) (string, e
 func (c *Client) Bundle(ctx context.Context, rel Release) ([]string, string, error) {
 	cache := c.readCache()
 	if entries, ok := cache.Bundles[rel.Tag]; ok {
-		return entries, filepath.Join(c.Dir, rel.Tag+"-"+bundleName(rel)), nil
+		local := filepath.Join(c.Dir, rel.Tag+"-"+bundleName(rel))
+		// A cache entry from before the constant bundle name points at a file
+		// that is no longer fetched: read the bundle again (ADR 0063).
+		if _, err := os.Stat(local); err == nil {
+			return entries, local, nil
+		}
 	}
 	name := bundleName(rel)
 	if name == "" {
@@ -243,10 +252,8 @@ func (c *Client) Bundle(ctx context.Context, rel Release) ([]string, string, err
 
 // bundleName returns the firmware bundle asset of a release.
 func bundleName(rel Release) string {
-	for _, a := range rel.Assets {
-		if strings.HasPrefix(a.Name, "paperboy-firmware-") && strings.HasSuffix(a.Name, ".zip") {
-			return a.Name
-		}
+	if _, ok := rel.Asset(FirmwareAsset); ok {
+		return FirmwareAsset
 	}
 	return ""
 }
