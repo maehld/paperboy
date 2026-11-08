@@ -623,10 +623,12 @@ func drawCell(img *image.Paletted, c menuCell, label string, size float64, selec
 	if c.rect.Empty() {
 		return
 	}
-	if disabled && !selected {
+	if disabled {
+		// Unavailable actions are hatched whether selected or not; the
+		// selection gets a heavier frame, because inverting would fight the
+		// hatch.
 		render.Fill(img, c.rect, "hatch")
-	}
-	if selected && !disabled {
+	} else if selected {
 		render.Fill(img, c.rect, "solid")
 	}
 	ink := render.Black
@@ -662,6 +664,17 @@ func drawCell(img *image.Paletted, c menuCell, label string, size float64, selec
 		render.Text(img, line, cx, top, render.Style{Size: size, Bold: selected, Shrink: true}, inner.Dx()-6, ink, render.Center)
 		top += lineH
 	}
+	if disabled && selected {
+		frameCell(img, c.rect, 2)
+	}
+}
+
+// frameCell draws a border of the given thickness inside r.
+func frameCell(img *image.Paletted, r image.Rectangle, t int) {
+	render.FillColor(img, image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+t), render.Black)
+	render.FillColor(img, image.Rect(r.Min.X, r.Max.Y-t, r.Max.X, r.Max.Y), render.Black)
+	render.FillColor(img, image.Rect(r.Min.X, r.Min.Y, r.Min.X+t, r.Max.Y), render.Black)
+	render.FillColor(img, image.Rect(r.Max.X-t, r.Min.Y, r.Max.X, r.Max.Y), render.Black)
 }
 
 func drawMenuHeader(img *image.Paletted, r image.Rectangle, v menuView, size float64, t texts) {
