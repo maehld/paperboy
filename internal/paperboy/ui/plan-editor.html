@@ -4,43 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Name}} · Plan editor · Paperboy</title>
+<link rel="stylesheet" href="/ui/ui.css">
 <style>
-:root { color-scheme: light; }
-* { box-sizing: border-box; }
-body { margin: 0; padding: 1.2rem 1.5rem 2rem; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: #f2f2f2; color: #111; }
-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; margin-bottom: .8rem; }
-h1 { font-size: 1.5rem; margin: 0; }
-.muted { color: #666; font-size: .85rem; }
-nav { font-size: 1rem; }
-nav a { color: #134e9c; text-decoration: none; }
-nav a.active { font-weight: 700; color: #111; }
-.build { margin-left: auto; font-variant-numeric: tabular-nums; }
+body { padding: 1.2rem 1.5rem 2rem; font-size: 15px; }
 a { color: #134e9c; }
-code { font: .85rem ui-monospace, Consolas, monospace; background: #f2f2f2; padding: 0 .2rem; border-radius: 3px; }
-.bar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-bottom: .9rem; }
-.bar h2 { font-size: 1.15rem; margin: 0; }
-.bar .spacer { margin-left: auto; }
-button { font: inherit; font-size: .9rem; padding: .25rem .7rem; border-radius: 6px; border: 1px solid #bbb; background: #fafafa; cursor: pointer; }
-button:hover { background: #eee; }
-button.primary { border-color: #134e9c; background: #134e9c; color: #fff; }
-button.primary:hover { background: #0e3d7c; }
-button.danger { border-color: #c22; color: #b00; }
-button.danger:hover { background: #fff2f2; }
-button:disabled { color: #888; cursor: default; background: #f2f2f2; border-color: #ccc; }
 button.small { padding: .05rem .45rem; font-size: .8rem; line-height: 1.3; }
-.status { font-size: .85rem; }
-.status.ok { color: #17692c; }
-.status.error { color: #b00; }
 .error { margin: .5rem 0; padding: .5rem .6rem; background: #fff2f2; border-left: 3px solid #c22; font-size: .85rem; word-break: break-word; }
 main { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; gap: 1rem; align-items: start; }
 @media (max-width: 62rem) { main { grid-template-columns: minmax(0, 1fr); } }
 .col { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
-.panel { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .8rem; }
-.panel-head { display: flex; align-items: center; gap: .6rem; margin-bottom: .4rem; }
+.panel-head { margin-bottom: .4rem; }
 .panel-head h3 { font-size: .95rem; margin: 0; }
 .panel-head button { margin-left: auto; }
 .panel h3 { font-size: .95rem; margin: 0 0 .4rem; }
-.hint { margin: .3rem 0 0; font-size: .8rem; color: #666; }
+.hint { margin: .3rem 0 0; }
 label.field { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); gap: .3rem .5rem; align-items: center; font-size: .85rem; }
 label.field > span:first-child { color: #555; }
 input, select { font: inherit; padding: .15rem .3rem; min-width: 0; width: 100%; }
@@ -87,10 +64,10 @@ input[type=checkbox] { width: auto; }
 </header>
 {{if .Error}}
 <p class="error">{{.Error}}</p>
-<p><a href="/ui/editor">← Pages and plans</a></p>
+<p><a href="/ui/editor?tab=plans">← Plans</a></p>
 {{else}}
 <div class="bar">
-  <a href="/ui/editor">← Pages and plans</a>
+  <a href="/ui/editor?tab=plans">← Plans</a>
   <h2>plan {{.Name}}</h2>
   <span class="muted" id="where"></span>
   <span class="spacer"></span>

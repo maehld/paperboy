@@ -363,7 +363,7 @@ func (s *Server) handlePlayground(w http.ResponseWriter, r *http.Request) {
 	display := editorDisplay(cfg, q.Get("display"))
 	version, goVersion := editorVersion(cfg)
 	v := editorPageView{Version: version, GoVersion: goVersion, Display: display, Playground: true,
-		Tabs: widgetTabs("playground", display)}
+		Widget: q.Get("widget"), Tabs: widgetTabs("playground", display)}
 	p, ok := cfg.Profiles[display]
 	if !ok {
 		v.Error = "no display type is configured; add one under displays/"

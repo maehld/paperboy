@@ -126,6 +126,7 @@ type editorPageView struct {
 	Text       bool
 	Error      string
 	Playground bool             // the widgets page without a page (ADR 0055)
+	Widget     string           // the widget a playground view shows, empty for none
 	Displays   []galleryDisplay // display types this page can be opened for
 	Tabs       []uiTab          // playground and gallery, on the widgets page only
 	Data       template.JS      // the starting state of the script

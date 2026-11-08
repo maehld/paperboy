@@ -71,3 +71,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0073](0073-edit-creates-and-deletes.md) | Creating plans and deleting files in the editor | Accepted, implemented |
 | [0074](0074-editor-board-shows-the-preview.md) | The editor board shows the page preview | Accepted, implemented |
 | [0075](0075-plugin-versions.md) | A version per plugin | Accepted, implemented |
+| [0076](0076-one-stylesheet-and-one-navigation.md) | One stylesheet and one navigation for the operator UI | Accepted, implemented |
