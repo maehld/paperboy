@@ -3,6 +3,7 @@ package main
 import (
 	"image"
 	"image/color"
+	"strings"
 	"testing"
 
 	"github.com/maehld/paperboy/pkg/plugin"
@@ -103,6 +104,28 @@ func TestTextWidgets(t *testing.T) {
 				if len([]rune(line)) > 20 {
 					t.Errorf("%s/%s: %q is wider than 20", fixture, name, line)
 				}
+			}
+		}
+	}
+}
+
+// TestChargingDoesNotRepeatTheCable: the charging state already names whether
+// the cable is connected, so no line repeats plugConnectionState.
+func TestChargingDoesNotRepeatTheCable(t *testing.T) {
+	for _, state := range []string{"CONNECT_CABLE", "READY_FOR_CHARGING", "CHARGING"} {
+		m := testPlugin(t, "enyaq.json")
+		s := state
+		connected, locked := "CONNECTED", "LOCKED"
+		m.cur.Charging.Status.State = &s
+		m.cur.Charging.Status.PlugState = &connected
+		m.cur.Charging.Status.PlugLock = &locked
+		lines, err := m.Text(m.req, plugin.WidgetRequest{Widget: "charging", Width: 20, Height: 4})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range lines {
+			if strings.Contains(line, "Kabel") {
+				t.Errorf("%s: line repeats the cable: %q", state, line)
 			}
 		}
 	}

@@ -35,7 +35,7 @@ plugins:
 All widgets except `card` have text variants for character displays.
 
 - `battery`: state of charge as a large number with a bar, range, charging state and power, remaining time or time of full charge, target state of charge, and the capture time. Args: `range` (default `true`).
-- `charging`: charging state and power, state of charge against the target, remaining time, plug and lock state, the current charging profile with its next charging time, capture time. Args: `profile` (default `true`).
+- `charging`: charging state and power, state of charge against the target, remaining time, the current charging profile with its next charging time, capture time. Args: `profile` (default `true`).
 - `profiles`: the saved charging profiles with target state of charge and their preferred charging times and timers. The current profile is marked with `*`. Args: `max` (default 2, 1 to 5).
 - `location`: the formatted address, the coordinates, `PARKED` or `IN_MOTION` and the capture time. Args: `coords` (default `true`).
 - `climate`: air conditioning state and target temperature, the expected time to reach it, window heating, auxiliary heating and active ventilation when they run, capture time.
@@ -44,14 +44,14 @@ All widgets except `card` have text variants for character displays.
 
 The render image comes from `info.renderUrl` and is downloaded once per URL, cached in memory and never committed; a missing image (`RENDER_UNAVAILABLE`) leaves the card without it instead of failing. The API key is not sent to the image host.
 
-The charging state comes from `charging.status.state` and keeps short labels, because it shares a line with the power and, on character displays, with the range: `Getrennt` (`CONNECT_CABLE`), `Bereit` (`READY_FOR_CHARGING`), `Lädt`, `Erhaltung` (`CONSERVING`), `Entlädt` and `Unterbrochen` (`CHARGING_INTERRUPTED`); in English `Unplugged`, `Ready`, `Charging`, `Holding`, `Discharging`, `Interrupted`. An unknown value is shown as it is.
+The charging state comes from `charging.status.state` and keeps short labels, because it shares a line with the power and, on character displays, with the range: `Getrennt` (`CONNECT_CABLE`), `Bereit` (`READY_FOR_CHARGING`), `Lädt`, `Erhaltung` (`CONSERVING`), `Entlädt` and `Unterbrochen` (`CHARGING_INTERRUPTED`); in English `Unplugged`, `Ready`, `Charging`, `Holding`, `Discharging`, `Interrupted`. An unknown value is shown as it is. Whether the cable is connected is already part of that state, so no widget repeats it from `plugConnectionState`.
 
 Text variants:
 
 | Widget | Lines |
 |---|---|
 | `battery` | `Akku  71 %`, charging state with power and range, remaining time, target |
-| `charging` | state and remaining time, state of charge against the target with the plug, current profile |
+| `charging` | state and remaining time, state of charge against the target, current profile |
 | `profiles` | one or two lines per profile, current one marked with `*` |
 | `location` | wrapped address, coordinates, capture time (or `Unterwegs`) |
 | `climate` | state and target temperature, expected time, window heating and auxiliary states |

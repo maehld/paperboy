@@ -293,9 +293,6 @@ func TestStateTexts(t *testing.T) {
 	if got := m.captured("2026-11-07T18:05:00Z"); got != "Stand 07.11. 18:05" {
 		t.Fatalf("captured yesterday = %q", got)
 	}
-	if got := m.plugText(); got != "Kabel verriegelt" {
-		t.Fatalf("plug = %q", got)
-	}
 	if got := m.temperature(m.cur.AirConditioning.Target); got != "22,5 °C" {
 		t.Fatalf("temperature = %q", got)
 	}
