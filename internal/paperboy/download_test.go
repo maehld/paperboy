@@ -151,8 +151,10 @@ func TestDownloadInstallsPluginsAndFirmware(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(cfg.FirmwareDir, "e1001-v1.0.0.bin")); err != nil {
 		t.Fatalf("firmware image missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(cfg.FirmwareDir, "sticky-v1.0.0.bin")); !os.IsNotExist(err) {
-		t.Fatal("an image of an unconfigured display type must not be installed")
+	// Every image of the bundle is installed: a display type's name says
+	// nothing about the hardware a device reports (ADR 0061).
+	if _, err := os.Stat(filepath.Join(cfg.FirmwareDir, "sticky-v1.0.0.bin")); err != nil {
+		t.Fatalf("image of an unconfigured hardware type missing: %v", err)
 	}
 	// The host now runs the downloaded program (spec changed, ADR 0049).
 	spec := cfg.pluginSpecs()["testplugin"]
