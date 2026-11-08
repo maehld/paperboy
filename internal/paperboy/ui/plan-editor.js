@@ -674,10 +674,17 @@
       return;
     }
     for (const d of state.devices) {
+      const row = document.createElement('div');
+      row.className = 'device';
       const a = document.createElement('a');
       a.href = '/ui/plan?device=' + encodeURIComponent(d.id);
       a.textContent = d.id + ' · ' + d.display + ' · preview';
-      box.appendChild(a);
+      const edit = document.createElement('a');
+      edit.className = 'edit';
+      edit.href = '/ui/editor/device?id=' + encodeURIComponent(d.id);
+      edit.textContent = 'edit';
+      row.append(a, edit);
+      box.appendChild(row);
     }
   }
 

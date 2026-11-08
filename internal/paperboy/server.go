@@ -93,6 +93,9 @@ func New(cfg *Config) (*Server, error) {
 	if cfg.Plans == "" {
 		cfg.Plans = filepath.Join(cfg.Dir, plansDirName)
 	}
+	if cfg.DevicesDir == "" {
+		cfg.DevicesDir = filepath.Join(cfg.Dir, devicesDirName)
+	}
 	if cfg.PluginsDir == "" {
 		cfg.PluginsDir = filepath.Join(cfg.Dir, pluginsDirName)
 	}
@@ -152,8 +155,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /ui/editor", s.handleEditor)
 	mux.HandleFunc("GET /ui/editor/page", s.handleEditorPage)
 	mux.HandleFunc("GET /ui/editor/plan", s.handlePlanEditor)
+	mux.HandleFunc("GET /ui/editor/device", s.handleDeviceEditor)
 	mux.HandleFunc("GET /ui/editor.js", s.handleEditorJS)
 	mux.HandleFunc("GET /ui/editor/plan.js", s.handlePlanEditorJS)
+	mux.HandleFunc("GET /ui/editor/device.js", s.handleDeviceEditorJS)
 	mux.HandleFunc("POST /ui/download", s.handleDownloadCheck)
 	mux.HandleFunc("GET /api/widget/{plugin}/{widget}", s.handleWidget)
 	// Page and plan editing (ADR 0066).
@@ -163,6 +168,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/plans", s.handlePlans)
 	mux.HandleFunc("GET /api/plans/{name}", s.handlePlan)
 	mux.HandleFunc("PUT /api/plans/{name}", s.handleSavePlan)
+	// Device files (ADR 0070).
+	mux.HandleFunc("GET /api/devices/{id}", s.handleDevice)
+	mux.HandleFunc("PUT /api/devices/{id}", s.handleSaveDevice)
 	mux.HandleFunc("POST /api/preview/{display}", s.handleDraftPreview)
 	return mux
 }
