@@ -646,6 +646,15 @@ func drawCell(img *image.Paletted, c menuCell, label string, size float64, selec
 	lineH := int(size * 1.2)
 	top := inner.Min.Y + (inner.Dy()-len(lines)*lineH)/2 + int(size)
 	cx := inner.Min.X + inner.Dx()/2
+	if disabled && len(lines) > 0 {
+		// The label gets a white plate, so it stays readable over the hatch.
+		widest := 0
+		for _, line := range lines {
+			widest = max(widest, render.Measure(line, size, false))
+		}
+		plate := image.Rect(cx-widest/2-3, top-lineH+2, cx+widest/2+3, top+lineH*(len(lines)-1)+4)
+		render.FillColor(img, plate.Intersect(inner), render.White)
+	}
 	for _, line := range lines {
 		if top > inner.Max.Y-int(size)/2 {
 			break

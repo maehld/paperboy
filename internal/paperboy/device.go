@@ -313,9 +313,11 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 			slog.Info("menu expired", "device", d.ID)
 			menu.close()
 		}
-		// A result stays until the next input or the next regular sync.
+		// A result stays until the next input or the next regular sync; the
+		// result wake itself is the one that brings it, so it must not close
+		// the screen before it is drawn.
 		if menu.Open && menu.Phase == menuResultPhase && len(buttons) == 0 &&
-			req.Reason != "button" && req.Reason != "touch" {
+			req.Reason != "button" && req.Reason != "touch" && req.Reason != "result" {
 			menu.close()
 		}
 		var acts []plan.PlanAction

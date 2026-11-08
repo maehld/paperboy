@@ -105,6 +105,33 @@ func TestMenuWakeForRunningAction(t *testing.T) {
 	}
 }
 
+func TestResultWakeKeepsTheResult(t *testing.T) {
+	s, _, p := menuServer(t, menuPlanActions, nil)
+	dev := menuDevice(t, s)
+	displayPage(t, s, dev)
+	sendEvents(t, s, dev, "button", syncEvent{ID: 1, Type: "button", Button: buttonHome})
+	// act/go needs a confirmation; act/quick does not. Take the second.
+	sendEvents(t, s, dev, "button", syncEvent{ID: 2, Type: "button", Button: buttonNext})
+	sendEvents(t, s, dev, "button", syncEvent{ID: 3, Type: "button", Button: buttonHome})
+	if len(p.runs) != 1 {
+		t.Fatalf("runs: %v", p.runs)
+	}
+	if st := s.state["test"]; st.Menu.Phase != menuResultPhase {
+		t.Fatalf("phase after the action: %q", st.Menu.Phase)
+	}
+	// The wake that brings an outcome must not close the screen before it is
+	// drawn.
+	sendEvents(t, s, dev, "result")
+	if st := s.state["test"]; !st.Menu.Open || st.Menu.Phase != menuResultPhase {
+		t.Fatalf("result wake: %+v", st.Menu)
+	}
+	// The next regular sync closes it.
+	sendEvents(t, s, dev, "timer")
+	if st := s.state["test"]; st.Menu.Open {
+		t.Fatalf("timer sync must close the result: %+v", st.Menu)
+	}
+}
+
 func TestFinishActionStoresResult(t *testing.T) {
 	s, _, p := menuServer(t, menuPlanActions, nil)
 	dev := menuDevice(t, s)
