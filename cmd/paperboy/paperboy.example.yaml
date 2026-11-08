@@ -53,6 +53,7 @@ defaults:
 # download:
 #   source: https://github.com/maehld/paperboy   # optional, a fork or mirror
 #   token: ${GITHUB_TOKEN}                       # optional: rate limits, private forks
+#   interval: 24h                                # optional: between checks, at least 1h
 
 display_types:
   e1001:

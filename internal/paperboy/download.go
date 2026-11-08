@@ -15,13 +15,17 @@ import (
 	"github.com/maehld/paperboy/internal/download"
 )
 
-// downloadInterval is how often the release is checked (ADR 0060). A check at
-// startup happens right away.
-const downloadInterval = 24 * time.Hour
+// Release checks run once a day by default; the interval is configurable down
+// to an hour (ADR 0062). A check at startup happens right away.
+const (
+	defaultDownloadInterval = 24 * time.Hour
+	minDownloadInterval     = time.Hour
+)
 
 // downloadStatus is what the dashboard shows about the release checks.
 type downloadStatus struct {
 	mu        sync.Mutex
+	running   bool
 	lastCheck time.Time
 	lastOK    time.Time
 	lastError string
@@ -34,7 +38,7 @@ func newDownloadStatus() *downloadStatus {
 }
 
 // view returns a copy for the dashboard.
-func (d *downloadStatus) view() (lastCheck, lastOK time.Time, lastError string, plugins, firmware map[string]string) {
+func (d *downloadStatus) view() (running bool, lastCheck, lastOK time.Time, lastError string, plugins, firmware map[string]string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	plugins = make(map[string]string, len(d.plugins))
@@ -45,12 +49,25 @@ func (d *downloadStatus) view() (lastCheck, lastOK time.Time, lastError string, 
 	for k, v := range d.firmware {
 		firmware[k] = v
 	}
-	return d.lastCheck, d.lastOK, d.lastError, plugins, firmware
+	return d.running, d.lastCheck, d.lastOK, d.lastError, plugins, firmware
+}
+
+// begin marks a check as running; false when one is already running, so a
+// second click on the dashboard and the background loop never overlap.
+func (d *downloadStatus) begin() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.running {
+		return false
+	}
+	d.running = true
+	return true
 }
 
 func (d *downloadStatus) checked(now time.Time, err error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.running = false
 	d.lastCheck = now
 	if err != nil {
 		d.lastError = err.Error()
@@ -70,9 +87,18 @@ func (d *downloadStatus) installed(plugins, firmware map[string]string) {
 	}
 }
 
-// downloadLoop checks the release at startup and then once a day. It wakes
-// every minute so that a configuration change is picked up quickly; the check
-// itself only runs when one is due.
+// pluginVersion returns the version a check installed for a plugin during this
+// server run (ADR 0062).
+func (d *downloadStatus) pluginVersion(name string) (string, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	version, ok := d.plugins[name]
+	return version, ok
+}
+
+// downloadLoop checks the release at startup and then when the configured
+// interval has passed. It wakes every minute so that a configuration change is
+// picked up quickly; the check itself only runs when one is due (ADR 0062).
 func (s *Server) downloadLoop(ctx context.Context) {
 	tick := time.NewTicker(time.Minute)
 	defer tick.Stop()
@@ -95,11 +121,19 @@ func (s *Server) checkDownloads(ctx context.Context) {
 	if cfg.Download == nil {
 		return
 	}
-	last, _, _, _, _ := s.download.view()
-	if !last.IsZero() && s.now().Sub(last) < downloadInterval {
+	_, last, _, _, _, _ := s.download.view()
+	if !last.IsZero() && s.now().Sub(last) < cfg.Download.Interval {
 		return
 	}
-	if err := s.downloadOnce(ctx, cfg); err != nil {
+	if !s.download.begin() {
+		return
+	}
+	s.finishDownloadCheck(cfg, s.downloadOnce(ctx, cfg))
+}
+
+// finishDownloadCheck records the outcome of one check (ADR 0062).
+func (s *Server) finishDownloadCheck(cfg *Config, err error) {
+	if err != nil {
 		slog.Warn("release download incomplete", "error", err)
 		s.download.checked(s.now(), err)
 		return
@@ -108,9 +142,9 @@ func (s *Server) checkDownloads(ctx context.Context) {
 	slog.Info("release check done", "source", cfg.Download.Source)
 }
 
-// downloadOnce fetches what is missing from the release: the programs of
-// configured plugins that have none, and the firmware images of the configured
-// display types (ADR 0060). Both halves run even when one of them fails.
+// downloadOnce fetches the programs of configured plugins (missing or newer
+// than the one in use) and the firmware images of the newest bundle (ADR 0060,
+// 0062). Both halves run even when one of them fails.
 func (s *Server) downloadOnce(ctx context.Context, cfg *Config) error {
 	c := download.New(cfg.Download.Source, cfg.Download.Token, filepath.Join(cfg.Dir, stateDirName, "download"))
 	var errs []error
@@ -128,22 +162,34 @@ func (s *Server) downloadOnce(ctx context.Context, cfg *Config) error {
 	return errors.Join(errs...)
 }
 
-// downloadPlugins installs the programs of configured plugins that have none:
-// a pinned version from its release, everything else from the newest one.
+// downloadPlugins installs the programs of configured plugins: missing ones
+// from the newest release, a pinned version from its own, and downloaded
+// versions when the release ships a newer one (ADR 0062). An unversioned
+// program and a pin stay where they are.
 func (s *Server) downloadPlugins(ctx context.Context, cfg *Config, c *download.Client) (bool, error) {
-	var unpinned []Plugin
+	var missing, candidates []Plugin
+	current := map[string]string{}
 	pinned := map[string][]Plugin{}
 	for _, p := range cfg.Plugins {
-		if program, _ := pluginProgram(cfg.PluginsDir, p.Name, p.Version); program != "" {
-			continue
-		}
-		if p.Version != "" {
+		program, version := pluginProgram(cfg.PluginsDir, p.Name, p.Version)
+		switch {
+		case p.Version != "" && program == "":
 			pinned[p.Version] = append(pinned[p.Version], p)
-		} else {
-			unpinned = append(unpinned, p)
+		case p.Version != "":
+			slog.Info("plugin left alone", "plugin", p.Name, "reason", "version pinned", "version", p.Version)
+		case program == "":
+			missing = append(missing, p)
+		case version == "":
+			// An unversioned program in plugins/ or one on PATH belongs to the
+			// operator and wins over every download (ADR 0060).
+			slog.Info("plugin left alone", "plugin", p.Name, "reason", "unversioned program wins",
+				"program", program)
+		default:
+			candidates = append(candidates, p)
+			current[p.Name] = version
 		}
 	}
-	if len(unpinned) == 0 && len(pinned) == 0 {
+	if len(missing)+len(candidates)+len(pinned) == 0 {
 		return false, nil
 	}
 	changed := false
@@ -161,7 +207,7 @@ func (s *Server) downloadPlugins(ctx context.Context, cfg *Config, c *download.C
 		}
 		changed = changed || len(installed) > 0
 	}
-	if len(unpinned) > 0 {
+	if len(missing)+len(candidates) > 0 {
 		rel, ok, err := c.Latest(ctx, func(a download.Asset) bool { return a.Name == download.PluginAsset() })
 		if err != nil {
 			return changed, err
@@ -169,7 +215,27 @@ func (s *Server) downloadPlugins(ctx context.Context, cfg *Config, c *download.C
 		if !ok {
 			return changed, fmt.Errorf("plugins: no release with %s", download.PluginAsset())
 		}
-		installed, err := s.installPlugins(ctx, cfg, c, rel, unpinned)
+		want := append([]Plugin{}, missing...)
+		next, nextOK := versionParts(rel.Version)
+		for _, p := range candidates {
+			parts, _ := versionParts(strings.TrimPrefix(current[p.Name], "v"))
+			if !nextOK || compareVersions(parts, next) >= 0 {
+				continue
+			}
+			// A version this run already installed but that no longer resolves
+			// was deleted on purpose: keep the older program (ADR 0062).
+			if recorded, ok := s.download.pluginVersion(p.Name); ok && recorded == "v"+rel.Version {
+				slog.Info("plugin update left deleted", "plugin", p.Name, "version", recorded,
+					"reason", "deleted program falls back to the older version")
+				changed = true // the resolved program changed even without a download
+				continue
+			}
+			want = append(want, p)
+		}
+		if len(want) == 0 {
+			return changed, nil
+		}
+		installed, err := s.installPlugins(ctx, cfg, c, rel, want)
 		if err != nil {
 			return changed, err
 		}
@@ -241,7 +307,7 @@ func (s *Server) downloadFirmware(ctx context.Context, cfg *Config, c *download.
 	pin := cfg.Firmware.Version
 	if pin == "" {
 		rel, ok, err := c.Latest(ctx, func(a download.Asset) bool {
-			return strings.HasPrefix(a.Name, "paperboy-firmware-") && strings.HasSuffix(a.Name, ".zip")
+			return a.Name == download.FirmwareAsset
 		})
 		if err != nil {
 			return err
@@ -256,6 +322,9 @@ func (s *Server) downloadFirmware(ctx context.Context, cfg *Config, c *download.
 		return err
 	}
 	for _, rel := range releases {
+		if _, ok := rel.Asset(download.FirmwareAsset); !ok {
+			continue // a release of another train carries no bundle
+		}
 		entries, archive, err := c.Bundle(ctx, rel)
 		if err != nil {
 			return err

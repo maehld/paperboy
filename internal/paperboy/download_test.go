@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/maehld/paperboy/internal/download"
 )
@@ -104,10 +105,16 @@ func pluginEntry() string {
 // downloadConfig builds an instance configuration with the download section.
 func downloadConfig(t *testing.T, source, plugins, firmware string) string {
 	t.Helper()
+	return downloadConfigInterval(t, source, plugins, firmware, "")
+}
+
+// downloadConfigInterval adds a download interval (ADR 0062).
+func downloadConfigInterval(t *testing.T, source, plugins, firmware, interval string) string {
+	t.Helper()
 	return fmt.Sprintf(timezoneConfig, "UTC") + `
 download:
   source: ` + source + `
-firmware:
+` + interval + `firmware:
   update: auto
 ` + firmware + `
 plugins:
@@ -134,7 +141,7 @@ func TestDownloadInstallsPluginsAndFirmware(t *testing.T) {
 		pluginEntry():   "program",
 		"plugins/other": "another plugin",
 	}))
-	feed.add("v2.1.0", "paperboy-firmware-2.1.0.zip", zipOf(t, map[string]string{
+	feed.add("v2.1.0", download.FirmwareAsset, zipOf(t, map[string]string{
 		"firmware/e1001-v1.0.0.bin":  "image",
 		"firmware/sticky-v1.0.0.bin": "not configured",
 	}))
@@ -178,10 +185,11 @@ func TestDownloadInstallsPluginsAndFirmware(t *testing.T) {
 }
 
 func TestDownloadHonoursPins(t *testing.T) {
-	feed, srv := newReleaseFeed(t, "v2.1.0", "v2.0.0")
-	for _, rel := range []struct{ tag, image string }{{"v2.1.0", "1.0.0"}, {"v2.0.0", "0.9.0"}} {
+	feed, srv := newReleaseFeed(t, "plugins-v2.4.0", "v2.3.0", "v2.1.0", "v2.0.0")
+	feed.add("plugins-v2.4.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry(): "program newer"}))
+	for _, rel := range []struct{ tag, image string }{{"v2.3.0", "1.1.0"}, {"v2.1.0", "1.0.0"}, {"v2.0.0", "0.9.0"}} {
 		feed.add(rel.tag, download.PluginAsset(), zipOf(t, map[string]string{pluginEntry(): "program " + rel.tag}))
-		feed.add(rel.tag, "paperboy-firmware-"+strings.TrimPrefix(rel.tag, "v")+".zip",
+		feed.add(rel.tag, download.FirmwareAsset,
 			zipOf(t, map[string]string{"firmware/e1001-v" + rel.image + ".bin": "image " + rel.tag}))
 	}
 
@@ -196,6 +204,11 @@ func TestDownloadHonoursPins(t *testing.T) {
 	program, version := pluginProgram(cfg.PluginsDir, "testplugin", "v2.0.0")
 	if !strings.HasSuffix(program, "testplugin-v2.0.0"+exeSuffix()) || version != "v2.0.0" {
 		t.Fatalf("pinned plugin: %q %q", program, version)
+	}
+	for _, other := range []string{"v2.1.0", "v2.3.0"} {
+		if _, err := os.Stat(filepath.Join(cfg.PluginsDir, "testplugin-"+other+exeSuffix())); !os.IsNotExist(err) {
+			t.Fatalf("a pinned plugin must not install %s", other)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(cfg.FirmwareDir, "e1001-v0.9.0.bin")); err != nil {
 		t.Fatalf("pinned image missing: %v", err)
@@ -217,7 +230,7 @@ func TestDownloadHonoursPins(t *testing.T) {
 func TestDownloadSkipsHandPlacedProgram(t *testing.T) {
 	feed, srv := newReleaseFeed(t, "v2.1.0")
 	feed.add("v2.1.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry(): "program"}))
-	feed.add("v2.1.0", "paperboy-firmware-2.1.0.zip", zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
+	feed.add("v2.1.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
 	s := testDownloadServer(t, downloadConfig(t, srv.URL+"/repos/me/paperboy/releases", "", ""))
 	if err := os.MkdirAll(s.config().PluginsDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -237,6 +250,132 @@ func TestDownloadSkipsHandPlacedProgram(t *testing.T) {
 		if strings.Contains(e.Name(), "-v") {
 			t.Fatalf("nothing may be downloaded next to a hand-placed program: %s", e.Name())
 		}
+	}
+}
+
+// TestDownloadUpdatesDownloadedPlugin verifies that a newer release replaces
+// the program in use with a new file next to the old one (ADR 0062).
+func TestDownloadUpdatesDownloadedPlugin(t *testing.T) {
+	feed, srv := newReleaseFeed(t, "v2.1.0")
+	feed.add("v2.1.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry(): "old program"}))
+	feed.add("v2.1.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
+	s := testDownloadServer(t, downloadConfig(t, srv.URL+"/repos/me/paperboy/releases", "", ""))
+	if err := s.downloadOnce(context.Background(), s.config()); err != nil {
+		t.Fatal(err)
+	}
+
+	feed.tags = []string{"v2.3.0", "v2.1.0"}
+	feed.add("v2.3.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry(): "new program"}))
+	feed.add("v2.3.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.1.0.bin": "image"}))
+	if err := s.downloadOnce(context.Background(), s.config()); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := s.config()
+	program, version := pluginProgram(cfg.PluginsDir, "testplugin", "")
+	if !strings.HasSuffix(program, "testplugin-v2.3.0"+exeSuffix()) || version != "v2.3.0" {
+		t.Fatalf("plugin program: %q %q", program, version)
+	}
+	// The old version stays for a manual rollback, and the host restarts the
+	// plugin on its next use because the resolved spec changed (ADR 0049).
+	if _, err := os.Stat(filepath.Join(cfg.PluginsDir, "testplugin-v2.1.0"+exeSuffix())); err != nil {
+		t.Fatalf("old plugin version missing: %v", err)
+	}
+	spec := cfg.pluginSpecs()["testplugin"]
+	if spec.Version != "v2.3.0" || !strings.HasSuffix(spec.Command[0], "testplugin-v2.3.0"+exeSuffix()) {
+		t.Fatalf("plugin spec: %+v", spec)
+	}
+
+	// Deleting the newer file rolls back to the older one; the same run does
+	// not reinstall what the operator removed (ADR 0062).
+	if err := os.Remove(filepath.Join(cfg.PluginsDir, "testplugin-v2.3.0"+exeSuffix())); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.downloadOnce(context.Background(), s.config()); err != nil {
+		t.Fatal(err)
+	}
+	program, version = pluginProgram(cfg.PluginsDir, "testplugin", "")
+	if !strings.HasSuffix(program, "testplugin-v2.1.0"+exeSuffix()) || version != "v2.1.0" {
+		t.Fatalf("deleted version must fall back: %q %q", program, version)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.PluginsDir, "testplugin-v2.3.0"+exeSuffix())); !os.IsNotExist(err) {
+		t.Fatal("the deleted version must not be installed again in the same run")
+	}
+}
+
+// TestDownloadInterval verifies the configurable cadence and that a reload with
+// a shorter interval applies without a restart (ADR 0062).
+func TestDownloadInterval(t *testing.T) {
+	feed, srv := newReleaseFeed(t, "v2.1.0")
+	feed.add("v2.1.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry(): "old program"}))
+	feed.add("v2.1.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
+	source := srv.URL + "/repos/me/paperboy/releases"
+	config := downloadConfigInterval(t, source, "", "", "  interval: 6h\n")
+	s := testDownloadServer(t, config)
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	// The first check is due right away.
+	s.checkDownloads(context.Background())
+
+	feed.tags = []string{"v2.3.0", "v2.1.0"}
+	feed.add("v2.3.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry(): "new program"}))
+	feed.add("v2.3.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
+	now = now.Add(5 * time.Hour)
+	s.checkDownloads(context.Background())
+	if _, version := pluginProgram(s.config().PluginsDir, "testplugin", ""); version != "v2.1.0" {
+		t.Fatalf("a check before the interval must not run, got %q", version)
+	}
+
+	// A reload with a shorter interval makes the next wake-up check at once.
+	writeConfig(t, s.config().Dir, downloadConfigInterval(t, source, "", "", "  interval: 1h0m\n"))
+	now = now.Add(2 * time.Hour)
+	s.checkDownloads(context.Background())
+	if _, version := pluginProgram(s.config().PluginsDir, "testplugin", ""); version != "v2.3.0" {
+		t.Fatalf("the shorter interval from the reload must apply, got %q", version)
+	}
+}
+
+func TestDownloadIntervalValidation(t *testing.T) {
+	cfg, _, err := loadConfig(t, downloadConfigInterval(t, "https://example.invalid", "", "", ""))
+	if err != nil || cfg.Download.Interval != defaultDownloadInterval {
+		t.Fatalf("default interval: %v %v", cfg, err)
+	}
+	if _, _, err := loadConfig(t, downloadConfigInterval(t, "https://example.invalid", "", "", "  interval: 30m\n")); err == nil ||
+		!strings.Contains(err.Error(), "at least 1h") {
+		t.Fatalf("short interval: %v", err)
+	}
+}
+
+// TestDownloadCheckEndpoint verifies that the dashboard button starts a check
+// in the background and returns at once (ADR 0062).
+func TestDownloadCheckEndpoint(t *testing.T) {
+	feed, srv := newReleaseFeed(t, "v2.1.0")
+	feed.add("v2.1.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry(): "program"}))
+	feed.add("v2.1.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
+	s := testDownloadServer(t, downloadConfig(t, srv.URL+"/repos/me/paperboy/releases", "", ""))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/ui/download", nil)
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/ui" {
+		t.Fatalf("response: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if running, _, _, _, _, _ := s.download.view(); !running {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the check did not finish")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, version := pluginProgram(s.config().PluginsDir, "testplugin", ""); version != "v2.1.0" {
+		t.Fatalf("the button must install the plugin, got %q", version)
+	}
+	body := htmlRequest(t, s, "/ui").Body.String()
+	if !strings.Contains(body, "Check now") {
+		t.Fatalf("the dashboard lacks the check button: %s", body)
 	}
 }
 

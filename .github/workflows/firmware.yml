@@ -3,6 +3,8 @@ name: Firmware
 # Compiles the Paperboy firmware for every hardware type with the pinned
 # ESPHome version and bundles the OTA images into one zip that unpacks in the
 # instance layout firmware/<hardware>-v<version>.bin (ADR 0043, 0059, 0060).
+# The zip itself is always paperboy-firmware.zip; the tag carries the version
+# (ADR 0063).
 # Runs on firmware changes and as the builder for release.yml, which attaches
 # the bundle to a release (ADR 0056).
 
@@ -18,16 +20,7 @@ on:
       - firmware/esphome/**
       - .github/workflows/firmware.yml
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Version in the zip name (default: highest fw_version)"
-        required: false
   workflow_call:
-    inputs:
-      version:
-        description: "Version in the zip name (default: highest fw_version)"
-        type: string
-        required: false
 
 permissions:
   contents: read
@@ -133,22 +126,12 @@ jobs:
           merge-multiple: true
 
       - name: Bundle
-        env:
-          VERSION: ${{ inputs.version }}
         run: |
           shopt -s nullglob
           images=(images/*.bin)
           if [ ${#images[@]} -eq 0 ]; then
             echo "no firmware images downloaded"
             exit 1
-          fi
-          # v2.1.0 becomes 2.1.0; without a given version the zip is named
-          # after the highest fw_version in the bundle (ADR 0059).
-          version="${VERSION#v}"
-          if [ -z "$version" ]; then
-            version=$(for image in "${images[@]}"; do
-              basename "$image" | sed -E 's/^.*-v([0-9.]+)\.bin$/\1/'
-            done | sort -V | tail -n1)
           fi
           stage="$RUNNER_TEMP/stage"
           # The flat layout Paperboy reads (ADR 0060): firmware/<hardware>-v<version>.bin
@@ -157,8 +140,10 @@ jobs:
             cp "$image" "$stage/firmware/$(basename "$image")"
           done
           mkdir -p "$RUNNER_TEMP/dist"
-          (cd "$stage" && zip -qr "$RUNNER_TEMP/dist/paperboy-firmware-$version.zip" firmware)
-          unzip -l "$RUNNER_TEMP/dist/paperboy-firmware-$version.zip"
+          # The bundle name is constant; the release tag carries the version
+          # (ADR 0063). The images keep their fw_version.
+          (cd "$stage" && zip -qr "$RUNNER_TEMP/dist/paperboy-firmware.zip" firmware)
+          unzip -l "$RUNNER_TEMP/dist/paperboy-firmware.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5

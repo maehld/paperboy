@@ -31,6 +31,7 @@ type Server struct {
 	cfg         *configLoader // current configuration, reloaded on change (ADR 0047)
 	devicesPath string        // state/devices.json in the instance directory
 	now         func() time.Time
+	ctx         context.Context // lifecycle context for background checks (ADR 0062)
 
 	mu    sync.Mutex
 	state map[string]*deviceState // device ID → state
@@ -96,7 +97,7 @@ func New(cfg *Config) (*Server, error) {
 	if cfg.FirmwareDir == "" {
 		cfg.FirmwareDir = filepath.Join(cfg.Dir, firmwareDirName)
 	}
-	s := &Server{cfg: newConfigLoader(cfg.Dir, cfg),
+	s := &Server{cfg: newConfigLoader(cfg.Dir, cfg), ctx: context.Background(),
 		widgets:     &widget.Host{Builtin: map[string]plugin.Handler{builtin.Name: builtin.Plugin{}}},
 		devicesPath: devicesPath, now: time.Now, state: state,
 		plans: newPlanLoader(), rendered: map[string]*renderedPage{}, hints: map[string][]byte{},
@@ -124,6 +125,7 @@ func New(cfg *Config) (*Server, error) {
 // until ctx is done (ADR 0047, 0049, 0060). Plugins start on first use and stop
 // with ctx.
 func (s *Server) Start(ctx context.Context) {
+	s.ctx = ctx
 	s.widgets.Start(ctx)
 	go s.configLoop(ctx)
 	go s.downloadLoop(ctx)
@@ -145,6 +147,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /ui", s.handleDashboard)
 	mux.HandleFunc("GET /ui/plugins", s.handleGallery)
 	mux.HandleFunc("GET /ui/plan", s.handlePlanView)
+	mux.HandleFunc("POST /ui/download", s.handleDownloadCheck)
 	mux.HandleFunc("GET /api/widget/{plugin}/{widget}", s.handleWidget)
 	return mux
 }

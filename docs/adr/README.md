@@ -53,6 +53,8 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0055](0055-allowed-arg-values-and-gallery-form.md) | Allowed argument values and the gallery form | Accepted, implemented |
 | [0056](0056-repository-layout-and-release-trains.md) | One repository with separate release trains | Accepted, implemented; firmware assets amended by ADR-0059 |
 | [0058](0058-plugin-protocol-version-check.md) | Check the plugin protocol version at runtime | Accepted, implemented |
-| [0059](0059-firmware-bundle.md) | One firmware bundle per release | Accepted, implemented |
-| [0060](0060-download-from-releases.md) | Downloading plugins and firmware from releases | Accepted, implemented; which firmware images are installed amended by ADR-0061 |
+| [0059](0059-firmware-bundle.md) | One firmware bundle per release | Accepted, implemented; bundle name amended by ADR-0063 |
+| [0060](0060-download-from-releases.md) | Downloading plugins and firmware from releases | Accepted, implemented; which firmware images are installed amended by ADR-0061, plugin updates, interval and on-demand check by ADR-0062, bundle asset name by ADR-0063 |
 | [0061](0061-install-every-bundle-image.md) | Install every image of a firmware bundle | Accepted, implemented |
+| [0062](0062-plugin-updates-and-download-control.md) | Newer plugin downloads, a configurable interval and a check on demand | Accepted, implemented |
+| [0063](0063-constant-firmware-bundle-name.md) | A constant name for the firmware bundle | Accepted, implemented |

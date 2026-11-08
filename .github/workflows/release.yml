@@ -66,10 +66,6 @@ jobs:
   firmware:
     if: startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'firmware-v')
     uses: ./.github/workflows/firmware.yml
-    with:
-      # v2.1.0 names the bundle paperboy-firmware-2.1.0.zip (ADR 0059); a
-      # firmware-v* tag keeps the firmware's own version instead.
-      version: ${{ startsWith(github.ref_name, 'v') && github.ref_name || '' }}
 
   release:
     needs: [paperboy, plugins, firmware]
@@ -111,6 +107,6 @@ jobs:
             Release of a single release train (ADR 0056).
 
             - `paperboy-plugins-<os>-<arch>.zip`: unpack in the instance directory, creates `plugins/`.
-            - `paperboy-firmware-<version>.zip`: unpack in the instance directory, creates `firmware/<hardware>-v<version>.bin` for every hardware type (ADR 0043, 0059, 0060).
+            - `paperboy-firmware.zip`: unpack in the instance directory, creates `firmware/<hardware>-v<version>.bin` for every hardware type (ADR 0043, 0059, 0060, 0063).
             - `SHA256SUMS`: checksums of all assets.
           files: dist/*
