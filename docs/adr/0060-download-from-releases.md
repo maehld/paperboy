@@ -70,7 +70,7 @@ firmware/
 
 - The hardware was already part of the file name (ADR 0043), so `firmware/<hardware>/` repeated it. A missing subdirectory also means an operator drops an image into one place instead of remembering which folder it belongs to.
 - The version keeps the `v` of the tag, like the plugin programs. The image itself reports `fw_version` without it, so Paperboy strips the `v` for comparison and keeps the plain number in the offer (`{"version": "1.0.0", …}`), because that is what a device reports.
-- The bundle (ADR 0059) unpacks the same way, `firmware/sticky-v1.0.0.bin` and so on, so unpacking it in the instance directory still needs no second step. The bundle name keeps the release version, the image names keep `fw_version`.
+- The bundle (ADR 0059) unpacks the same way, `firmware/sticky-v1.0.0.bin` and so on, so unpacking it in the instance directory still needs no second step. The bundle name keeps the release version, the image names keep `fw_version`. A bundle that still has the old `firmware/<hardware>/` level (any release before this decision) is unpacked too; its images land flat.
 - Images are served at `/firmware/<file>`. The sync offer carries that path and the firmware downloads whatever it is handed, so devices need no change.
 - The reader also accepts the old `firmware/<hardware>/<hardware>-<version>.bin` layout and logs one hint; on the same version the flat file wins. An instance keeps working after the update without a migration step.
 - A firmware pin names the version as it appears in the file name (`v1.0.0`) or as the device reports it (`1.0.0`); both are normalized.
@@ -79,8 +79,8 @@ firmware/
 
 - **Latest** is the newest release that carries the asset a deliverable needs: `paperboy-plugins-<os>-<arch>.zip` for `runtime.GOOS`/`GOARCH`, `paperboy-firmware-<version>.zip` for the firmware. `plugins-v*` and `firmware-v*` releases compete with full `v*` releases (ADR 0056).
 - A **pinned plugin** needs no listing: the asset URL follows from the tag, `<source>/releases/download/<tag>/paperboy-plugins-<os>-<arch>.zip`.
-- A **pinned firmware version** is the image version inside a bundle, so Paperboy walks the releases down until a bundle contains `firmware/<hardware>-v<version>.bin` for the configured hardware types. The image versions of a bundle follow from its file names; they are read once per release and remembered in `state/download.json`.
-- The release list comes from `https://api.github.com/repos/<owner>/<repo>/releases` and is cached with its ETag in `state/download.json`, so a check that finds nothing new costs one conditional request a day. `Authorization: Bearer <token>` is sent when configured.
+- A **pinned firmware version** is the image version inside a bundle, so Paperboy walks the releases down until a bundle contains `firmware/<hardware>-v<version>.bin` for the configured hardware types. The image versions of a bundle follow from its file names; they are read once per release and remembered in `state/download/cache.json`.
+- The release list comes from `https://api.github.com/repos/<owner>/<repo>/releases` and is cached with its ETag in `state/download/cache.json`, so a check that finds nothing new costs one conditional request a day. `Authorization: Bearer <token>` is sent when configured. Assets are fetched through the API URLs from that answer with `Accept: application/octet-stream`, which also works for a private repository; the plain release link would need a session.
 
 ### 5. Installing
 

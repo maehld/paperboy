@@ -115,8 +115,9 @@ func (c *Client) List(ctx context.Context) ([]Release, error) {
 		Prerelease bool   `json:"prerelease"`
 		Draft      bool   `json:"draft"`
 		Assets     []struct {
-			Name string `json:"name"`
-			URL  string `json:"browser_download_url"`
+			Name    string `json:"name"`
+			URL     string `json:"url"`                  // API URL: works for private repositories too
+			Browser string `json:"browser_download_url"` // plain link, public repositories only
 		} `json:"assets"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&raw); err != nil {
@@ -129,7 +130,11 @@ func (c *Client) List(ctx context.Context) ([]Release, error) {
 		}
 		rel := Release{Tag: r.TagName, Version: versionOf(r.TagName)}
 		for _, a := range r.Assets {
-			rel.Assets = append(rel.Assets, Asset{Name: a.Name, URL: a.URL})
+			u := a.URL
+			if u == "" {
+				u = a.Browser
+			}
+			rel.Assets = append(rel.Assets, Asset{Name: a.Name, URL: u})
 		}
 		releases = append(releases, rel)
 	}
@@ -262,13 +267,20 @@ func Extract(zipPath, destDir string, keep func(name string) bool) ([]string, er
 		if !f.Mode().IsRegular() {
 			continue // no directories, links or devices
 		}
-		name := path.Base(strings.ReplaceAll(f.Name, `\`, "/"))
-		entry := "plugins/" + name
-		if strings.HasPrefix(f.Name, "firmware/") {
-			entry = "firmware/" + name
+		clean := strings.ReplaceAll(f.Name, `\`, "/")
+		name, dir := path.Base(clean), path.Dir(clean)
+		switch {
+		case dir == "plugins", dir == "firmware":
+		case strings.HasPrefix(dir, "firmware/"):
+			// An old bundle keeps its images below the hardware type
+			// (ADR 0043, 0059); they are installed flat (ADR 0060).
+			if strings.Contains(strings.TrimPrefix(dir, "firmware/"), "/") {
+				continue
+			}
+		default:
+			continue
 		}
-		// Only one level below the archive root, no hidden files, no paths.
-		if name == "." || strings.HasPrefix(name, ".") || strings.ReplaceAll(f.Name, `\`, "/") != entry {
+		if name == "." || strings.HasPrefix(name, ".") {
 			continue
 		}
 		if !keep(name) {
@@ -342,6 +354,7 @@ func (c *Client) download(ctx context.Context, rawURL, target string) error {
 		return err
 	}
 	c.authorize(req)
+	req.Header.Set("Accept", "application/octet-stream")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return err
@@ -387,6 +400,7 @@ func (c *Client) checksums(ctx context.Context, rel Release) (map[string]string,
 		return nil, err
 	}
 	c.authorize(req)
+	req.Header.Set("Accept", "application/octet-stream")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return nil, err
@@ -441,7 +455,9 @@ func (c *Client) authorize(req *http.Request) {
 	}
 }
 
-// apiBase returns the release API endpoint of the source.
+// apiBase returns the release API endpoint of the source: github.com URLs map
+// to the REST API, anything else is used as the endpoint (with /releases
+// appended when it does not name it already).
 func (c *Client) apiBase() string {
 	source := strings.TrimSuffix(strings.TrimSpace(c.Source), "/")
 	if source == "" {
@@ -449,15 +465,15 @@ func (c *Client) apiBase() string {
 	}
 	u, err := url.Parse(source)
 	if err != nil {
-		return source
+		return source + "/releases"
 	}
 	if u.Host == "github.com" || u.Host == "www.github.com" {
 		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 		if len(parts) >= 2 {
-			return "https://api.github.com/repos/" + parts[0] + "/" + parts[1]
+			return "https://api.github.com/repos/" + parts[0] + "/" + parts[1] + "/releases"
 		}
 	}
-	if strings.Contains(u.Path, "/repos/") {
+	if strings.HasSuffix(source, "/releases") {
 		return source
 	}
 	return source + "/releases"

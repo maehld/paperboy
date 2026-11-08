@@ -29,7 +29,7 @@ type releaseFeed struct {
 func newReleaseFeed(t *testing.T, tags ...string) (*releaseFeed, *httptest.Server) {
 	f := &releaseFeed{t: t, tags: tags, files: map[string][]byte{}}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/me/paperboy", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/me/paperboy/releases", func(w http.ResponseWriter, r *http.Request) {
 		type asset struct {
 			Name string `json:"name"`
 			URL  string `json:"browser_download_url"`
@@ -139,7 +139,7 @@ func TestDownloadInstallsPluginsAndFirmware(t *testing.T) {
 		"firmware/sticky-v1.0.0.bin": "not configured",
 	}))
 
-	s := testDownloadServer(t, downloadConfig(t, srv.URL+"/repos/me/paperboy", "", ""))
+	s := testDownloadServer(t, downloadConfig(t, srv.URL+"/repos/me/paperboy/releases", "", ""))
 	if err := s.downloadOnce(context.Background(), s.config()); err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestDownloadHonoursPins(t *testing.T) {
 			zipOf(t, map[string]string{"firmware/e1001-v" + rel.image + ".bin": "image " + rel.tag}))
 	}
 
-	config := downloadConfig(t, srv.URL+"/repos/me/paperboy",
+	config := downloadConfig(t, srv.URL+"/repos/me/paperboy/releases",
 		"    version: v2.0.0\n", `  version: v0.9.0
 `)
 	s := testDownloadServer(t, config)
@@ -216,7 +216,7 @@ func TestDownloadSkipsHandPlacedProgram(t *testing.T) {
 	feed, srv := newReleaseFeed(t, "v2.1.0")
 	feed.add("v2.1.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry(): "program"}))
 	feed.add("v2.1.0", "paperboy-firmware-2.1.0.zip", zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
-	s := testDownloadServer(t, downloadConfig(t, srv.URL+"/repos/me/paperboy", "", ""))
+	s := testDownloadServer(t, downloadConfig(t, srv.URL+"/repos/me/paperboy/releases", "", ""))
 	if err := os.MkdirAll(s.config().PluginsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

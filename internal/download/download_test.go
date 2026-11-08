@@ -30,7 +30,7 @@ type releaseServer struct {
 func newReleaseServer(t *testing.T, tags ...string) (*releaseServer, *httptest.Server) {
 	rs := &releaseServer{t: t, tags: tags, files: map[string][]byte{}, etag: `"v1"`}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/me/paperboy", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/me/paperboy/releases", func(w http.ResponseWriter, r *http.Request) {
 		if rs.noEtag || r.Header.Get("If-None-Match") != rs.etag {
 			w.Header().Set("ETag", rs.etag)
 			type asset struct {
@@ -113,7 +113,7 @@ func zipOf(t *testing.T, entries map[string]string) []byte {
 func TestListUsesETag(t *testing.T) {
 	rs, srv := newReleaseServer(t, "v2.1.0")
 	rs.add(t, "v2.1.0", "paperboy-plugins-"+platformSuffix()+".zip", []byte("zip"))
-	c := New(srv.URL+"/repos/me/paperboy", "", t.TempDir())
+	c := New(srv.URL+"/repos/me/paperboy/releases", "", t.TempDir())
 
 	releases, err := c.List(context.Background())
 	if err != nil {
@@ -149,7 +149,7 @@ func TestFetchVerifiesChecksum(t *testing.T) {
 	rs, srv := newReleaseServer(t, "v2.1.0")
 	rs.add(t, "v2.1.0", "paperboy-firmware-2.1.0.zip", []byte("bundle"))
 	rs.files["v2.1.0/SHA256SUMS"] = []byte("0000  paperboy-firmware-2.1.0.zip\n")
-	c := New(srv.URL+"/repos/me/paperboy", "", t.TempDir())
+	c := New(srv.URL+"/repos/me/paperboy/releases", "", t.TempDir())
 
 	rel, ok, err := c.Latest(context.Background(), func(a Asset) bool { return a.Name == "paperboy-firmware-2.1.0.zip" })
 	if err != nil || !ok {
@@ -164,7 +164,7 @@ func TestFetchVerifiesChecksum(t *testing.T) {
 	}
 
 	rs.add(t, "v2.1.0", "paperboy-firmware-2.1.0.zip", []byte("bundle"))
-	c = New(srv.URL+"/repos/me/paperboy", "", t.TempDir()) // a check starts with fresh checksums
+	c = New(srv.URL+"/repos/me/paperboy/releases", "", t.TempDir()) // a check starts with fresh checksums
 	again, _, err := c.Latest(context.Background(), func(a Asset) bool { return a.Name == "paperboy-firmware-2.1.0.zip" })
 	if err != nil {
 		t.Fatal(err)
@@ -182,28 +182,33 @@ func TestExtractKeepsFlatEntries(t *testing.T) {
 	dir := t.TempDir()
 	archive := filepath.Join(dir, "bundle.zip")
 	data := zipOf(t, map[string]string{
-		"firmware/sticky-v1.0.0.bin": "image",
-		"firmware/e1001-v1.0.0.bin":  "other hardware",
-		"firmware/notes.txt":         "not an image",
-		"firmware/../evil.bin":       "escape",
-		"plugins/weather":            "program",
-		"plugins/sub/calendar":       "too deep",
-		"plugins/weather-v9.9.9":     "versioned",
+		"firmware/sticky-v1.0.0.bin":         "image",
+		"firmware/e1001-v1.0.0.bin":          "other hardware",
+		"firmware/notes.txt":                 "not an image",
+		"firmware/../evil.bin":               "escape",
+		"plugins/weather":                    "program",
+		"plugins/sub/calendar":               "too deep",
+		"plugins/weather-v9.9.9":             "versioned",
+		"firmware/lcd2004/lcd2004-1.0.0.bin": "old bundle layout",
 	})
 	if err := os.WriteFile(archive, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	dest := filepath.Join(dir, "firmware")
 	names, err := Extract(archive, dest, func(name string) bool {
-		return name == "sticky-v1.0.0.bin" || name == "weather" || name == "evil.bin"
+		return name == "sticky-v1.0.0.bin" || name == "weather" || name == "evil.bin" || name == "lcd2004-1.0.0.bin"
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(names) != 2 || names[0] != "sticky-v1.0.0.bin" || names[1] != "weather" {
+	if len(names) != 3 || names[0] != "lcd2004-1.0.0.bin" || names[1] != "sticky-v1.0.0.bin" || names[2] != "weather" {
 		t.Fatalf("installed: %v", names)
 	}
 	if _, err := os.Stat(filepath.Join(dest, "sticky-v1.0.0.bin")); err != nil {
+		t.Fatal(err)
+	}
+	// An old bundle keeps its images below the hardware type; they land flat.
+	if _, err := os.Stat(filepath.Join(dest, "lcd2004-1.0.0.bin")); err != nil {
 		t.Fatal(err)
 	}
 	// Existing files are never overwritten.
