@@ -47,7 +47,7 @@ type registerRequest struct {
 }
 
 type syncEvent struct {
-	ID     int64  `json:"id"`     // monotonically increasing per device (ADR 0060); 0 = no deduplication
+	ID     int64  `json:"id"`     // monotonically increasing per device (ADR 0061); 0 = no deduplication
 	Type   string `json:"type"`   // "button" or "touch"
 	Button string `json:"button"` // button role
 	HoldMS int    `json:"hold_ms"`
@@ -94,7 +94,7 @@ type syncResponse struct {
 	Time     int64          `json:"time"`
 	Firmware *firmwareOffer `json:"firmware"` // update offer (ADR 0043); null when none
 	// Wake names the reason of the next wake and how long to sleep until then
-	// (ADR 0060). It overrides refresh_s for exactly one sleep, so the menu can
+	// (ADR 0061). It overrides refresh_s for exactly one sleep, so the menu can
 	// close at its deadline and a slow action can report its result.
 	Wake *syncWake `json:"wake,omitempty"`
 }
@@ -275,13 +275,13 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	input := req.Reason == "button" || req.Reason == "touch" || req.Reason == "menu" || req.Reason == "result"
 	if req.Reason == "powercycle" {
 		// A power cycle clears the RTC event counter, so the IDs start again
-		// (ADR 0060).
+		// (ADR 0061).
 		st.LastEventID = 0
 		st.Menu.close()
 	}
 	for _, e := range req.Events {
 		// A retried sync resends the same event IDs; anything at or below the
-		// last applied ID is a repeat (ADR 0060).
+		// last applied ID is a repeat (ADR 0061).
 		if e.ID > 0 {
 			if e.ID <= st.LastEventID {
 				continue
@@ -476,7 +476,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// menuWake names the one-shot wake the device needs (ADR 0060): the menu
+// menuWake names the one-shot wake the device needs (ADR 0061): the menu
 // deadline while it is open, or a short wake for the result of a running
 // action. Without an open menu the regular refresh applies.
 func menuWake(menu menuState, d *Device, now time.Time, critical bool) *syncWake {
