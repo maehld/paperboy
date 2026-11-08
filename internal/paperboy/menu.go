@@ -23,6 +23,7 @@ import (
 
 // Phases of the menu.
 const (
+	menuEmptyPhase   = "empty" // the plan offers no actions: a banner only
 	menuListPhase    = "list"
 	menuConfirmPhase = "confirm"
 	menuRunningPhase = "running"
@@ -37,6 +38,13 @@ const (
 	actionBudget = 5 * time.Second
 	// pluginActionTimeout bounds the background run of an action (ADR 0064).
 	pluginActionTimeout = 30 * time.Second
+	// menuHoldLong is the press duration from which a button counts as held
+	// (ADR 0067). The firmware reports the measured time and leaves the
+	// threshold to the server.
+	menuHoldLong = 700 * time.Millisecond
+	// menuEmptyDuration shortens the open time of the empty menu, which is
+	// only an announcement (ADR 0067).
+	menuEmptyDuration = 10 * time.Second
 )
 
 // menuAction is one plan action with the state the menu shows. It is stored
@@ -72,9 +80,25 @@ type menuState struct {
 // closeMenu drops all menu state.
 func (m *menuState) close() { *m = menuState{} }
 
-// openMenu starts a new menu session with the resolved actions.
+// menuDeadline is how long an open menu may stay: the configured duration,
+// shortened for the empty banner (ADR 0067).
+func menuDeadline(m menuState, d *Device) time.Duration {
+	show := time.Duration(d.MenuShowDuration)
+	if m.Phase == menuEmptyPhase {
+		show = min(show, menuEmptyDuration)
+	}
+	return show
+}
+
+// openMenu starts a new menu session with the resolved actions. A plan without
+// actions still opens the menu; it shows a banner instead of the action grid
+// (ADR 0067).
 func (m *menuState) openMenu(session int, actions []menuAction, now time.Time) {
-	*m = menuState{Open: true, Phase: menuListPhase, Session: session, OpenedAt: now, Actions: actions}
+	phase := menuListPhase
+	if len(actions) == 0 {
+		phase = menuEmptyPhase
+	}
+	*m = menuState{Open: true, Phase: phase, Session: session, OpenedAt: now, Actions: actions}
 	if len(actions) > 0 {
 		m.Selected = actions[0].Key
 	}
@@ -94,9 +118,10 @@ func (m *menuState) find(key string) *menuAction {
 }
 
 // nextTurn reports whether the menu may act; the plan must still offer the
-// selected identity, otherwise the menu closes (ADR 0057).
+// selected identity, otherwise the menu closes (ADR 0057). An empty menu has
+// no selection to lose.
 func (m *menuState) stale(acts []plan.PlanAction) bool {
-	if !m.Open {
+	if !m.Open || m.Selected == "" {
 		return false
 	}
 	for _, a := range acts {
@@ -166,8 +191,8 @@ func (m *menuState) tap(x, y int, p Profile, shown string) *menuAction {
 		// Nothing to dismiss while the action runs.
 		return nil
 	}
-	if m.Phase == menuResultPhase {
-		// The result is a banner: any tap acknowledges it.
+	if m.Phase == menuResultPhase || m.Phase == menuEmptyPhase {
+		// The result and the empty menu are banners: any tap dismisses them.
 		m.close()
 		return nil
 	}
@@ -242,23 +267,21 @@ func (m *menuState) scroll(delta int) {
 
 // step applies the wake's input to the menu and returns whether an action must
 // run now. It is called under the state lock; running the action needs plugins
-// and therefore happens outside it.
+// and therefore happens outside it. A short home opens the menu even when the
+// plan offers no actions; a long home closes it and keeps the page (ADR 0067).
 func (m *menuState) step(in menuInput, acts []plan.PlanAction, now time.Time) (invoke *menuAction) {
 	if !m.Open {
-		if len(acts) == 0 {
-			return nil
-		}
 		for i, b := range in.buttons {
-			if b == buttonHome && hold(in, i) == 0 {
+			if b == buttonHome && !held(hold(in.holds, i)) {
 				m.openMenu(m.Session+1, planActions(acts), now)
 				return nil
 			}
 		}
 		return nil
 	}
-	// A long home always leaves the menu: "go to start" (ADR 0057).
+	// A long home always leaves the menu; it no longer jumps to page 1.
 	for i, b := range in.buttons {
-		if b == buttonHome && hold(in, i) > 0 {
+		if b == buttonHome && held(hold(in.holds, i)) {
 			m.close()
 			return nil
 		}
@@ -267,14 +290,26 @@ func (m *menuState) step(in menuInput, acts []plan.PlanAction, now time.Time) (i
 		m.close()
 		return nil
 	}
+	if m.Phase == menuEmptyPhase {
+		// The banner has nothing to offer: any input dismisses it.
+		if len(in.buttons) > 0 {
+			m.close()
+		}
+		return nil
+	}
 	switch m.Phase {
 	case menuListPhase:
-		for _, b := range in.buttons {
+		for i, b := range in.buttons {
 			switch b {
 			case buttonNext:
-				m.move(1)
+				// Long presses are ignored inside the menu (ADR 0067).
+				if !held(hold(in.holds, i)) {
+					m.move(1)
+				}
 			case buttonPrevious:
-				m.move(-1)
+				if !held(hold(in.holds, i)) {
+					m.move(-1)
+				}
 			case buttonHome:
 				// The first home only opens the menu: the plugin state of the
 				// actions is resolved after this step, so an action can never
@@ -297,7 +332,7 @@ func (m *menuState) step(in menuInput, acts []plan.PlanAction, now time.Time) (i
 			}
 		}
 	case menuConfirmPhase:
-		for _, b := range in.buttons {
+		for i, b := range in.buttons {
 			switch b {
 			case buttonHome:
 				// Only a home press from a device that painted the
@@ -309,8 +344,10 @@ func (m *menuState) step(in menuInput, acts []plan.PlanAction, now time.Time) (i
 				m.Phase = menuRunningPhase
 				invoke = m.selected()
 			case buttonNext, buttonPrevious:
-				m.Phase = menuListPhase
-				m.ConfirmHash = ""
+				if !held(hold(in.holds, i)) {
+					m.Phase = menuListPhase
+					m.ConfirmHash = ""
+				}
 			}
 		}
 	case menuResultPhase:
@@ -322,11 +359,35 @@ func (m *menuState) step(in menuInput, acts []plan.PlanAction, now time.Time) (i
 	return invoke
 }
 
-func hold(in menuInput, i int) int {
-	if i < len(in.holds) {
-		return in.holds[i]
+// hold reads the hold_ms of the button at i.
+func hold(holds []int, i int) int {
+	if i < len(holds) {
+		return holds[i]
 	}
 	return 0
+}
+
+// held reports whether a press lasted long enough to count as held. The
+// firmware reports the measured duration; the threshold lives here (ADR 0067).
+func held(ms int) bool {
+	return time.Duration(ms)*time.Millisecond >= menuHoldLong
+}
+
+// pageRoles translates the buttons of a wake in which the menu stays closed
+// (ADR 0067): a long next or previous jumps to the first page of the active
+// rule, and a long home is dropped because it only belongs to the open menu.
+func pageRoles(buttons []string, holds []int) []string {
+	out := make([]string, 0, len(buttons))
+	for i, b := range buttons {
+		switch {
+		case b == buttonHome && held(hold(holds, i)):
+		case (b == buttonNext || b == buttonPrevious) && held(hold(holds, i)):
+			out = append(out, buttonHome)
+		default:
+			out = append(out, b)
+		}
+	}
+	return out
 }
 
 // planActions turns the plan's list into menu entries without plugin state.
@@ -575,7 +636,7 @@ func menuKinds(phase string, count int) []string {
 	case menuConfirmPhase:
 		// Yes and no only: a close box would be the same as "no".
 		return []string{cellYes, cellNo}
-	case menuRunningPhase, menuResultPhase:
+	case menuRunningPhase, menuResultPhase, menuEmptyPhase:
 		return nil // drawn as a banner, no cells
 	}
 	kinds := []string{cellClose}
@@ -598,7 +659,7 @@ func drawMenu(img *image.Paletted, p Profile, v menuView, t texts) {
 	bg := image.Rect(overlay.Min.X, overlay.Min.Y, min(overlay.Max.X, img.Rect.Max.X), min(overlay.Max.Y, img.Rect.Max.Y))
 	render.FillColor(img, bg, render.White)
 	header := v.phase != menuListPhase
-	if v.phase == menuRunningPhase || v.phase == menuResultPhase {
+	if v.phase == menuRunningPhase || v.phase == menuResultPhase || v.phase == menuEmptyPhase {
 		drawBanner(img, p, v)
 		return
 	}
@@ -821,9 +882,6 @@ func (s *Server) menuOverlay(page servedPage, profile string, p Profile, v menuV
 // shown hash (ADR 0057).
 func (s *Server) overlayMenu(cfg *Config, d *Device, served servedPage, m *menuState) servedPage {
 	prof := cfg.Profiles[d.Profile]
-	if m.Actions == nil {
-		return served
-	}
 	if !m.Resolved {
 		ctx, cancel := context.WithTimeout(context.Background(), actionBudget)
 		m.Actions = s.resolveActions(ctx, cfg, d, m.Actions, s.now())
@@ -836,6 +894,8 @@ func (s *Server) overlayMenu(cfg *Config, d *Device, served servedPage, m *menuS
 	t := cfg.texts()
 	v := menuView{phase: m.Phase, actions: m.Actions, offset: m.Offset, sel: m.Selected}
 	switch m.Phase {
+	case menuEmptyPhase:
+		v.title = t.menuEmpty()
 	case menuConfirmPhase:
 		if a := m.selected(); a != nil {
 			v.title = a.Title

@@ -305,11 +305,12 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	// them, so a press never both moves the selection and turns the page.
 	menu := st.Menu
 	var invoke *menuAction
+	menuConsumed := false
 	switch {
 	case req.Reason == "powercycle", critical, textDisplay, d.Actions == actionsDeny, d.Plan == "":
 		menu.close()
 	default:
-		if menu.Open && !now.Before(menu.OpenedAt.Add(time.Duration(d.MenuShowDuration))) {
+		if menu.Open && !now.Before(menu.OpenedAt.Add(menuDeadline(menu, d))) {
 			slog.Info("menu expired", "device", d.ID)
 			menu.close()
 		}
@@ -326,6 +327,10 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 				acts = sel.Actions
 			}
 		}
+		// Buttons of a wake that finds the menu open belong to the menu, even
+		// when they close it: dismissing a banner must not turn the page
+		// (ADR 0067).
+		menuConsumed = menu.Open
 		invoke = menu.step(menuInput{buttons: buttons, holds: holds, shown: req.Shown}, acts, now)
 		if invoke == nil && menu.Open {
 			for _, e := range touches {
@@ -336,9 +341,17 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	menuOpen := menu.Open
-	pageButtons := buttons
-	if menuOpen {
-		pageButtons = nil
+	var pageButtons []string
+	switch {
+	case menuConsumed || menuOpen:
+		// The menu consumed the input, so it never pages.
+	case d.Actions != actionsDeny:
+		// A long next/previous jumps to the first page of the rule; a long
+		// home belongs to the open menu and is dropped (ADR 0067).
+		pageButtons = pageRoles(buttons, holds)
+	default:
+		// A denied device keeps the old meaning of every button.
+		pageButtons = buttons
 	}
 	if d.Actions == actionsDeny && hasButton(buttons, buttonHome) {
 		slog.Info("device menu denied; home keeps paging", "device", d.ID)
@@ -491,7 +504,7 @@ func menuWake(menu menuState, d *Device, now time.Time, critical bool) *syncWake
 	case menuResultPhase:
 		return nil // the next regular sync closes the result
 	}
-	left := menu.OpenedAt.Add(time.Duration(d.MenuShowDuration)).Sub(now)
+	left := menu.OpenedAt.Add(menuDeadline(menu, d)).Sub(now)
 	if left < time.Second {
 		left = time.Second
 	}

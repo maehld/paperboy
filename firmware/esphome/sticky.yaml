@@ -30,11 +30,14 @@ esphome:
               uint64_t pins = esp_sleep_get_ext1_wakeup_status();
               id(wake_reason) = "button";
               if (pins & (1ULL << 5)) {
-                pb_button("previous");
+                id(wake_role) = "previous";
+                id(wake_gpio) = 5;
               } else if (pins & (1ULL << 6)) {
-                pb_button("next");
+                id(wake_role) = "next";
+                id(wake_gpio) = 6;
               } else {
-                pb_button("home");
+                id(wake_role) = "home";
+                id(wake_gpio) = 4;
               }
             } else if (cause == ESP_SLEEP_WAKEUP_TIMER) {
               id(wake_reason) = "timer";
@@ -42,6 +45,16 @@ esphome:
               id(wake_reason) = "powercycle";
             }
             ESP_LOGI("paperboy", "wake reason: %s", id(wake_reason).c_str());
+        - if:
+            condition:
+              lambda: "return !id(wake_role).empty();"
+            then:
+              - script.execute:
+                  id: button_pressed
+                  role: !lambda "return id(wake_role);"
+                  gpio: !lambda "return id(wake_gpio);"
+                  start: !lambda "return (int) esphome::millis();"
+              - lambda: 'id(wake_role) = "";'
   on_shutdown:
     - priority: 100
       then:
@@ -103,17 +116,29 @@ binary_sensor:
     id: button_ok
     pin: { number: GPIO4, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true }
     on_press:
-      - script.execute: { id: button_pressed, role: "home" }
+      - script.execute:
+          id: button_pressed
+          role: "home"
+          gpio: 4
+          start: !lambda "return (int) esphome::millis();"
   - platform: gpio
     id: button_up
     pin: { number: GPIO5, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true }
     on_press:
-      - script.execute: { id: button_pressed, role: "previous" }
+      - script.execute:
+          id: button_pressed
+          role: "previous"
+          gpio: 5
+          start: !lambda "return (int) esphome::millis();"
   - platform: gpio
     id: button_down
     pin: { number: GPIO6, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true }
     on_press:
-      - script.execute: { id: button_pressed, role: "next" }
+      - script.execute:
+          id: button_pressed
+          role: "next"
+          gpio: 6
+          start: !lambda "return (int) esphome::millis();"
 
 display:
   - platform: epaper_spi
