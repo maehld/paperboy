@@ -50,6 +50,7 @@
 
   function updateSave() {
     el('save').disabled = state.readOnly || (state.isNew && !state.device.mac);
+    el('delete').hidden = state.isNew;
   }
 
   function changed() {
@@ -265,6 +266,38 @@
     show();
   }
 
+  // remove deletes the file; the server refuses one that changed since it was
+  // read (ADR 0073).
+  async function remove() {
+    if (state.isNew) return;
+    const warn = 'Delete devices/' + state.id + '.yaml?' +
+      '\n\nThe device cannot sync until a device file with ' + (state.device.mac || 'its MAC') + ' exists again.' +
+      (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
+      '\n\nA copy stays under state/editor/.';
+    if (!confirm(warn)) return;
+    setStatus('deleting…', '');
+    let res;
+    try {
+      res = await fetch('/api/devices/' + encodeURIComponent(state.id) + '?hash=' + encodeURIComponent(state.hash), { method: 'DELETE' });
+    } catch (e) {
+      setStatus('delete failed: ' + e, 'error');
+      return;
+    }
+    if (!res.ok) {
+      const body = await res.text();
+      let doc = {};
+      try {
+        doc = JSON.parse(body);
+      } catch (e) {
+        doc.error = body.trim();
+      }
+      setStatus(doc.error || 'delete failed (' + res.status + ')', 'error');
+      return;
+    }
+    state.dirty = false;
+    location.href = '/ui/editor?tab=devices';
+  }
+
   // check catches what the API would reject anyway, so the operator sees it
   // without a round trip.
   function check() {
@@ -301,6 +334,7 @@
   }
 
   el('save').addEventListener('click', save);
+  el('delete').addEventListener('click', remove);
   el('reload').addEventListener('click', () => location.reload());
   onField('display', 'display_type');
   onField('mac', 'mac');

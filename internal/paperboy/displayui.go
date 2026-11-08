@@ -48,8 +48,10 @@ type displayEditorView struct {
 
 // displayEditorState is what the script needs besides the file itself.
 type displayEditorState struct {
-	Name string `json:"name"`
-	New  bool   `json:"new"`
+	Name    string   `json:"name"`
+	New     bool     `json:"new"`
+	Pages   []string `json:"pages,omitempty"`   // page variants that use the type
+	Devices []string `json:"devices,omitempty"` // devices that use the type
 }
 
 // handleDisplayEditor opens one display type file. A new type starts from an
@@ -87,7 +89,14 @@ func (s *Server) handleDisplayEditor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.Pages, v.Devices = displayReferences(cfg, name)
-	data, err := json.Marshal(displayEditorState{Name: name, New: missing})
+	st := displayEditorState{Name: name, New: missing}
+	for _, r := range v.Pages {
+		st.Pages = append(st.Pages, r.Label)
+	}
+	for _, r := range v.Devices {
+		st.Devices = append(st.Devices, r.Label)
+	}
+	data, err := json.Marshal(st)
 	if err != nil { // never expected: only strings and a bool
 		slog.Error("display editor state encoding failed", "error", err)
 		v.Error = err.Error()

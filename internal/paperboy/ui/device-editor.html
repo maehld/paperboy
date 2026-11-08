@@ -23,6 +23,8 @@ button { font: inherit; font-size: .9rem; padding: .25rem .7rem; border-radius: 
 button:hover { background: #eee; }
 button.primary { border-color: #134e9c; background: #134e9c; color: #fff; }
 button.primary:hover { background: #0e3d7c; }
+button.danger { border-color: #c22; color: #b00; }
+button.danger:hover { background: #fff2f2; }
 button:disabled { color: #888; cursor: default; background: #f2f2f2; border-color: #ccc; }
 .status { font-size: .85rem; }
 .status.ok { color: #17692c; }
@@ -60,6 +62,7 @@ pre.file { margin: 0; padding: .5rem .6rem; background: #f7f9fc; border: 1px sol
   <span class="muted" id="where"></span>
   <span class="spacer"></span>
   <span class="status" id="status"></span>
+  <button id="delete" type="button" class="danger" hidden>Delete</button>
   <button id="reload" type="button">Reload</button>
   <button class="primary" id="save" type="button">Save</button>
 </div>

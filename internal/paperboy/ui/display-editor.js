@@ -11,6 +11,8 @@
   const state = {
     name: start.name,
     isNew: !!start.new,
+    pages: start.pages || [], // page variants that use the type, for the delete warning
+    devices: start.devices || [], // devices that use the type
     display: empty('image'),
     hash: '',
     yaml: '',
@@ -91,6 +93,7 @@
     el('min_refresh').value = d.min_refresh || '';
     el('power').value = d.power || '';
     el('yaml').textContent = state.yaml || '(no file yet)';
+    el('delete').hidden = state.isNew;
     updateKind();
     updateWhere();
   }
@@ -239,6 +242,41 @@
     show();
   }
 
+  // remove deletes the file after naming the pages and devices that reference
+  // the type; the server refuses one that changed since it was read (ADR 0073).
+  async function remove() {
+    if (state.isNew) return;
+    const refs = [];
+    if (state.pages.length) refs.push('page variants: ' + state.pages.join(', '));
+    if (state.devices.length) refs.push('devices: ' + state.devices.join(', '));
+    const warn = 'Delete displays/' + state.name + '.yaml?' +
+      (refs.length ? '\n\nAlso uses it → ' + refs.join('; ') + '.' : '\n\nNo page variant or device uses this display type.') +
+      (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
+      '\n\nA copy stays under state/editor/.';
+    if (!confirm(warn)) return;
+    setStatus('deleting…', '');
+    let res;
+    try {
+      res = await fetch('/api/displays/' + encodeURIComponent(state.name) + '?hash=' + encodeURIComponent(state.hash), { method: 'DELETE' });
+    } catch (e) {
+      setStatus('delete failed: ' + e, 'error');
+      return;
+    }
+    if (!res.ok) {
+      const body = await res.text();
+      let doc = {};
+      try {
+        doc = JSON.parse(body);
+      } catch (e) {
+        doc.error = body.trim();
+      }
+      setStatus(doc.error || 'delete failed (' + res.status + ')', 'error');
+      return;
+    }
+    state.dirty = false;
+    location.href = '/ui/editor?tab=displays';
+  }
+
   // check catches what the API would reject anyway, so the operator sees it
   // without a round trip.
   function check() {
@@ -282,6 +320,7 @@
   }
 
   el('save').addEventListener('click', save);
+  el('delete').addEventListener('click', remove);
   el('reload').addEventListener('click', () => location.reload());
   el('kind').addEventListener('change', () => {
     if (state.readOnly) return;

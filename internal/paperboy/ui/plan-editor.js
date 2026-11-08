@@ -17,6 +17,7 @@
     plugins: [],
     plan: null,
     hash: '',
+    isNew: !!start.new, // no file yet: the first save writes it (ADR 0073)
     readOnly: false,
     dirty: false,
   };
@@ -32,11 +33,14 @@
   }
 
   function updateWhere() {
-    el('where').textContent = 'plans/' + state.name + '.yaml' + (state.dirty ? ' · unsaved changes' : '');
+    el('where').textContent = 'plans/' + state.name + '.yaml' +
+      (state.isNew ? ' · not saved yet' : '') +
+      (state.dirty ? ' · unsaved changes' : '');
   }
 
   function updateSave() {
     el('save').disabled = !state.plan || state.readOnly;
+    el('delete').hidden = state.isNew || !state.plan;
   }
 
   function changed() {
@@ -720,6 +724,15 @@
 
   async function load() {
     setStatus('');
+    if (state.isNew) {
+      state.plan = normalize({ rules: [] });
+      state.hash = '';
+      state.readOnly = false;
+      state.dirty = false;
+      setStatus('a new plan; add a rule with its pages, then Save writes plans/' + state.name + '.yaml', '');
+      renderAll();
+      return;
+    }
     let res;
     try {
       res = await fetch('/api/plans/' + encodeURIComponent(state.name), { cache: 'no-store' });
@@ -779,9 +792,43 @@
     }
     state.hash = doc.hash || '';
     if (doc.plan) state.plan = normalize(doc.plan);
+    state.isNew = false;
     state.dirty = false;
     setStatus('saved ' + new Date().toLocaleTimeString(), 'ok');
     renderAll();
+  }
+
+  // remove deletes the file after naming the devices that use it; the server
+  // refuses a file that changed since it was read (ADR 0073).
+  async function remove() {
+    if (state.isNew || !state.plan) return;
+    const used = state.devices.map((d) => d.id);
+    const warn = 'Delete plans/' + state.name + '.yaml?' +
+      (used.length ? '\n\nDevices that use it: ' + used.join(', ') + '.' : '\n\nNo device uses this plan.') +
+      (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
+      '\n\nA copy stays under state/editor/.';
+    if (!confirm(warn)) return;
+    setStatus('deleting…', '');
+    let res;
+    try {
+      res = await fetch('/api/plans/' + encodeURIComponent(state.name) + '?hash=' + encodeURIComponent(state.hash), { method: 'DELETE' });
+    } catch (e) {
+      setStatus('delete failed: ' + e, 'error');
+      return;
+    }
+    if (!res.ok) {
+      const body = await res.text();
+      let doc = {};
+      try {
+        doc = JSON.parse(body);
+      } catch (e) {
+        doc.error = body.trim();
+      }
+      setStatus(doc.error || 'delete failed (' + res.status + ')', 'error');
+      return;
+    }
+    state.dirty = false;
+    location.href = '/ui/editor?tab=plans';
   }
 
   function renderAll() {
@@ -796,6 +843,7 @@
   // ---- wiring ----
 
   el('save').addEventListener('click', save);
+  el('delete').addEventListener('click', remove);
   el('reload').addEventListener('click', () => location.reload());
   el('add-rule').addEventListener('click', addRule);
   el('add-action').addEventListener('click', addAction);
