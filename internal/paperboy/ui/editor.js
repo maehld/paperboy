@@ -72,8 +72,9 @@
   }
 
   // Rebuilding the board and the preview after a change, without touching the
-  // inputs the operator is typing in.
-  function changed() {
+  // inputs the operator is typing in: `origin` names the panel the edit came
+  // from, and that panel keeps its elements (and so its focus and caret).
+  function changed(origin) {
     if (!state.playground) {
       state.dirty = true;
       setStatus('unsaved changes', '');
@@ -84,7 +85,8 @@
     }
     updateSave();
     renderBoard();
-    renderInspector();
+    if (origin === 'inspector') updateSnippet();
+    else renderInspector();
     schedulePreview();
   }
 
@@ -446,7 +448,7 @@
     if (!arg || arg.type !== 'bool') {
       if (raw === '' || raw === null) delete cell.args[name];
       else cell.args[name] = argValue(raw, arg);
-      changed();
+      changed('inspector');
       return;
     }
     // A bool that differs from its declared default is written out, so an
@@ -455,7 +457,7 @@
     const fallback = arg.default === true;
     if (value === fallback) delete cell.args[name];
     else cell.args[name] = value;
-    changed();
+    changed('inspector');
   }
 
   function renderInspector() {
@@ -505,7 +507,7 @@
       if (w !== c.span[0] || h !== c.span[1]) {
         c.span = [w, h];
         setStatus('');
-        changed();
+        changed('inspector');
       }
     };
     cols.addEventListener('change', applySpan);
@@ -553,7 +555,7 @@
           else {
             const chosen = arg.enum.find((v) => String(v) === control.value);
             c.args[name] = chosen === undefined ? control.value : chosen;
-            changed();
+            changed('inspector');
           }
         });
       } else {
@@ -586,7 +588,7 @@
         const v = num(input.value);
         if (v === null) delete style[key];
         else style[key] = v;
-        changed();
+        changed('inspector');
       });
       box.appendChild(field(key, input));
     }
