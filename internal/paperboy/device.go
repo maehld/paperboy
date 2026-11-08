@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/maehld/paperboy/internal/plan"
 )
 
 // Button roles of the device API (ADR 0042). The firmware maps its physical
@@ -24,6 +26,16 @@ const (
 // button press or touch before it goes back to deep sleep.
 const listenAfterInput = 20 * time.Second
 
+// hasButton reports whether one of the button roles is in the list.
+func hasButton(buttons []string, role string) bool {
+	for _, b := range buttons {
+		if b == role {
+			return true
+		}
+	}
+	return false
+}
+
 // maxSyncBytes caps a register or sync body; log entries make up most of it.
 const maxSyncBytes = 64 << 10
 
@@ -35,6 +47,7 @@ type registerRequest struct {
 }
 
 type syncEvent struct {
+	ID     int64  `json:"id"`     // monotonically increasing per device (ADR 0064); 0 = no deduplication
 	Type   string `json:"type"`   // "button" or "touch"
 	Button string `json:"button"` // button role
 	HoldMS int    `json:"hold_ms"`
@@ -80,17 +93,30 @@ type syncResponse struct {
 	Sleep    bool           `json:"sleep"` // false: stay awake and sync again after refresh_s (ADR 0051)
 	Time     int64          `json:"time"`
 	Firmware *firmwareOffer `json:"firmware"` // update offer (ADR 0043); null when none
+	// Wake names the reason of the next wake and how long to sleep until then
+	// (ADR 0064). It overrides refresh_s for exactly one sleep, so the menu can
+	// close at its deadline and a slow action can report its result.
+	Wake *syncWake `json:"wake,omitempty"`
+}
+
+// syncWake is a one-shot wake instruction.
+type syncWake struct {
+	Reason string `json:"reason"`  // timer, menu or result
+	AfterS int    `json:"after_s"` // seconds until that wake
 }
 
 // validate checks the parts of a sync that change device state; anything the
 // firmware gets wrong is answered with 400 instead of being guessed.
 func (r *syncRequest) validate() error {
 	switch r.Reason {
-	case "timer", "button", "touch", "powercycle":
+	case "timer", "button", "touch", "powercycle", "menu", "result":
 	default:
-		return fmt.Errorf("reason %q: expected timer, button, touch or powercycle", r.Reason)
+		return fmt.Errorf("reason %q: expected timer, button, touch, powercycle, menu or result", r.Reason)
 	}
 	for i, e := range r.Events {
+		if e.ID < 0 {
+			return fmt.Errorf("event %d: id must not be negative", i)
+		}
 		switch e.Type {
 		case "button":
 			switch e.Button {
@@ -244,23 +270,86 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	offer := s.offerFirmwareLocked(d, st, cfg, img, volts, req.Battery != nil, now)
 
 	var buttons []string
-	input := req.Reason == "button" || req.Reason == "touch"
+	var holds []int
+	var touches []syncEvent
+	input := req.Reason == "button" || req.Reason == "touch" || req.Reason == "menu" || req.Reason == "result"
+	if req.Reason == "powercycle" {
+		// A power cycle clears the RTC event counter, so the IDs start again
+		// (ADR 0064).
+		st.LastEventID = 0
+		st.Menu.close()
+	}
 	for _, e := range req.Events {
+		// A retried sync resends the same event IDs; anything at or below the
+		// last applied ID is a repeat (ADR 0064).
+		if e.ID > 0 {
+			if e.ID <= st.LastEventID {
+				continue
+			}
+			st.LastEventID = e.ID
+		}
 		input = true
-		if e.Type == "button" {
+		switch e.Type {
+		case "button":
 			buttons = append(buttons, e.Button)
+			holds = append(holds, e.HoldMS)
+		case "touch":
+			touches = append(touches, e)
 		}
 	}
 
 	power := cfg.power(d, st.ReportedPower)
 	floor := cfg.minRefresh(d, st.ReportedPower)
 	textDisplay := cfg.Profiles[d.Profile].text()
+	// The device menu (ADR 0057) consumes the buttons before the plan sees
+	// them, so a press never both moves the selection and turns the page.
+	menu := st.Menu
+	var invoke *menuAction
+	switch {
+	case req.Reason == "powercycle", critical, textDisplay, d.Actions == actionsDeny, d.Plan == "":
+		menu.close()
+	default:
+		if menu.Open && !now.Before(menu.OpenedAt.Add(time.Duration(d.MenuShowDuration))) {
+			slog.Info("menu expired", "device", d.ID)
+			menu.close()
+		}
+		// A result stays until the next input or the next regular sync; the
+		// result wake itself is the one that brings it, so it must not close
+		// the screen before it is drawn.
+		if menu.Open && menu.Phase == menuResultPhase && len(buttons) == 0 &&
+			req.Reason != "button" && req.Reason != "touch" && req.Reason != "result" {
+			menu.close()
+		}
+		var acts []plan.PlanAction
+		if p, _ := s.plans.get(cfg.Plans, d.Plan, cfg.Timezone); p != nil {
+			if sel, ok := p.Select(now); ok {
+				acts = sel.Actions
+			}
+		}
+		invoke = menu.step(menuInput{buttons: buttons, holds: holds, shown: req.Shown}, acts, now)
+		if invoke == nil && menu.Open {
+			for _, e := range touches {
+				if a := menu.tap(e.X, e.Y, cfg.Profiles[d.Profile], req.Shown); a != nil {
+					invoke = a
+				}
+			}
+		}
+	}
+	menuOpen := menu.Open
+	pageButtons := buttons
+	if menuOpen {
+		pageButtons = nil
+	}
+	if d.Actions == actionsDeny && hasButton(buttons, buttonHome) {
+		slog.Info("device menu denied; home keeps paging", "device", d.ID)
+	}
+	st.Menu = menu
 	var choice planChoice
 	switch {
 	case critical: // the warning replaces all pages; buttons only show it again
 		st.Page = 0
 	case d.Plan != "":
-		choice = s.choosePlanPage(cfg, d, st, now, firstContact, buttons, pageTimeout, false)
+		choice = s.choosePlanPage(cfg, d, st, now, firstContact, pageButtons, pageTimeout, menuOpen, false)
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
 	}
@@ -280,6 +369,19 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 
 	// Drawing and rendering happen without the lock: a slow page, a font problem
 	// or a panicking template must never block the other devices.
+	if invoke != nil {
+		run := s.startAction(cfg, d, *invoke, now)
+		select {
+		case <-run.done:
+		case <-time.After(actionBudget):
+			slog.Info("action still running", "device", d.ID, "action", invoke.Action)
+		}
+		s.mu.Lock()
+		if st := s.state[d.key()]; st != nil {
+			menu = st.Menu
+		}
+		s.mu.Unlock()
+	}
 	var served servedPage
 	switch {
 	case critical:
@@ -294,6 +396,9 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		served = s.renderPlan(cfg, d, choice, now, false)
 	default:
 		served = s.hint(cfg, d.Profile, choice.title, choice.text)
+	}
+	if menu.Open && !critical && !textDisplay {
+		served = s.overlayMenu(cfg, d, served, &menu)
 	}
 	served.refresh = max(served.refresh, floor)
 	refresh := served.refresh
@@ -320,6 +425,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		st.LastPageTime, st.LastRefresh = now, int(refresh.Seconds())
 		st.LastText = served.lines
 		st.LastError = errText
+		st.Menu = menu
 		pageData = s.stateSnapshotLocked()
 	}
 	s.mu.Unlock()
@@ -350,6 +456,9 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	if len(buttons) > 0 {
 		attrs = append(attrs, "buttons", strings.Join(buttons, ","))
 	}
+	if menu.Open {
+		attrs = append(attrs, "menu", menu.Phase, "action", menu.Selected)
+	}
 	attrs = append(attrs, "changed", req.Shown != served.hash, "battery", logged.BatteryVoltage,
 		"rssi", logged.RSSI, "refresh", refresh, "power", power)
 	slog.Info("display sync", attrs...)
@@ -359,6 +468,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		Sleep:    power == powerBattery,
 		Time:     now.Unix(),
 		Firmware: offer,
+		Wake:     menuWake(menu, d, now, critical),
 	}
 	if textDisplay {
 		resp.Text = &syncText{Lines: served.lines, Hash: served.hash}
@@ -366,6 +476,26 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		resp.Image = &syncImage{Path: served.path, Hash: served.hash}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// menuWake names the one-shot wake the device needs (ADR 0064): the menu
+// deadline while it is open, or a short wake for the result of a running
+// action. Without an open menu the regular refresh applies.
+func menuWake(menu menuState, d *Device, now time.Time, critical bool) *syncWake {
+	if !menu.Open || critical {
+		return nil
+	}
+	switch menu.Phase {
+	case menuRunningPhase:
+		return &syncWake{Reason: "result", AfterS: int(actionBudget.Seconds())}
+	case menuResultPhase:
+		return nil // the next regular sync closes the result
+	}
+	left := menu.OpenedAt.Add(time.Duration(d.MenuShowDuration)).Sub(now)
+	if left < time.Second {
+		left = time.Second
+	}
+	return &syncWake{Reason: "menu", AfterS: int(left.Seconds())}
 }
 
 // handleText answers the text poll of a text display (ADR 0044, 0045): the
@@ -397,7 +527,7 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 		// A copy keeps the cursor: a rule change or page timeout only shows here
 		// and is stored by the next sync.
 		peek := *st
-		choice = s.choosePlanPage(cfg, d, &peek, now, true, nil, time.Duration(cfg.PageTimeout), true)
+		choice = s.choosePlanPage(cfg, d, &peek, now, true, nil, time.Duration(cfg.PageTimeout), false, true)
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
 	}

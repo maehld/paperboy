@@ -27,6 +27,8 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
 
 **Migrating to program names (ADR 0060):** remove `command:` from every plugin section — it aborts the start with a hint. A plugin's program is now named after the plugin: `plugins/weather`, `plugins/weather-v2.1.0` (`.exe` on Windows), or `weather` on `PATH`; the unversioned file wins and stays yours (an unpacked plugin zip works as before), and the optional `version` key pins a downloaded one. Firmware images move from `firmware/<hardware>/<hardware>-<version>.bin` to `firmware/<hardware>-v<version>.bin`; the old layout is still read, so nothing has to move, and devices get the new path with the offer.
 
+**Migrating to plugin protocol version 4 (ADR 0057):** the action menu moves the protocol to version 4. Paperboy checks the version in every answer (ADR 0058) and refuses a plugin that reports version 3 or none, with the expected version in the error; unpack the current plugin zip after updating Paperboy. Plans without `actions` need no change.
+
 ## Releases
 
 GitHub releases are the distribution point (ADR 0056). Each tag names a tested combination of the three deliverables:
@@ -103,6 +105,7 @@ plugins:
 defaults:
   refresh: 5m          # regular sleep time; plans may override it
   page_timeout: 5m     # back to the first page after this
+  menu_show_duration: 30s  # how long the device menu stays open (ADR 0057), 5s–60s
   battery: { warn_volts: 3.45, critical_volts: 3.3, hysteresis_volts: 0.1 }
 firmware:
   update: auto         # auto or off (default); offers the images in firmware/ (ADR 0043)
@@ -130,6 +133,8 @@ devices:
     power: mains                          # optional, overrides the display type (E1001 on USB)
     battery: { warn_volts: 3.5 }          # optional, 0 inherits the default
     firmware: hold                        # optional, keeps the device on its firmware
+    actions: allow                        # optional: allow (default) or deny the device menu
+    menu_show_duration: 30s               # optional, overrides the default
 ```
 
 - The map key under `devices` is the stable device ID (a-z, 0-9, `-`). It appears in logs, in `GET /api/devices` and in `state/devices.json`; existing MAC-keyed state is migrated automatically at startup.
@@ -148,9 +153,9 @@ devices:
 - **Plans** (ADR 0025): every device points to a plan (`plans/<name>.yaml`) that selects its pages according to time rules. A device without a plan shows a notice page.
 - **Interval**: `defaults.refresh` (at least 1 minute) or the device's `refresh`; a plan rule may override it (down to `1s`). The reported interval never goes below the floor of the device's power source (ADR 0051): battery devices keep one minute or the display type's `min_refresh` if that is longer; mains devices go down to `min_refresh`, by default `1s` for text and `10s` for image displays. Unchanged image → the display does not redraw.
 - **Power source** (ADR 0051): `power: auto|battery|mains` on the display type, overridable per device; default `auto`. The firmware reports `power` (`battery` or `mains`) in register and sync: the Sticky measures USB power on GPIO9, the E1001 cannot detect it and reports `battery`, text displays report `mains`. `auto` uses the last report (`reported_power` in `/api/devices`, next to the effective `power`) and behaves as `battery` until the device reports one, so text displays with older firmware fall back to a one-minute floor until they are updated or set to `power: mains`. The sync answers `sleep: false` for mains devices: the ePaper firmware then stays awake with Wi-Fi up and syncs again after `refresh_s` instead of deep sleeping. A page whose composition did not change keeps its PNG and hash, so short intervals cause no redraw.
-- **Device API** (ADR 0042): `POST /api/device/register` with `{"mac", "hardware", "firmware"}` (optionally `power`) returns `{"key", "device"}` for a configured MAC (an existing key is kept) and `403` otherwise. Every wake sends one `POST /api/device/sync` with `Authorization: Bearer <key>`: `reason` (`timer`, `button`, `touch`, `powercycle`), `events` (buttons by role `next`, `previous`, `home`, optionally `hold_ms`; touches with `x`/`y`), `shown` (hash on the panel), `battery` (`volts` required, `percent`, `mah`, `ma` optional), `rssi`, `power` and `log` entries. The answer names the image (`image.path` relative to the Paperboy URL, `image.hash`), the deep-sleep time `refresh_s`, `listen_s` (0 after a timer wake, 20 s after input), `sleep` (`false` for mains devices, ADR 0051), the server `time` in Unix seconds and `firmware` (an update offer, otherwise `null`). An unknown key gets `401` and the device registers again; an invalid body gets `400`.
+- **Device API** (ADR 0042, ADR 0064): `POST /api/device/register` with `{"mac", "hardware", "firmware"}` (optionally `power`) returns `{"key", "device"}` for a configured MAC (an existing key is kept) and `403` otherwise. Every wake sends one `POST /api/device/sync` with `Authorization: Bearer <key>`: `reason` (`timer`, `button`, `touch`, `powercycle`, `menu`, `result`), `events` (buttons by role `next`, `previous`, `home`, optionally `hold_ms`; touches with `x`/`y`; each with a monotonically increasing `id`, and a repeated ID is ignored), `shown` (hash on the panel), `battery` (`volts` required, `percent`, `mah`, `ma` optional), `rssi`, `power` and `log` entries. The answer names the image (`image.path` relative to the Paperboy URL, `image.hash`), the deep-sleep time `refresh_s`, `listen_s` (0 after a timer wake, 20 s after input), `sleep` (`false` for mains devices, ADR 0051), the server `time` in Unix seconds, `firmware` (an update offer, otherwise `null`) and `wake` (`{reason, after_s}`, a one-shot wake for the menu deadline or an action result, otherwise absent). An unknown key gets `401` and the device registers again; an invalid body gets `400`.
 - **Text displays** (ADR 0044): register and sync like ePaper displays, but the sync answers `"image": null` and `"text": {"lines", "hash"}`, and `listen_s` is always 0 (they run on mains power and never sleep). Between syncs they poll `GET /api/device/text?shown=<hash>` with their key every `refresh_s`, which the plan decides (ADR 0045; the firmware syncs at most once a minute and uses one minute until its first sync): the answer is `{"lines", "hash"}`, unchanged text gets `204`. The poll renders the page the cursor points to without advancing it and writes nothing to `state/devices.json`, but updates the shown content in memory for `/api/devices` and the dashboard; an image display gets `409`. Notices (no plan, broken page, critical battery) are word-wrapped into the lines.
-- **Buttons**: events apply in order before rendering. `next` = next page, `previous` = one page back (wrapping), `home` = first page of the active rule. After `page_timeout` (5 min) back to the first page. Touches and long presses are logged but change nothing yet.
+- **Buttons**: events apply in order before rendering. `next` = next page, `previous` = one page back (wrapping), `home` = first page of the active rule — or, when the plan offers actions and the device allows them, the device menu (ADR 0057, see [Actions](#actions)): short `home` opens it, `next`/`previous` move the selection, `home` confirms, long `home` closes it and goes to page 1. After `page_timeout` (5 min) back to the first page. Touches operate the device menu when it is open (the Sticky sends taps, ADR 0064, issue #54); outside a menu they are only logged.
 - **Stale widgets**: when a plugin fails, Paperboy keeps showing its last widgets and marks the page: a bar „Veraltet: calendar/agenda“ (“Outdated: …”) on image displays, `!` in the last column of the first line on text displays (`notices: none` turns both off). A widget that never rendered becomes a hatched notice inside its cell with the reason.
 - **Battery warning** (ADR 0020): fed by `battery.volts` of the sync. With `battery` in `defaults` or on a device, every page below `warn_volts` gets the bar „Akku schwach – bitte laden“ (“Battery low – please charge”); below `critical_volts` a full-screen image „Akku fast leer“ (“Battery almost empty”) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` no warning. All texts use the configured `language`.
 - **Firmware updates** (ADR 0043): put OTA images into `firmware/<hardware>-v<version>.bin` of the instance (`firmware/esphome/build.ps1 -Hardware sticky -Instance <dir>` does it). The highest version (compared part by part as numbers; a `firmware.version` pin narrows it to exactly that image, ADR 0060) is offered in the sync as `{"version", "path", "md5"}` when `firmware.update` is `auto`, the device has no `firmware: hold`, its reported version differs (a lower file is a rollback), its battery reading is at least `min_battery_volts` and not at warning level (text displays run on mains power and skip the battery condition), and the version has not failed three times on that device. A sync that still reports the old version after an offer counts as a failure; a changed image (new MD5) or clearing `firmware_failures` in `state/devices.json` allows new attempts. Images are served at `GET /firmware/<file>` without a token; other file names are ignored and listed in the log and on the dashboard. `GET /api/devices` adds `firmware_available` and `firmware_status` (`current`, `offered`, `available`, `failed`, `held`, `none`). Test the rollback with a broken image before using `update: auto`.
@@ -206,9 +211,9 @@ The pages in `examples/pages` (`uebersicht`, `kalender`, `wetter`, `laden` and t
 
 A plugin is a long-running program that provides widgets (ADR 0049). Paperboy starts it on first use, sends it its `config` section once (`configure`), and then asks it for widgets; it keeps the results until the plugin's `max_age` (default 5 minutes) or until the plugin reports a change, and renders widgets that are still in use again in the background, so a device never waits for a plugin. A plugin that exits or does not answer within `timeout` is restarted; meanwhile its last widgets are shown as stale, and a failing plugin is not asked again for a minute.
 
-**Protocol** (`pkg/plugin`): one JSON object per line on stdin, one answer per line on stdout with the same `id`. Actions are `configure`, `describe`, `render` (`levels` 2 or 4, `widgets: [{widget, width, height, args, style}]` → base64 PNGs) and `text` (the same in characters → `lines`). Every request carries `language`, `timezone`, `now` and the `page` (`title`, `number`, `count`, display `width`/`height`, and for image displays `ppi`). Protocol version 3 (ADR 0050): each widget's `style` holds `padding`, `rule` and `text_px` in pixels, already converted from the page's points; Go plugins use `Request.TextPx`, `PtPx` and `MMPx` for physical sizes. Between answers a plugin may print `{"event": "changed", "changed": ["agenda"]}`. It ends when stdin closes. Every plugin also sees `PAPERBOY_LANGUAGE` and `PAPERBOY_TIMEZONE` in its environment. Every answer names the protocol version the plugin was built against (`"version": 3`); Paperboy refuses a plugin that reports another version or none at all, with the mismatch as the cell's error and one log line (ADR 0058). Go plugins get this from `pkg/plugin` automatically; plugins in other languages must print the field.
+**Protocol** ([`docs/plugins/protocol.md`](docs/plugins/protocol.md), `pkg/plugin`): one JSON object per line on stdin, one answer per line on stdout with the same `id`. Actions are `configure`, `describe`, `render` (`levels` 2 or 4, `widgets: [{widget, width, height, args, style}]` → base64 PNGs), `text` (the same in characters → `lines`), `actions` (the state of concrete plan actions) and `action` (run one). Every request carries `language`, `timezone`, `now` and the `page` (`title`, `number`, `count`, display `width`/`height`, and for image displays `ppi`). Protocol version 4 (ADR 0050, 0057): each widget's `style` holds `padding`, `rule` and `text_px` in pixels, already converted from the page's points; Go plugins use `Request.TextPx`, `PtPx` and `MMPx` for physical sizes. `describe` lists widgets and, optionally, actions; an action request names a concrete `action` and its `args` and gets `actions` states (title, disabled reason, confirmation) or a `result` (`ok`, `message`, `changed`). Between answers a plugin may print `{"event": "changed", "changed": ["agenda"]}`. It ends when stdin closes. Every plugin also sees `PAPERBOY_LANGUAGE` and `PAPERBOY_TIMEZONE` in its environment. Every answer names the protocol version the plugin was built against (`"version": 4`); Paperboy refuses a plugin that reports another version or none at all, with the mismatch as the cell's error and one log line (ADR 0058). Go plugins get this from `pkg/plugin` automatically; plugins in other languages must print the field.
 
-A Go plugin implements `plugin.Handler` (`Describe`, `Configure`, `Render`), optionally `Texter`, `Preparer`, `Starter` (background work with a `notify` callback) and `Ager` (`max_age`), calls `plugin.Serve` and draws with `pkg/render` – the fonts, gray levels, fills and icon masks Paperboy itself uses, so its widgets look like the rest of the page. Plugins in other languages speak the same JSON lines.
+A Go plugin implements `plugin.Handler` (`Describe`, `Configure`, `Render`), optionally `Texter`, `Preparer`, `Starter` (background work with a `notify` callback), `Ager` (`max_age`) and `Actioner` (actions for the device menu), calls `plugin.Serve` and draws with `pkg/render` – the fonts, gray levels, fills and icon masks Paperboy itself uses, so its widgets look like the rest of the page. Plugins in other languages speak the same JSON lines.
 
 Shipped plugins (one zip per platform: `paperboy-plugins-linux-amd64.zip` and `paperboy-plugins-windows-amd64.zip`; unpacked in the instance directory they create `plugins/`). Each plugin has its own documentation under `docs/plugins/`:
 
@@ -249,6 +254,40 @@ fallback: nacht
 - `fallback` names the rule used when nothing matches; without a match and without a fallback the device gets a notice page.
 - Plans are reloaded on change without a restart; a broken file keeps the last valid version. A missing or broken page also leads to a notice page, so devices never see a server error.
 - Plans serve devices on the Paperboy firmware. Data conditions (`when.data`) follow later and are rejected when loading a plan.
+
+### Actions
+
+A plan may offer **actions** that plugins provide (ADR 0057): things a user starts from the device menu, such as switching the evcc charge mode. Actions belong to the plan, not to a page, so every rule and page of a plan offers the same list.
+
+```yaml
+actions:
+  - action: evcc/mode
+    args: { loadpoint: 0, mode: now }
+    id: charge-now
+    title: "Charge now"          # optional; otherwise the plugin's title
+  - action: evcc/mode
+    args: { loadpoint: 1, mode: now }
+    id: charge-now-2             # required: evcc/mode appears twice
+  - paperboy/refresh             # short form for actions without args
+```
+
+- `action` is `plugin/action`; `args` are the action's arguments from the plugin's `describe`.
+- `id` is optional and plan-local. It becomes mandatory for **every** entry of an action as soon as the same `action` appears more than once, and IDs must be unique. The menu keeps its selection by `id`, or by `plugin/action` when there is no `id`, so reordering the list or changing `args`/`title` does not change the identity.
+- Exact duplicates of `action` and `args` are rejected. An unknown plugin, action or argument disables the entry with a reason instead of breaking the plan. A plugin that reports another protocol version is refused as a whole (ADR 0058), not used without its actions.
+- A page-level or rule-level `actions` key is rejected with a hint.
+
+#### The device menu
+
+Short `home` opens the menu when the plan has actions and the device does not set `actions: deny`. Paperboy draws it as an overlay over the top half of the current page — one row of `X`, up to three actions and `<`/`>`, stacked in the same order on portrait displays. The page below stays visible, and the menu pauses rotation and `page_timeout`.
+
+- `next`/`previous` move the selection and wrap; `<`/`>` page through the list in steps of three.
+- `home` runs the selected action. If the plugin asks for a confirmation (`confirm` in its `describe`), Paperboy shows a confirmation screen first and runs the action only after the device reports that screen as painted (`shown` hash): the first `home` opens the menu or the confirmation, never runs an action blind.
+- A long `home` closes the menu and goes to page 1; `X` closes it and keeps the page. On the Sticky every cell of the overlay is a touch target — `X`, the actions, `<`/`>` and `Ja`/`Nein` — and a tap on a confirming action opens its confirmation first; a tap never opens the menu.
+- Unavailable actions stay visible, hatched, with the plugin's reason. A plugin that is down keeps its actions visible as unavailable instead of hiding them.
+- The menu closes itself after `menu_show_duration` (default 30 s, at most 60 s) and asks for a one-shot wake at that deadline (`wake` in the sync answer, ADR 0064), so it closes without waiting for the next regular refresh.
+- An action gets about five seconds inside the sync. If it is not done by then a thin banner at the top says "running", and Paperboy schedules one result wake (`reason: result`) for the outcome. The outcome itself is a banner too ("Erledigt: …" or "Fehlgeschlagen: …") without cells or a close box; the next input or the next regular sync clears it.
+- A device with `actions: deny` keeps the old meaning of `home` (page 1); the dashboard marks it as denied.
+- Plugin actions set target states (e.g. `mode: now`), never toggles, so a repeated sync is safe.
 
 ## OpenDisplay
 

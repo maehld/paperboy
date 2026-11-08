@@ -242,13 +242,15 @@ type planChoice struct {
 	err     error         // reason for the notice, shown as the device's last error
 	refresh time.Duration // sleep time to report
 	banners []string
+	actions []plan.PlanAction // the plan's actions for the device menu (ADR 0057)
 }
 
 // choosePlanPage evaluates the device plan and advances the rotation state.
 // Callers hold s.mu and pass the configuration snapshot of the request: no
 // config access happens under the state lock (ADR 0047). Rendering happens
-// later in renderPlan.
-func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now time.Time, firstContact bool, buttons []string, pageTimeout time.Duration, quiet bool) planChoice {
+// later in renderPlan. paused freezes paging while the device menu is open
+// (ADR 0057): the page stays and rotation waits.
+func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now time.Time, firstContact bool, buttons []string, pageTimeout time.Duration, paused, quiet bool) planChoice {
 	p, err := s.plans.get(cfg.Plans, d.Plan, cfg.Timezone)
 	if p == nil {
 		if !quiet {
@@ -278,6 +280,8 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 	if switched := st.Rule != sel.Rule; switched {
 		// A new rule starts at its first page, the previous position is dropped.
 		st.Rule, st.Page, st.LastInput = sel.Rule, 0, now
+	} else if paused {
+		// The menu is modal: no paging, no rotation, no page timeout.
 	} else {
 		// Button roles apply in order (ADR 0042): presses made while the panel
 		// was painting arrive together and only the final page is rendered.
@@ -317,7 +321,7 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 	if !sel.Rotate && page != 0 {
 		refresh = min(refresh, max(floor, pageTimeout-now.Sub(st.LastInput)+5*time.Second))
 	}
-	c := planChoice{page: page, pages: n, name: pages[page], refresh: refresh}
+	c := planChoice{page: page, pages: n, name: pages[page], refresh: refresh, actions: sel.Actions}
 	if st.BatteryLevel == batteryWarn {
 		c.banners = append(c.banners, cfg.texts().lowBattery(voltageKey(st.BatteryVoltage)))
 	}

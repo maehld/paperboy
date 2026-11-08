@@ -40,6 +40,8 @@ type dashboardDevice struct {
 	SeenAgo     string   // last contact, "never" when unknown
 	ServedAgo   string   // age of the last served page
 	Firmware    string   // running version, available version and update status
+	Menu        string   // open menu phase and selected action (ADR 0057)
+	Actions     string   // "denied", empty when the device may use actions
 	Error       string   // last render or plan error
 }
 
@@ -99,6 +101,8 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			SeenAgo:     agoText(d.LastSeen, now),
 			ServedAgo:   agoText(d.LastPageTime, now),
 			Firmware:    firmwareText(d),
+			Menu:        menuText(d.deviceState),
+			Actions:     actionsText(devices[d.ID]),
 			Error:       d.LastError,
 		})
 	}
@@ -228,6 +232,25 @@ func planText(plan string) string {
 		return "no plan"
 	}
 	return plan
+}
+
+// menuText names the open menu and its selection for the dashboard.
+func menuText(st deviceState) string {
+	if !st.Menu.Open {
+		return ""
+	}
+	if a := st.Menu.find(st.Menu.Selected); a != nil {
+		return st.Menu.Phase + " · " + a.Title
+	}
+	return st.Menu.Phase
+}
+
+// actionsText marks a device that may not use the device menu (ADR 0057).
+func actionsText(d *Device) string {
+	if d != nil && d.Actions == actionsDeny {
+		return "denied"
+	}
+	return ""
 }
 
 // contentText names what the device is showing in plain words.

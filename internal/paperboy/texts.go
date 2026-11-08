@@ -72,3 +72,49 @@ func (t texts) criticalBattery(key string) (string, string) {
 	return t.variant("Akku fast leer", "Battery almost empty"),
 		t.variant("Bitte jetzt laden", "Please charge now") + t.voltage(key)
 }
+
+// The device menu (ADR 0057). Its labels are short: they sit in cells of a
+// small panel.
+func (t texts) menuClose() string { return t.variant("X", "X") }
+
+func (t texts) menuMore() string { return t.variant("…", "…") }
+
+func (t texts) menuEmpty() string {
+	return t.variant("Keine Aktionen", "No actions")
+}
+
+func (t texts) menuConfirm(title string) (string, string) {
+	return title, t.variant("Home = ja, andere Taste = nein", "Home = yes, any other = no")
+}
+
+func (t texts) menuYes() string { return t.variant("Ja", "Yes") }
+
+func (t texts) menuNo() string { return t.variant("Nein", "No") }
+
+func (t texts) menuRunning(title string) (string, string) {
+	return title, t.variant("Wird ausgeführt …", "Running …")
+}
+
+func (t texts) menuResult(ok bool, message string) (string, string) {
+	title := t.variant("Erledigt", "Done")
+	if !ok {
+		title = t.variant("Fehlgeschlagen", "Failed")
+	}
+	return title, message
+}
+
+func (t texts) menuExpired() string {
+	return t.variant("Menü geschlossen", "Menu closed")
+}
+
+func (t texts) menuChanged() string {
+	return t.variant("Aktion nicht mehr im Plan", "Action no longer in the plan")
+}
+
+func (t texts) menuDenied() string {
+	return t.variant("Aktionen sind für dieses Gerät gesperrt", "Actions are disabled for this device")
+}
+
+func (t texts) menuDisabled(reason string) string {
+	return t.variant("Nicht verfügbar: ", "Not available: ") + reason
+}
