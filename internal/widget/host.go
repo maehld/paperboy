@@ -58,6 +58,10 @@ type Spec struct {
 	Env     map[string]string
 	Dir     string         // plugins directory: lookup root and working directory
 	Config  map[string]any // sent with configure; variables already expanded
+	// StateDir is the plugin's own directory under state/plugins/, created
+	// before the start and named by PAPERBOY_STATE_DIR (ADR 0065). Empty
+	// means the plugin runs without one.
+	StateDir string
 }
 
 // Env is what every request carries besides the widgets.

@@ -29,6 +29,9 @@ func TestMain(m *testing.M) {
 
 func fakePlugin(mode string) {
 	appendFile(os.Getenv("FAKE_STARTS"))
+	if path := os.Getenv("FAKE_STATE"); path != "" {
+		os.WriteFile(path, []byte(os.Getenv(plugin.StateDirEnv)), 0o644)
+	}
 	if mode == "fail" {
 		os.Stderr.WriteString("broken")
 		os.Exit(1)
@@ -258,6 +261,32 @@ func TestHostKeepsProcessAndRestartsOnChange(t *testing.T) {
 	h.Fetch(context.Background(), batch(w("fake", "a", 10, 5)))
 	if n := runs(f.starts); n != 2 {
 		t.Errorf("plugin started %d times after a config change, want 2", n)
+	}
+}
+
+func TestHostCreatesStateDirectory(t *testing.T) {
+	f := newFake(t)
+	specs := f.spec("ok")
+	s := specs["fake"]
+	s.StateDir = filepath.Join(t.TempDir(), "state", "fake")
+	// A configured value must not point the plugin elsewhere (ADR 0065).
+	s.Env[plugin.StateDirEnv] = filepath.Join(t.TempDir(), "elsewhere")
+	written := filepath.Join(t.TempDir(), "env")
+	s.Env["FAKE_STATE"] = written
+	specs["fake"] = s
+	h := newHost(t, specs)
+	if out := h.Fetch(context.Background(), batch(w("fake", "a", 10, 5))); out[0].Err != nil {
+		t.Fatal(out[0].Err)
+	}
+	if fi, err := os.Stat(s.StateDir); err != nil || !fi.IsDir() {
+		t.Fatalf("state directory: %v", err)
+	}
+	data, err := os.ReadFile(written)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(data); got != s.StateDir {
+		t.Fatalf("%s = %q, want %q", plugin.StateDirEnv, got, s.StateDir)
 	}
 }
 

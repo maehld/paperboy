@@ -186,10 +186,17 @@ func startProcess(base context.Context, spec Spec, changed func(string, []string
 	if err != nil {
 		return nil, err
 	}
+	// A plugin keeps what should survive a restart in its own directory, which
+	// exists before configure (ADR 0065).
+	if spec.StateDir != "" {
+		if err := os.MkdirAll(spec.StateDir, 0o700); err != nil {
+			return nil, fmt.Errorf("state directory: %w", err)
+		}
+	}
 	ctx, cancel := context.WithCancel(base)
 	cmd := exec.CommandContext(ctx, program, spec.Command[1:]...)
 	cmd.Dir = dir
-	cmd.Env = environ(spec.Env)
+	cmd.Env = environ(spec.Env, spec.StateDir)
 	cmd.WaitDelay = 2 * time.Second
 	p := &process{spec: spec, cmd: cmd, cancel: cancel, done: make(chan struct{}), stderr: &tailBuffer{limit: maxStderr}}
 	cmd.Stderr = p.stderr
@@ -337,16 +344,24 @@ func resolveCommand(dir, name string) (string, error) {
 }
 
 // environ returns the inherited environment plus the configured keys, sorted
-// so that a plugin sees a stable order.
-func environ(extra map[string]string) []string {
+// so that a plugin sees a stable order. stateDir becomes PAPERBOY_STATE_DIR
+// and wins over a key of the same name in extra, so a plugin section cannot
+// point a plugin at another plugin's directory (ADR 0065).
+func environ(extra map[string]string, stateDir string) []string {
 	keys := make([]string, 0, len(extra))
 	for k := range extra {
+		if stateDir != "" && k == plugin.StateDirEnv {
+			continue
+		}
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	out := os.Environ()
 	for _, k := range keys {
 		out = append(out, k+"="+extra[k])
+	}
+	if stateDir != "" {
+		out = append(out, plugin.StateDirEnv+"="+stateDir)
 	}
 	return out
 }
