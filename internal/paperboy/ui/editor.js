@@ -31,6 +31,8 @@
     dirty: false,
     previewURL: '',
     previewTimer: 0,
+    previewKind: '', // '' none, 'image' or 'text'
+    previewLines: [], // the text lines of a text display, one char per cell
   };
 
   const text = () => state.kind === 'text';
@@ -303,6 +305,8 @@
     }
     const same = state.placing && state.placing.plugin === plugin && state.placing.widget === widget;
     state.placing = same ? null : { plugin: plugin, widget: widget };
+    // Placing needs the boxes: a hidden overlay turns itself back on.
+    if (state.placing) setCellsVisible(true);
     renderPalette();
     renderBoard();
   }
@@ -347,11 +351,38 @@
 
   // ---- board ----
 
+  // boardClasses keeps the board's state classes together: a text display draws
+  // its character grid, placement highlights the free slots, and the Cells
+  // switch hides the boxes (ADR 0074).
+  function boardClasses() {
+    return [text() ? 'text' : '', state.placing ? 'placing' : '', cellsHidden() ? 'hide-cells' : '']
+      .filter(Boolean).join(' ');
+  }
+
+  function cellsHidden() {
+    const box = el('show-cells');
+    return !!box && !box.checked;
+  }
+
+  // setCellsVisible drives the Cells switch and remembers the choice per
+  // browser, so the overlay comes back the way the operator left it.
+  function setCellsVisible(on) {
+    const box = el('show-cells');
+    if (box) box.checked = on;
+    const board = el('board');
+    if (board) board.classList.toggle('hide-cells', !on);
+    try {
+      localStorage.setItem('paperboy.editor.cells', on ? '1' : '0');
+    } catch (e) {
+      // storage may be off; the switch still works for this view
+    }
+  }
+
   function renderBoard() {
     if (state.playground) return;
     const board = el('board');
     board.innerHTML = '';
-    board.className = state.placing ? 'placing' : '';
+    board.className = boardClasses();
     const t = state.template;
     if (!t) {
       el('board-note').textContent = 'The file cannot be edited until it reads as a page again.';
@@ -364,6 +395,8 @@
       for (let x = 0; x < t.grid[0]; x++) {
         const slot = document.createElement('div');
         slot.className = 'slot';
+        slot.dataset.x = String(x);
+        slot.dataset.y = String(y);
         slot.style.gridArea = (y + 1) + ' / ' + (x + 1);
         slot.addEventListener('click', () => {
           if (state.placing) place(state.placing.plugin, state.placing.widget, x, y);
@@ -401,6 +434,31 @@
     let note = t.grid[0] + '×' + t.grid[1] + ' cells, ' + used + ' of ' + t.grid[0] * t.grid[1] + ' covered';
     if (state.placing) note += ' · click a free cell to place ' + state.placing.plugin + '/' + state.placing.widget;
     el('board-note').textContent = note;
+    applyBoardPreview();
+  }
+
+  // applyBoardPreview paints the latest preview into the board it fetched for:
+  // an image as the board background, the text lines as one character per slot.
+  // It only touches the background and the slot text, so the cells and the
+  // selection stay where they are.
+  function applyBoardPreview() {
+    const board = el('board');
+    if (!board) return;
+    if (state.previewKind === 'image' && state.previewURL) {
+      board.style.backgroundImage = 'url("' + state.previewURL + '")';
+    } else {
+      board.style.backgroundImage = '';
+    }
+    for (const slot of board.querySelectorAll('.slot')) slot.textContent = '';
+    if (state.previewKind !== 'text' || !state.template) return;
+    const [cols, rows] = state.template.grid;
+    for (let y = 0; y < rows; y++) {
+      const line = state.previewLines[y] || '';
+      for (let x = 0; x < cols; x++) {
+        const slot = board.querySelector('.slot[data-x="' + x + '"][data-y="' + y + '"]');
+        if (slot) slot.textContent = line[x] || '';
+      }
+    }
   }
 
   function select(i) {
@@ -694,17 +752,26 @@
 
   // ---- preview ----
 
+  // setRendering marks the board while a preview is on its way; only the page
+  // editor has the hint, so the playground skips it.
+  function setRendering(on) {
+    const hint = el('render-hint');
+    if (hint) hint.textContent = on ? 'rendering…' : '';
+  }
+
   function schedulePreview() {
     clearTimeout(state.previewTimer);
+    setRendering(true);
     state.previewTimer = setTimeout(preview, 350);
   }
 
-  // showResult puts an answer of /api/preview or /api/widget into the preview
-  // panel: an image, text lines or the error.
-  async function showResult(res) {
+  // showPanelResult puts the playground's answer into the preview panel: an
+  // image, text lines or the error.
+  async function showPanelResult(res) {
     const img = el('preview-img');
     const pre = el('preview-text');
     const error = el('preview-error');
+    setRendering(false);
     if (!res.ok) {
       let message = (await res.text()).trim();
       try {
@@ -732,21 +799,76 @@
     pre.hidden = true;
   }
 
+  // clearBoardPreview drops a preview that no longer belongs to the page, so an
+  // empty or broken draft does not keep the last picture on the board.
+  function clearBoardPreview() {
+    state.previewKind = '';
+    state.previewLines = [];
+    if (state.previewURL) {
+      URL.revokeObjectURL(state.previewURL);
+      state.previewURL = '';
+    }
+    applyBoardPreview();
+  }
+
+  // showBoardResult paints the draft preview into the board: an image becomes
+  // its background, text lines fill the character slots. The cells are not
+  // rebuilt, so the selection survives the answer.
+  async function showBoardResult(res) {
+    const error = el('preview-error');
+    setRendering(false);
+    if (!res.ok) {
+      let message = (await res.text()).trim();
+      try {
+        message = JSON.parse(message).error || message;
+      } catch (e) {
+        // not JSON: keep the text
+      }
+      clearBoardPreview();
+      if (error) {
+        error.hidden = false;
+        error.textContent = message || 'preview failed (' + res.status + ')';
+      }
+      return;
+    }
+    if (error) error.hidden = true;
+    if ((res.headers.get('Content-Type') || '').startsWith('text/plain')) {
+      const body = (await res.text()).replace(/\n$/, '');
+      state.previewLines = body.split('\n');
+      state.previewKind = 'text';
+      if (state.previewURL) {
+        URL.revokeObjectURL(state.previewURL);
+        state.previewURL = '';
+      }
+      applyBoardPreview();
+      return;
+    }
+    const blob = await res.blob();
+    if (state.previewURL) URL.revokeObjectURL(state.previewURL);
+    state.previewURL = URL.createObjectURL(blob);
+    state.previewKind = 'image';
+    state.previewLines = [];
+    applyBoardPreview();
+  }
+
   async function preview() {
-    const img = el('preview-img');
-    const pre = el('preview-text');
+    if (state.playground) return previewPanel();
     const error = el('preview-error');
     if (!state.template) {
-      img.hidden = pre.hidden = error.hidden = true;
+      clearBoardPreview();
+      if (error) error.hidden = true;
+      setRendering(false);
       return;
     }
     if (!state.template.cells.length) {
-      img.hidden = pre.hidden = true;
-      error.hidden = false;
-      error.textContent = state.playground ? 'Pick a widget from the palette.' : 'Add a widget to see a preview.';
+      clearBoardPreview();
+      if (error) {
+        error.hidden = false;
+        error.textContent = 'Add a widget to see a preview.';
+      }
+      setRendering(false);
       return;
     }
-    if (state.playground) return previewWidget();
     let res;
     try {
       res = await fetch('/api/preview/' + encodeURIComponent(state.display), {
@@ -756,12 +878,36 @@
         cache: 'no-store',
       });
     } catch (e) {
-      img.hidden = pre.hidden = true;
-      error.hidden = false;
-      error.textContent = 'preview failed: ' + e;
+      clearBoardPreview();
+      if (error) {
+        error.hidden = false;
+        error.textContent = 'preview failed: ' + e;
+      }
+      setRendering(false);
       return;
     }
-    await showResult(res);
+    await showBoardResult(res);
+  }
+
+  // previewPanel is the playground's preview: one widget in its own size, not
+  // the page around it.
+  async function previewPanel() {
+    const img = el('preview-img');
+    const pre = el('preview-text');
+    const error = el('preview-error');
+    if (!state.template) {
+      img.hidden = pre.hidden = error.hidden = true;
+      setRendering(false);
+      return;
+    }
+    if (!state.template.cells.length) {
+      img.hidden = pre.hidden = true;
+      error.hidden = false;
+      error.textContent = 'Pick a widget from the palette.';
+      setRendering(false);
+      return;
+    }
+    await previewWidget();
   }
 
   // previewWidget renders the playground's widget in its own size, not the page
@@ -781,9 +927,10 @@
       img.hidden = pre.hidden = true;
       error.hidden = false;
       error.textContent = 'preview failed: ' + e;
+      setRendering(false);
       return;
     }
-    await showResult(res);
+    await showPanelResult(res);
   }
 
   // ---- load and save ----
@@ -974,6 +1121,17 @@
     state.filter = el('palette-filter').value;
     renderPalette();
   });
+  // The Cells switch over the board; the choice is remembered (ADR 0074).
+  if (el('show-cells')) {
+    let saved = '1';
+    try {
+      saved = localStorage.getItem('paperboy.editor.cells') || '1';
+    } catch (e) {
+      // storage may be off; the boxes stay visible
+    }
+    el('show-cells').checked = saved !== '0';
+    on('show-cells', 'change', () => setCellsVisible(el('show-cells').checked));
+  }
   on('title', 'input', () => {
     if (!state.template) return;
     state.template.title = el('title').value;
