@@ -59,6 +59,16 @@ type editorListPage struct {
 	Displays  []galleryDisplay
 	Groups    []editorPageGroup
 	Options   []galleryOption // display types of the new-page form
+	Plans     []editorPlanRow // the plan files next to the pages (ADR 0069)
+}
+
+// editorPlanRow is one plan file in the overview.
+type editorPlanRow struct {
+	Name     string
+	Rules    int
+	Fallback string
+	Error    string
+	OpenURL  string
 }
 
 // editorPageView is the shell of one page; the script reads the model, the
@@ -182,6 +192,17 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	version, goVersion := editorVersion(cfg)
 	v := editorListPage{Version: version, GoVersion: goVersion, Display: display,
 		Groups: groupPageFiles(files, cfg.Profiles, display)}
+	plans, err := planFiles(cfg.Plans, cfg.Timezone)
+	if err != nil {
+		slog.Warn("plan list for the page overview failed", "error", err)
+	}
+	for _, p := range plans {
+		row := editorPlanRow{Name: p.Name, Rules: p.Rules, Fallback: p.Fallback, Error: p.Error}
+		if p.Error == "" {
+			row.OpenURL = "/ui/editor/plan?" + url.Values{"name": {p.Name}}.Encode()
+		}
+		v.Plans = append(v.Plans, row)
+	}
 	for _, n := range displayNames(cfg) {
 		v.Displays = append(v.Displays, galleryDisplay{Name: n, Selected: n == display,
 			URL: "/ui/editor?" + url.Values{"display": {n}}.Encode()})

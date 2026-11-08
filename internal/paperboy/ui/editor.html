@@ -68,6 +68,25 @@ form.new input, form.new select { font: inherit; padding: .2rem .3rem; }
 {{else}}
 <p class="empty">No pages yet.</p>
 {{end}}
+{{if .Plans}}
+<section class="card">
+  <h2>Plans</h2>
+  <table>
+    <tr><th>Name</th><th>Rules</th><th>Fallback</th><th></th></tr>
+    {{range .Plans}}
+    <tr>
+      <td>{{.Name}}</td>
+      <td>{{.Rules}}</td>
+      <td>{{.Fallback}}</td>
+      <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}</td>
+    </tr>
+    {{if .Error}}<tr><td colspan="4"><p class="error">{{.Error}}</p></td></tr>{{end}}
+    {{end}}
+  </table>
+</section>
+{{else}}
+<p class="empty">No plans yet. A plan is <code>plans/&lt;name&gt;.yaml</code>.</p>
+{{end}}
 {{if .Displays}}
 <section class="card">
   <h2>New page</h2>

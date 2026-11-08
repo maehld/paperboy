@@ -296,12 +296,16 @@ func (s *Server) handleSavePage(w http.ResponseWriter, r *http.Request) {
 		Hash: fileHash(data), YAML: string(data), Template: t})
 }
 
-func (s *Server) handlePlans(w http.ResponseWriter, r *http.Request) {
-	cfg := s.config()
-	entries, err := os.ReadDir(cfg.Plans)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		writeAPIError(w, http.StatusInternalServerError, "%v", err)
-		return
+// planFiles lists the plan files of the instance directory: the data behind
+// GET /api/plans and the editor's overview (ADR 0068, 0069). Times are checked
+// in the global timezone.
+func planFiles(dir string, loc *time.Location) ([]editorPlanFile, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return []editorPlanFile{}, nil
+		}
+		return nil, err
 	}
 	list := []editorPlanFile{}
 	for _, e := range entries {
@@ -312,12 +316,12 @@ func (s *Server) handlePlans(w http.ResponseWriter, r *http.Request) {
 		if !found || !page.ValidName(name) {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(cfg.Plans, e.Name()))
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
 		if err != nil {
 			continue
 		}
 		f := editorPlanFile{Name: name, Hash: fileHash(data)}
-		if p, err := plan.Parse(bytes.NewReader(data), cfg.Timezone); err != nil {
+		if p, err := plan.Parse(bytes.NewReader(data), loc); err != nil {
 			f.Error = shortError(err)
 		} else {
 			f.Rules, f.Fallback = len(p.Rules), p.Fallback
@@ -325,6 +329,15 @@ func (s *Server) handlePlans(w http.ResponseWriter, r *http.Request) {
 		list = append(list, f)
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+	return list, nil
+}
+
+func (s *Server) handlePlans(w http.ResponseWriter, r *http.Request) {
+	list, err := planFiles(s.config().Plans, s.config().Timezone)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"plans": list})
 }
 
