@@ -1,6 +1,6 @@
 # 0060: Downloading plugins and firmware from releases
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-08
 - Builds on: ADR 0026 (configuration), 0037 (instance directory), 0040 (dashboard), 0043 (firmware distribution), 0047 (config reload), 0049 (plugin widgets), 0055 (widget gallery), 0056 (release trains), 0058 (protocol check), 0059 (firmware bundle)
 - Amends: ADR 0049 (a plugin's program is no longer configured with `command`); ADR 0037 and 0043 (Paperboy writes into `plugins/` and `firmware/`); ADR 0043 §1 and 0059 §1 (flat firmware directory, version with `v` in the image name)
