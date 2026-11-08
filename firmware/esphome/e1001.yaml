@@ -7,7 +7,7 @@
 #
 # The panel (GDEY075T7, UC8179) supports four gray levels, but ESPHome's
 # Seeed-reTerminal-E1001 model drives it in black and white only (1 bpp), so
-# Paperboy's gray levels are drawn as a fixed 2x2 pattern (pb_draw_dithered).
+# Paperboy's gray levels are drawn as a fixed 2x2 pattern (pb_paint_qoi_dithered).
 
 substitutions:
   hardware: e1001
@@ -123,8 +123,13 @@ display:
     lambda: |-
       if (id(setup_mode)) {
         pb_draw_text(it, id(setup_font), id(setup_text));
-      } else {
-        pb_draw_dithered(it, id(page_image));
+      } else if (!pb_qoi_valid(pb_page_qoi)) {
+        // Truncated answer (page larger than the 96 KiB buffer) or not QOI:
+        // keep the old picture instead of painting half a page.
+        pb_note_for_next_wake("page not paintable: " + id(image_path));
+        ESP_LOGE("paperboy", "page is not a complete QOI image");
+      } else if (pb_paint_qoi_dithered(it, pb_page_qoi)) {
+        pb_paint_pending = true;
       }
 
 script:

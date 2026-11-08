@@ -1,12 +1,14 @@
 package paperboy
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image/png"
 	"log/slog"
 	"net/http"
 	"os"
@@ -399,7 +401,7 @@ func (s *Server) handleRenderedImage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writePNG(w, rp.data)
+	writePageImage(w, r, rp.data)
 }
 
 // handleHint serves notice pages such as "Plan fehlt".
@@ -416,7 +418,36 @@ func (s *Server) handleHint(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writePNG(w, data)
+	writePageImage(w, r, data)
+}
+
+// qoiLimit is the response buffer the firmware allocates for a page (ADR 0072).
+// A page above it is still served, but the firmware keeps its old picture and
+// reports the page in the next sync, so the log names it here first.
+const qoiLimit = 96 * 1024
+
+// writePageImage serves a rendered page as PNG (browsers, the dashboard) or, on
+// ?format=qoi, as QOI for the firmware, which decodes that far faster
+// (ADR 0072). The device's shown hash stays the hash of the PNG, so the
+// encoding is the device's business only.
+func writePageImage(w http.ResponseWriter, r *http.Request, data []byte) {
+	if r.URL.Query().Get("format") != "qoi" {
+		writePNG(w, data)
+		return
+	}
+	img, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		slog.Error("qoi encoding failed", "error", err)
+		writePNG(w, data)
+		return
+	}
+	qoi := encodeQOI(img)
+	if len(qoi) > qoiLimit {
+		slog.Warn("page is too large as QOI for the firmware", "page", r.URL.Path, "bytes", len(qoi), "limit", qoiLimit)
+	}
+	w.Header().Set("Content-Type", "image/qoi")
+	w.Header().Set("Content-Length", strconv.Itoa(len(qoi)))
+	w.Write(qoi)
 }
 
 func writePNG(w http.ResponseWriter, data []byte) {
