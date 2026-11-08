@@ -46,6 +46,8 @@ type planViewRule struct {
 }
 
 type planView struct {
+	Version    string
+	GoVersion  string
 	Device     string
 	Profile    string
 	Plan       string
@@ -91,8 +93,9 @@ func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 		}
 		at, isNow = t, false
 	}
-	view := planView{Device: dev.ID, Profile: dev.Profile, Plan: planText(dev.Plan), At: at.Format(atLayout),
+	view := planView{Device: dev.ID, Profile: dev.Profile, Plan: dev.Plan, At: at.Format(atLayout),
 		AtText: at.Format("Mon 2006-01-02 15:04"), Now: isNow}
+	view.Version, view.GoVersion = editorVersion(cfg)
 	if dev.Plan == "" {
 		view.Error = "This device has no plan; it shows a notice page."
 		s.writePlanView(w, view)
