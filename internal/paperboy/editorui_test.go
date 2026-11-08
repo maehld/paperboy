@@ -183,11 +183,17 @@ func TestEditorPage(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		`<script id="editor-data" type="application/json">{"name":"solar","display":"small","kind":"image","width":40,"height":20,"new":false,"shared":false,"grid":[6,8],"reference":[6,8]}</script>`,
-		`<script src="/ui/editor.js"></script>`, `id="board"`, `id="palette"`, `id="palette-filter"`, `id="inspector"`, `id="preview-img"`,
+		`<script src="/ui/editor.js"></script>`, `id="board"`, `id="palette"`, `id="palette-filter"`, `id="inspector"`,
+		`id="show-cells" checked`, `id="render-hint"`, `id="preview-error"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("editor page lacks %q:\n%s", want, body)
 		}
+	}
+	// The board carries the preview itself, so the page editor has no separate
+	// preview panel (ADR 0074); the playground keeps it.
+	if strings.Contains(body, `id="preview-img"`) {
+		t.Fatalf("the page editor still has a preview panel:\n%s", body)
 	}
 
 	// The page has no variant for the text display: it is not there for it.
