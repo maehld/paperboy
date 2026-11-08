@@ -1,0 +1,296 @@
+package paperboy
+
+import (
+	_ "embed"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"html/template"
+	"io/fs"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"sort"
+	"time"
+
+	"github.com/maehld/paperboy/internal/page"
+)
+
+// The page editor on top of the page API (ADR 0066): an overview of the page
+// files and one page opened for a display type (ADR 0068). Both are
+// server-rendered templates; the editing itself is the embedded editor.js,
+// which works on the JSON model of the API.
+
+//go:embed ui/editor.html
+var editorListTemplate string
+
+var editorListTmpl = template.Must(template.New("editor").Parse(editorListTemplate))
+
+//go:embed ui/editor-page.html
+var editorPageTemplate string
+
+var editorPageTmpl = template.Must(template.New("editor-page").Parse(editorPageTemplate))
+
+//go:embed ui/editor.js
+var editorJS []byte
+
+// editorVariant is one page file of the overview: the shared page or the
+// variant of one display type.
+type editorVariant struct {
+	Label   string // "all display types" or the display type
+	Kind    string
+	Grid    string
+	Title   string
+	Error   string // why the file cannot be opened, empty when it can
+	OpenURL string
+}
+
+// editorPageGroup gathers the files of one page name, so the variants of a page
+// stand next to each other.
+type editorPageGroup struct {
+	Name     string
+	Variants []editorVariant
+}
+
+type editorListPage struct {
+	Version   string
+	GoVersion string
+	Display   string // the display type shared pages are opened with
+	Displays  []galleryDisplay
+	Groups    []editorPageGroup
+	Options   []galleryOption // display types of the new-page form
+}
+
+// editorPageView is the shell of one page; the script reads the model, the
+// plugin list and the profiles from the API.
+type editorPageView struct {
+	Version   string
+	GoVersion string
+	Name      string
+	Display   string
+	Text      bool
+	Error     string
+	Displays  []galleryDisplay // display types this page can be opened for
+	Data      template.JS      // the starting state of the script
+}
+
+// editorState is what the script starts from, so it does not have to guess the
+// kind, the size or the grid of a page that does not exist yet.
+type editorState struct {
+	Name      string `json:"name"`
+	Display   string `json:"display"`
+	Kind      string `json:"kind"`  // image or text
+	Width     int    `json:"width"` // characters of a text display, pixels of an image display
+	Height    int    `json:"height"`
+	New       bool   `json:"new"`    // there is no file yet
+	Shared    bool   `json:"shared"` // a new page is written as pages/<name>.yaml
+	Grid      [2]int `json:"grid"`   // grid a new page starts with
+	Reference [2]int `json:"reference"`
+}
+
+// displayNames lists the configured display types alphabetically.
+func displayNames(cfg *Config) []string {
+	names := make([]string, 0, len(cfg.Profiles))
+	for name := range cfg.Profiles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// editorDisplay picks the display type an overview or a new page works on: the
+// requested one, else the first image display, else the first one.
+func editorDisplay(cfg *Config, requested string) string {
+	if _, ok := cfg.Profiles[requested]; ok {
+		return requested
+	}
+	names := displayNames(cfg)
+	for _, n := range names {
+		if !cfg.Profiles[n].text() {
+			return n
+		}
+	}
+	if len(names) > 0 {
+		return names[0]
+	}
+	return ""
+}
+
+// groupPageFiles arranges the files by page and resolves what the overview
+// shows for each of them: a shared page is opened for the chosen display type,
+// a variant for its own. A file whose display type is not configured stays
+// listed but cannot be opened, because a save would be rejected.
+func groupPageFiles(files []editorPageFile, displays map[string]Profile, display string) []editorPageGroup {
+	groups := []editorPageGroup{}
+	index := map[string]int{}
+	for _, f := range files {
+		i, ok := index[f.Name]
+		if !ok {
+			i = len(groups)
+			index[f.Name] = i
+			groups = append(groups, editorPageGroup{Name: f.Name})
+		}
+		v := editorVariant{Label: "all display types", Kind: f.Kind, Title: f.Title}
+		if f.Grid != [2]int{} {
+			v.Grid = fmt.Sprintf("%dx%d", f.Grid[0], f.Grid[1])
+		}
+		if f.Display != "" {
+			v.Label = f.Display
+		}
+		target := f.Display
+		if target == "" {
+			target = display
+		}
+		switch {
+		case f.Error != "":
+			v.Error = f.Error
+		case f.Display != "" && !knownProfile(displays, f.Display):
+			v.Error = fmt.Sprintf("display type %q is not configured", f.Display)
+		case target == "":
+			v.Error = "no display type configured to open it with"
+		default:
+			v.OpenURL = "/ui/editor/page?" + url.Values{"name": {f.Name}, "display": {target}}.Encode()
+		}
+		groups[i].Variants = append(groups[i].Variants, v)
+	}
+	return groups
+}
+
+func knownProfile(displays map[string]Profile, name string) bool {
+	_, ok := displays[name]
+	return ok
+}
+
+func editorVersion(cfg *Config) (version, goVersion string) {
+	loc := cfg.Timezone
+	if loc == nil {
+		loc = time.UTC
+	}
+	return versionText(build, loc), build.Go
+}
+
+// handleEditor lists the page files by page name, with the variants of each
+// page, and offers a new page (ADR 0068).
+func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	display := editorDisplay(cfg, r.URL.Query().Get("display"))
+	files, err := pageFiles(cfg.Pages)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	version, goVersion := editorVersion(cfg)
+	v := editorListPage{Version: version, GoVersion: goVersion, Display: display,
+		Groups: groupPageFiles(files, cfg.Profiles, display)}
+	for _, n := range displayNames(cfg) {
+		v.Displays = append(v.Displays, galleryDisplay{Name: n, Selected: n == display,
+			URL: "/ui/editor?" + url.Values{"display": {n}}.Encode()})
+		v.Options = append(v.Options, galleryOption{Value: n, Label: n, Selected: n == display})
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := editorListTmpl.Execute(w, v); err != nil {
+		slog.Error("page overview rendering failed", "error", err)
+	}
+}
+
+// handleEditorPage opens one page for a display type. A page without a file
+// opens as a new page when the overview asked for one (&new=1); a page that
+// exists only as the variant of another display type is not an error, it is
+// simply not there for this one.
+func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	q := r.URL.Query()
+	name := q.Get("name")
+	version, goVersion := editorVersion(cfg)
+	v := editorPageView{Version: version, GoVersion: goVersion, Name: name}
+	if !page.ValidName(name) {
+		v.Error = fmt.Sprintf("page name %q: only a-z, 0-9 and -", name)
+		renderEditorPage(w, v, http.StatusBadRequest)
+		return
+	}
+	display := q.Get("display")
+	if display != "" && !knownProfile(cfg.Profiles, display) {
+		v.Error = fmt.Sprintf("display type %q is not configured", display)
+		renderEditorPage(w, v, http.StatusBadRequest)
+		return
+	}
+	if display == "" {
+		display = editorDisplay(cfg, "")
+	}
+	p, ok := cfg.Profiles[display]
+	if !ok {
+		v.Error = "no display type is configured; add one under display_types"
+		renderEditorPage(w, v, http.StatusBadRequest)
+		return
+	}
+	v.Display, v.Text = display, p.text()
+	_, fileDisplay, err := existingPageFile(cfg.Pages, name, display)
+	missing := errors.Is(err, fs.ErrNotExist)
+	switch {
+	case missing && q.Get("new") != "1":
+		v.Error = fmt.Sprintf("there is no page %q for the display type %q yet", name, display)
+		renderEditorPage(w, v, http.StatusNotFound)
+		return
+	case err != nil && !missing:
+		v.Error = err.Error()
+		renderEditorPage(w, v, http.StatusInternalServerError)
+		return
+	}
+	// A page without a file starts as a new one; the shared flag makes it
+	// pages/<name>.yaml instead of a variant (ADR 0068). Without a display type
+	// the overview asks for a shared page.
+	wantsShared := q.Get("shared") == "1" || (q.Get("new") == "1" && q.Get("display") == "")
+	shared := fileDisplay == "" && (!missing || wantsShared)
+	v.Data = editorStateData(name, display, p, missing, shared)
+	for _, n := range displayNames(cfg) {
+		params := url.Values{"name": {name}, "display": {n}}
+		if q.Get("new") == "1" {
+			params.Set("new", "1")
+		}
+		if shared {
+			params.Set("shared", "1")
+		}
+		v.Displays = append(v.Displays, galleryDisplay{Name: n, Selected: n == display,
+			URL: "/ui/editor/page?" + params.Encode()})
+	}
+	renderEditorPage(w, v, http.StatusOK)
+}
+
+// editorStateData encodes the starting state for the script. The JSON is safe
+// to inline: encoding/json escapes <, > and &, so a page title can never close
+// the script element.
+func editorStateData(name, display string, p Profile, missing, shared bool) template.JS {
+	state := editorState{Name: name, Display: display, Width: p.Width, Height: p.Height,
+		New: missing, Shared: shared, Reference: defaultGrid}
+	if p.text() {
+		state.Kind = page.KindText
+		state.Grid = [2]int{p.Width, p.Height}
+	} else {
+		state.Kind = page.KindImage
+		state.Grid = defaultGrid
+	}
+	data, err := json.Marshal(state)
+	if err != nil { // never expected: only strings and numbers
+		slog.Error("page editor state encoding failed", "error", err)
+		return "{}"
+	}
+	return template.JS(data)
+}
+
+func renderEditorPage(w http.ResponseWriter, v editorPageView, status int) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	if err := editorPageTmpl.Execute(w, v); err != nil {
+		slog.Error("page editor rendering failed", "error", err)
+	}
+}
+
+// handleEditorJS serves the editor script, embedded in the binary like the
+// templates.
+func (s *Server) handleEditorJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(editorJS)
+}

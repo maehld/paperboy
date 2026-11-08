@@ -153,12 +153,16 @@ func pageFileParts(file string) (name, display string, ok bool) {
 	return name, display, true
 }
 
-func (s *Server) handlePages(w http.ResponseWriter, r *http.Request) {
-	cfg := s.config()
-	entries, err := os.ReadDir(cfg.Pages)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		writeAPIError(w, http.StatusInternalServerError, "%v", err)
-		return
+// pageFiles lists the page files of the instance directory: the data behind
+// GET /api/pages and the editor's overview (ADR 0068). A file that does not
+// parse still appears, with its error, so it can be found.
+func pageFiles(dir string) ([]editorPageFile, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return []editorPageFile{}, nil
+		}
+		return nil, err
 	}
 	list := []editorPageFile{}
 	for _, e := range entries {
@@ -169,7 +173,7 @@ func (s *Server) handlePages(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(cfg.Pages, e.Name()))
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
 		if err != nil {
 			continue
 		}
@@ -187,6 +191,15 @@ func (s *Server) handlePages(w http.ResponseWriter, r *http.Request) {
 		}
 		return list[i].Display < list[j].Display
 	})
+	return list, nil
+}
+
+func (s *Server) handlePages(w http.ResponseWriter, r *http.Request) {
+	list, err := pageFiles(s.config().Pages)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"pages": list})
 }
 
