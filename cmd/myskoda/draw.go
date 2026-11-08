@@ -184,9 +184,6 @@ func (m *myskoda) drawCharging(w plugin.WidgetRequest, img *image.Paletted) {
 	if r := m.remaining(); r != "" {
 		facts = append(facts, fact{text: m.t("Noch ", "Left ") + r, size: base * 0.85})
 	}
-	if plug := m.plugText(); plug != "" {
-		facts = append(facts, fact{text: plug, size: base * 0.8})
-	}
 	if w.Arg().Bool("profile", true) {
 		if p := m.currentProfile(); p != nil {
 			line := p.Name

@@ -63,7 +63,9 @@ func (m *myskoda) textCharging(w plugin.WidgetRequest) []string {
 			soc = fmt.Sprintf("%d→%d %%", v, t)
 		}
 	}
-	lines = append(lines, plugin.Columns(soc, m.plugText(), w.Width))
+	if soc != "" {
+		lines = append(lines, plugin.Columns(soc, "", w.Width))
+	}
 	if w.Arg().Bool("profile", true) {
 		if p := m.currentProfile(); p != nil {
 			lines = append(lines, plugin.Columns(p.Name, p.NextChargingTime, w.Width))
