@@ -70,7 +70,7 @@ func TestOperatorPagesLinkTheSharedStylesheet(t *testing.T) {
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
 	for _, path := range []string{
-		"/ui", "/ui/downloads", "/ui/plugins", "/ui/plugins?tab=playground",
+		"/ui", "/ui/downloads", "/ui/plugins", "/ui/plugins",
 		"/ui/editor", "/ui/editor/page?name=eins&display=small", "/ui/editor/plan?name=zimmer",
 		"/ui/editor/device?id=test", "/ui/editor/display?name=small", "/ui/plan?device=test",
 	} {
@@ -115,10 +115,9 @@ func TestEditorBarsShareThePattern(t *testing.T) {
 		}
 	}
 
-	// The playground is an editor without a file: one bar with Reload, no Save.
-	body := htmlRequest(t, s, "/ui/plugins?tab=playground").Body.String()
+	// The widgets page is an editor without a file: one bar with Reload, no Save.
+	body := htmlRequest(t, s, "/ui/plugins").Body.String()
 	if strings.Count(body, `class="bar"`) != 1 || strings.Contains(body, `id="save"`) {
-		t.Fatal("the playground bar differs from the editors")
+		t.Fatal("the widgets page bar differs from the editors")
 	}
 }
-

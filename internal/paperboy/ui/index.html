@@ -36,7 +36,6 @@ dd.oneline .muted { font-size: .78rem; }
   <h1>Paperboy</h1>
   <nav><a class="active" href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/plugins">Widgets</a> · <a href="/ui/editor">Editor</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
-  <span class="muted">{{len .Devices}} device(s) · updated {{.Now}}</span>
 </header>
 {{if .Downloads}}{{if .Downloads.Error}}<p class="error">The last release check failed · <a href="/ui/downloads">Downloads</a></p>{{else if .Downloads.Running}}<p class="muted">Checking for releases… · <a href="/ui/downloads">Downloads</a></p>{{end}}{{end}}
 {{if .Devices}}

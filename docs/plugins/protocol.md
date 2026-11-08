@@ -46,7 +46,7 @@ the cells that use it.
 
 ### `describe`
 
-Answers with `description`. It feeds `GET /api/plugins`, the widget gallery and
+Answers with `description`. It feeds `GET /api/plugins`, the widgets page and
 the plan's action validation.
 
 ```json

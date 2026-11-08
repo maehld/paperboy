@@ -13,11 +13,13 @@
 
 body { margin: 0; padding: 1.5rem; font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: #f2f2f2; color: #111; }
 
-/* The header: brand, the four sections, the build label. */
+/* The header: brand, the four sections, the build label. The active entry is
+   bold and dark. */
 header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; margin-bottom: 1rem; }
 h1 { font-size: 1.5rem; margin: 0; }
 .muted { color: #666; font-size: .85rem; }
 nav { font-size: 1rem; }
+header nav { flex: 1 1 auto; }
 nav a { color: #134e9c; text-decoration: none; }
 nav a.active { font-weight: 700; color: #111; }
 .build { margin-left: auto; font-variant-numeric: tabular-nums; }
@@ -46,7 +48,7 @@ button:disabled { color: #888; cursor: default; background: #f2f2f2; border-colo
 .hint { margin: .4rem 0 0; font-size: .8rem; color: #666; }
 code { font: .85rem ui-monospace, Consolas, monospace; background: #f2f2f2; padding: 0 .2rem; border-radius: 3px; }
 
-/* Sub-tabs of a section (the editor's object types, the widgets page). */
+/* Sub-tabs of a section (the editor's object types). */
 .tabs { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; border-bottom: 1px solid #ddd; margin: 0 0 1rem; }
 .tabs a { padding: .4rem .8rem; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; text-decoration: none; font-size: .95rem; }
 .tabs a.active { background: #fff; border-color: #ddd; color: #111; font-weight: 600; margin-bottom: -1px; }
