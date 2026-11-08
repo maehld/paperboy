@@ -33,12 +33,14 @@ th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid #
 thead th { border-top: 0; }
 th { font-weight: 600; color: #666; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
 td.open { text-align: right; white-space: nowrap; }
-tbody.group { border-top: 2px solid #eee; }
-tbody.group th { background: #f7f9fc; padding: .35rem .5rem; font-size: .95rem; text-transform: none; letter-spacing: 0; color: #111; border-top: 0; }
-tbody.group td.open { background: #f7f9fc; padding: .35rem .5rem; }
-tbody.group tr:not(:first-child) td.open { background: transparent; padding: .3rem .8rem .3rem 0; }
-tbody.group tr:first-child th, tbody.group tr:first-child td { border-top: 0; }
-td.file { font-family: ui-monospace, Consolas, monospace; font-size: .85rem; }
+td.page { line-height: 1.25; }
+td.page strong { font-weight: 600; }
+td.page .sub { display: block; color: #888; font: .78rem ui-monospace, Consolas, monospace; }
+td.variants { white-space: nowrap; }
+td.variants a { text-decoration: none; }
+td.variants a.selected { font-weight: 700; color: #111; }
+td.variants .missing { color: #b00; }
+td.variants button.delete { margin-left: .4rem; font-size: .78rem; }
 td.num { font-variant-numeric: tabular-nums; }
 .error { margin: .4rem 0 0; padding: .4rem .6rem; background: #fff2f2; border-left: 3px solid #c22; font-size: .85rem; word-break: break-word; }
 input, select, button { font: inherit; padding: .2rem .35rem; }
@@ -88,29 +90,27 @@ details.new .hint { flex-basis: 100%; margin: 0; }
   <div class="switch">
     <span class="muted">Display type:</span>
     {{range .Displays}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
-    <span class="muted">· a shared page is opened for the selected display type</span>
+    <span class="muted">· kind, grid, title and Open follow this display type: its variant, else the shared page</span>
   </div>
   {{else}}
   <p class="empty">No display types configured. Add one under <code>displays/</code>.</p>
   {{end}}
   {{if .Groups}}
   <table id="page-table">
-    <thead><tr><th>File</th><th>Kind</th><th>Grid</th><th>Title</th><th></th></tr></thead>
-    {{range .Groups}}
-    <tbody class="group">
-      <tr><th colspan="4">{{.Name}}</th><td class="open"></td></tr>
-      {{range .Variants}}
+    <thead><tr><th>Page</th><th>Variants</th><th>Kind</th><th>Grid</th><th>Title</th><th></th></tr></thead>
+    <tbody>
+      {{range .Groups}}
       <tr>
-        <td class="file">{{.Label}}</td>
+        <td class="page"><strong>{{.Name}}</strong>{{if .File}}<span class="sub">{{.File}}{{if .Shared}} · shared{{end}}</span>{{end}}</td>
+        <td class="variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}{{if $v.URL}}<a href="{{$v.URL}}"{{if $v.Selected}} class="selected"{{end}}>{{$v.Label}}</a>{{else}}<span class="missing" title="{{$v.Title}}">{{$v.Label}}</span>{{end}}{{if $v.DeleteURL}}<button class="delete" type="button" data-delete="{{$v.DeleteURL}}" data-warn="{{$v.Warn}}">Delete</button>{{end}}{{end}}</td>
         <td>{{.Kind}}</td>
         <td class="num">{{.Grid}}</td>
         <td>{{.Title}}</td>
         <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
-      {{if .Error}}<tr><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
+      {{if .Error}}<tr class="detail"><td colspan="6"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
     </tbody>
-    {{end}}
   </table>
   {{else}}
   <p class="empty">No pages yet. A page is <code>pages/&lt;name&gt;.yaml</code>.</p>
@@ -144,7 +144,7 @@ details.new .hint { flex-basis: 100%; margin: 0; }
         <td>{{.Fallback}}</td>
         <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
-      {{if .Error}}<tr><td colspan="4"><p class="error">{{.Error}}</p></td></tr>{{end}}
+      {{if .Error}}<tr class="detail"><td colspan="4"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
     </tbody>
   </table>
@@ -182,7 +182,7 @@ details.new .hint { flex-basis: 100%; margin: 0; }
         <td>{{.Plan}}</td>
         <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
-      {{if .Error}}<tr><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
+      {{if .Error}}<tr class="detail"><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
     </tbody>
   </table>
@@ -221,7 +221,7 @@ details.new .hint { flex-basis: 100%; margin: 0; }
         <td>{{.Power}}</td>
         <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
-      {{if .Error}}<tr><td colspan="7"><p class="error">{{.Error}}</p></td></tr>{{end}}
+      {{if .Error}}<tr class="detail"><td colspan="7"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
     </tbody>
   </table>
@@ -232,18 +232,23 @@ details.new .hint { flex-basis: 100%; margin: 0; }
 </section>
 {{end}}
 <script>
-// The filter keeps the group rows of the page list in step with their variants.
+// The filter keeps the rows of a list in step with their detail rows, so the
+// error line of a page hides with the page.
 for (const input of document.querySelectorAll('input[data-filter]')) {
   const table = document.getElementById(input.dataset.filter);
   if (!table) continue;
   input.addEventListener('input', () => {
     const q = input.value.trim().toLowerCase();
     for (const body of table.tBodies) {
-      let shown = 0;
+      let shown = 0, hit = true;
       for (const row of body.rows) {
-        const hit = !q || row.textContent.toLowerCase().includes(q);
-        row.hidden = !hit;
-        if (hit) shown++;
+        if (row.classList.contains('detail')) {
+          row.hidden = !hit;
+        } else {
+          hit = !q || row.textContent.toLowerCase().includes(q);
+          row.hidden = !hit;
+        }
+        if (!row.hidden) shown++;
       }
       body.hidden = shown === 0;
     }
