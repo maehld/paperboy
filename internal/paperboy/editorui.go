@@ -58,8 +58,19 @@ type editorListPage struct {
 	Display   string // the display type shared pages are opened with
 	Displays  []galleryDisplay
 	Groups    []editorPageGroup
-	Options   []galleryOption // display types of the new-page form
-	Plans     []editorPlanRow // the plan files next to the pages (ADR 0069)
+	Options   []galleryOption   // display types of the new-page form
+	Plans     []editorPlanRow   // the plan files next to the pages (ADR 0069)
+	Devices   []editorDeviceRow // the device files (ADR 0070)
+}
+
+// editorDeviceRow is one device file in the overview.
+type editorDeviceRow struct {
+	ID      string
+	Display string
+	MAC     string
+	Plan    string
+	Error   string
+	OpenURL string
 }
 
 // editorPlanRow is one plan file in the overview.
@@ -202,6 +213,17 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 			row.OpenURL = "/ui/editor/plan?" + url.Values{"name": {p.Name}}.Encode()
 		}
 		v.Plans = append(v.Plans, row)
+	}
+	devices, err := deviceFileList(cfg.DevicesDir)
+	if err != nil {
+		slog.Warn("device list for the page overview failed", "error", err)
+	}
+	for _, d := range devices {
+		row := editorDeviceRow{ID: d.ID, Display: d.Display, MAC: d.MAC, Plan: d.Plan, Error: d.Error}
+		if d.Error == "" {
+			row.OpenURL = "/ui/editor/device?" + url.Values{"id": {d.ID}}.Encode()
+		}
+		v.Devices = append(v.Devices, row)
 	}
 	for _, n := range displayNames(cfg) {
 		v.Displays = append(v.Displays, galleryDisplay{Name: n, Selected: n == display,

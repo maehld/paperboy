@@ -33,7 +33,7 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0034](0034-layout-primitives-and-typography.md) | Layout primitives and typography in page templates | Superseded by ADR-0049 |
 | [0035](0035-duration-format.md) | Duration format and explicit charge direction for derived values | Superseded by ADR-0049 |
 | [0036](0036-exec-providers.md) | Exec providers in the data directory | Superseded by ADR-0049 |
-| [0037](0037-instance-directory-layout.md) | One instance directory with a fixed layout | Accepted, implemented; `providers/` and `icons/` replaced by `plugins/` (ADR-0049) |
+| [0037](0037-instance-directory-layout.md) | One instance directory with a fixed layout | Accepted, implemented; `providers/` and `icons/` replaced by `plugins/` (ADR-0049), devices moved to `devices/` by ADR-0070 |
 | [0038](0038-icons.md) | Icons from the instance directory | Superseded by ADR-0049 |
 | [0039](0039-device-status.md) | Device status in the devices API | Accepted, implemented |
 | [0040](0040-operator-dashboard.md) | Operator dashboard as a Go template | Accepted, implemented |
@@ -65,3 +65,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0067](0067-buttons-and-the-menu.md) | Buttons – home opens the menu, long presses page | Accepted, implemented |
 | [0068](0068-page-editor-ui.md) | A page editor in the web UI | Accepted, implemented |
 | [0069](0069-plan-editor-ui.md) | A plan editor in the web UI | Accepted, implemented |
+| [0070](0070-devices-in-their-own-files.md) | Devices in files of their own | Accepted, implemented |

@@ -46,8 +46,37 @@ func (d *Duration) UnmarshalYAML(v *yaml.Node) error {
 
 func (d Duration) MarshalYAML() (any, error) { return time.Duration(d).String(), nil }
 
+// UnmarshalJSON reads the string form its YAML counterpart uses, so a duration
+// survives the round trip through the editor API (ADR 0066, 0070).
+func (d *Duration) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("expected duration as string, e.g. \"5m\"")
+	}
+	if s == "" {
+		*d = 0
+		return nil
+	}
+	parsed, err := time.ParseDuration(s)
+	if err != nil {
+		return err
+	}
+	*d = Duration(parsed)
+	return nil
+}
+
 // MarshalJSON keeps durations readable in API responses such as /api/profiles.
-func (d Duration) MarshalJSON() ([]byte, error) { return json.Marshal(time.Duration(d).String()) }
+func (d Duration) MarshalJSON() ([]byte, error) { return json.Marshal(durationText(time.Duration(d))) }
+
+// durationText writes a duration the way operators do: "5m" instead of "5m0s",
+// but "1m30s" when the seconds matter.
+func durationText(d time.Duration) string {
+	s := d.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = strings.TrimSuffix(s, "0s")
+	}
+	return s
+}
 
 // Profile describes one display type (ADR 0026); the key is also the file
 // suffix of its page templates (pages/<page>.<display type>.yaml). A text
@@ -199,6 +228,7 @@ const (
 	configFileName  = "paperboy.yaml"
 	pagesDirName    = "pages"
 	plansDirName    = "plans"
+	devicesDirName  = "devices"
 	pluginsDirName  = "plugins"
 	stateDirName    = "state"
 	devicesFileName = "devices.json"
@@ -215,6 +245,7 @@ type Config struct {
 	MenuShow    Duration // default time the device menu stays open (ADR 0057)
 	Pages       string   // page templates: <dir>/pages
 	Plans       string   // page plans: <dir>/plans
+	DevicesDir  string   // device files: <dir>/devices (ADR 0070)
 	PluginsDir  string   // plugin programs: <dir>/plugins (ADR 0049)
 	FirmwareDir string   // firmware images: <dir>/firmware (ADR 0043)
 	Firmware    FirmwareConfig
@@ -328,20 +359,7 @@ type fileConfig struct {
 		MinRefresh Duration `yaml:"min_refresh"`
 		Power      string   `yaml:"power"`
 	} `yaml:"display_types"`
-	Devices map[string]struct {
-		DisplayType string   `yaml:"display_type"`
-		Protocol    string   `yaml:"protocol"`
-		MAC         string   `yaml:"mac"`
-		Address     string   `yaml:"address"`
-		Buttons     bool     `yaml:"buttons"`
-		Plan        string   `yaml:"plan"`
-		Refresh     Duration `yaml:"refresh"`
-		Battery     *Battery `yaml:"battery"`
-		Firmware    string   `yaml:"firmware"`
-		Power       string   `yaml:"power"`
-		Actions     string   `yaml:"actions"`
-		MenuShow    Duration `yaml:"menu_show_duration"`
-	} `yaml:"devices"`
+	Devices any `yaml:"devices"` // removed by ADR 0070; rejected with a hint
 }
 
 // LoadConfig reads and validates the configuration of an instance directory
@@ -402,6 +420,7 @@ func LoadConfig(dir string) (*Config, error) {
 		Battery:     f.Defaults.Battery,
 		Pages:       filepath.Join(dir, pagesDirName),
 		Plans:       filepath.Join(dir, plansDirName),
+		DevicesDir:  filepath.Join(dir, devicesDirName),
 		PluginsDir:  filepath.Join(dir, pluginsDirName),
 		FirmwareDir: filepath.Join(dir, firmwareDirName),
 		Firmware:    FirmwareConfig{Update: f.Firmware.Update, MinBatteryVolts: f.Firmware.MinBatteryVolts, Version: f.Firmware.Version},
@@ -434,34 +453,14 @@ func LoadConfig(dir string) (*Config, error) {
 			return nil, fmt.Errorf("%s: display type %s: gray_levels must be 1 or 4", path, name)
 		}
 	}
-	ids := make([]string, 0, len(f.Devices))
-	for id := range f.Devices {
-		ids = append(ids, id)
+	if f.Devices != nil {
+		return nil, fmt.Errorf("%s: devices moved to files of their own: create devices/<id>.yaml for every device and remove the devices section (ADR 0070)", path)
 	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		d := f.Devices[id]
-		switch d.Firmware {
-		case "", firmwareHold:
-		default:
-			return nil, fmt.Errorf("%s: device %s: firmware %q: only hold is allowed", path, id, d.Firmware)
-		}
-		c.Devices = append(c.Devices, Device{
-			ID:               id,
-			Type:             d.Protocol,
-			MAC:              d.MAC,
-			Address:          d.Address,
-			Buttons:          d.Buttons,
-			Profile:          d.DisplayType,
-			Refresh:          d.Refresh,
-			Battery:          mergeBattery(f.Defaults.Battery, d.Battery),
-			Plan:             d.Plan,
-			Hold:             d.Firmware == firmwareHold,
-			Power:            d.Power,
-			Actions:          d.Actions,
-			MenuShowDuration: d.MenuShow,
-		})
+	devices, err := loadDevices(filepath.Join(dir, devicesDirName), f.Defaults.Battery)
+	if err != nil {
+		return nil, err
 	}
+	c.Devices = devices
 	pluginNames := make([]string, 0, len(f.Plugins))
 	for name := range f.Plugins {
 		pluginNames = append(pluginNames, name)
@@ -605,30 +604,7 @@ func (c *Config) validate() error {
 	seenMAC := map[string]string{}
 	for i := range c.Devices {
 		d := &c.Devices[i]
-		if !validName(d.ID) {
-			return fmt.Errorf("device %q: id must use a-z, 0-9 and -", d.ID)
-		}
-		switch d.Type {
-		case "", TypePaperboy:
-			d.Type = TypePaperboy
-			if d.Address != "" || d.Buttons {
-				return fmt.Errorf("device %s: address/buttons belong to protocol opendisplay, which is not supported yet", d.ID)
-			}
-			mac, err := net.ParseMAC(d.MAC)
-			if err != nil {
-				return fmt.Errorf("device %s: invalid MAC address", d.ID)
-			}
-			d.MAC = normalizeMAC(mac.String())
-		case "trmnl":
-			return fmt.Errorf("device %s: protocol trmnl was removed (ADR 0042); flash the Paperboy firmware and set protocol: paperboy", d.ID)
-		case "opendisplay":
-			return fmt.Errorf("device %s: protocol opendisplay is not supported yet (TODO in README)", d.ID)
-		case "text-http", "image-http":
-			return fmt.Errorf("device %s: protocol %q was replaced by the device API (ADR 0044); set protocol: paperboy", d.ID, d.Type)
-		default:
-			return fmt.Errorf("device %s: unknown protocol %q", d.ID, d.Type)
-		}
-		if err := d.Battery.validate("device " + d.ID); err != nil {
+		if err := c.validateDevice(d); err != nil {
 			return err
 		}
 		if seenID[d.key()] {
@@ -639,38 +615,6 @@ func (c *Config) validate() error {
 			return fmt.Errorf("duplicate device %s: MAC %s is already used by %s", d.ID, d.MAC, other)
 		}
 		seenMAC[d.MAC] = d.ID
-		if _, ok := c.Profiles[d.Profile]; !ok {
-			return fmt.Errorf("device %s: unknown display_type %q", d.ID, d.Profile)
-		}
-		if d.Refresh == 0 {
-			d.Refresh = c.Refresh
-		}
-		// The floor of the power source applies at runtime (ADR 0051).
-		if time.Duration(d.Refresh) < time.Second {
-			return fmt.Errorf("device %s: refresh must be at least 1s", d.ID)
-		}
-		if d.Power != "" && !validPower(d.Power) {
-			return fmt.Errorf("device %s: power %q: expected auto, battery or mains", d.ID, d.Power)
-		}
-		if d.Plan != "" && !validName(d.Plan) {
-			return fmt.Errorf("device %s: plan %q: only a-z, 0-9 and -", d.ID, d.Plan)
-		}
-		switch d.Actions {
-		case "", actionsAllow:
-			d.Actions = actionsAllow
-		case actionsDeny:
-		default:
-			return fmt.Errorf("device %s: actions %q: expected allow or deny", d.ID, d.Actions)
-		}
-		if d.MenuShowDuration == 0 {
-			d.MenuShowDuration = c.MenuShow
-		}
-		if d.MenuShowDuration == 0 {
-			d.MenuShowDuration = Duration(defaultMenuDuration)
-		}
-		if time.Duration(d.MenuShowDuration) < 5*time.Second || time.Duration(d.MenuShowDuration) > menuMaxDuration {
-			return fmt.Errorf("device %s: menu_show_duration must be between 5s and %s", d.ID, menuMaxDuration)
-		}
 	}
 	for i := range c.Plugins {
 		p := &c.Plugins[i]
@@ -690,6 +634,71 @@ func (c *Config) validate() error {
 		if p.Timeout < 0 {
 			return fmt.Errorf("plugin %s: timeout must not be negative", p.Name)
 		}
+	}
+	return nil
+}
+
+// validateDevice checks one device against the display types and fills its
+// defaults; the ID is its file name (ADR 0070). The API uses it too, so a
+// device the editor writes is as valid as one the server loaded.
+func (c *Config) validateDevice(d *Device) error {
+	if !validName(d.ID) {
+		return fmt.Errorf("device %q: id must use a-z, 0-9 and -", d.ID)
+	}
+	switch d.Type {
+	case "", TypePaperboy:
+		d.Type = TypePaperboy
+		if d.Address != "" || d.Buttons {
+			return fmt.Errorf("device %s: address/buttons belong to protocol opendisplay, which is not supported yet", d.ID)
+		}
+		mac, err := net.ParseMAC(d.MAC)
+		if err != nil {
+			return fmt.Errorf("device %s: invalid MAC address", d.ID)
+		}
+		d.MAC = normalizeMAC(mac.String())
+	case "trmnl":
+		return fmt.Errorf("device %s: protocol trmnl was removed (ADR 0042); flash the Paperboy firmware and set protocol: paperboy", d.ID)
+	case "opendisplay":
+		return fmt.Errorf("device %s: protocol opendisplay is not supported yet (TODO in README)", d.ID)
+	case "text-http", "image-http":
+		return fmt.Errorf("device %s: protocol %q was replaced by the device API (ADR 0044); set protocol: paperboy", d.ID, d.Type)
+	default:
+		return fmt.Errorf("device %s: unknown protocol %q", d.ID, d.Type)
+	}
+	if err := d.Battery.validate("device " + d.ID); err != nil {
+		return err
+	}
+	if _, ok := c.Profiles[d.Profile]; !ok {
+		return fmt.Errorf("device %s: unknown display_type %q", d.ID, d.Profile)
+	}
+	if d.Refresh == 0 {
+		d.Refresh = c.Refresh
+	}
+	// The floor of the power source applies at runtime (ADR 0051).
+	if time.Duration(d.Refresh) < time.Second {
+		return fmt.Errorf("device %s: refresh must be at least 1s", d.ID)
+	}
+	if d.Power != "" && !validPower(d.Power) {
+		return fmt.Errorf("device %s: power %q: expected auto, battery or mains", d.ID, d.Power)
+	}
+	if d.Plan != "" && !validName(d.Plan) {
+		return fmt.Errorf("device %s: plan %q: only a-z, 0-9 and -", d.ID, d.Plan)
+	}
+	switch d.Actions {
+	case "", actionsAllow:
+		d.Actions = actionsAllow
+	case actionsDeny:
+	default:
+		return fmt.Errorf("device %s: actions %q: expected allow or deny", d.ID, d.Actions)
+	}
+	if d.MenuShowDuration == 0 {
+		d.MenuShowDuration = c.MenuShow
+	}
+	if d.MenuShowDuration == 0 {
+		d.MenuShowDuration = Duration(defaultMenuDuration)
+	}
+	if time.Duration(d.MenuShowDuration) < 5*time.Second || time.Duration(d.MenuShowDuration) > menuMaxDuration {
+		return fmt.Errorf("device %s: menu_show_duration must be between 5s and %s", d.ID, menuMaxDuration)
 	}
 	return nil
 }
