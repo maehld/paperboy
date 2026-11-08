@@ -28,6 +28,7 @@ esphome:
     - priority: -100
       then:
         - lambda: |-
+            pb_init_rtc();
             id(mac) = get_mac_address_pretty();
             pb_power = "mains";  // text displays have no battery (ADR 0051)
             pb_show_message("Paperboy\nstarting ...");
