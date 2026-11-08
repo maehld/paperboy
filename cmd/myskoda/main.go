@@ -318,8 +318,9 @@ type myskoda struct {
 func (m *myskoda) Describe() plugin.Description {
 	both := []string{plugin.KindImage, plugin.KindText}
 	return plugin.Description{
-		Title:  "MyŠkoda",
-		Config: configKeys,
+		Title:   "MyŠkoda",
+		Version: version(),
+		Config:  configKeys,
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "battery", Title: "Battery and range", Kinds: both, MinWidth: 160, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 2}, {Columns: 2, Rows: 2}},

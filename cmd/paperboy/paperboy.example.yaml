@@ -14,9 +14,10 @@
 # secrets stay out of this file. The built-in plugin "paperboy" (header, text,
 # clock) needs no entry.
 #
-# Downloaded programs are named <plugin>-v<version> (ADR 0060). Without
-# "version" the highest one runs; a version pins exactly that program. A
-# program without a version in plugins/ always wins (your own build).
+# Downloaded programs are named <plugin>-v<version> (ADR 0060, 0075): the zip
+# names them after the plugin's own version. Without "version" the highest one
+# runs; a version pins exactly that plugin version. A program without a version
+# in plugins/ always wins (your own build).
 plugins:
   evcc:
     config: { url: "http://evcc:7070" }

@@ -18,6 +18,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -38,6 +39,9 @@ const (
 	// maxEntry caps one file inside an archive.
 	maxEntry = 32 << 20
 )
+
+// pluginVersionPattern is what may follow -v in a plugin program's name.
+var pluginVersionPattern = regexp.MustCompile(`^[0-9]+(\.[0-9]+)*$`)
 
 // Asset is one file of a release.
 type Asset struct {
@@ -84,9 +88,10 @@ func New(source, token, dir string) *Client {
 
 // cacheFile is what the client remembers between checks (ADR 0060).
 type cacheFile struct {
-	ETag     string              `json:"etag,omitempty"`
-	Releases []Release           `json:"releases,omitempty"`
-	Bundles  map[string][]string `json:"bundles,omitempty"` // tag -> entries of its bundle
+	ETag       string              `json:"etag,omitempty"`
+	Releases   []Release           `json:"releases,omitempty"`
+	Bundles    map[string][]string `json:"bundles,omitempty"`     // tag -> entries of its firmware bundle
+	PluginZips map[string][]string `json:"plugin_zips,omitempty"` // tag -> entries of its plugin zip (ADR 0075)
 }
 
 // List returns the recent releases, newest first. The answer is cached with its
@@ -159,21 +164,6 @@ func (c *Client) Latest(ctx context.Context, pick func(Asset) bool) (Release, bo
 			if pick(a) {
 				return rel, true, nil
 			}
-		}
-	}
-	return Release{}, false, nil
-}
-
-// Tagged returns the release with this version from either train, e.g.
-// "2.1.0" finds v2.1.0 or plugins-v2.1.0, whichever comes first.
-func (c *Client) Tagged(ctx context.Context, version string) (Release, bool, error) {
-	releases, err := c.List(ctx)
-	if err != nil {
-		return Release{}, false, err
-	}
-	for _, rel := range releases {
-		if rel.Version == version {
-			return rel, true, nil
 		}
 	}
 	return Release{}, false, nil
@@ -256,6 +246,62 @@ func bundleName(rel Release) string {
 		return FirmwareAsset
 	}
 	return ""
+}
+
+// PluginZip returns the version of every program in the release's plugin zip by
+// plugin name, plus the local zip; a zip is downloaded and read once per release
+// (ADR 0075). A release without a plugin zip for this platform answers an error.
+func (c *Client) PluginZip(ctx context.Context, rel Release) (map[string]string, string, error) {
+	cache := c.readCache()
+	local := filepath.Join(c.Dir, rel.Tag+"-"+PluginAsset())
+	if entries, ok := cache.PluginZips[rel.Tag]; ok {
+		if _, err := os.Stat(local); err == nil {
+			return pluginVersions(entries), local, nil
+		}
+	}
+	if _, ok := rel.Asset(PluginAsset()); !ok {
+		return nil, "", fmt.Errorf("%s: no plugin zip", rel.Tag)
+	}
+	local, err := c.Fetch(ctx, rel, PluginAsset())
+	if err != nil {
+		return nil, "", err
+	}
+	entries, err := listZip(local)
+	if err != nil {
+		return nil, "", err
+	}
+	if cache.PluginZips == nil {
+		cache.PluginZips = map[string][]string{}
+	}
+	cache.PluginZips[rel.Tag] = entries
+	c.writeCache(cache)
+	return pluginVersions(entries), local, nil
+}
+
+// pluginVersions maps every program of a plugin zip to the version its name
+// carries; entries without a version (an old zip) are left out.
+func pluginVersions(entries []string) map[string]string {
+	versions := map[string]string{}
+	for _, entry := range entries {
+		name, version, ok := PluginEntry(path.Base(entry))
+		if !ok {
+			continue
+		}
+		versions[name] = version
+	}
+	return versions
+}
+
+// PluginEntry splits the name of a program from the plugin zip,
+// <plugin>-v<version>[.exe], into plugin and version. An unversioned program of
+// an older zip does not parse (ADR 0075).
+func PluginEntry(file string) (plugin, version string, ok bool) {
+	base := strings.TrimSuffix(file, ".exe")
+	name, rest, found := strings.Cut(base, "-v")
+	if !found || name == "" || !pluginVersionPattern.MatchString(rest) {
+		return "", "", false
+	}
+	return name, rest, true
 }
 
 // Extract unpacks the entries of a zip that keep accepts into destDir, flat and

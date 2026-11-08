@@ -103,8 +103,9 @@ func newPokedex(c *http.Client) *pokedex {
 func (p *pokedex) Describe() plugin.Description {
 	both := []string{plugin.KindImage, plugin.KindText}
 	return plugin.Description{
-		Title:  "Pokédex",
-		Config: configKeys,
+		Title:   "Pokédex",
+		Version: version(),
+		Config:  configKeys,
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "card", Title: "Pokémon card", Kinds: both, MinWidth: 240, MinHeight: 240,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 4}, {Columns: 6, Rows: 8}}},

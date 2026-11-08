@@ -145,6 +145,61 @@ func TestVersionOf(t *testing.T) {
 	}
 }
 
+func TestPluginEntry(t *testing.T) {
+	cases := map[string]struct {
+		plugin, version string
+		ok              bool
+	}{
+		"testplugin-v1.4.0":     {"testplugin", "1.4.0", true},
+		"testplugin-v1.4.0.exe": {"testplugin", "1.4.0", true},
+		"testplugin-v2":         {"testplugin", "2", true},
+		"testplugin":            {"", "", false}, // an old zip ships unversioned programs
+		"testplugin-vnext":      {"", "", false},
+		"-v1.0.0":               {"", "", false},
+	}
+	for name, want := range cases {
+		plugin, version, ok := PluginEntry(name)
+		if plugin != want.plugin || version != want.version || ok != want.ok {
+			t.Fatalf("%s: %q %q %v", name, plugin, version, ok)
+		}
+	}
+}
+
+// TestPluginZipReadsTheVersionsInTheNames verifies that a plugin zip is read
+// once and answers the version of every program it carries (ADR 0075).
+func TestPluginZipReadsTheVersionsInTheNames(t *testing.T) {
+	rs, srv := newReleaseServer(t, "v2.1.0")
+	rs.add(t, "v2.1.0", PluginAsset(), zipOf(t, map[string]string{
+		"plugins/weather-v1.4.0":  "weather",
+		"plugins/calendar-v1.0.0": "calendar",
+		"plugins/notes":           "unversioned",
+	}))
+	c := New(srv.URL+"/repos/me/paperboy/releases", "", t.TempDir())
+	rel, ok, err := c.Latest(context.Background(), func(a Asset) bool { return a.Name == PluginAsset() })
+	if err != nil || !ok {
+		t.Fatalf("latest: %v %v", ok, err)
+	}
+	versions, path, err := c.PluginZip(context.Background(), rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(path) != "v2.1.0-"+PluginAsset() {
+		t.Fatalf("archive: %q", path)
+	}
+	if len(versions) != 2 || versions["weather"] != "1.4.0" || versions["calendar"] != "1.0.0" {
+		t.Fatalf("versions: %v", versions)
+	}
+	// The entries are cached: removing the archive makes the client fetch it
+	// again, keeping the answer the same.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	again, _, err := c.PluginZip(context.Background(), rel)
+	if err != nil || again["weather"] != "1.4.0" {
+		t.Fatalf("second read: %v %v", again, err)
+	}
+}
+
 func TestBundleUsesConstantName(t *testing.T) {
 	rs, srv := newReleaseServer(t, "v2.1.0")
 	rs.add(t, "v2.1.0", FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))

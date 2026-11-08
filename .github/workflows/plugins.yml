@@ -3,7 +3,8 @@ name: Plugins
 # Builds the shipped plugins as one zip per platform (ADR 0049). Unpacked in
 # the instance directory, a zip creates plugins/ with the binaries. Runs on
 # changes and as the builder for release.yml, which attaches the zips to a
-# release (ADR 0056).
+# release (ADR 0056). On a pull request it also checks that a changed plugin
+# raised its version (ADR 0075).
 
 on:
   push:
@@ -17,6 +18,19 @@ permissions:
   contents: read
 
 jobs:
+  versions:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # The check compares against the base branch.
+          fetch-depth: 0
+
+      - name: Check plugin versions
+        run: ./scripts/check-plugin-versions.sh "origin/${{ github.base_ref }}"
+
   build:
     runs-on: ubuntu-latest
     strategy:
