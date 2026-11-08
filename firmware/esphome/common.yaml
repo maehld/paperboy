@@ -59,6 +59,10 @@ esphome:
 wifi:
   # No networks compiled in: they come from the captive portal or Improv.
   power_save_mode: light
+  # Connect to the saved BSSID and channel without scanning first: the scan
+  # before every wake cost 4.0-4.5 s on the Sticky (measured 2026-11-08).
+  # If the saved access point is gone, ESPHome falls back to a scan.
+  fast_connect: true
   ap: {}   # SSID: the node name, paperboy-<id>
 
 captive_portal:
@@ -87,14 +91,22 @@ text:
     # Saving a new URL starts the cycle at once. Otherwise a device that sits
     # in setup waits for its next wake, and a corrected URL would take up to an
     # hour to be used.
+    # The value is also published when flash restores it at boot, where on_boot
+    # already starts the cycle, so only a change while everything is ready may
+    # start one (see run_cycle for what a second cycle costs).
     on_value:
       - lambda: |-
           std::string url = pb_base(x);
-          if (id(busy) || url.empty() || !wifi::global_wifi_component->is_connected()) {
-            return;
+          if (!url.empty() && wifi::global_wifi_component->is_connected() && !id(busy)) {
+            ESP_LOGI("paperboy", "Paperboy URL set to %s, starting the cycle", url.c_str());
           }
-          ESP_LOGI("paperboy", "Paperboy URL set to %s, starting the cycle", url.c_str());
-      - script.execute: run_cycle
+      - if:
+          condition:
+            lambda: |-
+              return !pb_base(id(paperboy_url).state).empty() &&
+                     wifi::global_wifi_component->is_connected() && !id(busy);
+          then:
+            - script.execute: run_cycle
   - platform: template
     id: api_key
     internal: true
@@ -179,24 +191,15 @@ http_request:
   useragent: paperboy-esphome
   timeout: 15s
   verify_ssl: false
+  # The image download reads one client buffer per loop iteration, and every
+  # read waits for the radio: 512 bytes took as long as 2048 for a page, so
+  # this only keeps the number of reads down (measured 2026-11-08).
+  buffer_size_rx: 2048
 
-online_image:
-  - id: page_image
-    url: "http://0.0.0.0/"
-    format: PNG
-    type: GRAYSCALE
-    update_interval: never
-    on_download_finished:
-      # The hash is stored after the paint (after_paint), so a sync that
-      # reports "shown" proves the panel really shows that image (ADR 0064).
-      - lambda: "pb_time(\"image\");"
-      - lambda: "pb_paint_pending = true;"
-      - component.update: epaper_display
-      - script.execute: after_paint
-    on_error:
-      - lambda: 'pb_note_for_next_wake("image download failed: " + id(image_path));'
-      - logger.log: "image download failed"
-      - script.execute: go_sleep
+# No online_image: its decoders spend about 2.2-2.6 s on the 384k pixels of a
+# page (measured 2026-11-08), whatever the format and file size. The firmware
+# fetches the QOI bytes and paints them itself (ADR 0072), which removes both
+# the decode cost and the 384 KB image buffer.
 
 script:
   # ---------------------------------------------------------------- cycle
@@ -242,7 +245,18 @@ script:
                 condition:
                   lambda: "return !id(api_key).state.empty();"
                 then:
-                  - script.execute: sync_and_show
+                  # One cycle at a time. A second sync while the first answer is
+                  # still downloading does move Paperboy's cursor (with `rotate`
+                  # in the plan) while the panel keeps the old page, so the
+                  # second page would never be seen: drop the extra cycle and
+                  # leave the running one to deliver its page.
+                  - if:
+                      condition:
+                        lambda: "return id(busy);"
+                      then:
+                        - logger.log: "a cycle is already running, keeping its page"
+                      else:
+                        - script.execute: sync_and_show
                 else:
                   - if:
                       condition:
@@ -562,9 +576,35 @@ script:
                   - lambda: "pb_time(\"unchanged\");"
                   - script.execute: after_paint
                 else:
-                  - online_image.set_url:
-                      id: page_image
-                      url: !lambda "return pb_base(id(paperboy_url).state) + id(image_path);"
+                  - script.execute: fetch_page
+                  - script.wait: fetch_page
+
+  # Fetches the page as QOI (ADR 0072) and repaints the panel with it. The
+  # download takes 40-150 ms; the display lambda decodes it straight into the
+  # panel buffer, which is what makes a page change short. 96 KiB covers the
+  # pages measured so far (22-50 KB for an 800x480 page with four levels).
+  - id: fetch_page
+    mode: single
+    then:
+      - http_request.get:
+          url: !lambda "return pb_base(id(paperboy_url).state) + id(image_path) + \"?format=qoi\";"
+          capture_response: true
+          max_response_buffer_size: 98304
+          on_response:
+            then:
+              - lambda: |-
+                  pb_page_qoi = body;
+                  pb_time("image");
+              # The hash is stored after the paint (after_paint), and the
+              # lambda sets paint_pending only when the decode worked, so a
+              # sync that reports "shown" proves the panel really shows it.
+              - component.update: epaper_display
+              - script.execute: after_paint
+          on_error:
+            then:
+              - lambda: 'pb_note_for_next_wake("image download failed: " + id(image_path));'
+              - logger.log: "image download failed"
+              - script.execute: go_sleep
 
   # ---------------------------------------------------------------- sleep
 
