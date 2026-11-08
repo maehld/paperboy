@@ -22,6 +22,29 @@ RTC_DATA_ATTR static char pb_event_queue[1200];  // queued events as JSON object
 RTC_DATA_ATTR static char pb_next_reason[16];    // reason of the next wake: menu or result
 RTC_DATA_ATTR static uint32_t pb_next_s;         // seconds until that one-shot wake
 
+// Guards the RTC layout. RTC memory survives a reboot, so after a firmware
+// update the new variables above would read whatever the old image left there:
+// a queue without a terminator turns every sync into invalid JSON. The marker
+// is declared last, so all older variables keep their offsets; bump it whenever
+// this block changes.
+RTC_DATA_ATTR static uint32_t pb_rtc_magic;
+constexpr uint32_t PB_RTC_MAGIC = 0x50423031;  // "PB01"
+
+// Zeroes the RTC state once per layout. Safe to call on every boot.
+inline void pb_init_rtc() {
+  if (pb_rtc_magic == PB_RTC_MAGIC) {
+    return;
+  }
+  pb_rtc_magic = PB_RTC_MAGIC;
+  pb_event_seq = 0;
+  pb_event_queue[0] = 0;
+  pb_next_reason[0] = 0;
+  pb_next_s = 0;
+  pb_note[0] = 0;
+  // The panel shows an image of the previous firmware: repaint it.
+  pb_shown_hash[0] = 0;
+}
+
 // True while an image was downloaded and still has to be reported as shown,
 // after the panel painted it (ADR 0061).
 static bool pb_paint_pending = false;

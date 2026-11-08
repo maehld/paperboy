@@ -34,6 +34,7 @@ esphome:
   on_boot:
     - priority: -100
       then:
+        - lambda: "pb_init_rtc();"
         - lambda: "id(mac) = get_mac_address_pretty();"
         - if:
             condition:
@@ -149,6 +150,10 @@ globals:
   - id: sync_attempts
     type: int
     initial_value: "0"
+  # Registration attempts of this wake.
+  - id: reg_attempts
+    type: int
+    initial_value: "0"
 
 http_request:
   useragent: paperboy-esphome
@@ -208,7 +213,10 @@ script:
                 condition:
                   lambda: "return !id(setup_mode);"
                 then:
-                  - script.execute: go_sleep
+                  # No key and no server: show the setup screen with the
+                  # address instead of sleeping, so a wrong Paperboy URL can
+                  # be corrected right away.
+                  - script.execute: { id: enter_setup, reason: "url" }
 
   # Called by the buttons with their role (next, previous, home). The event is
   # queued; a sync starts at once unless one is already running.
@@ -275,6 +283,10 @@ script:
             }
             t += "Open http://" + std::string(ip) + "/\n";
             t += "and enter the Paperboy URL.\n";
+            std::string current = pb_base(id(paperboy_url).state);
+            if (!current.empty()) {
+              t += "Now: " + current + "\n";
+            }
           } else {
             t += "Paperboy does not know this display.\n";
             t += "Add its MAC to paperboy.yaml.\n";
@@ -289,8 +301,26 @@ script:
   # ---------------------------------------------------------------- device API
 
   # POST /api/device/register trades the MAC for the device key; 403 means
-  # the MAC is not in paperboy.yaml.
+  # the MAC is not in paperboy.yaml. A request that fails as a whole is
+  # retried, and an unreachable or wrong Paperboy URL ends in the setup screen
+  # instead of a silent deep sleep, so the operator can correct it.
   - id: do_register
+    then:
+      - lambda: "id(reg_attempts) = 0;"
+      - while:
+          condition:
+            lambda: "return id(api_key).state.empty() && id(reg_attempts) < 3;"
+          then:
+            - lambda: "id(reg_attempts)++;"
+            - script.execute: do_register_once
+            - script.wait: do_register_once
+            - if:
+                condition:
+                  lambda: "return id(api_key).state.empty();"
+                then:
+                  - delay: 2s
+
+  - id: do_register_once
     then:
       - http_request.post:
           url: !lambda 'return pb_base(id(paperboy_url).state) + "/api/device/register";'

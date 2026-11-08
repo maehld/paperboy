@@ -21,6 +21,7 @@ installation, nothing installation-specific is compiled in.
 |---|---|---|
 | First contact | `POST /api/device/register` with `mac`, `hardware`, `firmware` | the key is kept in flash; `403` shows "Paperboy does not know this display" with the MAC |
 | Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `rssi`, `power`, `log` | `401` drops the key, registers again and repeats the sync; a failed request keeps the event queue and is retried up to three times (ADR 0061) |
+| No key | `POST /api/device/register` is retried three times as well | without a key and with an unreachable server the device shows the setup screen with its address and the URL it has, instead of sleeping silently |
 | Unchanged content | `image.hash` equals the hash on the panel | no download, no paint |
 | Firmware offer | `firmware` in the sync answer (ADR 0043) | flash `<Paperboy URL><path>` with its MD5 and reboot; a failure is reported in the next sync's `log` |
 | Changed content | `GET <Paperboy URL><image.path>` | PNG, painted with the panel's gray mapping |
@@ -55,7 +56,9 @@ the last input forces deep sleep otherwise.
 
 While Wi-Fi or the Paperboy URL is missing, or Paperboy does not know the MAC,
 the display shows instructions with the device's address and MAC and stays
-awake for up to 10 minutes before retrying in an hour.
+awake for up to 10 minutes before retrying in an hour. The same screen appears
+when the URL is set but no server answers there; it then also prints the URL
+the device has, so a typo is visible without a serial log.
 
 ## Text displays
 
