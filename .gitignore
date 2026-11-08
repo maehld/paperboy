@@ -5,6 +5,8 @@
 /cmd/*/*
 !/cmd/*/*.*
 !/cmd/*/*/
+# The plugin version travels with its source (ADR 0075).
+!/cmd/*/VERSION
 
 # Configuration with token, operator content and service state of a local
 # instance (ADR 0037); the old displayd locations stay ignored.

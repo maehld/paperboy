@@ -179,7 +179,11 @@ type Result struct {
 
 // Description is the answer to describe.
 type Description struct {
-	Title   string         `json:"title"`
+	Title string `json:"title"`
+	// Version is the plugin's own version, e.g. from a VERSION file next to
+	// its source. Paperboy compares it with the file name of the program and
+	// logs a mismatch (ADR 0075); empty means the plugin does not say.
+	Version string         `json:"version,omitempty"`
 	Widgets []WidgetInfo   `json:"widgets"`
 	Actions []ActionSpec   `json:"actions,omitempty"` // actions a plan may list (ADR 0057)
 	Config  map[string]Arg `json:"config,omitempty"`  // keys of the plugin's config section

@@ -111,8 +111,9 @@ type departures struct {
 func (p *departures) Describe() plugin.Description {
 	both := []string{plugin.KindImage, plugin.KindText}
 	return plugin.Description{
-		Title:  "Departures",
-		Config: configKeys,
+		Title:   "Departures",
+		Version: version(),
+		Config:  configKeys,
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "departures", Title: "Real-time departures", Kinds: both, MinWidth: 200, MinHeight: 60,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 3}, {Columns: 6, Rows: 4}},

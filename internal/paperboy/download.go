@@ -162,10 +162,10 @@ func (s *Server) downloadOnce(ctx context.Context, cfg *Config) error {
 	return errors.Join(errs...)
 }
 
-// downloadPlugins installs the programs of configured plugins: missing ones
-// from the newest release, a pinned version from its own, and downloaded
-// versions when the release ships a newer one (ADR 0062). An unversioned
-// program and a pin stay where they are.
+// downloadPlugins installs the programs of configured plugins: missing ones and
+// newer versions from the newest release, a pinned version from the release
+// whose zip carries it (ADR 0062, 0075). An unversioned program and a pin stay
+// where they are.
 func (s *Server) downloadPlugins(ctx context.Context, cfg *Config, c *download.Client) (bool, error) {
 	var missing, candidates []Plugin
 	current := map[string]string{}
@@ -194,14 +194,11 @@ func (s *Server) downloadPlugins(ctx context.Context, cfg *Config, c *download.C
 	}
 	changed := false
 	for _, pin := range sortedKeys(pinned) {
-		rel, ok, err := c.Tagged(ctx, strings.TrimPrefix(pin, "v"))
+		rel, archive, targets, err := s.pinnedPlugins(ctx, c, pinned[pin], pin)
 		if err != nil {
 			return changed, err
 		}
-		if !ok {
-			return changed, fmt.Errorf("plugins: no release with version %s", pin)
-		}
-		installed, err := s.installPlugins(ctx, cfg, c, rel, pinned[pin])
+		installed, err := s.installPlugins(cfg, rel, archive, targets)
 		if err != nil {
 			return changed, err
 		}
@@ -215,27 +212,40 @@ func (s *Server) downloadPlugins(ctx context.Context, cfg *Config, c *download.C
 		if !ok {
 			return changed, fmt.Errorf("plugins: no release with %s", download.PluginAsset())
 		}
-		want := append([]Plugin{}, missing...)
-		next, nextOK := versionParts(rel.Version)
+		versions, archive, err := c.PluginZip(ctx, rel)
+		if err != nil {
+			return changed, err
+		}
+		targets := map[string]string{}
+		for _, p := range missing {
+			version, ok := versions[p.Name]
+			if !ok {
+				// A release whose zip still ships unversioned programs carries
+				// no version to install (ADR 0075).
+				slog.Warn("plugin not in the release zip", "plugin", p.Name, "release", rel.Tag)
+				continue
+			}
+			targets[p.Name] = version
+		}
 		for _, p := range candidates {
-			parts, _ := versionParts(strings.TrimPrefix(current[p.Name], "v"))
-			if !nextOK || compareVersions(parts, next) >= 0 {
+			version, ok := versions[p.Name]
+			if !ok || !pluginVersionNewer(version, current[p.Name]) {
 				continue
 			}
 			// A version this run already installed but that no longer resolves
 			// was deleted on purpose: keep the older program (ADR 0062).
-			if recorded, ok := s.download.pluginVersion(p.Name); ok && recorded == "v"+rel.Version {
+			if recorded, ok := s.download.pluginVersion(p.Name); ok && recorded == "v"+version {
 				slog.Info("plugin update left deleted", "plugin", p.Name, "version", recorded,
 					"reason", "deleted program falls back to the older version")
 				changed = true // the resolved program changed even without a download
 				continue
 			}
-			want = append(want, p)
+			targets[p.Name] = version
 		}
-		if len(want) == 0 {
+		if len(targets) == 0 {
 			return changed, nil
 		}
-		installed, err := s.installPlugins(ctx, cfg, c, rel, want)
+		installed, err := s.installPlugins(cfg, rel, archive, targets)
 		if err != nil {
 			return changed, err
 		}
@@ -244,17 +254,52 @@ func (s *Server) downloadPlugins(ctx context.Context, cfg *Config, c *download.C
 	return changed, nil
 }
 
-// installPlugins unpacks the named programs of the release's plugin zip into
-// the plugins directory as <name>-v<version>.
-func (s *Server) installPlugins(ctx context.Context, cfg *Config, c *download.Client, rel download.Release, plugins []Plugin) (map[string]string, error) {
-	want := map[string]bool{}
-	for _, p := range plugins {
-		want[p.Name] = true
-	}
-	archive, err := c.Fetch(ctx, rel, download.PluginAsset())
+// pinnedPlugins finds the newest release whose plugin zip names each of the
+// plugins with the pinned version: a plugin pin names a plugin version, not a
+// release tag (ADR 0075).
+func (s *Server) pinnedPlugins(ctx context.Context, c *download.Client, plugins []Plugin, pin string) (download.Release, string, map[string]string, error) {
+	releases, err := c.List(ctx)
 	if err != nil {
-		return nil, err
+		return download.Release{}, "", nil, err
 	}
+	for _, rel := range releases {
+		if _, ok := rel.Asset(download.PluginAsset()); !ok {
+			continue // a release of another train carries no plugin zip
+		}
+		versions, archive, err := c.PluginZip(ctx, rel)
+		if err != nil {
+			return download.Release{}, "", nil, err
+		}
+		targets := map[string]string{}
+		for _, p := range plugins {
+			if version, ok := versions[p.Name]; ok && "v"+version == pin {
+				targets[p.Name] = version
+			}
+		}
+		if len(targets) == len(plugins) {
+			return rel, archive, targets, nil
+		}
+	}
+	return download.Release{}, "", nil, fmt.Errorf("plugins: no release carries %s", pin)
+}
+
+// pluginVersionNewer reports whether the version a zip ships is higher than the
+// one in use, e.g. "1.4.0" against "v1.3.2" (ADR 0075).
+func pluginVersionNewer(next, current string) bool {
+	nextParts, ok := versionParts(next)
+	if !ok {
+		return false
+	}
+	currentParts, ok := versionParts(strings.TrimPrefix(current, "v"))
+	if !ok {
+		return true
+	}
+	return compareVersions(nextParts, currentParts) > 0
+}
+
+// installPlugins unpacks the named programs of a release's plugin zip into the
+// plugins directory, each under the version the zip names it with (ADR 0075).
+func (s *Server) installPlugins(cfg *Config, rel download.Release, archive string, targets map[string]string) (map[string]string, error) {
 	if err := os.MkdirAll(cfg.PluginsDir, 0o755); err != nil {
 		return nil, err
 	}
@@ -264,36 +309,36 @@ func (s *Server) installPlugins(ctx context.Context, cfg *Config, c *download.Cl
 	}
 	defer os.RemoveAll(tmp)
 	names, err := download.Extract(archive, tmp, func(name string) bool {
-		return want[strings.TrimSuffix(name, ".exe")]
+		plugin, version, ok := download.PluginEntry(name)
+		return ok && targets[plugin] == version
 	})
 	if err != nil {
 		return nil, err
 	}
+	found := map[string]bool{}
 	installed := map[string]string{}
 	for _, name := range names {
-		base, ext := strings.TrimSuffix(name, ".exe"), ""
-		if base != name {
-			ext = ".exe"
-		}
-		target := filepath.Join(cfg.PluginsDir, base+"-v"+rel.Version+ext)
+		plugin, version, _ := download.PluginEntry(name)
+		found[plugin] = true
+		target := filepath.Join(cfg.PluginsDir, name)
 		if _, err := os.Stat(target); err == nil {
 			continue // never overwrite (ADR 0060)
 		}
 		if err := os.Rename(filepath.Join(tmp, name), target); err != nil {
 			return installed, err
 		}
-		installed[base] = "v" + rel.Version
-		slog.Info("plugin downloaded", "plugin", base, "version", "v"+rel.Version, "release", rel.Tag)
+		installed[plugin] = "v" + version
+		slog.Info("plugin downloaded", "plugin", plugin, "version", "v"+version, "release", rel.Tag)
 	}
-	if len(installed) < len(want) {
-		var missing []string
-		for name := range want {
-			if _, ok := installed[name]; !ok {
-				missing = append(missing, name)
+	if len(found) < len(targets) {
+		var absent []string
+		for name := range targets {
+			if !found[name] {
+				absent = append(absent, name)
 			}
 		}
-		sort.Strings(missing)
-		slog.Warn("plugin not in the release zip", "plugins", strings.Join(missing, ", "), "release", rel.Tag)
+		sort.Strings(absent)
+		slog.Warn("plugin not in the release zip", "plugins", strings.Join(absent, ", "), "release", rel.Tag)
 	}
 	s.download.installed(installed, nil)
 	return installed, nil

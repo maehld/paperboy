@@ -86,6 +86,7 @@ type Host struct {
 	running  map[string]*sync.Mutex // one request per plugin at a time
 	failing  map[string]time.Time   // plugin -> no new request before
 	changes  map[string]int         // plugin -> number of "changed" events
+	mismatch map[string]bool        // plugin -> version mismatch already logged
 	builtMu  sync.Mutex
 	builtCfg map[string]bool
 }
@@ -439,7 +440,28 @@ func (h *Host) Describe(ctx context.Context, name string) (*plugin.Description, 
 	if msg.Description == nil {
 		return nil, errors.New("answer without description")
 	}
+	// A downloaded program carries its version in the file name only; the
+	// describe answer is the only check of the two (ADR 0060, 0075).
+	if reported := msg.Description.Version; reported != "" && spec.Version != "" && "v"+reported != spec.Version {
+		h.versionMismatch(name, spec.Version, reported)
+	}
 	return msg.Description, nil
+}
+
+// versionMismatch logs once per plugin that the version a program reports
+// differs from the one in its file name.
+func (h *Host) versionMismatch(name, file, reported string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.mismatch == nil {
+		h.mismatch = map[string]bool{}
+	}
+	if h.mismatch[name] {
+		return
+	}
+	h.mismatch[name] = true
+	slog.Warn("plugin version differs from its file name", "plugin", name,
+		"file_name", file, "reported", reported)
 }
 
 // Actions asks a plugin for the state of concrete actions (ADR 0057). The

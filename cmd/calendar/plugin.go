@@ -88,8 +88,9 @@ func (p *calendarPlugin) load(ctx context.Context) ([]event, error) {
 func (p *calendarPlugin) Describe() plugin.Description {
 	both := []string{plugin.KindImage, plugin.KindText}
 	return plugin.Description{
-		Title:  "Calendar",
-		Config: configKeys,
+		Title:   "Calendar",
+		Version: version(),
+		Config:  configKeys,
 		Widgets: []plugin.WidgetInfo{
 			{
 				Widget: "agenda", Title: "Upcoming events", Kinds: both,
