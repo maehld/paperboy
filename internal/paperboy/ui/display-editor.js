@@ -114,15 +114,86 @@
   }
 
   // updatePPI names the physical size behind the pixel density, because ppi
-  // silently changes the typography of every page (ADR 0050).
+  // silently changes the typography of every page (ADR 0050). The diagonal is
+  // what a datasheet usually gives, so it comes along.
   function updatePPI() {
     const w = Number(state.display.size[0]);
     const h = Number(state.display.size[1]);
     const ppi = Number(state.display.ppi);
     el('ppi-note').textContent =
       ppi >= 20 && ppi <= 1000 && w > 0 && h > 0
-        ? 'Physical size: ' + (w / ppi * 25.4).toFixed(1) + ' × ' + (h / ppi * 25.4).toFixed(1) + ' mm. ppi = pixels × 25.4 / mm.'
+        ? 'Physical size: ' + (w / ppi * 25.4).toFixed(1) + ' × ' + (h / ppi * 25.4).toFixed(1) + ' mm, diagonal ' +
+          (Math.hypot(w, h) / ppi).toFixed(2) + ' in. ppi = pixels × 25.4 / mm.'
         : 'Pixels per inch of the active area, 20–1000: ppi = pixels × 25.4 / mm.';
+    updatePanelHint();
+  }
+
+  // ---- panel size → ppi ----
+  //
+  // A datasheet gives the diagonal in inches or one side of the active area in
+  // millimetres; the pixel size is already in the form. The helper only
+  // converts, and shows every computed value, so a rounded inch figure cannot
+  // silently win over the exact millimetre side.
+
+  function round1(v) {
+    return Math.round(v * 10) / 10;
+  }
+
+  function ppiFromDiagonal(inches) {
+    const w = Number(state.display.size[0]);
+    const h = Number(state.display.size[1]);
+    return w > 0 && h > 0 && inches > 0 ? Math.hypot(w, h) / inches : 0;
+  }
+
+  function ppiFromMM(px, mm) {
+    return px > 0 && mm > 0 ? px * 25.4 / mm : 0;
+  }
+
+  function updatePanelHint() {
+    const w = Number(state.display.size[0]);
+    const h = Number(state.display.size[1]);
+    const diagonal = Number(el('panel-diagonal').value);
+    const width = Number(el('panel-width').value);
+    const height = Number(el('panel-height').value);
+    const values = [];
+    const parts = [];
+    const add = (label, value) => {
+      if (!(value > 0)) return;
+      values.push(value);
+      parts.push(label + ' → ' + round1(value) + ' ppi');
+    };
+    if (w > 0 && h > 0) add('diagonal ' + diagonal + ' in', ppiFromDiagonal(diagonal));
+    add('width ' + width + ' mm', ppiFromMM(w, width));
+    add('height ' + height + ' mm', ppiFromMM(h, height));
+    let hint = parts.join(' · ');
+    if (values.length > 1) {
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      if (max / min > 1.02) {
+        hint += ' — they differ by ' + Math.round((max / min - 1) * 100) +
+          ' %: an inch diagonal is usually rounded, prefer the millimetre side.';
+      }
+    }
+    el('panel-hint').textContent = hint;
+  }
+
+  // applyPPI takes over a value the helper computed. It stays a form value
+  // until Save writes the file.
+  function applyPPI(ppi, source) {
+    if (state.readOnly) return;
+    if (!(ppi > 0)) {
+      setStatus('enter ' + source + ' first', 'error');
+      return;
+    }
+    if (ppi < 20 || ppi > 1000) {
+      setStatus('that is ' + round1(ppi) + ' ppi, outside 20–1000 — check the panel size', 'error');
+      return;
+    }
+    state.display.ppi = round1(ppi);
+    el('ppi').value = state.display.ppi;
+    updatePPI();
+    changed();
+    setStatus('ppi ' + state.display.ppi + ' from ' + source, '');
   }
 
   // serialize builds the body of PUT /api/displays: only what is set, so the
@@ -319,6 +390,23 @@
     });
   }
 
+  // onPanel wires the panel size helper: the fields only preview the value,
+  // "use" puts it into the ppi field like a typed number.
+  function onPanel() {
+    for (const id of ['panel-diagonal', 'panel-width', 'panel-height']) {
+      el(id).addEventListener('input', updatePanelHint);
+    }
+    el('use-diagonal').addEventListener('click', () => {
+      applyPPI(ppiFromDiagonal(Number(el('panel-diagonal').value)), 'the diagonal');
+    });
+    el('use-width').addEventListener('click', () => {
+      applyPPI(ppiFromMM(Number(state.display.size[0]), Number(el('panel-width').value)), 'the active width');
+    });
+    el('use-height').addEventListener('click', () => {
+      applyPPI(ppiFromMM(Number(state.display.size[1]), Number(el('panel-height').value)), 'the active height');
+    });
+  }
+
   el('save').addEventListener('click', save);
   el('delete').addEventListener('click', remove);
   el('reload').addEventListener('click', () => location.reload());
@@ -360,6 +448,7 @@
   });
   onSize();
   onPPI();
+  onPanel();
   window.addEventListener('beforeunload', (e) => {
     if (!state.dirty) return;
     e.preventDefault();
