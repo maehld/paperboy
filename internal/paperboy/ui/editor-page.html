@@ -61,13 +61,25 @@ input[type=search] { margin-bottom: .4rem; }
 .grid2 { display: flex; gap: .4rem; }
 .grid2 input { width: 4.5rem; }
 .board-panel { padding: .6rem; }
-#board { display: grid; background: #fff; border: 1px solid #aaa; width: 100%; touch-action: manipulation; }
-.slot { border: 1px dashed #e6e6e6; min-height: 0; min-width: 0; }
-#board.placing .slot { background: #f6faff; cursor: copy; }
-.cell { background: #eef3fb; border: 1px solid #b9c9e0; padding: .15rem .3rem; overflow: hidden; min-height: 0; min-width: 0; font-size: .72rem; line-height: 1.2; cursor: pointer; }
-.cell.selected { outline: 2px solid #134e9c; outline-offset: -2px; background: #e2ecfb; z-index: 2; }
+.board-panel .panel-head { margin-bottom: .45rem; }
+.board-panel .panel-head .muted { font-size: .78rem; }
+.cells-toggle { margin-left: auto; display: inline-flex; align-items: center; gap: .3rem; font-size: .82rem; color: #555; cursor: pointer; user-select: none; }
+.cells-toggle input { width: auto; }
+/* The board is the rendered page with the cell boxes on top (ADR 0074):
+   the preview is the background, the boxes are the overlay. */
+#board { display: grid; background: #fff; background-size: 100% 100%; background-repeat: no-repeat; background-position: center; border: 1px solid #aaa; width: 100%; touch-action: manipulation; }
+#board.text { background: #2d4a12; }
+#board.text .slot { display: flex; align-items: center; justify-content: center; color: #d8f5a0; font: .8rem/1 ui-monospace, Consolas, monospace; border-color: rgba(216, 245, 160, .14); }
+.slot { border: 1px dashed #e6e6e6; min-height: 0; min-width: 0; overflow: hidden; }
+#board.placing .slot { background: rgba(246, 250, 255, .8); cursor: copy; }
+.cell { background: rgba(238, 243, 251, .55); border: 1px solid #b9c9e0; padding: .15rem .3rem; overflow: hidden; min-height: 0; min-width: 0; font-size: .72rem; line-height: 1.2; cursor: pointer; }
+.cell.selected { outline: 2px solid #134e9c; outline-offset: -2px; background: rgba(226, 236, 251, .7); z-index: 2; }
 .cell .w { display: block; font-weight: 600; word-break: break-all; }
-.cell .pos { color: #567; }
+.cell .pos { color: #456; }
+#board.hide-cells .slot { border-color: transparent; }
+#board.hide-cells .cell { background: transparent; border-color: transparent; }
+#board.hide-cells .cell.selected { outline: 0; }
+#board.hide-cells .cell .w, #board.hide-cells .cell .pos { display: none; }
 .hint { margin: .4rem 0 0; font-size: .8rem; color: #666; }
 .palette .plugin { border-top: 1px solid #eee; padding-top: .5rem; margin-top: .5rem; }
 .palette .plugin:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
@@ -151,16 +163,21 @@ code { font: .85rem ui-monospace, Consolas, monospace; background: #f2f2f2; padd
     </section>
   </div>
   <div class="col">
-    {{if not .Playground}}<section class="panel board-panel">
-      <div id="board"></div>
-      <p class="hint" id="board-note"></p>
-    </section>{{end}}
-    <section class="panel preview{{if .Playground}} playground{{end}}">
-      {{if .Playground}}<div class="panel-head"><h3>Preview</h3><span class="muted" id="where"></span></div>{{else}}<h3>Preview</h3>{{end}}
-      <img id="preview-img" alt="Preview of the page" hidden>
+    {{if .Playground}}<section class="panel preview playground">
+      <div class="panel-head"><h3>Preview</h3><span class="muted" id="where"></span></div>
+      <img id="preview-img" alt="Preview of the widget" hidden>
       <pre class="lcd" id="preview-text" hidden></pre>
       <p class="error" id="preview-error" hidden></p>
-    </section>
+    </section>{{else}}<section class="panel board-panel">
+      <div class="panel-head">
+        <h3>Board</h3>
+        <span class="muted" id="render-hint"></span>
+        <label class="cells-toggle" title="Show the cell boxes over the page"><input type="checkbox" id="show-cells" checked> Cells</label>
+      </div>
+      <div id="board"></div>
+      <p class="hint" id="board-note"></p>
+      <p class="error" id="preview-error" hidden></p>
+    </section>{{end}}
   </div>
   <div class="col">
     <section class="panel inspector" id="inspector"></section>

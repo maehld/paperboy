@@ -73,7 +73,7 @@ func TestPlayground(t *testing.T) {
 	body := preview(t, s, "/ui/plugins").Body.String()
 	for _, want := range []string{
 		`"playground":true`, `"display":"small"`, `id="palette"`, `id="inspector"`, `id="snippet"`,
-		"Copy cell", `href="/ui/plugins?display=small&amp;tab=gallery"`,
+		`id="preview-img"`, "Copy cell", `href="/ui/plugins?display=small&amp;tab=gallery"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("playground misses %q: %s", want, body)
