@@ -17,7 +17,7 @@
     reference: start.reference, // grid plugins declare their sizes on
     grid: start.grid, // grid a new page starts with
     shared: !!start.shared, // a new page is written as pages/<name>.yaml
-    playground: !!start.playground, // the widgets page: one widget, no page
+    widgetsPage: !!start.widgets_page, // the widgets page: one widget, no page
     usedBy: start.usedBy || [], // plans that name the page, for the delete warning
     fileDisplay: '', // display variant the file belongs to; empty: shared page
     hash: '',
@@ -47,7 +47,7 @@
   }
 
   function updateWhere() {
-    if (state.playground) {
+    if (state.widgetsPage) {
       const c = state.template && state.template.cells[0];
       el('where').textContent = [
         c ? c.widget + ' · ' + c.span[0] + '×' + c.span[1] : 'no widget yet',
@@ -63,17 +63,17 @@
 
   function updateSave() {
     const hasCell = !!state.template && !state.readOnly &&
-      (!state.playground || state.template.cells.length > 0);
-    // The page editor saves, the playground copies the cell: one button each.
+      (!state.widgetsPage || state.template.cells.length > 0);
+    // The page editor saves, the widgets page copies the cell: one button each.
     const save = el('save');
     if (save) save.disabled = !hasCell;
     const copy = el('copy-cell');
     if (copy) copy.disabled = !hasCell;
     const del = el('delete');
-    if (del) del.hidden = state.playground || !state.hash;
+    if (del) del.hidden = state.widgetsPage || !state.hash;
     const specialize = el('specialize');
     if (!specialize) return;
-    specialize.hidden = state.playground || !(hasCell && state.fileDisplay === '');
+    specialize.hidden = state.widgetsPage || !(hasCell && state.fileDisplay === '');
     if (!specialize.hidden) specialize.textContent = 'Save as ' + state.display + ' variant';
   }
 
@@ -81,7 +81,7 @@
   // inputs the operator is typing in: `origin` names the panel the edit came
   // from, and that panel keeps its elements (and so its focus and caret).
   function changed(origin) {
-    if (!state.playground) {
+    if (!state.widgetsPage) {
       state.dirty = true;
       setStatus('unsaved changes', '');
       updateWhere();
@@ -99,8 +99,8 @@
   // ---- model ----
 
   function blank() {
-    const grid = text() ? [state.width, state.height] : (state.playground ? state.reference.slice() : state.grid.slice());
-    return { title: state.playground ? '' : state.name, kind: state.kind, grid: grid, style: {}, cells: [] };
+    const grid = text() ? [state.width, state.height] : (state.widgetsPage ? state.reference.slice() : state.grid.slice());
+    return { title: state.widgetsPage ? '' : state.name, kind: state.kind, grid: grid, style: {}, cells: [] };
   }
 
   // normalize keeps the model in the shape serialize writes back: two-element
@@ -166,7 +166,7 @@
   // ---- page settings ----
 
   function renderSettings() {
-    if (state.playground) return;
+    if (state.widgetsPage) return;
     const t = state.template;
     const off = !t || state.readOnly;
     for (const id of ['title', 'cols', 'rows', 'padding', 'rule', 'text-size', 'divider', 'notices']) el(id).disabled = off;
@@ -303,7 +303,7 @@
 
   function pick(plugin, widget) {
     if (!state.template) return;
-    if (state.playground) {
+    if (state.widgetsPage) {
       showWidget(plugin, widget);
       return;
     }
@@ -315,7 +315,7 @@
     renderBoard();
   }
 
-  // showWidget puts one widget into the playground's single cell, at the first
+  // showWidget puts one widget into the widgets page's single cell, at the first
   // size its plugin declares (the whole display for text).
   function showWidget(plugin, widget) {
     const info = widgetInfo(plugin, widget);
@@ -433,7 +433,7 @@
   }
 
   function renderBoard() {
-    if (state.playground) return;
+    if (state.widgetsPage) return;
     const board = el('board');
     board.innerHTML = '';
     board.className = boardClasses();
@@ -575,14 +575,14 @@
     const box = el('inspector');
     box.innerHTML = '';
     const head = document.createElement('h3');
-    head.textContent = state.playground ? 'Widget' : 'Cell';
+    head.textContent = state.widgetsPage ? 'Widget' : 'Cell';
     box.appendChild(head);
     const t = state.template;
     const c = t && state.selected >= 0 ? t.cells[state.selected] : null;
     if (!c) {
       const p = document.createElement('p');
       p.className = 'empty';
-      p.textContent = state.playground
+      p.textContent = state.widgetsPage
         ? 'Pick a widget from the palette to change its size and its arguments.'
         : 'Select a cell to change its size, its arguments and its style.';
       box.appendChild(p);
@@ -733,7 +733,7 @@
     buttons.className = 'row-buttons';
     const remove = document.createElement('button');
     remove.type = 'button';
-    remove.textContent = state.playground ? 'Clear' : 'Delete cell';
+    remove.textContent = state.widgetsPage ? 'Clear' : 'Delete cell';
     remove.addEventListener('click', removeCell);
     buttons.appendChild(remove);
     box.appendChild(buttons);
@@ -749,9 +749,9 @@
     renderInspector();
   }
 
-  // ---- playground ----
+  // ---- widgets page ----
 
-  // cellSnippet writes the playground's cell the way a page file has it: YAML
+  // cellSnippet writes the widgets page's cell the way a page file has it: YAML
   // flow style with the args that differ from their defaults, like the gallery
   // snippet the server builds (ADR 0055).
   function cellSnippet(c) {
@@ -798,14 +798,14 @@
     pre.textContent = c ? cellSnippet(c) : '';
   }
 
-  // updateURL keeps the playground's link in step with the widget, so the view
+  // updateURL keeps the widgets page's link in step with the widget, so the view
   // can be shared and a reload comes back to it. Args travel as the plain text
   // the gallery forms send, not as JSON: the script reads them back by their
   // declared type, so a JSON-quoted string would keep its quotes.
   function updateURL() {
-    if (!state.playground) return;
+    if (!state.widgetsPage) return;
     const c = state.template && state.template.cells[0];
-    const params = new URLSearchParams({ tab: 'playground', display: state.display });
+    const params = new URLSearchParams({ display: state.display });
     if (c) {
       params.set('widget', c.widget);
       params.set('span', c.span[0] + 'x' + c.span[1]);
@@ -831,7 +831,7 @@
   // ---- preview ----
 
   // setRendering marks the board while a preview is on its way; only the page
-  // editor has the hint, so the playground skips it.
+  // editor has the hint, so the widgets page skips it.
   function setRendering(on) {
     const hint = el('render-hint');
     if (hint) hint.textContent = on ? 'rendering…' : '';
@@ -843,7 +843,7 @@
     state.previewTimer = setTimeout(preview, 350);
   }
 
-  // showPanelResult puts the playground's answer into the preview panel: an
+  // showPanelResult puts the widgets page's answer into the preview panel: an
   // image, text lines or the error.
   async function showPanelResult(res) {
     const img = el('preview-img');
@@ -930,7 +930,7 @@
   }
 
   async function preview() {
-    if (state.playground) return previewPanel();
+    if (state.widgetsPage) return previewPanel();
     const error = el('preview-error');
     if (!state.template) {
       clearBoardPreview();
@@ -967,7 +967,7 @@
     await showBoardResult(res);
   }
 
-  // previewPanel is the playground's preview: one widget in its own size, not
+  // previewPanel is the widgets page's preview: one widget in its own size, not
   // the page around it.
   async function previewPanel() {
     const img = el('preview-img');
@@ -988,7 +988,7 @@
     await previewWidget();
   }
 
-  // previewWidget renders the playground's widget in its own size, not the page
+  // previewWidget renders the widgets page's widget in its own size, not the page
   // around it.
   async function previewWidget() {
     const img = el('preview-img');
@@ -1025,8 +1025,8 @@
 
   async function load() {
     setStatus('');
-    if (state.playground) {
-      loadPlayground();
+    if (state.widgetsPage) {
+      loadWidgetsPage();
       return;
     }
     const res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '?display=' + encodeURIComponent(state.display), { cache: 'no-store' });
@@ -1062,9 +1062,9 @@
     renderAll();
   }
 
-  // loadPlayground starts the widgets page: one cell, filled from the link when
+  // loadWidgetsPage starts the widgets page: one cell, filled from the link when
   // it names a widget.
-  function loadPlayground() {
+  function loadWidgetsPage() {
     state.template = blank();
     state.fileDisplay = '';
     state.hash = '';
@@ -1090,7 +1090,7 @@
 
   async function save() {
     if (!state.template) return;
-    if (state.playground) return copyCell();
+    if (state.widgetsPage) return copyCell();
     setStatus('saving…', '');
     let res;
     try {
@@ -1184,7 +1184,7 @@
 
   // ---- wiring ----
 
-  // The playground shares this script but not every panel, so each hook asks
+  // The widgets page shares this script but not every panel, so each hook asks
   // whether its element is there.
   const on = (id, event, handler) => {
     const node = el(id);

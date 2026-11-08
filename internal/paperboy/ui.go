@@ -58,7 +58,6 @@ type dashboardDevice struct {
 }
 
 type dashboardPage struct {
-	Now       string
 	Version   string // build label: version, commit and commit date
 	GoVersion string
 	Devices   []dashboardDevice
@@ -120,7 +119,6 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		loc = time.UTC
 	}
 	page := dashboardPage{
-		Now:       now.In(loc).Format("15:04:05"),
 		Version:   versionText(build, loc),
 		GoVersion: build.Go,
 		Devices:   cards,

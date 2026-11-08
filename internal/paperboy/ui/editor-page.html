@@ -3,26 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{if .Playground}}Widgets{{else}}{{.Name}} · Editor{{end}} · Paperboy</title>
+<title>{{if .WidgetsPage}}Widgets{{else}}{{.Name}} · Editor{{end}} · Paperboy</title>
 <link rel="stylesheet" href="/ui/ui.css">
 <style>
 body { padding: 1.2rem 1.5rem 2rem; font-size: 15px; }
 /* The editor fills the window: the toolbar stays put and the three columns
    scroll on their own, so a long palette never carries the board away. */
-body.editor { height: 100vh; height: 100dvh; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
-body.editor > header { margin: 1rem 1.5rem .8rem; }
-body.editor > .bar { margin: 0 1.5rem .3rem; }
-body.editor > .switch { margin: 0 1.5rem .9rem; }
-body.editor > .tabs { margin: 0 1.5rem .6rem; }
+body.editor { height: 100vh; height: 100dvh; padding: 1.5rem 1.5rem 0; display: flex; flex-direction: column; overflow: hidden; }
+body.editor > header { margin: 0 0 1rem; }
+body.editor > .bar { margin: 0 0 .3rem; }
+body.editor > .switch { margin: 0 0 .9rem; }
 a { color: #134e9c; }
 .bar { margin-bottom: .3rem; }
 .error { margin: .5rem 0; padding: .5rem .6rem; background: #fff2f2; border-left: 3px solid #c22; font-size: .85rem; word-break: break-word; }
 main { display: grid; grid-template-columns: 16rem minmax(0, 1fr) 22rem; gap: 1rem; align-items: stretch; }
-body.editor main { flex: 1; min-height: 0; padding: 0 1.5rem 1rem; }
+body.editor main { flex: 1; min-height: 0; padding: 0 0 1rem; }
 @media (max-width: 62rem) {
   main { grid-template-columns: minmax(0, 1fr); }
   body.editor { height: auto; overflow: visible; }
-  body.editor main { padding: 0 1.5rem 1rem; }
+  body.editor main { padding: 0; }
   .col { overflow: visible; }
 }
 .col { display: flex; flex-direction: column; gap: 1rem; min-width: 0; min-height: 0; }
@@ -65,7 +64,7 @@ input[type=search] { margin-bottom: .4rem; }
 .palette button.widget.active { border-color: #134e9c; background: #e2ecfb; }
 .palette .note { display: block; color: #888; font-size: .72rem; }
 .preview img { display: block; width: 100%; height: auto; border: 1px solid #ccc; background: #fff; image-rendering: pixelated; }
-.preview.playground img { width: auto; max-width: 100%; }
+.preview.single img { width: auto; max-width: 100%; }
 .lcd { margin: 0; padding: .5rem .6rem; background: #2d4a12; color: #d8f5a0; font: .95rem/1.25 ui-monospace, Consolas, monospace; white-space: pre; overflow-x: auto; border-radius: 4px; }
 .inspector .empty { margin: 0; color: #888; font-size: .85rem; }
 .inspector .arg { margin-bottom: .35rem; }
@@ -80,18 +79,16 @@ input[type=search] { margin-bottom: .4rem; }
 <body class="editor">
 <header>
   <h1>Paperboy</h1>
-  <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a{{if .Playground}} class="active"{{end}} href="/ui/plugins">Widgets</a> · <a{{if not .Playground}} class="active"{{end}} href="/ui/editor">Editor</a></nav>
+  <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a{{if .WidgetsPage}} class="active"{{end}} href="/ui/plugins">Widgets</a> · <a{{if not .WidgetsPage}} class="active"{{end}} href="/ui/editor">Editor</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
 </header>
 {{if .Error}}
 <p class="error">{{.Error}}</p>
-<p><a href="{{if .Playground}}/ui/plugins{{else}}/ui/editor?tab=pages{{end}}">← {{if .Playground}}Widgets{{else}}Pages{{end}}</a></p>
+<p><a href="{{if .WidgetsPage}}/ui/plugins{{else}}/ui/editor?tab=pages{{end}}">← {{if .WidgetsPage}}Widgets{{else}}Pages{{end}}</a></p>
 {{else}}
-{{if .Playground}}<nav class="tabs">
-  {{range .Tabs}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Label}}</a>{{end}}
-</nav>
+{{if .WidgetsPage}}
 <div class="bar">
-  <h2>{{if .Widget}}{{.Widget}}{{else}}Playground{{end}}</h2>
+  <h2>{{if .Widget}}widget {{.Widget}}{{else}}widgets{{end}}</h2>
   <span class="spacer"></span>
   <span class="status" id="status"></span>
   <button id="reload" type="button">Reload</button>
@@ -113,7 +110,7 @@ input[type=search] { margin-bottom: .4rem; }
 </div>
 <main>
   <div class="col">
-    {{if not .Playground}}<section class="panel">
+    {{if not .WidgetsPage}}<section class="panel">
       <h3>Page</h3>
       <label class="field"><span>Title</span><input id="title" autocomplete="off"></label>
       <label class="field"><span>Grid</span><span class="grid2"><input id="cols" type="number" min="1" max="80" title="columns"><input id="rows" type="number" min="1" max="80" title="rows"></span></label>
@@ -129,12 +126,12 @@ input[type=search] { margin-bottom: .4rem; }
     <section class="panel palette">
       <h3>Widgets</h3>
       <input id="palette-filter" type="search" placeholder="Filter widgets…" autocomplete="off" aria-label="Filter widgets">
-      <p class="hint">{{if .Playground}}Click a widget to show it on the right.{{else}}Click a widget, then a free cell. Dragging works too, both a widget from this list and a box on the board, which moves the widget.{{end}}</p>
+      <p class="hint">{{if .WidgetsPage}}Click a widget to show it on the right.{{else}}Click a widget, then a free cell. Dragging works too, both a widget from this list and a box on the board, which moves the widget.{{end}}</p>
       <div id="palette"></div>
     </section>
   </div>
   <div class="col">
-    {{if .Playground}}<section class="panel preview playground">
+    {{if .WidgetsPage}}<section class="panel preview single">
       <div class="panel-head"><h3>Preview</h3><span class="muted" id="where"></span></div>
       <img id="preview-img" alt="Preview of the widget" hidden>
       <pre class="lcd" id="preview-text" hidden></pre>
@@ -152,7 +149,7 @@ input[type=search] { margin-bottom: .4rem; }
   </div>
   <div class="col">
     <section class="panel inspector" id="inspector"></section>
-    {{if .Playground}}<section class="panel">
+    {{if .WidgetsPage}}<section class="panel">
       <div class="panel-head"><h3>Snippet</h3><button class="primary" id="copy-cell" type="button" disabled>Copy cell</button></div>
       <pre class="snippet" id="snippet"></pre>
       <p class="hint">Paste it into <code>cells:</code> of a page.</p>
