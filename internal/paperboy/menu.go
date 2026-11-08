@@ -35,7 +35,7 @@ const (
 	// actionBudget bounds how long a sync waits for a running action, so a slow
 	// plugin never holds the device open for its full timeout (ADR 0057).
 	actionBudget = 5 * time.Second
-	// pluginActionTimeout bounds the background run of an action (ADR 0061).
+	// pluginActionTimeout bounds the background run of an action (ADR 0062).
 	pluginActionTimeout = 30 * time.Second
 )
 
@@ -454,7 +454,7 @@ type actionRun struct {
 	message string
 }
 
-// startAction runs an action in the background (ADR 0061): the sync waits at
+// startAction runs an action in the background (ADR 0062): the sync waits at
 // most actionBudget for it, and a longer run reports its result with the next
 // wake of reason "result".
 func (s *Server) startAction(cfg *Config, d *Device, a menuAction, now time.Time) *actionRun {

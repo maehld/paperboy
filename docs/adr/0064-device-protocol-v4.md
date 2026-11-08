@@ -1,4 +1,4 @@
-# 0061: Device protocol v4 – event identities and explicit wake reasons
+# 0064: Device protocol v4 – event identities and explicit wake reasons
 
 - Status: Proposed
 - Date: 2026-11-07

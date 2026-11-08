@@ -15,7 +15,7 @@ RTC_DATA_ATTR static char pb_shown_hash[32];  // hash of the image on the panel
 RTC_DATA_ATTR static int pb_refresh_s;         // last refresh_s from Paperboy
 RTC_DATA_ATTR static char pb_note[120];        // one warning for the next sync, e.g. a failed download
 
-// Event queue and identities (ADR 0061). They live in RTC memory so that a
+// Event queue and identities (ADR 0062). They live in RTC memory so that a
 // failed sync keeps its events and resends them with the same IDs.
 RTC_DATA_ATTR static uint32_t pb_event_seq;      // last assigned event ID
 RTC_DATA_ATTR static char pb_event_queue[1200];  // queued events as JSON objects, comma separated
@@ -46,7 +46,7 @@ inline void pb_init_rtc() {
 }
 
 // True while an image was downloaded and still has to be reported as shown,
-// after the panel painted it (ADR 0061).
+// after the panel painted it (ADR 0062).
 static bool pb_paint_pending = false;
 
 // Battery reading of this wake; NAN = not measured. Set by the device file's
@@ -116,7 +116,7 @@ inline void pb_button(const std::string &role) {
 
 // One tap is one event: the panel reports a position continuously while a
 // finger rests on it, so the first report within touchGap is taken and the
-// rest are dropped (ADR 0061).
+// rest are dropped (ADR 0062).
 inline void pb_touch(int x, int y) {
   static uint32_t last_ms;
   uint32_t now_ms = esphome::millis();
@@ -141,7 +141,7 @@ inline void pb_log(const std::string &level, const std::string &message) {
 inline bool pb_has_events() { return pb_event_queue[0] != 0; }
 
 // pb_sync_body builds the sync body from the queued events; the queue is only
-// dropped by pb_sync_done after Paperboy accepted it (ADR 0061), so a failed
+// dropped by pb_sync_done after Paperboy accepted it (ADR 0062), so a failed
 // request resends the same events with the same IDs.
 inline std::string pb_sync_body(const std::string &firmware, const std::string &hardware, const std::string &reason,
                                 int rssi) {
@@ -181,7 +181,7 @@ inline void pb_sync_done() {
   pb_logs.clear();
 }
 
-// The next wake is a one-shot with its own reason and delay (ADR 0061).
+// The next wake is a one-shot with its own reason and delay (ADR 0062).
 inline void pb_set_wake(const std::string &reason, uint32_t seconds) {
   std::strncpy(pb_next_reason, reason.c_str(), sizeof(pb_next_reason) - 1);
   pb_next_reason[sizeof(pb_next_reason) - 1] = 0;

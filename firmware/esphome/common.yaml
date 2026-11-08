@@ -157,7 +157,7 @@ globals:
   - id: busy
     type: bool
     initial_value: "false"
-  # Sync attempts of this wake with their own retry (ADR 0061).
+  # Sync attempts of this wake with their own retry (ADR 0062).
   - id: sync_attempts
     type: int
     initial_value: "0"
@@ -179,7 +179,7 @@ online_image:
     update_interval: never
     on_download_finished:
       # The hash is stored after the paint (after_paint), so a sync that
-      # reports "shown" proves the panel really shows that image (ADR 0061).
+      # reports "shown" proves the panel really shows that image (ADR 0062).
       - lambda: "pb_paint_pending = true;"
       - component.update: epaper_display
       - script.execute: after_paint
@@ -206,7 +206,7 @@ script:
       - script.stop: setup_limit
       - script.execute: awake_limit
       # A one-shot wake reason from the last sync (menu, result) wins over the
-      # wake the hardware decoded (ADR 0061).
+      # wake the hardware decoded (ADR 0062).
       - lambda: "id(wake_reason) = pb_take_reason(id(wake_reason));"
       # After deep sleep and in the awake loop the radio needs a few seconds.
       # A request before that fails as "not connected" and used to send the
@@ -385,7 +385,7 @@ script:
               - logger.log: "registration request failed"
 
   # One POST /api/device/sync per attempt; the outcome is left in sync_result.
-  # A failed request keeps the event queue and retries (ADR 0061).
+  # A failed request keeps the event queue and retries (ADR 0062).
   - id: do_sync
     mode: single
     then:
@@ -448,7 +448,7 @@ script:
                     id(fw_path) = root["firmware"]["path"] | "";
                     id(fw_md5) = root["firmware"]["md5"] | "";
                     // A one-shot wake reason (menu, result) overrides the next
-                    // sleep (ADR 0061).
+                    // sleep (ADR 0062).
                     std::string wake = root["wake"]["reason"] | "";
                     int after = root["wake"]["after_s"] | 0;
                     if (!wake.empty() && after > 0) {
@@ -554,7 +554,7 @@ script:
           timeout: 15s
       - lambda: |-
           // The panel painted the new image: only now does the shown hash
-          // describe what the display really shows (ADR 0061).
+          // describe what the display really shows (ADR 0062).
           if (pb_paint_pending) {
             pb_remember(id(image_hash));
             pb_paint_pending = false;

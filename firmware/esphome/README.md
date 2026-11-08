@@ -20,7 +20,7 @@ installation, nothing installation-specific is compiled in.
 | Step | Request | Notes |
 |---|---|---|
 | First contact | `POST /api/device/register` with `mac`, `hardware`, `firmware` | the key is kept in flash; `403` shows "Paperboy does not know this display" with the MAC |
-| Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `rssi`, `power`, `log` | `401` drops the key, registers again and repeats the sync; a failed request keeps the event queue and is retried up to three times (ADR 0061) |
+| Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `rssi`, `power`, `log` | `401` drops the key, registers again and repeats the sync; a failed request keeps the event queue and is retried up to three times (ADR 0062) |
 | No key | `POST /api/device/register` is retried three times as well | without a key and with an unreachable server the device shows the setup screen with its address and the URL it has, instead of sleeping silently |
 | Unchanged content | `image.hash` equals the hash on the panel | no download, no paint |
 | Firmware offer | `firmware` in the sync answer (ADR 0043) | flash `<Paperboy URL><path>` with its MD5 and reboot; a failure is reported in the next sync's `log` |
@@ -38,7 +38,7 @@ sees USB power and always reports `battery`, so an E1001 on a charger needs
 Buttons are sent by role. Sticky: **down = `next`, up = `previous`, ok =
 `home`**. E1001 from left to right: **`previous`, `next`, `home` (green)**.
 Every event carries a monotonically increasing `id` and stays in an RTC queue
-until Paperboy confirms the sync (ADR 0061), so a retry is applied exactly
+until Paperboy confirms the sync (ADR 0062), so a retry is applied exactly
 once. The Sticky sends taps, not the continuous touch stream: `pb_touch` drops
 reports within 800 ms of the previous one, and Paperboy maps the tap onto the
 device menu (ADR 0057, issue #54). A failed download, sync or Wi-Fi connection

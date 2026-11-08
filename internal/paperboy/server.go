@@ -36,7 +36,7 @@ type Server struct {
 	mu    sync.Mutex
 	state map[string]*deviceState // device ID → state
 	plans *planLoader             // device plans (ADR 0025)
-	// actionRuns holds the actions that outlive their sync (ADR 0061).
+	// actionRuns holds the actions that outlive their sync (ADR 0062).
 	actionRuns map[string]*actionRun
 
 	rendered  map[string]*renderedPage // "<profile>/<page>" → last render
