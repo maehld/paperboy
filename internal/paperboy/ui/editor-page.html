@@ -113,7 +113,7 @@ code { font: .85rem ui-monospace, Consolas, monospace; background: #f2f2f2; padd
 <body class="editor">
 <header>
   <h1>Paperboy</h1>
-  <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/plugins"{{if .Playground}} class="active"{{end}}>Widgets</a> · <a href="/ui/editor"{{if not .Playground}} class="active"{{end}}>Editor</a></nav>
+  <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a{{if .Playground}} class="active"{{end}} href="/ui/plugins">Widgets</a> · <a{{if not .Playground}} class="active"{{end}} href="/ui/editor">Editor</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
 </header>
 {{if .Error}}
