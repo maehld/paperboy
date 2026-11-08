@@ -62,3 +62,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0064](0064-device-protocol-v4.md) | Device protocol v4 – event identities and explicit wake reasons | Proposed |
 | [0065](0065-plugin-state-directory.md) | A state directory per plugin | Accepted, implemented |
 | [0066](0066-page-and-plan-api.md) | A page and plan API for an editor | Accepted, implemented |
+| [0067](0067-buttons-and-the-menu.md) | Buttons – home opens the menu, long presses page | Accepted, implemented |

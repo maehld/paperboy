@@ -46,12 +46,14 @@ Buttons are sent by role. Sticky: **down = `next`, up = `previous`, ok =
 `home`**. E1001 from left to right: **`previous`, `next`, `home` (green)**.
 Every event carries a monotonically increasing `id` and stays in an RTC queue
 until Paperboy confirms the sync (ADR 0064), so a retry is applied exactly
-once. The Sticky sends taps, not the continuous touch stream: `pb_touch` drops
-reports within 800 ms of the previous one, and Paperboy maps the tap onto the
-device menu (ADR 0057, issue #54). A failed download, sync or Wi-Fi connection
-is kept in RTC memory and reported in the next sync's `log`. After power-on the
-device stays awake 3 minutes so its web UI can be used; a limit of 120 s after
-the last input forces deep sleep otherwise.
+once. A press is queued when the button is released or after 700 ms while it
+is held, with the measured `hold_ms`; what counts as a long press is decided
+by Paperboy (ADR 0067). The Sticky sends taps, not the continuous touch stream:
+`pb_touch` drops reports within 800 ms of the previous one, and Paperboy maps
+the tap onto the device menu (ADR 0057, issue #54). A failed download, sync or
+Wi-Fi connection is kept in RTC memory and reported in the next sync's `log`.
+After power-on the device stays awake 3 minutes so its web UI can be used; a
+limit of 120 s after the last input forces deep sleep otherwise.
 
 ## Settings on the device
 

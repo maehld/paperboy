@@ -246,7 +246,7 @@ func TestMenuPlanTitleWins(t *testing.T) {
 	}
 }
 
-func TestMenuLongHomeClosesAndGoesToFirstPage(t *testing.T) {
+func TestMenuLongHomeClosesAndKeepsThePage(t *testing.T) {
 	s, _, _ := menuServer(t, menuPlanActions, nil)
 	dev := menuDevice(t, s)
 	displayPage(t, s, dev)
@@ -256,8 +256,104 @@ func TestMenuLongHomeClosesAndGoesToFirstPage(t *testing.T) {
 	if st := s.state["test"]; st.Menu.Open {
 		t.Fatalf("long home must close the menu: %+v", st.Menu)
 	}
-	if got := pagePath(out); !strings.Contains(got, "/eins/") {
-		t.Fatalf("long home must go to the first page: %q", got)
+	if got := pagePath(out); !strings.Contains(got, "/zwei/") {
+		t.Fatalf("long home must keep the page: %q", got)
+	}
+}
+
+// TestMenuOpensWithoutActions covers the empty menu: a short home opens it
+// even when the plan offers no actions, and any input dismisses it (ADR 0067).
+func TestMenuOpensWithoutActions(t *testing.T) {
+	s, _, _ := menuServer(t, "", nil)
+	dev := menuDevice(t, s)
+	base := pagePath(displayPage(t, s, dev))
+	out := press(t, s, dev, buttonHome)
+	if pagePath(out) == base {
+		t.Fatal("the empty menu must show a banner")
+	}
+	st := s.state["test"]
+	if !st.Menu.Open || st.Menu.Phase != menuEmptyPhase {
+		t.Fatalf("menu state: %+v", st.Menu)
+	}
+	wake, ok := out["wake"].(map[string]any)
+	if !ok || wake["reason"] != "menu" || wake["after_s"].(float64) > 10 {
+		t.Fatalf("the empty menu must close after at most ten seconds: %v", out["wake"])
+	}
+	// Any input dismisses the banner and leaves the page unchanged.
+	out = press(t, s, dev, buttonNext)
+	if got := pagePath(out); got != base {
+		t.Fatalf("dismissing the banner paged: %q, want %q", got, base)
+	}
+	if st := s.state["test"]; st.Menu.Open {
+		t.Fatalf("input must dismiss the empty menu: %+v", st.Menu)
+	}
+}
+
+// TestMenuLongNextGoesToFirstPage checks the new home of "go to start": a long
+// next or previous with the menu closed, while a short press keeps paging.
+func TestMenuLongNextGoesToFirstPage(t *testing.T) {
+	s, _, _ := menuServer(t, menuPlanActions, nil)
+	dev := menuDevice(t, s)
+	displayPage(t, s, dev)
+	press(t, s, dev, buttonNext) // page zwei
+	if got := pagePath(pressShown(t, s, dev, "", []int{800}, buttonNext)); !strings.Contains(got, "/eins/") {
+		t.Fatalf("long next must go to the first page: %q", got)
+	}
+	if st := s.state["test"]; st.Menu.Open {
+		t.Fatalf("a long next must not open the menu: %+v", st.Menu)
+	}
+	if got := pagePath(press(t, s, dev, buttonNext)); !strings.Contains(got, "/zwei/") {
+		t.Fatalf("a short next must page: %q", got)
+	}
+	if got := pagePath(pressShown(t, s, dev, "", []int{800}, buttonPrevious)); !strings.Contains(got, "/eins/") {
+		t.Fatalf("long previous must go to the first page: %q", got)
+	}
+}
+
+// TestMenuLongPressInsideTheMenuIsIgnored keeps the direction buttons simple
+// while the menu is open (ADR 0067).
+func TestMenuLongPressInsideTheMenuIsIgnored(t *testing.T) {
+	s, _, _ := menuServer(t, menuPlanActions, nil)
+	dev := menuDevice(t, s)
+	displayPage(t, s, dev)
+	press(t, s, dev, buttonHome) // opens on act/go
+	before := s.state["test"].Menu.Selected
+	out := pressShown(t, s, dev, "", []int{800}, buttonPrevious)
+	st := s.state["test"]
+	if !st.Menu.Open || st.Menu.Selected != before {
+		t.Fatalf("a long press must not move the selection: %+v", st.Menu)
+	}
+	if st.Page != 0 {
+		t.Fatalf("a long press in the menu must not page: %v", st.Page)
+	}
+	// The menu is still shown over the first page.
+	if got := pagePath(out); !strings.Contains(got, "/hints/") {
+		t.Fatalf("the menu overlay must stay served: %q", got)
+	}
+}
+
+func TestMenuHoldThreshold(t *testing.T) {
+	if held(0) || held(699) {
+		t.Error("a press below 700 ms is short")
+	}
+	if !held(700) || !held(1500) {
+		t.Error("a press of 700 ms and more is long")
+	}
+}
+
+// TestMenuTapDismissesEmptyBanner closes the empty menu on the Sticky, which
+// has no long-press-free exit beside the expiry.
+func TestMenuTapDismissesEmptyBanner(t *testing.T) {
+	s, _, _ := menuServer(t, "", nil)
+	dev := menuDevice(t, s)
+	base := pagePath(displayPage(t, s, dev))
+	press(t, s, dev, buttonHome)
+	out := tapAt(t, s, dev, 200, 20, "")
+	if st := s.state["test"]; st.Menu.Open {
+		t.Fatalf("a tap must dismiss the empty menu: %+v", st.Menu)
+	}
+	if got := pagePath(out); got != base {
+		t.Fatalf("dismissing the banner paged: %q, want %q", got, base)
 	}
 }
 
