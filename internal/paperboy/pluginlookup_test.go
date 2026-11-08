@@ -44,7 +44,7 @@ func TestPluginProgramLookup(t *testing.T) {
 	if program, version := pluginProgram(dir, "weather", "v2.0.0"); program != plain || version != "" {
 		t.Fatalf("unversioned beats the pin: %q %q", program, version)
 	}
-	if program, _ := pluginProgram(dir, "calendar", ""); program != "" {
+	if program, _ := pluginProgram(dir, "nopebin", ""); program != "" {
 		t.Fatalf("unknown plugin: %q", program)
 	}
 }
