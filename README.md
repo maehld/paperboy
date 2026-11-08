@@ -65,7 +65,6 @@ download:
 - A program **without** a version in `plugins/` (`weather`) always wins - it is your build - and is neither replaced nor pinned; download it by hand or delete it to hand the plugin back to the releases.
 - Existing files are never overwritten or deleted, so versions pile up and are removed by hand. Deleting a newer plugin file rolls back to the older one for the rest of the server run; a `version` pin keeps the older one across restarts, and a firmware pin keeps the older image on offer.
 - The dashboard shows the source, the last check, the running check, the versions in use and the last error.
-- The dashboard shows the source, the last check, the versions in use and the last error.
 
 ## Instance directory
 
