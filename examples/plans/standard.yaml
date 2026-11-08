@@ -10,8 +10,11 @@ rules:
 fallback: tag
 
 # Actions the device menu offers (ADR 0057). They belong to the plan, so every
-# page above offers them. evcc provides "mode" and "loadpoint"; see
-# docs/plugins/evcc.md and docs/plugins/protocol.md.
+# page above offers them. evcc's "mode" action switches the charge mode of one
+# loadpoint; see docs/plugins/evcc.md. Uncomment one "now" and one "PV only"
+# entry per loadpoint you can reach from the display.
 # actions:
 #   - { action: evcc/mode, args: { loadpoint: 0, mode: now }, id: charge-now, title: "Charge now" }
+#   - { action: evcc/mode, args: { loadpoint: 0, mode: pv }, id: charge-pv, title: "PV only" }
+#   - { action: evcc/mode, args: { loadpoint: 1, mode: now }, id: charge-now-2, title: "Charge now" }
 #   - { action: paperboy/refresh }

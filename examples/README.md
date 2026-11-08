@@ -32,7 +32,9 @@ The plugin names in the pages are the keys under `plugins` in `paperboy.yaml`;
 
 `plans/standard.yaml` pages through the four pages during the day and shows
 the overview at night. Copy it into the `plans/` directory of your instance and
-point a device at it with `plan: standard`.
+point a device at it with `plan: standard`. Its commented `evcc/mode` actions
+switch a loadpoint's charge mode from the device menu, one "now" and one "PV
+only" entry per loadpoint; uncomment the ones you need.
 
 `plans/tour.yaml` rotates through every example page and so through all
 shipped plugins: on weekday mornings weather, departures, the week and the
