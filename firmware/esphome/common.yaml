@@ -330,6 +330,7 @@ script:
   # retried, and an unreachable or wrong Paperboy URL ends in the setup screen
   # instead of a silent deep sleep, so the operator can correct it.
   - id: do_register
+    mode: single
     then:
       - lambda: "id(reg_attempts) = 0;"
       - while:
@@ -346,6 +347,7 @@ script:
                   - delay: 2s
 
   - id: do_register_once
+    mode: single
     then:
       - http_request.post:
           url: !lambda 'return pb_base(id(paperboy_url).state) + "/api/device/register";'
@@ -385,6 +387,7 @@ script:
   # One POST /api/device/sync per attempt; the outcome is left in sync_result.
   # A failed request keeps the event queue and retries (ADR 0061).
   - id: do_sync
+    mode: single
     then:
       - lambda: "id(sync_attempts) = 0;"
       - while:
@@ -401,6 +404,7 @@ script:
                   - delay: 2s
 
   - id: do_sync_once
+    mode: single
     then:
       - script.execute: read_battery
       - script.wait: read_battery
@@ -473,7 +477,16 @@ script:
     mode: single
     then:
       - script.stop: after_paint
-      - lambda: "id(busy) = true;"
+      - lambda: |-
+          // Never judge "unchanged" from a stale answer: if the request does
+          // not run, sync_result stays 0 and the cycle fails instead of
+          // repainting the same page in a loop.
+          id(busy) = true;
+          id(sync_result) = 0;
+          id(image_path) = "";
+          id(image_hash) = "";
+      - script.stop: do_sync
+      - script.stop: do_sync_once
       - script.execute: do_sync
       - script.wait: do_sync
       - if:
@@ -569,6 +582,10 @@ script:
   - id: go_sleep
     mode: restart
     then:
+      # A cycle that ends here was often abandoned midway; without this the
+      # busy flag stayed set and every later button press only queued an event
+      # that nobody sent.
+      - lambda: "id(busy) = false;"
       - if:
           condition:
             lambda: "return id(stay_awake) && !id(setup_mode);"
@@ -588,6 +605,7 @@ script:
     then:
       - delay: 120s
       - logger.log: "awake limit: forcing deep sleep"
+      - lambda: "id(busy) = false;"
       - script.execute: go_sleep
 
   # Setup waits for the operator, but not forever: retry in an hour.
