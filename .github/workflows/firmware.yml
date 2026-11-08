@@ -55,6 +55,18 @@ jobs:
           path: ~/.platformio
           key: platformio-esphome-${{ env.ESPHOME_VERSION }}
 
+      # ESPHome 2026.10.1 keeps the ESP-IDF framework, its toolchains and the
+      # Python environments under ~/.cache/esphome/idf; downloading them from
+      # GitHub is the most fragile step of the whole CI (issue 66). The key is
+      # the ESPHome pin, which fixes the ESP-IDF version (ADR 0056); without
+      # restore-keys an entry of another pin cannot shadow the pin.
+      - name: Cache ESP-IDF
+        id: cache-idf
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/esphome/idf
+          key: esphome-idf-${{ env.ESPHOME_VERSION }}
+
       - name: Cache ESPHome packages
         uses: actions/cache@v4
         with:
@@ -69,7 +81,19 @@ jobs:
 
       - name: Compile
         working-directory: firmware/esphome
-        run: esphome compile "${{ matrix.hardware }}.yaml"
+        env:
+          HARDWARE: ${{ matrix.hardware }}
+          IDF_CACHE_HIT: ${{ steps.cache-idf.outputs.cache-hit }}
+        run: |
+          log="$RUNNER_TEMP/compile-$HARDWARE.log"
+          esphome compile "$HARDWARE.yaml" 2>&1 | tee "$log"
+          # A warm cache holds the framework and its toolchains, so a download
+          # means the cached path or the key is wrong. Fail loudly instead of
+          # hiding it.
+          if [ "$IDF_CACHE_HIT" = "true" ] && grep -q "Downloading ESP-IDF" "$log"; then
+            echo "::error::ESP-IDF was downloaded despite a warm cache"
+            exit 1
+          fi
 
       - name: Package
         working-directory: firmware/esphome
