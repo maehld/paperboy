@@ -45,6 +45,19 @@ inline void pb_init_rtc() {
   pb_shown_hash[0] = 0;
 }
 
+// Cycle timing. millis() counts from the last boot, and a button press wakes
+// the chip from deep sleep, so the numbers start at the press. Every line
+// carries the milliseconds since boot and the delta to the line before, which
+// shows how a page change spends its time on Wi-Fi, sync, download and paint.
+static uint32_t pb_time_last = 0;
+
+inline void pb_time(const char *step) {
+  uint32_t now = esphome::millis();
+  ESP_LOGI("paperboy", "timing %s: %lu ms (+%lu)", step, (unsigned long) now,
+           (unsigned long) (pb_time_last == 0 ? 0 : now - pb_time_last));
+  pb_time_last = now;
+}
+
 // True while an image was downloaded and still has to be reported as shown,
 // after the panel painted it (ADR 0064).
 static bool pb_paint_pending = false;
