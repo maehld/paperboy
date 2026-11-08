@@ -53,6 +53,7 @@ const (
 type Spec struct {
 	Name    string
 	Command []string
+	Version string // downloaded plugin version, e.g. v2.1.0; empty for a hand-built or PATH program
 	Timeout time.Duration
 	Env     map[string]string
 	Dir     string         // plugins directory: lookup root and working directory

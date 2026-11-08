@@ -9,28 +9,26 @@
 
 # Plugins provide the widgets of the pages (ADR 0049). A plugin is a program in
 # plugins/ (unpack paperboy-plugins-<os>-<arch>.zip there) or on PATH that keeps
-# running; Paperboy sends it its config section
+# running and is named like the plugin; Paperboy sends it its config section
 # once after the start. ${VAR} in config values comes from the environment, so
 # secrets stay out of this file. The built-in plugin "paperboy" (header, text,
 # clock) needs no entry.
+#
+# Downloaded programs are named <plugin>-v<version> (ADR 0060). Without
+# "version" the highest one runs; a version pins exactly that program. A
+# program without a version in plugins/ always wins (your own build).
 plugins:
   evcc:
-    command: [evcc]
     config: { url: "http://evcc:7070" }
   weather:
-    command: [weather]
     config: { lat: 52.52, lon: 13.40 }
   pokedex:
-    command: [pokedex]
     config: { mode: random, rotate: 24h }   # or: { pokemon: pikachu }
   xkcd:
-    command: [xkcd]
     config: { comic: latest }
   departures:
-    command: [departures]
     config: { stop: "City, Stop name", walk_minutes: 4 }   # Westfalenfahrplan by default, see docs/plugins/departures.md
   calendar:
-    command: [calendar]
     timeout: 1m
     config:
       caldav: https://caldav.icloud.com
@@ -43,11 +41,18 @@ defaults:
   page_timeout: 5m
   # battery: { warn_volts: 3.45, critical_volts: 3.3, hysteresis_volts: 0.1 }
 
-# Optional firmware updates (ADR 0043) from firmware/<hardware>/<hardware>-<version>.bin
+# Optional firmware updates (ADR 0043) from firmware/<hardware>-v<version>.bin
 # in the instance directory; the highest version is offered in the sync.
 # firmware:
 #   update: auto            # auto or off; default off
 #   min_battery_volts: 3.6
+#   version: v1.0.0         # optional: exactly these images, also the rollback pin (ADR 0060)
+
+# Optional: fetch plugin programs and firmware images from the releases instead
+# of unpacking the zips by hand (ADR 0060). Off without this section.
+# download:
+#   source: https://github.com/maehld/paperboy   # optional, a fork or mirror
+#   token: ${GITHUB_TOKEN}                       # optional: rate limits, private forks
 
 display_types:
   e1001:

@@ -74,6 +74,18 @@ dd.oneline .muted { font-size: .78rem; }
 {{else}}
 <p class="empty">No devices configured.</p>
 {{end}}
-{{if .FirmwareIssues}}<p class="error">Ignored firmware files (expected &lt;hardware&gt;-&lt;version&gt;.bin): {{range $i, $f := .FirmwareIssues}}{{if $i}}, {{end}}{{$f}}{{end}}</p>{{end}}
+{{if .Downloads}}
+<section class="card downloads">
+  <h2>Downloads</h2>
+  <dl>
+    <dt>Source</dt><dd>{{.Downloads.Source}}</dd>
+    <dt>Last check</dt><dd>{{.Downloads.LastCheck}}{{if .Downloads.LastOK}} <span class="muted">· last success {{.Downloads.LastOK}}</span>{{end}}</dd>
+    {{if .Downloads.Plugins}}<dt>Plugins</dt><dd>{{range $i, $p := .Downloads.Plugins}}{{if $i}}, {{end}}{{$p}}{{end}}</dd>{{end}}
+    {{if .Downloads.Firmware}}<dt>Firmware</dt><dd>{{range $i, $f := .Downloads.Firmware}}{{if $i}}, {{end}}{{$f}}{{end}}</dd>{{end}}
+  </dl>
+  {{if .Downloads.Error}}<p class="error">{{.Downloads.Error}}</p>{{end}}
+</section>
+{{end}}
+{{if .FirmwareIssues}}<p class="error">Ignored firmware files (expected &lt;hardware&gt;-v&lt;version&gt;.bin): {{range $i, $f := .FirmwareIssues}}{{if $i}}, {{end}}{{$f}}{{end}}</p>{{end}}
 </body>
 </html>

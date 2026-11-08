@@ -111,6 +111,6 @@ jobs:
             Release of a single release train (ADR 0056).
 
             - `paperboy-plugins-<os>-<arch>.zip`: unpack in the instance directory, creates `plugins/`.
-            - `paperboy-firmware-<version>.zip`: unpack in the instance directory, creates `firmware/<hardware>/` with the images of every hardware type (ADR 0043, 0059).
+            - `paperboy-firmware-<version>.zip`: unpack in the instance directory, creates `firmware/<hardware>-v<version>.bin` for every hardware type (ADR 0043, 0059, 0060).
             - `SHA256SUMS`: checksums of all assets.
           files: dist/*

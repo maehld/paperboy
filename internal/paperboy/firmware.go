@@ -18,11 +18,11 @@ import (
 	"time"
 )
 
-// firmwareImage is one OTA image in <instance>/firmware/<hardware>/ (ADR 0043).
+// firmwareImage is one OTA image in <instance>/firmware/ (ADR 0043, 0060).
 type firmwareImage struct {
 	Hardware string
-	Version  string
-	File     string // <hardware>-<version>.bin
+	Version  string // without the leading v, e.g. 1.0.0
+	File     string // <hardware>-v<version>.bin
 	MD5      string
 	path     string
 	parts    []int
@@ -30,23 +30,47 @@ type firmwareImage struct {
 
 // URLPath is where the device downloads the image.
 func (img *firmwareImage) URLPath() string {
-	return "/firmware/" + img.Hardware + "/" + img.File
+	return "/firmware/" + img.File
 }
 
 var firmwareVersionPattern = regexp.MustCompile(`^[0-9]+(\.[0-9]+)*$`)
 
-// parseFirmwareName returns the version of <hardware>-<version>.bin.
+// firmwareOldLayout marks an old firmware/<hardware>/ directory on the
+// dashboard; its images are still read (ADR 0060).
+const firmwareOldLayout = "old layout"
+
+// parseFirmwareName returns the version of <hardware>-v<version>.bin. The v is
+// optional so that hand-placed images of the old layout keep working (ADR 0043,
+// 0060).
 func parseFirmwareName(hardware, name string) (string, []int, bool) {
 	rest, ok := strings.CutPrefix(name, hardware+"-")
 	if !ok {
 		return "", nil, false
 	}
 	version, ok := strings.CutSuffix(rest, ".bin")
-	if !ok || !firmwareVersionPattern.MatchString(version) {
+	if !ok {
+		return "", nil, false
+	}
+	version = strings.TrimPrefix(version, "v")
+	if !firmwareVersionPattern.MatchString(version) {
 		return "", nil, false
 	}
 	parts, ok := versionParts(version)
 	return version, parts, ok
+}
+
+// pinVersion normalizes a configured firmware version ("v1.0.0" and "1.0.0"
+// name the same image); the empty string means no pin.
+func pinVersion(pin string) []int {
+	pin = strings.TrimPrefix(strings.TrimSpace(pin), "v")
+	if !firmwareVersionPattern.MatchString(pin) {
+		return nil
+	}
+	parts, ok := versionParts(pin)
+	if !ok {
+		return nil
+	}
+	return parts
 }
 
 // versionParts splits a dot-separated numeric version.
@@ -95,8 +119,10 @@ type md5Entry struct {
 	sum  string
 }
 
-// firmwareStore reads the operator-owned firmware directory. It never creates
-// or writes it; checksums are cached until a file changes.
+// firmwareStore reads the firmware directory: the flat
+// <hardware>-v<version>.bin files and, for older instances, the images below
+// <hardware>/. Paperboy writes there too when it downloads a release
+// (ADR 0060); checksums are cached until a file changes.
 type firmwareStore struct {
 	dir string
 
@@ -109,44 +135,49 @@ func newFirmwareStore(dir string) *firmwareStore {
 	return &firmwareStore{dir: dir, sums: map[string]md5Entry{}, reported: map[string]bool{}}
 }
 
-// latest returns the highest valid image for a hardware type, or nil. Invalid
-// file names are logged once and returned for the dashboard.
-func (f *firmwareStore) latest(hardware string) (*firmwareImage, []string) {
+// latest returns the highest valid image for a hardware type, or nil. A pinned
+// version (ADR 0060) limits the answer to that image; higher files stay on disk
+// unused. Invalid file names are logged once.
+func (f *firmwareStore) latest(hardware, pin string) (*firmwareImage, []string) {
 	if f == nil || !validName(hardware) {
 		return nil, nil
 	}
-	dir := filepath.Join(f.dir, hardware)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			slog.Error("firmware directory unreadable", "dir", dir, "error", err)
-		}
-		return nil, nil
-	}
+	want := pinVersion(pin)
 	var best *firmwareImage
 	var invalid []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
+	scan := func(dir, label string) {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			if !errors.Is(err, fs.ErrNotExist) && label == "" {
+				slog.Error("firmware directory unreadable", "dir", dir, "error", err)
+			}
+			return
 		}
-		version, parts, ok := parseFirmwareName(hardware, e.Name())
-		if !ok {
-			invalid = append(invalid, hardware+"/"+e.Name())
-			continue
-		}
-		if best == nil || compareVersions(parts, best.parts) > 0 {
-			best = &firmwareImage{Hardware: hardware, Version: version, File: e.Name(),
-				path: filepath.Join(dir, e.Name()), parts: parts}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasPrefix(e.Name(), hardware+"-") {
+				continue
+			}
+			version, parts, ok := parseFirmwareName(hardware, e.Name())
+			if !ok {
+				invalid = append(invalid, label+e.Name())
+				continue
+			}
+			if want != nil && compareVersions(parts, want) != 0 {
+				continue
+			}
+			if best == nil || compareVersions(parts, best.parts) > 0 {
+				best = &firmwareImage{Hardware: hardware, Version: version, File: e.Name(),
+					path: filepath.Join(dir, e.Name()), parts: parts}
+			}
 		}
 	}
-	f.mu.Lock()
+	// The flat directory wins ties: it is scanned first and only a strictly
+	// higher version replaces the best image.
+	scan(f.dir, "")
+	scan(filepath.Join(f.dir, hardware), hardware+"/")
 	for _, name := range invalid {
-		if !f.reported[name] {
-			f.reported[name] = true
-			slog.Warn("firmware file ignored: expected <hardware>-<version>.bin", "file", name)
-		}
+		f.note(name, "firmware file ignored: expected <hardware>-v<version>.bin")
 	}
-	f.mu.Unlock()
 	if best == nil {
 		return nil, invalid
 	}
@@ -159,9 +190,12 @@ func (f *firmwareStore) latest(hardware string) (*firmwareImage, []string) {
 	return best, invalid
 }
 
-// invalidNames lists ignored files of all hardware directories.
-func (f *firmwareStore) invalidNames() []string {
-	if f == nil {
+// invalidNames lists ignored files for the dashboard: files in the flat
+// directory that match no known hardware type, invalid names inside an old
+// <hardware>/ directory, and the old directories themselves (read with a hint,
+// ADR 0060).
+func (f *firmwareStore) invalidNames(hardware []string) []string {
+	if f == nil || len(hardware) == 0 {
 		return nil
 	}
 	entries, err := os.ReadDir(f.dir)
@@ -170,18 +204,59 @@ func (f *firmwareStore) invalidNames() []string {
 	}
 	var all []string
 	for _, e := range entries {
-		if !e.IsDir() {
+		name := e.Name()
+		if e.IsDir() {
+			f.note(name+"/", "firmware directory in the old layout is still read (ADR 0060)")
+			all = append(all, name+"/ ("+firmwareOldLayout+")")
+			sub, err := os.ReadDir(filepath.Join(f.dir, name))
+			if err != nil {
+				continue
+			}
+			for _, se := range sub {
+				if _, _, ok := parseFirmwareName(name, se.Name()); !ok {
+					all = append(all, name+"/"+se.Name())
+					f.note(name+"/"+se.Name(), "firmware file ignored: expected <hardware>-v<version>.bin")
+				}
+			}
 			continue
 		}
-		if !validName(e.Name()) {
-			all = append(all, e.Name()+"/")
-			continue
+		if !parsesFor(hardware, name) {
+			all = append(all, name)
+			f.note(name, "firmware file ignored: expected <hardware>-v<version>.bin")
 		}
-		_, invalid := f.latest(e.Name())
-		all = append(all, invalid...)
 	}
 	sort.Strings(all)
 	return all
+}
+
+// note logs one ignored entry once.
+func (f *firmwareStore) note(name, msg string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.reported[name] {
+		return
+	}
+	f.reported[name] = true
+	slog.Warn(msg, "file", name)
+}
+
+// parsesFor reports whether name is an image of one of the hardware types.
+func parsesFor(hardware []string, name string) bool {
+	for _, hw := range hardware {
+		if _, _, ok := parseFirmwareName(hw, name); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *firmwareStore) checksum(path string) (string, error) {
@@ -211,19 +286,42 @@ func (f *firmwareStore) checksum(path string) (string, error) {
 	return sum, nil
 }
 
+// splitFirmwareName returns the hardware part of an image name
+// <hardware>-v<version>.bin (or the old <hardware>-<version>.bin).
+func splitFirmwareName(name string) (string, bool) {
+	for i := 1; i < len(name); i++ {
+		if name[i] != '-' {
+			continue
+		}
+		hw := name[:i]
+		if !validName(hw) {
+			continue
+		}
+		if _, _, ok := parseFirmwareName(hw, name); ok {
+			return hw, true
+		}
+	}
+	return "", false
+}
+
 // handleFirmware serves an OTA image without a token, like page images. Only
-// valid <hardware>/<hardware>-<version>.bin names are served.
+// <hardware>-v<version>.bin names are served; an image in an old <hardware>/
+// directory is still found (ADR 0043, 0060).
 func (s *Server) handleFirmware(w http.ResponseWriter, r *http.Request) {
-	hardware, name := r.PathValue("hardware"), r.PathValue("file")
-	if !validName(hardware) {
+	name := r.PathValue("file")
+	if name != filepath.Base(name) || strings.HasPrefix(name, ".") {
 		http.NotFound(w, r)
 		return
 	}
-	if _, _, ok := parseFirmwareName(hardware, name); !ok {
+	hw, ok := splitFirmwareName(name)
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}
-	path := filepath.Join(s.firmware.dir, hardware, name)
+	path := filepath.Join(s.firmware.dir, name)
+	if _, err := os.Stat(path); err != nil {
+		path = filepath.Join(s.firmware.dir, hw, name)
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		http.NotFound(w, r)

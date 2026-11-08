@@ -54,3 +54,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0056](0056-repository-layout-and-release-trains.md) | One repository with separate release trains | Accepted, implemented; firmware assets amended by ADR-0059 |
 | [0058](0058-plugin-protocol-version-check.md) | Check the plugin protocol version at runtime | Accepted, implemented |
 | [0059](0059-firmware-bundle.md) | One firmware bundle per release | Accepted, implemented |
+| [0060](0060-download-from-releases.md) | Downloading plugins and firmware from releases | Accepted, implemented |
