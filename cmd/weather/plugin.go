@@ -78,8 +78,9 @@ type weather struct {
 func (w *weather) Describe() plugin.Description {
 	both := []string{plugin.KindImage, plugin.KindText}
 	return plugin.Description{
-		Title:  "Weather (Open-Meteo)",
-		Config: configKeys,
+		Title:   "Weather (Open-Meteo)",
+		Version: version(),
+		Config:  configKeys,
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "current", Title: "Current weather", Kinds: both, MinWidth: 160, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 3}},

@@ -149,8 +149,9 @@ type xkcd struct {
 func (x *xkcd) Describe() plugin.Description {
 	both := []string{plugin.KindImage, plugin.KindText}
 	return plugin.Description{
-		Title:  "xkcd comic",
-		Config: configKeys,
+		Title:   "xkcd comic",
+		Version: version(),
+		Config:  configKeys,
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "comic", Title: "Comic", Kinds: both, MinWidth: 200, MinHeight: 100,
 				Sizes: []plugin.Span{{Columns: 6, Rows: 4}, {Columns: 6, Rows: 3}, {Columns: 6, Rows: 8}, {Columns: 3, Rows: 4}},

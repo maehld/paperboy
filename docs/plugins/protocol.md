@@ -54,6 +54,7 @@ the plan's action validation.
   "id": "2",
   "description": {
     "title": "evcc",
+    "version": "1.2.0",
     "widgets": [
       {
         "widget": "site",
@@ -77,6 +78,7 @@ the plan's action validation.
 ```
 
 - `widgets[].kinds` is `image`, `text` or both.
+- `version` is the plugin's own version, matching the `-v<version>` of its program name (ADR 0075). It is optional; Paperboy compares it with the file name and logs one warning when they differ.
 - `widgets[].sizes` are spans of the 6 × 8 reference grid, hints for an editor.
 - `args` use the same [argument schema](#arguments) as configuration keys.
 - `actions[].name` is the action name without the plugin prefix. A plan

@@ -124,8 +124,9 @@ type evcc struct {
 func (e *evcc) Describe() plugin.Description {
 	both := []string{plugin.KindImage, plugin.KindText}
 	return plugin.Description{
-		Title:  "evcc",
-		Config: configKeys,
+		Title:   "evcc",
+		Version: version(),
+		Config:  configKeys,
 		Actions: []plugin.ActionSpec{
 			{Name: "mode", Title: "Charge mode", Args: actionArgs, Confirm: &plugin.Confirm{Required: true}},
 		},

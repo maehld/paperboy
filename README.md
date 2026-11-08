@@ -12,7 +12,7 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
 
 1. Create an instance directory with the fixed layout (ADR 0037): `paperboy.yaml` plus `displays/`, `pages/`, `plans/`, `devices/` and, for your own plugins, `plugins/`. Copy `cmd/paperboy/paperboy.example.yaml` to `<instance>/paperboy.yaml`, configure the plugins, copy the display types from `examples/displays` (or create them in the editor) and create one file per display under `devices/` (ADR 0070): the MAC address is the allow list, unknown devices are rejected and reported with their MAC in the log.
 2. Copy pages from `examples/pages`, a plan from `examples/plans` and a device from `examples/devices` into the instance, then set `plan: standard` on the device (or assign it in the editor). Without a plan a device only shows a notice page.
-3. Put the plugins into the instance's `plugins/`: unpack `paperboy-plugins-<os>-<arch>.zip` (attached to each release, otherwise an artifact of the *Plugins* workflow) in the instance directory, or build them yourself (`./scripts/package-plugins.sh` builds the zip locally), or let Paperboy fetch them with a `download` section (see [Downloads](#downloads)). Then start:
+3. Put the plugins into the instance's `plugins/`: unpack `paperboy-plugins-<os>-<arch>.zip` (attached to each release, otherwise an artifact of the *Plugins* workflow) in the instance directory, or build them yourself (`./scripts/package-plugins.sh` builds the zip locally), or let Paperboy fetch them with a `download` section (see [Downloads](#downloads)). The zip creates versioned programs such as `plugins/weather-v1.4.0` (ADR 0075). Then start:
    ```sh
    go run ./cmd/paperboy -config . -listen :8090
    # look at a page without a device:
@@ -33,6 +33,8 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
 
 **Migrating devices to `devices/` (ADR 0070):** the `devices:` section of `paperboy.yaml` moved into `devices/<id>.yaml`, one file per device. A leftover section aborts the start with a hint. For every entry, create `devices/<id>.yaml` with the keys of the entry (without the map level) and remove the section, or create the devices in the editor at `/ui/editor` and delete the section afterwards:
 
+**Migrating to plugin versions (ADR 0075):** every plugin carries its own version now (`cmd/<plugin>/VERSION`), and the zip names the programs `<plugin>-v<version>` instead of `<plugin>`. A program that an older zip unpacked as `plugins/weather` still wins over every download and is never updated — delete it once if Paperboy should fetch that plugin. A `version:` pin names a plugin version (`v1.4.0`), not a release tag; a pin that still names a tag fails with "no release carries v…".
+
 ## Releases
 
 GitHub releases are the distribution point (ADR 0056). Each tag names a tested combination of the three deliverables:
@@ -43,10 +45,12 @@ GitHub releases are the distribution point (ADR 0056). Each tag names a tested c
 | `plugins-vX.Y.Z` | plugin zips only |
 | `firmware-vX.Y.Z` | firmware bundle only (`X.Y.Z` is the highest `fw_version` in the bundle) |
 
+The tag names the release, not what is inside: every plugin and every firmware image carries its own version, raised only when it changed (ADR 0043, 0075).
+
 | Asset | Use |
 |---|---|
 | `paperboy-linux-amd64`, `paperboy-linux-arm64`, `paperboy-windows-amd64.exe` | the Paperboy binary for that platform |
-| `paperboy-plugins-<os>-<arch>.zip` | unpack in the instance directory: creates `plugins/` |
+| `paperboy-plugins-<os>-<arch>.zip` | unpack in the instance directory: creates `plugins/` with `<plugin>-v<version>` of every shipped plugin |
 | `paperboy-firmware.zip` | unpack in the instance directory: creates `firmware/` with `<hardware>-v<version>.bin` of every hardware type (ADR 0043, 0059, 0060, 0063) |
 | `SHA256SUMS` | checksums of all assets of the release |
 
@@ -64,7 +68,7 @@ download:
 ```
 
 - It runs at startup and then after `interval` (default 24 h), in the background; the *Downloads* page (`/ui/downloads`) has a **Check now** button that starts a check at once. An instance without internet keeps working as before, and nothing else needs the section.
-- **Plugins**: a configured plugin whose program is missing gets the newest one as `plugins/<plugin>-v<version>` (`weather-v2.1.0`, `weather-v2.1.0.exe` on Windows). A downloaded program is updated when a release ships a newer version; the old file stays and only that plugin restarts. A `version` pin in the plugin section selects exactly that version and is never moved.
+- **Plugins**: a configured plugin whose program is missing gets the newest one as `plugins/<plugin>-v<version>` (`weather-v1.4.0`, `weather-v1.4.0.exe` on Windows). A downloaded program is updated when the plugin zip ships a higher version of that plugin — an unchanged plugin is left alone, however many releases pass (ADR 0075). The old file stays and only that plugin restarts. A `version` pin in the plugin section names a plugin version (`v1.4.0`) and is never moved.
 - **Firmware**: every image of the bundle lands in `firmware/<hardware>-v<version>.bin` (ADR 0061); a `firmware.version` pin picks the release that carries exactly that image, which is also how a rollback is pinned. Devices are still only offered an update with `firmware.update: auto`.
 - A program **without** a version in `plugins/` (`weather`) always wins - it is your build - and is neither replaced nor pinned; download it by hand or delete it to hand the plugin back to the releases.
 - Existing files are never overwritten or deleted, so versions pile up and are removed by hand. Deleting a newer plugin file rolls back to the older one for the rest of the server run; a `version` pin keeps the older one across restarts, and a firmware pin keeps the older image on offer.
@@ -81,7 +85,7 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
   pages/             pages <page>.<display type>.yaml or <page>.yaml
   plans/             plans <name>.yaml
   devices/           devices <id>.yaml (ADR 0070)
-  plugins/           plugin programs, e.g. from paperboy-plugins-<os>-<arch>.zip
+  plugins/           plugin programs <plugin>-v<version>, e.g. from paperboy-plugins-<os>-<arch>.zip
   firmware/          OTA images <hardware>-v<version>.bin (ADR 0043, 0060)
   state/             written by Paperboy only
     devices.json     device register with API keys, page cursor and battery level
@@ -100,8 +104,8 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
 language: de            # de or en; default: system language
 timezone: Europe/Berlin # IANA zone; default: system timezone
 plugins:
-  calendar:              # the program is plugins/calendar or calendar on PATH (ADR 0060)
-    version: v2.1.0      # optional: pin plugins/calendar-v2.1.0, else the highest version
+  calendar:              # the program is plugins/calendar-v1.0.0 or calendar on PATH (ADR 0060, 0075)
+    version: v1.0.0      # optional: pin plugins/calendar-v1.0.0, else the highest version
     timeout: 1m          # per request; default 30s
     env: { HTTPS_PROXY: "http://proxy:3128" }   # optional extra environment
     config:              # sent to the plugin once after its start
@@ -238,11 +242,11 @@ The pages in `examples/pages` (`uebersicht`, `kalender`, `wetter`, `laden` and t
 
 A plugin is a long-running program that provides widgets (ADR 0049). Paperboy starts it on first use, sends it its `config` section once (`configure`), and then asks it for widgets; it keeps the results until the plugin's `max_age` (default 5 minutes) or until the plugin reports a change, and renders widgets that are still in use again in the background, so a device never waits for a plugin. A plugin that exits or does not answer within `timeout` is restarted; meanwhile its last widgets are shown as stale, and a failing plugin is not asked again for a minute.
 
-**Protocol** ([`docs/plugins/protocol.md`](docs/plugins/protocol.md), `pkg/plugin`): one JSON object per line on stdin, one answer per line on stdout with the same `id`. Actions are `configure`, `describe`, `render` (`levels` 2 or 4, `widgets: [{widget, width, height, args, style}]` → base64 PNGs), `text` (the same in characters → `lines`), `actions` (the state of concrete plan actions) and `action` (run one). Every request carries `language`, `timezone`, `now` and the `page` (`title`, `number`, `count`, display `width`/`height`, and for image displays `ppi`). Protocol version 4 (ADR 0050, 0057): each widget's `style` holds `padding`, `rule` and `text_px` in pixels, already converted from the page's points; Go plugins use `Request.TextPx`, `PtPx` and `MMPx` for physical sizes. `describe` lists widgets and, optionally, actions; an action request names a concrete `action` and its `args` and gets `actions` states (title, disabled reason, confirmation) or a `result` (`ok`, `message`, `changed`). Between answers a plugin may print `{"event": "changed", "changed": ["agenda"]}`. It ends when stdin closes. Every plugin also sees `PAPERBOY_LANGUAGE` and `PAPERBOY_TIMEZONE` in its environment, and `PAPERBOY_STATE_DIR`: a directory of its own under `state/plugins/<plugin>/` that survives restarts, so a plugin can skip work after a restart (ADR 0065). Every answer names the protocol version the plugin was built against (`"version": 4`); Paperboy refuses a plugin that reports another version or none at all, with the mismatch as the cell's error and one log line (ADR 0058). Go plugins get this from `pkg/plugin` automatically; plugins in other languages must print the field.
+**Protocol** ([`docs/plugins/protocol.md`](docs/plugins/protocol.md), `pkg/plugin`): one JSON object per line on stdin, one answer per line on stdout with the same `id`. Actions are `configure`, `describe`, `render` (`levels` 2 or 4, `widgets: [{widget, width, height, args, style}]` → base64 PNGs), `text` (the same in characters → `lines`), `actions` (the state of concrete plan actions) and `action` (run one). Every request carries `language`, `timezone`, `now` and the `page` (`title`, `number`, `count`, display `width`/`height`, and for image displays `ppi`). Protocol version 4 (ADR 0050, 0057): each widget's `style` holds `padding`, `rule` and `text_px` in pixels, already converted from the page's points; Go plugins use `Request.TextPx`, `PtPx` and `MMPx` for physical sizes. `describe` lists widgets and, optionally, actions, plus the plugin's own `version` (ADR 0075); an action request names a concrete `action` and its `args` and gets `actions` states (title, disabled reason, confirmation) or a `result` (`ok`, `message`, `changed`). Between answers a plugin may print `{"event": "changed", "changed": ["agenda"]}`. It ends when stdin closes. Every plugin also sees `PAPERBOY_LANGUAGE` and `PAPERBOY_TIMEZONE` in its environment, and `PAPERBOY_STATE_DIR`: a directory of its own under `state/plugins/<plugin>/` that survives restarts, so a plugin can skip work after a restart (ADR 0065). Every answer names the protocol version the plugin was built against (`"version": 4`); Paperboy refuses a plugin that reports another version or none at all, with the mismatch as the cell's error and one log line (ADR 0058). Go plugins get this from `pkg/plugin` automatically; plugins in other languages must print the field.
 
 A Go plugin implements `plugin.Handler` (`Describe`, `Configure`, `Render`), optionally `Texter`, `Preparer`, `Starter` (background work with a `notify` callback), `Ager` (`max_age`) and `Actioner` (actions for the device menu), calls `plugin.Serve` and draws with `pkg/render` – the fonts, gray levels, fills and icon masks Paperboy itself uses, so its widgets look like the rest of the page. Plugins in other languages speak the same JSON lines.
 
-Shipped plugins (one zip per platform: `paperboy-plugins-linux-amd64.zip` and `paperboy-plugins-windows-amd64.zip`; unpacked in the instance directory they create `plugins/`). Each plugin has its own documentation under `docs/plugins/`:
+Shipped plugins (one zip per platform: `paperboy-plugins-linux-amd64.zip` and `paperboy-plugins-windows-amd64.zip`; unpacked in the instance directory they create `plugins/` with `<plugin>-v<version>`, each version raised only when that plugin changed, ADR 0075). Each plugin has its own documentation under `docs/plugins/`:
 
 - [`evcc`](docs/plugins/evcc.md) – PV, home, grid, battery, energy flow, loadpoints and forecast from [evcc](https://evcc.io); the first shipped plugin with actions, `evcc/mode` switches a charge mode from the device menu.
 - [`departures`](docs/plugins/departures.md) - real-time public transport departures from an EFA installation.
