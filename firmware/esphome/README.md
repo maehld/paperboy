@@ -36,6 +36,26 @@ to the line before. A button press wakes the chip from deep sleep, so these
 numbers start at the press and show where a page change spends its time;
 `unchanged` replaces `image`/`paint` when the hash still matches the panel.
 
+Measured on the Sticky (firmware 2.1.0, 2026-11-08): boot 228 ms, Wi-Fi 4.0 s,
+sync 0.2 s, image 2.6 s, paint 2.1 s — about 4.9 s per page change. Wi-Fi and
+image dominated. A plain GET of the same page took 34–61 ms while the same bytes
+through `online_image` took 2.6 s whatever their size, and QOI through it still
+took 2.26 s: the per-pixel work of ESPHome's decoders was the cost, not the
+transfer or the format (the frame is always 800×480). The firmware therefore
+fetches the page itself (`http_request.get` into a 96 KiB buffer) and decodes it
+into the panel buffer with `pb_paint_qoi_gray4`/`pb_paint_qoi_dithered`
+(ADR 0072); `online_image` and its 384 KB image buffer are gone. Together with
+`fast_connect` (saves BSSID and channel, no scan before every wake) a page
+change is now: Wi-Fi 1.2 s, sync 0.1 s, image 0.07–0.11 s, paint 2.0 s — 3.7 s
+from a battery wake instead of 9.5 s, and the panel refresh is 90 % of it. The
+page travels as QOI, 22–50 KB for a four-level 800×480 page.
+
+Only one cycle runs at a time. A second trigger — the flash-restored Paperboy
+URL at boot used to start one while `on_boot` was already running the cycle —
+is dropped with `a cycle is already running, keeping its page`. Otherwise the
+second sync moves Paperboy's page cursor (with `rotate` in the plan) while the
+first image is still downloading, and the panel never shows that page.
+
 The firmware reports its power source in every sync (ADR 0051). The Sticky
 measures USB power on GPIO9 (`PWR_IN_VOLT`, 5.1k/5.1k divider: about 2.5 V
 with USB) and reports `mains` above 1.5 V at the pin; the E1001 has no pin that

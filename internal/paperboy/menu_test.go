@@ -60,14 +60,16 @@ const menuPlanActions = `actions:
 // menuServer starts a server with a two-page plan and the menu actions above.
 func menuServer(t *testing.T, actions string, tweak func(*Device)) (*Server, *time.Time, *menuPlugin) {
 	t.Helper()
+	return menuServerRules(t, "rules:\n  - name: immer\n    pages: [eins, zwei]\n", actions, tweak)
+}
+
+// menuServerRules is menuServer with a plan of the caller's rules.
+func menuServerRules(t *testing.T, rules, actions string, tweak func(*Device)) (*Server, *time.Time, *menuPlugin) {
+	t.Helper()
 	dir := t.TempDir()
 	writePageFile(t, filepath.Join(dir, "pages", "eins.small.yaml"), textPage("eins"))
 	writePageFile(t, filepath.Join(dir, "pages", "zwei.small.yaml"), textPage("zwei"))
-	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), `
-rules:
-  - name: immer
-    pages: [eins, zwei]
-`+actions)
+	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), rules+actions)
 	d := Device{ID: "test", MAC: menuDeviceMAC, Profile: "small", Plan: "zimmer",
 		Refresh: Duration(10 * time.Minute)}
 	if tweak != nil {
@@ -369,6 +371,32 @@ func TestMenuExpires(t *testing.T) {
 	}
 	if got := pagePath(out); got != base {
 		t.Fatalf("page after expiry: %q, want %q", got, base)
+	}
+}
+
+// TestMenuExpiryKeepsThePageWhileRotating covers the same with `rotate` in the
+// plan, where every sync would otherwise advance the page: the wake at the
+// menu deadline is not input and must keep the page the operator was looking
+// at (ADR 0057).
+func TestMenuExpiryKeepsThePageWhileRotating(t *testing.T) {
+	s, now, _ := menuServerRules(t,
+		"rules:\n  - name: immer\n    pages: [eins, zwei]\n    rotate: true\n", menuPlanActions, nil)
+	dev := menuDevice(t, s)
+	base := pagePath(displayPage(t, s, dev))
+	press(t, s, dev, buttonHome)
+	*now = now.Add(31 * time.Second)
+	dev.req.Reason = "menu"
+	out := displayPage(t, s, dev)
+	if st := s.state["test"]; st.Menu.Open {
+		t.Fatalf("the menu must expire: %+v", st.Menu)
+	}
+	if got := pagePath(out); got != base {
+		t.Fatalf("the expiry wake rotated the page: %q, want %q", got, base)
+	}
+	// The next regular sync rotates again.
+	dev.req.Reason = "timer"
+	if got := pagePath(displayPage(t, s, dev)); got == base {
+		t.Fatalf("rotation stopped after the menu: %q", got)
 	}
 }
 

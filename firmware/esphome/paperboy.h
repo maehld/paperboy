@@ -259,34 +259,143 @@ template<typename D, typename F> void pb_draw_text(D &it, F *font, const std::st
 // Paperboy draws its four levels as 0, 85, 170 and 255.
 inline int pb_level(uint8_t v) { return v < 43 ? 0 : v < 128 ? 1 : v < 213 ? 2 : 3; }
 
-// Four-level panel (Sticky gray4): ESPHome bands luma at 32/96/160, so 170
-// would turn white. Draw each level inside its band.
-template<typename D, typename I> void pb_draw_gray4(D &it, I *img) {
-  static const uint8_t band[4] = {0, 64, 128, 255};
-  for (int y = 0; y < img->get_height(); y++) {
-    for (int x = 0; x < img->get_width(); x++) {
-      int l = pb_level(img->get_pixel(x, y, esphome::Color::WHITE, esphome::Color::BLACK).red);
-      if (l != 3) {
-        it.draw_pixel_at(x, y, esphome::Color(band[l], band[l], band[l]));
-      }
-    }
-  }
+// The QOI page the last sync asked for (ADR 0072). The display lambda paints
+// it: ESPHome's own decoders take 2.2-2.6 s for the 384k pixels of a page
+// because they convert and draw it pixel by pixel, so the firmware decodes the
+// page itself and writes it straight into the panel buffer.
+static std::string pb_page_qoi;
+
+inline int pb_qoi_slot(uint32_t r, uint32_t g, uint32_t b, uint32_t a) {
+  return (r * 3 + g * 5 + b * 7 + a * 11) % 64;
 }
 
-// Black-and-white panel: dark gray as 3 of 4 pixels black, light gray as
-// 1 of 4, in a fixed 2x2 pattern so repeated paints stay identical.
-template<typename D, typename I> void pb_draw_dithered(D &it, I *img) {
-  for (int y = 0; y < img->get_height(); y++) {
-    for (int x = 0; x < img->get_width(); x++) {
-      int l = pb_level(img->get_pixel(x, y, esphome::Color::WHITE, esphome::Color::BLACK).red);
-      int cell = (y & 1) * 2 + (x & 1);  // 0..3
-      bool black = l == 0 || (l == 1 && cell != 3) || (l == 2 && cell == 0);
-      if (black) {
-        it.draw_pixel_at(x, y, esphome::Color::BLACK);
+// Walks a QOI stream and calls put(x, y, r, g, b) for every pixel. False for a
+// stream that is not QOI or ends early, so the caller reports it instead of
+// painting garbage.
+template<typename F> inline bool pb_qoi_each(const std::string &data, F &&put) {
+  const uint8_t *p = reinterpret_cast<const uint8_t *>(data.data());
+  const size_t size = data.size();
+  if (size < 14 || std::memcmp(p, "qoif", 4) != 0) {
+    return false;
+  }
+  const size_t width = (static_cast<uint32_t>(p[4]) << 24) | (static_cast<uint32_t>(p[5]) << 16) |
+                       (static_cast<uint32_t>(p[6]) << 8) | p[7];
+  const size_t height = (static_cast<uint32_t>(p[8]) << 24) | (static_cast<uint32_t>(p[9]) << 16) |
+                        (static_cast<uint32_t>(p[10]) << 8) | p[11];
+  if (width == 0 || height == 0 || p[12] < 3 || p[12] > 4 || p[13] > 1) {
+    return false;
+  }
+  const size_t total = width * height;
+  uint8_t index[64][4];
+  std::memset(index, 0, sizeof(index));
+  uint8_t r = 0, g = 0, b = 0, a = 255;
+  size_t i = 14, n = 0;
+  auto pixel = [&]() {
+    put(n % width, n / width, r, g, b);
+    n++;
+  };
+  while (n < total) {
+    if (i >= size) {
+      return false;
+    }
+    const uint8_t byte = p[i];
+    if (byte == 0xfe) {
+      if (i + 3 >= size) {
+        return false;
+      }
+      r = p[i + 1];
+      g = p[i + 2];
+      b = p[i + 3];
+      i += 4;
+      pixel();
+    } else if (byte == 0xff) {
+      if (i + 4 >= size) {
+        return false;
+      }
+      r = p[i + 1];
+      g = p[i + 2];
+      b = p[i + 3];
+      a = p[i + 4];
+      i += 5;
+      pixel();
+    } else if ((byte & 0xc0) == 0x00) {
+      const uint8_t *c = index[byte & 0x3f];
+      r = c[0];
+      g = c[1];
+      b = c[2];
+      a = c[3];
+      i++;
+      pixel();
+    } else if ((byte & 0xc0) == 0x40) {
+      r += ((byte >> 4) & 0x03) - 2;
+      g += ((byte >> 2) & 0x03) - 2;
+      b += (byte & 0x03) - 2;
+      i++;
+      pixel();
+    } else if ((byte & 0xc0) == 0x80) {
+      if (i + 1 >= size) {
+        return false;
+      }
+      const int dg = (byte & 0x3f) - 32;
+      r += dg - 8 + ((p[i + 1] >> 4) & 0x0f);
+      g += dg;
+      b += dg - 8 + (p[i + 1] & 0x0f);
+      i += 2;
+      pixel();
+    } else {
+      const size_t run = (byte & 0x3f) + 1;
+      i++;
+      for (size_t k = 0; k < run && n < total; k++) {
+        pixel();
       }
     }
+    uint8_t *slot = index[pb_qoi_slot(r, g, b, a)];
+    slot[0] = r;
+    slot[1] = g;
+    slot[2] = b;
+    slot[3] = a;
   }
+  return true;
 }
+
+inline int pb_qoi_level(uint8_t r, uint8_t g, uint8_t b) {
+  return pb_level(static_cast<uint8_t>((r * 77 + g * 150 + b * 29) >> 8));
+}
+
+// A complete QOI stream, parsed without painting. The response buffer is
+// limited (96 KiB), and http_request truncates a larger answer, which would
+// leave half a page on the panel: the caller validates first and keeps the old
+// picture instead.
+inline bool pb_qoi_valid(const std::string &data) {
+  return pb_qoi_each(data, [](int, int, uint8_t, uint8_t, uint8_t) {});
+}
+
+// Four-level panel (Sticky gray4): ESPHome bands luma at 32/96/160, so 170
+// would turn white. Draw each level inside its band.
+template<typename D> inline bool pb_paint_qoi_gray4(D &it, const std::string &data) {
+  static const uint8_t band[4] = {0, 64, 128, 255};
+  return pb_qoi_each(data, [&it](int x, int y, uint8_t r, uint8_t g, uint8_t b) {
+    const int l = pb_qoi_level(r, g, b);
+    if (l != 3) {
+      it.draw_pixel_at(x, y, esphome::Color(band[l], band[l], band[l]));
+    }
+  });
+}
+
+// Black-and-white panel: dark gray as 3 of 4 pixels black, light gray as 1 of
+// 4, in a fixed 2x2 pattern so repeated paints stay identical.
+template<typename D> inline bool pb_paint_qoi_dithered(D &it, const std::string &data) {
+  return pb_qoi_each(data, [&it](int x, int y, uint8_t r, uint8_t g, uint8_t b) {
+    const int l = pb_qoi_level(r, g, b);
+    const int cell = (y & 1) * 2 + (x & 1);  // 0..3
+    if (l == 0 || (l == 1 && cell != 3) || (l == 2 && cell == 0)) {
+      it.draw_pixel_at(x, y, esphome::Color::BLACK);
+    }
+  });
+}
+
+// Black-and-white panels paint with pb_paint_qoi_dithered above.
+
 
 // ---------------------------------------------------------------- text displays (ADR 0044)
 
