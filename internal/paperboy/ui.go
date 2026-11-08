@@ -96,7 +96,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		Version:        versionText(build, loc),
 		GoVersion:      build.Go,
 		Devices:        cards,
-		FirmwareIssues: s.firmware.invalidNames(),
+		FirmwareIssues: s.firmware.invalidNames(cfg.profileNames()),
 	}
 	if err := dashboardTmpl.Execute(w, page); err != nil {
 		slog.Error("dashboard rendering failed", "error", err)

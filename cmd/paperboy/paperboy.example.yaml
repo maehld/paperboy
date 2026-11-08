@@ -43,7 +43,7 @@ defaults:
   page_timeout: 5m
   # battery: { warn_volts: 3.45, critical_volts: 3.3, hysteresis_volts: 0.1 }
 
-# Optional firmware updates (ADR 0043) from firmware/<hardware>/<hardware>-<version>.bin
+# Optional firmware updates (ADR 0043) from firmware/<hardware>-v<version>.bin
 # in the instance directory; the highest version is offered in the sync.
 # firmware:
 #   update: auto            # auto or off; default off

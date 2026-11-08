@@ -2,7 +2,7 @@ name: Firmware
 
 # Compiles the Paperboy firmware for every hardware type with the pinned
 # ESPHome version and bundles the OTA images into one zip that unpacks in the
-# instance layout firmware/<hardware>/<hardware>-<version>.bin (ADR 0043, 0059).
+# instance layout firmware/<hardware>-v<version>.bin (ADR 0043, 0059, 0060).
 # Runs on firmware changes and as the builder for release.yml, which attaches
 # the bundle to a release (ADR 0056).
 
@@ -88,7 +88,7 @@ jobs:
             exit 1
           fi
           mkdir -p "$RUNNER_TEMP/dist"
-          cp "$image" "$RUNNER_TEMP/dist/$HARDWARE-$version.bin"
+          cp "$image" "$RUNNER_TEMP/dist/$HARDWARE-v$version.bin"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5
@@ -123,16 +123,14 @@ jobs:
           version="${VERSION#v}"
           if [ -z "$version" ]; then
             version=$(for image in "${images[@]}"; do
-              basename "$image" | sed -E 's/^.*-([0-9.]+)\.bin$/\1/'
+              basename "$image" | sed -E 's/^.*-v([0-9.]+)\.bin$/\1/'
             done | sort -V | tail -n1)
           fi
           stage="$RUNNER_TEMP/stage"
+          # The flat layout Paperboy reads (ADR 0060): firmware/<hardware>-v<version>.bin
           mkdir -p "$stage/firmware"
           for image in "${images[@]}"; do
-            name=$(basename "$image")
-            hardware="${name%%-*}"
-            mkdir -p "$stage/firmware/$hardware"
-            cp "$image" "$stage/firmware/$hardware/$name"
+            cp "$image" "$stage/firmware/$(basename "$image")"
           done
           mkdir -p "$RUNNER_TEMP/dist"
           (cd "$stage" && zip -qr "$RUNNER_TEMP/dist/paperboy-firmware-$version.zip" firmware)

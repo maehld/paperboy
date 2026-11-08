@@ -99,10 +99,12 @@ type Device struct {
 	Power   string   // auto, battery or mains; empty = the display type's (ADR 0051)
 }
 
-// FirmwareConfig controls firmware updates offered in the sync (ADR 0043).
+// FirmwareConfig controls firmware updates offered in the sync (ADR 0043) and
+// which images Paperboy downloads (ADR 0060).
 type FirmwareConfig struct {
 	Update          string  // "auto" or "off"
 	MinBatteryVolts float64 // no offer below this voltage
+	Version         string  // pinned image version ("v1.0.0" or "1.0.0"); empty = newest
 }
 
 const (
@@ -274,6 +276,7 @@ type fileConfig struct {
 	Firmware struct {
 		Update          string  `yaml:"update"`
 		MinBatteryVolts float64 `yaml:"min_battery_volts"`
+		Version         string  `yaml:"version"` // pin for downloads and offers (ADR 0060)
 	} `yaml:"firmware"`
 	Plugins map[string]struct {
 		Command []string          `yaml:"command"`
@@ -364,7 +367,7 @@ func LoadConfig(dir string) (*Config, error) {
 		Plans:       filepath.Join(dir, plansDirName),
 		PluginsDir:  filepath.Join(dir, pluginsDirName),
 		FirmwareDir: filepath.Join(dir, firmwareDirName),
-		Firmware:    FirmwareConfig{Update: f.Firmware.Update, MinBatteryVolts: f.Firmware.MinBatteryVolts},
+		Firmware:    FirmwareConfig{Update: f.Firmware.Update, MinBatteryVolts: f.Firmware.MinBatteryVolts, Version: f.Firmware.Version},
 		Profiles:    make(map[string]Profile, len(f.DisplayTypes)),
 	}
 	if f.Server != nil {
@@ -476,6 +479,14 @@ func (c *Config) validate() error {
 	}
 	if c.Firmware.MinBatteryVolts < 0 || c.Firmware.MinBatteryVolts > 5 {
 		return fmt.Errorf("firmware: invalid min_battery_volts")
+	}
+	if v := strings.TrimPrefix(strings.TrimSpace(c.Firmware.Version), "v"); v != "" {
+		if pinVersion(v) == nil {
+			return fmt.Errorf("firmware: version %q: expected a version like 1.0.0", c.Firmware.Version)
+		}
+		c.Firmware.Version = v
+	} else {
+		c.Firmware.Version = ""
 	}
 	if len(c.Profiles) == 0 {
 		return fmt.Errorf("display_types missing")
@@ -614,6 +625,16 @@ func (c *Config) timezoneName() string {
 		return "UTC"
 	}
 	return c.Timezone.String()
+}
+
+// profileNames lists the configured display types, sorted.
+func (c *Config) profileNames() []string {
+	names := make([]string, 0, len(c.Profiles))
+	for name := range c.Profiles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // expandConfig replaces ${VAR} in the string values of a plugin's config with

@@ -133,7 +133,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/preview/{display}/{page}", s.handlePreview)
 	mux.HandleFunc("GET /pages/{profile}/{page}/{file}", s.handleRenderedImage)
 	mux.HandleFunc("GET /hints/{file}", s.handleHint)
-	mux.HandleFunc("GET /firmware/{hardware}/{file}", s.handleFirmware)
+	mux.HandleFunc("GET /firmware/{file}", s.handleFirmware)
 	mux.HandleFunc("POST /api/device/register", s.handleRegister)
 	mux.HandleFunc("POST /api/device/sync", s.handleSync)
 	mux.HandleFunc("GET /api/device/text", s.handleText)
@@ -224,7 +224,7 @@ func (s *Server) deviceInfos() []deviceInfo {
 		hw := list[i].Hardware
 		img, ok := images[hw]
 		if !ok {
-			img, _ = s.firmware.latest(hw)
+			img, _ = s.firmware.latest(hw, cfg.Firmware.Version)
 			images[hw] = img
 		}
 		if img != nil {
