@@ -249,6 +249,7 @@ type galleryOption struct {
 type galleryPlugin struct {
 	Name    string
 	Title   string
+	Version string // downloaded program version (ADR 0060), empty for a hand-built one
 	Builtin bool
 	Config  []string
 	Error   string
@@ -313,8 +314,11 @@ func (s *Server) handleGallery(w http.ResponseWriter, r *http.Request) {
 		plugins = append(plugins, pl.Name)
 	}
 	sort.Strings(plugins[1:])
+	specs := cfg.pluginSpecs()
 	for _, name := range plugins {
-		gp.Plugins = append(gp.Plugins, s.galleryPlugin(r.Context(), cfg, name, display, p, grid, q))
+		g := s.galleryPlugin(r.Context(), cfg, name, display, p, grid, q)
+		g.Version = specs[name].Version
+		gp.Plugins = append(gp.Plugins, g)
 	}
 	s.renderGallery(w, gp)
 }

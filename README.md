@@ -12,18 +12,20 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
 
 1. Create an instance directory with the fixed layout (ADR 0037): `paperboy.yaml` plus `pages/`, `plans/` and, for your own plugins, `plugins/`. Copy `cmd/paperboy/paperboy.example.yaml` to `<instance>/paperboy.yaml`, configure the plugins and enter the MAC addresses of the displays (allow list; unknown devices are rejected and reported with their MAC in the log).
 2. Copy pages from `examples/pages` and a plan from `examples/plans` into the instance, then set `plan: standard` on the device. Without a plan a device only shows a notice page.
-3. Put the plugins into the instance's `plugins/`: unpack `paperboy-plugins-<os>-<arch>.zip` (attached to each release, otherwise an artifact of the *Plugins* workflow) in the instance directory, or build them yourself (`./scripts/package-plugins.sh` builds the zip locally). Then start:
+3. Put the plugins into the instance's `plugins/`: unpack `paperboy-plugins-<os>-<arch>.zip` (attached to each release, otherwise an artifact of the *Plugins* workflow) in the instance directory, or build them yourself (`./scripts/package-plugins.sh` builds the zip locally), or let Paperboy fetch them with a `download` section (see [Downloads](#downloads)). Then start:
    ```sh
    go run ./cmd/paperboy -config . -listen :8090
    # look at a page without a device:
    curl -o page.png http://127.0.0.1:8090/api/preview/e1001/uebersicht
    ```
    Alternatively as a container: `Dockerfile` and `compose.example.yaml`. The image contains only Paperboy; use the `linux/amd64` plugin zip in the mounted instance directory.
-4. Flash the Paperboy firmware (ADR 0041, see [firmware/esphome/README.md](firmware/esphome/README.md)); the release images are in `paperboy-firmware-<version>.zip`. Enter `http://<computer>:8090` as the Paperboy URL in the device's web UI. The device registers with its MAC address; unknown MACs are rejected and logged.
+4. Flash the Paperboy firmware (ADR 0041, see [firmware/esphome/README.md](firmware/esphome/README.md)); the release images are in `paperboy-firmware-<version>.zip`, or let Paperboy fetch them (see [Downloads](#downloads)). Enter `http://<computer>:8090` as the Paperboy URL in the device's web UI. The device registers with its MAC address; unknown MACs are rejected and logged.
 
 **Migrating from Paperboy v1:** v2 has no data API, no exec providers and no upload token (ADR 0049). Remove the `server` and `providers` sections from `paperboy.yaml` (both abort the start with a hint) and add `plugins` instead; the weather and calendar providers are plugins now and take their settings from `config` instead of flags. Rewrite the pages as grids (see below); old templates with `rows` and `blocks` are rejected and show a notice page. `state/data.json` and the `icons/` directory are no longer used. Devices keep their keys as long as `state/devices.json` is kept.
 
 **Migrating to physical sizes (ADR 0050):** replace `width_mm` with `ppi` in every image display type (`ppi = pixels × 25.4 / mm` of the same side; a leftover `width_mm` aborts the start with a hint) and rewrite page styles in points: `text_size` is no longer a fraction (`0.06` is rejected; at 125 ppi, 0.06 of 480 px is about 16 pt), and `padding`, `rule` and `divider` are points now (8 px ≈ 4.5 pt, 1 px ≈ 0.6 pt at 125 ppi). Old pixel values there still parse but get bigger, so check them. Third-party plugins have to be rebuilt against protocol version 3 (`style.text_size` is gone; use `text_px` or `Request.TextPx`).
+
+**Migrating to program names (ADR 0060):** remove `command:` from every plugin section — it aborts the start with a hint. A plugin's program is now named after the plugin: `plugins/weather`, `plugins/weather-v2.1.0` (`.exe` on Windows), or `weather` on `PATH`; the unversioned file wins and stays yours (an unpacked plugin zip works as before), and the optional `version` key pins a downloaded one. Firmware images move from `firmware/<hardware>/<hardware>-<version>.bin` to `firmware/<hardware>-v<version>.bin`; the old layout is still read, so nothing has to move, and devices get the new path with the offer.
 
 ## Releases
 
@@ -39,10 +41,27 @@ GitHub releases are the distribution point (ADR 0056). Each tag names a tested c
 |---|---|
 | `paperboy-linux-amd64`, `paperboy-linux-arm64`, `paperboy-windows-amd64.exe` | the Paperboy binary for that platform |
 | `paperboy-plugins-<os>-<arch>.zip` | unpack in the instance directory: creates `plugins/` |
-| `paperboy-firmware-<version>.zip` | unpack in the instance directory: creates `firmware/<hardware>/` with the image of every hardware type (ADR 0043, 0059) |
+| `paperboy-firmware-<version>.zip` | unpack in the instance directory: creates `firmware/` with `<hardware>-v<version>.bin` of every hardware type (ADR 0043, 0059, 0060) |
 | `SHA256SUMS` | checksums of all assets of the release |
 
 The container image is published separately as `ghcr.io/maehld/paperboy` (`X.Y.Z`, `X.Y` and `latest`). A release is created by pushing a tag, for example `git tag v2.1.0 && git push origin v2.1.0`; the *Release* workflow builds everything and attaches it to one release.
+
+## Downloads
+
+With a `download` section Paperboy fetches the plugin programs and firmware images from the releases itself (ADR 0060) and verifies every file against the release's `SHA256SUMS`:
+
+```yaml
+download:
+  source: https://github.com/maehld/paperboy  # optional, this is the default
+  token: ${GITHUB_TOKEN}                     # optional: rate limits, private forks
+```
+
+- It runs at startup and then once a day, in the background; an instance without internet keeps working as before, and nothing else needs the section.
+- **Plugins**: a configured plugin whose program is missing gets the newest one as `plugins/<plugin>-v<version>` (`weather-v2.1.0`, `weather-v2.1.0.exe` on Windows). A `version` pin in the plugin section selects exactly that version.
+- **Firmware**: the images of the hardware types in `display_types` land in `firmware/<hardware>-v<version>.bin`; a `firmware.version` pin picks the release that carries exactly that image, which is also how a rollback is pinned. Devices are still only offered an update with `firmware.update: auto`.
+- A program **without** a version in `plugins/` (`weather`) always wins — it is your build — and is neither replaced nor pinned; download it by hand or delete it to hand the plugin back to the releases.
+- A new plugin version restarts only that plugin on its next use; existing files are never overwritten or deleted, so versions pile up and are removed by hand (deleting an image is the firmware rollback of ADR 0043).
+- The dashboard shows the source, the last check, the versions in use and the last error.
 
 ## Instance directory
 
@@ -54,12 +73,13 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
   pages/             pages <page>.<display type>.yaml or <page>.yaml
   plans/             plans <name>.yaml
   plugins/           plugin programs, e.g. from paperboy-plugins-<os>-<arch>.zip
-  firmware/          OTA images <hardware>/<hardware>-<version>.bin (ADR 0043)
+  firmware/          OTA images <hardware>-v<version>.bin (ADR 0043, 0060)
   state/             written by Paperboy only
     devices.json     device register with API keys, page cursor and battery level
+    download/        cached release list and downloads (ADR 0060)
 ```
 
-- `paperboy.yaml`, `pages/`, `plans/`, `plugins/` and `firmware/` are yours: Paperboy only reads them and never creates them.
+- `paperboy.yaml`, `pages/`, `plans/`, `plugins/` and `firmware/` are yours. Paperboy only reads them; only the download feature (ADR 0060) adds plugin and firmware files there.
 - `state/` is created at startup and is the only directory Paperboy writes. Back up `state/devices.json` anyway: it holds the page cursor, battery level and last served page; without it the devices get new keys on their next sync (401, then registration by MAC).
 
 ## Configuration
@@ -70,8 +90,8 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
 language: de            # de or en; default: system language
 timezone: Europe/Berlin # IANA zone; default: system timezone
 plugins:
-  calendar:
-    command: [calendar]  # argv; looked up in plugins/, then on PATH
+  calendar:              # the program is plugins/calendar or calendar on PATH (ADR 0060)
+    version: v2.1.0      # optional: pin plugins/calendar-v2.1.0, else the highest version
     timeout: 1m          # per request; default 30s
     env: { HTTPS_PROXY: "http://proxy:3128" }   # optional extra environment
     config:              # sent to the plugin once after its start
@@ -83,8 +103,12 @@ defaults:
   page_timeout: 5m     # back to the first page after this
   battery: { warn_volts: 3.45, critical_volts: 3.3, hysteresis_volts: 0.1 }
 firmware:
-  update: auto         # auto or off (default); offers firmware/<hardware>/ images (ADR 0043)
+  update: auto         # auto or off (default); offers the images in firmware/ (ADR 0043)
   min_battery_volts: 3.6
+  version: v1.0.0      # optional: pin the offered image version (ADR 0060)
+download:              # optional: fetch plugins and firmware from the releases (ADR 0060)
+  source: https://github.com/maehld/paperboy
+  token: ${GITHUB_TOKEN}
 display_types:
   e1001:
     kind: image
@@ -126,7 +150,7 @@ devices:
 - **Buttons**: events apply in order before rendering. `next` = next page, `previous` = one page back (wrapping), `home` = first page of the active rule. After `page_timeout` (5 min) back to the first page. Touches and long presses are logged but change nothing yet.
 - **Stale widgets**: when a plugin fails, Paperboy keeps showing its last widgets and marks the page: a bar „Veraltet: calendar/agenda“ (“Outdated: …”) on image displays, `!` in the last column of the first line on text displays (`notices: none` turns both off). A widget that never rendered becomes a hatched notice inside its cell with the reason.
 - **Battery warning** (ADR 0020): fed by `battery.volts` of the sync. With `battery` in `defaults` or on a device, every page below `warn_volts` gets the bar „Akku schwach – bitte laden“ (“Battery low – please charge”); below `critical_volts` a full-screen image „Akku fast leer“ (“Battery almost empty”) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` no warning. All texts use the configured `language`.
-- **Firmware updates** (ADR 0043): put OTA images into `firmware/<hardware>/<hardware>-<version>.bin` of the instance (`firmware/esphome/build.ps1 -Hardware sticky -Instance <dir>` does it). The highest version (compared part by part as numbers) is offered in the sync as `{"version", "path", "md5"}` when `firmware.update` is `auto`, the device has no `firmware: hold`, its reported version differs (a lower file is a rollback), its battery reading is at least `min_battery_volts` and not at warning level (text displays run on mains power and skip the battery condition), and the version has not failed three times on that device. A sync that still reports the old version after an offer counts as a failure; a changed image (new MD5) or clearing `firmware_failures` in `state/devices.json` allows new attempts. Images are served at `GET /firmware/<hardware>/<file>` without a token; other file names are ignored and listed in the log and on the dashboard. `GET /api/devices` adds `firmware_available` and `firmware_status` (`current`, `offered`, `available`, `failed`, `held`, `none`). Test the rollback with a broken image before using `update: auto`.
+- **Firmware updates** (ADR 0043): put OTA images into `firmware/<hardware>-v<version>.bin` of the instance (`firmware/esphome/build.ps1 -Hardware sticky -Instance <dir>` does it). The highest version (compared part by part as numbers; a `firmware.version` pin narrows it to exactly that image, ADR 0060) is offered in the sync as `{"version", "path", "md5"}` when `firmware.update` is `auto`, the device has no `firmware: hold`, its reported version differs (a lower file is a rollback), its battery reading is at least `min_battery_volts` and not at warning level (text displays run on mains power and skip the battery condition), and the version has not failed three times on that device. A sync that still reports the old version after an offer counts as a failure; a changed image (new MD5) or clearing `firmware_failures` in `state/devices.json` allows new attempts. Images are served at `GET /firmware/<file>` without a token; other file names are ignored and listed in the log and on the dashboard. `GET /api/devices` adds `firmware_available` and `firmware_status` (`current`, `offered`, `available`, `failed`, `held`, `none`). Test the rollback with a broken image before using `update: auto`.
 - **Device logs**: the sync carries firmware log entries (`level`, `message`, optional `source`, `time` and `id`). Paperboy writes one line per entry with device, level, source and age; an entry with a `time` or `id` that a repeated sync delivers again is logged only once.
 - `GET /api/devices` shows every configured device with registration, hardware, firmware, battery voltage (and `battery_percent`/`battery_mah` from a fuel gauge), signal strength, wake reason and last sync (without keys), plus what it is showing (ADR 0039): `last_page`, `last_page_kind` (`page`, `notice` or `battery`), `last_page_hash`, `last_page_url` and `last_refresh` (text displays: `last_text` instead of `last_page_url`), the last render or plan error in `last_error`, and a derived `status` (`ok`, `late`, `never` or `unregistered`). `late` means the last sync is more than twice the reported refresh old; devices deep-sleep, so an idle device is not an offline one.
 - **Dashboard:** `GET /` redirects to `/ui`, a read-only overview of all devices (ADR 0040). Each card shows the status, the plan and its active rule, a preview of the last served page (the lines for text displays), refresh, last contact, battery and the last render or plan error. It is a server-rendered Go template without JavaScript, refreshes itself every 30 seconds and needs no token. The header shows the running build: version (or `dev`), short commit with `+dirty` for local changes, and commit date from the VCS stamp; the Go toolchain is in the tooltip.

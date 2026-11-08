@@ -1,7 +1,7 @@
 # Builds the Paperboy firmware for one hardware type with the pinned ESPHome
 # version and, with -Instance, publishes the OTA image where Paperboy offers
 # it (ADR 0043):
-#   <instance>/firmware/<hardware>/<hardware>-<version>.bin
+#   <instance>/firmware/<hardware>-v<version>.bin
 # The version comes from fw_version in <hardware>.yaml.
 param(
     [Parameter(Mandatory = $true)][ValidateSet("sticky", "e1001", "lcd2004")][string]$Hardware,
@@ -34,8 +34,8 @@ if (-not $Instance) {
     Write-Host "built $Hardware ${version}: $bin"
     return
 }
-$dir = Join-Path $Instance "firmware/$Hardware"
+$dir = Join-Path $Instance "firmware"
 New-Item -ItemType Directory -Force $dir | Out-Null
-$target = Join-Path $dir "$Hardware-$version.bin"
+$target = Join-Path $dir "$Hardware-v$version.bin"
 Copy-Item $bin $target -Force
 Write-Host "published $Hardware $version to $target"

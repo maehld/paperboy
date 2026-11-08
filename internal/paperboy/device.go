@@ -197,7 +197,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	// The firmware directory is read before taking the state lock.
 	var img *firmwareImage
 	if req.Hardware != "" {
-		img, _ = s.firmware.latest(req.Hardware)
+		img, _ = s.firmware.latest(req.Hardware, cfg.Firmware.Version)
 	}
 	s.mu.Lock()
 	d, st := s.deviceByKeyLocked(r, cfg)

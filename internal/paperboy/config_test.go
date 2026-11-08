@@ -42,7 +42,7 @@ devices:
     mac: "aa:bb:cc:dd:ee:02"
 plugins:
   weather:
-    command: [weather]
+    version: 2.1.0
     timeout: 20s
     env: { OPEN_METEO_KEY: secret }
     config: { lat: 52.52, lon: 13.4, place: "${TEST_PLACE}", price: "5 $$", list: ["${TEST_PLACE}"] }
@@ -82,7 +82,7 @@ func TestLoadConfig(t *testing.T) {
 	if len(cfg.Plugins) != 1 {
 		t.Fatalf("plugins: %+v", cfg.Plugins)
 	}
-	if p := cfg.Plugins[0]; p.Name != "weather" || len(p.Command) != 1 || p.Timeout != Duration(20*time.Second) ||
+	if p := cfg.Plugins[0]; p.Name != "weather" || p.Version != "v2.1.0" || p.Timeout != Duration(20*time.Second) ||
 		p.Env["OPEN_METEO_KEY"] != "secret" || p.Config["lat"] != 52.52 || p.Config["place"] != "Berlin" ||
 		p.Config["price"] != "5 $" || p.Config["list"].([]any)[0] != "Berlin" {
 		t.Fatalf("plugin: %+v", p)
@@ -151,7 +151,9 @@ func TestLoadConfigErrors(t *testing.T) {
 		{"bad language", strings.Replace(validConfig, "language: en", "language: fr", 1), "expected de or en"},
 		{"bad timezone", strings.Replace(validConfig, "timezone: Europe/Berlin", "timezone: Mars/Olympus", 1), "timezone"},
 		{"address", strings.Replace(validConfig, "mac: \"AA:BB:CC:DD:EE:01\"", "address: 10.0.0.1", 1), "opendisplay"},
-		{"plugin command", strings.Replace(validConfig, "    command: [weather]\n", "", 1), "command missing"},
+		{"plugin command", strings.Replace(validConfig, "    version: 2.1.0\n", "    command: [weather]\n", 1), "command is no longer supported"},
+		{"plugin version", strings.Replace(validConfig, "version: 2.1.0", "version: latest", 1), "expected a version like v2.1.0"},
+		{"firmware version", strings.Replace(validConfig, "min_battery_volts: 3.7", "min_battery_volts: 3.7\n  version: main", 1), "expected a version like 1.0.0"},
 		{"plugin name", strings.Replace(validConfig, "  weather:\n", "  Weather:\n", 1), "name must use"},
 		{"plugin reserved", strings.Replace(validConfig, "  weather:\n", "  paperboy:\n", 1), "reserved"},
 		{"plugin variable", strings.Replace(validConfig, "${TEST_PLACE}", "${TEST_MISSING}", 1), "TEST_MISSING is not set"},

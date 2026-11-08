@@ -21,25 +21,43 @@ func TestFirmwareVersions(t *testing.T) {
 	if compareVersions(c, d) != 0 {
 		t.Fatal("missing parts count as zero")
 	}
-	for _, name := range []string{"sticky-0.4.0.ota.bin", "sticky-v1.bin", "e1001-1.0.bin", "sticky-.bin", "sticky-1..2.bin", "sticky-1.0.bin.txt"} {
+	for _, name := range []string{"sticky-0.4.0.ota.bin", "e1001-1.0.bin", "sticky-.bin", "sticky-1..2.bin", "sticky-1.0.bin.txt", "sticky-v1.0.bin.old"} {
 		if _, _, ok := parseFirmwareName("sticky", name); ok {
 			t.Fatalf("%s must be rejected", name)
 		}
 	}
-	if v, _, ok := parseFirmwareName("sticky", "sticky-0.10.0.bin"); !ok || v != "0.10.0" {
-		t.Fatalf("valid name: %q %v", v, ok)
+	// The version keeps the v of the tag; the old spelling without it stays valid.
+	for _, name := range []string{"sticky-v0.10.0.bin", "sticky-0.10.0.bin"} {
+		if v, _, ok := parseFirmwareName("sticky", name); !ok || v != "0.10.0" {
+			t.Fatalf("%s: %q %v", name, v, ok)
+		}
+	}
+	if hw, ok := splitFirmwareName("sticky-v0.10.0.bin"); !ok || hw != "sticky" {
+		t.Fatalf("hardware split: %q %v", hw, ok)
+	}
+	if _, ok := splitFirmwareName("notes.txt"); ok {
+		t.Fatal("notes.txt is no image")
+	}
+	// A pin names the version with or without the v.
+	for _, pin := range []string{"v0.10.0", "0.10.0"} {
+		if p := pinVersion(pin); p == nil || compareVersions(p, a) != 0 {
+			t.Fatalf("pin %q: %v", pin, p)
+		}
+	}
+	if pinVersion("") != nil || pinVersion("nope") != nil {
+		t.Fatal("empty and invalid pins must be ignored")
 	}
 }
 
-// firmwareServer is a plan server with updates on and three files in
-// firmware/sticky: two images and one ignored name.
+// firmwareServer is a plan server with updates on and three files in the flat
+// firmware directory: two images and one ignored name.
 func firmwareServer(t *testing.T) (*Server, *testDevice) {
 	t.Helper()
 	s, _ := planServer(t, testPlan)
 	s.config().Firmware = FirmwareConfig{Update: firmwareAuto, MinBatteryVolts: 3.6}
-	dir := filepath.Join(s.config().FirmwareDir, "sticky")
-	writePageFile(t, filepath.Join(dir, "sticky-0.9.2.bin"), "old image")
-	writePageFile(t, filepath.Join(dir, "sticky-0.10.0.bin"), "new image")
+	dir := s.config().FirmwareDir
+	writePageFile(t, filepath.Join(dir, "sticky-v0.9.2.bin"), "old image")
+	writePageFile(t, filepath.Join(dir, "sticky-v0.10.0.bin"), "new image")
 	writePageFile(t, filepath.Join(dir, "notes.txt"), "not an image")
 	dev := planDevice(t, s)
 	dev.req.Battery = &syncBattery{Volts: 3.9}
@@ -60,7 +78,7 @@ func TestFirmwareOfferAndDownload(t *testing.T) {
 	logs := captureLog(t)
 	s, dev := firmwareServer(t)
 	offer := offerOf(displayPage(t, s, dev))
-	if offer == nil || offer["version"] != "0.10.0" || offer["path"] != "/firmware/sticky/sticky-0.10.0.bin" ||
+	if offer == nil || offer["version"] != "0.10.0" || offer["path"] != "/firmware/sticky-v0.10.0.bin" ||
 		offer["md5"] != md5Hex("new image") {
 		t.Fatalf("offer: %v", offer)
 	}
@@ -68,8 +86,8 @@ func TestFirmwareOfferAndDownload(t *testing.T) {
 	if rec.Code != 200 || rec.Body.String() != "new image" {
 		t.Fatalf("download: %d %q", rec.Code, rec.Body)
 	}
-	for _, path := range []string{"/firmware/sticky/notes.txt", "/firmware/sticky/e1001-1.0.bin",
-		"/firmware/sticky/sticky-9.9.bin", "/firmware/Sticky/sticky-0.10.0.bin", "/firmware/sticky/..%2fsticky-0.10.0.bin"} {
+	for _, path := range []string{"/firmware/notes.txt", "/firmware/sticky-v9.9.bin",
+		"/firmware/Sticky-v0.10.0.bin", "/firmware/..%2fsticky-v0.10.0.bin"} {
 		if rec := fetchImage(t, s, path); rec.Code != 404 {
 			t.Fatalf("%s: %d", path, rec.Code)
 		}
@@ -78,12 +96,12 @@ func TestFirmwareOfferAndDownload(t *testing.T) {
 	if info["firmware_status"] != fwOffered || info["firmware_available"] != "0.10.0" || info["firmware"] != "0.4.0" {
 		t.Fatalf("devices API: %v", info)
 	}
-	if !strings.Contains(logs(), "firmware file ignored") {
-		t.Fatal("ignored file must be logged")
-	}
-	if body := htmlRequest(t, s, "/ui").Body.String(); !strings.Contains(body, "sticky/notes.txt") ||
+	if body := htmlRequest(t, s, "/ui").Body.String(); !strings.Contains(body, "notes.txt") ||
 		!strings.Contains(body, "0.4.0 → 0.10.0 · offered") {
 		t.Fatalf("dashboard: %s", body)
+	}
+	if !strings.Contains(logs(), "firmware file ignored") {
+		t.Fatal("ignored file must be logged")
 	}
 
 	// The device reboots into the new version: the offer is settled.
@@ -96,6 +114,47 @@ func TestFirmwareOfferAndDownload(t *testing.T) {
 	}
 	if !strings.Contains(logs(), "firmware updated") {
 		t.Fatal("successful update must be logged")
+	}
+}
+
+// TestFirmwareOldLayout verifies that an instance with firmware/<hardware>/
+// keeps working and that a flat file wins the same version (ADR 0060).
+func TestFirmwareOldLayout(t *testing.T) {
+	s, dev := firmwareServer(t)
+	dir := s.config().FirmwareDir
+	writePageFile(t, filepath.Join(dir, "sticky", "sticky-v0.11.0.bin"), "nested image")
+	if offer := offerOf(displayPage(t, s, dev)); offer == nil || offer["version"] != "0.11.0" ||
+		offer["path"] != "/firmware/sticky-v0.11.0.bin" {
+		t.Fatalf("nested image must be offered: %v", offer)
+	}
+	if rec := fetchImage(t, s, "/firmware/sticky-v0.11.0.bin"); rec.Code != 200 || rec.Body.String() != "nested image" {
+		t.Fatalf("nested download: %d %q", rec.Code, rec.Body)
+	}
+	// The same version flat wins.
+	writePageFile(t, filepath.Join(dir, "sticky-v0.11.0.bin"), "flat image")
+	if offer := offerOf(displayPage(t, s, dev)); offer == nil || offer["md5"] != md5Hex("flat image") {
+		t.Fatalf("flat file must win the tie: %v", offer)
+	}
+	if body := htmlRequest(t, s, "/ui").Body.String(); !strings.Contains(body, "sticky/ (old layout)") {
+		t.Fatal("the old directory must be reported")
+	}
+}
+
+// TestFirmwarePin verifies that a pinned version is offered even when a higher
+// image lies in the directory: the pin is the rollback switch (ADR 0060).
+func TestFirmwarePin(t *testing.T) {
+	s, dev := firmwareServer(t)
+	s.config().Firmware.Version = "0.9.2"
+	if offer := offerOf(displayPage(t, s, dev)); offer == nil || offer["version"] != "0.9.2" {
+		t.Fatalf("pinned offer: %v", offer)
+	}
+	if info := deviceInfoOf(t, s); info["firmware_available"] != "0.9.2" {
+		t.Fatalf("pinned availability: %v", info)
+	}
+	// A pinned image the device already runs offers nothing.
+	dev.req.Firmware = "0.9.2"
+	if offer := offerOf(displayPage(t, s, dev)); offer != nil {
+		t.Fatalf("no offer for the pinned version: %v", offer)
 	}
 }
 
@@ -119,7 +178,7 @@ func TestFirmwareStopsAfterFailures(t *testing.T) {
 		t.Fatalf("failures must be logged: %s", logs())
 	}
 	// A changed image is offered again.
-	path := filepath.Join(s.config().FirmwareDir, "sticky", "sticky-0.10.0.bin")
+	path := filepath.Join(s.config().FirmwareDir, "sticky-v0.10.0.bin")
 	writePageFile(t, path, "fixed image")
 	stamp := time.Now().Add(time.Minute)
 	if err := os.Chtimes(path, stamp, stamp); err != nil {
@@ -170,7 +229,7 @@ func TestFirmwareOfferConditions(t *testing.T) {
 	}
 
 	// A lower version is a deliberate rollback and offered as well.
-	if err := os.Remove(filepath.Join(s.config().FirmwareDir, "sticky", "sticky-0.10.0.bin")); err != nil {
+	if err := os.Remove(filepath.Join(s.config().FirmwareDir, "sticky-v0.10.0.bin")); err != nil {
 		t.Fatal(err)
 	}
 	dev.req.Firmware = "0.10.0"
@@ -178,7 +237,7 @@ func TestFirmwareOfferConditions(t *testing.T) {
 		t.Fatalf("rollback offer: %v", offer)
 	}
 	// Hardware without images offers nothing.
-	if err := os.RemoveAll(filepath.Join(s.config().FirmwareDir, "sticky")); err != nil {
+	if err := os.RemoveAll(filepath.Join(s.config().FirmwareDir, "sticky-v0.9.2.bin")); err != nil {
 		t.Fatal(err)
 	}
 	if offerOf(displayPage(t, s, dev)) != nil {

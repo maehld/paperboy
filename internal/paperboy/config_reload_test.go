@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -137,14 +138,36 @@ func TestDegradedStartAppliesConfig(t *testing.T) {
 	}
 }
 
-// TestPluginHelperProcess is the plugin of the tests below, started as a
-// child process of the test binary.
-func TestPluginHelperProcess(t *testing.T) {
-	if os.Getenv("PAPERBOY_TEST_PLUGIN") != "1" {
-		t.Skip("helper process")
+// TestMain doubles as the plugin of the tests below: with PAPERBOY_TEST_PLUGIN
+// set, the copied test binary serves the plugin instead of running tests
+// (ADR 0060: a plugin program is named like the plugin, without arguments).
+func TestMain(m *testing.M) {
+	if os.Getenv("PAPERBOY_TEST_PLUGIN") == "1" {
+		plugin.Serve(&testPlugin{})
+		os.Exit(0)
 	}
-	plugin.Serve(&testPlugin{})
-	os.Exit(0)
+	os.Exit(m.Run())
+}
+
+// installTestPlugin copies the test binary into the instance's plugins
+// directory as the program of the plugin, so that no command is needed.
+func installTestPlugin(t *testing.T, dir, name string) {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program := filepath.Join(dir, pluginsDirName, name)
+	if runtime.GOOS == "windows" {
+		program += ".exe"
+	}
+	if err := os.WriteFile(program, data, 0o755); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // testPlugin fills its widget black when its config says so.
@@ -174,16 +197,11 @@ func (p *testPlugin) Render(_ *plugin.Request, _ plugin.WidgetRequest, img *imag
 // next page shows the new configuration (ADR 0047, 0049).
 func TestConfigReloadReconfiguresPlugins(t *testing.T) {
 	dir := t.TempDir()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
 	t.Setenv("PAPERBOY_TEST_SECRET", "s3cret")
 	pluginYAML := func(black bool) string {
 		return fmt.Sprintf(timezoneConfig, "UTC") + `
 plugins:
   test:
-    command: [` + exe + `, -test.run=TestPluginHelperProcess]
     env: { PAPERBOY_TEST_PLUGIN: "1" }
     config: { black: ` + fmt.Sprint(black) + `, secret: "${PAPERBOY_TEST_SECRET}" }
 `
@@ -193,6 +211,7 @@ plugins:
 	if err := os.MkdirAll(filepath.Join(dir, pluginsDirName), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	installTestPlugin(t, dir, "test")
 	writeConfig(t, dir, pluginYAML(true))
 	s := configServer(t, dir)
 	ctx, cancel := context.WithCancel(context.Background())

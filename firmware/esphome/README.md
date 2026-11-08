@@ -86,7 +86,7 @@ ESPHome is pinned to **2026.10.1** and runs through `uvx`, outside Paperboy.
 cd firmware/esphome
 .\build.ps1 -Hardware sticky                      # or e1001; image in .esphome/build/<hardware>/build/
 uvx esphome==2026.10.1 run sticky.yaml            # first flash over USB-C
-.\build.ps1 -Hardware sticky -Instance <dir>      # publish to <dir>/firmware/sticky/sticky-<version>.bin (ADR 0043)
+.\build.ps1 -Hardware sticky -Instance <dir>      # publish to <dir>/firmware/sticky-v<version>.bin (ADR 0043, 0060)
 ```
 
 The build needs no secrets. Over the network the firmware only installs images

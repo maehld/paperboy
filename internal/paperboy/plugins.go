@@ -27,6 +27,8 @@ func (s *Server) widgetSource() page.WidgetSource {
 type pluginInfo struct {
 	Name        string              `json:"name"`
 	Builtin     bool                `json:"builtin,omitempty"`
+	Program     string              `json:"program,omitempty"` // resolved program, ADR 0060
+	Version     string              `json:"version,omitempty"` // downloaded version, empty for a hand-built one
 	Description *plugin.Description `json:"description,omitempty"`
 	Error       string              `json:"error,omitempty"`
 }
@@ -40,9 +42,16 @@ func (s *Server) handlePlugins(w http.ResponseWriter, r *http.Request) {
 		names = append(names, p.Name)
 	}
 	sort.Strings(names[1:])
+	specs := cfg.pluginSpecs()
 	list := []pluginInfo{}
 	for _, name := range names {
 		info := pluginInfo{Name: name, Builtin: name == builtin.Name}
+		if spec, ok := specs[name]; ok {
+			info.Version = spec.Version
+			if len(spec.Command) > 0 {
+				info.Program = spec.Command[0]
+			}
+		}
 		d, err := s.widgets.Describe(r.Context(), name)
 		if err != nil {
 			info.Error = err.Error()
