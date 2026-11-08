@@ -841,18 +841,19 @@ func (m *myskoda) targetSoC() (int, bool) {
 }
 
 // chargeState names charging.status.state; an unknown value is shown as it is
-// rather than guessed.
+// rather than guessed. The labels stay short: they share a line with the power
+// and, on text displays, with the range.
 func (m *myskoda) chargeState() string {
 	if m.cur.Charging == nil || m.cur.Charging.Status == nil || m.cur.Charging.Status.State == nil {
 		return m.t("Unbekannt", "Unknown")
 	}
 	switch s := *m.cur.Charging.Status.State; s {
 	case "CONNECT_CABLE":
-		return m.t("Kabel", "Cable")
+		return m.t("Getrennt", "Unplugged")
 	case "CHARGING":
 		return m.t("Lädt", "Charging")
 	case "CONSERVING":
-		return m.t("Hält", "Holding")
+		return m.t("Erhaltung", "Holding")
 	case "READY_FOR_CHARGING":
 		return m.t("Bereit", "Ready")
 	case "DISCHARGING":

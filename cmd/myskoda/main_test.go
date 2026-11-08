@@ -304,6 +304,30 @@ func TestStateTexts(t *testing.T) {
 	}
 }
 
+func TestChargeStateLabels(t *testing.T) {
+	m := testPlugin(t, "enyaq.json")
+	cases := []struct{ state, de, en string }{
+		{"CONNECT_CABLE", "Getrennt", "Unplugged"},
+		{"READY_FOR_CHARGING", "Bereit", "Ready"},
+		{"CHARGING", "Lädt", "Charging"},
+		{"CONSERVING", "Erhaltung", "Holding"},
+		{"DISCHARGING", "Entlädt", "Discharging"},
+		{"CHARGING_INTERRUPTED", "Unterbrochen", "Interrupted"},
+	}
+	for _, c := range cases {
+		s := c.state
+		m.cur.Charging.Status.State = &s
+		m.req.Language = "de"
+		if got := m.chargeState(); got != c.de {
+			t.Errorf("%s (de) = %q, want %q", c.state, got, c.de)
+		}
+		m.req.Language = "en"
+		if got := m.chargeState(); got != c.en {
+			t.Errorf("%s (en) = %q, want %q", c.state, got, c.en)
+		}
+	}
+}
+
 func TestUnknownEnumsAreShownAsTheyAre(t *testing.T) {
 	m := testPlugin(t, "enyaq.json")
 	unknown := "SOMETHING_NEW"

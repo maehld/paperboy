@@ -44,6 +44,8 @@ All widgets except `card` have text variants for character displays.
 
 The render image comes from `info.renderUrl` and is downloaded once per URL, cached in memory and never committed; a missing image (`RENDER_UNAVAILABLE`) leaves the card without it instead of failing. The API key is not sent to the image host.
 
+The charging state comes from `charging.status.state` and keeps short labels, because it shares a line with the power and, on character displays, with the range: `Getrennt` (`CONNECT_CABLE`), `Bereit` (`READY_FOR_CHARGING`), `Lädt`, `Erhaltung` (`CONSERVING`), `Entlädt` and `Unterbrochen` (`CHARGING_INTERRUPTED`); in English `Unplugged`, `Ready`, `Charging`, `Holding`, `Discharging`, `Interrupted`. An unknown value is shown as it is.
+
 Text variants:
 
 | Widget | Lines |
