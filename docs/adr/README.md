@@ -59,3 +59,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0061](0061-install-every-bundle-image.md) | Install every image of a firmware bundle | Accepted, implemented |
 | [0062](0062-plugin-updates-and-download-control.md) | Newer plugin downloads, a configurable interval and a check on demand | Accepted, implemented |
 | [0063](0063-constant-firmware-bundle-name.md) | A constant name for the firmware bundle | Accepted, implemented |
+| [0064](0064-device-protocol-v4.md) | Device protocol v4 – event identities and explicit wake reasons | Proposed |

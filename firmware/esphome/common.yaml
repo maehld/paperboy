@@ -34,6 +34,7 @@ esphome:
   on_boot:
     - priority: -100
       then:
+        - lambda: "pb_init_rtc();"
         - lambda: "id(mac) = get_mac_address_pretty();"
         - if:
             condition:
@@ -82,6 +83,17 @@ text:
     restore_value: true
     initial_value: "${default_paperboy_url}"
     max_length: 120
+    # Saving a new URL starts the cycle at once. Otherwise a device that sits
+    # in setup waits for its next wake, and a corrected URL would take up to an
+    # hour to be used.
+    on_value:
+      - lambda: |-
+          std::string url = pb_base(x);
+          if (id(busy) || url.empty() || !wifi::global_wifi_component->is_connected()) {
+            return;
+          }
+          ESP_LOGI("paperboy", "Paperboy URL set to %s, starting the cycle", url.c_str());
+      - script.execute: run_cycle
   - platform: template
     id: api_key
     internal: true
@@ -145,6 +157,14 @@ globals:
   - id: busy
     type: bool
     initial_value: "false"
+  # Sync attempts of this wake with their own retry (ADR 0064).
+  - id: sync_attempts
+    type: int
+    initial_value: "0"
+  # Registration attempts of this wake.
+  - id: reg_attempts
+    type: int
+    initial_value: "0"
 
 http_request:
   useragent: paperboy-esphome
@@ -158,7 +178,9 @@ online_image:
     type: GRAYSCALE
     update_interval: never
     on_download_finished:
-      - lambda: "pb_remember(id(image_hash));"
+      # The hash is stored after the paint (after_paint), so a sync that
+      # reports "shown" proves the panel really shows that image (ADR 0064).
+      - lambda: "pb_paint_pending = true;"
       - component.update: epaper_display
       - script.execute: after_paint
     on_error:
@@ -170,7 +192,7 @@ script:
   # ---------------------------------------------------------------- cycle
 
   - id: run_cycle
-    mode: single
+    mode: restart
     then:
       - if:
           condition:
@@ -183,23 +205,43 @@ script:
       - lambda: "id(setup_mode) = false;"
       - script.stop: setup_limit
       - script.execute: awake_limit
+      # A one-shot wake reason from the last sync (menu, result) wins over the
+      # wake the hardware decoded (ADR 0064).
+      - lambda: "id(wake_reason) = pb_take_reason(id(wake_reason));"
+      # After deep sleep and in the awake loop the radio needs a few seconds.
+      # A request before that fails as "not connected" and used to send the
+      # device straight back to sleep.
+      - wait_until:
+          condition: wifi.connected
+          timeout: 45s
       - if:
           condition:
-            lambda: "return id(api_key).state.empty();"
+            lambda: "return wifi::global_wifi_component->is_connected();"
           then:
-            - script.execute: do_register
-            - script.wait: do_register
-      - if:
-          condition:
-            lambda: "return !id(api_key).state.empty();"
-          then:
-            - script.execute: sync_and_show
-          else:
             - if:
                 condition:
-                  lambda: "return !id(setup_mode);"
+                  lambda: "return id(api_key).state.empty();"
                 then:
-                  - script.execute: go_sleep
+                  - script.execute: do_register
+                  - script.wait: do_register
+            - if:
+                condition:
+                  lambda: "return !id(api_key).state.empty();"
+                then:
+                  - script.execute: sync_and_show
+                else:
+                  - if:
+                      condition:
+                        lambda: "return !id(setup_mode);"
+                      then:
+                        # No key and no server: show the setup screen with the
+                        # address instead of sleeping, so a wrong Paperboy URL
+                        # can be corrected right away.
+                        - script.execute: { id: enter_setup, reason: "url" }
+          else:
+            - lambda: 'pb_note_for_next_wake("no Wi-Fi connection");'
+            - logger.log: "no Wi-Fi, sleeping"
+            - script.execute: go_sleep
 
   # Called by the buttons with their role (next, previous, home). The event is
   # queued; a sync starts at once unless one is already running.
@@ -266,6 +308,10 @@ script:
             }
             t += "Open http://" + std::string(ip) + "/\n";
             t += "and enter the Paperboy URL.\n";
+            std::string current = pb_base(id(paperboy_url).state);
+            if (!current.empty()) {
+              t += "Now: " + current + "\n";
+            }
           } else {
             t += "Paperboy does not know this display.\n";
             t += "Add its MAC to paperboy.yaml.\n";
@@ -280,8 +326,28 @@ script:
   # ---------------------------------------------------------------- device API
 
   # POST /api/device/register trades the MAC for the device key; 403 means
-  # the MAC is not in paperboy.yaml.
+  # the MAC is not in paperboy.yaml. A request that fails as a whole is
+  # retried, and an unreachable or wrong Paperboy URL ends in the setup screen
+  # instead of a silent deep sleep, so the operator can correct it.
   - id: do_register
+    mode: single
+    then:
+      - lambda: "id(reg_attempts) = 0;"
+      - while:
+          condition:
+            lambda: "return id(api_key).state.empty() && id(reg_attempts) < 3;"
+          then:
+            - lambda: "id(reg_attempts)++;"
+            - script.execute: do_register_once
+            - script.wait: do_register_once
+            - if:
+                condition:
+                  lambda: "return id(api_key).state.empty();"
+                then:
+                  - delay: 2s
+
+  - id: do_register_once
+    mode: single
     then:
       - http_request.post:
           url: !lambda 'return pb_base(id(paperboy_url).state) + "/api/device/register";'
@@ -318,8 +384,27 @@ script:
               - lambda: 'pb_note_for_next_wake("registration request failed");'
               - logger.log: "registration request failed"
 
-  # One POST /api/device/sync; the outcome is left in sync_result.
+  # One POST /api/device/sync per attempt; the outcome is left in sync_result.
+  # A failed request keeps the event queue and retries (ADR 0064).
   - id: do_sync
+    mode: single
+    then:
+      - lambda: "id(sync_attempts) = 0;"
+      - while:
+          condition:
+            lambda: "return id(sync_result) != 1 && id(sync_attempts) < 3;"
+          then:
+            - lambda: "id(sync_attempts)++;"
+            - script.execute: do_sync_once
+            - script.wait: do_sync_once
+            - if:
+                condition:
+                  lambda: "return id(sync_result) != 1;"
+                then:
+                  - delay: 2s
+
+  - id: do_sync_once
+    mode: single
     then:
       - script.execute: read_battery
       - script.wait: read_battery
@@ -362,8 +447,21 @@ script:
                     id(fw_offered) = root["firmware"]["version"] | "";
                     id(fw_path) = root["firmware"]["path"] | "";
                     id(fw_md5) = root["firmware"]["md5"] | "";
+                    // A one-shot wake reason (menu, result) overrides the next
+                    // sleep (ADR 0064).
+                    std::string wake = root["wake"]["reason"] | "";
+                    int after = root["wake"]["after_s"] | 0;
+                    if (!wake.empty() && after > 0) {
+                      pb_set_wake(wake, (uint32_t) after);
+                    } else {
+                      pb_next_reason[0] = 0;
+                      pb_next_s = 0;
+                    }
                     return true;
                   });
+                  if (ok) {
+                    pb_sync_done();
+                  }
                   if (ok && !id(image_path).empty()) {
                     id(sync_result) = 1;
                   }
@@ -379,7 +477,16 @@ script:
     mode: single
     then:
       - script.stop: after_paint
-      - lambda: "id(busy) = true;"
+      - lambda: |-
+          // Never judge "unchanged" from a stale answer: if the request does
+          // not run, sync_result stays 0 and the cycle fails instead of
+          // repainting the same page in a loop.
+          id(busy) = true;
+          id(sync_result) = 0;
+          id(image_path) = "";
+          id(image_hash) = "";
+      - script.stop: do_sync
+      - script.stop: do_sync_once
       - script.execute: do_sync
       - script.wait: do_sync
       - if:
@@ -445,7 +552,14 @@ script:
             not:
               epaper_spi.is_updating: epaper_display
           timeout: 15s
-      - lambda: "id(busy) = false;"
+      - lambda: |-
+          // The panel painted the new image: only now does the shown hash
+          // describe what the display really shows (ADR 0064).
+          if (pb_paint_pending) {
+            pb_remember(id(image_hash));
+            pb_paint_pending = false;
+          }
+          id(busy) = false;
       - if:
           condition:
             lambda: "return pb_has_events();"
@@ -468,18 +582,22 @@ script:
   - id: go_sleep
     mode: restart
     then:
+      # A cycle that ends here was often abandoned midway; without this the
+      # busy flag stayed set and every later button press only queued an event
+      # that nobody sent.
+      - lambda: "id(busy) = false;"
       - if:
           condition:
             lambda: "return id(stay_awake) && !id(setup_mode);"
           then:
             - script.stop: awake_limit
-            - delay: !lambda "return (uint32_t) (pb_refresh_s > 0 ? pb_refresh_s : 600) * 1000;"
-            - lambda: 'id(wake_reason) = "timer";'
+            - delay: !lambda "return pb_sleep_seconds() * 1000;"
+            - lambda: 'id(wake_reason) = pb_take_reason("timer");'
             - script.execute: run_cycle
           else:
             - deep_sleep.enter:
                 id: sleeper
-                sleep_duration: !lambda "return (uint32_t) (pb_refresh_s > 0 ? pb_refresh_s : 600) * 1000;"
+                sleep_duration: !lambda "return pb_sleep_seconds() * 1000;"
 
   # Never stay awake longer than this after the last input, whatever hangs.
   - id: awake_limit
@@ -487,6 +605,7 @@ script:
     then:
       - delay: 120s
       - logger.log: "awake limit: forcing deep sleep"
+      - lambda: "id(busy) = false;"
       - script.execute: go_sleep
 
   # Setup waits for the operator, but not forever: retry in an hour.

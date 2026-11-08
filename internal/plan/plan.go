@@ -6,6 +6,7 @@
 package plan
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -79,8 +80,9 @@ func (d *Day) UnmarshalYAML(v *yaml.Node) error {
 
 // Plan is one file under plans/.
 type Plan struct {
-	Rules    []Rule `yaml:"rules"`
-	Fallback string `yaml:"fallback"`
+	Rules    []Rule       `yaml:"rules"`
+	Fallback string       `yaml:"fallback"`
+	Actions  []PlanAction `yaml:"actions"` // offered by the device menu (ADR 0057)
 
 	loc *time.Location
 }
@@ -92,6 +94,51 @@ type Rule struct {
 	Pages   []string `yaml:"pages"`
 	Rotate  bool     `yaml:"rotate"`
 	Refresh Duration `yaml:"refresh"`
+	// Actions belong to the plan, not to a rule. The field only exists to
+	// reject the key with a hint instead of "field not found".
+	Actions []any `yaml:"actions"`
+}
+
+// PlanAction is one action a plan offers to every device that uses it
+// (ADR 0057). Action is "plugin/action"; Args are passed to the plugin
+// unchanged. ID is optional and becomes mandatory when Action appears more
+// than once. Title overrides the plugin's own title in the menu.
+type PlanAction struct {
+	Action string         `yaml:"action"`
+	Args   map[string]any `yaml:"args"`
+	ID     string         `yaml:"id"`
+	Title  string         `yaml:"title"`
+}
+
+// Key is the plan-local identity of the action: its ID when set, otherwise
+// plugin/action. Selection state uses it, so reordering the list or changing
+// Args or Title keeps the identity (ADR 0057).
+func (a PlanAction) Key() string {
+	if a.ID != "" {
+		return a.ID
+	}
+	return a.Action
+}
+
+// UnmarshalYAML accepts the short form "- plugin/action" next to the full
+// mapping. Unknown keys are rejected by hand because the node decoder does not
+// know the plan's strict mode.
+func (a *PlanAction) UnmarshalYAML(v *yaml.Node) error {
+	if v.Kind == yaml.ScalarNode {
+		return v.Decode(&a.Action)
+	}
+	if v.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: expected an action as \"plugin/action\" or a mapping", v.Line)
+	}
+	for i := 0; i+1 < len(v.Content); i += 2 {
+		switch v.Content[i].Value {
+		case "action", "args", "id", "title":
+		default:
+			return fmt.Errorf("line %d: field %s not found in type plan.PlanAction", v.Content[i].Line, v.Content[i].Value)
+		}
+	}
+	type plain PlanAction
+	return v.Decode((*plain)(a))
 }
 
 // When is a time window. Days apply to the day the window starts, so a window
@@ -111,6 +158,7 @@ type Selection struct {
 	Pages   []string
 	Rotate  bool
 	Refresh time.Duration // 0 = use the device interval
+	Actions []PlanAction  // the plan's actions, the same for every rule and page
 }
 
 // Parse reads a plan and validates it. Time windows refer to loc; nil means
@@ -138,17 +186,23 @@ func (p *Plan) Select(now time.Time) (Selection, bool) {
 	local := now.In(p.loc)
 	for i := range p.Rules {
 		if p.Rules[i].When.matches(local) {
-			return p.Rules[i].selection(), true
+			return p.selectRule(i), true
 		}
 	}
 	if p.Fallback != "" {
 		for i := range p.Rules {
 			if p.Rules[i].Name == p.Fallback {
-				return p.Rules[i].selection(), true
+				return p.selectRule(i), true
 			}
 		}
 	}
 	return Selection{}, false
+}
+
+func (p *Plan) selectRule(i int) Selection {
+	s := p.Rules[i].selection()
+	s.Actions = p.Actions
+	return s
 }
 
 // Matches reports whether the time window of rule i matches now, without the
@@ -261,6 +315,52 @@ func (p *Plan) validate() error {
 	if p.Fallback != "" && !seen[p.Fallback] {
 		return fmt.Errorf("fallback %q: no such rule", p.Fallback)
 	}
+	if err := p.validateActions(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateActions checks the plan's action list (ADR 0057). Plugins, actions
+// and args are checked by the server, which knows them; here only the shape,
+// the identity and the duplicates are checked.
+func (p *Plan) validateActions() error {
+	count := map[string]int{}
+	for i, a := range p.Actions {
+		if a.Action == "" {
+			return fmt.Errorf("actions[%d]: action missing", i)
+		}
+		if !validAction(a.Action) {
+			return fmt.Errorf("actions[%d]: action %q: expected plugin/action", i, a.Action)
+		}
+		if a.ID != "" && !validName(a.ID) {
+			return fmt.Errorf("actions[%d]: id %q: only a-z, 0-9 and -", i, a.ID)
+		}
+		count[a.Action]++
+	}
+	ids := map[string]bool{}
+	seen := map[string]bool{}
+	for i, a := range p.Actions {
+		if count[a.Action] > 1 && a.ID == "" {
+			return fmt.Errorf("actions[%d]: id required because %s appears more than once", i, a.Action)
+		}
+		key := a.Key()
+		if ids[key] {
+			return fmt.Errorf("actions[%d]: duplicate id %q", i, key)
+		}
+		ids[key] = true
+		// json.Marshal writes map keys in sorted order, so the key tells
+		// equal arguments from different ones.
+		args, err := json.Marshal(a.Args)
+		if err != nil {
+			return fmt.Errorf("actions[%d]: args: %w", i, err)
+		}
+		dup := a.Action + " " + string(args)
+		if seen[dup] {
+			return fmt.Errorf("actions[%d]: duplicate action and args (%s)", i, a.Action)
+		}
+		seen[dup] = true
+	}
 	return nil
 }
 
@@ -282,6 +382,9 @@ func (r *Rule) validate() error {
 	// type's floor. Text displays may poll every second (ADR 0045).
 	if r.Refresh != 0 && time.Duration(r.Refresh) < time.Second {
 		return fmt.Errorf("refresh must be at least 1s")
+	}
+	if len(r.Actions) > 0 {
+		return fmt.Errorf("actions belong to the plan, not to a rule (ADR 0057)")
 	}
 	w := &r.When
 	if len(w.Data) > 0 {
@@ -306,4 +409,10 @@ func validName(s string) bool {
 		}
 	}
 	return true
+}
+
+// validAction reports whether s is "plugin/action" with valid names.
+func validAction(s string) bool {
+	plugin, action, ok := strings.Cut(s, "/")
+	return ok && validName(plugin) && validName(action)
 }

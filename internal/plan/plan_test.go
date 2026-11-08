@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -88,6 +89,70 @@ func TestParseErrors(t *testing.T) {
 		"unknown weekday":    "rules: [{name: a, pages: [x], when: {days: [funday]}}]",
 		"unknown fallback":   "rules: [{name: a, pages: [x]}]\nfallback: b",
 		"timezone not given": "rules: [{name: a, pages: [x]}]\ntimezone: 5",
+	}
+	for name, yaml := range cases {
+		if _, err := Parse(strings.NewReader(yaml), berlin(t)); err == nil {
+			t.Fatalf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestPlanActions(t *testing.T) {
+	p := parse(t, `
+rules:
+  - name: tag
+    pages: [a]
+  - name: nacht
+    pages: [b]
+fallback: nacht
+actions:
+  - action: evcc/mode
+    args: { loadpoint: 0, mode: now }
+    id: charge-now
+    title: Charge now
+  - action: evcc/mode
+    args: { loadpoint: 1, mode: now }
+    id: charge-now-2
+  - paperboy/refresh
+`)
+	if len(p.Actions) != 3 {
+		t.Fatalf("actions: %+v", p.Actions)
+	}
+	if got := p.Actions[0].Key(); got != "charge-now" {
+		t.Fatalf("identity with id: %q", got)
+	}
+	if got := p.Actions[2].Key(); got != "paperboy/refresh" {
+		t.Fatalf("identity without id: %q", got)
+	}
+	if got := fmt.Sprint(p.Actions[0].Args["loadpoint"]); got != "0" {
+		t.Fatalf("args: %v", p.Actions[0].Args)
+	}
+	if p.Actions[0].Title != "Charge now" {
+		t.Fatalf("title: %q", p.Actions[0].Title)
+	}
+	// Every selection carries the plan's actions, matching rule and fallback.
+	for _, now := range []time.Time{
+		at(t, 2026, time.October, 21, 12, 0),
+		at(t, 2026, time.October, 21, 23, 0),
+	} {
+		sel, ok := p.Select(now)
+		if !ok || len(sel.Actions) != 3 || sel.Actions[1].ID != "charge-now-2" {
+			t.Fatalf("selection at %s: %+v %v", now.Format(time.RFC3339), sel, ok)
+		}
+	}
+}
+
+func TestPlanActionErrors(t *testing.T) {
+	cases := map[string]string{
+		"actions on a rule":      "rules: [{name: a, pages: [x], actions: [{action: a/b}]}]",
+		"action missing":         "rules: [{name: a, pages: [x]}]\nactions: [{id: a}]",
+		"action without plugin":  "rules: [{name: a, pages: [x]}]\nactions: [{action: refresh}]",
+		"action with bad name":   "rules: [{name: a, pages: [x]}]\nactions: [{action: evcc/Mode}]",
+		"bad id":                 "rules: [{name: a, pages: [x]}]\nactions: [{action: a/b, id: Charge}]",
+		"missing id":             "rules: [{name: a, pages: [x]}]\nactions: [{action: a/b, id: x}, {action: a/b}]",
+		"duplicate id":           "rules: [{name: a, pages: [x]}]\nactions: [{action: a/b, id: x}, {action: c/d, id: x}]",
+		"duplicate action":       "rules: [{name: a, pages: [x]}]\nactions: [{action: a/b, id: x}, {action: a/b, id: y}]",
+		"duplicate action mixed": "rules: [{name: a, pages: [x]}]\nactions: [{action: a/b, id: x, args: {a: 1, b: 2}}, {action: a/b, id: y, args: {b: 2, a: 1}}]",
 	}
 	for name, yaml := range cases {
 		if _, err := Parse(strings.NewReader(yaml), berlin(t)); err == nil {

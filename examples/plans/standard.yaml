@@ -8,3 +8,10 @@ rules:
     pages: [uebersicht]
     refresh: 30m
 fallback: tag
+
+# Actions the device menu offers (ADR 0057). They belong to the plan, so every
+# page above offers them. evcc provides "mode" and "loadpoint"; see
+# docs/plugins/evcc.md and docs/plugins/protocol.md.
+# actions:
+#   - { action: evcc/mode, args: { loadpoint: 0, mode: now }, id: charge-now, title: "Charge now" }
+#   - { action: paperboy/refresh }

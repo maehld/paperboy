@@ -5,7 +5,7 @@
 
 substitutions:
   hardware: sticky
-  fw_version: "1.0.0"
+  fw_version: "2.0.0"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
 
@@ -142,6 +142,8 @@ touchscreen:
       swap_xy: true
       mirror_x: true
       mirror_y: true
+    # The panel reports a position continuously while a finger rests on it.
+    # pb_touch debounces, so one tap becomes one event (ADR 0064).
     on_touch:
       - script.execute: { id: touched, x: !lambda "return touch.x;", y: !lambda "return touch.y;" }
 

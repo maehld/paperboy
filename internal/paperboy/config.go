@@ -99,6 +99,11 @@ type Device struct {
 	Plan    string   // page plan under plans/; empty = notice page
 	Hold    bool     // firmware: hold keeps the device on its firmware version (ADR 0043)
 	Power   string   // auto, battery or mains; empty = the display type's (ADR 0051)
+	// Actions allows the device menu (ADR 0057): "allow" (default) or "deny".
+	Actions string
+	// MenuShowDuration is how long the menu stays open before it closes
+	// itself; 0 = the default (ADR 0057).
+	MenuShowDuration Duration
 }
 
 // FirmwareConfig controls firmware updates offered in the sync (ADR 0043) and
@@ -178,6 +183,15 @@ const (
 	minRefresh         = time.Minute
 	defaultRefresh     = 5 * time.Minute
 	defaultPageTimeout = 5 * time.Minute
+
+	// The device menu (ADR 0057) stays open this long by default and never
+	// longer than menuMaxDuration, so a forgotten menu does not keep waking the
+	// device.
+	defaultMenuDuration = 30 * time.Second
+	menuMaxDuration     = 60 * time.Second
+
+	actionsAllow = "allow"
+	actionsDeny  = "deny"
 )
 
 // Fixed names of the instance directory (ADR 0037).
@@ -198,10 +212,11 @@ type Config struct {
 	Timezone    *time.Location // plans and built-in dates
 	Refresh     Duration       // default interval of a device; a plan rule may override it
 	PageTimeout Duration
-	Pages       string // page templates: <dir>/pages
-	Plans       string // page plans: <dir>/plans
-	PluginsDir  string // plugin programs: <dir>/plugins (ADR 0049)
-	FirmwareDir string // firmware images: <dir>/firmware (ADR 0043)
+	MenuShow    Duration // default time the device menu stays open (ADR 0057)
+	Pages       string   // page templates: <dir>/pages
+	Plans       string   // page plans: <dir>/plans
+	PluginsDir  string   // plugin programs: <dir>/plugins (ADR 0049)
+	FirmwareDir string   // firmware images: <dir>/firmware (ADR 0043)
 	Firmware    FirmwareConfig
 	Download    *DownloadConfig // nil = fetch nothing (ADR 0060)
 	Profiles    map[string]Profile
@@ -283,6 +298,7 @@ type fileConfig struct {
 	Defaults struct {
 		Refresh     Duration `yaml:"refresh"`
 		PageTimeout Duration `yaml:"page_timeout"`
+		MenuShow    Duration `yaml:"menu_show_duration"`
 		Battery     *Battery `yaml:"battery"`
 	} `yaml:"defaults"`
 	Firmware struct {
@@ -323,6 +339,8 @@ type fileConfig struct {
 		Battery     *Battery `yaml:"battery"`
 		Firmware    string   `yaml:"firmware"`
 		Power       string   `yaml:"power"`
+		Actions     string   `yaml:"actions"`
+		MenuShow    Duration `yaml:"menu_show_duration"`
 	} `yaml:"devices"`
 }
 
@@ -380,6 +398,7 @@ func LoadConfig(dir string) (*Config, error) {
 		Timezone:    tz,
 		Refresh:     f.Defaults.Refresh,
 		PageTimeout: f.Defaults.PageTimeout,
+		MenuShow:    f.Defaults.MenuShow,
 		Battery:     f.Defaults.Battery,
 		Pages:       filepath.Join(dir, pagesDirName),
 		Plans:       filepath.Join(dir, plansDirName),
@@ -428,17 +447,19 @@ func LoadConfig(dir string) (*Config, error) {
 			return nil, fmt.Errorf("%s: device %s: firmware %q: only hold is allowed", path, id, d.Firmware)
 		}
 		c.Devices = append(c.Devices, Device{
-			ID:      id,
-			Type:    d.Protocol,
-			MAC:     d.MAC,
-			Address: d.Address,
-			Buttons: d.Buttons,
-			Profile: d.DisplayType,
-			Refresh: d.Refresh,
-			Battery: mergeBattery(f.Defaults.Battery, d.Battery),
-			Plan:    d.Plan,
-			Hold:    d.Firmware == firmwareHold,
-			Power:   d.Power,
+			ID:               id,
+			Type:             d.Protocol,
+			MAC:              d.MAC,
+			Address:          d.Address,
+			Buttons:          d.Buttons,
+			Profile:          d.DisplayType,
+			Refresh:          d.Refresh,
+			Battery:          mergeBattery(f.Defaults.Battery, d.Battery),
+			Plan:             d.Plan,
+			Hold:             d.Firmware == firmwareHold,
+			Power:            d.Power,
+			Actions:          d.Actions,
+			MenuShowDuration: d.MenuShow,
 		})
 	}
 	pluginNames := make([]string, 0, len(f.Plugins))
@@ -633,6 +654,22 @@ func (c *Config) validate() error {
 		}
 		if d.Plan != "" && !validName(d.Plan) {
 			return fmt.Errorf("device %s: plan %q: only a-z, 0-9 and -", d.ID, d.Plan)
+		}
+		switch d.Actions {
+		case "", actionsAllow:
+			d.Actions = actionsAllow
+		case actionsDeny:
+		default:
+			return fmt.Errorf("device %s: actions %q: expected allow or deny", d.ID, d.Actions)
+		}
+		if d.MenuShowDuration == 0 {
+			d.MenuShowDuration = c.MenuShow
+		}
+		if d.MenuShowDuration == 0 {
+			d.MenuShowDuration = Duration(defaultMenuDuration)
+		}
+		if time.Duration(d.MenuShowDuration) < 5*time.Second || time.Duration(d.MenuShowDuration) > menuMaxDuration {
+			return fmt.Errorf("device %s: menu_show_duration must be between 5s and %s", d.ID, menuMaxDuration)
 		}
 	}
 	for i := range c.Plugins {

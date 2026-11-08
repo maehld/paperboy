@@ -20,12 +20,13 @@ installation, nothing installation-specific is compiled in.
 | Step | Request | Notes |
 |---|---|---|
 | First contact | `POST /api/device/register` with `mac`, `hardware`, `firmware` | the key is kept in flash; `403` shows "Paperboy does not know this display" with the MAC |
-| Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `rssi`, `power`, `log` | `401` drops the key, registers again and repeats the sync |
+| Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `rssi`, `power`, `log` | `401` drops the key, registers again and repeats the sync; a failed request keeps the event queue and is retried up to three times (ADR 0064) |
+| No key | `POST /api/device/register` is retried three times as well | without a key and with an unreachable server the device shows the setup screen with its address and the URL it has, instead of sleeping silently |
 | Unchanged content | `image.hash` equals the hash on the panel | no download, no paint |
 | Firmware offer | `firmware` in the sync answer (ADR 0043) | flash `<Paperboy URL><path>` with its MD5 and reboot; a failure is reported in the next sync's `log` |
 | Changed content | `GET <Paperboy URL><image.path>` | PNG, painted with the panel's gray mapping |
-| After painting | input that arrived meanwhile is sent in one more sync | Paperboy renders only the final page |
-| Sleep | stay awake `listen_s`, then deep sleep for `refresh_s` | wake on any button (EXT1) |
+| After painting | the shown hash is stored only now, and input that arrived meanwhile is sent in one more sync | a confirmation screen can only be confirmed after the panel really shows it |
+| Sleep | stay awake `listen_s`, then deep sleep for `refresh_s` or a one-shot `wake` | wake on any button (EXT1) |
 | Mains power | the sync answers `sleep: false` (ADR 0051) | stay awake with Wi-Fi up, sync again after `refresh_s` as a `timer` wake; input syncs at once |
 
 The firmware reports its power source in every sync (ADR 0051). The Sticky
@@ -35,23 +36,29 @@ sees USB power and always reports `battery`, so an E1001 on a charger needs
 `power: mains` in `paperboy.yaml`; text displays report `mains`.
 
 Buttons are sent by role. Sticky: **down = `next`, up = `previous`, ok =
-`home`**. E1001 from left to right: **`previous`, `next`, `home` (green)**. Sticky touches are
-sent as `touch` events; Paperboy only logs them for now. A failed download,
-sync or Wi-Fi connection is kept in RTC memory and reported in the next sync's
-`log`. After power-on the device stays awake 3 minutes so its web UI can be
-used; a limit of 120 s after the last input forces deep sleep otherwise.
+`home`**. E1001 from left to right: **`previous`, `next`, `home` (green)**.
+Every event carries a monotonically increasing `id` and stays in an RTC queue
+until Paperboy confirms the sync (ADR 0064), so a retry is applied exactly
+once. The Sticky sends taps, not the continuous touch stream: `pb_touch` drops
+reports within 800 ms of the previous one, and Paperboy maps the tap onto the
+device menu (ADR 0057, issue #54). A failed download, sync or Wi-Fi connection
+is kept in RTC memory and reported in the next sync's `log`. After power-on the
+device stays awake 3 minutes so its web UI can be used; a limit of 120 s after
+the last input forces deep sleep otherwise.
 
 ## Settings on the device
 
 | Setting | Source | Kept in |
 |---|---|---|
 | Wi-Fi | captive portal on the hotspot `paperboy-<id>`, or Improv over USB | flash (ESPHome) |
-| Paperboy URL | device web UI `http://<device>/`, field "Paperboy URL" (`default_paperboy_url` can preset it) | flash |
+| Paperboy URL | device web UI `http://<device>/`, field "Paperboy URL" (`default_paperboy_url` can preset it); saving it starts the cycle at once | flash |
 | Device key | `POST /api/device/register` by MAC | flash |
 
 While Wi-Fi or the Paperboy URL is missing, or Paperboy does not know the MAC,
 the display shows instructions with the device's address and MAC and stays
-awake for up to 10 minutes before retrying in an hour.
+awake for up to 10 minutes before retrying in an hour. The same screen appears
+when the URL is set but no server answers there; it then also prints the URL
+the device has, so a typo is visible without a serial log.
 
 ## Text displays
 
