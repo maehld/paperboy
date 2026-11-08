@@ -58,6 +58,7 @@ dd.oneline .muted { font-size: .78rem; }
     {{end}}
     </div>
     <dl>
+      <dt>Type</dt><dd class="oneline">{{.Type}}{{if .Hardware}} <span class="muted">({{.Hardware}})</span>{{else}} <span class="muted">(hardware unknown)</span>{{end}}</dd>
       <dt>Plan</dt>
       <dd>{{.Plan}}{{if .Rule}} · {{.Rule}}{{end}} · <a href="/ui/plan?device={{.ID}}">preview</a></dd>
       {{if .Content}}<dt>Showing</dt><dd>{{.Content}}{{if .ServedAgo}} · {{.ServedAgo}}{{end}}</dd>{{end}}
