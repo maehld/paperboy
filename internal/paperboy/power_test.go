@@ -56,21 +56,21 @@ func TestPowerFloor(t *testing.T) {
 }
 
 func TestPowerConfigValidation(t *testing.T) {
-	base := "display_types:\n  e:\n    size: [800, 480]\n    ppi: 125\n%s\n"
+	base := "size: [800, 480]\nppi: 125\n%s\n"
 	device := "display_type: e\nmac: \"AA:BB:CC:DD:EE:01\"\n%s\n"
 	for _, tc := range []struct {
 		typ, dev, err string
 	}{
-		{"    power: mains", "power: battery", ""},
-		{"    power: auto", "refresh: 5s", ""},
-		{"    power: solar", "", "power \"solar\""},
+		{"power: mains", "power: battery", ""},
+		{"power: auto", "refresh: 5s", ""},
+		{"power: solar", "", "power \"solar\""},
 		{"", "power: usb", "power \"usb\""},
 		{"", "refresh: 500ms", "refresh must be at least 1s"},
-		{"    min_refresh: 500ms", "", "min_refresh must be at least 1s"},
+		{"min_refresh: 500ms", "", "min_refresh must be at least 1s"},
 	} {
-		text := strings.Replace(base, "%s", tc.typ, 1)
+		displays := map[string]string{"e": strings.Replace(base, "%s", tc.typ, 1)}
 		devices := map[string]string{"d": strings.Replace(device, "%s", tc.dev, 1)}
-		cfg, _, err := loadConfigWith(t, text, devices)
+		cfg, _, err := loadInstance(t, "language: en\n", displays, devices)
 		switch {
 		case tc.err == "" && err != nil:
 			t.Errorf("%q %q: %v", tc.typ, tc.dev, err)

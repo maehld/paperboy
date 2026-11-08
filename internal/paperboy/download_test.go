@@ -132,6 +132,7 @@ func testDownloadServer(t *testing.T, config string) *Server {
 	writePageFile(t, filepath.Join(dir, "pages", "eins.e1001.yaml"), textPage("eins"))
 	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), "rules: [{name: immer, pages: [eins]}]\n")
 	writeConfig(t, dir, config)
+	writeDisplayFile(t, dir, "e1001", timezoneDisplay)
 	writeDeviceFile(t, dir, "flur", planDeviceFile)
 	return configServer(t, dir)
 }

@@ -1,0 +1,332 @@
+// Display type editor for Paperboy (ADR 0071). Vanilla JavaScript, no build
+// step: the model comes from the display type API, and edits stay in the
+// browser until Save writes displays/<name>.yaml with the hash it was read
+// with.
+(() => {
+  'use strict';
+
+  const el = (id) => document.getElementById(id);
+  const start = JSON.parse(el('display-data').textContent);
+
+  const state = {
+    name: start.name,
+    isNew: !!start.new,
+    display: empty('image'),
+    hash: '',
+    yaml: '',
+    readOnly: false,
+    dirty: false,
+  };
+
+  function empty(kind) {
+    return kind === 'text'
+      ? { kind: 'text', size: [20, 4], gray_levels: 0, ppi: 0, charset: 'utf8', min_refresh: '', power: '' }
+      : { kind: 'image', size: [800, 480], gray_levels: 4, ppi: 125, charset: '', min_refresh: '', power: '' };
+  }
+
+  // ---- status ----
+
+  function setStatus(message, kind) {
+    const s = el('status');
+    s.textContent = message || '';
+    s.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function updateWhere() {
+    el('where').textContent =
+      'displays/' + state.name + '.yaml' + (state.dirty ? ' · unsaved changes' : '');
+  }
+
+  function changed() {
+    state.dirty = true;
+    setStatus('unsaved changes', '');
+    updateWhere();
+  }
+
+  // ---- form ----
+
+  function buildSelects() {
+    const kind = el('kind');
+    for (const [value, label] of [['image', 'image (ePaper, pixels)'], ['text', 'text (character display)']]) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = label;
+      kind.appendChild(o);
+    }
+
+    const gray = el('gray');
+    for (const value of ['1', '4']) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = value === '4' ? '4 (four gray levels)' : '1 (black and white)';
+      gray.appendChild(o);
+    }
+
+    const charset = el('charset');
+    for (const value of ['utf8', 'ascii', 'hd44780']) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = value;
+      charset.appendChild(o);
+    }
+
+    const power = el('power');
+    for (const [value, label] of [['', 'default (auto)'], ['auto', 'auto'], ['battery', 'battery'], ['mains', 'mains']]) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = label;
+      power.appendChild(o);
+    }
+  }
+
+  // show fills the form from the model; it is called once per load or save.
+  function show() {
+    const d = state.display;
+    el('kind').value = d.kind || 'image';
+    el('width').value = d.size ? d.size[0] : '';
+    el('height').value = d.size ? d.size[1] : '';
+    el('gray').value = String(d.gray_levels === 4 ? 4 : 1);
+    el('ppi').value = d.ppi || '';
+    el('charset').value = d.charset || 'utf8';
+    el('min_refresh').value = d.min_refresh || '';
+    el('power').value = d.power || '';
+    el('yaml').textContent = state.yaml || '(no file yet)';
+    updateKind();
+    updateWhere();
+  }
+
+  // updateKind shows only the fields of the chosen kind and explains the size.
+  function updateKind() {
+    const text = state.display.kind === 'text';
+    for (const node of document.querySelectorAll('.image-only')) node.hidden = text;
+    for (const node of document.querySelectorAll('.text-only')) node.hidden = !text;
+    el('width-label').firstChild.textContent = text ? 'columns ' : 'width, px ';
+    el('height-label').firstChild.textContent = text ? 'rows ' : 'height, px ';
+    el('width').max = text ? 80 : 4096;
+    el('height').max = text ? 24 : 4096;
+    el('size-note').textContent = text
+      ? 'A text display grid of at most 80 columns × 24 rows.'
+      : 'Pixels of the panel, in its natural orientation.';
+    updatePPI();
+  }
+
+  // updatePPI names the physical size behind the pixel density, because ppi
+  // silently changes the typography of every page (ADR 0050).
+  function updatePPI() {
+    const w = Number(state.display.size[0]);
+    const h = Number(state.display.size[1]);
+    const ppi = Number(state.display.ppi);
+    el('ppi-note').textContent =
+      ppi >= 20 && ppi <= 1000 && w > 0 && h > 0
+        ? 'Physical size: ' + (w / ppi * 25.4).toFixed(1) + ' × ' + (h / ppi * 25.4).toFixed(1) + ' mm. ppi = pixels × 25.4 / mm.'
+        : 'Pixels per inch of the active area, 20–1000: ppi = pixels × 25.4 / mm.';
+  }
+
+  // serialize builds the body of PUT /api/displays: only what is set, so the
+  // file stays close to what the operator wrote.
+  function serialize() {
+    const d = state.display;
+    const out = {
+      kind: d.kind,
+      size: [Number(d.size[0]) || 0, Number(d.size[1]) || 0],
+    };
+    if (d.kind === 'text') {
+      out.charset = d.charset || 'utf8';
+    } else {
+      if (d.gray_levels) out.gray_levels = Number(d.gray_levels);
+      if (d.ppi) out.ppi = Number(d.ppi);
+    }
+    if (d.min_refresh) out.min_refresh = d.min_refresh;
+    if (d.power) out.power = d.power;
+    return out;
+  }
+
+  // normalize keeps the model in the shape serialize expects.
+  function normalize(doc) {
+    const d = Object.assign(empty('image'), doc || {});
+    d.kind = d.kind === 'text' ? 'text' : 'image';
+    d.size = d.size && d.size.length === 2 ? d.size : [0, 0];
+    d.gray_levels = d.gray_levels === 4 ? 4 : 1;
+    d.ppi = Number(d.ppi) || 0;
+    d.charset = d.charset || '';
+    d.min_refresh = d.min_refresh || '';
+    d.power = d.power || '';
+    return d;
+  }
+
+  // ---- load and save ----
+
+  async function load() {
+    setStatus('');
+    let res;
+    try {
+      res = await fetch('/api/displays/' + encodeURIComponent(state.name), { cache: 'no-store' });
+    } catch (e) {
+      setStatus('reading the display type failed: ' + e, 'error');
+      return;
+    }
+    if (res.status === 404 && state.isNew) {
+      state.display = empty('image');
+      state.hash = '';
+      state.yaml = '';
+      state.dirty = false;
+      state.readOnly = false;
+      show();
+      return;
+    }
+    if (!res.ok) {
+      setStatus(res.status === 404 ? 'the display type is gone' : 'reading the display type failed (' + res.status + ')', 'error');
+      state.readOnly = true;
+      show();
+      return;
+    }
+    const doc = await res.json();
+    state.hash = doc.hash || '';
+    state.yaml = doc.yaml || '';
+    state.dirty = false;
+    state.isNew = false;
+    if (doc.error) {
+      state.display = empty('image');
+      state.readOnly = true;
+      setStatus('this file does not read as a display type: ' + doc.error, 'error');
+    } else {
+      state.display = normalize(doc.display);
+      state.readOnly = false;
+    }
+    show();
+  }
+
+  async function save() {
+    if (state.readOnly) return;
+    const bad = check();
+    if (bad) {
+      setStatus(bad, 'error');
+      return;
+    }
+    setStatus('saving…', '');
+    let res;
+    try {
+      res = await fetch('/api/displays/' + encodeURIComponent(state.name), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hash: state.hash, display: serialize() }),
+      });
+    } catch (e) {
+      setStatus('save failed: ' + e, 'error');
+      return;
+    }
+    const body = await res.text();
+    let doc = {};
+    try {
+      doc = JSON.parse(body);
+    } catch (e) {
+      doc.error = body.trim();
+    }
+    if (res.status === 409) {
+      setStatus('the file changed on disk — Reload shows the newest version, Save would overwrite it', 'error');
+      return;
+    }
+    if (!res.ok) {
+      setStatus(doc.error || 'save failed (' + res.status + ')', 'error');
+      return;
+    }
+    state.hash = doc.hash || '';
+    state.yaml = doc.yaml || '';
+    state.dirty = false;
+    state.isNew = false;
+    if (doc.display) state.display = normalize(doc.display);
+    setStatus('saved ' + new Date().toLocaleTimeString(), 'ok');
+    show();
+  }
+
+  // check catches what the API would reject anyway, so the operator sees it
+  // without a round trip.
+  function check() {
+    const d = state.display;
+    const w = Number(d.size[0]);
+    const h = Number(d.size[1]);
+    if (!(w > 0 && h > 0)) return 'the size needs positive numbers';
+    if (d.kind === 'text') {
+      if (w > 80 || h > 24) return 'a text display is at most 80 × 24 characters';
+    } else {
+      if (w > 4096 || h > 4096) return 'the size is too large';
+      const ppi = Number(d.ppi);
+      if (!(ppi >= 20 && ppi <= 1000)) return 'an image display needs a pixel density between 20 and 1000 ppi';
+    }
+    if (d.min_refresh && !/^\d+(\.\d+)?(ns|us|µs|ms|s|m|h)(\d+(\.\d+)?(ns|us|µs|ms|s|m|h))*$/.test(d.min_refresh)) {
+      return 'min_refresh is written like 60s or 1m' + (d.min_refresh ? ' (got ' + d.min_refresh + ')' : '');
+    }
+    return '';
+  }
+
+  // ---- wiring ----
+
+  function onSize() {
+    const set = () => {
+      if (state.readOnly) return;
+      state.display.size = [Number(el('width').value) || 0, Number(el('height').value) || 0];
+      updatePPI();
+      changed();
+    };
+    el('width').addEventListener('input', set);
+    el('height').addEventListener('input', set);
+  }
+
+  function onPPI() {
+    el('ppi').addEventListener('input', () => {
+      if (state.readOnly) return;
+      state.display.ppi = Number(el('ppi').value) || 0;
+      updatePPI();
+      changed();
+    });
+  }
+
+  el('save').addEventListener('click', save);
+  el('reload').addEventListener('click', () => location.reload());
+  el('kind').addEventListener('change', () => {
+    if (state.readOnly) return;
+    const d = state.display;
+    d.kind = el('kind').value === 'text' ? 'text' : 'image';
+    // A size that cannot work for the new kind starts from that kind's default
+    // instead of leaving an invalid form behind.
+    if (d.kind === 'text' && (d.size[0] > 80 || d.size[1] > 24)) {
+      d.size = [20, 4];
+      if (!d.charset) d.charset = 'utf8';
+    } else if (d.kind === 'image' && (d.size[0] < 20 || d.size[1] < 20)) {
+      d.size = [800, 480];
+      if (!(d.ppi >= 20)) d.ppi = 125;
+    }
+    show();
+    changed();
+  });
+  el('gray').addEventListener('change', () => {
+    if (state.readOnly) return;
+    state.display.gray_levels = Number(el('gray').value) || 1;
+    changed();
+  });
+  el('charset').addEventListener('change', () => {
+    if (state.readOnly) return;
+    state.display.charset = el('charset').value;
+    changed();
+  });
+  el('min_refresh').addEventListener('change', () => {
+    if (state.readOnly) return;
+    state.display.min_refresh = el('min_refresh').value;
+    changed();
+  });
+  el('power').addEventListener('change', () => {
+    if (state.readOnly) return;
+    state.display.power = el('power').value;
+    changed();
+  });
+  onSize();
+  onPPI();
+  window.addEventListener('beforeunload', (e) => {
+    if (!state.dirty) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
+  buildSelects();
+  load();
+})();

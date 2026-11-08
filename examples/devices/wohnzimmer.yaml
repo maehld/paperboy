@@ -1,6 +1,6 @@
 # A device (ADR 0070): the file name is its stable ID. Copy it into the
 # devices/ directory of your instance, set the MAC address of the display and
-# the display type of paperboy.yaml.
+# the display type from displays/.
 display_type: e1001
 protocol: paperboy
 mac: "AA:BB:CC:DD:EE:01"
