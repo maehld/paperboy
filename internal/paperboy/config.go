@@ -688,16 +688,6 @@ func (c *Config) timezoneName() string {
 	return c.Timezone.String()
 }
 
-// profileNames lists the configured display types, sorted.
-func (c *Config) profileNames() []string {
-	names := make([]string, 0, len(c.Profiles))
-	for name := range c.Profiles {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
 // expandConfig replaces ${VAR} in the string values of a plugin's config with
 // the environment, so secrets stay out of paperboy.yaml. An unset variable is
 // an error; $$ writes a literal dollar sign.

@@ -112,7 +112,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		Version:        versionText(build, loc),
 		GoVersion:      build.Go,
 		Devices:        cards,
-		FirmwareIssues: s.firmware.invalidNames(cfg.profileNames()),
+		FirmwareIssues: s.firmware.invalidNames(),
 		Downloads:      s.downloadCard(cfg, loc),
 	}
 	if err := dashboardTmpl.Execute(w, page); err != nil {
