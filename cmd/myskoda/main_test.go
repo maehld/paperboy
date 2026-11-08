@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -467,5 +469,166 @@ func TestProtocolWithoutData(t *testing.T) {
 		Widgets: []plugin.WidgetRequest{{Widget: "battery", Width: 200, Height: 100}}})
 	if msg.Error == "" || !strings.Contains(msg.Error, "MyŠkoda app") {
 		t.Fatalf("%+v", msg)
+	}
+}
+
+func waitFor(t *testing.T, cond func() bool, what string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for " + what)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// stateServer serves the fixture and counts API and image requests.
+func stateServer(t *testing.T) (srv *httptest.Server, api, images *atomic.Int64) {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join("testdata", "enyaq.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	api, images = new(atomic.Int64), new(atomic.Int64)
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/render.png" {
+			images.Add(1)
+			png.Encode(w, image.NewGray(image.Rect(0, 0, 60, 30)))
+			return
+		}
+		api.Add(1)
+		w.Write([]byte(strings.ReplaceAll(string(body), "https://render.example/enyaq.png", srv.URL+"/render.png")))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, api, images
+}
+
+func TestStateSurvivesRestart(t *testing.T) {
+	const vin = "TMBJB9NY5RF999999"
+	dir := t.TempDir()
+	t.Setenv(plugin.StateDirEnv, dir)
+	srv, api, images := stateServer(t)
+	cfg := plugin.Values{"api_key": "secret", "vin": vin, "base": srv.URL, "refresh": "1h"}
+
+	first := &myskoda{client: srv.Client()}
+	if err := first.Configure(cfg, &plugin.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	first.Start(ctx, func(...string) {})
+	waitFor(t, func() bool {
+		first.mu.Lock()
+		defer first.mu.Unlock()
+		return first.data != nil && first.image != nil && first.image.img != nil
+	}, "the first load")
+	waitFor(t, func() bool {
+		_, err := os.Stat(filepath.Join(dir, "state.json"))
+		return err == nil
+	}, "the state file")
+	cancel()
+
+	second := &myskoda{client: srv.Client()}
+	if err := second.Configure(cfg, &plugin.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if second.data == nil {
+		t.Fatal("the restart did not take over the state")
+	}
+	if second.image == nil || second.image.img == nil {
+		t.Fatal("the restart did not take over the render image")
+	}
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	second.Start(ctx2, func(...string) {})
+	time.Sleep(200 * time.Millisecond)
+	if got := api.Load(); got != 1 {
+		t.Fatalf("%d API requests, want 1: the restart must wait for the interval", got)
+	}
+	if got := images.Load(); got != 1 {
+		t.Fatalf("%d image downloads, want 1", got)
+	}
+}
+
+func TestRateLimitWaitSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(plugin.StateDirEnv, dir)
+	var mu sync.Mutex
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits++
+		mu.Unlock()
+		w.Header().Set("Retry-After", "3600")
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"type":"https://public.api.connect.skoda-auto.cz/problems/rate-limit-exceeded"}`))
+	}))
+	defer srv.Close()
+	cfg := plugin.Values{"api_key": "secret", "vin": "TMBJB9NY5RF999999", "base": srv.URL, "refresh": "1m"}
+
+	first := &myskoda{client: srv.Client()}
+	if err := first.Configure(cfg, &plugin.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	first.Start(ctx, func(...string) {})
+	waitFor(t, func() bool {
+		_, err := os.Stat(filepath.Join(dir, "state.json"))
+		return err == nil
+	}, "the state file after the 429")
+	cancel()
+
+	second := &myskoda{client: srv.Client()}
+	if err := second.Configure(cfg, &plugin.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if second.loadErr == nil || !strings.Contains(second.loadErr.Error(), "rate limit") {
+		t.Fatalf("the restart forgot the error: %v", second.loadErr)
+	}
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	second.Start(ctx2, func(...string) {})
+	time.Sleep(200 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if hits != 1 {
+		t.Fatalf("%d requests, want 1: the wait must survive the restart", hits)
+	}
+}
+
+func TestStoredStateOfAnotherVehicleIsIgnored(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(plugin.StateDirEnv, dir)
+	other := &myskoda{apiKey: "secret"}
+	s := storedState{Version: stateVersion, VIN: "OTHER0000000000000", Key: other.fingerprint(),
+		Vehicle: &vehicle{VIN: "OTHER0000000000000", Name: "Other"}}
+	data, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "state.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := &myskoda{client: http.DefaultClient}
+	if err := m.Configure(plugin.Values{"api_key": "secret", "vin": "TMBJB9NY5RF999999"}, &plugin.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if m.data != nil {
+		t.Fatal("the state of another vehicle was used")
+	}
+}
+
+func TestBrokenStateIsIgnored(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(plugin.StateDirEnv, dir)
+	if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := &myskoda{client: http.DefaultClient}
+	if err := m.Configure(plugin.Values{"api_key": "secret", "vin": "TMBJB9NY5RF999999"}, &plugin.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if m.data != nil {
+		t.Fatal("a broken state file was used")
 	}
 }

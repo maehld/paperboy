@@ -30,6 +30,11 @@
 // relative to Request.TextPx and convert other physical sizes with
 // Request.PtPx and Request.MMPx, so a widget looks the same on a small dense
 // panel and a large coarse one. Text displays get neither.
+//
+// Environment: a plugin process sees PAPERBOY_LANGUAGE and PAPERBOY_TIMEZONE,
+// and it runs in the plugins directory. Paperboy starts it with
+// PAPERBOY_STATE_DIR, a directory of its own that survives restarts (ADR
+// 0065); the files inside belong to the plugin.
 package plugin
 
 import (
@@ -71,6 +76,17 @@ const (
 
 // EventChanged tells Paperboy that widgets are out of date.
 const EventChanged = "changed"
+
+// StateDirEnv names the environment variable with the directory Paperboy keeps
+// for a plugin between restarts (ADR 0065). Paperboy creates it before the
+// plugin starts and never touches the files inside; a plugin uses it to skip
+// work after a restart, for example a request that would count against an API
+// quota. The built-in plugin has no such directory.
+const StateDirEnv = "PAPERBOY_STATE_DIR"
+
+// StateDir returns the plugin's state directory, or "" when it runs without
+// one (the built-in plugin, tests).
+func StateDir() string { return os.Getenv(StateDirEnv) }
 
 // Request is one line Paperboy writes to standard input.
 type Request struct {

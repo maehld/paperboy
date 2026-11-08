@@ -722,7 +722,8 @@ func (c *Config) pluginSpecs() map[string]widget.Spec {
 			command = []string{p.Name}
 		}
 		out[p.Name] = widget.Spec{Name: p.Name, Command: command, Version: version,
-			Timeout: time.Duration(p.Timeout), Env: env, Dir: c.PluginsDir, Config: p.Config}
+			Timeout: time.Duration(p.Timeout), Env: env, Dir: c.PluginsDir, Config: p.Config,
+			StateDir: filepath.Join(c.Dir, stateDirName, pluginsDirName, p.Name)}
 	}
 	return out
 }

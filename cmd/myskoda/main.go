@@ -27,18 +27,22 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
-	_ "image/png"
+	"image/png"
 	"io"
+	"io/fs"
 	"math"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -261,6 +265,28 @@ type supplement struct {
 	err error
 }
 
+// stateVersion is the format of state.json; a file of another version is
+// discarded instead of guessed (ADR 0065).
+const stateVersion = 1
+
+// storedState is what the plugin keeps between restarts (ADR 0065). It holds
+// no secret: the API key appears as a fingerprint only, so a changed key
+// throws the file away instead of trusting data fetched with another one.
+type storedState struct {
+	Version     int       `json:"version"`
+	VIN         string    `json:"vin"`
+	Key         string    `json:"key"`
+	FetchedAt   time.Time `json:"fetched_at"`
+	NextAttempt time.Time `json:"next_attempt,omitempty"`
+	KeyExpires  time.Time `json:"key_expires_at,omitempty"`
+	RenderURL   string    `json:"render_url,omitempty"`
+	Vehicle     *vehicle  `json:"vehicle,omitempty"`
+	// LastError is the message the widgets showed after the last attempt, so
+	// a restart during a failed load keeps the notice instead of claiming
+	// that there is no data yet.
+	LastError string `json:"last_error,omitempty"`
+}
+
 // myskoda is the plugin.
 type myskoda struct {
 	client  *http.Client
@@ -269,11 +295,18 @@ type myskoda struct {
 	base    string
 	refresh time.Duration
 
+	statePath string // state/plugins/myskoda/state.json; empty without a state directory
+	imagePath string // state/plugins/myskoda/render.png
+	readyOnce sync.Once
+
 	mu      sync.Mutex
 	data    *vehicle
 	image   *supplement
 	loadErr error
 	ready   chan struct{}
+	fetched time.Time // when the API answered last
+	next    time.Time // no request before this: the refresh interval or a wait the API asked for
+	expires time.Time // X-API-Key-Expires-At
 
 	cur  *vehicle
 	img  *supplement
@@ -350,22 +383,160 @@ func (m *myskoda) Configure(cfg plugin.Values, req *plugin.Request) error {
 		refresh = minRefresh
 	}
 	m.base, m.refresh = base.String(), refresh
+	m.setupState()
 	return nil
 }
 
-// Start loads the vehicle state now and then every refresh, and reports a
-// change when the displayed data moved.
+// setupState picks the plugin's state directory (ADR 0065) and takes over what
+// the last run left there, so the first page after a restart has data and a
+// restart within the refresh interval costs no request.
+func (m *myskoda) setupState() {
+	dir := plugin.StateDir()
+	if dir == "" {
+		return
+	}
+	m.statePath = filepath.Join(dir, "state.json")
+	m.imagePath = filepath.Join(dir, "render.png")
+	m.loadState()
+}
+
+// loadState reads state.json; a file of another vehicle, another key, another
+// format, or one that cannot be read is ignored and replaced by the next run.
+func (m *myskoda) loadState() {
+	data, err := os.ReadFile(m.statePath)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			fmt.Fprintln(os.Stderr, "myskoda: reading the stored state:", err)
+		}
+		return
+	}
+	var s storedState
+	if err := json.Unmarshal(data, &s); err != nil {
+		fmt.Fprintln(os.Stderr, "myskoda: ignoring the stored state:", err)
+		return
+	}
+	switch {
+	case s.Version != stateVersion:
+		fmt.Fprintf(os.Stderr, "myskoda: ignoring a stored state of version %d\n", s.Version)
+		return
+	case !strings.EqualFold(s.VIN, m.vin):
+		fmt.Fprintln(os.Stderr, "myskoda: ignoring the stored state of another vehicle")
+		return
+	case s.Key != m.fingerprint():
+		fmt.Fprintln(os.Stderr, "myskoda: ignoring the stored state of another API key")
+		return
+	}
+	// The timing counts even without data: a wait the API asked for outlasts a
+	// restart, and a failed first load stays failed.
+	m.mu.Lock()
+	m.data = s.Vehicle
+	m.fetched, m.next, m.expires = s.FetchedAt, s.NextAttempt, s.KeyExpires
+	if s.Vehicle == nil && s.LastError != "" {
+		m.loadErr = errors.New(s.LastError)
+	}
+	m.mu.Unlock()
+	if s.RenderURL != "" {
+		if img, err := readImage(m.imagePath); err == nil {
+			m.image = &supplement{img: img, url: s.RenderURL}
+		}
+	}
+	if !m.expires.IsZero() && time.Until(m.expires) < keyWarnBefore {
+		fmt.Fprintf(os.Stderr, "myskoda: API key expires at %s; create a new one in the MyŠkoda app\n",
+			m.expires.Format(time.RFC3339))
+	}
+}
+
+// fingerprint identifies the API key in the stored state without keeping it.
+func (m *myskoda) fingerprint() string {
+	sum := sha256.Sum256([]byte(m.apiKey))
+	return hex.EncodeToString(sum[:8])
+}
+
+// snapshot is the state to store; callers hold m.mu.
+func (m *myskoda) snapshot() storedState {
+	s := storedState{Version: stateVersion, VIN: m.vin, Key: m.fingerprint(),
+		FetchedAt: m.fetched, NextAttempt: m.next, KeyExpires: m.expires, Vehicle: m.data}
+	if m.loadErr != nil {
+		s.LastError = m.loadErr.Error()
+	}
+	if m.image != nil {
+		s.RenderURL = m.image.url
+	}
+	return s
+}
+
+// persist writes the state; failures only cost the next restart a request.
+func (m *myskoda) persist(s storedState) {
+	if m.statePath == "" {
+		return
+	}
+	data, err := json.MarshalIndent(s, "", "  ")
+	if err == nil {
+		err = writeFile(m.statePath, data)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "myskoda: saving the state:", err)
+	}
+}
+
+// persistImage keeps the render image for the next start; the API key is not
+// part of it.
+func (m *myskoda) persistImage(img image.Image) {
+	if m.imagePath == "" || img == nil {
+		return
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return
+	}
+	if err := writeFile(m.imagePath, buf.Bytes()); err != nil {
+		fmt.Fprintln(os.Stderr, "myskoda: saving the render image:", err)
+	}
+}
+
+// writeFile replaces path atomically, so a crash never leaves half a file.
+func writeFile(path string, data []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// readImage decodes a PNG the last run stored.
+func readImage(path string) (image.Image, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	img, _, err := image.Decode(io.LimitReader(file, maxImageBytes+1))
+	return img, err
+}
+
+// Start loads the vehicle state when it is due and then every refresh, and
+// reports a change when the displayed data moved. A state left by the last run
+// decides the first attempt, so a restart within the interval or during a wait
+// the API asked for costs no request (ADR 0065).
 func (m *myskoda) Start(ctx context.Context, notify func(widgets ...string)) {
 	m.ready = make(chan struct{})
 	go func() {
-		first := true
 		var last string
+		var have bool
 		var warned time.Time
 		for {
+			if wait := time.Until(m.due()); wait > 0 {
+				m.signalReady()
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(wait):
+				}
+				continue
+			}
 			ans, err := m.fetch(ctx)
 			wait := m.refresh
 			var needImage string
-			changed := false
 			m.mu.Lock()
 			if err != nil {
 				if m.loadErr == nil || err.Error() != m.loadErr.Error() {
@@ -374,20 +545,27 @@ func (m *myskoda) Start(ctx context.Context, notify func(widgets ...string)) {
 				m.loadErr = err
 			} else {
 				m.data, m.loadErr = ans.vehicle, nil
+				m.fetched = time.Now()
+				if !ans.expires.IsZero() {
+					m.expires = ans.expires
+				}
+				sum, _ := json.Marshal(ans.vehicle)
+				if have && string(sum) != last {
+					notify()
+				}
+				last, have = string(sum), true
 				if ans.vehicle.RenderURL != "" && (m.image == nil || m.image.url != ans.vehicle.RenderURL || m.image.img == nil) {
 					// The download happens outside the lock; a failed one is
 					// retried at the next refresh.
 					needImage = ans.vehicle.RenderURL
 				}
-				sum, _ := json.Marshal(ans.vehicle)
-				changed = !first && string(sum) != last
-				last = string(sum)
 			}
+			// A 429 or an exhausted quota outlasts the refresh interval.
+			if ans.wait > wait {
+				wait = ans.wait
+			}
+			m.next = time.Now().Add(wait)
 			m.mu.Unlock()
-
-			if changed {
-				notify()
-			}
 
 			if needImage != "" {
 				img, err := m.downloadImage(ctx, needImage)
@@ -399,18 +577,20 @@ func (m *myskoda) Start(ctx context.Context, notify func(widgets ...string)) {
 				}
 			}
 
-			if ans.wait > 0 && ans.wait > wait {
-				wait = ans.wait
-			}
 			if !ans.expires.IsZero() && !ans.expires.Equal(warned) && time.Until(ans.expires) < keyWarnBefore {
 				fmt.Fprintf(os.Stderr, "myskoda: API key expires at %s; create a new one in the MyŠkoda app\n",
 					ans.expires.Format(time.RFC3339))
 				warned = ans.expires
 			}
-			if first {
-				close(m.ready)
-				first = false
+
+			m.mu.Lock()
+			s, image := m.snapshot(), m.image
+			m.mu.Unlock()
+			m.persist(s)
+			if needImage != "" && image != nil {
+				m.persistImage(image.img)
 			}
+			m.signalReady()
 			select {
 			case <-ctx.Done():
 				return
@@ -419,6 +599,21 @@ func (m *myskoda) Start(ctx context.Context, notify func(widgets ...string)) {
 		}
 	}()
 }
+
+// due is the moment the next request is allowed: one refresh after the last
+// answer, later if the API asked to wait.
+func (m *myskoda) due() time.Time {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	d := m.fetched.Add(m.refresh)
+	if m.next.After(d) {
+		d = m.next
+	}
+	return d
+}
+
+// signalReady tells Prepare that the state is there, once.
+func (m *myskoda) signalReady() { m.readyOnce.Do(func() { close(m.ready) }) }
 
 // downloadImage reads the vehicle render. It sends no API key: the URL is a
 // plain image address, and the key belongs to the API host only.
