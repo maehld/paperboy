@@ -184,8 +184,7 @@ func (s *Server) handleWidgetsPage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	display := editorDisplay(cfg, q.Get("display"))
 	version, goVersion := editorVersion(cfg)
-	v := editorPageView{Version: version, GoVersion: goVersion, Display: display, WidgetsPage: true,
-		Widget: q.Get("widget")}
+	v := editorPageView{Version: version, GoVersion: goVersion, Display: display, WidgetsPage: true}
 	p, ok := cfg.Profiles[display]
 	if !ok {
 		v.Error = "no display type is configured; add one under displays/"

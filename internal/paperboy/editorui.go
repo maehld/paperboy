@@ -126,7 +126,6 @@ type editorPageView struct {
 	Text        bool
 	Error       string
 	WidgetsPage bool          // the widgets page without a page (ADR 0055)
-	Widget      string        // the widget the widgets page shows, empty for none
 	Displays    []displayLink // display types this page can be opened for
 	Data        template.JS   // the starting state of the script
 }
