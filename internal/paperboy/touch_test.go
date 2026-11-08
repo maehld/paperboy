@@ -38,7 +38,7 @@ const (
 	menuCellA2X    = 250
 	menuCellPrevX  = 297
 	menuCellNextX  = 363
-	confirmYesX    = 200
+	confirmYesX    = 100
 	confirmNoX     = 333
 )
 

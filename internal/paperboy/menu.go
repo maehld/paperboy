@@ -569,9 +569,10 @@ type menuView struct {
 func menuKinds(phase string, count int) []string {
 	switch phase {
 	case menuConfirmPhase:
-		return []string{cellClose, cellYes, cellNo}
+		// Yes and no only: a close box would be the same as "no".
+		return []string{cellYes, cellNo}
 	case menuRunningPhase, menuResultPhase:
-		return nil // drawn as one text screen, no cells
+		return nil // drawn as a banner, no cells
 	}
 	kinds := []string{cellClose}
 	for i := 0; i < menuPerPage; i++ {
