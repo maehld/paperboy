@@ -29,6 +29,13 @@ installation, nothing installation-specific is compiled in.
 | Sleep | stay awake `listen_s`, then deep sleep for `refresh_s` or a one-shot `wake` | wake on any button (EXT1) |
 | Mains power | the sync answers `sleep: false` (ADR 0051) | stay awake with Wi-Fi up, sync again after `refresh_s` as a `timer` wake; input syncs at once |
 
+Every step of a cycle is logged with its time:
+`timing boot: 412 ms (+0)`, then `wifi`, `sync`, `image` (download and decode)
+and `paint` (panel done), each with the milliseconds since boot and the delta
+to the line before. A button press wakes the chip from deep sleep, so these
+numbers start at the press and show where a page change spends its time;
+`unchanged` replaces `image`/`paint` when the hash still matches the panel.
+
 The firmware reports its power source in every sync (ADR 0051). The Sticky
 measures USB power on GPIO9 (`PWR_IN_VOLT`, 5.1k/5.1k divider: about 2.5 V
 with USB) and reports `mains` above 1.5 V at the pin; the E1001 has no pin that

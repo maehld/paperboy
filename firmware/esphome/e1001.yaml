@@ -11,7 +11,7 @@
 
 substitutions:
   hardware: e1001
-  fw_version: "2.0.0"
+  fw_version: "2.1.0"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
 
