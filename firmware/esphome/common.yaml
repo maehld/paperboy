@@ -208,26 +208,40 @@ script:
       # A one-shot wake reason from the last sync (menu, result) wins over the
       # wake the hardware decoded (ADR 0061).
       - lambda: "id(wake_reason) = pb_take_reason(id(wake_reason));"
+      # After deep sleep and in the awake loop the radio needs a few seconds.
+      # A request before that fails as "not connected" and used to send the
+      # device straight back to sleep.
+      - wait_until:
+          condition: wifi.connected
+          timeout: 45s
       - if:
           condition:
-            lambda: "return id(api_key).state.empty();"
+            lambda: "return wifi::global_wifi_component->is_connected();"
           then:
-            - script.execute: do_register
-            - script.wait: do_register
-      - if:
-          condition:
-            lambda: "return !id(api_key).state.empty();"
-          then:
-            - script.execute: sync_and_show
-          else:
             - if:
                 condition:
-                  lambda: "return !id(setup_mode);"
+                  lambda: "return id(api_key).state.empty();"
                 then:
-                  # No key and no server: show the setup screen with the
-                  # address instead of sleeping, so a wrong Paperboy URL can
-                  # be corrected right away.
-                  - script.execute: { id: enter_setup, reason: "url" }
+                  - script.execute: do_register
+                  - script.wait: do_register
+            - if:
+                condition:
+                  lambda: "return !id(api_key).state.empty();"
+                then:
+                  - script.execute: sync_and_show
+                else:
+                  - if:
+                      condition:
+                        lambda: "return !id(setup_mode);"
+                      then:
+                        # No key and no server: show the setup screen with the
+                        # address instead of sleeping, so a wrong Paperboy URL
+                        # can be corrected right away.
+                        - script.execute: { id: enter_setup, reason: "url" }
+          else:
+            - lambda: 'pb_note_for_next_wake("no Wi-Fi connection");'
+            - logger.log: "no Wi-Fi, sleeping"
+            - script.execute: go_sleep
 
   # Called by the buttons with their role (next, previous, home). The event is
   # queued; a sync starts at once unless one is already running.
