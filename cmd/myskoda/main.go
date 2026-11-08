@@ -841,18 +841,19 @@ func (m *myskoda) targetSoC() (int, bool) {
 }
 
 // chargeState names charging.status.state; an unknown value is shown as it is
-// rather than guessed.
+// rather than guessed. The labels stay short: they share a line with the power
+// and, on text displays, with the range.
 func (m *myskoda) chargeState() string {
 	if m.cur.Charging == nil || m.cur.Charging.Status == nil || m.cur.Charging.Status.State == nil {
 		return m.t("Unbekannt", "Unknown")
 	}
 	switch s := *m.cur.Charging.Status.State; s {
 	case "CONNECT_CABLE":
-		return m.t("Kabel", "Cable")
+		return m.t("Getrennt", "Unplugged")
 	case "CHARGING":
 		return m.t("Lädt", "Charging")
 	case "CONSERVING":
-		return m.t("Hält", "Holding")
+		return m.t("Erhaltung", "Holding")
 	case "READY_FOR_CHARGING":
 		return m.t("Bereit", "Ready")
 	case "DISCHARGING":
@@ -971,25 +972,6 @@ func (m *myskoda) temperature(t temperature) string {
 		unit = "°F"
 	}
 	return m.num(*t.Value, 1) + " " + unit
-}
-
-// plugText names the cable state for the charging widget.
-func (m *myskoda) plugText() string {
-	c := m.cur.Charging
-	if c == nil || c.Status == nil || c.Status.PlugState == nil {
-		return ""
-	}
-	switch *c.Status.PlugState {
-	case "CONNECTED":
-		if c.Status.PlugLock != nil && *c.Status.PlugLock == "LOCKED" {
-			return m.t("Kabel verriegelt", "Cable locked")
-		}
-		return m.t("Kabel angeschlossen", "Cable connected")
-	case "DISCONNECTED":
-		return m.t("Kabel getrennt", "Cable disconnected")
-	default:
-		return *c.Status.PlugState
-	}
 }
 
 // profileName returns the profile the car is currently in.

@@ -293,14 +293,35 @@ func TestStateTexts(t *testing.T) {
 	if got := m.captured("2026-11-07T18:05:00Z"); got != "Stand 07.11. 18:05" {
 		t.Fatalf("captured yesterday = %q", got)
 	}
-	if got := m.plugText(); got != "Kabel verriegelt" {
-		t.Fatalf("plug = %q", got)
-	}
 	if got := m.temperature(m.cur.AirConditioning.Target); got != "22,5 °C" {
 		t.Fatalf("temperature = %q", got)
 	}
 	if got := m.thousands(12753); got != "12.753" {
 		t.Fatalf("thousands = %q", got)
+	}
+}
+
+func TestChargeStateLabels(t *testing.T) {
+	m := testPlugin(t, "enyaq.json")
+	cases := []struct{ state, de, en string }{
+		{"CONNECT_CABLE", "Getrennt", "Unplugged"},
+		{"READY_FOR_CHARGING", "Bereit", "Ready"},
+		{"CHARGING", "Lädt", "Charging"},
+		{"CONSERVING", "Erhaltung", "Holding"},
+		{"DISCHARGING", "Entlädt", "Discharging"},
+		{"CHARGING_INTERRUPTED", "Unterbrochen", "Interrupted"},
+	}
+	for _, c := range cases {
+		s := c.state
+		m.cur.Charging.Status.State = &s
+		m.req.Language = "de"
+		if got := m.chargeState(); got != c.de {
+			t.Errorf("%s (de) = %q, want %q", c.state, got, c.de)
+		}
+		m.req.Language = "en"
+		if got := m.chargeState(); got != c.en {
+			t.Errorf("%s (en) = %q, want %q", c.state, got, c.en)
+		}
 	}
 }
 
