@@ -70,7 +70,9 @@ type menuState struct {
 	Offset      int          `json:"offset,omitempty"` // first visible action
 	Session     int          `json:"session,omitempty"`
 	ConfirmHash string       `json:"confirm_hash,omitempty"` // hash of the served confirmation screen
+	Screen      string       `json:"screen,omitempty"`       // hash of the last served menu screen
 	OpenedAt    time.Time    `json:"opened_at,omitempty"`
+	LastInput   time.Time    `json:"last_input,omitempty"` // last button or touch that kept the menu open
 	Actions     []menuAction `json:"actions,omitempty"`
 	Resolved    bool         `json:"resolved,omitempty"` // plugin state is filled in
 	Result      string       `json:"result,omitempty"`
@@ -80,14 +82,26 @@ type menuState struct {
 // closeMenu drops all menu state.
 func (m *menuState) close() { *m = menuState{} }
 
-// menuDeadline is how long an open menu may stay: the configured duration,
-// shortened for the empty banner (ADR 0067).
+// menuDeadline is how long an open menu may stay without input: the configured
+// duration, shortened for the empty banner (ADR 0067). The deadline slides with
+// every button or touch that keeps the menu open, because a press costs a whole
+// wake cycle on a battery device (ADR 0078).
 func menuDeadline(m menuState, d *Device) time.Duration {
 	show := time.Duration(d.MenuShowDuration)
 	if m.Phase == menuEmptyPhase {
 		show = min(show, menuEmptyDuration)
 	}
 	return show
+}
+
+// expiresAt is when the menu closes unless the user keeps it busy: the show
+// duration counted from opening or from the last input, whichever is later.
+func (m menuState) expiresAt(d *Device) time.Time {
+	from := m.OpenedAt
+	if m.LastInput.After(from) {
+		from = m.LastInput
+	}
+	return from.Add(menuDeadline(m, d))
 }
 
 // openMenu starts a new menu session with the resolved actions. A plan without
@@ -177,7 +191,7 @@ type menuInput struct {
 // overlay, or in a cell that the current phase does not have, is ignored.
 // The geometry is derived from the phase and the display, so a tap always
 // hits the cells Paperboy last drew for that state.
-func (m *menuState) tap(x, y int, p Profile, shown string) *menuAction {
+func (m *menuState) tap(x, y int, p Profile, shown string, now time.Time) *menuAction {
 	if !m.Open {
 		return nil
 	}
@@ -200,6 +214,8 @@ func (m *menuState) tap(x, y int, p Profile, shown string) *menuAction {
 		if !at.In(c.rect) {
 			continue
 		}
+		// A tap that keeps the menu open also keeps its deadline (ADR 0078).
+		m.LastInput = now
 		switch c.kind {
 		case cellClose:
 			m.close()
@@ -269,7 +285,17 @@ func (m *menuState) scroll(delta int) {
 // run now. It is called under the state lock; running the action needs plugins
 // and therefore happens outside it. A short home opens the menu even when the
 // plan offers no actions; a long home closes it and keeps the page (ADR 0067).
+// Any button that keeps the menu open keeps its deadline too (ADR 0078).
 func (m *menuState) step(in menuInput, acts []plan.PlanAction, now time.Time) (invoke *menuAction) {
+	invoke = m.applyInput(in, acts, now)
+	if m.Open && len(in.buttons) > 0 {
+		m.LastInput = now
+	}
+	return invoke
+}
+
+// applyInput is the menu's state machine for one wake.
+func (m *menuState) applyInput(in menuInput, acts []plan.PlanAction, now time.Time) (invoke *menuAction) {
 	if !m.Open {
 		for i, b := range in.buttons {
 			if b == buttonHome && !held(hold(in.holds, i)) {
@@ -921,5 +947,9 @@ func (s *Server) overlayMenu(cfg *Config, d *Device, served servedPage, m *menuS
 	if m.Phase == menuConfirmPhase {
 		m.ConfirmHash = out.hash
 	}
+	// The device reports this hash as "shown" until the menu is repainted. A
+	// press that arrives with it belongs to the menu even when the deadline has
+	// passed in the meantime (ADR 0078).
+	m.Screen = out.hash
 	return out
 }

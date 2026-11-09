@@ -314,7 +314,13 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	case req.Reason == "powercycle", critical, textDisplay, d.Actions == actionsDeny, d.Plan == "":
 		menu.close()
 	default:
-		if menu.Open && !now.Before(menu.OpenedAt.Add(menuDeadline(menu, d))) {
+		// The deadline is a server-side timer, but the panel keeps the menu
+		// screen until the deadline wake repaints it. A press that arrives while
+		// the device still reports that screen belongs to the menu, even when
+		// the deadline has passed: closing it would swallow the press and the
+		// next one would turn the page (ADR 0078).
+		onScreen := menu.Screen != "" && req.Shown == menu.Screen
+		if menu.Open && !now.Before(menu.expiresAt(d)) && !(onScreen && (len(buttons) > 0 || len(touches) > 0)) {
 			slog.Info("menu expired", "device", d.ID)
 			menu.close()
 			menuClosed = true
@@ -340,7 +346,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		invoke = menu.step(menuInput{buttons: buttons, holds: holds, shown: req.Shown}, acts, now)
 		if invoke == nil && menu.Open {
 			for _, e := range touches {
-				if a := menu.tap(e.X, e.Y, cfg.Profiles[d.Profile], req.Shown); a != nil {
+				if a := menu.tap(e.X, e.Y, cfg.Profiles[d.Profile], req.Shown, now); a != nil {
 					invoke = a
 				}
 			}
@@ -463,6 +469,11 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	if input && !textDisplay {
 		listen = listenAfterInput
 	}
+	wake := menuWake(menu, d, now, critical)
+	// The firmware sleeps only after listening, and the one-shot wake counts
+	// from the sync: give the wake the time it needs, so the menu expires when
+	// the panel is repainted instead of listen_s later (ADR 0078).
+	listen, wake = fitWakeToListen(listen, wake)
 	pageName := served.name
 	switch {
 	case critical:
@@ -490,7 +501,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		Sleep:    power == powerBattery,
 		Time:     now.Unix(),
 		Firmware: offer,
-		Wake:     menuWake(menu, d, now, critical),
+		Wake:     wake,
 	}
 	if textDisplay {
 		resp.Text = &syncText{Lines: served.lines, Hash: served.hash}
@@ -513,11 +524,30 @@ func menuWake(menu menuState, d *Device, now time.Time, critical bool) *syncWake
 	case menuResultPhase:
 		return nil // the next regular sync closes the result
 	}
-	left := menu.OpenedAt.Add(menuDeadline(menu, d)).Sub(now)
+	left := menu.expiresAt(d).Sub(now)
 	if left < time.Second {
 		left = time.Second
 	}
 	return &syncWake{Reason: "menu", AfterS: int(left.Seconds())}
+}
+
+// fitWakeToListen shortens a listen window that would swallow a one-shot wake:
+// the firmware listens before it sleeps, so a wake after after_s seconds would
+// arrive listen_s too late. The time it moves out of the window goes into the
+// wake, which then fires when it was meant to (ADR 0078).
+func fitWakeToListen(listen time.Duration, wake *syncWake) (time.Duration, *syncWake) {
+	if wake == nil || wake.AfterS < 1 {
+		return listen, wake
+	}
+	room := int(listen.Seconds())
+	if room > wake.AfterS-1 {
+		room = wake.AfterS - 1
+	}
+	if room < 0 {
+		room = 0
+	}
+	wake.AfterS -= room
+	return time.Duration(room) * time.Second, wake
 }
 
 // handleText answers the text poll of a text display (ADR 0044, 0045): the
