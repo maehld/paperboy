@@ -374,6 +374,126 @@ func TestMenuExpires(t *testing.T) {
 	}
 }
 
+// TestMenuNavigationKeepsTheMenuOpen covers the reported bug: on a battery
+// device every press costs a whole wake cycle, so navigating a menu easily
+// takes longer than the show duration. The deadline counts from the last input,
+// not from opening, so a press never finds an expired menu and pages instead of
+// moving the selection (ADR 0078).
+func TestMenuNavigationKeepsTheMenuOpen(t *testing.T) {
+	s, now, _ := menuServer(t, menuPlanActions, nil)
+	dev := menuDevice(t, s)
+	base := pagePath(displayPage(t, s, dev))
+	press(t, s, dev, buttonHome) // opens on act/go
+	for i := 0; i < 2; i++ {
+		// Each step is beyond the whole show duration in total but well inside
+		// it since the previous press.
+		*now = now.Add(20 * time.Second)
+		out := press(t, s, dev, buttonNext)
+		st := s.state["test"]
+		if !st.Menu.Open || st.Menu.Phase != menuListPhase {
+			t.Fatalf("press %d closed the menu: %+v", i+1, st.Menu)
+		}
+		if st.Page != 0 {
+			t.Fatalf("press %d paged: %d", i+1, st.Page)
+		}
+		if got := pagePath(out); got == base {
+			t.Fatalf("press %d did not show the menu: %q", i+1, got)
+		}
+	}
+	if st := s.state["test"]; st.Menu.Selected != "act/off" {
+		t.Fatalf("two next presses must select the last action: %q", st.Menu.Selected)
+	}
+	// An idle menu still expires and keeps the page.
+	*now = now.Add(31 * time.Second)
+	displayPage(t, s, dev)
+	if st := s.state["test"]; st.Menu.Open || st.Page != 0 {
+		t.Fatalf("an idle menu must expire: %+v", st)
+	}
+}
+
+// TestMenuWakeFitsTheListenWindow keeps the panel and the menu state in step:
+// the firmware listens before it sleeps, so listen_s and the one-shot wake have
+// to share the remaining menu time (ADR 0078).
+func TestMenuWakeFitsTheListenWindow(t *testing.T) {
+	s, _, _ := menuServer(t, menuPlanActions, nil)
+	dev := menuDevice(t, s)
+	displayPage(t, s, dev)
+	out := press(t, s, dev, buttonHome)
+	listen, after, reason := listenAndWake(t, out)
+	if reason != "menu" || listen+after != 30 {
+		t.Fatalf("listen %v s + wake %v s (%s) must cover the show duration", listen, after, reason)
+	}
+	if listen > listenAfterInput.Seconds() || after < 1 {
+		t.Fatalf("listen %v s, wake %v s", listen, after)
+	}
+	// The empty banner has a shorter deadline and stays inside it as well.
+	s, _, _ = menuServer(t, "", nil)
+	dev = menuDevice(t, s)
+	displayPage(t, s, dev)
+	if listen, after, _ = listenAndWake(t, press(t, s, dev, buttonHome)); listen+after != 10 {
+		t.Fatalf("empty banner: listen %v s + wake %v s", listen, after)
+	}
+}
+
+// TestFitWakeToListen pins the split itself: the listen window and the wake
+// always add up to the remaining menu time, and the wake keeps at least a second
+// so the device really sleeps for it (ADR 0078).
+func TestFitWakeToListen(t *testing.T) {
+	for _, c := range []struct{ listen, after int }{
+		{20, 30}, // the show duration right after opening
+		{20, 25}, // less left than the default listen window
+		{20, 2},  // the deadline is almost here
+		{20, 1},
+		{0, 30}, // a timer wake listens anyway
+	} {
+		listen, wake := fitWakeToListen(time.Duration(c.listen)*time.Second,
+			&syncWake{Reason: "menu", AfterS: c.after})
+		want := c.after - c.listen
+		if want < 1 {
+			want = 1
+		}
+		if int(listen.Seconds())+wake.AfterS != c.after || wake.AfterS != want {
+			t.Errorf("listen %d s, wake %d s -> listen %v s, wake %d s",
+				c.listen, c.after, listen, wake.AfterS)
+		}
+		if wake == nil || wake.Reason != "menu" {
+			t.Errorf("listen %d s, wake %d s: the wake lost its reason", c.listen, c.after)
+		}
+	}
+}
+
+// listenAndWake reads the listen window and the one-shot wake of a response.
+func listenAndWake(t *testing.T, out map[string]any) (listen, after float64, reason string) {
+	t.Helper()
+	wake, ok := out["wake"].(map[string]any)
+	if !ok {
+		t.Fatalf("no wake scheduled: %v", out)
+	}
+	listen, _ = out["listen_s"].(float64)
+	after, _ = wake["after_s"].(float64)
+	reason, _ = wake["reason"].(string)
+	return listen, after, reason
+}
+
+// TestMenuTapExtendsTheDeadline is the touch half of ADR 0078: a tap inside the
+// overlay keeps the menu open just like a button.
+func TestMenuTapExtendsTheDeadline(t *testing.T) {
+	s, now, _ := menuServer(t, menuPlanActions, nil)
+	dev := menuDevice(t, s)
+	displayPage(t, s, dev)
+	press(t, s, dev, buttonHome)
+	*now = now.Add(25 * time.Second)
+	// act/go needs a confirmation and stays in the menu.
+	out := tapAt(t, s, dev, menuCellA1X, 75, "")
+	st := s.state["test"]
+	if !st.Menu.Open || st.Menu.Phase != menuConfirmPhase {
+		t.Fatalf("the tap closed the menu: %+v", st.Menu)
+	}
+	if listen, after, _ := listenAndWake(t, out); listen+after != 30 {
+		t.Fatalf("a tap must restart the deadline: listen %v s + wake %v s", listen, after)
+	}
+}
+
 // TestMenuExpiryKeepsThePageWhileRotating covers the same with `rotate` in the
 // plan, where every sync would otherwise advance the page: the wake at the
 // menu deadline is not input and must keep the page the operator was looking

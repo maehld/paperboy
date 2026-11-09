@@ -72,3 +72,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0074](0074-editor-board-shows-the-preview.md) | The editor board shows the page preview | Accepted, implemented |
 | [0075](0075-plugin-versions.md) | A version per plugin | Accepted, implemented |
 | [0077](0077-the-widgets-page-has-no-gallery.md) | The widgets page has no gallery | Accepted, implemented |
+| [0078](0078-the-menu-stays-open-while-it-is-used.md) | The menu stays open while it is used | Accepted, implemented |
