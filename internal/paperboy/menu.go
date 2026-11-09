@@ -70,6 +70,7 @@ type menuState struct {
 	Offset      int          `json:"offset,omitempty"` // first visible action
 	Session     int          `json:"session,omitempty"`
 	ConfirmHash string       `json:"confirm_hash,omitempty"` // hash of the served confirmation screen
+	Screen      string       `json:"screen,omitempty"`       // hash of the last served menu screen
 	OpenedAt    time.Time    `json:"opened_at,omitempty"`
 	LastInput   time.Time    `json:"last_input,omitempty"` // last button or touch that kept the menu open
 	Actions     []menuAction `json:"actions,omitempty"`
@@ -946,5 +947,9 @@ func (s *Server) overlayMenu(cfg *Config, d *Device, served servedPage, m *menuS
 	if m.Phase == menuConfirmPhase {
 		m.ConfirmHash = out.hash
 	}
+	// The device reports this hash as "shown" until the menu is repainted. A
+	// press that arrives with it belongs to the menu even when the deadline has
+	// passed in the meantime (ADR 0078).
+	m.Screen = out.hash
 	return out
 }

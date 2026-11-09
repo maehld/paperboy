@@ -411,6 +411,48 @@ func TestMenuNavigationKeepsTheMenuOpen(t *testing.T) {
 	}
 }
 
+// TestMenuPressWhileThePanelShowsIt mirrors the live capture of #129: four
+// presses 6 s apart move the selection, and the fifth arrives after the
+// deadline. The device still reports the menu screen it painted, so the press
+// belongs to the menu instead of finding it expired (ADR 0078).
+func TestMenuPressWhileThePanelShowsIt(t *testing.T) {
+	s, now, _ := menuServer(t, menuPlanActions, nil)
+	dev := menuDevice(t, s)
+	base := pagePath(displayPage(t, s, dev))
+	press(t, s, dev, buttonHome)
+	for i := 0; i < 4; i++ {
+		*now = now.Add(6 * time.Second)
+		if out := press(t, s, dev, buttonNext); pagePath(out) == base {
+			t.Fatalf("press %d did not show the menu", i+1)
+		}
+	}
+	// Four presses at T+6, +12, +18 and +24 s, then a pause: this press at
+	// T+55 arrives 31 s after the last input, so the deadline has passed. The
+	// panel cannot have repainted yet, so the press must still navigate.
+	*now = now.Add(31 * time.Second)
+	out := press(t, s, dev, buttonNext)
+	st := s.state["test"]
+	if !st.Menu.Open || st.Menu.Phase != menuListPhase {
+		t.Fatalf("the press on a visible menu closed it: %+v", st.Menu)
+	}
+	if st.Page != 0 {
+		t.Fatalf("the press on a visible menu paged: %d", st.Page)
+	}
+	if st.Menu.Selected != "act/off" {
+		t.Fatalf("the fifth press must select the last action: %q", st.Menu.Selected)
+	}
+	if got := pagePath(out); got == base {
+		t.Fatal("the menu overlay must stay served")
+	}
+	// Without input the same menu still expires at its deadline and keeps the
+	// page, even though the panel still reports the menu screen.
+	*now = now.Add(31 * time.Second)
+	displayPage(t, s, dev)
+	if st := s.state["test"]; st.Menu.Open || st.Page != 0 {
+		t.Fatalf("an idle menu must expire: %+v", st)
+	}
+}
+
 // TestMenuWakeFitsTheListenWindow keeps the panel and the menu state in step:
 // the firmware listens before it sleeps, so listen_s and the one-shot wake have
 // to share the remaining menu time (ADR 0078).

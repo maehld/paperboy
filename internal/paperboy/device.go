@@ -314,7 +314,13 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	case req.Reason == "powercycle", critical, textDisplay, d.Actions == actionsDeny, d.Plan == "":
 		menu.close()
 	default:
-		if menu.Open && !now.Before(menu.expiresAt(d)) {
+		// The deadline is a server-side timer, but the panel keeps the menu
+		// screen until the deadline wake repaints it. A press that arrives while
+		// the device still reports that screen belongs to the menu, even when
+		// the deadline has passed: closing it would swallow the press and the
+		// next one would turn the page (ADR 0078).
+		onScreen := menu.Screen != "" && req.Shown == menu.Screen
+		if menu.Open && !now.Before(menu.expiresAt(d)) && !(onScreen && (len(buttons) > 0 || len(touches) > 0)) {
 			slog.Info("menu expired", "device", d.ID)
 			menu.close()
 			menuClosed = true
