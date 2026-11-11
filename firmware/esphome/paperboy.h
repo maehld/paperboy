@@ -18,6 +18,7 @@ RTC_DATA_ATTR static char pb_note[120];        // one warning for the next sync,
 // Event queue and identities (ADR 0064). They live in RTC memory so that a
 // failed sync keeps its events and resends them with the same IDs.
 RTC_DATA_ATTR static uint32_t pb_event_seq;      // last assigned event ID
+RTC_DATA_ATTR static uint32_t pb_event_sent;     // highest event ID the last request carried
 RTC_DATA_ATTR static char pb_event_queue[1200];  // queued events as JSON objects, comma separated
 RTC_DATA_ATTR static char pb_next_reason[16];    // reason of the next wake: menu or result
 RTC_DATA_ATTR static uint32_t pb_next_s;         // seconds until that one-shot wake
@@ -28,7 +29,7 @@ RTC_DATA_ATTR static uint32_t pb_next_s;         // seconds until that one-shot 
 // is declared last, so all older variables keep their offsets; bump it whenever
 // this block changes.
 RTC_DATA_ATTR static uint32_t pb_rtc_magic;
-constexpr uint32_t PB_RTC_MAGIC = 0x50423031;  // "PB01"
+constexpr uint32_t PB_RTC_MAGIC = 0x50423032;  // "PB02"
 
 // Zeroes the RTC state once per layout. Safe to call on every boot.
 inline void pb_init_rtc() {
@@ -37,6 +38,7 @@ inline void pb_init_rtc() {
   }
   pb_rtc_magic = PB_RTC_MAGIC;
   pb_event_seq = 0;
+  pb_event_sent = 0;
   pb_event_queue[0] = 0;
   pb_next_reason[0] = 0;
   pb_next_s = 0;
@@ -129,22 +131,31 @@ inline void pb_button(const std::string &role, uint32_t hold_ms) {
   }
 }
 
-// One tap is one event: the panel reports a position continuously while a
-// finger rests on it, so the first report within touchGap is taken and the
-// rest are dropped (ADR 0064).
+// One contact is one event. The panel reports a position continuously while a
+// finger rests on it, so a tap is the first report of a contact and every
+// further report is dropped until the finger lifts (on_release). The old
+// 800 ms gap also swallowed a deliberate second tap (issue #136). A contact
+// that reports nothing for ten seconds counts as lifted, so a missed release
+// cannot mute the panel.
+static bool pb_touch_down = false;
+static uint32_t pb_touch_last_ms = 0;
+
 inline void pb_touch(int x, int y) {
-  static uint32_t last_ms;
   uint32_t now_ms = esphome::millis();
-  if (last_ms != 0 && now_ms - last_ms < 800) {
+  if (pb_touch_down && now_ms - pb_touch_last_ms < 10000) {
+    pb_touch_last_ms = now_ms;
     return;
   }
-  last_ms = now_ms;
+  pb_touch_down = true;
+  pb_touch_last_ms = now_ms;
   pb_event_seq++;
   if (!pb_queue_event(esphome::str_sprintf("{\"id\":%lu,\"type\":\"touch\",\"x\":%d,\"y\":%d}",
                                            (unsigned long) pb_event_seq, x, y))) {
     pb_note_for_next_wake("event queue full");
   }
 }
+
+inline void pb_touch_release() { pb_touch_down = false; }
 
 inline void pb_log(const std::string &level, const std::string &message) {
   if (pb_logs.size() < 16) {
@@ -169,6 +180,9 @@ inline std::string pb_sync_body(const std::string &firmware, const std::string &
   b += ",\"events\":[";
   b += pb_event_queue;
   b += "]";
+  // Remember what this request carries: a press that arrives while it is in
+  // flight gets a higher ID and must survive the answer (issue #136).
+  pb_event_sent = pb_event_seq;
   if (std::isfinite(pb_bat_volts) && pb_bat_volts > 0) {
     b += esphome::str_sprintf(",\"battery\":{\"volts\":%.3f", pb_bat_volts);
     if (std::isfinite(pb_bat_percent))
@@ -190,9 +204,48 @@ inline std::string pb_sync_body(const std::string &firmware, const std::string &
   return b;
 }
 
-// pb_sync_done drops what Paperboy confirmed: the event queue and the logs.
+// pb_events_drop_sent removes exactly the events the last request carried.
+// The event queue stays a flat list of objects with an `id` and no nested
+// braces, so the objects can be split at their closing brace. Events queued
+// while the request was in flight have a higher ID and stay, which is what
+// used to lose a press (issue #136).
+inline void pb_events_drop_sent() {
+  if (pb_event_queue[0] == 0) {
+    return;
+  }
+  static char kept[sizeof(pb_event_queue)];
+  size_t k = 0;
+  const char *p = pb_event_queue;
+  while (*p) {
+    const char *end = std::strchr(p, '}');
+    if (end == nullptr) {
+      break;
+    }
+    uint32_t id = 0;
+    if (const char *field = std::strstr(p, "\"id\":"); field != nullptr && field < end) {
+      id = (uint32_t) std::strtoul(field + 5, nullptr, 10);
+    }
+    const size_t len = (size_t) (end - p) + 1;
+    if (id > pb_event_sent) {
+      if (k > 0) {
+        kept[k++] = ',';
+      }
+      std::memcpy(kept + k, p, len);
+      k += len;
+    }
+    p = end + 1;
+    if (*p == ',') {
+      p++;
+    }
+  }
+  kept[k] = 0;
+  std::memcpy(pb_event_queue, kept, k + 1);
+}
+
+// pb_sync_done drops what Paperboy confirmed: the events of that request and
+// the logs. Anything queued after the body was built stays in the queue.
 inline void pb_sync_done() {
-  pb_event_queue[0] = 0;
+  pb_events_drop_sent();
   pb_logs.clear();
 }
 
