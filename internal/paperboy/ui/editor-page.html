@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{if .WidgetsPage}}Widgets{{else}}{{.Name}} · Editor{{end}} · Paperboy</title>
 <link rel="stylesheet" href="/ui/ui.css">
+<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <style>
 body { padding: 1.5rem 1.5rem 2rem; font-size: 15px; }
 /* The editor fills the window: the toolbar stays put and the three columns
@@ -85,7 +86,7 @@ input[type=search] { margin-bottom: .4rem; }
 </head>
 <body class="editor">
 <header>
-  <h1>Paperboy</h1>
+  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
   <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a{{if .WidgetsPage}} class="active"{{end}} href="/ui/plugins">Widgets</a> · <a{{if not .WidgetsPage}} class="active"{{end}} href="/ui/editor">Editor</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
 </header>

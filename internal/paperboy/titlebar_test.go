@@ -1,7 +1,9 @@
 package paperboy
 
 import (
+	"bytes"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 )
@@ -45,8 +47,8 @@ func TestOperatorPagesShareTheTitleBar(t *testing.T) {
 			t.Fatalf("%s: %d %s", page.path, rec.Code, rec.Body)
 		}
 		body := rec.Body.String()
-		if !strings.Contains(body, "<h1>Paperboy</h1>") {
-			t.Fatalf("%s: the h1 does not name Paperboy", page.path)
+		if !strings.Contains(body, `<h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy"`) {
+			t.Fatalf("%s: the h1 does not show the brand", page.path)
 		}
 		if !strings.Contains(body, titleBarNav(page.active)) {
 			t.Fatalf("%s: the navigation differs from the other pages", page.path)
@@ -83,6 +85,50 @@ func TestOperatorPagesLinkTheSharedStylesheet(t *testing.T) {
 	rec := htmlRequest(t, s, "/ui/ui.css")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Header().Get("Content-Type"), "text/css") {
 		t.Fatalf("stylesheet: %d %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+}
+
+// TestOperatorPagesCarryTheLogo keeps the brand from drifting apart: every page
+// shows the lockup in the header and links the small cut as its icon, and both
+// are served from copies of the design files in docs/logo (issue 149).
+func TestOperatorPagesCarryTheLogo(t *testing.T) {
+	s, _ := planServer(t, testPlan)
+	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"AA:BB:CC:DD:EE:01\"\nplan: zimmer\n")
+	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
+
+	pages := []string{
+		"/ui", "/ui/downloads", "/ui/plugins",
+		"/ui/editor", "/ui/editor/page?name=eins&display=small", "/ui/editor/plan?name=zimmer",
+		"/ui/editor/device?id=test", "/ui/editor/display?name=small", "/ui/plan?device=test",
+	}
+	for _, path := range pages {
+		body := htmlRequest(t, s, path).Body.String()
+		for _, want := range []string{
+			`<h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy"`,
+			`<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s misses %q", path, want)
+			}
+		}
+	}
+
+	// The served files are the design files: an embedded copy cannot drift.
+	for _, asset := range []struct{ path, design string }{
+		{"/ui/logo.svg", "../../docs/logo/paperboy-lockup.svg"},
+		{"/ui/favicon.svg", "../../docs/logo/paperboy-small.svg"},
+	} {
+		rec := htmlRequest(t, s, asset.path)
+		if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/svg+xml" {
+			t.Fatalf("%s: %d %q", asset.path, rec.Code, rec.Header().Get("Content-Type"))
+		}
+		design, err := os.ReadFile(asset.design)
+		if err != nil {
+			t.Fatalf("%s: %v", asset.design, err)
+		}
+		if !bytes.Equal(rec.Body.Bytes(), design) {
+			t.Fatalf("%s differs from %s", asset.path, asset.design)
+		}
 	}
 }
 

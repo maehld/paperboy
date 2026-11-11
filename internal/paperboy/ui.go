@@ -31,6 +31,32 @@ func (s *Server) handleUICSS(w http.ResponseWriter, r *http.Request) {
 	w.Write(uiCSS)
 }
 
+// The logo the pages carry: the lockup in the header and the small cut as the
+// icon, both copies of docs/logo/ so the binary needs no extra files (a test
+// keeps the copies identical to the design files).
+//
+//go:embed ui/logo.svg
+var uiLogo []byte
+
+//go:embed ui/favicon.svg
+var uiFavicon []byte
+
+// handleUILogo serves the lockup the header of every page shows.
+func (s *Server) handleUILogo(w http.ResponseWriter, r *http.Request) {
+	serveSVG(w, uiLogo)
+}
+
+// handleUIFavicon serves the icon the pages link.
+func (s *Server) handleUIFavicon(w http.ResponseWriter, r *http.Request) {
+	serveSVG(w, uiFavicon)
+}
+
+func serveSVG(w http.ResponseWriter, data []byte) {
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(data)
+}
+
 // dashboardDevice is one card of the overview. It carries display-ready texts
 // so the template holds no formatting logic.
 type dashboardDevice struct {

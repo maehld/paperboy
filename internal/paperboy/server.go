@@ -158,6 +158,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /ui/editor/display", s.handleDisplayEditor)
 	mux.HandleFunc("GET /ui/editor.js", s.handleEditorJS)
 	mux.HandleFunc("GET /ui/ui.css", s.handleUICSS)
+	mux.HandleFunc("GET /ui/logo.svg", s.handleUILogo)
+	mux.HandleFunc("GET /ui/favicon.svg", s.handleUIFavicon)
 	mux.HandleFunc("GET /ui/editor/plan.js", s.handlePlanEditorJS)
 	mux.HandleFunc("GET /ui/editor/device.js", s.handleDeviceEditorJS)
 	mux.HandleFunc("GET /ui/editor/display.js", s.handleDisplayEditorJS)

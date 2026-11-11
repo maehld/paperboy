@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{if .Plan}}Plan {{.Plan}} · {{end}}{{.Device}} · Paperboy</title>
 <link rel="stylesheet" href="/ui/ui.css">
+<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <style>
 form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
 .summary { margin: 0 0 1rem; }
@@ -26,7 +27,7 @@ figure .error { margin: 0; }
 </head>
 <body>
 <header>
-  <h1>Paperboy</h1>
+  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
   <nav><a class="active" href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/plugins">Widgets</a> · <a href="/ui/editor">Editor</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
   <span class="muted">device {{.Device}}{{if .Plan}} · plan {{.Plan}}{{end}} · display type {{.Profile}}</span>
