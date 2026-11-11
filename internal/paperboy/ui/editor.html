@@ -293,6 +293,35 @@ for (const d of document.querySelectorAll('dialog')) {
   });
 }
 
+// A file that only the list can reach - a page variant that neither the row nor
+// the display type switch opens - keeps its Delete here; the other files are
+// deleted in their editor (ADR 0083). The confirmation names what still
+// references the file (ADR 0073).
+for (const b of document.querySelectorAll('button[data-delete]')) {
+  b.addEventListener('click', async () => {
+    if (!confirm((b.dataset.warn || 'Delete this file?') + '\n\nA copy stays under state/editor/.')) return;
+    b.disabled = true;
+    let res;
+    try {
+      res = await fetch(b.dataset.delete, { method: 'DELETE' });
+    } catch (e) {
+      alert('Delete failed: ' + e);
+      b.disabled = false;
+      return;
+    }
+    if (res.ok) {
+      location.reload();
+      return;
+    }
+    let msg = '(' + res.status + ')';
+    try {
+      msg = (await res.json()).error || msg;
+    } catch (e) { /* not JSON */ }
+    alert('Delete failed: ' + msg);
+    b.disabled = false;
+  });
+}
+
 // A row opens its object; links and buttons inside a row keep their own
 // meaning. Rename and Delete live in the editor of the object, so the list stays
 // a list of links (ADR 0083).
