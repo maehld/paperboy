@@ -47,14 +47,20 @@ input[type=search] { margin-bottom: .4rem; }
 #board.text .slot { display: flex; align-items: center; justify-content: center; color: #d8f5a0; font: .8rem/1 ui-monospace, Consolas, monospace; border-color: rgba(216, 245, 160, .14); }
 .slot { border: 1px dashed #e6e6e6; min-height: 0; min-width: 0; overflow: hidden; }
 #board.placing .slot { background: rgba(246, 250, 255, .8); cursor: copy; }
-.cell { background: rgba(238, 243, 251, .55); border: 1px solid #b9c9e0; padding: .15rem .3rem; overflow: hidden; min-height: 0; min-width: 0; font-size: .72rem; line-height: 1.2; cursor: pointer; }
+.cell { position: relative; background: rgba(238, 243, 251, .55); border: 1px solid #b9c9e0; padding: .15rem .3rem; overflow: hidden; min-height: 0; min-width: 0; font-size: .72rem; line-height: 1.2; cursor: grab; user-select: none; touch-action: none; }
 .cell.selected { outline: 2px solid #134e9c; outline-offset: -2px; background: rgba(226, 236, 251, .7); z-index: 2; }
+.cell.dragging { opacity: .7; cursor: grabbing; }
+.cell .handle { position: absolute; z-index: 3; display: none; }
+.cell.selected .handle { display: block; }
+.cell .handle-x { top: 0; right: 0; width: 8px; height: 100%; cursor: ew-resize; background: rgba(19, 78, 156, .35); }
+.cell .handle-y { bottom: 0; left: 0; height: 8px; width: 100%; cursor: ns-resize; background: rgba(19, 78, 156, .35); }
+.cell .handle-xy { right: 0; bottom: 0; width: 12px; height: 12px; cursor: nwse-resize; background: #134e9c; border-radius: 2px 0 0 0; }
 .cell .w { display: block; font-weight: 600; word-break: break-all; }
 .cell .pos { color: #456; }
 #board.hide-cells .slot { border-color: transparent; }
 #board.hide-cells .cell { background: transparent; border-color: transparent; }
 #board.hide-cells .cell.selected { outline: 0; }
-#board.hide-cells .cell .w, #board.hide-cells .cell .pos { display: none; }
+#board.hide-cells .cell .w, #board.hide-cells .cell .pos, #board.hide-cells .cell .handle { display: none; }
 .hint { margin: .4rem 0 0; font-size: .8rem; color: #666; }
 .palette .plugin { border-top: 1px solid #eee; padding-top: .5rem; margin-top: .5rem; }
 .palette .plugin:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
@@ -122,7 +128,7 @@ input[type=search] { margin-bottom: .4rem; }
     <section class="panel palette">
       <h3>Widgets</h3>
       <input id="palette-filter" type="search" placeholder="Filter widgets…" autocomplete="off" aria-label="Filter widgets">
-      <p class="hint">{{if .WidgetsPage}}Click a widget to show it on the right.{{else}}Click a widget, then a free cell. Dragging works too, both a widget from this list and a box on the board, which moves the widget.{{end}}</p>
+      <p class="hint">{{if .WidgetsPage}}Click a widget to show it on the right.{{else}}Click a widget, then a free cell, or drag it there. Drag a box by its body to move it and by an edge or corner to resize it.{{end}}</p>
       <div id="palette"></div>
     </section>
   </div>

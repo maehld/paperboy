@@ -17,7 +17,7 @@ func TestEditorDisplaysTab(t *testing.T) {
 	body := request(t, s, http.MethodGet, "/ui/editor?tab=displays", nil, nil).Body.String()
 	for _, want := range []string{
 		`href="/ui/editor?tab=displays" class="active">Displays<span class="count">3</span>`,
-		`id="display-table"`, "<td>small</td>", ">40 × 20</td>", "125 ppi", ">4</td>",
+		`id="display-table"`, `<a href="/ui/editor/display?name=small">small</a>`, ">40 × 20</td>", "125 ppi", ">4</td>",
 		">20 × 4</td>", "<td>ascii</td>", "New display type",
 		"/ui/editor/display?name=small",
 	} {

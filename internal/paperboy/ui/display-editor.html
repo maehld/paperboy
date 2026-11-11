@@ -93,14 +93,12 @@ pre.file { margin: 0; padding: .5rem .6rem; background: #f7f9fc; border: 1px sol
       <div id="pages">
         {{range .Pages}}<a href="{{.URL}}">{{.Label}}</a>{{else}}<p class="empty">No page variant is named after this display type.</p>{{end}}
       </div>
-      <p class="hint">The name is the suffix of <code>pages/&lt;page&gt;.&lt;name&gt;.yaml</code>. Renaming it stays a manual step.</p>
     </section>
     <section class="panel">
       <h3>Devices</h3>
       <div id="devices">
         {{range .Devices}}<a href="{{.URL}}">{{.Label}}</a>{{else}}<p class="empty">No device uses this display type.</p>{{end}}
       </div>
-      <p class="hint">A device points here with <code>display_type</code>; a missing file fails the load and keeps the last valid configuration.</p>
     </section>
     <section class="panel">
       <h3>File</h3>

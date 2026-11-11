@@ -25,6 +25,7 @@ func TestEditorOverview(t *testing.T) {
 		"/ui/editor/page?display=small&amp;name=solar",  // the variant of the selected type
 		"/ui/editor/page?display=small&amp;name=shared", // the shared page follows the selection
 		"New page",
+		`data-dialog="new-page"`, `id="new-page"`, `action="/ui/editor/page"`,
 		`href="/ui/editor?display=small&amp;tab=pages" class="active">Pages<span class="count">2</span>`,
 		`href="/ui/editor?tab=plans">Plans<span class="count">`,
 		"<a href=\"/ui/downloads\">Downloads</a> · <a href=\"/ui/plugins\">Widgets</a> · <a class=\"active\" href=\"/ui/editor\">Editor",
@@ -113,13 +114,13 @@ func TestEditorPageRows(t *testing.T) {
 
 	body := request(t, s, http.MethodGet, "/ui/editor?display=small", nil, nil).Body.String()
 	for _, want := range []string{
-		// The row shows the variant of the selected type, its Delete names that file.
+		// The row shows the variant of the selected type and opens it (ADR 0084).
 		"pages/solar.small.yaml",
-		`data-delete="/api/pages/solar?display=small&amp;hash=`,
+		`class="rowlink" data-href="/ui/editor/page?display=small&amp;name=solar"`,
 		// The other variant stays reachable and is marked as not shown.
 		`href="/ui/editor/page?display=lcd&amp;name=solar">lcd</a>`,
 		// The shared page has no switch entry next to a variant, so its chip keeps
-		// its own Delete.
+		// its own Delete: no detail page can reach that file.
 		`data-delete="/api/pages/solar?display=&amp;hash=`,
 		// A page without a variant for the type and without a shared page says so
 		// and offers no Open; its variant is still a link.
@@ -155,15 +156,15 @@ func TestEditorTabs(t *testing.T) {
 		return request(t, s, http.MethodGet, "/ui/editor?tab="+name, nil, nil).Body.String()
 	}
 	plans := tab("plans")
-	if !strings.Contains(plans, `id="plan-table"`) || !strings.Contains(plans, "<td>zimmer</td>") {
+	if !strings.Contains(plans, `id="plan-table"`) || !strings.Contains(plans, `<a href="/ui/editor/plan?name=zimmer">zimmer</a>`) {
 		t.Fatalf("plans tab:\n%s", plans)
 	}
 	if strings.Contains(plans, `id="page-table"`) {
 		t.Fatalf("plans tab carries the page list:\n%s", plans)
 	}
 	devices := tab("devices")
-	if !strings.Contains(devices, `id="device-table"`) || !strings.Contains(devices, "<td>wohnzimmer</td>") ||
-		!strings.Contains(devices, "New device") {
+	if !strings.Contains(devices, `id="device-table"`) || !strings.Contains(devices, `<a href="/ui/editor/device?id=wohnzimmer">wohnzimmer</a>`) ||
+		!strings.Contains(devices, "New device") || !strings.Contains(devices, `data-dialog="new-device"`) {
 		t.Fatalf("devices tab:\n%s", devices)
 	}
 	// An unknown tab falls back to the pages.
@@ -172,8 +173,8 @@ func TestEditorTabs(t *testing.T) {
 	}
 }
 
-// TestEditorDeleteWarnings names the references in the delete confirmations and
-// carries them to the editors (ADR 0073).
+// TestEditorDeleteWarnings keeps the reference warnings in the editors (ADR
+// 0073) and keeps the list a list of links (ADR 0084).
 func TestEditorDeleteWarnings(t *testing.T) {
 	s := planEditorServer(t)
 	s.config().Devices[0].Plan = "tour"
@@ -181,28 +182,29 @@ func TestEditorDeleteWarnings(t *testing.T) {
 	plans := request(t, s, http.MethodGet, "/ui/editor?tab=plans", nil, nil).Body.String()
 	for _, want := range []string{
 		"New plan", `action="/ui/editor/plan"`,
-		`data-delete="/api/plans/tour?hash=`,
-		"Delete plans/tour.yaml?", "Devices that use it: test",
+		`class="rowlink" data-href="/ui/editor/plan?name=tour"`,
 	} {
 		if !strings.Contains(plans, want) {
 			t.Fatalf("plans tab lacks %q:\n%s", want, plans)
 		}
 	}
+	if strings.Contains(plans, "data-delete=") || strings.Contains(plans, "data-rename=") {
+		t.Fatalf("the plans tab acts on files:\n%s", plans)
+	}
 	body := request(t, s, http.MethodGet, "/ui/editor?display=small", nil, nil).Body.String()
-	for _, want := range []string{
-		`data-delete="/api/pages/solar?display=small&amp;hash=`,
-		"Delete pages/solar.small.yaml?", "Plans that name it: tour",
-	} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("pages tab lacks %q:\n%s", want, body)
-		}
+	if !strings.Contains(body, `class="rowlink" data-href="/ui/editor/page?display=small&amp;name=solar"`) {
+		t.Fatalf("pages tab lacks the row link:\n%s", body)
 	}
 
-	// The page editor knows the plans that name its page, the display type
-	// editor the page variants that use the type.
+	// The page editor knows the plans that name its page, the plan editor its
+	// devices, the display type editor the page variants that use the type.
 	page := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil).Body.String()
 	if !strings.Contains(page, `"usedBy":["tour"]`) {
 		t.Fatalf("page editor warning:\n%s", page)
+	}
+	plan := request(t, s, http.MethodGet, "/ui/editor/plan?name=tour", nil, nil).Body.String()
+	if !strings.Contains(plan, `"devices":[{"id":"test","display":"small"}]`) {
+		t.Fatalf("plan editor devices:\n%s", plan)
 	}
 	display := request(t, s, http.MethodGet, "/ui/editor/display?name=small&new=1", nil, nil).Body.String()
 	if !strings.Contains(display, `"pages":["solar"]`) || !strings.Contains(display, `id="delete"`) {
@@ -292,7 +294,7 @@ func TestEditorScript(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "PUT"} {
+	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "PUT", "pointerdown", "handle-xy", "firstWidget"} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("script lacks %q", want)
 		}

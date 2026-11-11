@@ -180,50 +180,30 @@ func TestRenameDisplay(t *testing.T) {
 	}
 }
 
-// TestEditorRenameButtons: every row of the overview offers Rename, and the
-// confirmation names what keeps the old name (ADR 0079).
+// TestEditorRenameButtons: the overview no longer carries Rename or Delete;
+// the editors do, and the confirmation names what keeps the old name (ADR
+// 0079, 0083).
 func TestEditorRenameButtons(t *testing.T) {
 	s := planEditorServer(t)
 	s.config().Devices[0].Plan = "tour"
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"aa:bb:cc:dd:ee:01\"\nplan: tour\n")
 
-	pages := request(t, s, http.MethodGet, "/ui/editor?display=small", nil, nil).Body.String()
-	for _, want := range []string{
-		`data-rename="/api/pages/solar/rename?hash=`,
-		"Rename page solar?", "Plans that name it are not rewritten",
+	for _, tc := range []struct{ tab, link string }{
+		{"pages", "/ui/editor/page?display=small&amp;name=solar"},
+		{"plans", "/ui/editor/plan?name=tour"},
+		{"devices", "/ui/editor/device?id=test"},
+		{"displays", "/ui/editor/display?name=small"},
 	} {
-		if !strings.Contains(pages, want) {
-			t.Fatalf("pages tab lacks %q:\n%s", want, pages)
+		body := request(t, s, http.MethodGet, "/ui/editor?display=small&tab="+tc.tab, nil, nil).Body.String()
+		if !strings.Contains(body, `class="rowlink" data-href="`+tc.link+`"`) {
+			t.Fatalf("%s tab lacks the row link %q:\n%s", tc.tab, tc.link, body)
+		}
+		if strings.Contains(body, "data-rename=") || strings.Contains(body, "data-delete=") {
+			t.Fatalf("%s tab still acts on files:\n%s", tc.tab, body)
 		}
 	}
-	plans := request(t, s, http.MethodGet, "/ui/editor?tab=plans", nil, nil).Body.String()
-	for _, want := range []string{
-		`data-rename="/api/plans/tour/rename?hash=`,
-		"Rename plan tour?", "Devices that use it are not rewritten",
-	} {
-		if !strings.Contains(plans, want) {
-			t.Fatalf("plans tab lacks %q:\n%s", want, plans)
-		}
-	}
-	devices := request(t, s, http.MethodGet, "/ui/editor?tab=devices", nil, nil).Body.String()
-	for _, want := range []string{
-		`data-rename="/api/devices/test/rename?hash=`,
-		"Rename device test?", "Its state (page cursor, battery reading, menu) moves",
-	} {
-		if !strings.Contains(devices, want) {
-			t.Fatalf("devices tab lacks %q:\n%s", want, devices)
-		}
-	}
-	displays := request(t, s, http.MethodGet, "/ui/editor?tab=displays", nil, nil).Body.String()
-	for _, want := range []string{
-		`data-rename="/api/displays/small/rename?hash=`,
-		"Rename display type small?", "Only the file moves; nothing is rewritten",
-	} {
-		if !strings.Contains(displays, want) {
-			t.Fatalf("displays tab lacks %q:\n%s", want, displays)
-		}
-	}
+
 	// The editors carry the same rename, so the object can be renamed while it
 	// is open; a new object has none (ADR 0079).
 	for _, tc := range []struct{ url, want string }{

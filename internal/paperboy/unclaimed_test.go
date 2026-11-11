@@ -25,6 +25,11 @@ func TestUnclaimedDeviceInEditor(t *testing.T) {
 	if !strings.Contains(page, "id=\"unclaimed-table\"") || !strings.Contains(page, "/ui/editor/device?") {
 		t.Fatalf("claim link missing:\n%s", page)
 	}
+	// The row itself asks before it opens the new device file (ADR 0080).
+	if !strings.Contains(page, `data-claim="`+strings.ReplaceAll(claim, "&", "&amp;")+`"`) ||
+		!strings.Contains(page, `data-mac="AA:BB:CC:DD:EE:99"`) {
+		t.Fatalf("the unclaimed row does not carry its claim:\n%s", page)
+	}
 	// The claim link opens a new device with the MAC already filled in.
 	editor := htmlRequest(t, s, claim).Body.String()
 	if !strings.Contains(editor, `"mac":"AA:BB:CC:DD:EE:99"`) {
