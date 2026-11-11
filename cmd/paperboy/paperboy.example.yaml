@@ -27,6 +27,7 @@ plugins:
     config: { mode: random, rotate: 24h }   # or: { pokemon: pikachu }
   xkcd:
     config: { comic: latest }
+  countdown: {}   # dates, labels and bars are widget args (docs/plugins/countdown.md)
   departures:
     config: { stop: "City, Stop name", walk_minutes: 4 }   # Westfalenfahrplan by default, see docs/plugins/departures.md
   myskoda:
