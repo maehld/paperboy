@@ -516,7 +516,7 @@ func (s *Server) resolveActions(ctx context.Context, cfg *Config, d *Device, ent
 func (s *Server) hardwareOf(d *Device) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if st := s.state[d.key()]; st != nil {
+	if st := s.state[d.stateKey()]; st != nil {
 		return st.Hardware
 	}
 	return ""
@@ -551,14 +551,14 @@ type actionRun struct {
 func (s *Server) startAction(cfg *Config, d *Device, a menuAction, now time.Time) *actionRun {
 	run := &actionRun{done: make(chan struct{})}
 	s.mu.Lock()
-	s.actionRuns[d.key()] = run
+	s.actionRuns[d.stateKey()] = run
 	s.mu.Unlock()
 	go func() {
 		defer close(run.done)
 		ctx, cancel := context.WithTimeout(context.Background(), pluginActionTimeout)
 		defer cancel()
 		run.ok, run.message = s.invokeAction(ctx, cfg, d, &a, now)
-		s.finishAction(d.key(), a.Key, run)
+		s.finishAction(d.stateKey(), a.Key, run)
 	}()
 	return run
 }
@@ -579,9 +579,9 @@ func (s *Server) finishAction(key, identity string, run *actionRun) {
 	}
 	st.Menu.Phase = menuResultPhase
 	st.Menu.Result, st.Menu.ResultOK, st.Menu.ConfirmHash = run.message, run.ok, ""
-	data := s.stateSnapshotLocked()
+	data := s.stateSnapshotLocked(st)
 	s.mu.Unlock()
-	s.saveState(data)
+	s.saveState(key, data)
 }
 
 // menuCells lays the overlay out: the top half of the display, one row in

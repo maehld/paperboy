@@ -30,13 +30,13 @@ import (
 // configuration through config, and the plugins are reconfigured on the same
 // reload.
 type Server struct {
-	cfg         *configLoader // current configuration, reloaded on change (ADR 0047)
-	devicesPath string        // state/devices.json in the instance directory
-	now         func() time.Time
-	ctx         context.Context // lifecycle context for background checks (ADR 0062)
+	cfg        *configLoader // current configuration, reloaded on change (ADR 0047)
+	devicesDir string        // state/devices/ with one file per MAC (ADR 0080)
+	now        func() time.Time
+	ctx        context.Context // lifecycle context for background checks (ADR 0062)
 
 	mu    sync.Mutex
-	state map[string]*deviceState // device ID → state
+	state map[string]*deviceState // device key (MAC) → state
 	plans *planLoader             // device plans (ADR 0025)
 	// actionRuns holds the actions that outlive their sync (ADR 0064).
 	actionRuns map[string]*actionRun
@@ -68,22 +68,14 @@ func New(cfg *Config) (*Server, error) {
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		return nil, err
 	}
-	devicesPath := filepath.Join(stateDir, devicesFileName)
-	state, err := loadState(devicesPath)
+	devicesDir := filepath.Join(stateDir, devicesStateDirName)
+	state, err := loadDeviceStates(devicesDir)
 	if err != nil {
 		return nil, err
 	}
-	if moved, err := migrateState(state, cfg.Devices); err != nil {
-		return nil, err
-	} else if moved > 0 {
-		data, err := json.MarshalIndent(state, "", "  ")
-		if err != nil {
-			return nil, err
-		}
-		if err := writeAtomic(devicesPath, data); err != nil {
-			return nil, err
-		}
-		slog.Info("device state migrated to device ids", "entries", moved)
+	if _, err := os.Stat(filepath.Join(stateDir, legacyDevicesFileName)); err == nil {
+		slog.Warn("state/devices.json is no longer used; move its entries to state/devices/<MAC>.json (ADR 0080)",
+			"file", filepath.Join(stateDir, legacyDevicesFileName))
 	}
 	// The configuration is normalized here and then reloaded from paperboy.yaml
 	// whenever the file changes (ADR 0047). The given configuration is the last
@@ -108,8 +100,8 @@ func New(cfg *Config) (*Server, error) {
 		cfg.FirmwareDir = filepath.Join(cfg.Dir, firmwareDirName)
 	}
 	s := &Server{cfg: newConfigLoader(cfg.Dir, cfg), ctx: context.Background(),
-		widgets:     &widget.Host{Builtin: map[string]plugin.Handler{builtin.Name: builtin.Plugin{}}},
-		devicesPath: devicesPath, now: time.Now, state: state,
+		widgets:    &widget.Host{Builtin: map[string]plugin.Handler{builtin.Name: builtin.Plugin{}}},
+		devicesDir: devicesDir, now: time.Now, state: state,
 		plans: newPlanLoader(), actionRuns: map[string]*actionRun{}, rendered: map[string]*renderedPage{}, hints: map[string][]byte{},
 		logs: newLogSeen(), fwNotes: map[string]string{}, pages: newPageLoader(), skipNotes: map[string]string{}}
 	s.firmware = newFirmwareStore(cfg.FirmwareDir)
@@ -250,7 +242,7 @@ func (s *Server) deviceInfos() []deviceInfo {
 	devices := make([]Device, 0, len(cfg.Devices))
 	for _, d := range cfg.Devices {
 		info := deviceInfo{ID: d.ID, Type: d.Type, MAC: d.MAC, Profile: d.Profile, Plan: d.Plan, Problem: d.Problem}
-		if st := s.state[d.key()]; st != nil {
+		if st := s.state[d.stateKey()]; st != nil {
 			info.deviceState = *st
 			info.Registered = st.APIKey != ""
 		}
@@ -307,7 +299,8 @@ func deviceStatus(d Device, st deviceState, now time.Time) string {
 	return "late"
 }
 
-// stateLocked returns the device state, creating it if needed; callers hold s.mu.
+// stateLocked returns the state of a device key (its MAC), creating it if
+// needed; callers hold s.mu.
 func (s *Server) stateLocked(key string) *deviceState {
 	st := s.state[key]
 	if st == nil {
@@ -317,11 +310,14 @@ func (s *Server) stateLocked(key string) *deviceState {
 	return st
 }
 
-// stateSnapshotLocked serializes device state; callers hold s.mu and write the
-// result with saveState after unlocking, so that a slow disk cannot block other
-// requests.
-func (s *Server) stateSnapshotLocked() []byte {
-	data, err := json.MarshalIndent(s.state, "", "  ")
+// stateSnapshotLocked serializes one device's state; callers hold s.mu and
+// write the result with saveState after unlocking, so that a slow disk cannot
+// block other requests.
+func (s *Server) stateSnapshotLocked(st *deviceState) []byte {
+	if st == nil {
+		return nil
+	}
+	data, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
 		slog.Error("failed to encode device state", "error", err)
 		return nil
@@ -329,13 +325,13 @@ func (s *Server) stateSnapshotLocked() []byte {
 	return data
 }
 
-// saveState persists a snapshot from stateSnapshotLocked outside the lock.
-func (s *Server) saveState(data []byte) {
-	if data == nil {
+// saveState persists the state of one device; call it without the lock.
+func (s *Server) saveState(key string, data []byte) {
+	if data == nil || key == "" {
 		return
 	}
-	if err := writeAtomic(s.devicesPath, data); err != nil {
-		slog.Error("failed to store device state", "error", err)
+	if err := writeStateFile(deviceStateFile(s.devicesDir, key), data); err != nil {
+		slog.Error("failed to store device state", "device", key, "error", err)
 	}
 }
 

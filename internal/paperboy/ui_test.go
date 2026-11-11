@@ -52,7 +52,7 @@ func TestDashboardShowsDevices(t *testing.T) {
 
 	// A render error is shown as text, never as markup.
 	s.mu.Lock()
-	s.state["test"].LastError = `<b>boom</b>`
+	s.state["AABBCCDDEE01"].LastError = `<b>boom</b>`
 	s.mu.Unlock()
 	body = htmlRequest(t, s, "/ui").Body.String()
 	if !strings.Contains(body, "&lt;b&gt;boom&lt;/b&gt;") || strings.Contains(body, "<b>boom</b>") {
@@ -87,8 +87,8 @@ func TestDashboardAfterRestart(t *testing.T) {
 	}
 
 	s.mu.Lock()
-	s.state["test"].LastPageKind = "notice"
-	s.state["test"].LastPage = ""
+	s.state["AABBCCDDEE01"].LastPageKind = "notice"
+	s.state["AABBCCDDEE01"].LastPage = ""
 	s.mu.Unlock()
 	body = htmlRequest(t, s, "/ui").Body.String()
 	if strings.Contains(body, "/hints/") || !strings.Contains(body, "waiting for the next sync") {

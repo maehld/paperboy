@@ -134,9 +134,10 @@ func TestTextDeviceSyncAndPoll(t *testing.T) {
 	}
 
 	// Polling never advances the cursor or writes the state file.
-	before, _ := os.ReadFile(s.devicesPath)
+	statePath := deviceStateFile(s.devicesDir, s.config().Devices[0].stateKey())
+	before, _ := os.ReadFile(statePath)
 	pollText(t, s, dev.key, "")
-	after, _ := os.ReadFile(s.devicesPath)
+	after, _ := os.ReadFile(statePath)
 	if string(before) != string(after) {
 		t.Fatal("poll wrote the state file")
 	}

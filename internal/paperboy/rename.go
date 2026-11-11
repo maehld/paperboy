@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -253,30 +252,15 @@ func (s *Server) handleRenameDevice(w http.ResponseWriter, r *http.Request) {
 	if targetExists(w, cfg, to) {
 		return
 	}
-	s.mu.Lock()
-	_, taken := s.state[name]
-	s.mu.Unlock()
-	if taken {
-		// A deleted device keeps its state so a recreated file picks it up; a
-		// rename must not silently replace that (ADR 0070).
-		writeAPIError(w, http.StatusConflict, "state for device %q already exists in %s; pick another name", name, devicesStatePath(cfg))
-		return
-	}
 	moves := []fileMove{{from: from, to: to}}
 	if err := moveFiles(moves); err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
+	// The state belongs to the MAC, so a rename moves files only (ADR 0080).
 	s.mu.Lock()
-	var stateData []byte
-	if st := s.state[old]; st != nil {
-		s.state[name] = st
-		delete(s.state, old)
-		stateData = s.stateSnapshotLocked()
-	}
 	delete(s.fwNotes, old)
 	s.mu.Unlock()
-	s.saveState(stateData)
 	writeJSON(w, http.StatusOK, renameAnswer(cfg, name, moves))
 }
 
@@ -326,11 +310,6 @@ func (s *Server) handleRenameDisplay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, renameAnswer(cfg, name, moves))
-}
-
-// devicesStatePath names the device state file for an error message.
-func devicesStatePath(cfg *Config) string {
-	return relativePath(cfg, filepath.Join(cfg.Dir, stateDirName, devicesFileName))
 }
 
 // renameAction is what an editor needs to rename its object: the endpoint and

@@ -129,15 +129,15 @@ func TestDeviceFlow(t *testing.T) {
 	}
 }
 
-func TestDeviceStateMigratesToDeviceID(t *testing.T) {
+func TestDeviceStateLivesInOwnFile(t *testing.T) {
 	dir := t.TempDir()
-	stateDir := filepath.Join(dir, "state")
+	stateDir := filepath.Join(dir, "state", "devices")
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	statePath := filepath.Join(stateDir, "devices.json")
-	old := `{"AA:BB:CC:DD:EE:01": {"api_key": "existing-key-1234", "friendly_id": "DDEE01"}}`
-	if err := os.WriteFile(statePath, []byte(old), 0o644); err != nil {
+	// The file is named by the MAC, so a renamed device file keeps its state.
+	statePath := filepath.Join(stateDir, "AABBCCDDEE01.json")
+	if err := os.WriteFile(statePath, []byte(`{"api_key": "existing-key-1234", "page": 2}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &Config{Dir: dir, Profiles: map[string]Profile{"small": {Width: 40, Height: 20, PPI: 125}},
@@ -149,19 +149,86 @@ func TestDeviceStateMigratesToDeviceID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st := s.state["wohnzimmer"]; st == nil || st.APIKey != "existing-key-1234" {
-		t.Fatalf("state not migrated: %v", s.state)
-	}
-	raw, err := os.ReadFile(statePath)
-	if err != nil || !strings.Contains(string(raw), `"wohnzimmer"`) || strings.Contains(string(raw), `"AA:BB:`) {
-		t.Fatalf("state file not rewritten: %s (%v)", raw, err)
+	if st := s.state["AABBCCDDEE01"]; st == nil || st.APIKey != "existing-key-1234" || st.Page != 2 {
+		t.Fatalf("state not loaded by MAC: %+v", s.state)
 	}
 	// Registration hands out the key the device state already has.
-	if rec := register(t, s, `{"mac":"AA:BB:CC:DD:EE:01"}`); !strings.Contains(rec.Body.String(), "existing-key-1234") {
-		t.Fatalf("register after migration: %s", rec.Body)
+	if rec := register(t, s, `{"mac":"AA:BB:CC:DD:EE:01","hardware":"sticky"}`); !strings.Contains(rec.Body.String(), "existing-key-1234") {
+		t.Fatalf("register: %s", rec.Body)
 	}
 	if rec := syncRaw(t, s, "existing-key-1234", `{"reason":"timer"}`); rec.Code != http.StatusOK {
-		t.Fatalf("sync after migration: %d %s", rec.Code, rec.Body)
+		t.Fatalf("sync: %d %s", rec.Code, rec.Body)
+	}
+	if fi, err := os.Stat(statePath); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("state file: %v %v", fi, err)
+	}
+}
+
+func TestUnknownDeviceGetsStateFile(t *testing.T) {
+	s, _ := testServer(t)
+	// An unknown MAC leaves a state file for the device editor and still gets
+	// 403, so the firmware keeps the device unconfigured (ADR 0080).
+	if rec := register(t, s, `{"mac":"aa:bb:cc:dd:ee:99","hardware":"sticky","firmware":"1.2.0"}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("unknown device: %d %s", rec.Code, rec.Body)
+	}
+	path := deviceStateFile(s.devicesDir, "AABBCCDDEE99")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st deviceState
+	if err := json.Unmarshal(data, &st); err != nil {
+		t.Fatal(err)
+	}
+	if st.APIKey != "" || st.Hardware != "sticky" || st.Firmware != "1.2.0" || st.FirstSeen.IsZero() || st.LastSeen.IsZero() {
+		t.Fatalf("unclaimed state: %+v", st)
+	}
+	// Claiming writes a device file with the MAC; the next register keeps the
+	// state and adds the key. The configuration reloads from disk, so a new
+	// server loads the claimed device here.
+	writeDeviceFile(t, s.config().Dir, "flur", "display_type: small\nmac: \"aa:bb:cc:dd:ee:99\"\n")
+	cfg := *s.config()
+	cfg.Devices = append(append([]Device{}, cfg.Devices...), Device{ID: "flur", MAC: "AA:BB:CC:DD:EE:99", Profile: "small"})
+	claimed, err := New(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st := claimed.state["AABBCCDDEE99"]; st == nil || st.Hardware != "sticky" || st.FirstSeen.IsZero() {
+		t.Fatalf("unclaimed state did not survive: %+v", claimed.state)
+	}
+	rec := register(t, claimed, `{"mac":"aa:bb:cc:dd:ee:99","hardware":"sticky"}`)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"device":"flur"`) {
+		t.Fatalf("claim: %d %s", rec.Code, rec.Body)
+	}
+	if st := claimed.state["AABBCCDDEE99"]; st == nil || st.APIKey == "" {
+		t.Fatalf("claim did not issue a key: %+v", claimed.state)
+	}
+}
+
+func TestLegacyDevicesFileIsIgnored(t *testing.T) {
+	dir := t.TempDir()
+	stateDir := filepath.Join(dir, "state")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(stateDir, "devices.json")
+	if err := os.WriteFile(legacy, []byte(`{"wohnzimmer": {"api_key": "old"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &Config{Dir: dir, Profiles: map[string]Profile{"small": {Width: 40, Height: 20, PPI: 125}},
+		Devices: []Device{{ID: "wohnzimmer", MAC: "aa:bb:cc:dd:ee:01", Profile: "small"}}}
+	if err := cfg.validate(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.state) != 0 {
+		t.Fatalf("legacy state was read: %+v", s.state)
+	}
+	if _, err := os.Stat(legacy); err != nil {
+		t.Fatalf("legacy file was touched: %v", err)
 	}
 }
 

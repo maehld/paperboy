@@ -111,9 +111,8 @@ func TestRenamePlan(t *testing.T) {
 	}
 }
 
-// TestRenameDevice moves the device file and its state, so the renamed device
-// keeps its cursor and battery reading. State of a deleted device must not be
-// replaced silently (ADR 0070, 0079).
+// TestRenameDevice moves only the device file: the state belongs to the MAC, so
+// the renamed device keeps its cursor and battery reading (ADR 0080).
 func TestRenameDevice(t *testing.T) {
 	s := editorServer(t)
 	writeDeviceFile(t, s.config().Dir, "kueche", "display_type: small\nmac: \"aa:bb:cc:dd:ee:02\"\n")
@@ -122,8 +121,7 @@ func TestRenameDevice(t *testing.T) {
 	if rec := request(t, s, http.MethodGet, "/api/devices/kueche", nil, &dev); rec.Code != http.StatusOK {
 		t.Fatalf("read: %d %s", rec.Code, rec.Body)
 	}
-	// Give the device some state that must travel with it.
-	s.state["kueche"] = &deviceState{Page: 3, BatteryVoltage: "3.9"}
+	s.state["AABBCCDDEE02"] = &deviceState{Page: 3, BatteryVoltage: "3.9"}
 
 	if rec := request(t, s, http.MethodPost, "/api/devices/kueche/rename?hash=stale", map[string]string{"name": "kitchen"}, nil); rec.Code != http.StatusConflict {
 		t.Fatalf("stale hash: %d %s", rec.Code, rec.Body)
@@ -136,20 +134,16 @@ func TestRenameDevice(t *testing.T) {
 	if fileExists(t, filepath.Join(s.config().DevicesDir, "kueche.yaml")) || !fileExists(t, filepath.Join(s.config().DevicesDir, "kitchen.yaml")) {
 		t.Fatal("the device file did not move")
 	}
-	if st := s.state["kitchen"]; st == nil || st.Page != 3 || st.BatteryVoltage != "3.9" {
-		t.Fatalf("state did not move: %+v", s.state)
+	if st := s.state["AABBCCDDEE02"]; st == nil || st.Page != 3 || st.BatteryVoltage != "3.9" {
+		t.Fatalf("state did not stay with the MAC: %+v", s.state)
 	}
-	if _, ok := s.state["kueche"]; ok {
-		t.Fatal("the old state key survived")
-	}
-	// A state key that already exists is refused: a deleted device keeps its
-	// state so a recreated file picks it up.
-	s.state["blocked"] = &deviceState{Page: 1}
+	// A name that another device file uses is refused.
 	writeDeviceFile(t, s.config().Dir, "again", "display_type: small\nmac: \"aa:bb:cc:dd:ee:03\"\n")
+	writeDeviceFile(t, s.config().Dir, "other", "display_type: small\nmac: \"aa:bb:cc:dd:ee:04\"\n")
 	var again editorDevice
 	request(t, s, http.MethodGet, "/api/devices/again", nil, &again)
-	if rec := request(t, s, http.MethodPost, "/api/devices/again/rename?hash="+again.Hash, map[string]string{"name": "blocked"}, nil); rec.Code != http.StatusConflict {
-		t.Fatalf("state collision: %d %s", rec.Code, rec.Body)
+	if rec := request(t, s, http.MethodPost, "/api/devices/again/rename?hash="+again.Hash, map[string]string{"name": "other"}, nil); rec.Code != http.StatusConflict {
+		t.Fatalf("existing device name: %d %s", rec.Code, rec.Body)
 	}
 	if rec := request(t, s, http.MethodPost, "/api/devices/nope/rename", map[string]string{"name": "x"}, nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("missing: %d %s", rec.Code, rec.Body)
