@@ -32,9 +32,11 @@ overlay's height. The strip holds
 - the close box `✕` on its right.
 
 The strip is drawn only for devices whose operator turned the digitiser on, and
-those cells are styled as controls: a thin frame around a small grey glyph,
-never an inverted fill like a selected action. A device without the strip keeps
-the whole overlay for its actions.
+only in the list phase: on the confirmation screen it would offer a second "no"
+next to `Nein` and page arrows that cannot page (ADR 0057 made the same argument
+for the close box). Its cells are styled as controls — a thin frame around a
+small glyph, never the size of an action cell — and a device without the strip
+keeps the whole overlay for its actions.
 
 ### 2. `touch` is a device setting
 
@@ -51,9 +53,10 @@ unwanted (accidental taps, a cheaper interaction model, battery).
 
 Where the strip is drawn, `next` past the last action moves the selection onto
 the close box, `home` there closes the menu and keeps the page, and `previous`
-returns to the last action. The selection on the close box is a heavier frame,
-not an inverted fill, so it still reads as a control and not as an action.
-Without the strip nothing changes: the list wraps and a long `home` closes.
+returns to the last action. The selected control inverts its small box instead
+of growing a frame: at a sixth of the overlay's width a heavier frame was
+invisible on the panel. Without the strip nothing changes: the list wraps and a
+long `home` closes.
 
 ### 4. The confirmation names the keys
 

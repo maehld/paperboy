@@ -725,11 +725,15 @@ func menuLayout(p Profile, phase string, count int, touch, header bool) (actions
 		headerRect = image.Rect(overlay.Min.X, overlay.Min.Y, overlay.Max.X, overlay.Min.Y+h)
 		area = image.Rect(overlay.Min.X, headerRect.Max.Y, overlay.Max.X, overlay.Max.Y)
 	}
-	if strip := controlKinds(count, touch); len(strip) > 0 {
-		sh := max(22, overlay.Dy()/4)
-		rect := image.Rect(area.Min.X, area.Max.Y-sh, area.Max.X, area.Max.Y)
-		controls = stripCells(rect, strip)
-		area = image.Rect(area.Min.X, area.Min.Y, area.Max.X, area.Max.Y-sh)
+	// The strip belongs to the list: on the confirmation screen it would
+	// offer a second "no" and page arrows that cannot page (ADR 0057, 0080).
+	if phase == menuListPhase {
+		if strip := controlKinds(count, touch); len(strip) > 0 {
+			sh := max(22, overlay.Dy()/4)
+			rect := image.Rect(area.Min.X, area.Max.Y-sh, area.Max.X, area.Max.Y)
+			controls = stripCells(rect, strip)
+			area = image.Rect(area.Min.X, area.Min.Y, area.Max.X, area.Max.Y-sh)
+		}
 	}
 	actions = rowCells(area, p.Height > p.Width, actionKinds(phase))
 	return actions, controls, headerRect, overlay
@@ -800,9 +804,14 @@ func drawMenu(img *image.Paletted, p Profile, v menuView, t texts) {
 			label = ">"
 		}
 		// The strip is a control, not an action: thinner, smaller, grey, and
-		// selected with a frame instead of an inverted fill (ADR 0080).
+		// selected with a heavier frame and a larger glyph instead of an
+		// inverted fill (ADR 0080).
+		selected := c.kind == cellClose && v.close
 		small := max(render.MinSize, size*0.6)
-		drawCell(img, *c, label, small, c.kind == cellClose && v.close, false, true)
+		if selected {
+			small = max(render.MinSize, size*0.8)
+		}
+		drawCell(img, *c, label, small, selected, false, true)
 	}
 	if header {
 		drawMenuHeader(img, headerRect, v, size, t)
@@ -818,19 +827,21 @@ func drawCell(img *image.Paletted, c menuCell, label string, size float64, selec
 	}
 	if control {
 		// A tap target of the control strip, not an action: a thin frame
-		// around a small, grey glyph, and nothing that looks like a selectable
-		// action cell (ADR 0080).
-		ink := render.DarkGray
+		// around a small glyph, and the selection inverts the box so it is
+		// unmistakable (ADR 0080).
 		if selected {
-			frameCell(img, c.rect, 2)
-			ink = render.Black
+			render.FillColor(img, c.rect, render.Black)
 		} else {
 			frameCell(img, c.rect, 1)
+		}
+		ink := render.DarkGray
+		if selected {
+			ink = render.White
 		}
 		inner := c.rect.Inset(3)
 		cx := inner.Min.X + inner.Dx()/2
 		render.Text(img, label, cx, inner.Min.Y+inner.Dy()/2+int(size*0.36),
-			render.Style{Size: size, Bold: selected, Shrink: true}, inner.Dx(), ink, render.Center)
+			render.Style{Size: size, Bold: true, Shrink: true}, inner.Dx(), ink, render.Center)
 		return
 	}
 	if disabled {
