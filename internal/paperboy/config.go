@@ -114,8 +114,9 @@ const (
 // text reports whether the display type shows lines of characters.
 func (p Profile) text() bool { return p.Kind == kindText }
 
-// Device is one physical display. Its ID is stable and used in state/devices.json, logs
-// and the devices API; the device API registers it by its Wi-Fi MAC address.
+// Device is one physical display. Its ID is stable and used in logs, the
+// devices API and state file names; the device API registers it by its Wi-Fi
+// MAC address, which also names its state file (ADR 0080).
 type Device struct {
 	ID      string
 	Type    string // protocol; only "paperboy" for now

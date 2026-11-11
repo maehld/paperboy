@@ -197,7 +197,7 @@ type Description struct {
 	Config  map[string]Arg `json:"config,omitempty"`  // keys of the plugin's config section
 	// Blobs names the files the plugin keeps besides its state, e.g.
 	// "render.png" (ADR 0081). Paperboy stores them under blobs/ of the
-	// plugin's directory and lists devices the files it does not expect.
+	// plugin's directory and logs files it does not expect.
 	Blobs []string `json:"blobs,omitempty"`
 }
 

@@ -33,7 +33,7 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0034](0034-layout-primitives-and-typography.md) | Layout primitives and typography in page templates | Superseded by ADR-0049 |
 | [0035](0035-duration-format.md) | Duration format and explicit charge direction for derived values | Superseded by ADR-0049 |
 | [0036](0036-exec-providers.md) | Exec providers in the data directory | Superseded by ADR-0049 |
-| [0037](0037-instance-directory-layout.md) | One instance directory with a fixed layout | Accepted, implemented; `providers/` and `icons/` replaced by `plugins/` (ADR-0049), devices moved to `devices/` by ADR-0070 |
+| [0037](0037-instance-directory-layout.md) | One instance directory with a fixed layout | Accepted, implemented; `providers/` and `icons/` replaced by `plugins/` (ADR-0049), devices moved to `devices/` by ADR-0070, device state split per MAC by ADR-0080 |
 | [0038](0038-icons.md) | Icons from the instance directory | Superseded by ADR-0049 |
 | [0039](0039-device-status.md) | Device status in the devices API | Accepted, implemented |
 | [0040](0040-operator-dashboard.md) | Operator dashboard as a Go template | Accepted, implemented |
@@ -60,7 +60,7 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0062](0062-plugin-updates-and-download-control.md) | Newer plugin downloads, a configurable interval and a check on demand | Accepted, implemented |
 | [0063](0063-constant-firmware-bundle-name.md) | A constant name for the firmware bundle | Accepted, implemented |
 | [0064](0064-device-protocol-v4.md) | Device protocol v4 – event identities and explicit wake reasons | Proposed |
-| [0065](0065-plugin-state-directory.md) | A state directory per plugin | Accepted, implemented |
+| [0065](0065-plugin-state-directory.md) | A state directory per plugin | Superseded by ADR-0081 |
 | [0066](0066-page-and-plan-api.md) | A page and plan API for an editor | Accepted, implemented |
 | [0067](0067-buttons-and-the-menu.md) | Buttons – home opens the menu, long presses page | Accepted, implemented |
 | [0068](0068-page-editor-ui.md) | A page editor in the web UI | Accepted, implemented |
@@ -73,4 +73,6 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0075](0075-plugin-versions.md) | A version per plugin | Accepted, implemented |
 | [0077](0077-the-widgets-page-has-no-gallery.md) | The widgets page has no gallery | Accepted, implemented |
 | [0078](0078-the-menu-stays-open-while-it-is-used.md) | The menu stays open while it is used | Accepted, implemented |
-| [0079](0079-rename-config-items.md) | Renaming pages, plans, devices and display types | Accepted, implemented; supersedes the manual rename of ADR-0071 and the load failure of ADR-0070 |
+| [0079](0079-rename-config-items.md) | Renaming pages, plans, devices and display types | Accepted, implemented; supersedes the manual rename of ADR-0071 and the load failure of ADR-0070; a device rename no longer moves state (ADR-0080) |
+| [0080](0080-device-state-per-mac.md) | Device state in a file per MAC | Accepted, implemented; supersedes the `devices.json` layout of ADR-0037 and the state move of ADR-0079 |
+| [0081](0081-plugin-state-over-the-protocol.md) | Plugin state and blobs over the protocol | Accepted, implemented; supersedes ADR-0065 |

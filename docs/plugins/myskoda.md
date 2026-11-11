@@ -26,7 +26,7 @@ plugins:
 
 **Key expiry:** every answer carries `X-API-Key-Expires-At`. The plugin logs one line when less than seven days are left; an expired key (`401`, `api-key-expired`) fails the widgets with a notice that names the MyŠkoda app, because a key can only be created there — there is no refresh flow. A `403` (`api-key-not-authorized`) means the key does not cover this VIN.
 
-**Restarts:** the plugin keeps what it needs between restarts in its own directory `state/plugins/myskoda/` (ADR 0065): `state.json` with the last answer, when it was loaded, the next allowed attempt, the key expiry, a fingerprint of the key and the last error, and `render.png` with the vehicle image. A Paperboy restart within the refresh interval therefore costs no request and shows the last state at once, and a `429` with `Retry-After` stays in force across a restart. A changed VIN or API key, or a file that cannot be read, discards the state; the key itself is never written.
+**Restarts:** the plugin keeps what it needs between restarts as plugin state and a blob (ADR 0081): `state/plugins/myskoda/state.json` holds the last answer, when it was loaded, the next allowed attempt, the key expiry, a fingerprint of the key and the last error, and `state/plugins/myskoda/blobs/render.png` the vehicle image. Paperboy writes both from the plugin's answers. A Paperboy restart within the refresh interval therefore costs no request and shows the last state at once, and a `429` with `Retry-After` stays in force across a restart. A changed VIN or API key, or state that cannot be read, discards it; the key itself is never written.
 
 **Licence:** the MyŠkoda Public API is for personal use only. Commercial use, resale or redistribution is not allowed.
 

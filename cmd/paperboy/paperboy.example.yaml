@@ -1,7 +1,7 @@
 # Paperboy configuration (ADR 0026, ADR 0049), placed in the instance directory
 # you pass with -config (ADR 0037). Layout: <dir>/paperboy.yaml, <dir>/pages,
 # <dir>/plans, <dir>/devices, <dir>/plugins, <dir>/firmware and
-# <dir>/state/devices.json; no paths are configured here.
+# <dir>/state/devices/<MAC>.json; no paths are configured here.
 
 # Optional; default: system language and timezone (ADR 0033).
 # language: de            # de or en: built-in texts, number format, plugins

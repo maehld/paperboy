@@ -725,9 +725,8 @@ func (s *Server) handleDeletePlan(w http.ResponseWriter, r *http.Request) {
 	s.deleteFile(w, cfg, "plans", name, path, r.URL.Query().Get("hash"), "plan")
 }
 
-// handleDeleteDevice removes one device file. Its state stays in
-// state/devices.json, so a recreated file with the same ID picks the page
-// cursor up again.
+// handleDeleteDevice removes one device file. Its state stays under the MAC,
+// so a recreated file picks the page cursor up again (ADR 0080).
 func (s *Server) handleDeleteDevice(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	id := r.PathValue("id")

@@ -48,7 +48,7 @@ const (
 )
 
 // menuAction is one plan action with the state the menu shows. It is stored
-// in state/devices.json, so it stays plain JSON.
+// in the device's state file, so it stays plain JSON.
 type menuAction struct {
 	Key         string         `json:"key"`                  // identity: id or plugin/action
 	Action      string         `json:"action"`               // plugin/action
