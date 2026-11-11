@@ -80,3 +80,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0083](0083-device-address.md) | The address of a device in its state | Accepted, implemented |
 | [0084](0084-the-overview-links.md) | The overview links, the editors act | Accepted, implemented |
 | [0085](0085-moving-and-resizing-widgets.md) | Moving and resizing widgets with the pointer | Accepted, implemented |
+| [0086](0086-four-gray-levels-on-the-e1001.md) | Four gray levels on the E1001 | Accepted, implemented; supersedes the dithered grays of ADR-0041 for that hardware |

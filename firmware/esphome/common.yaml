@@ -615,11 +615,10 @@ script:
     mode: restart
     then:
       - delay: 100ms
-      - wait_until:
-          condition:
-            not:
-              epaper_spi.is_updating: epaper_display
-          timeout: 15s
+      # Every hardware type provides wait_paint: the Sticky's panel paints
+      # asynchronously, the E1001's driver blocks until it is idle.
+      - script.execute: wait_paint
+      - script.wait: wait_paint
       - lambda: "pb_time(\"paint\");"
       - lambda: |-
           // The panel painted the new image: only now does the shown hash

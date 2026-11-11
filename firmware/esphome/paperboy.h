@@ -423,8 +423,12 @@ inline bool pb_qoi_valid(const std::string &data) {
   return pb_qoi_each(data, [](int, int, uint8_t, uint8_t, uint8_t) {});
 }
 
-// Four-level panel (Sticky gray4): ESPHome bands luma at 32/96/160, so 170
-// would turn white. Draw each level inside its band.
+// Four-level panel, used by both hardware types that draw pages: the Sticky's
+// ESPHome model and the E1001's uc8179_gray4 component (ADR 0086). 64 and 128
+// sit inside the luma bands 32/96/160 that ESPHome's gray4 model uses for dark
+// gray and light gray; uc8179_gray4 quantizes with luma >> 6, where 64 becomes
+// dark gray and 128 light gray. White is left alone: the caller starts from a
+// white buffer.
 template<typename D> inline bool pb_paint_qoi_gray4(D &it, const std::string &data) {
   static const uint8_t band[4] = {0, 64, 128, 255};
   return pb_qoi_each(data, [&it](int x, int y, uint8_t r, uint8_t g, uint8_t b) {
@@ -436,7 +440,9 @@ template<typename D> inline bool pb_paint_qoi_gray4(D &it, const std::string &da
 }
 
 // Black-and-white panel: dark gray as 3 of 4 pixels black, light gray as 1 of
-// 4, in a fixed 2x2 pattern so repeated paints stay identical.
+// 4, in a fixed 2x2 pattern so repeated paints stay identical. No shipped image
+// display uses this since fw 2.4.0 (the E1001 draws real gray levels, ADR 0086);
+// it stays for a mono panel and as the fallback if a batch cannot do grays.
 template<typename D> inline bool pb_paint_qoi_dithered(D &it, const std::string &data) {
   return pb_qoi_each(data, [&it](int x, int y, uint8_t r, uint8_t g, uint8_t b) {
     const int l = pb_qoi_level(r, g, b);
@@ -446,8 +452,6 @@ template<typename D> inline bool pb_paint_qoi_dithered(D &it, const std::string 
     }
   });
 }
-
-// Black-and-white panels paint with pb_paint_qoi_dithered above.
 
 
 // ---------------------------------------------------------------- text displays (ADR 0044)

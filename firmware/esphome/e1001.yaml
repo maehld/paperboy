@@ -5,18 +5,31 @@
 # home (ADR 0042; confirmed on the device in 0.4.0, where left and middle were
 # swapped).
 #
-# The panel (GDEY075T7, UC8179) supports four gray levels, but ESPHome's
-# Seeed-reTerminal-E1001 model drives it in black and white only (1 bpp), so
-# Paperboy's gray levels are drawn as a fixed 2x2 pattern (pb_paint_qoi_dithered).
+# The panel (GDEY075T7, UC8179) supports four gray levels in hardware (2 bpp,
+# LUTs), which the uc8179_gray4 component draws without dithering (ADR 0086):
+# Paperboy's 0/85/170/255 become black, dark gray, light gray and white, so the
+# antialiased font edges of a page survive. Grayscale is full-refresh only.
+#
+# Panel batches differ: switch lut_mode to custom when the four levels look
+# washed out or in the wrong order, and set invert_colors when the picture is a
+# negative.
 
 substitutions:
   hardware: e1001
-  fw_version: "2.3.0"
+  fw_version: "2.4.0"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
+  lut_mode: otp
+  invert_colors: "false"
 
 packages:
   paperboy: !include common.yaml
+
+external_components:
+  # Four gray levels on the UC8179 (ADR 0086), pinned to a commit: the
+  # repository has no releases and a moved main would change the image silently.
+  - source: github://formorer/uc8179_gray4_esphome@61f881b7e970e454a2e8ee503a003276cb0c1b6f
+    components: [uc8179_gray4]
 
 esphome:
   on_boot:
@@ -116,23 +129,46 @@ binary_sensor:
           start: !lambda "return (int) esphome::millis();"
 
 display:
-  - platform: epaper_spi
+  - platform: uc8179_gray4
     id: epaper_display
-    model: Seeed-reTerminal-E1001
+    cs_pin: GPIO10
+    dc_pin: GPIO11
+    reset_pin: GPIO12
+    # No `inverted: true`, unlike Seeed's waveshare_epaper template: the driver
+    # reads the active-low BUSY signal itself (an inverted flag times out).
+    busy_pin:
+      number: GPIO13
+      mode:
+        input: true
+        pullup: true
+    lut_mode: ${lut_mode}
+    invert_colors: ${invert_colors}
     update_interval: never
     lambda: |-
       if (id(setup_mode)) {
+        it.fill(Color::WHITE);
         pb_draw_text(it, id(setup_font), id(setup_text));
       } else if (!pb_qoi_valid(pb_page_qoi)) {
         // Truncated answer (page larger than the 96 KiB buffer) or not QOI:
         // keep the old picture instead of painting half a page.
         pb_note_for_next_wake("page not paintable: " + id(image_path));
         ESP_LOGE("paperboy", "page is not a complete QOI image");
-      } else if (pb_paint_qoi_dithered(it, pb_page_qoi)) {
-        pb_paint_pending = true;
+      } else {
+        // pb_paint_qoi_gray4 leaves white pixels alone, so start from white.
+        it.fill(Color::WHITE);
+        if (pb_paint_qoi_gray4(it, pb_page_qoi)) {
+          pb_paint_pending = true;
+        }
       }
 
 script:
+  # uc8179_gray4 refreshes synchronously: component.update returns once the
+  # panel is idle, so after_paint has nothing to wait for.
+  - id: wait_paint
+    then:
+      - lambda: |-
+          // nothing to wait for
+
   # No fuel gauge on the E1001: the voltage only.
   - id: read_battery
     then:
