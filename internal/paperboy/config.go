@@ -114,8 +114,9 @@ const (
 // text reports whether the display type shows lines of characters.
 func (p Profile) text() bool { return p.Kind == kindText }
 
-// Device is one physical display. Its ID is stable and used in state/devices.json, logs
-// and the devices API; the device API registers it by its Wi-Fi MAC address.
+// Device is one physical display. Its ID is stable and used in logs, the
+// devices API and state file names; the device API registers it by its Wi-Fi
+// MAC address, which also names its state file (ADR 0080).
 type Device struct {
 	ID      string
 	Type    string // protocol; only "paperboy" for now
@@ -236,8 +237,11 @@ const (
 	devicesDirName  = "devices"
 	pluginsDirName  = "plugins"
 	stateDirName    = "state"
-	devicesFileName = "devices.json"
-	dataFileName    = "data.json"
+	// devicesStateDirName holds one state file per MAC (ADR 0080); the legacy
+	// devices.json is no longer read.
+	devicesStateDirName   = "devices"
+	legacyDevicesFileName = "devices.json"
+	dataFileName          = "data.json"
 )
 
 // Config is the validated runtime configuration.
@@ -824,6 +828,13 @@ func (c *Config) device(mac string) *Device {
 
 // key identifies the device in the persisted state.
 func (d *Device) key() string { return d.ID }
+
+// stateKey names the device's persisted state: its MAC without separators
+// (ADR 0080). The configuration validates the MAC, so it is always available.
+func (d *Device) stateKey() string {
+	key, _ := deviceStateKey(d.MAC)
+	return key
+}
 
 func normalizeMAC(s string) string { return strings.ToUpper(strings.TrimSpace(s)) }
 

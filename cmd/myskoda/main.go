@@ -38,12 +38,10 @@ import (
 	_ "image/jpeg"
 	"image/png"
 	"io"
-	"io/fs"
 	"math"
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -266,13 +264,17 @@ type supplement struct {
 	err error
 }
 
-// stateVersion is the format of state.json; a file of another version is
-// discarded instead of guessed (ADR 0065).
+// stateVersion is the format of the plugin state; one of another version is
+// discarded instead of guessed (ADR 0081).
 const stateVersion = 1
 
-// storedState is what the plugin keeps between restarts (ADR 0065). It holds
+// blobRender is the render image of the vehicle, kept as a plugin blob so the
+// card survives a restart without a download (ADR 0081).
+const blobRender = "render.png"
+
+// storedState is what the plugin keeps between restarts (ADR 0081). It holds
 // no secret: the API key appears as a fingerprint only, so a changed key
-// throws the file away instead of trusting data fetched with another one.
+// throws the state away instead of trusting data fetched with another one.
 type storedState struct {
 	Version     int       `json:"version"`
 	VIN         string    `json:"vin"`
@@ -296,11 +298,13 @@ type myskoda struct {
 	base    string
 	refresh time.Duration
 
-	statePath string // state/plugins/myskoda/state.json; empty without a state directory
-	imagePath string // state/plugins/myskoda/render.png
 	readyOnce sync.Once
 
-	mu      sync.Mutex
+	mu sync.Mutex
+	// pending is what goes back to Paperboy with the next answer: the state
+	// and a new render image, nil when unchanged (ADR 0081).
+	pending *storedState
+	blob    []byte
 	data    *vehicle
 	image   *supplement
 	loadErr error
@@ -389,48 +393,33 @@ func (m *myskoda) Configure(cfg plugin.Values, req *plugin.Request) error {
 		refresh = minRefresh
 	}
 	m.base, m.refresh = base.String(), refresh
-	m.setupState()
 	return nil
 }
 
-// setupState picks the plugin's state directory (ADR 0065) and takes over what
-// the last run left there, so the first page after a restart has data and a
-// restart within the refresh interval costs no request.
-func (m *myskoda) setupState() {
-	dir := plugin.StateDir()
-	if dir == "" {
-		return
-	}
-	m.statePath = filepath.Join(dir, "state.json")
-	m.imagePath = filepath.Join(dir, "render.png")
-	m.loadState()
-}
-
-// loadState reads state.json; a file of another vehicle, another key, another
-// format, or one that cannot be read is ignored and replaced by the next run.
-func (m *myskoda) loadState() {
-	data, err := os.ReadFile(m.statePath)
-	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			fmt.Fprintln(os.Stderr, "myskoda: reading the stored state:", err)
-		}
-		return
+// LoadState takes over the state and the render blob Paperboy stored last time
+// (ADR 0081), so the first page after a restart has data and a restart within
+// the refresh interval costs no request. A state of another vehicle, another
+// key, another format, or one that cannot be read is ignored and replaced by
+// the next run.
+func (m *myskoda) LoadState(state json.RawMessage, blobs map[string][]byte) error {
+	if len(state) == 0 {
+		return nil
 	}
 	var s storedState
-	if err := json.Unmarshal(data, &s); err != nil {
+	if err := json.Unmarshal(state, &s); err != nil {
 		fmt.Fprintln(os.Stderr, "myskoda: ignoring the stored state:", err)
-		return
+		return nil
 	}
 	switch {
 	case s.Version != stateVersion:
 		fmt.Fprintf(os.Stderr, "myskoda: ignoring a stored state of version %d\n", s.Version)
-		return
+		return nil
 	case !strings.EqualFold(s.VIN, m.vin):
 		fmt.Fprintln(os.Stderr, "myskoda: ignoring the stored state of another vehicle")
-		return
+		return nil
 	case s.Key != m.fingerprint():
 		fmt.Fprintln(os.Stderr, "myskoda: ignoring the stored state of another API key")
-		return
+		return nil
 	}
 	// The timing counts even without data: a wait the API asked for outlasts a
 	// restart, and a failed first load stays failed.
@@ -440,16 +429,22 @@ func (m *myskoda) loadState() {
 	if s.Vehicle == nil && s.LastError != "" {
 		m.loadErr = errors.New(s.LastError)
 	}
+	expires := m.expires
 	m.mu.Unlock()
 	if s.RenderURL != "" {
-		if img, err := readImage(m.imagePath); err == nil {
-			m.image = &supplement{img: img, url: s.RenderURL}
+		if data := blobs[blobRender]; len(data) > 0 {
+			if img, err := png.Decode(bytes.NewReader(data)); err == nil {
+				m.mu.Lock()
+				m.image = &supplement{img: img, url: s.RenderURL}
+				m.mu.Unlock()
+			}
 		}
 	}
-	if !m.expires.IsZero() && time.Until(m.expires) < keyWarnBefore {
+	if !expires.IsZero() && time.Until(expires) < keyWarnBefore {
 		fmt.Fprintf(os.Stderr, "myskoda: API key expires at %s; create a new one in the MyŠkoda app\n",
-			m.expires.Format(time.RFC3339))
+			expires.Format(time.RFC3339))
 	}
+	return nil
 }
 
 // fingerprint identifies the API key in the stored state without keeping it.
@@ -471,53 +466,46 @@ func (m *myskoda) snapshot() storedState {
 	return s
 }
 
-// persist writes the state; failures only cost the next restart a request.
-func (m *myskoda) persist(s storedState) {
-	if m.statePath == "" {
-		return
+// State returns the state to store; nil when nothing changed (ADR 0081).
+func (m *myskoda) State() json.RawMessage {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.pending == nil {
+		return nil
 	}
-	data, err := json.MarshalIndent(s, "", "  ")
-	if err == nil {
-		err = writeFile(m.statePath, data)
-	}
+	data, err := json.Marshal(m.pending)
+	m.pending = nil
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "myskoda: saving the state:", err)
+		return nil
 	}
+	return data
 }
 
-// persistImage keeps the render image for the next start; the API key is not
-// part of it.
-func (m *myskoda) persistImage(img image.Image) {
-	if m.imagePath == "" || img == nil {
+// Blobs returns a new render image for Paperboy to keep, nil when there is
+// none (ADR 0081). The API key is never part of it.
+func (m *myskoda) Blobs() map[string][]byte {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.blob) == 0 {
+		return nil
+	}
+	data := m.blob
+	m.blob = nil
+	return map[string][]byte{blobRender: data}
+}
+
+// queueImage encodes the render image once and hands it to the next answer.
+func (m *myskoda) queueImage(img image.Image) {
+	if img == nil {
 		return
 	}
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
 		return
 	}
-	if err := writeFile(m.imagePath, buf.Bytes()); err != nil {
-		fmt.Fprintln(os.Stderr, "myskoda: saving the render image:", err)
-	}
-}
-
-// writeFile replaces path atomically, so a crash never leaves half a file.
-func writeFile(path string, data []byte) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
-}
-
-// readImage decodes a PNG the last run stored.
-func readImage(path string) (image.Image, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	img, _, err := image.Decode(io.LimitReader(file, maxImageBytes+1))
-	return img, err
+	m.mu.Lock()
+	m.blob = buf.Bytes()
+	m.mu.Unlock()
 }
 
 // Start loads the vehicle state when it is due and then every refresh, and
@@ -589,12 +577,15 @@ func (m *myskoda) Start(ctx context.Context, notify func(widgets ...string)) {
 				warned = ans.expires
 			}
 
+			// The state goes back with the next answer, the render image as a
+			// blob (ADR 0081); encoding happens outside the lock.
 			m.mu.Lock()
-			s, image := m.snapshot(), m.image
+			snapshot := m.snapshot()
+			m.pending = &snapshot
+			image := m.image
 			m.mu.Unlock()
-			m.persist(s)
-			if needImage != "" && image != nil {
-				m.persistImage(image.img)
+			if needImage != "" && image != nil && image.err == nil {
+				m.queueImage(image.img)
 			}
 			m.signalReady()
 			select {

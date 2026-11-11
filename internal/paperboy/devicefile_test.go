@@ -134,7 +134,7 @@ func TestDeviceWithMissingDisplayTypeAnswers503(t *testing.T) {
 		t.Fatalf("text poll: %d %s", rec.Code, rec.Body)
 	}
 	// The contact is still recorded, so the dashboard shows the device as alive.
-	if st := s.state["test"]; st == nil || st.LastSeen.IsZero() {
+	if st := s.state["AABBCCDDEE01"]; st == nil || st.LastSeen.IsZero() {
 		t.Fatalf("state: %+v", st)
 	}
 	// The devices API and the dashboard name the reason.

@@ -20,8 +20,8 @@ import (
 
 // Devices live in files of their own (ADR 0070): devices/<id>.yaml, one file
 // per device, parsed as strictly as pages and plans. The file name is the
-// stable device ID; state/devices.json stays runtime state (cursor, battery,
-// menu).
+// stable device ID; the runtime state (cursor, battery, menu) lives per MAC
+// under state/devices/ (ADR 0080).
 
 // deviceFile mirrors devices/<id>.yaml with what the operator wrote: an empty
 // field keeps the default, so the editor writes back only what is set. The

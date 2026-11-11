@@ -1,6 +1,6 @@
 # 0065: A state directory per plugin
 
-- Status: Accepted
+- Status: Superseded by ADR-0081
 - Date: 2026-11-08
 - Builds on: ADR 0037 (instance directory), 0047 (config reload), 0049 (plugin widgets)
 - Answers: issue #80

@@ -178,6 +178,31 @@ details.new .hint { flex-basis: 100%; margin: 0; }
   <p class="empty">No devices yet. A device is <code>devices/&lt;id&gt;.yaml</code>.</p>
   {{end}}
 </section>
+{{if .Unclaimed}}
+<section class="card">
+  <div class="card-head">
+    <h2>Unclaimed hardware <span class="count">{{len .Unclaimed}}</span></h2>
+    <span class="spacer"></span>
+    <input class="filter" type="search" placeholder="Filter unclaimed hardware…" data-filter="unclaimed-table" aria-label="Filter unclaimed hardware">
+  </div>
+  <table id="unclaimed-table">
+    <thead><tr><th>MAC</th><th>Hardware</th><th>Firmware</th><th>First seen</th><th>Last seen</th><th></th></tr></thead>
+    <tbody>
+      {{range .Unclaimed}}
+      <tr>
+        <td class="num">{{.MAC}}</td>
+        <td>{{.Hardware}}</td>
+        <td>{{.Firmware}}</td>
+        <td class="num">{{.FirstSeen}}</td>
+        <td class="num">{{.LastSeen}}</td>
+        <td class="open"><a href="{{.ClaimURL}}">Claim</a><button class="delete" type="button" data-forget="{{.ForgetURL}}" data-mac="{{.MAC}}">Forget</button></td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  <p class="hint">A display that registered with an unknown MAC leaves its state under <code>state/devices/</code>. <em>Claim</em> opens a new device file with its MAC; <em>Forget</em> deletes the state file.</p>
+</section>
+{{end}}
 {{end}}
 {{if eq .Tab "displays"}}
 <section class="card">
@@ -301,6 +326,32 @@ for (const b of document.querySelectorAll('button[data-rename]')) {
       msg = (await res.json()).error || msg;
     } catch (e) { /* not JSON */ }
     alert('Rename failed: ' + msg);
+    b.disabled = false;
+  });
+}
+// A state file of hardware without a device file (ADR 0080) can be forgotten;
+// its key, page cursor and battery reading go with it.
+for (const b of document.querySelectorAll('button[data-forget]')) {
+  b.addEventListener('click', async () => {
+    if (!confirm('Forget the state of ' + (b.dataset.mac || 'this display') + '?\n\nIts key, page cursor, battery reading and menu are lost; the display registers again on its next sync.')) return;
+    b.disabled = true;
+    let res;
+    try {
+      res = await fetch(b.dataset.forget, { method: 'DELETE' });
+    } catch (e) {
+      alert('Forget failed: ' + e);
+      b.disabled = false;
+      return;
+    }
+    if (res.ok) {
+      location.reload();
+      return;
+    }
+    let msg = '(' + res.status + ')';
+    try {
+      msg = (await res.json()).error || msg;
+    } catch (e) { /* not JSON */ }
+    alert('Forget failed: ' + msg);
     b.disabled = false;
   });
 }

@@ -215,7 +215,7 @@ func TestPlanRuleSwitchAndKeys(t *testing.T) {
 	if !strings.Contains(pagePath(out), "/drei/") {
 		t.Fatalf("new rule must start at its first page: %v", out)
 	}
-	if st := s.state["test"]; st.Rule != "tag" || st.Page != 0 {
+	if st := s.state["AABBCCDDEE01"]; st.Rule != "tag" || st.Page != 0 {
 		t.Fatalf("state: %+v", st)
 	}
 }

@@ -2,11 +2,13 @@ package widget
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -71,10 +73,17 @@ var (
 )
 
 // configure sends the plugin its configuration; the plugin is only used when
-// it accepts it.
+// it accepts it. It then receives what it stored last time in one state
+// request, so configure stays the request it always was and the state and the
+// blobs do not travel with every widget request (ADR 0081).
 func (p *process) configure(spec Spec, env Env) error {
-	_, err := p.request(context.Background(), plugin.Request{Version: plugin.Version, Action: plugin.ActionConfigure,
-		Language: env.Language, Timezone: env.Timezone, Now: time.Now(), Config: spec.Config})
+	if _, err := p.request(context.Background(), plugin.Request{Version: plugin.Version, Action: plugin.ActionConfigure,
+		Language: env.Language, Timezone: env.Timezone, Now: time.Now(), Config: spec.Config}); err != nil {
+		return err
+	}
+	state, blobs := p.loadState()
+	_, err := p.request(context.Background(), plugin.Request{Version: plugin.Version, Action: plugin.ActionLoadState,
+		Language: env.Language, Timezone: env.Timezone, Now: time.Now(), State: state, Blobs: blobs})
 	return err
 }
 
@@ -186,8 +195,8 @@ func startProcess(base context.Context, spec Spec, changed func(string, []string
 	if err != nil {
 		return nil, err
 	}
-	// A plugin keeps what should survive a restart in its own directory, which
-	// exists before configure (ADR 0065).
+	// Paperboy keeps the plugin's state and blobs in its own directory, which
+	// exists before configure (ADR 0081).
 	if spec.StateDir != "" {
 		if err := os.MkdirAll(spec.StateDir, 0o700); err != nil {
 			return nil, fmt.Errorf("state directory: %w", err)
@@ -196,7 +205,7 @@ func startProcess(base context.Context, spec Spec, changed func(string, []string
 	ctx, cancel := context.WithCancel(base)
 	cmd := exec.CommandContext(ctx, program, spec.Command[1:]...)
 	cmd.Dir = dir
-	cmd.Env = environ(spec.Env, spec.StateDir)
+	cmd.Env = environ(spec.Env)
 	cmd.WaitDelay = 2 * time.Second
 	p := &process{spec: spec, cmd: cmd, cancel: cancel, done: make(chan struct{}), stderr: &tailBuffer{limit: maxStderr}}
 	cmd.Stderr = p.stderr
@@ -218,6 +227,166 @@ func startProcess(base context.Context, spec Spec, changed func(string, []string
 	return p, nil
 }
 
+// Limits of the state Paperboy keeps for a plugin (ADR 0081): JSON is small,
+// blobs are a cache, so both stay far below what a line of the protocol can
+// carry.
+const (
+	stateFileName = "state.json"
+	blobsDirName  = "blobs"
+	maxStateBytes = 256 << 10
+	maxBlobBytes  = 1 << 20
+	maxBlobs      = 4
+)
+
+// loadState reads the plugin's state and blobs before configure. Unusable
+// files are reported and skipped, so a broken cache cannot keep a plugin from
+// starting.
+func (p *process) loadState() (json.RawMessage, map[string][]byte) {
+	dir := p.spec.StateDir
+	if dir == "" {
+		return nil, nil
+	}
+	var state json.RawMessage
+	path := filepath.Join(dir, stateFileName)
+	if data, err := os.ReadFile(path); err == nil {
+		switch {
+		case len(data) > maxStateBytes:
+			slog.Warn("ignoring plugin state that is too large", "plugin", p.spec.Name, "file", path)
+		case !validStateObject(data):
+			slog.Warn("ignoring plugin state that is not a JSON object", "plugin", p.spec.Name, "file", path)
+		default:
+			state = data
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		slog.Warn("reading plugin state", "plugin", p.spec.Name, "error", err)
+	}
+	blobs := map[string][]byte{}
+	entries, err := os.ReadDir(filepath.Join(dir, blobsDirName))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		slog.Warn("reading plugin blobs", "plugin", p.spec.Name, "error", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !validBlobName(e.Name()) {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, blobsDirName, e.Name()))
+		if err != nil {
+			slog.Warn("reading a plugin blob", "plugin", p.spec.Name, "name", e.Name(), "error", err)
+			continue
+		}
+		if len(data) > maxBlobBytes || len(blobs) == maxBlobs {
+			slog.Warn("ignoring a plugin blob that is too large or one too many", "plugin", p.spec.Name, "name", e.Name())
+			continue
+		}
+		blobs[e.Name()] = data
+	}
+	return state, blobs
+}
+
+// storeState keeps what a plugin answered: state.json and the blobs, written
+// for the next start (ADR 0081). Missing state means unchanged, null forgets
+// it. The files belong to Paperboy, the plugin cannot write them.
+func (p *process) storeState(m *plugin.Message) {
+	dir := p.spec.StateDir
+	if dir == "" || (m.State == nil && len(m.Blobs) == 0) {
+		return
+	}
+	if m.State != nil {
+		data := *m.State
+		switch {
+		case string(bytes.TrimSpace(data)) == "null":
+			if err := os.Remove(filepath.Join(dir, stateFileName)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				slog.Warn("forgetting plugin state", "plugin", p.spec.Name, "error", err)
+			}
+		case !validStateObject(data):
+			slog.Warn("ignoring plugin state that is not a JSON object", "plugin", p.spec.Name)
+		case len(data) > maxStateBytes:
+			slog.Warn("ignoring plugin state that is too large", "plugin", p.spec.Name, "bytes", len(data))
+		default:
+			if err := writeStateFile(filepath.Join(dir, stateFileName), data); err != nil {
+				slog.Warn("storing plugin state", "plugin", p.spec.Name, "error", err)
+			}
+		}
+	}
+	for name, data := range m.Blobs {
+		if !validBlobName(name) {
+			slog.Warn("ignoring a plugin blob whose name is not allowed", "plugin", p.spec.Name, "name", name)
+			continue
+		}
+		if len(data) > maxBlobBytes {
+			slog.Warn("ignoring a plugin blob that is too large", "plugin", p.spec.Name, "name", name, "bytes", len(data))
+			continue
+		}
+		if !p.blobRoom(name) {
+			slog.Warn("ignoring a plugin blob beyond the limit", "plugin", p.spec.Name, "name", name, "limit", maxBlobs)
+			continue
+		}
+		if err := writeStateFile(filepath.Join(dir, blobsDirName, name), data); err != nil {
+			slog.Warn("storing a plugin blob", "plugin", p.spec.Name, "name", name, "error", err)
+		}
+	}
+}
+
+// validStateObject reports whether data can be stored as plugin state: a JSON
+// object, or null to forget it (ADR 0081).
+func validStateObject(data []byte) bool {
+	trimmed := bytes.TrimSpace(data)
+	if !json.Valid(trimmed) {
+		return false
+	}
+	return len(trimmed) > 0 && (trimmed[0] == '{' || string(trimmed) == "null")
+}
+
+// blobRoom reports whether one more blob fits: an existing name may always be
+// replaced, a new one needs a free slot (ADR 0081).
+func (p *process) blobRoom(name string) bool {
+	dir := filepath.Join(p.spec.StateDir, blobsDirName)
+	if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+		return true
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return true
+	}
+	count := 0
+	for _, e := range entries {
+		if !e.IsDir() && validBlobName(e.Name()) {
+			count++
+		}
+	}
+	return count < maxBlobs
+}
+
+// validBlobName accepts the names Paperboy stores below blobs/: lower case
+// letters, digits and . _ -, starting with a letter or digit.
+func validBlobName(name string) bool {
+	if len(name) == 0 || len(name) > 64 {
+		return false
+	}
+	for i, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+		case (r == '.' || r == '_' || r == '-') && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// writeStateFile replaces one file of the plugin's state atomically and
+// readable only by its owner.
+func writeStateFile(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
 // read dispatches the plugin's lines: answers to their request, events to
 // the cache.
 func (p *process) read(stdout io.Reader, changed func(string, []string)) {
@@ -229,6 +398,9 @@ func (p *process) read(stdout io.Reader, changed func(string, []string)) {
 			slog.Warn("plugin wrote an invalid line", "plugin", p.spec.Name, "error", err)
 			continue
 		}
+		// Answers and events may both carry state and blobs (ADR 0081), so a
+		// plugin can flush them without changing a widget.
+		p.storeState(&m)
 		if m.ID == "" {
 			if m.Event == plugin.EventChanged {
 				slog.Debug("plugin widgets changed", "plugin", p.spec.Name, "widgets", m.Changed)
@@ -344,24 +516,16 @@ func resolveCommand(dir, name string) (string, error) {
 }
 
 // environ returns the inherited environment plus the configured keys, sorted
-// so that a plugin sees a stable order. stateDir becomes PAPERBOY_STATE_DIR
-// and wins over a key of the same name in extra, so a plugin section cannot
-// point a plugin at another plugin's directory (ADR 0065).
-func environ(extra map[string]string, stateDir string) []string {
+// so that a plugin sees a stable order.
+func environ(extra map[string]string) []string {
 	keys := make([]string, 0, len(extra))
 	for k := range extra {
-		if stateDir != "" && k == plugin.StateDirEnv {
-			continue
-		}
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	out := os.Environ()
 	for _, k := range keys {
 		out = append(out, k+"="+extra[k])
-	}
-	if stateDir != "" {
-		out = append(out, plugin.StateDirEnv+"="+stateDir)
 	}
 	return out
 }

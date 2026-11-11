@@ -72,16 +72,17 @@ func TestServeIO(t *testing.T) {
 }
 
 func TestCheckVersion(t *testing.T) {
-	for _, ok := range []Message{{Version: Version}, {Version: Version, Error: "failed"}} {
+	for _, ok := range []Message{{Version: Version}, {Version: Version, Error: "failed"}, {Version: Version + 1}} {
 		if err := ok.CheckVersion(); err != nil {
 			t.Errorf("%+v: %v", ok, err)
 		}
 	}
 	if err := (Message{}).CheckVersion(); err == nil {
-		t.Error("a plugin without a version accepted")
+		t.Error("a plugin without a version was accepted")
 	}
-	if err := (Message{Version: Version + 1}).CheckVersion(); err == nil {
-		t.Error("a newer plugin accepted")
+	// Version 5 is the cut; older plugins are refused (ADR 0081).
+	if err := (Message{Version: MinVersion - 1}).CheckVersion(); err == nil {
+		t.Error("an older plugin was accepted")
 	}
 }
 
@@ -207,7 +208,55 @@ func (actionFewerStates) Actions(*Request) ([]ActionState, error) {
 }
 
 func TestVersion(t *testing.T) {
-	if Version != 4 {
+	if Version != 5 {
 		t.Fatalf("protocol version = %d", Version)
+	}
+}
+
+type stateHandler struct {
+	testHandler
+	state       json.RawMessage
+	blobs       map[string][]byte
+	loaded      json.RawMessage
+	loadedBlobs map[string][]byte
+}
+
+func (h *stateHandler) LoadState(state json.RawMessage, blobs map[string][]byte) error {
+	h.loaded, h.loadedBlobs = state, blobs
+	return nil
+}
+func (h *stateHandler) State() json.RawMessage   { return h.state }
+func (h *stateHandler) Blobs() map[string][]byte { return h.blobs }
+
+// TestStateTravelsWithEveryAnswer checks the protocol fields of ADR 0081: the
+// state is its own field, a plugin answers with what should be stored, and a
+// plugin without state adds nothing.
+func TestStateTravelsWithEveryAnswer(t *testing.T) {
+	h := &stateHandler{state: json.RawMessage(`{"n":1}`), blobs: map[string][]byte{"render.png": []byte("png")}}
+	m := Handle(h, &Request{ID: "1", Action: ActionDescribe})
+	if m.State == nil || string(*m.State) != `{"n":1}` {
+		t.Fatalf("state: %v", m.State)
+	}
+	if string(m.Blobs["render.png"]) != "png" {
+		t.Fatalf("blobs: %v", m.Blobs)
+	}
+	if m := Handle(&testHandler{}, &Request{ID: "2", Action: ActionDescribe}); m.State != nil || m.Blobs != nil {
+		t.Fatalf("a plugin without state must not add fields: %+v", m)
+	}
+	// The state request hands the stored object and blobs to the plugin once
+	// after configure (ADR 0081).
+	var req Request
+	if err := json.Unmarshal([]byte(`{"id":"3","action":"state","state":{"vin":"x"},"blobs":{"render.png":"cG5n"}}`), &req); err != nil {
+		t.Fatal(err)
+	}
+	if string(req.State) != `{"vin":"x"}` || string(req.Blobs["render.png"]) != "png" {
+		t.Fatalf("request state: %s %v", req.State, req.Blobs)
+	}
+	m = Handle(h, &req)
+	if string(h.loaded) != `{"vin":"x"}` || string(h.loadedBlobs["render.png"]) != "png" {
+		t.Fatalf("loaded state: %s %v", h.loaded, h.loadedBlobs)
+	}
+	if m.ID != "3" || m.Error != "" {
+		t.Fatalf("state answer: %+v", m)
 	}
 }

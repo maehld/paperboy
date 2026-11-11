@@ -16,7 +16,7 @@ func TestPlanViewShowsActiveRule(t *testing.T) {
 	dev := planDevice(t, s)
 	displayPage(t, s, dev)
 	s.mu.Lock()
-	before := *s.state["test"]
+	before := *s.state["AABBCCDDEE01"]
 	s.mu.Unlock()
 
 	rec := htmlRequest(t, s, "/ui/plan?device=test")
@@ -42,7 +42,7 @@ func TestPlanViewShowsActiveRule(t *testing.T) {
 	}
 
 	s.mu.Lock()
-	after := *s.state["test"]
+	after := *s.state["AABBCCDDEE01"]
 	s.mu.Unlock()
 	if after.Rule != before.Rule || after.Page != before.Page || after.LastSeen != before.LastSeen {
 		t.Fatalf("plan view changed the device state: %+v -> %+v", before, after)

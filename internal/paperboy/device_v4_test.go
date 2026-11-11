@@ -35,16 +35,16 @@ func TestSyncEventIDsAreDeduplicated(t *testing.T) {
 	next := syncEvent{ID: 1, Type: "button", Button: buttonNext}
 	// A retried sync carries the same ID and must not page again.
 	sendEvents(t, s, dev, "button", next)
-	if st := s.state["test"]; st.Page != 1 || st.LastEventID != 1 {
+	if st := s.state["AABBCCDDEE01"]; st.Page != 1 || st.LastEventID != 1 {
 		t.Fatalf("first press: %+v", st)
 	}
 	sendEvents(t, s, dev, "button", next)
-	if st := s.state["test"]; st.Page != 1 {
+	if st := s.state["AABBCCDDEE01"]; st.Page != 1 {
 		t.Fatalf("a repeated event moved the page: %+v", st)
 	}
 	// A retry may also bundle the event with the next one.
 	out = sendEvents(t, s, dev, "button", next, syncEvent{ID: 2, Type: "button", Button: buttonNext})
-	if st := s.state["test"]; st.Page != 0 || st.LastEventID != 2 {
+	if st := s.state["AABBCCDDEE01"]; st.Page != 0 || st.LastEventID != 2 {
 		t.Fatalf("second press: %+v", st)
 	}
 	if out["wake"] != nil {
@@ -52,13 +52,13 @@ func TestSyncEventIDsAreDeduplicated(t *testing.T) {
 	}
 	// An event without an ID is applied as before.
 	sendEvents(t, s, dev, "button", syncEvent{Type: "button", Button: buttonNext})
-	if st := s.state["test"]; st.Page != 1 {
+	if st := s.state["AABBCCDDEE01"]; st.Page != 1 {
 		t.Fatalf("legacy event: %+v", st)
 	}
 	// A power cycle restarts the firmware's counter, so the server forgets the
 	// last ID and accepts a small one again.
 	sendEvents(t, s, dev, "powercycle", syncEvent{ID: 1, Type: "button", Button: buttonNext})
-	if st := s.state["test"]; st.Page != 0 || st.LastEventID != 1 {
+	if st := s.state["AABBCCDDEE01"]; st.Page != 0 || st.LastEventID != 1 {
 		t.Fatalf("after a power cycle: %+v", st)
 	}
 }
@@ -116,18 +116,18 @@ func TestResultWakeKeepsTheResult(t *testing.T) {
 	if len(p.runs) != 1 {
 		t.Fatalf("runs: %v", p.runs)
 	}
-	if st := s.state["test"]; st.Menu.Phase != menuResultPhase {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Phase != menuResultPhase {
 		t.Fatalf("phase after the action: %q", st.Menu.Phase)
 	}
 	// The wake that brings an outcome must not close the screen before it is
 	// drawn.
 	sendEvents(t, s, dev, "result")
-	if st := s.state["test"]; !st.Menu.Open || st.Menu.Phase != menuResultPhase {
+	if st := s.state["AABBCCDDEE02"]; !st.Menu.Open || st.Menu.Phase != menuResultPhase {
 		t.Fatalf("result wake: %+v", st.Menu)
 	}
 	// The next regular sync closes it.
 	sendEvents(t, s, dev, "timer")
-	if st := s.state["test"]; st.Menu.Open {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Open {
 		t.Fatalf("timer sync must close the result: %+v", st.Menu)
 	}
 }
@@ -140,19 +140,19 @@ func TestFinishActionStoresResult(t *testing.T) {
 	press(t, s, dev, buttonNext)
 
 	s.mu.Lock()
-	st := s.state["test"]
+	st := s.state["AABBCCDDEE02"]
 	st.Menu.Phase = menuRunningPhase
 	st.Menu.Selected = "act/quick"
 	s.mu.Unlock()
 
 	run := &actionRun{done: make(chan struct{}), ok: true, message: "done"}
 	s.mu.Lock()
-	s.actionRuns["test"] = run
+	s.actionRuns["AABBCCDDEE02"] = run
 	s.mu.Unlock()
-	s.finishAction("test", "act/quick", run)
+	s.finishAction("AABBCCDDEE02", "act/quick", run)
 
 	s.mu.Lock()
-	menu := s.state["test"].Menu
+	menu := s.state["AABBCCDDEE02"].Menu
 	s.mu.Unlock()
 	if menu.Phase != menuResultPhase || !menu.ResultOK || menu.Result != "done" {
 		t.Fatalf("menu after the run: %+v", menu)
@@ -162,8 +162,8 @@ func TestFinishActionStoresResult(t *testing.T) {
 	}
 	// A run of another action leaves the menu alone.
 	s.mu.Lock()
-	s.state["test"].Menu.Phase = menuRunningPhase
-	s.state["test"].Menu.Selected = "act/quick"
+	s.state["AABBCCDDEE02"].Menu.Phase = menuRunningPhase
+	s.state["AABBCCDDEE02"].Menu.Selected = "act/quick"
 	s.mu.Unlock()
 	other := &actionRun{done: make(chan struct{}), ok: true}
 	s.mu.Lock()
@@ -171,7 +171,7 @@ func TestFinishActionStoresResult(t *testing.T) {
 	s.mu.Unlock()
 	s.finishAction("test", "act/off", other)
 	s.mu.Lock()
-	phase := s.state["test"].Menu.Phase
+	phase := s.state["AABBCCDDEE02"].Menu.Phase
 	s.mu.Unlock()
 	if phase != menuRunningPhase {
 		t.Fatalf("an unrelated run changed the menu: %q", phase)

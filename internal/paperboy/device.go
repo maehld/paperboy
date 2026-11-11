@@ -159,38 +159,52 @@ func decodeDeviceJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 }
 
 // handleRegister trades a configured MAC address for the device key. A known
-// device keeps its key, so a reflashed display picks up its old state.
+// device keeps its key, so a reflashed display picks up its old state. An
+// unknown MAC gets a state file without a key, which the devices tab shows as
+// unclaimed (ADR 0080).
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if !decodeDeviceJSON(w, r, &req) {
 		return
 	}
-	d := s.config().device(req.MAC)
-	if d == nil {
-		slog.Warn("registration from unknown device; add its MAC to the configuration",
-			"mac", normalizeMAC(req.MAC), "hardware", req.Hardware, "firmware", req.Firmware)
-		http.Error(w, "device not configured", http.StatusForbidden)
+	key, err := deviceStateKey(req.MAC)
+	if err != nil {
+		http.Error(w, "invalid MAC address", http.StatusBadRequest)
 		return
 	}
 	if err := validReportedPower(req.Power); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	d := s.config().device(req.MAC)
 	s.mu.Lock()
-	st := s.stateLocked(d.key())
-	if st.APIKey == "" {
-		st.APIKey = newAPIKey()
+	st := s.stateLocked(key)
+	if st.FirstSeen.IsZero() {
+		st.FirstSeen = s.now()
 	}
 	st.Hardware, st.Firmware = req.Hardware, req.Firmware
 	if req.Power != "" {
 		st.ReportedPower = req.Power
 	}
-	key := st.APIKey
-	stateData := s.stateSnapshotLocked()
+	if d == nil {
+		st.LastSeen = s.now()
+		stateData := s.stateSnapshotLocked(st)
+		s.mu.Unlock()
+		s.saveState(key, stateData)
+		slog.Warn("registration from unknown device; claim it in the device editor or add its MAC to a device file",
+			"mac", formatStateKey(key), "hardware", req.Hardware, "firmware", req.Firmware)
+		http.Error(w, "device not configured", http.StatusForbidden)
+		return
+	}
+	if st.APIKey == "" {
+		st.APIKey = newAPIKey()
+	}
+	apiKey := st.APIKey
+	stateData := s.stateSnapshotLocked(st)
 	s.mu.Unlock()
-	s.saveState(stateData)
+	s.saveState(key, stateData)
 	slog.Info("display registered", "device", d.ID, "mac", d.MAC, "hardware", req.Hardware, "firmware", req.Firmware)
-	writeJSON(w, http.StatusOK, map[string]string{"key": key, "device": d.ID})
+	writeJSON(w, http.StatusOK, map[string]string{"key": apiKey, "device": d.ID})
 }
 
 // deviceByKeyLocked finds the device that owns the bearer key. cfg is the
@@ -202,7 +216,7 @@ func (s *Server) deviceByKeyLocked(r *http.Request, cfg *Config) (*Device, *devi
 	}
 	for i := range cfg.Devices {
 		d := &cfg.Devices[i]
-		st := s.state[d.key()]
+		st := s.state[d.stateKey()]
 		if st != nil && st.APIKey != "" && subtle.ConstantTimeCompare([]byte(key), []byte(st.APIKey)) == 1 {
 			return d, st
 		}
@@ -244,9 +258,9 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		// after a rename. Never a 401: that would make the firmware forget its
 		// key, and the file is the problem (ADR 0079).
 		st.LastSeen = now
-		stateData := s.stateSnapshotLocked()
+		stateData := s.stateSnapshotLocked(st)
 		s.mu.Unlock()
-		s.saveState(stateData)
+		s.saveState(d.stateKey(), stateData)
 		slog.Warn("device cannot sync: its device file needs attention", "device", d.ID, "problem", d.Problem)
 		http.Error(w, d.Problem, http.StatusServiceUnavailable)
 		return
@@ -394,9 +408,9 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		choice.title, choice.text = cfg.texts().noPlan()
 	}
 	logged := *st
-	stateData := s.stateSnapshotLocked()
+	stateData := s.stateSnapshotLocked(st)
 	s.mu.Unlock()
-	s.saveState(stateData)
+	s.saveState(d.stateKey(), stateData)
 	s.logDevice(d.ID, req.Log)
 	for _, e := range req.Events {
 		// Touches and long presses carry no meaning yet; they are only recorded.
@@ -417,7 +431,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 			slog.Info("action still running", "device", d.ID, "action", invoke.Action)
 		}
 		s.mu.Lock()
-		if st := s.state[d.key()]; st != nil {
+		if st := s.state[d.stateKey()]; st != nil {
 			menu = st.Menu
 		}
 		s.mu.Unlock()
@@ -460,16 +474,16 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	var pageData []byte
-	if st = s.state[d.key()]; st != nil {
+	if st = s.state[d.stateKey()]; st != nil {
 		st.LastPage, st.LastPageKind, st.LastPageHash = shownPage, shownKind, served.hash
 		st.LastPageTime, st.LastRefresh = now, int(refresh.Seconds())
 		st.LastText = served.lines
 		st.LastError = errText
 		st.Menu = menu
-		pageData = s.stateSnapshotLocked()
+		pageData = s.stateSnapshotLocked(st)
 	}
 	s.mu.Unlock()
-	s.saveState(pageData)
+	s.saveState(d.stateKey(), pageData)
 	if logged.BatteryLevel != prevLevel {
 		level := logged.BatteryLevel
 		if level == batteryOK {
@@ -613,9 +627,9 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 		served = s.hint(cfg, d.Profile, choice.title, choice.text)
 	}
 	// The dashboard and /api/devices show what the display shows now. Kept in
-	// memory only; the next sync writes it to state/devices.json.
+	// memory only; the next sync writes the device's state file (ADR 0080).
 	s.mu.Lock()
-	if st := s.state[d.key()]; st != nil && st.LastPageHash != served.hash {
+	if st := s.state[d.stateKey()]; st != nil && st.LastPageHash != served.hash {
 		st.LastText, st.LastPageHash, st.LastPageTime = served.lines, served.hash, now
 		st.LastPage, st.LastPageKind = served.name, "page"
 		switch {

@@ -138,7 +138,7 @@ func TestMenuOpensOnHomeWithoutRunning(t *testing.T) {
 	if len(p.runs) != 0 {
 		t.Fatalf("opening the menu ran %v", p.runs)
 	}
-	if st := s.state["test"]; !st.Menu.Open || st.Menu.Phase != menuListPhase {
+	if st := s.state["AABBCCDDEE02"]; !st.Menu.Open || st.Menu.Phase != menuListPhase {
 		t.Fatalf("menu state: %+v", st.Menu)
 	}
 	wake, ok := out["wake"].(map[string]any)
@@ -149,7 +149,7 @@ func TestMenuOpensOnHomeWithoutRunning(t *testing.T) {
 		t.Fatalf("the regular refresh must stay untouched: %v", out["refresh_s"])
 	}
 	// The page cursor did not move.
-	if st := s.state["test"]; st.Page != 0 {
+	if st := s.state["AABBCCDDEE02"]; st.Page != 0 {
 		t.Fatalf("page moved: %d", st.Page)
 	}
 }
@@ -164,7 +164,7 @@ func TestMenuActionWithoutConfirmation(t *testing.T) {
 	if len(p.runs) != 1 || p.runs[0] != "quick" {
 		t.Fatalf("runs: %v", p.runs)
 	}
-	if st := s.state["test"]; st.Menu.Phase != menuResultPhase || !st.Menu.ResultOK {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Phase != menuResultPhase || !st.Menu.ResultOK {
 		t.Fatalf("menu state: %+v", st.Menu)
 	}
 	if pagePath(out) == base {
@@ -172,7 +172,7 @@ func TestMenuActionWithoutConfirmation(t *testing.T) {
 	}
 	// The result goes away with the next regular sync.
 	displayPage(t, s, dev)
-	if st := s.state["test"]; st.Menu.Open {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Open {
 		t.Fatalf("result must close on the next sync: %+v", st.Menu)
 	}
 	if got := pagePath(displayPage(t, s, dev)); got != base {
@@ -189,12 +189,12 @@ func TestMenuConfirmationNeedsPaintedScreen(t *testing.T) {
 	if len(p.runs) != 0 {
 		t.Fatalf("an action ran without its confirmation: %v", p.runs)
 	}
-	if st := s.state["test"]; st.Menu.Phase != menuConfirmPhase || st.Menu.ConfirmHash == "" {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Phase != menuConfirmPhase || st.Menu.ConfirmHash == "" {
 		t.Fatalf("menu state: %+v", st.Menu)
 	}
 	confirm := imageOf(out)["hash"].(string)
-	if confirm != s.state["test"].Menu.ConfirmHash {
-		t.Fatalf("confirmation hash: %q vs %q", confirm, s.state["test"].Menu.ConfirmHash)
+	if confirm != s.state["AABBCCDDEE02"].Menu.ConfirmHash {
+		t.Fatalf("confirmation hash: %q vs %q", confirm, s.state["AABBCCDDEE02"].Menu.ConfirmHash)
 	}
 	// A home press from a device that never painted the confirmation is not a
 	// yes: the screen is served again.
@@ -202,7 +202,7 @@ func TestMenuConfirmationNeedsPaintedScreen(t *testing.T) {
 	if len(p.runs) != 0 {
 		t.Fatalf("unpainted confirmation ran the action: %v", p.runs)
 	}
-	if st := s.state["test"]; st.Menu.Phase != menuConfirmPhase {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Phase != menuConfirmPhase {
 		t.Fatalf("phase after a stale press: %q", st.Menu.Phase)
 	}
 	// Painted confirmation plus home is a yes.
@@ -222,7 +222,7 @@ func TestMenuSkipsDisabledAction(t *testing.T) {
 	if len(p.runs) != 0 {
 		t.Fatalf("a disabled action ran: %v", p.runs)
 	}
-	if st := s.state["test"]; st.Menu.Phase != menuListPhase {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Phase != menuListPhase {
 		t.Fatalf("menu state: %+v", st.Menu)
 	}
 }
@@ -236,7 +236,7 @@ func TestMenuPlanTitleWins(t *testing.T) {
 	dev := menuDevice(t, s)
 	displayPage(t, s, dev)
 	press(t, s, dev, buttonHome)
-	acts := s.state["test"].Menu.Actions
+	acts := s.state["AABBCCDDEE02"].Menu.Actions
 	if len(acts) != 2 {
 		t.Fatalf("actions: %+v", acts)
 	}
@@ -255,7 +255,7 @@ func TestMenuLongHomeClosesAndKeepsThePage(t *testing.T) {
 	press(t, s, dev, buttonNext) // page zwei
 	press(t, s, dev, buttonHome) // menu over zwei
 	out := pressShown(t, s, dev, "", []int{800}, buttonHome)
-	if st := s.state["test"]; st.Menu.Open {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Open {
 		t.Fatalf("long home must close the menu: %+v", st.Menu)
 	}
 	if got := pagePath(out); !strings.Contains(got, "/zwei/") {
@@ -273,7 +273,7 @@ func TestMenuOpensWithoutActions(t *testing.T) {
 	if pagePath(out) == base {
 		t.Fatal("the empty menu must show a banner")
 	}
-	st := s.state["test"]
+	st := s.state["AABBCCDDEE02"]
 	if !st.Menu.Open || st.Menu.Phase != menuEmptyPhase {
 		t.Fatalf("menu state: %+v", st.Menu)
 	}
@@ -286,7 +286,7 @@ func TestMenuOpensWithoutActions(t *testing.T) {
 	if got := pagePath(out); got != base {
 		t.Fatalf("dismissing the banner paged: %q, want %q", got, base)
 	}
-	if st := s.state["test"]; st.Menu.Open {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Open {
 		t.Fatalf("input must dismiss the empty menu: %+v", st.Menu)
 	}
 }
@@ -301,7 +301,7 @@ func TestMenuLongNextGoesToFirstPage(t *testing.T) {
 	if got := pagePath(pressShown(t, s, dev, "", []int{800}, buttonNext)); !strings.Contains(got, "/eins/") {
 		t.Fatalf("long next must go to the first page: %q", got)
 	}
-	if st := s.state["test"]; st.Menu.Open {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Open {
 		t.Fatalf("a long next must not open the menu: %+v", st.Menu)
 	}
 	if got := pagePath(press(t, s, dev, buttonNext)); !strings.Contains(got, "/zwei/") {
@@ -319,9 +319,9 @@ func TestMenuLongPressInsideTheMenuIsIgnored(t *testing.T) {
 	dev := menuDevice(t, s)
 	displayPage(t, s, dev)
 	press(t, s, dev, buttonHome) // opens on act/go
-	before := s.state["test"].Menu.Selected
+	before := s.state["AABBCCDDEE02"].Menu.Selected
 	out := pressShown(t, s, dev, "", []int{800}, buttonPrevious)
-	st := s.state["test"]
+	st := s.state["AABBCCDDEE02"]
 	if !st.Menu.Open || st.Menu.Selected != before {
 		t.Fatalf("a long press must not move the selection: %+v", st.Menu)
 	}
@@ -351,7 +351,7 @@ func TestMenuTapDismissesEmptyBanner(t *testing.T) {
 	base := pagePath(displayPage(t, s, dev))
 	press(t, s, dev, buttonHome)
 	out := tapAt(t, s, dev, 200, 20, "")
-	if st := s.state["test"]; st.Menu.Open {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Open {
 		t.Fatalf("a tap must dismiss the empty menu: %+v", st.Menu)
 	}
 	if got := pagePath(out); got != base {
@@ -366,7 +366,7 @@ func TestMenuExpires(t *testing.T) {
 	press(t, s, dev, buttonHome)
 	*now = now.Add(31 * time.Second)
 	out := displayPage(t, s, dev)
-	if st := s.state["test"]; st.Menu.Open {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Open {
 		t.Fatalf("the menu must expire: %+v", st.Menu)
 	}
 	if got := pagePath(out); got != base {
@@ -389,7 +389,7 @@ func TestMenuNavigationKeepsTheMenuOpen(t *testing.T) {
 		// it since the previous press.
 		*now = now.Add(20 * time.Second)
 		out := press(t, s, dev, buttonNext)
-		st := s.state["test"]
+		st := s.state["AABBCCDDEE02"]
 		if !st.Menu.Open || st.Menu.Phase != menuListPhase {
 			t.Fatalf("press %d closed the menu: %+v", i+1, st.Menu)
 		}
@@ -400,13 +400,13 @@ func TestMenuNavigationKeepsTheMenuOpen(t *testing.T) {
 			t.Fatalf("press %d did not show the menu: %q", i+1, got)
 		}
 	}
-	if st := s.state["test"]; st.Menu.Selected != "act/off" {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Selected != "act/off" {
 		t.Fatalf("two next presses must select the last action: %q", st.Menu.Selected)
 	}
 	// An idle menu still expires and keeps the page.
 	*now = now.Add(31 * time.Second)
 	displayPage(t, s, dev)
-	if st := s.state["test"]; st.Menu.Open || st.Page != 0 {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Open || st.Page != 0 {
 		t.Fatalf("an idle menu must expire: %+v", st)
 	}
 }
@@ -431,7 +431,7 @@ func TestMenuPressWhileThePanelShowsIt(t *testing.T) {
 	// panel cannot have repainted yet, so the press must still navigate.
 	*now = now.Add(31 * time.Second)
 	out := press(t, s, dev, buttonNext)
-	st := s.state["test"]
+	st := s.state["AABBCCDDEE02"]
 	if !st.Menu.Open || st.Menu.Phase != menuListPhase {
 		t.Fatalf("the press on a visible menu closed it: %+v", st.Menu)
 	}
@@ -448,7 +448,7 @@ func TestMenuPressWhileThePanelShowsIt(t *testing.T) {
 	// page, even though the panel still reports the menu screen.
 	*now = now.Add(31 * time.Second)
 	displayPage(t, s, dev)
-	if st := s.state["test"]; st.Menu.Open || st.Page != 0 {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Open || st.Page != 0 {
 		t.Fatalf("an idle menu must expire: %+v", st)
 	}
 }
@@ -527,7 +527,7 @@ func TestMenuTapExtendsTheDeadline(t *testing.T) {
 	*now = now.Add(25 * time.Second)
 	// act/go needs a confirmation and stays in the menu.
 	out := tapAt(t, s, dev, menuCellA1X, 75, "")
-	st := s.state["test"]
+	st := s.state["AABBCCDDEE02"]
 	if !st.Menu.Open || st.Menu.Phase != menuConfirmPhase {
 		t.Fatalf("the tap closed the menu: %+v", st.Menu)
 	}
@@ -549,7 +549,7 @@ func TestMenuExpiryKeepsThePageWhileRotating(t *testing.T) {
 	*now = now.Add(31 * time.Second)
 	dev.req.Reason = "menu"
 	out := displayPage(t, s, dev)
-	if st := s.state["test"]; st.Menu.Open {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Open {
 		t.Fatalf("the menu must expire: %+v", st.Menu)
 	}
 	if got := pagePath(out); got != base {
@@ -567,7 +567,7 @@ func TestMenuDeniedByDevice(t *testing.T) {
 	dev := menuDevice(t, s)
 	base := pagePath(displayPage(t, s, dev))
 	out := press(t, s, dev, buttonHome)
-	if st := s.state["test"]; st.Menu.Open {
+	if st := s.state["AABBCCDDEE02"]; st.Menu.Open {
 		t.Fatalf("deny must not open the menu: %+v", st.Menu)
 	}
 	if got := pagePath(out); got != base {

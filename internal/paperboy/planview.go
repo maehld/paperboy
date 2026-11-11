@@ -63,7 +63,7 @@ type planView struct {
 
 // handlePlanView previews the plan of one device: its rules, the active one at
 // the selected time and every page as the device would draw it. It never
-// touches the device state, so the page cursor and state/devices.json stay as
+// touches the device state, so the page cursor and the state file stay as
 // they are; rendering happens without the state lock.
 func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()

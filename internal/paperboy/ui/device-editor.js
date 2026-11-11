@@ -203,6 +203,7 @@
     }
     if (res.status === 404 && state.isNew) {
       state.device = empty();
+      if (start.mac) state.device.mac = start.mac;
       state.hash = '';
       state.yaml = '';
       state.dirty = false;
