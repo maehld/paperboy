@@ -65,11 +65,12 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0067](0067-buttons-and-the-menu.md) | Buttons – home opens the menu, long presses page | Accepted, implemented |
 | [0068](0068-page-editor-ui.md) | A page editor in the web UI | Accepted, implemented |
 | [0069](0069-plan-editor-ui.md) | A plan editor in the web UI | Accepted, implemented |
-| [0070](0070-devices-in-their-own-files.md) | Devices in files of their own | Accepted, implemented |
-| [0071](0071-display-types-in-files-of-their-own.md) | Display types in files of their own | Accepted, implemented |
+| [0070](0070-devices-in-their-own-files.md) | Devices in files of their own | Accepted, implemented; a missing display type no longer fails the load (ADR-0079) |
+| [0071](0071-display-types-in-files-of-their-own.md) | Display types in files of their own | Accepted, implemented; renaming in the editor added by ADR-0079 |
 | [0072](0072-pages-as-qoi.md) | Pages as QOI for the firmware | Accepted, implemented |
 | [0073](0073-edit-creates-and-deletes.md) | Creating plans and deleting files in the editor | Accepted, implemented |
 | [0074](0074-editor-board-shows-the-preview.md) | The editor board shows the page preview | Accepted, implemented |
 | [0075](0075-plugin-versions.md) | A version per plugin | Accepted, implemented |
 | [0077](0077-the-widgets-page-has-no-gallery.md) | The widgets page has no gallery | Accepted, implemented |
 | [0078](0078-the-menu-stays-open-while-it-is-used.md) | The menu stays open while it is used | Accepted, implemented |
+| [0079](0079-rename-config-items.md) | Renaming pages, plans, devices and display types | Accepted, implemented; supersedes the manual rename of ADR-0071 and the load failure of ADR-0070 |
