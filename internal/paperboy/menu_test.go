@@ -27,6 +27,9 @@ func (p *menuPlugin) Describe() plugin.Description {
 		{Name: "go", Title: "Go", Confirm: &plugin.Confirm{Required: true}},
 		{Name: "quick", Title: "Quick"},
 		{Name: "off", Title: "Off"},
+		// Enough enabled entries to fill more than one page.
+		{Name: "a1", Title: "A1"}, {Name: "a2", Title: "A2"}, {Name: "a3", Title: "A3"},
+		{Name: "a4", Title: "A4"}, {Name: "a5", Title: "A5"},
 	}}
 }
 
@@ -223,7 +226,26 @@ func TestMenuSkipsDisabledAction(t *testing.T) {
 	if len(p.runs) != 0 {
 		t.Fatalf("a disabled action ran: %v", p.runs)
 	}
-	if st := s.state[menuStateKey]; st.Menu.Phase != menuListPhase {
+	// The reason is shown as a banner instead of the press doing nothing
+	// (ADR 0082).
+	if st := s.state[menuStateKey]; st.Menu.Phase != menuOffPhase || st.Menu.Reason != "not now" {
+		t.Fatalf("menu state: %+v", st.Menu)
+	}
+	if pressShown(t, s, dev, "", nil, buttonHome); s.state[menuStateKey].Menu.Open {
+		t.Fatal("the banner must close on the next input")
+	}
+}
+
+// A menu in which nothing can run opens as a banner, not as a list of hatched
+// cells (ADR 0082).
+func TestMenuOpensAsBannerWhenNothingRuns(t *testing.T) {
+	// The test plugin marks act/off as unavailable ("not now").
+	s, _, _ := menuServer(t, "actions:\n  - {action: act/off, title: Off}\n", nil)
+	dev := menuDevice(t, s)
+	displayPage(t, s, dev)
+	press(t, s, dev, buttonHome)
+	st := s.state[menuStateKey]
+	if st.Menu.Phase != menuOffPhase || st.Menu.Reason == "" {
 		t.Fatalf("menu state: %+v", st.Menu)
 	}
 }

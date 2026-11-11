@@ -24,6 +24,7 @@ import (
 // Phases of the menu.
 const (
 	menuEmptyPhase   = "empty" // the plan offers no actions: a banner only
+	menuOffPhase     = "off"   // every action is unavailable, or the chosen one is
 	menuListPhase    = "list"
 	menuConfirmPhase = "confirm"
 	menuRunningPhase = "running"
@@ -77,7 +78,18 @@ type menuState struct {
 	Actions     []menuAction `json:"actions,omitempty"`
 	Resolved    bool         `json:"resolved,omitempty"` // plugin state is filled in
 	Result      string       `json:"result,omitempty"`
+	Reason      string       `json:"reason,omitempty"` // why no action is available
 	ResultOK    bool         `json:"result_ok,omitempty"`
+}
+
+// allDisabled reports whether no action of the list can run now.
+func allDisabled(actions []menuAction) bool {
+	for _, a := range actions {
+		if a.Disabled == "" {
+			return false
+		}
+	}
+	return len(actions) > 0
 }
 
 // closeMenu drops all menu state.
@@ -89,7 +101,7 @@ func (m *menuState) close() { *m = menuState{} }
 // wake cycle on a battery device (ADR 0078).
 func menuDeadline(m menuState, d *Device) time.Duration {
 	show := time.Duration(d.MenuShowDuration)
-	if m.Phase == menuEmptyPhase {
+	if m.Phase == menuEmptyPhase || m.Phase == menuOffPhase {
 		show = min(show, menuEmptyDuration)
 	}
 	return show
@@ -110,10 +122,15 @@ func (m menuState) expiresAt(d *Device) time.Time {
 // (ADR 0067).
 func (m *menuState) openMenu(session int, actions []menuAction, now time.Time) {
 	phase := menuListPhase
+	reason := ""
 	if len(actions) == 0 {
 		phase = menuEmptyPhase
+	} else if allDisabled(actions) {
+		// Nothing to choose: say so once instead of showing a list in which
+		// every cell is hatched (ADR 0082).
+		phase, reason = menuOffPhase, actions[0].Disabled
 	}
-	*m = menuState{Open: true, Phase: phase, Session: session, OpenedAt: now, Actions: actions}
+	*m = menuState{Open: true, Phase: phase, Session: session, OpenedAt: now, Actions: actions, Reason: reason}
 	if len(actions) > 0 {
 		m.Selected = actions[0].Key
 	}
@@ -330,7 +347,7 @@ func (m *menuState) applyInput(in menuInput, acts []plan.PlanAction, now time.Ti
 		m.close()
 		return nil
 	}
-	if m.Phase == menuEmptyPhase {
+	if m.Phase == menuEmptyPhase || m.Phase == menuOffPhase {
 		// The banner has nothing to offer: any input dismisses it.
 		if len(in.buttons) > 0 {
 			m.close()
@@ -364,8 +381,14 @@ func (m *menuState) applyInput(in menuInput, acts []plan.PlanAction, now time.Ti
 					continue
 				}
 				a := m.selected()
-				if a == nil || a.Disabled != "" {
+				if a == nil {
 					continue
+				}
+				if a.Disabled != "" {
+					// Nothing to run: show the plugin's reason as a banner.
+					m.Phase = menuOffPhase
+					m.Reason = a.Disabled
+					return nil
 				}
 				if a.Confirm {
 					m.Phase = menuConfirmPhase
@@ -666,7 +689,7 @@ func actionKinds(phase string) []string {
 	case menuConfirmPhase:
 		// Yes and no only: a close box would be the same as "no".
 		return []string{cellYes, cellNo}
-	case menuRunningPhase, menuResultPhase, menuEmptyPhase:
+	case menuRunningPhase, menuResultPhase, menuEmptyPhase, menuOffPhase:
 		return nil // drawn as a banner, no cells
 	}
 	kinds := make([]string, menuPerPage)
@@ -766,7 +789,7 @@ type menuView struct {
 // drawMenu paints the menu over the page image (ADR 0057): the list covers the
 // top half, the confirmation is a message box of its own (ADR 0081).
 func drawMenu(img *image.Paletted, p Profile, v menuView, t texts) {
-	if v.phase == menuRunningPhase || v.phase == menuResultPhase || v.phase == menuEmptyPhase {
+	if v.phase == menuRunningPhase || v.phase == menuResultPhase || v.phase == menuEmptyPhase || v.phase == menuOffPhase {
 		drawBanner(img, p, v)
 		return
 	}
@@ -1062,6 +1085,12 @@ func (s *Server) overlayMenu(cfg *Config, d *Device, served servedPage, m *menuS
 		if m.Selected == "" && len(m.Actions) > 0 {
 			m.Selected = m.Actions[0].Key
 		}
+		// Nothing to choose: say so once instead of showing a list in which
+		// every cell is hatched (ADR 0082). The reasons only arrive with the
+		// plugin answers, so this cannot happen when the menu opens.
+		if m.Phase == menuListPhase && allDisabled(m.Actions) {
+			m.Phase, m.Reason = menuOffPhase, m.Actions[0].Disabled
+		}
 	}
 	t := cfg.texts()
 	v := menuView{phase: m.Phase, actions: m.Actions, offset: m.Offset, sel: m.Selected,
@@ -1069,6 +1098,8 @@ func (s *Server) overlayMenu(cfg *Config, d *Device, served servedPage, m *menuS
 	switch m.Phase {
 	case menuEmptyPhase:
 		v.title = t.menuEmpty()
+	case menuOffPhase:
+		v.title = m.Reason
 	case menuConfirmPhase:
 		if a := m.selected(); a != nil {
 			v.title = a.Title

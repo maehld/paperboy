@@ -58,7 +58,15 @@ of growing a frame: at a sixth of the overlay's width a heavier frame was
 invisible on the panel. Without the strip nothing changes: the list wraps and a
 long `home` closes.
 
-### 4. The confirmation names the keys
+### 4. Nothing to run is a banner, not a greyed-out list
+
+A menu in which no action can run opens as a banner that names the reason of
+the first entry, and `home` on a disabled action shows that action's reason in
+the same banner. Any input or the short ten-second deadline closes it. A list of
+hatched cells alone looked like a rendering fault; the reason appears at the
+moment the operator tries to run the action, which is when it is needed.
+
+### 5. The confirmation names the keys
 
 The confirmation screen says **"Home = ausführen · Next/Previous = abbrechen"**
 ("Home = run · Previous/Next = cancel") instead of "Home = ja, andere Taste =
@@ -76,6 +84,5 @@ exist: `home` runs the action, `previous`/`next` return to the list.
   what is hit cannot drift apart.
 - `ADRs 0057 and 0067 stay as history; their cell order (close box first) is
   superseded.
-- Two findings from the same test stay open in #136: a disabled action does not
-  show the plugin's reason on the panel, and a menu in which every action is
-  disabled says nothing at all.
+- Nothing to run is a banner with the plugin's reason, not a greyed-out list;
+  the panel explains itself exactly when the operator tries to act.
