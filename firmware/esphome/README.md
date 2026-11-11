@@ -26,6 +26,7 @@ installation, nothing installation-specific is compiled in.
 | Firmware offer | `firmware` in the sync answer (ADR 0043) | flash `<Paperboy URL><path>` with its MD5 and reboot; a failure is reported in the next sync's `log` |
 | Changed content | `GET <Paperboy URL><image.path>` | PNG, painted with the panel's gray mapping |
 | After painting | the shown hash is stored only now, and input that arrived meanwhile is sent in one more sync | a confirmation screen can only be confirmed after the panel really shows it |
+| Settle | presses that arrived during a paint wait 150 ms before that follow-up sync | a burst of presses becomes one sync instead of two cycles (issue #136) |
 | Sleep | stay awake `listen_s`, then deep sleep for `refresh_s` or a one-shot `wake` | wake on any button (EXT1) |
 | Mains power | the sync answers `sleep: false` (ADR 0051) | stay awake with Wi-Fi up, sync again after `refresh_s` as a `timer` wake; input syncs at once |
 
@@ -66,11 +67,15 @@ Buttons are sent by role. Sticky: **down = `next`, up = `previous`, ok =
 `home`**. E1001 from left to right: **`previous`, `next`, `home` (green)**.
 Every event carries a monotonically increasing `id` and stays in an RTC queue
 until Paperboy confirms the sync (ADR 0064), so a retry is applied exactly
-once. A press is queued when the button is released or after 700 ms while it
-is held, with the measured `hold_ms`; what counts as a long press is decided
-by Paperboy (ADR 0067). The Sticky sends taps, not the continuous touch stream:
-`pb_touch` drops reports within 800 ms of the previous one, and Paperboy maps
-the tap onto the device menu (ADR 0057, issue #54). A failed download, sync or
+once. The queue is appended to while a request is in flight, and only the
+events that request carried are dropped from the answer — a press made during
+the sync is not swallowed (issue #136). A press is queued when the button is
+released or after 700 ms while it is held, with the measured `hold_ms`; what
+counts as a long press is decided by Paperboy (ADR 0067). The Sticky sends taps,
+not the continuous touch stream: `pb_touch` takes the first report of a contact
+and drops the rest until `on_release`, so one tap is one event and a deliberate
+second tap is not swallowed; Paperboy maps the tap onto the device menu
+(ADR 0057, issue #54). A failed download, sync or
 Wi-Fi connection is kept in RTC memory and reported in the next sync's `log`.
 After power-on the device stays awake 3 minutes so its web UI can be used; a
 limit of 120 s after the last input forces deep sleep otherwise.

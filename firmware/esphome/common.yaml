@@ -614,7 +614,7 @@ script:
   - id: after_paint
     mode: restart
     then:
-      - delay: 500ms
+      - delay: 100ms
       - wait_until:
           condition:
             not:
@@ -633,6 +633,11 @@ script:
           condition:
             lambda: "return pb_has_events();"
           then:
+            # Every press that arrived during the paint is already queued. A
+            # short settle turns a burst of presses into one sync with all of
+            # them instead of two cycles, which is what made the menu lag
+            # behind the finger (issue #136).
+            - delay: 150ms
             - script.execute: sync_and_show
           else:
             - if:

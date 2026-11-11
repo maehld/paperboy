@@ -5,7 +5,7 @@
 
 substitutions:
   hardware: sticky
-  fw_version: "2.2.0"
+  fw_version: "2.3.0"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
 
@@ -173,9 +173,12 @@ touchscreen:
       mirror_x: true
       mirror_y: true
     # The panel reports a position continuously while a finger rests on it.
-    # pb_touch debounces, so one tap becomes one event (ADR 0064).
+    # pb_touch takes the first report of a contact and drops the rest until
+    # on_release, so one tap is one event and a second tap is not swallowed.
     on_touch:
       - script.execute: { id: touched, x: !lambda "return touch.x;", y: !lambda "return touch.y;" }
+    on_release:
+      - lambda: "pb_touch_release();"
 
 script:
   # BQ27220 fuel gauge. Measured: currents and capacities come ten times too
