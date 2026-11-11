@@ -857,8 +857,9 @@ func drawCell(img *image.Paletted, c menuCell, label string, size float64, selec
 	} else if disabled {
 		ink = render.DarkGray
 	}
-	// Cell borders keep the buttons visible on the page beneath.
-	render.FillColor(img, image.Rect(c.rect.Min.X, c.rect.Min.Y, c.rect.Min.X+1, c.rect.Max.Y), render.Black)
+	// Every cell gets a box of its own, so neighbours show two lines and each
+	// action reads as a button, like the control strip below (issue #136).
+	frameCell(img, c.rect, 1)
 	inner := c.rect.Inset(1)
 	lines := wrapMenu(label, inner.Dx()-6, size)
 	if len(lines) == 0 && label != "" {
