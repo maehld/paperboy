@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<rss version="2.0">
+  <channel>
+    <title>Grüße</title>
+    <item>
+      <title>Grüße aus Münster</title>
+      <link>https://example.org/l1</link>
+      <description>Schöne Grüße</description>
+      <pubDate>Tue, 10 Nov 2026 08:00:00 +0100</pubDate>
+      <guid>urn:l1</guid>
+    </item>
+  </channel>
+</rss>

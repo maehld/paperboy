@@ -1,0 +1,10 @@
+# The newest entries of two feeds: headlines with summaries on top, a mixed
+# list of every configured source below. Requires the rss plugin
+# (docs/plugins/rss.md).
+title: Nachrichten
+grid: [6, 8]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
+  - { at: [0, 1], span: [6, 4], widget: rss/feed, args: { feed: Tagesschau, header: true, summary: true } }
+  - { at: [0, 5], span: [6, 3], widget: rss/feed, args: { feed: all } }
