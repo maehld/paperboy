@@ -14,18 +14,33 @@ import (
 	"github.com/maehld/paperboy/pkg/render"
 )
 
-func (p *pokedex) current() (*mon, *plugin.Request, string) {
+// current returns the Pokémon that Prepare loaded for the widget's seed.
+func (p *pokedex) current(w plugin.WidgetRequest) (*mon, error) {
+	seed, err := seedOf(w)
+	if err != nil {
+		return nil, err
+	}
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.cur, p.req, p.lang
+	l, ok := p.curs[seed]
+	p.mu.Unlock()
+	switch {
+	case !ok:
+		return nil, fmt.Errorf("no Pokémon loaded for seed %q", seed)
+	case l.err != nil:
+		return nil, l.err
+	}
+	return l.mon, nil
 }
 
-func (p *pokedex) Render(_ *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
+func (p *pokedex) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	if w.Widget != "card" {
 		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 	}
-	m, req, lang := p.current()
-	drawCard(m, req, lang, w, img)
+	m, err := p.current(w)
+	if err != nil {
+		return err
+	}
+	drawCard(m, req, req.Lang(), w, img)
 	return nil
 }
 
@@ -271,9 +286,12 @@ func dither(img *image.Paletted, r image.Rectangle, src *image.RGBA) {
 
 // Text is the text variant: name and number, types and size, the stats packed
 // into as few lines as fit, then the flavor text.
-func (p *pokedex) Text(_ *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
-	m, _, lang := p.current()
-	return textLines(m, lang, w.Width), nil
+func (p *pokedex) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
+	m, err := p.current(w)
+	if err != nil {
+		return nil, err
+	}
+	return textLines(m, req.Lang(), w.Width), nil
 }
 
 func textLines(m *mon, lang string, width int) []string {

@@ -1,4 +1,5 @@
-# Pokémon of the day as a full-screen card.
+# Pokémon of the day as a full-screen card. Add args: { seed: <name> } to give
+# a page its own random Pokémon (a page per device shows a different one).
 title: Pokémon
 grid: [6, 8]
 style: { padding: 4.5 }
