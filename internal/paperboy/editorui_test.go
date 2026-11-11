@@ -182,7 +182,7 @@ func TestEditorPage(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		`<script id="editor-data" type="application/json">{"name":"solar","display":"small","kind":"image","width":40,"height":20,"new":false,"shared":false,"grid":[6,8],"reference":[6,8]}</script>`,
+		`<script id="editor-data" type="application/json">{"name":"solar","display":"small","kind":"image","width":40,"height":20,"new":false,"shared":false,"grid":[6,8],"reference":[6,8],"rename":{"url":"/api/pages/solar/rename","warn":"Rename page solar?`,
 		`<script src="/ui/editor.js"></script>`, `id="board"`, `id="palette"`, `id="palette-filter"`, `id="inspector"`,
 		`id="show-cells" checked`, `id="render-hint"`, `id="preview-error"`,
 	} {

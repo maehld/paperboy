@@ -48,10 +48,11 @@ type displayEditorView struct {
 
 // displayEditorState is what the script needs besides the file itself.
 type displayEditorState struct {
-	Name    string   `json:"name"`
-	New     bool     `json:"new"`
-	Pages   []string `json:"pages,omitempty"`   // page variants that use the type
-	Devices []string `json:"devices,omitempty"` // devices that use the type
+	Name    string        `json:"name"`
+	New     bool          `json:"new"`
+	Pages   []string      `json:"pages,omitempty"`   // page variants that use the type
+	Devices []string      `json:"devices,omitempty"` // devices that use the type
+	Rename  *renameAction `json:"rename,omitempty"`
 }
 
 // handleDisplayEditor opens one display type file. A new type starts from an
@@ -95,6 +96,10 @@ func (s *Server) handleDisplayEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, r := range v.Devices {
 		st.Devices = append(st.Devices, r.Label)
+	}
+	if !missing {
+		st.Rename = &renameAction{URL: "/api/displays/" + url.PathEscape(name) + "/rename",
+			Warn: displayRenameWarning(name, v.Pages, v.Devices)}
 	}
 	data, err := json.Marshal(st)
 	if err != nil { // never expected: only strings and a bool

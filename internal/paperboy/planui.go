@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 
@@ -53,6 +54,7 @@ type planEditorState struct {
 	Devices  []planEditorDevice `json:"devices"`
 	Displays []string           `json:"displays"`
 	Pages    []planEditorPage   `json:"pages"`
+	Rename   *renameAction      `json:"rename,omitempty"` // nil for a new plan (ADR 0079)
 }
 
 // planEditorView is the shell of the plan editor.
@@ -140,6 +142,14 @@ func (s *Server) handlePlanEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	st := s.planEditorData(cfg, name)
 	st.New = missing
+	if !missing {
+		ids := make([]string, 0, len(st.Devices))
+		for _, d := range st.Devices {
+			ids = append(ids, d.ID)
+		}
+		st.Rename = &renameAction{URL: "/api/plans/" + url.PathEscape(name) + "/rename",
+			Warn: planRenameWarning(name, ids)}
+	}
 	data, err := json.Marshal(st)
 	if err != nil { // never expected: only strings and numbers
 		slog.Error("plan editor state encoding failed", "error", err)

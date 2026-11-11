@@ -182,6 +182,7 @@ type editorState struct {
 	Span        *[2]int           `json:"span,omitempty"`   // its size on the reference grid
 	Args        map[string]string `json:"args,omitempty"`   // the args from the link, still as text
 	UsedBy      []string          `json:"usedBy,omitempty"` // plans that name the page, for the delete warning
+	Rename      *renameAction     `json:"rename,omitempty"` // nil for a new page (ADR 0079)
 }
 
 // displayNames lists the configured display types alphabetically.
@@ -596,7 +597,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Warn("plan list for the page editor failed", "error", err)
 	}
-	v.Data = editorStateData(name, display, p, missing, shared, plansByPage(plans)[name])
+	v.Data = editorStateData(name, display, p, missing, shared, plansByPage(plans)[name], pageRenameAction(cfg, name, plansByPage(plans)[name]))
 	for _, n := range displayNames(cfg) {
 		params := url.Values{"name": {name}, "display": {n}}
 		if q.Get("new") == "1" {
@@ -614,9 +615,9 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 // editorStateData encodes the starting state for the script. The JSON is safe
 // to inline: encoding/json escapes <, > and &, so a page title can never close
 // the script element.
-func editorStateData(name, display string, p Profile, missing, shared bool, usedBy []string) template.JS {
+func editorStateData(name, display string, p Profile, missing, shared bool, usedBy []string, rename *renameAction) template.JS {
 	state := editorState{Name: name, Display: display, Width: p.Width, Height: p.Height,
-		New: missing, Shared: shared, Reference: defaultGrid, UsedBy: usedBy}
+		New: missing, Shared: shared, Reference: defaultGrid, UsedBy: usedBy, Rename: rename}
 	if p.text() {
 		state.Kind = page.KindText
 		state.Grid = [2]int{p.Width, p.Height}

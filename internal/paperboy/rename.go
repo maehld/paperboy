@@ -389,11 +389,22 @@ func displayRenameWarning(name string, pages, devices []displayReference) string
 	return msg
 }
 
-// pageRenameAction builds the rename for a page file set; nil when there is no
-// file to move yet.
+// pageRenameAction builds the rename for a page file set; nil when the page has
+// no file yet.
 func pageRenameAction(cfg *Config, name string, usedBy []string) *renameAction {
-	if _, err := pageSetHashAt(cfg.Pages, name); err != nil {
-		slog.Warn("page set hash for the rename failed", "page", name, "error", err)
+	files, err := pageFiles(cfg.Pages)
+	if err != nil {
+		slog.Warn("page list for the rename failed", "page", name, "error", err)
+		return nil
+	}
+	var found bool
+	for _, f := range files {
+		if f.Name == name {
+			found = true
+			break
+		}
+	}
+	if !found {
 		return nil
 	}
 	return &renameAction{URL: "/api/pages/" + url.PathEscape(name) + "/rename", Warn: pageRenameWarning(name, usedBy)}

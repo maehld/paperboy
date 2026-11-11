@@ -230,4 +230,27 @@ func TestEditorRenameButtons(t *testing.T) {
 			t.Fatalf("displays tab lacks %q:\n%s", want, displays)
 		}
 	}
+	// The editors carry the same rename, so the object can be renamed while it
+	// is open; a new object has none (ADR 0079).
+	for _, tc := range []struct{ url, want string }{
+		{"/ui/editor/page?name=solar&display=small", `"rename":{"url":"/api/pages/solar/rename"`},
+		{"/ui/editor/plan?name=tour", `"rename":{"url":"/api/plans/tour/rename"`},
+		{"/ui/editor/device?id=test", `"rename":{"url":"/api/devices/test/rename"`},
+		{"/ui/editor/display?name=small", `"rename":{"url":"/api/displays/small/rename"`},
+	} {
+		body := request(t, s, http.MethodGet, tc.url, nil, nil).Body.String()
+		if !strings.Contains(body, tc.want) {
+			t.Fatalf("%s lacks %q", tc.url, tc.want)
+		}
+	}
+	for _, url := range []string{
+		"/ui/editor/page?name=fresh&display=small&new=1",
+		"/ui/editor/plan?name=fresh&new=1",
+		"/ui/editor/device?id=fresh&new=1",
+		"/ui/editor/display?name=fresh&new=1",
+	} {
+		if body := request(t, s, http.MethodGet, url, nil, nil).Body.String(); strings.Contains(body, `"rename":`) {
+			t.Fatalf("%s offers a rename for a new object", url)
+		}
+	}
 }

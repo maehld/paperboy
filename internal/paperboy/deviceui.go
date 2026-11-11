@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -42,12 +43,13 @@ type deviceEditorView struct {
 // types, the plans to choose from and the defaults of paperboy.yaml, so an empty
 // field can show what it inherits.
 type deviceEditorState struct {
-	ID       string   `json:"id"`
-	New      bool     `json:"new"`
-	Displays []string `json:"displays"`
-	Plans    []string `json:"plans"`
-	Refresh  string   `json:"refresh"`   // default interval
-	MenuShow string   `json:"menu_show"` // default menu duration
+	ID       string        `json:"id"`
+	New      bool          `json:"new"`
+	Displays []string      `json:"displays"`
+	Plans    []string      `json:"plans"`
+	Refresh  string        `json:"refresh"`   // default interval
+	MenuShow string        `json:"menu_show"` // default menu duration
+	Rename   *renameAction `json:"rename,omitempty"`
 }
 
 // handleDeviceEditor opens one device file. A new device starts from an empty
@@ -88,6 +90,9 @@ func (s *Server) handleDeviceEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	st := deviceEditorState{ID: id, New: missing, Displays: displayNames(cfg),
 		Plans: []string{}, Refresh: time.Duration(cfg.Refresh).String(), MenuShow: menuShow.String()}
+	if !missing {
+		st.Rename = &renameAction{URL: "/api/devices/" + url.PathEscape(id) + "/rename", Warn: deviceRenameWarning(id)}
+	}
 	plans, err := planFiles(cfg.Plans, cfg.Timezone)
 	if err != nil {
 		slog.Warn("plan list for the device editor failed", "error", err)

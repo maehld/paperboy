@@ -19,8 +19,10 @@
     shared: !!start.shared, // a new page is written as pages/<name>.yaml
     widgetsPage: !!start.widgets_page, // the widgets page: one widget, no page
     usedBy: start.usedBy || [], // plans that name the page, for the delete warning
+    rename: start.rename || null, // endpoint and confirmation for a rename (ADR 0079)
     fileDisplay: '', // display variant the file belongs to; empty: shared page
     hash: '',
+    setHash: '', // hash over every file of the page, for the rename
     template: null,
     readOnly: false,
     selected: -1,
@@ -71,6 +73,8 @@
     if (copy) copy.disabled = !hasCell;
     const del = el('delete');
     if (del) del.hidden = state.widgetsPage || !state.hash;
+    const rename = el('rename');
+    if (rename) rename.hidden = state.widgetsPage || !state.rename;
     const specialize = el('specialize');
     if (!specialize) return;
     specialize.hidden = state.widgetsPage || !(hasCell && state.fileDisplay === '');
@@ -1047,6 +1051,7 @@
     const doc = await res.json();
     state.fileDisplay = doc.display || '';
     state.hash = doc.hash || '';
+    state.setHash = doc.set_hash || '';
     state.selected = -1;
     state.dirty = false;
     if (doc.error) {
@@ -1119,6 +1124,7 @@
       return;
     }
     state.hash = doc.hash || '';
+    state.setHash = doc.set_hash || '';
     state.fileDisplay = doc.display || '';
     if (doc.template) state.template = normalize(doc.template);
     state.dirty = false;
@@ -1135,6 +1141,40 @@
     setStatus('the next save writes the variant; the shared page stays unchanged', '');
     updateWhere();
     updateSave();
+  }
+
+  // rename moves the shared page and every variant; the plans that name it keep
+  // the old name, so the confirmation names them (ADR 0079).
+  async function rename() {
+    if (!state.rename) return;
+    const warn = state.rename.warn +
+      (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
+      '\n\nThe new name is yours to propagate: nothing is rewritten.';
+    if (!confirm(warn)) return;
+    const name = (prompt('New name for ' + state.name + ': (lower case letters, digits and -)', '') || '').trim();
+    if (!name || name === state.name) return;
+    setStatus('renaming…', '');
+    let res;
+    try {
+      res = await fetch(state.rename.url + (state.setHash ? '?hash=' + encodeURIComponent(state.setHash) : ''), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+    } catch (e) {
+      setStatus('rename failed: ' + e, 'error');
+      return;
+    }
+    if (!res.ok) {
+      let msg = '(' + res.status + ')';
+      try {
+        msg = (await res.json()).error || msg;
+      } catch (e) { /* not JSON */ }
+      setStatus('rename failed: ' + msg, 'error');
+      return;
+    }
+    state.dirty = false;
+    location.href = '/ui/editor/page?name=' + encodeURIComponent(name) + '&display=' + encodeURIComponent(state.display);
   }
 
   // remove deletes the file that was opened, after naming the plans that use
@@ -1196,6 +1236,7 @@
   on('reload', 'click', () => location.reload());
   on('specialize', 'click', specialize);
   on('delete', 'click', remove);
+  on('rename', 'click', rename);
   on('palette-filter', 'input', () => {
     state.filter = el('palette-filter').value;
     renderPalette();

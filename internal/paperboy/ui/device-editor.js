@@ -18,6 +18,7 @@
     yaml: '',
     readOnly: false,
     dirty: false,
+    rename: start.rename || null,
   };
 
   function empty() {
@@ -51,6 +52,7 @@
   function updateSave() {
     el('save').disabled = state.readOnly || (state.isNew && !state.device.mac);
     el('delete').hidden = state.isNew;
+    el('rename').hidden = state.isNew || !state.rename;
   }
 
   function changed() {
@@ -274,6 +276,43 @@
     show();
   }
 
+  // rename moves the device file and its state, so the cursor, battery reading
+  // and menu survive; the firmware registers by MAC and does not notice
+  // (ADR 0079).
+  async function rename() {
+    if (state.isNew || !state.rename) return;
+    const warn = state.rename.warn +
+      (state.dirty ? '\n\nUnsaved changes are discarded.' : '');
+    if (!confirm(warn)) return;
+    const id = (prompt('New ID for ' + state.id + ': (lower case letters, digits and -)', '') || '').trim();
+    if (!id || id === state.id) return;
+    setStatus('renaming…', '');
+    let res;
+    try {
+      res = await fetch(state.rename.url + '?hash=' + encodeURIComponent(state.hash), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: id }),
+      });
+    } catch (e) {
+      setStatus('rename failed: ' + e, 'error');
+      return;
+    }
+    if (!res.ok) {
+      const body = await res.text();
+      let doc = {};
+      try {
+        doc = JSON.parse(body);
+      } catch (e) {
+        doc.error = body.trim();
+      }
+      setStatus(doc.error || 'rename failed (' + res.status + ')', 'error');
+      return;
+    }
+    state.dirty = false;
+    location.href = '/ui/editor/device?id=' + encodeURIComponent(id);
+  }
+
   // remove deletes the file; the server refuses one that changed since it was
   // read (ADR 0073).
   async function remove() {
@@ -343,6 +382,7 @@
 
   el('save').addEventListener('click', save);
   el('delete').addEventListener('click', remove);
+  el('rename').addEventListener('click', rename);
   el('reload').addEventListener('click', () => location.reload());
   onField('display', 'display_type');
   onField('mac', 'mac');
