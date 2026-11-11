@@ -36,7 +36,6 @@ type process struct {
 	pending map[string]chan plugin.Message
 	done    chan struct{} // closed when the process has exited
 	stderr  *tailBuffer
-	state   json.RawMessage // stored state, sent with every request (ADR 0081)
 
 	versionLogged bool // the protocol mismatch was already logged
 }
@@ -73,16 +72,18 @@ var (
 	errWrite   = errors.New("write request")
 )
 
-// configure sends the plugin its configuration and what it stored last time;
-// the plugin is only used when it accepts it.
+// configure sends the plugin its configuration; the plugin is only used when
+// it accepts it. It then receives what it stored last time in one state
+// request, so configure stays the request it always was and the state and the
+// blobs do not travel with every widget request (ADR 0081).
 func (p *process) configure(spec Spec, env Env) error {
+	if _, err := p.request(context.Background(), plugin.Request{Version: plugin.Version, Action: plugin.ActionConfigure,
+		Language: env.Language, Timezone: env.Timezone, Now: time.Now(), Config: spec.Config}); err != nil {
+		return err
+	}
 	state, blobs := p.loadState()
-	p.mu.Lock()
-	p.state = state
-	p.mu.Unlock()
-	_, err := p.request(context.Background(), plugin.Request{Version: plugin.Version, Action: plugin.ActionConfigure,
-		Language: env.Language, Timezone: env.Timezone, Now: time.Now(), Config: spec.Config,
-		State: state, Blobs: blobs})
+	_, err := p.request(context.Background(), plugin.Request{Version: plugin.Version, Action: plugin.ActionLoadState,
+		Language: env.Language, Timezone: env.Timezone, Now: time.Now(), State: state, Blobs: blobs})
 	return err
 }
 
@@ -101,10 +102,6 @@ func (p *process) request(ctx context.Context, req plugin.Request) (plugin.Messa
 		p.pending = map[string]chan plugin.Message{}
 	}
 	p.pending[req.ID] = ch
-	if len(req.State) == 0 {
-		// Every request carries the stored state (ADR 0081).
-		req.State = p.state
-	}
 	p.mu.Unlock()
 	defer func() {
 		p.mu.Lock()
@@ -298,9 +295,6 @@ func (p *process) storeState(m *plugin.Message) {
 		data := *m.State
 		switch {
 		case string(bytes.TrimSpace(data)) == "null":
-			p.mu.Lock()
-			p.state = nil
-			p.mu.Unlock()
 			if err := os.Remove(filepath.Join(dir, stateFileName)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				slog.Warn("forgetting plugin state", "plugin", p.spec.Name, "error", err)
 			}
@@ -309,9 +303,6 @@ func (p *process) storeState(m *plugin.Message) {
 		case len(data) > maxStateBytes:
 			slog.Warn("ignoring plugin state that is too large", "plugin", p.spec.Name, "bytes", len(data))
 		default:
-			p.mu.Lock()
-			p.state = append(json.RawMessage(nil), data...)
-			p.mu.Unlock()
 			if err := writeStateFile(filepath.Join(dir, stateFileName), data); err != nil {
 				slog.Warn("storing plugin state", "plugin", p.spec.Name, "error", err)
 			}

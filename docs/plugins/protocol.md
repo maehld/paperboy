@@ -5,7 +5,8 @@ JSON object per line (ADR 0049). This document is the reference for the wire
 format; the Go types live in [`pkg/plugin`](../../pkg/plugin/plugin.go).
 
 - Current version: **5** (ADR 0050 added version 3, ADR 0057 added
-  actions, ADR 0081 added plugin state and blobs).
+  actions, ADR 0081 added plugin state and blobs and made 5 the minimum). From
+  version 5 on the protocol only grows additively.
 - Paperboy starts a plugin on first use and keeps it running.
 - Paperboy writes one request line; the plugin writes exactly one answer line
   with the same `id`. Between answers the plugin may write events without an
@@ -22,7 +23,7 @@ Every request carries:
 |---|---|
 | `id` | Request identifier; the answer repeats it |
 | `version` | Protocol version, currently `5` |
-| `action` | `configure`, `describe`, `render`, `text`, `actions` or `action` |
+| `action` | `configure`, `state`, `describe`, `render`, `text`, `actions` or `action` |
 | `language` | `"de"` or `"en"` |
 | `timezone` | IANA name such as `Europe/Berlin` |
 | `now` | Time of the request, RFC 3339 |
@@ -32,8 +33,8 @@ Every request carries:
 | `device` | For `actions` and `action`: `id`, `name`, `hardware` |
 | `levels` | For `render`: 2 or 4 gray levels |
 | `config` | For `configure`: the plugin's section of `paperboy.yaml` |
-| `state` | The JSON object the plugin stored last time; missing when there is none (ADR 0081) |
-| `blobs` | For `configure`: the stored blobs by name, base64 in JSON (ADR 0081) |
+| `state` | For `state`: the JSON object the plugin stored last time; missing when there is none (ADR 0081) |
+| `blobs` | For `state`: the stored blobs by name, base64 in JSON (ADR 0081) |
 
 ### `configure`
 
@@ -45,6 +46,18 @@ the cells that use it.
 
 ```json
 {"id":"1","version":5,"action":"configure","language":"de","timezone":"Europe/Berlin","now":"2026-11-07T12:00:00+01:00","config":{"lat":52.5,"lon":13.4}}
+```
+
+### `state`
+
+Sent once, right after a successful `configure`. It carries `state` (the
+stored object) and `blobs`
+(the stored files), so the plugin has its data before the first widget
+request. The answer may return `state` and `blobs` to store; an empty answer is
+enough.
+
+```json
+{"id":"2","version":5,"action":"state","language":"de","timezone":"Europe/Berlin","now":"2026-11-07T12:00:00+01:00","state":{"fetched_at":"2026-11-07T11:00:00Z"},"blobs":{"render.png":"iVBORw0…"}}
 ```
 
 ### `describe`
@@ -175,9 +188,9 @@ for its request: `widgets`, `actions`, `result`, `description` or `max_age`.
 `Handle` fills `version` with the protocol version the plugin was built
 against, in every answer and in the `changed` event. Paperboy calls
 `Message.CheckVersion` on every answer and refuses the plugin when the version
-differs or is missing (ADR 0058): the cells show the error and the plugin is
-dropped with one log line. Plugins written by hand in another language must
-print the field themselves.
+is missing, older than 4 or newer than 5 (ADR 0058): the cells show the error
+and the plugin is dropped with one log line. Plugins written by hand in another
+language must print the field themselves.
 
 An answer may also carry `state` and `blobs` to store (see [state between
 restarts](#state-between-restarts)).
@@ -219,23 +232,25 @@ configuration changes; Paperboy itself restarts on every deployment. Everything
 a plugin keeps in memory is lost then, and Paperboy's widget cache is no help
 because it holds drawn results, not data.
 
-State is part of the protocol (ADR 0081). Paperboy keeps it, the plugin never
-writes a file:
+State is part of the protocol (ADR 0081). Paperboy keeps it, a protocol 5
+plugin never writes a file:
 
-- **`state`** is a JSON object of at most 256 KiB. Every request carries the
-  stored one; every answer and event may send a new one. A missing `state`
-  field means unchanged, `state: null` forgets it. A plugin reads it in
-  `Configure` (or any later request) and returns the whole object, not a diff.
+- **`state`** is a JSON object of at most 256 KiB. The `state` request carries
+  the stored one; every answer and event may send a new one. A missing `state`
+  field means unchanged, `state: null` forgets it. A plugin returns the whole
+  object, not a diff.
 - **`blobs`** are larger values, such as a downloaded image. `describe`
-  declares their names, `configure` carries the stored ones base64-coded, and
-  any answer or event may write changed ones. A blob is at most 1 MiB; a
-  plugin keeps at most four.
+  declares their names, the `state` request carries the stored ones
+  base64-coded, and any answer or event may write changed ones. A blob is at
+  most 1 MiB; a plugin keeps at most four.
 
 Paperboy stores them in the plugin's directory, `<instance>/state/plugins/<id>/`:
 `state.json` and `blobs/<name>`, both readable by the owner only. A file a
 plugin no longer declares stays until the operator removes it; deleting the
-directory resets the plugin. There is no writable directory for the plugin any
-more, and `PAPERBOY_STATE_DIR` is gone.
+directory resets the plugin.
+
+A plugin never writes these files; `PAPERBOY_STATE_DIR` and
+`pkg/plugin.StateDir()` are gone (ADR 0081).
 
 Keep no secrets in the state (a fingerprint of a key is enough), version the
 object so a later plugin can discard a format it does not know, and treat the
@@ -262,7 +277,7 @@ Optional interfaces:
 | `Starter` | `Start(ctx, notify)` for background work; `notify` sends `changed` |
 | `Ager` | `MaxAge(req) time.Duration` for widget and action caching |
 | `Actioner` | `Actions(req) ([]ActionState, error)` and `Invoke(req, call) (ActionOutcome, error)` |
-| `Stater` | `State() json.RawMessage`: the object to store, nil when unchanged |
+| `Stater` | `LoadState(state, blobs)` when the `state` request arrives and `State() json.RawMessage`: the object to store, nil when unchanged |
 | `Blober` | `Blobs() map[string][]byte`: changed blobs, nil when none; clear the marks |
 
 A plugin calls `plugin.Serve(handler)` and draws with `pkg/render`, so its
@@ -274,9 +289,11 @@ widgets use the same fonts, gray levels and scalings as Paperboy's own.
 |---|---|
 | 3 | `page.ppi` and `style.text_px` in pixels; `style.text_size` removed (ADR 0050) |
 | 4 | Actions: `describe.actions`, `actions`, `action`, `actions`/`result` answers, `device` (ADR 0057) |
-| 5 | Plugin state and blobs: `request.state`, `answer.state`, `describe.blobs`, `configure.blobs`; `PAPERBOY_STATE_DIR` removed (ADR 0081) |
+| 5 | Plugin state and blobs: the `state` request, `answer.state`/`answer.blobs`, `describe.blobs`; `PAPERBOY_STATE_DIR` removed (ADR 0081) |
 
-There is no compatibility layer. The version is a hard check (ADR 0058), so a
-plugin that reports another version is refused as a whole, not used without
-its actions: after a protocol bump every plugin has to be rebuilt, and they
-ship with Paperboy in the same release.
+A plugin is used as a whole or not at all (ADR 0058). The check is a floor,
+not equality: Paperboy requires at least version 5 and accepts newer ones,
+because the protocol only grows additively – unknown fields are ignored,
+existing fields keep their meaning, and Paperboy gates an optional feature on
+the version a plugin reports. That version is the only thing a plugin has to
+announce; there is no separate capability list.

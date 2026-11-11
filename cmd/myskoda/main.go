@@ -393,34 +393,33 @@ func (m *myskoda) Configure(cfg plugin.Values, req *plugin.Request) error {
 		refresh = minRefresh
 	}
 	m.base, m.refresh = base.String(), refresh
-	m.loadState(req)
 	return nil
 }
 
-// loadState takes over the state and the render blob Paperboy stored last time
+// LoadState takes over the state and the render blob Paperboy stored last time
 // (ADR 0081), so the first page after a restart has data and a restart within
 // the refresh interval costs no request. A state of another vehicle, another
 // key, another format, or one that cannot be read is ignored and replaced by
 // the next run.
-func (m *myskoda) loadState(req *plugin.Request) {
-	if len(req.State) == 0 {
-		return
+func (m *myskoda) LoadState(state json.RawMessage, blobs map[string][]byte) error {
+	if len(state) == 0 {
+		return nil
 	}
 	var s storedState
-	if err := json.Unmarshal(req.State, &s); err != nil {
+	if err := json.Unmarshal(state, &s); err != nil {
 		fmt.Fprintln(os.Stderr, "myskoda: ignoring the stored state:", err)
-		return
+		return nil
 	}
 	switch {
 	case s.Version != stateVersion:
 		fmt.Fprintf(os.Stderr, "myskoda: ignoring a stored state of version %d\n", s.Version)
-		return
+		return nil
 	case !strings.EqualFold(s.VIN, m.vin):
 		fmt.Fprintln(os.Stderr, "myskoda: ignoring the stored state of another vehicle")
-		return
+		return nil
 	case s.Key != m.fingerprint():
 		fmt.Fprintln(os.Stderr, "myskoda: ignoring the stored state of another API key")
-		return
+		return nil
 	}
 	// The timing counts even without data: a wait the API asked for outlasts a
 	// restart, and a failed first load stays failed.
@@ -433,7 +432,7 @@ func (m *myskoda) loadState(req *plugin.Request) {
 	expires := m.expires
 	m.mu.Unlock()
 	if s.RenderURL != "" {
-		if data := req.Blobs[blobRender]; len(data) > 0 {
+		if data := blobs[blobRender]; len(data) > 0 {
 			if img, err := png.Decode(bytes.NewReader(data)); err == nil {
 				m.mu.Lock()
 				m.image = &supplement{img: img, url: s.RenderURL}
@@ -445,6 +444,7 @@ func (m *myskoda) loadState(req *plugin.Request) {
 		fmt.Fprintf(os.Stderr, "myskoda: API key expires at %s; create a new one in the MyŠkoda app\n",
 			expires.Format(time.RFC3339))
 	}
+	return nil
 }
 
 // fingerprint identifies the API key in the stored state without keeping it.

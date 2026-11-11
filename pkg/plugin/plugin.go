@@ -9,8 +9,9 @@
 //
 // Actions:
 //
-//   - "configure": the first request after the start, with the plugin's
-//     section of paperboy.yaml. An error answer stops the plugin.
+
+//   - "state": the stored state and blobs, once after configure; protocol 5
+//     only (ADR 0081).
 //   - "describe": the widgets the plugin offers, the sizes they are made for,
 //     their arguments and the plugin's configuration keys, for an editor.
 //   - "render": draw widgets for an image display, each in exactly the given
@@ -32,12 +33,16 @@
 // panel and a large coarse one. Text displays get neither.
 //
 // State (ADR 0081): a plugin keeps what it needs between restarts as JSON.
-// Every request carries the stored object in Request.State, every answer and
-// event may return a new one in Message.State (missing = unchanged, null =
-// forget it). Large values such as images are declared in
-// Description.Blobs, arrive base64-coded in Request.Blobs on configure and are
-// written back through Message.Blobs. Paperboy stores both itself; a plugin
-// gets no writable directory.
+// Right after configure Paperboy sends one "state" request with the stored
+// object and the declared blobs; every answer and event may return a new one
+// in Message.State (missing = unchanged, null = forget it) and new
+// Message.Blobs. Large values are declared in Description.Blobs and travel
+// base64-coded. Paperboy stores both itself.
+//
+// Compatibility: from version 5 on the protocol only grows additively.
+// Paperboy accepts every plugin that speaks at least MinVersion, ignores
+// fields it does not know, and a new version may add fields and actions
+// without changing the meaning of the existing ones.
 //
 // Environment: a plugin process sees PAPERBOY_LANGUAGE and PAPERBOY_TIMEZONE,
 // and it runs in the plugins directory.
@@ -66,15 +71,20 @@ import (
 // added page.ppi and style.text_px and dropped style.text_size. Version 4
 // (ADR 0057) added actions: describe.actions, the actions and action requests,
 // and action results. Version 5 (ADR 0081) added the plugin state and blobs:
-// Request.state, Message.state, describe.blobs and the blobs of configure and
-// answers; it removed PAPERBOY_STATE_DIR. Plugins report the version in every
-// answer (Message.Version); Paperboy refuses a plugin that speaks another
-// version (ADR 0058).
+// the state request, Message.state, describe.blobs and the blobs of answers.
+// Plugins report the version in every answer (Message.Version); Paperboy
+// refuses a plugin that speaks less than MinVersion (ADR 0081).
 const Version = 5
+
+// MinVersion is the oldest protocol Paperboy accepts. Version 5 is the cut
+// that introduced state and blobs; from here on the protocol grows additively,
+// so a newer plugin is accepted too (ADR 0081).
+const MinVersion = 5
 
 // Actions of a request.
 const (
 	ActionConfigure = "configure"
+	ActionLoadState = "state" // the stored state and blobs, once after configure (protocol 5)
 	ActionDescribe  = "describe"
 	ActionRender    = "render"
 	ActionText      = "text"
@@ -102,10 +112,11 @@ type Request struct {
 	Actions []ActionCall `json:"actions,omitempty"`
 	Device  *DeviceInfo  `json:"device,omitempty"`
 	// State is the JSON object the plugin stored last time; missing when it
-	// has none (ADR 0081). It travels with every request.
+	// has none. It arrives with the state request, once after configure
+	// (ADR 0081).
 	State json.RawMessage `json:"state,omitempty"`
 	// Blobs are the files a plugin keeps besides its state, base64 in JSON.
-	// They arrive with configure only, because they can be large.
+	// They arrive with the state request only, because they can be large.
 	Blobs map[string][]byte `json:"blobs,omitempty"`
 }
 
@@ -361,11 +372,12 @@ type Ager interface {
 	MaxAge(req *Request) time.Duration
 }
 
-// Stater is implemented by plugins that keep state between restarts. Prepare
-// loads it from Request.State in Configure; State returns the whole object to
-// store, nil meaning "nothing yet" (ADR 0081). Paperboy stores it after every
-// answer and event.
+// Stater is implemented by plugins that keep state between restarts
+// (protocol 5). LoadState receives the stored object and blobs once after
+// configure; State returns the whole object to store, nil meaning "nothing
+// changed" (ADR 0081). Paperboy stores it after every answer and event.
 type Stater interface {
+	LoadState(state json.RawMessage, blobs map[string][]byte) error
 	State() json.RawMessage
 }
 
@@ -445,6 +457,12 @@ func Handle(h Handler, req *Request) (m Message) {
 		if err := h.Configure(Values(req.Config), req); err != nil {
 			m.Error = err.Error()
 		}
+	case ActionLoadState:
+		if s, ok := h.(Stater); ok {
+			if err := s.LoadState(req.State, req.Blobs); err != nil {
+				m.Error = err.Error()
+			}
+		}
 	case ActionDescribe:
 		d := h.Describe()
 		m.Description = &d
@@ -491,12 +509,12 @@ func withState(h Handler, m Message) Message {
 // being drawn with the wrong assumptions (ADR 0058).
 func (m Message) CheckVersion() error {
 	switch {
-	case m.Version == Version:
+	case m.Version >= MinVersion:
 		return nil
 	case m.Version == 0:
 		return fmt.Errorf("plugin reports no protocol version; rebuild it against protocol version %d", Version)
 	default:
-		return fmt.Errorf("plugin speaks protocol version %d, Paperboy speaks %d", m.Version, Version)
+		return fmt.Errorf("plugin speaks protocol version %d; Paperboy needs at least %d", m.Version, MinVersion)
 	}
 }
 

@@ -41,7 +41,9 @@ func fakePlugin(mode string) {
 	case "noversion":
 		version = 0
 	case "oldversion":
-		version = plugin.Version - 1
+		version = plugin.MinVersion - 1
+	case "newer":
+		version = plugin.Version + 1
 	}
 	enc := json.NewEncoder(os.Stdout)
 	sc := bufio.NewScanner(os.Stdin)
@@ -53,6 +55,14 @@ func fakePlugin(mode string) {
 				enc.Encode(plugin.Message{ID: req.ID, Version: version, Error: "config rejected"})
 				continue
 			}
+			if path := os.Getenv("FAKE_ENV"); path != "" {
+				os.WriteFile(path, []byte(os.Getenv("PAPERBOY_STATE_DIR")), 0o644)
+			}
+			enc.Encode(plugin.Message{ID: req.ID, Version: version})
+			continue
+		}
+		if req.Action == plugin.ActionLoadState {
+			appendFile(os.Getenv("FAKE_STATE_CALLS"))
 			// Record what Paperboy stored and sent (ADR 0081).
 			if path := os.Getenv("FAKE_STATE"); path != "" {
 				os.WriteFile(path, req.State, 0o644)
@@ -64,9 +74,6 @@ func fakePlugin(mode string) {
 				}
 				sort.Strings(names)
 				os.WriteFile(path, []byte(strings.Join(names, ",")), 0o644)
-			}
-			if path := os.Getenv("FAKE_ENV"); path != "" {
-				os.WriteFile(path, []byte(os.Getenv("PAPERBOY_STATE_DIR")), 0o644)
 			}
 			enc.Encode(plugin.Message{ID: req.ID, Version: version})
 			continue
@@ -235,7 +242,7 @@ func TestHostRejectsWrongSizeAndUnknownPlugins(t *testing.T) {
 func TestHostRejectsOtherProtocolVersions(t *testing.T) {
 	for mode, want := range map[string]string{
 		"noversion":  "reports no protocol version",
-		"oldversion": "speaks protocol version",
+		"oldversion": "needs at least 5",
 		"ok":         "", // control: the same plugin with the right version works
 	} {
 		f := newFake(t)
@@ -318,7 +325,7 @@ func TestHostKeepsPluginState(t *testing.T) {
 	if data, err := os.ReadFile(filepath.Join(stateDir, "blobs", "render.png")); err != nil || string(data) != "png" {
 		t.Fatalf("blob: %q (%v)", data, err)
 	}
-	// The plugin has no writable directory of its own any more.
+	// The plugin has no writable directory of its own.
 	if data, err := os.ReadFile(env); err != nil || string(data) != "" {
 		t.Fatalf("PAPERBOY_STATE_DIR: %q (%v)", data, err)
 	}
@@ -352,6 +359,24 @@ func TestHostIgnoresUnusableState(t *testing.T) {
 	}
 	if entries, err := os.ReadDir(filepath.Join(dir, "blobs")); err == nil && len(entries) > 0 {
 		t.Fatalf("a blob with an unsafe name was stored: %v", entries)
+	}
+}
+
+func TestHostAcceptsNewerProtocol(t *testing.T) {
+	f := newFake(t)
+	h := newHost(t, f.spec("newer"))
+	// The protocol grows additively, so a newer plugin runs (ADR 0081).
+	if out := h.Fetch(context.Background(), batch(w("fake", "a", 10, 5))); out[0].Err != nil {
+		t.Fatalf("a newer protocol must run: %v", out[0].Err)
+	}
+}
+
+func TestHostRejectsProtocol4(t *testing.T) {
+	f := newFake(t)
+	h := newHost(t, f.spec("oldversion"))
+	out := h.Fetch(context.Background(), batch(w("fake", "a", 10, 5)))
+	if out[0].Err == nil || !strings.Contains(out[0].Err.Error(), "needs at least 5") {
+		t.Fatalf("protocol 4 must be refused: %+v", out[0])
 	}
 }
 

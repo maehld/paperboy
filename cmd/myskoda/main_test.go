@@ -550,7 +550,10 @@ func TestStateSurvivesRestart(t *testing.T) {
 	cancel()
 
 	second := &myskoda{client: srv.Client()}
-	if err := second.Configure(cfg, &plugin.Request{State: state, Blobs: blob}); err != nil {
+	if err := second.Configure(cfg, &plugin.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.LoadState(state, blob); err != nil {
 		t.Fatal(err)
 	}
 	if second.data == nil {
@@ -600,7 +603,10 @@ func TestRateLimitWaitSurvivesRestart(t *testing.T) {
 	cancel()
 
 	second := &myskoda{client: srv.Client()}
-	if err := second.Configure(cfg, &plugin.Request{State: state}); err != nil {
+	if err := second.Configure(cfg, &plugin.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.LoadState(state, nil); err != nil {
 		t.Fatal(err)
 	}
 	if second.loadErr == nil || !strings.Contains(second.loadErr.Error(), "rate limit") {
@@ -626,8 +632,10 @@ func TestStoredStateOfAnotherVehicleIsIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := &myskoda{client: http.DefaultClient}
-	if err := m.Configure(plugin.Values{"api_key": "secret", "vin": "TMBJB9NY5RF999999"},
-		&plugin.Request{State: data}); err != nil {
+	if err := m.Configure(plugin.Values{"api_key": "secret", "vin": "TMBJB9NY5RF999999"}, &plugin.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.LoadState(data, nil); err != nil {
 		t.Fatal(err)
 	}
 	if m.data != nil {
@@ -637,8 +645,10 @@ func TestStoredStateOfAnotherVehicleIsIgnored(t *testing.T) {
 
 func TestBrokenStateIsIgnored(t *testing.T) {
 	m := &myskoda{client: http.DefaultClient}
-	if err := m.Configure(plugin.Values{"api_key": "secret", "vin": "TMBJB9NY5RF999999"},
-		&plugin.Request{State: []byte("{")}); err != nil {
+	if err := m.Configure(plugin.Values{"api_key": "secret", "vin": "TMBJB9NY5RF999999"}, &plugin.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.LoadState([]byte("{"), nil); err != nil {
 		t.Fatal(err)
 	}
 	if m.data != nil {
