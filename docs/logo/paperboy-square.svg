@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Paperboy">
+  <title>Paperboy</title>
+  <!-- Square cut for avatars, the repository and the container image: the mark on a white tile. -->
+  <rect width="64" height="64" fill="#fff"/>
+  <g transform="translate(4 11) scale(0.875)" fill="#000">
+    <path fill-rule="evenodd" d="M0 0 H48 L64 16 V48 H0 Z M4 4 H46.343 L60 17.657 V44 H4 Z"/>
+    <rect x="0" y="32" width="16" height="16"/>
+    <path d="M48 0 L64 16 L48 16 Z"/>
+  </g>
+</svg>

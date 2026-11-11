@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 48" width="64" height="48" role="img" aria-label="Paperboy">
+  <title>Paperboy</title>
+  <!-- The mark: a page as Paperboy composes it, four by three cells of 16 units,
+       one cell drawn by a widget (black), the top-right corner turned down (one cell).
+       Drawn with filled shapes only, so it stays crisp at any size and needs one colour. -->
+  <g fill="#000">
+    <!-- frame, 3 units -->
+    <path fill-rule="evenodd" d="M0 0 H48 L64 16 V48 H0 Z M3 3 H46.757 L61 17.243 V45 H3 Z"/>
+    <!-- cell dividers, 2 units -->
+    <rect x="15" y="0" width="2" height="48"/>
+    <rect x="31" y="0" width="2" height="48"/>
+    <rect x="47" y="0" width="2" height="16"/>
+    <rect x="0" y="15" width="64" height="2"/>
+    <rect x="0" y="31" width="64" height="2"/>
+    <!-- the cell a widget draws -->
+    <rect x="0" y="32" width="16" height="16"/>
+    <!-- the turned-down corner -->
+    <path d="M48 0 L64 16 L48 16 Z"/>
+  </g>
+</svg>
