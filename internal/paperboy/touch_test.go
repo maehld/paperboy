@@ -7,6 +7,17 @@ import (
 	"time"
 )
 
+// tapSeq gives every tap its own event ID; a repeated ID is deduplicated.
+var tapSeq int64
+
+// menuStateKey is the file the test device state lands in: its MAC without
+// the colons (ADR 0080).
+const menuStateKey = "AABBCCDDEE02"
+
+// menuProfile is the display the menu tests run on: 400x300, so the overlay is
+// the top half, 400x150.
+var menuProfile = Profile{Width: 400, Height: 300, PPI: 125, Gray: true}
+
 // tapAt sends a touch at x/y; shown is the hash the device painted last.
 func tapAt(t *testing.T, s *Server, dev *testDevice, x, y int, shown string) map[string]any {
 	t.Helper()
@@ -25,28 +36,22 @@ func tapAt(t *testing.T, s *Server, dev *testDevice, x, y int, shown string) map
 	return out
 }
 
-// The menu of the test server covers 400x300. With the control strip of a
-// touch device (ADR 0080) the top half is 400x150, the action row 400x113 with
-// three cells of ~133 px and a 37 px strip whose buttons are 66 px wide.
-// tapSeq gives every tap its own event ID; a repeated ID is deduplicated.
-var tapSeq int64
-
-// menuStateKey is the file the test device state lands in: its MAC without
-// the colons (ADR 0080).
-const menuStateKey = "AABBCCDDEE02"
-
-// Cell centres for the layouts the touch tests use. Action and confirmation
-// cells keep their columns; the strip's buttons sit at its left and right.
-const (
-	menuCellA1X    = 66
-	menuCellA2X    = 200
-	menuCellPrevX  = 36
-	menuCellNextX  = 106
-	menuCellCloseX = 364
-	menuStripY     = 130 // the middle of the control strip
-	confirmYesX    = 100
-	confirmNoX     = 300
-)
+// tapCell taps the middle of the menu cell of one kind. The geometry comes from
+// menuLayout, the same function the overlay draws from, so a layout change
+// cannot leave the tests tapping the wrong place.
+func tapCell(t *testing.T, s *Server, dev *testDevice, touch bool, kind string, index int) map[string]any {
+	t.Helper()
+	m := s.state[menuStateKey].Menu
+	actions, controls, _, _ := menuLayout(menuProfile, m.Phase, len(m.Actions), touch, m.Phase != menuListPhase)
+	for _, c := range append(actions, controls...) {
+		if c.kind != kind || (kind == cellAction && c.index != index) {
+			continue
+		}
+		return tapAt(t, s, dev, c.rect.Min.X+c.rect.Dx()/2, c.rect.Min.Y+c.rect.Dy()/2, "")
+	}
+	t.Fatalf("no %s cell %d in phase %s", kind, index, m.Phase)
+	return nil
+}
 
 // menuServerTouch is menuServer with the digitiser turned on, which is what
 // makes Paperboy draw the control strip.
@@ -60,8 +65,8 @@ func TestMenuTapSelectsAndRuns(t *testing.T) {
 	s, _, p := menuServer(t, menuPlanActions, nil)
 	dev := menuDevice(t, s)
 	displayPage(t, s, dev)
-	press(t, s, dev, buttonHome)          // open
-	tapAt(t, s, dev, menuCellA1X, 75, "") // act/go needs a confirmation
+	press(t, s, dev, buttonHome)             // open
+	tapCell(t, s, dev, false, cellAction, 0) // act/go needs a confirmation
 	if st := s.state[menuStateKey]; st.Menu.Selected != "act/go" || st.Menu.Phase != menuConfirmPhase {
 		t.Fatalf("state after tapping the confirming action: %+v", st.Menu)
 	}
@@ -70,8 +75,8 @@ func TestMenuTapSelectsAndRuns(t *testing.T) {
 	}
 	// "Nein" returns to the list, then a tap on an action without a
 	// confirmation runs it at once.
-	tapAt(t, s, dev, confirmNoX, 110, "")
-	tapAt(t, s, dev, menuCellA2X, 75, "")
+	tapCell(t, s, dev, false, cellNo, 0)
+	tapCell(t, s, dev, false, cellAction, 1)
 	if len(p.runs) != 1 || p.runs[0] != "quick" {
 		t.Fatalf("runs: %v", p.runs)
 	}
@@ -82,12 +87,25 @@ func TestMenuTapCloses(t *testing.T) {
 	dev := menuDevice(t, s)
 	base := pagePath(displayPage(t, s, dev))
 	press(t, s, dev, buttonHome)
-	out := tapAt(t, s, dev, menuCellCloseX, menuStripY, "")
+	out := tapCell(t, s, dev, true, cellClose, 0)
 	if st := s.state[menuStateKey]; st.Menu.Open {
 		t.Fatalf("X must close the menu: %+v", st.Menu)
 	}
 	if pagePath(out) != base {
 		t.Fatal("closing with X must keep the page")
+	}
+}
+
+// A device without touch has no close box at all: a tap where it would be must
+// not close the menu (ADR 0080).
+func TestMenuTapCloseNeedsTouch(t *testing.T) {
+	s, _, _ := menuServer(t, menuPlanActions, nil)
+	dev := menuDevice(t, s)
+	displayPage(t, s, dev)
+	press(t, s, dev, buttonHome)
+	tapAt(t, s, dev, 300, 130, "") // the middle of the strip a touch device would show
+	if st := s.state[menuStateKey]; !st.Menu.Open {
+		t.Fatalf("a tap on the empty strip closed the menu: %+v", st.Menu)
 	}
 }
 
@@ -106,25 +124,25 @@ func TestMenuTapConfirmation(t *testing.T) {
 	s, _, p := menuServer(t, menuPlanActions, nil)
 	dev := menuDevice(t, s)
 	base := imageOf(displayPage(t, s, dev))["hash"].(string)
-	press(t, s, dev, buttonHome)                 // open
-	tapAt(t, s, dev, menuCellA1X, 75, "")        // select act/go: confirmation
-	out := tapAt(t, s, dev, menuCellA1X, 75, "") // tap again on the action cell
-	_ = out
+	press(t, s, dev, buttonHome)             // open
+	tapCell(t, s, dev, false, cellAction, 0) // select act/go: confirmation
+	// A tap on "Ja" while the device has not painted the confirmation runs
+	// nothing and leaves the screen in place.
+	tapCell(t, s, dev, false, cellYes, 0)
 	if st := s.state[menuStateKey]; st.Menu.Phase != menuConfirmPhase {
 		t.Fatalf("menu state: %+v", st.Menu)
 	}
 	confirm := s.state[menuStateKey].Menu.ConfirmHash
-	// The "Nein" cell is the right third of the confirm screen.
 	if s.state[menuStateKey].Menu.find("act/go") == nil {
 		t.Fatal("action missing")
 	}
-	tapAt(t, s, dev, 330, 110, confirm) // "Nein"
+	tapAt(t, s, dev, 300, 110, confirm) // "Nein", the right half of the confirm screen
 	if st := s.state[menuStateKey]; st.Menu.Phase != menuListPhase {
 		t.Fatalf("Nein must return to the list: %+v", st.Menu)
 	}
 	// Confirming with a stale screen does nothing.
 	press(t, s, dev, buttonHome)
-	tapAt(t, s, dev, 130, 110, base) // "Ja" without the painted screen
+	tapAt(t, s, dev, 100, 110, base) // "Ja" without the painted screen
 	if len(p.runs) != 0 {
 		t.Fatalf("an unpainted yes ran the action: %v", p.runs)
 	}
@@ -146,11 +164,11 @@ func TestMenuScrollButtons(t *testing.T) {
 	if len(m.Actions) != 5 || m.Offset != 0 {
 		t.Fatalf("menu: %+v", m)
 	}
-	tapAt(t, s, dev, menuCellNextX, menuStripY, "")
+	tapCell(t, s, dev, true, cellNext, 0)
 	if got := s.state[menuStateKey].Menu; got.Offset != 2 || got.Selected != "act/a3" {
 		t.Fatalf("next page: %+v", got)
 	}
-	tapAt(t, s, dev, menuCellPrevX, menuStripY, "")
+	tapCell(t, s, dev, true, cellPrev, 0)
 	if got := s.state[menuStateKey].Menu; got.Offset != 0 || got.Selected != "act/a1" {
 		t.Fatalf("previous page: %+v", got)
 	}
@@ -163,10 +181,9 @@ func TestMenuWakeAfterTap(t *testing.T) {
 	press(t, s, dev, buttonHome)
 	// Opening the confirmation keeps the menu alive, so the deadline wake is
 	// scheduled; an action that runs closes it with a result instead.
-	out := tapAt(t, s, dev, menuCellA1X, 75, "")
+	out := tapCell(t, s, dev, false, cellAction, 0)
 	wake, ok := out["wake"].(map[string]any)
 	if !ok || wake["reason"] != "menu" {
 		t.Fatalf("tap wake: %v", out["wake"])
 	}
-	_ = time.Second
 }

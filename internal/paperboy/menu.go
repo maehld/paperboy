@@ -690,26 +690,25 @@ func controlKinds(count int, touch bool) []string {
 	return append(kinds, cellClose)
 }
 
-// stripCells lays the control strip out: the arrows sit on the left, the close
-// box on the right, each a sixth of the width and inset from the edge.
+// stripCells lays the control strip out as one compact group in the middle:
+// equal boxes with a gap between them, the close box last (ADR 0080).
 func stripCells(strip image.Rectangle, kinds []string) []menuCell {
 	cells := make([]menuCell, 0, len(kinds))
 	if strip.Empty() || len(kinds) == 0 {
 		return cells
 	}
-	w := max(24, min(strip.Dx()/6, strip.Dx()/4))
 	h := max(14, strip.Dy()-6)
+	w := min(strip.Dx()/6, max(26, h*2))
+	gap := max(4, w/3)
+	total := len(kinds)*w + (len(kinds)-1)*gap
+	x := strip.Min.X + max(3, (strip.Dx()-total)/2)
 	y := strip.Min.Y + 3
-	x := strip.Min.X + 3
-	for _, kind := range kinds {
-		var r image.Rectangle
-		if kind == cellClose {
-			r = image.Rect(strip.Max.X-3-w, y, strip.Max.X-3, y+h)
-		} else {
-			r = image.Rect(x, y, x+w, y+h)
-			x += w + 4
+	for i, kind := range kinds {
+		if i > 0 {
+			x += gap
 		}
-		cells = append(cells, menuCell{kind: kind, index: -1, rect: r})
+		cells = append(cells, menuCell{kind: kind, index: -1, rect: image.Rect(x, y, x+w, y+h)})
+		x += w
 	}
 	return cells
 }
