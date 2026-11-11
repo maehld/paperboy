@@ -77,6 +77,6 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0080](0080-device-state-per-mac.md) | Device state in a file per MAC | Accepted, implemented; supersedes the `devices.json` layout of ADR-0037 and the state move of ADR-0079 |
 | [0081](0081-plugin-state-over-the-protocol.md) | Plugin state and blobs over the protocol | Accepted, implemented; supersedes ADR-0065, amends the exact version match of ADR-0058 (newer versions are accepted) |
 | [0082](0082-menu-tap-controls-in-a-strip.md) | The menu's tap controls are their own strip | Proposed |
-| [0082](0082-device-address.md) | The address of a device in its state | Accepted, implemented |
-| [0083](0083-the-overview-links.md) | The overview links, the editors act | Accepted, implemented |
-| [0084](0084-moving-and-resizing-widgets.md) | Moving and resizing widgets with the pointer | Accepted, implemented |
+| [0083](0083-device-address.md) | The address of a device in its state | Accepted, implemented |
+| [0084](0084-the-overview-links.md) | The overview links, the editors act | Accepted, implemented |
+| [0085](0085-moving-and-resizing-widgets.md) | Moving and resizing widgets with the pointer | Accepted, implemented |

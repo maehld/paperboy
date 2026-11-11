@@ -273,7 +273,7 @@ for (const input of document.querySelectorAll('input[data-filter]')) {
 }
 
 // The New button asks for the name in a dialog; the form still submits as a
-// plain GET into the editor of the new object (ADR 0083).
+// plain GET into the editor of the new object (ADR 0084).
 for (const b of document.querySelectorAll('button[data-dialog]')) {
   b.addEventListener('click', () => {
     const d = document.getElementById(b.dataset.dialog);
@@ -295,7 +295,7 @@ for (const d of document.querySelectorAll('dialog')) {
 
 // A file that only the list can reach - a page variant that neither the row nor
 // the display type switch opens - keeps its Delete here; the other files are
-// deleted in their editor (ADR 0083). The confirmation names what still
+// deleted in their editor (ADR 0084). The confirmation names what still
 // references the file (ADR 0073).
 for (const b of document.querySelectorAll('button[data-delete]')) {
   b.addEventListener('click', async () => {
@@ -324,7 +324,7 @@ for (const b of document.querySelectorAll('button[data-delete]')) {
 
 // A row opens its object; links and buttons inside a row keep their own
 // meaning. Rename and Delete live in the editor of the object, so the list stays
-// a list of links (ADR 0083).
+// a list of links (ADR 0084).
 for (const row of document.querySelectorAll('tr[data-href]')) {
   row.addEventListener('click', (e) => {
     if (e.target.closest('a, button')) return;

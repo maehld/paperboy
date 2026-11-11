@@ -1,4 +1,4 @@
-# 0082: The address of a device in its state
+# 0083: The address of a device in its state
 
 - Status: Accepted
 - Date: 2026-11-11

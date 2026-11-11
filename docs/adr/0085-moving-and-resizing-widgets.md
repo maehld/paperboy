@@ -1,4 +1,4 @@
-# 0084: Moving and resizing widgets with the pointer
+# 0085: Moving and resizing widgets with the pointer
 
 - Status: Accepted
 - Date: 2026-11-11

@@ -85,7 +85,7 @@ type editorUnclaimed struct {
 	MAC       string
 	Hardware  string
 	Firmware  string
-	Address   string // source address of the last contact (ADR 0082)
+	Address   string // source address of the last contact (ADR 0083)
 	FirstSeen string
 	LastSeen  string
 	ClaimURL  string
@@ -109,7 +109,7 @@ type editorDeviceRow struct {
 	ID      string
 	Display string
 	MAC     string
-	Address string // source address of the last contact (ADR 0082)
+	Address string // source address of the last contact (ADR 0083)
 	Plan    string
 	Problem string // the file parses but cannot sync, e.g. a missing display type (ADR 0079)
 	Error   string

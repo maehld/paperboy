@@ -154,7 +154,7 @@ func validReportedPower(p string) error {
 // clientIP is the source address of a request, the address the device reaches
 // Paperboy from. It comes from the connection, never from a header: the device
 // API is reached directly, and a header would be content the caller chooses
-// (ADR 0082). A reverse proxy shows its own address instead.
+// (ADR 0083). A reverse proxy shows its own address instead.
 func clientIP(r *http.Request) string {
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host

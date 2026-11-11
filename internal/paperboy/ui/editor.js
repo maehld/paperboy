@@ -352,7 +352,7 @@
 
   // firstWidget names the first widget the palette offers for this display kind,
   // in the order the palette lists the plugins (the built-in header), so the
-  // widgets page opens with a preview instead of an error (ADR 0083).
+  // widgets page opens with a preview instead of an error (ADR 0084).
   function firstWidget() {
     const kind = text() ? 'text' : 'image';
     for (const p of state.plugins) {
@@ -465,7 +465,7 @@
 
   // startDrag begins moving a box (kind "move") or resizing it (kind "resize",
   // axis x, y or both). The grabbed point stays under the pointer, so a box
-  // does not jump when it is picked up in the middle (ADR 0084).
+  // does not jump when it is picked up in the middle (ADR 0085).
   function startDrag(e, i, kind, axis) {
     const t = state.template;
     const c = t && t.cells[i];
@@ -623,7 +623,7 @@
       cell.append(name, pos);
       // The body moves the box, an edge resizes it. The grabbed point stays
       // under the pointer, so the box does not jump when it is picked up in the
-      // middle (ADR 0084).
+      // middle (ADR 0085).
       cell.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
         startDrag(e, i, 'move');

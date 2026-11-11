@@ -8,7 +8,7 @@ import (
 )
 
 // TestClientIP reads the source address of a request off the connection, with
-// and without a port and for IPv4 and IPv6 (ADR 0082).
+// and without a port and for IPv4 and IPv6 (ADR 0083).
 func TestClientIP(t *testing.T) {
 	for _, tc := range []struct{ remote, want string }{
 		{"192.0.2.1:1234", "192.0.2.1"},
@@ -37,7 +37,7 @@ func registerFrom(t *testing.T, s *Server, remote, body string) *httptest.Respon
 
 // TestDeviceAddressIsShown stores the address of the last contact per MAC and
 // shows it on the dashboard, in the devices tab and for unclaimed hardware
-// (ADR 0082).
+// (ADR 0083).
 func TestDeviceAddressIsShown(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	dev := planDevice(t, s)

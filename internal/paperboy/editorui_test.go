@@ -114,7 +114,7 @@ func TestEditorPageRows(t *testing.T) {
 
 	body := request(t, s, http.MethodGet, "/ui/editor?display=small", nil, nil).Body.String()
 	for _, want := range []string{
-		// The row shows the variant of the selected type and opens it (ADR 0083).
+		// The row shows the variant of the selected type and opens it (ADR 0084).
 		"pages/solar.small.yaml",
 		`class="rowlink" data-href="/ui/editor/page?display=small&amp;name=solar"`,
 		// The other variant stays reachable and is marked as not shown.
@@ -174,7 +174,7 @@ func TestEditorTabs(t *testing.T) {
 }
 
 // TestEditorDeleteWarnings keeps the reference warnings in the editors (ADR
-// 0073) and keeps the list a list of links (ADR 0083).
+// 0073) and keeps the list a list of links (ADR 0084).
 func TestEditorDeleteWarnings(t *testing.T) {
 	s := planEditorServer(t)
 	s.config().Devices[0].Plan = "tour"
