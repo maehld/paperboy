@@ -6,6 +6,7 @@
 <meta http-equiv="refresh" content="{{if .Running}}3{{else}}60{{end}}">
 <title>Paperboy · Downloads</title>
 <link rel="stylesheet" href="/ui/ui.css">
+<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <style>
 a { color: #134e9c; }
 .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
@@ -30,7 +31,7 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 </head>
 <body>
 <header>
-  <h1>Paperboy</h1>
+  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
   <nav><a href="/ui">Devices</a> · <a class="active" href="/ui/downloads">Downloads</a> · <a href="/ui/plugins">Widgets</a> · <a href="/ui/editor">Editor</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
 </header>

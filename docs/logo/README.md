@@ -32,3 +32,10 @@ from `golang.org/x/image/font/gofont/gomonobold` with `font/sfnt`; if the wordma
 change, regenerate the path instead of setting it as text.
 
 The logo is part of the project and covered by `LICENSE`.
+
+## What the UI serves
+
+`internal/paperboy/ui/logo.svg` and `internal/paperboy/ui/favicon.svg` are the copies Paperboy
+embeds: the lockup in the header of every operator page and the small cut as its favicon. They are
+byte-for-byte copies of `paperboy-lockup.svg` and `paperboy-small.svg`; `TestOperatorPagesCarryTheLogo`
+in `internal/paperboy` fails when one of them drifts.

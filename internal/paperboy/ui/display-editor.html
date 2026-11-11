@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Name}} · Display type editor · Paperboy</title>
 <link rel="stylesheet" href="/ui/ui.css">
+<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <style>
 body { padding: 1.5rem 1.5rem 2rem; font-size: 15px; }
 a { color: #134e9c; }
@@ -31,7 +32,7 @@ pre.file { margin: 0; padding: .5rem .6rem; background: #f7f9fc; border: 1px sol
 </head>
 <body>
 <header>
-  <h1>Paperboy</h1>
+  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
   <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/plugins">Widgets</a> · <a class="active" href="/ui/editor">Editor</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
 </header>

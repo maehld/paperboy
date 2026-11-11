@@ -6,6 +6,7 @@
 <meta http-equiv="refresh" content="30">
 <title>Paperboy</title>
 <link rel="stylesheet" href="/ui/ui.css">
+<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <style>
 .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; display: flex; flex-direction: column; }
@@ -33,7 +34,7 @@ dd.oneline .muted { font-size: .78rem; }
 </head>
 <body>
 <header>
-  <h1>Paperboy</h1>
+  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
   <nav><a class="active" href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/plugins">Widgets</a> · <a href="/ui/editor">Editor</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
 </header>
