@@ -27,6 +27,7 @@
     template: null,
     readOnly: false,
     selected: -1,
+    drag: null, // {kind, i, axis, grab, at, span, start, moved} while a box moves or resizes
     placing: null, // {plugin, widget} waiting for a cell
     filter: '', // text of the palette filter
     collapsed: new Set(), // plugins whose widgets the palette hides
@@ -328,9 +329,9 @@
     renderBoard();
   }
 
-  // showWidget puts one widget into the widgets page's single cell, at the first
+  // setWidget puts one widget into the widgets page's single cell, at the first
   // size its plugin declares (the whole display for text).
-  function showWidget(plugin, widget) {
+  function setWidget(plugin, widget) {
     const info = widgetInfo(plugin, widget);
     let span = text()
       ? [state.width, state.height]
@@ -339,9 +340,27 @@
     span = [Math.max(1, Math.min(span[0], grid[0])), Math.max(1, Math.min(span[1], grid[1]))];
     state.template.cells = [{ at: [0, 0], span: span, widget: plugin + '/' + widget, args: {}, style: {} }];
     state.selected = 0;
+  }
+
+  function showWidget(plugin, widget) {
+    if (!state.template) return;
+    setWidget(plugin, widget);
     setStatus('');
     changed();
     renderPalette();
+  }
+
+  // firstWidget names the first widget the palette offers for this display kind,
+  // in the order the palette lists the plugins (the built-in header), so the
+  // widgets page opens with a preview instead of an error (ADR 0083).
+  function firstWidget() {
+    const kind = text() ? 'text' : 'image';
+    for (const p of state.plugins) {
+      const widgets = (p.description && p.description.widgets) || [];
+      const w = widgets.find((x) => !x.kinds || !x.kinds.length || x.kinds.includes(kind));
+      if (w) return { plugin: p.name, widget: w.widget };
+    }
+    return null;
   }
 
   function place(plugin, widget, x, y) {
@@ -389,31 +408,149 @@
     changed();
   }
 
-  // boardDrop handles every drop on the board: the cell under the pointer takes
-  // a widget from the palette, a dragged box moves there. The board itself is
-  // the target because the boxes lie over the slots and would swallow a drop
-  // that hits one of them.
+  // setSpan commits a new size of a placed box; it clamps to the grid and
+  // refuses a size that would cover another box.
+  function setSpan(i, w, h) {
+    const t = state.template;
+    const c = t && t.cells[i];
+    if (!c) return;
+    w = Math.max(1, Math.min(t.grid[0] - c.at[0], w));
+    h = Math.max(1, Math.min(t.grid[1] - c.at[1], h));
+    if (w === c.span[0] && h === c.span[1]) return;
+    if (overlaps(c.at[0], c.at[1], w, h, i)) {
+      setStatus('that size overlaps another widget', 'error');
+      return;
+    }
+    c.span = [w, h];
+    state.selected = i;
+    setStatus('');
+    changed();
+  }
+
+  // cellAt maps a pointer to the board cell under it, clamped to the grid.
+  function cellAt(e) {
+    const board = el('board');
+    const t = state.template;
+    if (!board || !t) return null;
+    const r = board.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    const x = Math.floor(((e.clientX - r.left) / r.width) * t.grid[0]);
+    const y = Math.floor(((e.clientY - r.top) / r.height) * t.grid[1]);
+    return { x: Math.max(0, Math.min(t.grid[0] - 1, x)), y: Math.max(0, Math.min(t.grid[1] - 1, y)) };
+  }
+
+  // selectCell marks one box without rebuilding the board, so a drag that has
+  // just started keeps its element (and its pointer capture).
+  function selectCell(i) {
+    state.selected = i;
+    const board = el('board');
+    if (board) {
+      for (const node of board.querySelectorAll('.cell')) {
+        node.classList.toggle('selected', Number(node.dataset.i) === i);
+      }
+    }
+    renderInspector();
+  }
+
+  // paintCell moves a box on the board while the pointer drags it; the model
+  // and the preview follow on pointerup.
+  function paintCell(i, at, span) {
+    const board = el('board');
+    const node = board && board.querySelector('.cell[data-i="' + i + '"]');
+    if (!node) return;
+    node.style.gridArea = (at[1] + 1) + ' / ' + (at[0] + 1) + ' / span ' + span[1] + ' / span ' + span[0];
+    const pos = node.querySelector('.pos');
+    if (pos) pos.textContent = at[0] + ',' + at[1] + ' · ' + span[0] + '×' + span[1];
+  }
+
+  // startDrag begins moving a box (kind "move") or resizing it (kind "resize",
+  // axis x, y or both). The grabbed point stays under the pointer, so a box
+  // does not jump when it is picked up in the middle (ADR 0084).
+  function startDrag(e, i, kind, axis) {
+    const t = state.template;
+    const c = t && t.cells[i];
+    if (!c || e.button !== 0) return;
+    const pos = cellAt(e);
+    if (!pos) return;
+    state.drag = {
+      kind: kind, i: i, axis: axis || '',
+      grab: [pos.x - c.at[0], pos.y - c.at[1]],
+      at: [c.at[0], c.at[1]], span: [c.span[0], c.span[1]],
+      start: [e.clientX, e.clientY], moved: false,
+    };
+    selectCell(i);
+    const node = e.currentTarget.closest('.cell');
+    if (node) {
+      node.classList.add('dragging');
+      try {
+        node.setPointerCapture(e.pointerId);
+      } catch (err) {
+        // the window listens as well; capture only makes fast drags smoother
+      }
+    }
+    window.addEventListener('pointermove', dragMove);
+    window.addEventListener('pointerup', dragEnd);
+    window.addEventListener('pointercancel', dragEnd);
+    e.preventDefault();
+  }
+
+  function dragMove(e) {
+    const d = state.drag;
+    const t = state.template;
+    const c = d && t && t.cells[d.i];
+    if (!d || !c) return;
+    if (!d.moved && Math.abs(e.clientX - d.start[0]) + Math.abs(e.clientY - d.start[1]) < 3) return;
+    const pos = cellAt(e);
+    if (!pos) return;
+    if (d.kind === 'move') {
+      const at = [
+        Math.max(0, Math.min(t.grid[0] - c.span[0], pos.x - d.grab[0])),
+        Math.max(0, Math.min(t.grid[1] - c.span[1], pos.y - d.grab[1])),
+      ];
+      if (overlaps(at[0], at[1], c.span[0], c.span[1], d.i)) return;
+      if (at[0] === d.at[0] && at[1] === d.at[1]) return;
+      d.moved = true;
+      d.at = at;
+      paintCell(d.i, at, c.span);
+      return;
+    }
+    let w = d.span[0], h = d.span[1];
+    if (d.axis !== 'y') w = pos.x - c.at[0] + 1;
+    if (d.axis !== 'x') h = pos.y - c.at[1] + 1;
+    w = Math.max(1, Math.min(t.grid[0] - c.at[0], w));
+    h = Math.max(1, Math.min(t.grid[1] - c.at[1], h));
+    if (overlaps(c.at[0], c.at[1], w, h, d.i)) return;
+    if (w === d.span[0] && h === d.span[1]) return;
+    d.moved = true;
+    d.span = [w, h];
+    paintCell(d.i, c.at, d.span);
+  }
+
+  function dragEnd() {
+    window.removeEventListener('pointermove', dragMove);
+    window.removeEventListener('pointerup', dragEnd);
+    window.removeEventListener('pointercancel', dragEnd);
+    const d = state.drag;
+    state.drag = null;
+    const board = el('board');
+    const node = board && board.querySelector('.cell.dragging');
+    if (node) node.classList.remove('dragging');
+    if (!d || !d.moved) return;
+    if (d.kind === 'move') moveCell(d.i, d.at[0], d.at[1]);
+    else setSpan(d.i, d.span[0], d.span[1]);
+  }
+
+  // boardDrop places a widget that was dragged out of the palette: the cell
+  // under the pointer is the top-left corner of the new box.
   function boardDrop(e) {
     e.preventDefault();
     const t = state.template;
-    const board = el('board');
-    if (!t || !board) return;
-    const r = board.getBoundingClientRect();
-    if (!r.width || !r.height) return;
-    const x = Math.floor(((e.clientX - r.left) / r.width) * t.grid[0]);
-    const y = Math.floor(((e.clientY - r.top) / r.height) * t.grid[1]);
-    const at = [
-      Math.max(0, Math.min(t.grid[0] - 1, x)),
-      Math.max(0, Math.min(t.grid[1] - 1, y)),
-    ];
+    if (!t) return;
+    const pos = cellAt(e);
+    if (!pos) return;
     const id = e.dataTransfer.getData('text/plain');
-    const moved = /^cell:(\d+)$/.exec(id);
-    if (moved) {
-      moveCell(Number(moved[1]), at[0], at[1]);
-      return;
-    }
     const [plugin, widget] = id.split('/');
-    if (plugin && widget) place(plugin, widget, at[0], at[1]);
+    if (plugin && widget) place(plugin, widget, pos.x, pos.y);
   }
 
   // ---- board ----
@@ -475,6 +612,7 @@
     t.cells.forEach((c, i) => {
       const cell = document.createElement('div');
       cell.className = 'cell' + (i === state.selected ? ' selected' : '');
+      cell.dataset.i = String(i);
       cell.style.gridArea = (c.at[1] + 1) + ' / ' + (c.at[0] + 1) + ' / span ' + c.span[1] + ' / span ' + c.span[0];
       const name = document.createElement('span');
       name.className = 'w';
@@ -483,16 +621,27 @@
       pos.className = 'pos';
       pos.textContent = c.at[0] + ',' + c.at[1] + ' · ' + c.span[0] + '×' + c.span[1];
       cell.append(name, pos);
-      cell.addEventListener('click', (e) => {
+      // The body moves the box, an edge resizes it. The grabbed point stays
+      // under the pointer, so the box does not jump when it is picked up in the
+      // middle (ADR 0084).
+      cell.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
-        select(i);
+        startDrag(e, i, 'move');
       });
-      // A box is dragged onto another cell, where the board's drop moves it.
-      cell.draggable = !state.placing;
-      cell.addEventListener('dragstart', (e) => {
-        e.dataTransfer.setData('text/plain', 'cell:' + i);
-        e.dataTransfer.effectAllowed = 'move';
-      });
+      for (const [axis, cls, label] of [
+        ['x', 'handle-x', 'Drag to change the width'],
+        ['y', 'handle-y', 'Drag to change the height'],
+        ['both', 'handle-xy', 'Drag to resize'],
+      ]) {
+        const handle = document.createElement('span');
+        handle.className = 'handle ' + cls;
+        handle.title = label;
+        handle.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          startDrag(e, i, 'resize', axis);
+        });
+        cell.appendChild(handle);
+      }
       board.appendChild(cell);
     });
     let used = 0;
@@ -1076,8 +1225,9 @@
     renderAll();
   }
 
-  // loadWidgetsPage starts the widgets page: one cell, filled from the link when
-  // it names a widget.
+  // loadWidgetsPage starts the widgets page: it fills the single cell from the
+  // link when it names a widget, else with the first fitting widget, so the
+  // preview never opens on an error.
   function loadWidgetsPage() {
     state.template = blank();
     state.fileDisplay = '';
@@ -1088,7 +1238,7 @@
     if (start.widget) {
       const [plugin, widget] = String(start.widget).split('/');
       if (plugin && widget) {
-        showWidget(plugin, widget);
+        setWidget(plugin, widget);
         const c = state.template.cells[0];
         const info = widgetInfo(plugin, widget);
         const known = (info && info.args) || {};
@@ -1098,8 +1248,12 @@
           c.span = [Math.max(1, Math.min(start.span[0], grid[0])), Math.max(1, Math.min(start.span[1], grid[1]))];
         }
       }
+    } else {
+      const first = firstWidget();
+      if (first) setWidget(first.plugin, first.widget);
     }
     renderAll();
+    updateURL();
   }
 
   async function save() {

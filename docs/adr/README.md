@@ -79,3 +79,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0082](0082-menu-tap-controls-in-a-strip.md) | The menu's tap controls are their own strip | Proposed |
 | [0082](0082-device-address.md) | The address of a device in its state | Accepted, implemented |
 | [0083](0083-the-overview-links.md) | The overview links, the editors act | Accepted, implemented |
+| [0084](0084-moving-and-resizing-widgets.md) | Moving and resizing widgets with the pointer | Accepted, implemented |
