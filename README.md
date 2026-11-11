@@ -69,6 +69,8 @@ download:
   interval: 24h                              # optional: between checks, at least 1h
 ```
 
+The key alone is enough: a bare `download:` uses the official source and checks every 24 h. Without the section the checks stay off.
+
 - It runs at startup and then after `interval` (default 24 h), in the background; the *Downloads* page (`/ui/downloads`) has a **Check now** button that starts a check at once. An instance without internet keeps working as before, and nothing else needs the section.
 - **Plugins**: a configured plugin whose program is missing gets the newest one as `plugins/<plugin>-v<version>` (`weather-v1.4.0`, `weather-v1.4.0.exe` on Windows). A downloaded program is updated when the plugin zip ships a higher version of that plugin — an unchanged plugin is left alone, however many releases pass (ADR 0075). The old file stays and only that plugin restarts. A `version` pin in the plugin section names a plugin version (`v1.4.0`) and is never moved.
 - **Firmware**: every image of the bundle lands in `firmware/<hardware>-v<version>.bin` (ADR 0061); a `firmware.version` pin picks the release that carries exactly that image, which is also how a rollback is pinned. Devices are still only offered an update with `firmware.update: auto`.
