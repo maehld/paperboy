@@ -195,11 +195,15 @@ func writeStateFile(path string, data []byte) error {
 }
 
 // unclaimedDevice is a state file whose MAC no device file uses: hardware that
-// registered but was never claimed (ADR 0080).
+// registered but was never claimed (ADR 0080). The fields are copies, so a
+// caller can show them without the state lock.
 type unclaimedDevice struct {
-	Key   string
-	MAC   string
-	State *deviceState
+	Key       string
+	MAC       string
+	Hardware  string
+	Firmware  string
+	FirstSeen time.Time
+	LastSeen  time.Time
 }
 
 // unclaimedDevices lists the state entries that no configured device owns,
@@ -215,7 +219,8 @@ func (s *Server) unclaimedDevices(cfg *Config) []unclaimedDevice {
 		if used[key] {
 			continue
 		}
-		out = append(out, unclaimedDevice{Key: key, MAC: formatStateKey(key), State: st})
+		out = append(out, unclaimedDevice{Key: key, MAC: formatStateKey(key),
+			Hardware: st.Hardware, Firmware: st.Firmware, FirstSeen: st.FirstSeen, LastSeen: st.LastSeen})
 	}
 	s.mu.Unlock()
 	sort.Slice(out, func(i, j int) bool { return out[i].MAC < out[j].MAC })

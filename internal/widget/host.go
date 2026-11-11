@@ -21,6 +21,8 @@ import (
 	"image"
 	"image/png"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -87,6 +89,7 @@ type Host struct {
 	failing  map[string]time.Time   // plugin -> no new request before
 	changes  map[string]int         // plugin -> number of "changed" events
 	mismatch map[string]bool        // plugin -> version mismatch already logged
+	blobNote map[string]bool        // plugin -> undeclared blobs already logged
 	builtMu  sync.Mutex
 	builtCfg map[string]bool
 }
@@ -445,7 +448,41 @@ func (h *Host) Describe(ctx context.Context, name string) (*plugin.Description, 
 	if reported := msg.Description.Version; reported != "" && spec.Version != "" && "v"+reported != spec.Version {
 		h.versionMismatch(name, spec.Version, reported)
 	}
+	h.checkBlobs(spec, msg.Description.Blobs)
 	return msg.Description, nil
+}
+
+// checkBlobs names files in the plugin's blobs directory once that its describe
+// answer does not declare, so a renamed blob does not linger unnoticed. Nothing
+// is deleted (ADR 0081).
+func (h *Host) checkBlobs(spec Spec, declared []string) {
+	if spec.StateDir == "" {
+		return
+	}
+	h.mu.Lock()
+	if h.blobNote == nil {
+		h.blobNote = map[string]bool{}
+	}
+	if h.blobNote[spec.Name] {
+		h.mu.Unlock()
+		return
+	}
+	h.blobNote[spec.Name] = true
+	h.mu.Unlock()
+	known := make(map[string]bool, len(declared))
+	for _, name := range declared {
+		known[name] = true
+	}
+	entries, err := os.ReadDir(filepath.Join(spec.StateDir, blobsDirName))
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() && !known[e.Name()] {
+			slog.Warn("plugin blob is not declared by describe; remove it by hand when it is stale",
+				"plugin", spec.Name, "name", e.Name())
+		}
+	}
 }
 
 // versionMismatch logs once per plugin that the version a program reports

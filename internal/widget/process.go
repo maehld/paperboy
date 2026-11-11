@@ -255,8 +255,8 @@ func (p *process) loadState() (json.RawMessage, map[string][]byte) {
 		switch {
 		case len(data) > maxStateBytes:
 			slog.Warn("ignoring plugin state that is too large", "plugin", p.spec.Name, "file", path)
-		case !json.Valid(data):
-			slog.Warn("ignoring plugin state that is not JSON", "plugin", p.spec.Name, "file", path)
+		case !validStateObject(data):
+			slog.Warn("ignoring plugin state that is not a JSON object", "plugin", p.spec.Name, "file", path)
 		default:
 			state = data
 		}
@@ -304,8 +304,8 @@ func (p *process) storeState(m *plugin.Message) {
 			if err := os.Remove(filepath.Join(dir, stateFileName)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				slog.Warn("forgetting plugin state", "plugin", p.spec.Name, "error", err)
 			}
-		case !json.Valid(data):
-			slog.Warn("ignoring plugin state that is not JSON", "plugin", p.spec.Name)
+		case !validStateObject(data):
+			slog.Warn("ignoring plugin state that is not a JSON object", "plugin", p.spec.Name)
 		case len(data) > maxStateBytes:
 			slog.Warn("ignoring plugin state that is too large", "plugin", p.spec.Name, "bytes", len(data))
 		default:
@@ -326,10 +326,44 @@ func (p *process) storeState(m *plugin.Message) {
 			slog.Warn("ignoring a plugin blob that is too large", "plugin", p.spec.Name, "name", name, "bytes", len(data))
 			continue
 		}
+		if !p.blobRoom(name) {
+			slog.Warn("ignoring a plugin blob beyond the limit", "plugin", p.spec.Name, "name", name, "limit", maxBlobs)
+			continue
+		}
 		if err := writeStateFile(filepath.Join(dir, blobsDirName, name), data); err != nil {
 			slog.Warn("storing a plugin blob", "plugin", p.spec.Name, "name", name, "error", err)
 		}
 	}
+}
+
+// validStateObject reports whether data can be stored as plugin state: a JSON
+// object, or null to forget it (ADR 0081).
+func validStateObject(data []byte) bool {
+	trimmed := bytes.TrimSpace(data)
+	if !json.Valid(trimmed) {
+		return false
+	}
+	return len(trimmed) > 0 && (trimmed[0] == '{' || string(trimmed) == "null")
+}
+
+// blobRoom reports whether one more blob fits: an existing name may always be
+// replaced, a new one needs a free slot (ADR 0081).
+func (p *process) blobRoom(name string) bool {
+	dir := filepath.Join(p.spec.StateDir, blobsDirName)
+	if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+		return true
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return true
+	}
+	count := 0
+	for _, e := range entries {
+		if !e.IsDir() && validBlobName(e.Name()) {
+			count++
+		}
+	}
+	return count < maxBlobs
 }
 
 // validBlobName accepts the names Paperboy stores below blobs/: lower case

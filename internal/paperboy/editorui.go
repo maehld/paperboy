@@ -521,8 +521,8 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, u := range s.unclaimedDevices(cfg) {
 		v.Unclaimed = append(v.Unclaimed, editorUnclaimed{
-			MAC: u.MAC, Hardware: u.State.Hardware, Firmware: u.State.Firmware,
-			FirstSeen: editorTime(cfg, u.State.FirstSeen), LastSeen: editorTime(cfg, u.State.LastSeen),
+			MAC: u.MAC, Hardware: u.Hardware, Firmware: u.Firmware,
+			FirstSeen: editorTime(cfg, u.FirstSeen), LastSeen: editorTime(cfg, u.LastSeen),
 			ClaimURL:  "/ui/editor/device?" + url.Values{"new": {"1"}, "id": {suggestDeviceID(u)}, "mac": {u.MAC}}.Encode(),
 			ForgetURL: "/api/state/devices/" + url.PathEscape(u.MAC),
 		})
@@ -774,7 +774,7 @@ func editorTime(cfg *Config, t time.Time) string {
 // "sticky-ee99". The new-device form lets the operator change it.
 func suggestDeviceID(u unclaimedDevice) string {
 	var b strings.Builder
-	for _, r := range strings.ToLower(u.State.Hardware) {
+	for _, r := range strings.ToLower(u.Hardware) {
 		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' {
 			b.WriteRune(r)
 		}

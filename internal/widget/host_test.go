@@ -89,10 +89,17 @@ func fakePlugin(mode string) {
 			png.Encode(&buf, image.NewGray(image.Rect(0, 0, width, w.Height)))
 			msg.Widgets = append(msg.Widgets, plugin.Result{PNG: buf.Bytes()})
 		}
-		if mode == "state" {
+		switch mode {
+		case "state":
 			raw := json.RawMessage(`{"n":1}`)
 			msg.State = &raw
 			msg.Blobs = map[string][]byte{"render.png": []byte("png")}
+		case "badstate":
+			raw := json.RawMessage(`[1,2]`)
+			msg.State = &raw
+			msg.Blobs = map[string][]byte{"../evil": []byte("x")}
+		case "manyblobs":
+			msg.Blobs = map[string][]byte{"a.png": []byte("a"), "b.png": []byte("b"), "c.png": []byte("c"), "d.png": []byte("d"), "e.png": []byte("e")}
 		}
 		enc.Encode(msg)
 		if mode == "changed" {
@@ -327,6 +334,53 @@ func TestHostKeepsPluginState(t *testing.T) {
 	}
 	if data, err := os.ReadFile(blobs); err != nil || string(data) != "render.png=png" {
 		t.Fatalf("blobs after the restart: %q (%v)", data, err)
+	}
+}
+
+func TestHostIgnoresUnusableState(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state", "fake")
+	specs := newFake(t).spec("badstate")
+	s := specs["fake"]
+	s.StateDir = dir
+	specs["fake"] = s
+	h := newHost(t, specs)
+	if out := h.Fetch(context.Background(), batch(w("fake", "a", 10, 5))); out[0].Err != nil {
+		t.Fatalf("the widget must still render: %v", out[0].Err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "state.json")); !os.IsNotExist(err) {
+		t.Fatalf("state that is no object was stored: %v", err)
+	}
+	if entries, err := os.ReadDir(filepath.Join(dir, "blobs")); err == nil && len(entries) > 0 {
+		t.Fatalf("a blob with an unsafe name was stored: %v", entries)
+	}
+}
+
+func TestHostLimitsBlobs(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state", "fake")
+	specs := newFake(t).spec("manyblobs")
+	s := specs["fake"]
+	s.StateDir = dir
+	specs["fake"] = s
+	h := newHost(t, specs)
+	if out := h.Fetch(context.Background(), batch(w("fake", "a", 10, 5))); out[0].Err != nil {
+		t.Fatal(out[0].Err)
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, "blobs"))
+	if err != nil || len(entries) != maxBlobs {
+		t.Fatalf("blobs stored: %d (%v)", len(entries), err)
+	}
+}
+
+func TestValidStateObject(t *testing.T) {
+	for _, ok := range []string{`{}`, ` {"a":1} `, `null`} {
+		if !validStateObject([]byte(ok)) {
+			t.Fatalf("%q is state", ok)
+		}
+	}
+	for _, bad := range []string{``, `{`, `[1]`, `"x"`, `1`} {
+		if validStateObject([]byte(bad)) {
+			t.Fatalf("%q is no state object", bad)
+		}
 	}
 }
 
