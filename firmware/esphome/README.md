@@ -43,13 +43,22 @@ image dominated. A plain GET of the same page took 34–61 ms while the same byt
 through `online_image` took 2.6 s whatever their size, and QOI through it still
 took 2.26 s: the per-pixel work of ESPHome's decoders was the cost, not the
 transfer or the format (the frame is always 800×480). The firmware therefore
-fetches the page itself (`http_request.get` into a 96 KiB buffer) and decodes it
-into the panel buffer with `pb_paint_qoi_gray4`/`pb_paint_qoi_dithered`
-(ADR 0072); `online_image` and its 384 KB image buffer are gone. Together with
+fetches the page itself (`http_request.get` into a 512 KiB buffer in PSRAM) and
+decodes it into the panel buffer with `pb_paint_qoi_gray4`/`pb_paint_qoi_dithered`
+(ADR 0072, 0088); `online_image` and its 384 KB image buffer are gone. Together with
 `fast_connect` (saves BSSID and channel, no scan before every wake) a page
 change is now: Wi-Fi 1.2 s, sync 0.1 s, image 0.07–0.11 s, paint 2.0 s — 3.7 s
 from a battery wake instead of 9.5 s, and the panel refresh is 90 % of it. The
 page travels as QOI, 22–50 KB for a four-level 800×480 page.
+
+The buffer is a compile-time constant and 512 KiB big, since the boards have
+8 MB PSRAM and the firmware reads the answer into it before painting. A page of
+Paperboy's palette costs at most one QOI byte per pixel, so even an 800×480 page
+of alternating black and white (the worst case, measured 384 KB) fits; Paperboy
+keeps its own `qoiLimit` in step and only has to simplify a page for a display
+with many more pixels (ADR 0088). The response is moved into `pb_page_qoi`
+(`std::move(body)`), which keeps the peak at twice the buffer: the raw read
+buffer plus the string.
 
 Only one cycle runs at a time. A second trigger — the flash-restored Paperboy
 URL at boot used to start one while `on_boot` was already running the cycle —

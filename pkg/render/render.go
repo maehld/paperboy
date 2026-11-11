@@ -225,8 +225,14 @@ func Segment(img *image.Paletted, x0, y0, x1, y1, thickness int, dashed bool) {
 }
 
 // Fill fills a rectangle with one of the shared fill styles: "solid",
-// "hatch", "shade" (the default; light gray, or a checkerboard on 1-bit
+// "hatch", "shade" (the default; light gray, or every other row on 1-bit
 // panels) or "none".
+//
+// Both patterns are rows on purpose: a page travels to the device as QOI
+// (ADR 0072), and a diagonal dot grid or a checkerboard costs almost a byte
+// per pixel there, while a whole row of one colour becomes a run (ADR 0088).
+// The ink coverage is the same as before: a quarter of the pixels for "hatch",
+// half of them for "shade".
 func Fill(img *image.Paletted, r image.Rectangle, style string) {
 	r = r.Intersect(img.Rect)
 	if r.Empty() {
@@ -238,24 +244,16 @@ func Fill(img *image.Paletted, r image.Rectangle, style string) {
 	case "solid":
 		FillSolid(img, r)
 	case "hatch":
-		for y := r.Min.Y; y < r.Max.Y; y++ {
-			for x := r.Min.X; x < r.Max.X; x++ {
-				if (x+y)%4 == 0 {
-					img.SetColorIndex(x, y, 0)
-				}
-			}
+		for y := r.Min.Y; y < r.Max.Y; y += 4 {
+			FillSolid(img, image.Rect(r.Min.X, y, r.Max.X, y+1))
 		}
 	case "", "shade":
 		if len(img.Palette) >= 4 {
 			draw.Draw(img, r, image.NewUniform(LightGray), image.Point{}, draw.Src)
 			return
 		}
-		for y := r.Min.Y; y < r.Max.Y; y++ {
-			for x := r.Min.X; x < r.Max.X; x++ {
-				if (x+y)%2 == 0 {
-					img.SetColorIndex(x, y, 0)
-				}
-			}
+		for y := r.Min.Y; y < r.Max.Y; y += 2 {
+			FillSolid(img, image.Rect(r.Min.X, y, r.Max.X, y+1))
 		}
 	}
 }

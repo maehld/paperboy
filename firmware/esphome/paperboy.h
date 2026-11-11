@@ -415,10 +415,11 @@ inline int pb_qoi_level(uint8_t r, uint8_t g, uint8_t b) {
   return pb_level(static_cast<uint8_t>((r * 77 + g * 150 + b * 29) >> 8));
 }
 
-// A complete QOI stream, parsed without painting. The response buffer is
-// limited (96 KiB), and http_request truncates a larger answer, which would
-// leave half a page on the panel: the caller validates first and keeps the old
-// picture instead.
+// A complete QOI stream, parsed without painting. The response buffer is a
+// fixed size (max_response_buffer_size in common.yaml, 512 KiB), and
+// http_request truncates a larger answer, which would leave half a page on the
+// panel: the caller validates first and keeps the old picture instead. Paperboy
+// keeps every page below that buffer (ADR 0088), so this is the last resort.
 inline bool pb_qoi_valid(const std::string &data) {
   return pb_qoi_each(data, [](int, int, uint8_t, uint8_t, uint8_t) {});
 }

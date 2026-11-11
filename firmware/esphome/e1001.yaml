@@ -17,7 +17,7 @@
 
 substitutions:
   hardware: e1001
-  fw_version: "2.4.1"
+  fw_version: "2.4.2"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
   # Initial option of the LUT mode select; the device remembers a change.

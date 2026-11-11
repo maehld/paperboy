@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"image"
 	"image/color"
+	"slices"
 )
 
 // QOI chunk tags (https://qoiformat.org/qoi-specification.pdf).
@@ -100,4 +101,64 @@ func qoiColor(c color.Color) color.RGBA {
 	}
 	unpremultiply := func(v uint32) uint8 { return uint8((v * 0xffff / a) >> 8) }
 	return color.RGBA{unpremultiply(r), unpremultiply(g), unpremultiply(b), uint8(a >> 8)}
+}
+
+// qoiResult is a page as QOI within the firmware's response buffer (ADR 0088).
+type qoiResult struct {
+	data []byte
+	// note names the reduction, empty when the page was encoded losslessly.
+	note string
+	// fits is false when the page is still larger than the buffer, which the
+	// firmware answers by keeping its old picture.
+	fits bool
+}
+
+// qoiWithin encodes a page for the firmware and keeps it below limit bytes
+// (ADR 0088). The firmware reads an answer into a fixed buffer and truncates
+// anything above it, so a larger page loses its dither pattern instead: a 3x3
+// median keeps text, rules and fills and flattens the noise, which is what
+// makes such a page large. The buffer is sized so that every page of the
+// shipped panels fits without this (one QOI byte per pixel at worst), so it
+// only guards a display type with many more pixels.
+func qoiWithin(img image.Image, limit int) qoiResult {
+	if data := encodeQOI(img); len(data) <= limit {
+		return qoiResult{data: data, fits: true}
+	}
+	p, ok := img.(*image.Paletted)
+	if !ok {
+		return qoiResult{data: encodeQOI(img)}
+	}
+	for pass := 1; pass <= 2; pass++ {
+		p = median(p)
+		if data := encodeQOI(p); len(data) <= limit {
+			return qoiResult{data: data, note: "without dither", fits: true}
+		}
+	}
+	return qoiResult{data: encodeQOI(p), note: "without dither"}
+}
+
+// median replaces every pixel with the median of its 3x3 neighbourhood. A page
+// palette runs from black to white, so that is the median gray: it removes the
+// single-pixel pattern of dithering and keeps edges, thin lines and fills.
+func median(src *image.Paletted) *image.Paletted {
+	b := src.Bounds()
+	out := image.NewPaletted(b, src.Palette)
+	var window [9]uint8
+	at := func(x, y int) uint8 {
+		return src.Pix[src.PixOffset(min(max(x, b.Min.X), b.Max.X-1), min(max(y, b.Min.Y), b.Max.Y-1))]
+	}
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			i := 0
+			for dy := -1; dy <= 1; dy++ {
+				for dx := -1; dx <= 1; dx++ {
+					window[i] = at(x+dx, y+dy)
+					i++
+				}
+			}
+			slices.Sort(window[:])
+			out.Pix[out.PixOffset(x, y)] = window[4]
+		}
+	}
+	return out
 }
