@@ -67,7 +67,8 @@ type menuState struct {
 	Open        bool         `json:"open,omitempty"`
 	Phase       string       `json:"phase,omitempty"` // list, confirm, running, result
 	Selected    string       `json:"selected,omitempty"`
-	Offset      int          `json:"offset,omitempty"` // first visible action
+	CloseSel    bool         `json:"close_selected,omitempty"` // the close box of the control strip has the selection
+	Offset      int          `json:"offset,omitempty"`         // first visible action
 	Session     int          `json:"session,omitempty"`
 	ConfirmHash string       `json:"confirm_hash,omitempty"` // hash of the served confirmation screen
 	Screen      string       `json:"screen,omitempty"`       // hash of the last served menu screen
@@ -146,11 +147,19 @@ func (m *menuState) stale(acts []plan.PlanAction) bool {
 	return true
 }
 
-// move changes the selection by delta, wrapping. It also scrolls so that the
-// selection stays visible.
-func (m *menuState) move(delta int) {
+// move walks the selection and scrolls so that it stays visible. On a touch
+// device the close box sits behind the last action, so `next` past the end
+// reaches it and `previous` returns (ADR 0080); without the control strip the
+// list simply wraps.
+func (m *menuState) move(delta int, touch bool) {
 	n := len(m.Actions)
 	if n == 0 {
+		return
+	}
+	if m.CloseSel {
+		if delta < 0 {
+			m.CloseSel = false
+		}
 		return
 	}
 	i := 0
@@ -158,6 +167,10 @@ func (m *menuState) move(delta int) {
 		if m.Actions[j].Key == m.Selected {
 			i = j
 		}
+	}
+	if touch && delta > 0 && i == n-1 {
+		m.CloseSel = true
+		return
 	}
 	i = ((i+delta)%n + n) % n
 	m.Selected = m.Actions[i].Key
@@ -184,6 +197,7 @@ type menuInput struct {
 	buttons []string // roles in order
 	holds   []int    // hold_ms of the matching buttons
 	shown   string   // hash the device painted last
+	touch   bool     // the device draws the tap-only control strip (ADR 0080)
 }
 
 // tap applies one touch inside the overlay (ADR 0057, issue #54). It returns
@@ -191,12 +205,11 @@ type menuInput struct {
 // overlay, or in a cell that the current phase does not have, is ignored.
 // The geometry is derived from the phase and the display, so a tap always
 // hits the cells Paperboy last drew for that state.
-func (m *menuState) tap(x, y int, p Profile, shown string, now time.Time) *menuAction {
+func (m *menuState) tap(x, y int, p Profile, touch bool, shown string, now time.Time) *menuAction {
 	if !m.Open {
 		return nil
 	}
-	kinds := menuKinds(m.Phase, len(m.Actions))
-	cells, _, overlay := menuCells(p, kinds, m.Phase != menuListPhase)
+	actions, controls, _, overlay := menuLayout(p, m.Phase, len(m.Actions), touch, m.Phase != menuListPhase)
 	at := image.Pt(x, y)
 	if !at.In(overlay) {
 		return nil
@@ -210,7 +223,7 @@ func (m *menuState) tap(x, y int, p Profile, shown string, now time.Time) *menuA
 		m.close()
 		return nil
 	}
-	for i, c := range cells {
+	for _, c := range append(actions, controls...) {
 		if !at.In(c.rect) {
 			continue
 		}
@@ -239,12 +252,13 @@ func (m *menuState) tap(x, y int, p Profile, shown string, now time.Time) *menuA
 			if m.Phase != menuListPhase {
 				return nil
 			}
-			idx := m.Offset + i - 1
+			idx := m.Offset + c.index
 			if idx < 0 || idx >= len(m.Actions) {
 				return nil
 			}
 			a := &m.Actions[idx]
 			m.Selected = a.Key
+			m.CloseSel = false
 			m.reveal(idx)
 			if a.Disabled != "" || !m.Resolved {
 				return nil
@@ -330,13 +344,19 @@ func (m *menuState) applyInput(in menuInput, acts []plan.PlanAction, now time.Ti
 			case buttonNext:
 				// Long presses are ignored inside the menu (ADR 0067).
 				if !held(hold(in.holds, i)) {
-					m.move(1)
+					m.move(1, in.touch)
 				}
 			case buttonPrevious:
 				if !held(hold(in.holds, i)) {
-					m.move(-1)
+					m.move(-1, in.touch)
 				}
 			case buttonHome:
+				// The close box of the control strip has the selection: home
+				// dismisses the menu instead of running an action (ADR 0080).
+				if m.CloseSel {
+					m.close()
+					return nil
+				}
 				// The first home only opens the menu: the plugin state of the
 				// actions is resolved after this step, so an action can never
 				// run without the user having seen its cell.
@@ -616,16 +636,10 @@ func bannerRect(p Profile) image.Rectangle {
 
 // menuCells splits the top half into equal cells. header reserves a strip for
 // the confirmation or result text.
-func menuCells(p Profile, kinds []string, header bool) (cells []menuCell, headerRect, overlay image.Rectangle) {
-	overlay = overlayRect(p)
-	area := overlay
-	if header {
-		h := max(18, overlay.Dy()/4)
-		headerRect = image.Rect(overlay.Min.X, overlay.Min.Y, overlay.Max.X, overlay.Min.Y+h)
-		area = image.Rect(overlay.Min.X, headerRect.Max.Y, overlay.Max.X, overlay.Max.Y)
-	}
+// rowCells splits area into equal columns (landscape) or rows (portrait).
+func rowCells(area image.Rectangle, portrait bool, kinds []string) []menuCell {
+	cells := make([]menuCell, 0, len(kinds))
 	n := max(len(kinds), 1)
-	portrait := p.Height > p.Width
 	for i, kind := range kinds {
 		var r image.Rectangle
 		if portrait {
@@ -641,9 +655,84 @@ func menuCells(p Profile, kinds []string, header bool) (cells []menuCell, header
 				r.Max.X = area.Max.X
 			}
 		}
+		cells = append(cells, menuCell{kind: kind, index: i, rect: r})
+	}
+	return cells
+}
+
+// actionKinds returns the cells of the action row for one phase.
+func actionKinds(phase string) []string {
+	switch phase {
+	case menuConfirmPhase:
+		// Yes and no only: a close box would be the same as "no".
+		return []string{cellYes, cellNo}
+	case menuRunningPhase, menuResultPhase, menuEmptyPhase:
+		return nil // drawn as a banner, no cells
+	}
+	kinds := make([]string, menuPerPage)
+	for i := range kinds {
+		kinds[i] = cellAction
+	}
+	return kinds
+}
+
+// controlKinds returns the buttons of the strip under the action row. It only
+// exists for devices whose digitiser is turned on: the strip is meant to be
+// tapped, and a dead button is worse than none (ADR 0080).
+func controlKinds(count int, touch bool) []string {
+	if !touch {
+		return nil
+	}
+	kinds := make([]string, 0, 3)
+	if count > menuPerPage {
+		kinds = append(kinds, cellPrev, cellNext)
+	}
+	return append(kinds, cellClose)
+}
+
+// stripCells lays the control strip out: the arrows sit on the left, the close
+// box on the right, each a sixth of the width and inset from the edge.
+func stripCells(strip image.Rectangle, kinds []string) []menuCell {
+	cells := make([]menuCell, 0, len(kinds))
+	if strip.Empty() || len(kinds) == 0 {
+		return cells
+	}
+	w := max(24, min(strip.Dx()/6, strip.Dx()/4))
+	h := max(14, strip.Dy()-6)
+	y := strip.Min.Y + 3
+	x := strip.Min.X + 3
+	for _, kind := range kinds {
+		var r image.Rectangle
+		if kind == cellClose {
+			r = image.Rect(strip.Max.X-3-w, y, strip.Max.X-3, y+h)
+		} else {
+			r = image.Rect(x, y, x+w, y+h)
+			x += w + 4
+		}
 		cells = append(cells, menuCell{kind: kind, index: -1, rect: r})
 	}
-	return cells, headerRect, overlay
+	return cells
+}
+
+// menuLayout computes the cells of one phase: the action row and, for touch
+// devices, the smaller control strip beneath it. The header keeps its strip on
+// top for confirmation and result text.
+func menuLayout(p Profile, phase string, count int, touch, header bool) (actions, controls []menuCell, headerRect, overlay image.Rectangle) {
+	overlay = overlayRect(p)
+	area := overlay
+	if header {
+		h := max(18, overlay.Dy()/4)
+		headerRect = image.Rect(overlay.Min.X, overlay.Min.Y, overlay.Max.X, overlay.Min.Y+h)
+		area = image.Rect(overlay.Min.X, headerRect.Max.Y, overlay.Max.X, overlay.Max.Y)
+	}
+	if strip := controlKinds(count, touch); len(strip) > 0 {
+		sh := max(22, overlay.Dy()/4)
+		rect := image.Rect(area.Min.X, area.Max.Y-sh, area.Max.X, area.Max.Y)
+		controls = stripCells(rect, strip)
+		area = image.Rect(area.Min.X, area.Min.Y, area.Max.X, area.Max.Y-sh)
+	}
+	actions = rowCells(area, p.Height > p.Width, actionKinds(phase))
+	return actions, controls, headerRect, overlay
 }
 
 // menuView is what the overlay shows in one request.
@@ -652,27 +741,10 @@ type menuView struct {
 	actions []menuAction // the full list, for the visible page and the header
 	offset  int
 	sel     string
-	title   string // confirmation or result title
-	text    string // confirmation hint or result message
-}
-
-// menuKinds returns the cells of one phase in reading order.
-func menuKinds(phase string, count int) []string {
-	switch phase {
-	case menuConfirmPhase:
-		// Yes and no only: a close box would be the same as "no".
-		return []string{cellYes, cellNo}
-	case menuRunningPhase, menuResultPhase, menuEmptyPhase:
-		return nil // drawn as a banner, no cells
-	}
-	kinds := []string{cellClose}
-	for i := 0; i < menuPerPage; i++ {
-		kinds = append(kinds, cellAction)
-	}
-	if count > menuPerPage {
-		kinds = append(kinds, cellPrev, cellNext)
-	}
-	return kinds
+	close   bool // the close box of the control strip has the selection
+	touch   bool // draw the control strip at all
+	title   string
+	text    string
 }
 
 // drawMenu paints the overlay onto the page image (ADR 0057). The page stays
@@ -689,25 +761,18 @@ func drawMenu(img *image.Paletted, p Profile, v menuView, t texts) {
 		drawBanner(img, p, v)
 		return
 	}
-	kinds := menuKinds(v.phase, len(v.actions))
-	cells, headerRect, _ := menuCells(p, kinds, header)
+	actions, controls, headerRect, _ := menuLayout(p, v.phase, len(v.actions), v.touch, header)
 	size := max(render.MinSize, float64(overlay.Dy())/5)
-	if len(cells) > 0 {
-		c := cells[0].rect
+	if len(actions) > 0 {
+		c := actions[0].rect
 		size = max(render.MinSize, min(float64(c.Dx())/7.5, float64(c.Dy())/4.5))
 	}
 	ai := v.offset
-	for i := range cells {
-		c := &cells[i]
+	for i := range actions {
+		c := &actions[i]
 		var label string
 		var action *menuAction
 		switch c.kind {
-		case cellClose:
-			label = t.menuClose()
-		case cellPrev:
-			label = "<"
-		case cellNext:
-			label = ">"
 		case cellYes:
 			label = t.menuYes()
 		case cellNo:
@@ -720,8 +785,24 @@ func drawMenu(img *image.Paletted, p Profile, v menuView, t texts) {
 			}
 			ai++
 		}
-		selected := action != nil && action.Key == v.sel
-		drawCell(img, *c, label, size, selected, action != nil && action.Disabled != "")
+		selected := action != nil && action.Key == v.sel && !v.close
+		drawCell(img, *c, label, size, selected, action != nil && action.Disabled != "", false)
+	}
+	for i := range controls {
+		c := &controls[i]
+		var label string
+		switch c.kind {
+		case cellClose:
+			label = t.menuClose()
+		case cellPrev:
+			label = "<"
+		case cellNext:
+			label = ">"
+		}
+		// The strip is a control, not an action: thinner, smaller, grey, and
+		// selected with a frame instead of an inverted fill (ADR 0080).
+		small := max(render.MinSize, size*0.6)
+		drawCell(img, *c, label, small, c.kind == cellClose && v.close, false, true)
 	}
 	if header {
 		drawMenuHeader(img, headerRect, v, size, t)
@@ -731,8 +812,25 @@ func drawMenu(img *image.Paletted, p Profile, v menuView, t texts) {
 	render.HLine(img, overlay.Min.X, overlay.Max.Y-1, overlay.Max.X, thickness)
 }
 
-func drawCell(img *image.Paletted, c menuCell, label string, size float64, selected, disabled bool) {
+func drawCell(img *image.Paletted, c menuCell, label string, size float64, selected, disabled, control bool) {
 	if c.rect.Empty() {
+		return
+	}
+	if control {
+		// A tap target of the control strip, not an action: a thin frame
+		// around a small, grey glyph, and nothing that looks like a selectable
+		// action cell (ADR 0080).
+		ink := render.DarkGray
+		if selected {
+			frameCell(img, c.rect, 2)
+			ink = render.Black
+		} else {
+			frameCell(img, c.rect, 1)
+		}
+		inner := c.rect.Inset(3)
+		cx := inner.Min.X + inner.Dx()/2
+		render.Text(img, label, cx, inner.Min.Y+inner.Dy()/2+int(size*0.36),
+			render.Style{Size: size, Bold: selected, Shrink: true}, inner.Dx(), ink, render.Center)
 		return
 	}
 	if disabled {
@@ -906,7 +1004,7 @@ func (s *Server) menuOverlay(page servedPage, profile string, p Profile, v menuV
 // plugin state of the actions when the menu opened and records the hash of
 // the confirmation screen, which the next sync compares with the device's
 // shown hash (ADR 0057).
-func (s *Server) overlayMenu(cfg *Config, d *Device, served servedPage, m *menuState) servedPage {
+func (s *Server) overlayMenu(cfg *Config, d *Device, served servedPage, m *menuState, touch bool) servedPage {
 	prof := cfg.Profiles[d.Profile]
 	if !m.Resolved {
 		ctx, cancel := context.WithTimeout(context.Background(), actionBudget)
@@ -918,7 +1016,8 @@ func (s *Server) overlayMenu(cfg *Config, d *Device, served servedPage, m *menuS
 		}
 	}
 	t := cfg.texts()
-	v := menuView{phase: m.Phase, actions: m.Actions, offset: m.Offset, sel: m.Selected}
+	v := menuView{phase: m.Phase, actions: m.Actions, offset: m.Offset, sel: m.Selected,
+		close: m.CloseSel, touch: touch}
 	switch m.Phase {
 	case menuEmptyPhase:
 		v.title = t.menuEmpty()

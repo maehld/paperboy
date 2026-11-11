@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maehld/paperboy/internal/plan"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
@@ -585,19 +586,85 @@ func TestMenuClosesWhenSelectionLeavesThePlan(t *testing.T) {
 
 func TestMenuLayout(t *testing.T) {
 	land := Profile{Width: 800, Height: 480}
-	cells, _, overlay := menuCells(land, []string{cellClose, cellAction, cellAction, cellAction}, false)
-	if overlay != image.Rect(0, 0, 800, 240) || len(cells) != 4 {
-		t.Fatalf("landscape: %v %v", overlay, cells)
+	actions, controls, _, overlay := menuLayout(land, menuListPhase, 4, false, false)
+	if overlay != image.Rect(0, 0, 800, 240) || len(actions) != menuPerPage {
+		t.Fatalf("landscape: %v %v", overlay, actions)
 	}
-	if cells[0].rect.Dx() != 200 || cells[3].rect.Max.X != 800 {
-		t.Fatalf("landscape cells: %+v", cells)
+	if len(controls) != 0 {
+		t.Fatalf("no control strip without touch: %+v", controls)
 	}
+	if actions[0].rect.Dy() != 240 || actions[menuPerPage-1].rect.Max.X != 800 {
+		t.Fatalf("landscape cells: %+v", actions)
+	}
+
+	// With touch the action row shrinks and the strip sits below it (ADR 0080).
+	actions, controls, _, overlay = menuLayout(land, menuListPhase, 4, true, false)
+	if len(controls) != 3 {
+		t.Fatalf("strip must have the arrows and the close box: %+v", controls)
+	}
+	last := actions[menuPerPage-1].rect
+	for _, c := range controls {
+		if c.rect.Min.Y < last.Max.Y || !c.rect.In(overlay) {
+			t.Fatalf("control %+v must sit below the action row %v inside %v", c.rect, last, overlay)
+		}
+	}
+	if controls[2].kind != cellClose || controls[2].rect.Min.X < overlay.Dx()/2 {
+		t.Fatalf("close box must be the rightmost control: %+v", controls[2])
+	}
+
+	// A list that fits one page has no arrows, only the close box.
+	_, controls, _, _ = menuLayout(land, menuListPhase, 2, true, false)
+	if len(controls) != 1 || controls[0].kind != cellClose {
+		t.Fatalf("single page: %+v", controls)
+	}
+
+	// Portrait: the action row is stacked and still above the strip.
 	port := Profile{Width: 480, Height: 800}
-	cells, _, overlay = menuCells(port, []string{cellClose, cellAction}, false)
+	actions, controls, _, overlay = menuLayout(port, menuListPhase, 1, true, false)
 	if overlay != image.Rect(0, 0, 480, 400) {
 		t.Fatalf("portrait overlay: %v", overlay)
 	}
-	if cells[1].rect.Min.Y != 200 || cells[1].rect.Max.Y != 400 {
-		t.Fatalf("portrait cells: %+v", cells)
+	if len(actions) != menuPerPage || len(controls) != 1 {
+		t.Fatalf("portrait cells: %v %v", actions, controls)
+	}
+	if controls[0].rect.Min.Y < actions[menuPerPage-1].rect.Max.Y {
+		t.Fatalf("portrait strip must follow the rows: %+v %+v", actions, controls)
+	}
+}
+
+// The close box is reachable with buttons only where it is drawn (ADR 0080).
+func TestMenuCloseBoxNeedsTouch(t *testing.T) {
+	actions := []menuAction{{Key: "a", Title: "A"}, {Key: "b", Title: "B"}}
+	m := menuState{Open: true, Phase: menuListPhase, Selected: "b", Actions: actions}
+	m.move(1, false)
+	if m.CloseSel || m.Selected != "a" {
+		t.Fatalf("without touch next must wrap to the first action: %+v", m)
+	}
+
+	m = menuState{Open: true, Phase: menuListPhase, Selected: "b", Actions: actions}
+	m.move(1, true)
+	if !m.CloseSel {
+		t.Fatalf("next past the last action must select the close box: %+v", m)
+	}
+	m.move(-1, true)
+	if m.CloseSel || m.Selected != "b" {
+		t.Fatalf("previous must return to the last action: %+v", m)
+	}
+}
+
+func TestMenuCloseBoxClosesWithHome(t *testing.T) {
+	acts := []plan.PlanAction{{Action: "act/a"}}
+	m := menuState{Open: true, Phase: menuListPhase, Selected: "act/a",
+		Actions: []menuAction{{Key: "act/a", Action: "act/a", Title: "A"}}, Resolved: true}
+	now := time.Now()
+	m.step(menuInput{buttons: []string{buttonNext}, touch: true}, acts, now)
+	if !m.CloseSel {
+		t.Fatalf("close box not selected: %+v", m)
+	}
+	if invoke := m.step(menuInput{buttons: []string{buttonHome}, touch: true}, acts, now); invoke != nil {
+		t.Fatalf("home on the close box must not run an action: %+v", invoke)
+	}
+	if m.Open {
+		t.Fatalf("home on the close box must close the menu: %+v", m)
 	}
 }

@@ -84,7 +84,8 @@ func (t texts) menuEmpty() string {
 }
 
 func (t texts) menuConfirm(title string) (string, string) {
-	return title, t.variant("Home = ja, andere Taste = nein", "Home = yes, any other = no")
+	return title, t.variant("Home = ausführen · Next/Previous = abbrechen",
+		"Home = run · Next/Previous = cancel")
 }
 
 func (t texts) menuYes() string { return t.variant("Ja", "Yes") }

@@ -31,6 +31,7 @@ type deviceState struct {
 	BatteryLevel   string    `json:"battery_level,omitempty"`  // "", "warn" or "critical"
 	Rule           string    `json:"rule,omitempty"`           // name of the active plan rule
 	ReportedPower  string    `json:"reported_power,omitempty"` // power source the hardware last reported (ADR 0051)
+	TouchReported  bool      `json:"reported_touch,omitempty"` // the firmware reports a digitiser (ADR 0080)
 
 	// What the device was last pointed at; set after rendering, so a failed
 	// render shows up as a notice instead of a page that was never drawn.

@@ -25,22 +25,36 @@ func tapAt(t *testing.T, s *Server, dev *testDevice, x, y int, shown string) map
 	return out
 }
 
-// The menu of the test server covers 400x300, so the top half is 400x150 and
-// the six cells are 66 pixels wide.
+// The menu of the test server covers 400x300. With the control strip of a
+// touch device (ADR 0080) the top half is 400x150, the action row 400x113 with
+// three cells of ~133 px and a 37 px strip whose buttons are 66 px wide.
 // tapSeq gives every tap its own event ID; a repeated ID is deduplicated.
 var tapSeq int64
 
-// Cell centres for the two layouts the tests use: four cells of 100 px for
-// three actions, six cells of 66 px when the list scrolls.
+// menuStateKey is the file the test device state lands in: its MAC without
+// the colons (ADR 0080).
+const menuStateKey = "AABBCCDDEE02"
+
+// Cell centres for the layouts the touch tests use. Action and confirmation
+// cells keep their columns; the strip's buttons sit at its left and right.
 const (
-	menuCellCloseX = 50
-	menuCellA1X    = 150
-	menuCellA2X    = 250
-	menuCellPrevX  = 297
-	menuCellNextX  = 363
+	menuCellA1X    = 66
+	menuCellA2X    = 200
+	menuCellPrevX  = 36
+	menuCellNextX  = 106
+	menuCellCloseX = 364
+	menuStripY     = 130 // the middle of the control strip
 	confirmYesX    = 100
-	confirmNoX     = 333
+	confirmNoX     = 300
 )
+
+// menuServerTouch is menuServer with the digitiser turned on, which is what
+// makes Paperboy draw the control strip.
+func menuServerTouch(t *testing.T, actions string) (*Server, *time.Time, *menuPlugin) {
+	t.Helper()
+	yes := true
+	return menuServer(t, actions, func(d *Device) { d.Touch = &yes })
+}
 
 func TestMenuTapSelectsAndRuns(t *testing.T) {
 	s, _, p := menuServer(t, menuPlanActions, nil)
@@ -48,7 +62,7 @@ func TestMenuTapSelectsAndRuns(t *testing.T) {
 	displayPage(t, s, dev)
 	press(t, s, dev, buttonHome)          // open
 	tapAt(t, s, dev, menuCellA1X, 75, "") // act/go needs a confirmation
-	if st := s.state["AABBCCDDEE02"]; st.Menu.Selected != "act/go" || st.Menu.Phase != menuConfirmPhase {
+	if st := s.state[menuStateKey]; st.Menu.Selected != "act/go" || st.Menu.Phase != menuConfirmPhase {
 		t.Fatalf("state after tapping the confirming action: %+v", st.Menu)
 	}
 	if len(p.runs) != 0 {
@@ -64,12 +78,12 @@ func TestMenuTapSelectsAndRuns(t *testing.T) {
 }
 
 func TestMenuTapCloses(t *testing.T) {
-	s, _, _ := menuServer(t, menuPlanActions, nil)
+	s, _, _ := menuServerTouch(t, menuPlanActions)
 	dev := menuDevice(t, s)
 	base := pagePath(displayPage(t, s, dev))
 	press(t, s, dev, buttonHome)
-	out := tapAt(t, s, dev, menuCellCloseX, 75, "")
-	if st := s.state["AABBCCDDEE02"]; st.Menu.Open {
+	out := tapAt(t, s, dev, menuCellCloseX, menuStripY, "")
+	if st := s.state[menuStateKey]; st.Menu.Open {
 		t.Fatalf("X must close the menu: %+v", st.Menu)
 	}
 	if pagePath(out) != base {
@@ -83,7 +97,7 @@ func TestMenuTapOutsideIsIgnored(t *testing.T) {
 	displayPage(t, s, dev)
 	press(t, s, dev, buttonHome)
 	tapAt(t, s, dev, 200, 250, "") // below the overlay
-	if st := s.state["AABBCCDDEE02"]; !st.Menu.Open || st.Menu.Selected != "act/go" {
+	if st := s.state[menuStateKey]; !st.Menu.Open || st.Menu.Selected != "act/go" {
 		t.Fatalf("a tap below the overlay changed the menu: %+v", st.Menu)
 	}
 }
@@ -96,16 +110,16 @@ func TestMenuTapConfirmation(t *testing.T) {
 	tapAt(t, s, dev, menuCellA1X, 75, "")        // select act/go: confirmation
 	out := tapAt(t, s, dev, menuCellA1X, 75, "") // tap again on the action cell
 	_ = out
-	if st := s.state["AABBCCDDEE02"]; st.Menu.Phase != menuConfirmPhase {
+	if st := s.state[menuStateKey]; st.Menu.Phase != menuConfirmPhase {
 		t.Fatalf("menu state: %+v", st.Menu)
 	}
-	confirm := s.state["AABBCCDDEE02"].Menu.ConfirmHash
+	confirm := s.state[menuStateKey].Menu.ConfirmHash
 	// The "Nein" cell is the right third of the confirm screen.
-	if s.state["AABBCCDDEE02"].Menu.find("act/go") == nil {
+	if s.state[menuStateKey].Menu.find("act/go") == nil {
 		t.Fatal("action missing")
 	}
 	tapAt(t, s, dev, 330, 110, confirm) // "Nein"
-	if st := s.state["AABBCCDDEE02"]; st.Menu.Phase != menuListPhase {
+	if st := s.state[menuStateKey]; st.Menu.Phase != menuListPhase {
 		t.Fatalf("Nein must return to the list: %+v", st.Menu)
 	}
 	// Confirming with a stale screen does nothing.
@@ -124,20 +138,20 @@ func TestMenuScrollButtons(t *testing.T) {
   - {action: act/a4, title: A4}
   - {action: act/a5, title: A5}
 `
-	s, _, _ := menuServer(t, actions, nil)
+	s, _, _ := menuServerTouch(t, actions)
 	dev := menuDevice(t, s)
 	displayPage(t, s, dev)
 	press(t, s, dev, buttonHome)
-	m := s.state["AABBCCDDEE02"].Menu
+	m := s.state[menuStateKey].Menu
 	if len(m.Actions) != 5 || m.Offset != 0 {
 		t.Fatalf("menu: %+v", m)
 	}
-	tapAt(t, s, dev, menuCellNextX, 75, "")
-	if got := s.state["AABBCCDDEE02"].Menu; got.Offset != 2 || got.Selected != "act/a3" {
+	tapAt(t, s, dev, menuCellNextX, menuStripY, "")
+	if got := s.state[menuStateKey].Menu; got.Offset != 2 || got.Selected != "act/a3" {
 		t.Fatalf("next page: %+v", got)
 	}
-	tapAt(t, s, dev, menuCellPrevX, 75, "")
-	if got := s.state["AABBCCDDEE02"].Menu; got.Offset != 0 || got.Selected != "act/a1" {
+	tapAt(t, s, dev, menuCellPrevX, menuStripY, "")
+	if got := s.state[menuStateKey].Menu; got.Offset != 0 || got.Selected != "act/a1" {
 		t.Fatalf("previous page: %+v", got)
 	}
 }
