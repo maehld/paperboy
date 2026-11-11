@@ -10,17 +10,18 @@
 # Paperboy's 0/85/170/255 become black, dark gray, light gray and white, so the
 # antialiased font edges of a page survive. Grayscale is full-refresh only.
 #
-# Panel batches differ: switch lut_mode to custom when the four levels look
-# washed out or in the wrong order, and set invert_colors when the picture is a
-# negative.
+# Panel batches differ in two properties that only the panel knows: the data
+# polarity (some render a negative) and the grayscale LUT bank. Both are runtime
+# settings of the device, not of the image (ADR 0087): "Invert colors", "LUT
+# mode" and "Apply display settings" appear in the device's web UI.
 
 substitutions:
   hardware: e1001
-  fw_version: "2.4.0"
+  fw_version: "2.4.1"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
+  # Initial option of the LUT mode select; the device remembers a change.
   lut_mode: otp
-  invert_colors: "false"
 
 packages:
   paperboy: !include common.yaml
@@ -141,10 +142,15 @@ display:
       mode:
         input: true
         pullup: true
-    lut_mode: ${lut_mode}
-    invert_colors: ${invert_colors}
     update_interval: never
     lambda: |-
+      // Panel properties, per device (ADR 0087): the settings live in flash and
+      // are applied here so that every paint uses them, including the first
+      // one after a wake.
+      id(epaper_display)->set_invert_colors(id(invert_colors_switch)->state);
+      id(epaper_display)->set_lut_mode(id(lut_mode_select)->current_option() == "custom"
+                                           ? esphome::uc8179_gray4::LUT_MODE_CUSTOM
+                                           : esphome::uc8179_gray4::LUT_MODE_OTP);
       if (id(setup_mode)) {
         it.fill(Color::WHITE);
         pb_draw_text(it, id(setup_font), id(setup_text));
@@ -160,6 +166,35 @@ display:
           pb_paint_pending = true;
         }
       }
+
+switch:
+  # Some UC8179 batches drive the data planes with the opposite polarity and
+  # render every page as a negative (ADR 0087).
+  - platform: template
+    id: invert_colors_switch
+    name: "Invert colors"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+
+select:
+  # The grayscale LUT bank also differs between batches: the wrong one makes the
+  # four levels look washed out, swapped or inverted (ADR 0087).
+  - platform: template
+    id: lut_mode_select
+    name: "LUT mode"
+    optimistic: true
+    restore_value: true
+    initial_option: "${lut_mode}"
+    options: [otp, custom]
+
+button:
+  # An unchanged page is not repainted, so a changed setting needs a paint of its
+  # own to show its effect; this is that paint.
+  - platform: template
+    id: apply_display_settings
+    name: "Apply display settings"
+    on_press:
+      - component.update: epaper_display
 
 script:
   # uc8179_gray4 refreshes synchronously: component.update returns once the

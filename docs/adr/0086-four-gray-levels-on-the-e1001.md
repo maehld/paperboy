@@ -1,6 +1,6 @@
 # 0086: Four gray levels on the E1001
 
-- Status: Accepted, implemented
+- Status: Accepted, implemented; the panel settings (`lut_mode`, `invert_colors`) became runtime settings on the device in ADR-0087
 - Date: 2026-11-11
 - Builds on: ADR 0041 (ESPHome firmware), ADR 0072 (pages as QOI)
 - Related: issue #151 (partial updates for overlay screens)

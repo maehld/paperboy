@@ -186,11 +186,21 @@ levels (2 bpp, LUTs, full refresh only, a few seconds). Seeed's ESPHome model
 external component `uc8179_gray4` instead (ADR 0086): it takes Paperboy's
 0/85/170/255 as black, dark gray, light gray and white, and the antialiased font
 edges of a page survive. That component is fetched at build time and pinned to a
-commit in `e1001.yaml`; its `lut_mode` (`otp`/`custom`) and `invert_colors` are
-substitutions there because panel batches differ — wrong or washed-out levels
-mean the other LUT mode, a negative picture means `invert_colors: true`. The
-driver refreshes synchronously, so the main loop pauses during a paint and
-presses in that window are not queued, and it has no partial-update mode.
+commit in `e1001.yaml`.
+
+Two properties differ between panel batches and belong to the device, not the
+image (ADR 0087); both are set in the device's web UI and survive a wake:
+
+| Setting | When |
+|---|---|
+| *Invert colors* (off by default) | The page is a negative: some batches drive the data planes with the opposite polarity. |
+| *LUT mode* (`otp`, or `custom` when the image was built with that) | The four levels look washed out, swapped or inverted with one bank. |
+| *Apply display settings* (button) | Repaints the current page, so a change is visible at once. |
+
+An unchanged page is not repainted by Paperboy, so without the button a changed
+setting would wait for the next page change. The driver refreshes
+synchronously, so the main loop pauses during a paint and presses in that window
+are not queued, and it has no partial-update mode.
 Buttons left to right GPIO5 (`previous`),
 GPIO4 (`next`), GPIO3 (green, `home`). Battery voltage on ADC GPIO1 through a 1:2 divider,
 enabled by GPIO21; no fuel gauge.
