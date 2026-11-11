@@ -37,6 +37,7 @@ type deviceFile struct {
 	Power       string   `yaml:"power,omitempty" json:"power,omitempty"`
 	Actions     string   `yaml:"actions,omitempty" json:"actions,omitempty"`
 	MenuShow    Duration `yaml:"menu_show_duration" json:"menu_show_duration,omitempty"`
+	Touch       *bool    `yaml:"touch,omitempty" json:"touch,omitempty"`
 	Battery     *Battery `yaml:"battery,omitempty" json:"battery,omitempty"`
 	Firmware    string   `yaml:"firmware,omitempty" json:"firmware,omitempty"`
 }
@@ -87,6 +88,7 @@ func (f deviceFile) device(id string, defaults *Battery) Device {
 		Power:            f.Power,
 		Actions:          f.Actions,
 		MenuShowDuration: f.MenuShow,
+		Touch:            f.Touch,
 	}
 }
 
@@ -192,6 +194,9 @@ func encodeDeviceFile(f *deviceFile) ([]byte, error) {
 	}
 	if f.MenuShow != 0 {
 		set("menu_show_duration", durationValue(time.Duration(f.MenuShow)))
+	}
+	if f.Touch != nil {
+		set("touch", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: strconv.FormatBool(*f.Touch)})
 	}
 	if b := f.Battery; b != nil && (b.WarnVolts > 0 || b.CriticalVolts > 0 || b.HysteresisVolts > 0) {
 		node := mapping()

@@ -44,6 +44,7 @@ type registerRequest struct {
 	Hardware string `json:"hardware"`
 	Firmware string `json:"firmware"`
 	Power    string `json:"power"` // battery or mains, if the hardware knows (ADR 0051)
+	Touch    *bool  `json:"touch"` // the hardware has a digitiser (ADR 0082)
 }
 
 type syncEvent struct {
@@ -72,6 +73,7 @@ type syncRequest struct {
 	RSSI     *int             `json:"rssi"`
 	Log      []deviceLogEntry `json:"log"`
 	Power    string           `json:"power"` // battery or mains, if the hardware knows (ADR 0051)
+	Touch    *bool            `json:"touch"` // the hardware has a digitiser (ADR 0082)
 }
 
 type syncImage struct {
@@ -198,6 +200,9 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	if st.APIKey == "" {
 		st.APIKey = newAPIKey()
+	}
+	if req.Touch != nil {
+		st.TouchReported = *req.Touch
 	}
 	apiKey := st.APIKey
 	stateData := s.stateSnapshotLocked(st)
@@ -332,6 +337,8 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	menu := st.Menu
 	var invoke *menuAction
 	menuConsumed := false
+	// Whether the menu draws its tap-only controls for this device (ADR 0082).
+	menuTouch := cfg.touch(d, st.TouchReported)
 	// A menu that closes without user input (the wake at its deadline, a
 	// replaced result screen) still paused the page while it was open, so that
 	// sync must not turn it either (ADR 0057).
@@ -369,10 +376,10 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		// when they close it: dismissing a banner must not turn the page
 		// (ADR 0067).
 		menuConsumed = menu.Open
-		invoke = menu.step(menuInput{buttons: buttons, holds: holds, shown: req.Shown}, acts, now)
+		invoke = menu.step(menuInput{buttons: buttons, holds: holds, shown: req.Shown, touch: menuTouch}, acts, now)
 		if invoke == nil && menu.Open {
 			for _, e := range touches {
-				if a := menu.tap(e.X, e.Y, cfg.Profiles[d.Profile], req.Shown, now); a != nil {
+				if a := menu.tap(e.X, e.Y, cfg.Profiles[d.Profile], menuTouch, req.Shown, now); a != nil {
 					invoke = a
 				}
 			}
@@ -452,7 +459,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		served = s.hint(cfg, d.Profile, choice.title, choice.text)
 	}
 	if menu.Open && !critical && !textDisplay {
-		served = s.overlayMenu(cfg, d, served, &menu)
+		served = s.overlayMenu(cfg, d, served, &menu, menuTouch)
 	}
 	served.refresh = max(served.refresh, floor)
 	refresh := served.refresh

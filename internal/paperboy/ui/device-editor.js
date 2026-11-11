@@ -30,6 +30,7 @@
       refresh: '',
       actions: '',
       menu_show_duration: '',
+      touch: false,
       power: '',
       firmware: '',
       battery: null,
@@ -107,6 +108,7 @@
     el('refresh').value = d.refresh || '';
     el('actions').value = d.actions || '';
     el('menu').value = d.menu_show_duration || '';
+    el('touch').checked = !!d.touch;
     el('power').value = d.power || '';
     el('firmware').value = d.firmware || '';
     const b = d.battery || {};
@@ -167,6 +169,7 @@
     }
     if (d.refresh) out.refresh = d.refresh;
     if (d.menu_show_duration) out.menu_show_duration = d.menu_show_duration;
+    if (d.touch) out.touch = true;
     const b = {};
     for (const key of ['warn_volts', 'critical_volts', 'hysteresis_volts']) {
       const v = Number(d.battery && d.battery[key]);
@@ -372,6 +375,16 @@
     });
   }
 
+  // onCheck is onField for a checkbox: the model carries a real boolean, and
+  // false leaves the field out of the file (ADR 0082).
+  function onCheck(id, key) {
+    el(id).addEventListener('change', () => {
+      if (state.readOnly) return;
+      state.device[key] = el(id).checked;
+      changed();
+    });
+  }
+
   function onBattery(id, key) {
     el(id).addEventListener('change', () => {
       if (state.readOnly) return;
@@ -391,6 +404,7 @@
   onField('refresh', 'refresh');
   onField('actions', 'actions');
   onField('menu', 'menu_show_duration');
+  onCheck('touch', 'touch');
   onField('power', 'power');
   onField('firmware', 'firmware');
   onBattery('warn', 'warn_volts');

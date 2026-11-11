@@ -83,9 +83,11 @@ func (t texts) menuEmpty() string {
 	return t.variant("Keine Aktionen", "No actions")
 }
 
-func (t texts) menuConfirm(title string) (string, string) {
-	return title, t.variant("Home = ja, andere Taste = nein", "Home = yes, any other = no")
-}
+// menuYesKey and menuNoKey name the button that triggers each choice; they are
+// written under Ja and Nein in the confirmation box (ADR 0081).
+func (t texts) menuYesKey() string { return "(Home)" }
+
+func (t texts) menuNoKey() string { return t.variant("(Weiter/Zurück)", "(Next/Previous)") }
 
 func (t texts) menuYes() string { return t.variant("Ja", "Yes") }
 
