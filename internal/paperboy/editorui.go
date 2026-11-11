@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -183,6 +184,7 @@ type editorState struct {
 	Args        map[string]string `json:"args,omitempty"`   // the args from the link, still as text
 	UsedBy      []string          `json:"usedBy,omitempty"` // plans that name the page, for the delete warning
 	Rename      *renameAction     `json:"rename,omitempty"` // nil for a new page (ADR 0079)
+	Orphan      string            `json:"orphan,omitempty"` // variant of a missing display type (ADR 0079)
 }
 
 // displayNames lists the configured display types alphabetically.
@@ -276,6 +278,15 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile, d
 		}
 		if openable && target != "" {
 			v.URL = "/ui/editor/page?" + url.Values{"name": {name}, "display": {target}}.Encode()
+		}
+		// A variant whose display type is gone stays openable through a
+		// configured display type of the same kind: the editor shows it and
+		// offers to save it as a variant of that type (ADR 0079).
+		if f.Error == "" && f.Display != "" && !knownProfile(displays, f.Display) {
+			if open := displayOfKind(displays, f.Kind); open != "" {
+				v.URL = "/ui/editor/page?" + url.Values{"name": {name}, "display": {open}, "source": {f.Display}}.Encode()
+				v.Title = fmt.Sprintf("display type %q is not configured; opened for %s", f.Display, open)
+			}
 		}
 		// A variant is reachable through the display type switch, the shared page
 		// through the row when it is the shown file; anything else keeps its own
@@ -408,6 +419,23 @@ func plansByPage(plans []editorPlanFile) map[string][]string {
 func knownProfile(displays map[string]Profile, name string) bool {
 	_, ok := displays[name]
 	return ok
+}
+
+// displayOfKind returns a configured display type of the given kind, so an
+// orphaned page variant can still be opened and saved as a variant of it
+// (ADR 0079).
+func displayOfKind(displays map[string]Profile, kind string) string {
+	names := make([]string, 0, len(displays))
+	for name := range displays {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if displays[name].text() == (kind == page.KindText) {
+			return name
+		}
+	}
+	return ""
 }
 
 func editorVersion(cfg *Config) (version, goVersion string) {
@@ -576,17 +604,52 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.Display, v.Text = display, p.text()
-	_, fileDisplay, err := existingPageFile(cfg.Pages, name, display)
-	missing := errors.Is(err, fs.ErrNotExist)
-	switch {
-	case missing && q.Get("new") != "1":
-		v.Error = fmt.Sprintf("there is no page %q for the display type %q yet", name, display)
-		renderEditorPage(w, v, http.StatusNotFound)
-		return
-	case err != nil && !missing:
-		v.Error = err.Error()
-		renderEditorPage(w, v, http.StatusInternalServerError)
-		return
+	source := q.Get("source")
+	orphan := ""
+	if source != "" {
+		if !page.ValidName(source) {
+			v.Error = fmt.Sprintf("display type %q: only a-z, 0-9 and -", source)
+			renderEditorPage(w, v, http.StatusBadRequest)
+			return
+		}
+		path, err := pageFilePath(cfg.Pages, name, source)
+		if err != nil {
+			v.Error = err.Error()
+			renderEditorPage(w, v, http.StatusBadRequest)
+			return
+		}
+		if _, err := os.Stat(path); err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				v.Error = err.Error()
+				renderEditorPage(w, v, http.StatusInternalServerError)
+				return
+			}
+			v.Error = fmt.Sprintf("there is no page %q for the display type %q", name, source)
+			renderEditorPage(w, v, http.StatusNotFound)
+			return
+		}
+		if !knownProfile(cfg.Profiles, source) {
+			orphan = source
+		}
+	}
+	fileDisplay := ""
+	missing := false
+	if orphan == "" && source == "" {
+		_, fd, err := existingPageFile(cfg.Pages, name, display)
+		fileDisplay = fd
+		missing = errors.Is(err, fs.ErrNotExist)
+		switch {
+		case missing && q.Get("new") != "1":
+			v.Error = fmt.Sprintf("there is no page %q for the display type %q yet", name, display)
+			renderEditorPage(w, v, http.StatusNotFound)
+			return
+		case err != nil && !missing:
+			v.Error = err.Error()
+			renderEditorPage(w, v, http.StatusInternalServerError)
+			return
+		}
+	} else if source != "" {
+		fileDisplay = source
 	}
 	// A page without a file starts as a new one; the shared flag makes it
 	// pages/<name>.yaml instead of a variant (ADR 0068). Without a display type
@@ -597,7 +660,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Warn("plan list for the page editor failed", "error", err)
 	}
-	v.Data = editorStateData(name, display, p, missing, shared, plansByPage(plans)[name], pageRenameAction(cfg, name, plansByPage(plans)[name]))
+	v.Data = editorStateData(name, display, p, missing, shared, plansByPage(plans)[name], pageRenameAction(cfg, name, plansByPage(plans)[name]), orphan)
 	for _, n := range displayNames(cfg) {
 		params := url.Values{"name": {name}, "display": {n}}
 		if q.Get("new") == "1" {
@@ -615,9 +678,9 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 // editorStateData encodes the starting state for the script. The JSON is safe
 // to inline: encoding/json escapes <, > and &, so a page title can never close
 // the script element.
-func editorStateData(name, display string, p Profile, missing, shared bool, usedBy []string, rename *renameAction) template.JS {
+func editorStateData(name, display string, p Profile, missing, shared bool, usedBy []string, rename *renameAction, orphan string) template.JS {
 	state := editorState{Name: name, Display: display, Width: p.Width, Height: p.Height,
-		New: missing, Shared: shared, Reference: defaultGrid, UsedBy: usedBy, Rename: rename}
+		New: missing, Shared: shared, Reference: defaultGrid, UsedBy: usedBy, Rename: rename, Orphan: orphan}
 	if p.text() {
 		state.Kind = page.KindText
 		state.Grid = [2]int{p.Width, p.Height}

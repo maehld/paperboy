@@ -20,6 +20,7 @@
     widgetsPage: !!start.widgets_page, // the widgets page: one widget, no page
     usedBy: start.usedBy || [], // plans that name the page, for the delete warning
     rename: start.rename || null, // endpoint and confirmation for a rename (ADR 0079)
+    orphan: start.orphan || '', // variant of a display type that is not configured (ADR 0079)
     fileDisplay: '', // display variant the file belongs to; empty: shared page
     hash: '',
     setHash: '', // hash over every file of the page, for the rename
@@ -59,8 +60,16 @@
     }
     const parts = [targetPath()];
     parts.push(state.fileDisplay === '' ? 'shared by all display types' : 'only for ' + state.fileDisplay);
+    if (state.orphan && state.fileDisplay === state.orphan) parts.push('display type ' + state.orphan + ' is not configured');
     if (state.dirty) parts.push('unsaved changes');
     el('where').textContent = parts.join(' · ');
+  }
+
+  // orphaned reports whether the opened file belongs to a display type that is
+  // not configured any more; Save stays off until it is saved as a variant of
+  // the open display type (ADR 0079).
+  function orphaned() {
+    return !!state.orphan && state.fileDisplay === state.orphan;
   }
 
   function updateSave() {
@@ -68,7 +77,7 @@
       (!state.widgetsPage || state.template.cells.length > 0);
     // The page editor saves, the widgets page copies the cell: one button each.
     const save = el('save');
-    if (save) save.disabled = !hasCell;
+    if (save) save.disabled = !hasCell || orphaned();
     const copy = el('copy-cell');
     if (copy) copy.disabled = !hasCell;
     const del = el('delete');
@@ -77,7 +86,7 @@
     if (rename) rename.hidden = state.widgetsPage || !state.rename;
     const specialize = el('specialize');
     if (!specialize) return;
-    specialize.hidden = state.widgetsPage || !(hasCell && state.fileDisplay === '');
+    specialize.hidden = state.widgetsPage || !(hasCell && (state.fileDisplay === '' || orphaned()));
     if (!specialize.hidden) specialize.textContent = 'Save as ' + state.display + ' variant';
   }
 
@@ -1033,7 +1042,7 @@
       loadWidgetsPage();
       return;
     }
-    const res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '?display=' + encodeURIComponent(state.display), { cache: 'no-store' });
+    const res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '?display=' + encodeURIComponent(state.orphan || state.display), { cache: 'no-store' });
     if (res.status === 404) {
       state.template = blank();
       state.fileDisplay = state.shared ? '' : state.display;

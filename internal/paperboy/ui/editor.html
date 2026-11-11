@@ -89,7 +89,7 @@ details.new .hint { flex-basis: 100%; margin: 0; }
       {{range .Groups}}
       <tr>
         <td class="page"><strong>{{.Name}}</strong>{{if .File}}<span class="sub">{{.File}}{{if .Shared}} · shared{{end}}</span>{{end}}</td>
-        <td class="variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}{{if $v.URL}}<a href="{{$v.URL}}"{{if $v.Selected}} class="selected"{{end}}>{{$v.Label}}</a>{{else}}<span class="missing" title="{{$v.Title}}">{{$v.Label}}</span>{{end}}{{if $v.DeleteURL}}<button class="delete" type="button" data-delete="{{$v.DeleteURL}}" data-warn="{{$v.Warn}}">Delete</button>{{end}}{{end}}</td>
+        <td class="variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}{{if $v.URL}}<a href="{{$v.URL}}"{{if $v.Selected}} class="selected"{{end}}{{if $v.Title}} title="{{$v.Title}}"{{end}}>{{$v.Label}}</a>{{else}}<span class="missing" title="{{$v.Title}}">{{$v.Label}}</span>{{end}}{{if $v.DeleteURL}}<button class="delete" type="button" data-delete="{{$v.DeleteURL}}" data-warn="{{$v.Warn}}">Delete</button>{{end}}{{end}}</td>
         <td>{{.Kind}}</td>
         <td class="num">{{.Grid}}</td>
         <td>{{.Title}}</td>
