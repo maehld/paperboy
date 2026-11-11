@@ -53,21 +53,15 @@ type editorVariant struct {
 // editorPageGroup is one page in the overview: the file the selected display
 // type resolves to, with the files the page has next to it.
 type editorPageGroup struct {
-	Name      string
-	File      string // pages/<name>[.<display type>].yaml, empty when there is none for the display type
-	Shared    bool   // File is the shared page
-	Kind      string
-	Grid      string
-	Title     string
-	Error     string // why the shown file cannot be opened, empty when it can
-	Variants  []editorVariant
-	OpenURL   string
-	DeleteURL string // DELETE of the shown file (ADR 0073)
-	Warn      string // what the delete confirmation says
-	// RenameURL renames the whole page, RenameWarn is the confirmation that
-	// names the plans that keep the old name (ADR 0079).
-	RenameURL  string
-	RenameWarn string
+	Name     string
+	File     string // pages/<name>[.<display type>].yaml, empty when there is none for the display type
+	Shared   bool   // File is the shared page
+	Kind     string
+	Grid     string
+	Title    string
+	Error    string // why the shown file cannot be opened, empty when it can
+	Variants []editorVariant
+	OpenURL  string
 }
 
 type editorListPage struct {
@@ -100,47 +94,35 @@ type editorUnclaimed struct {
 
 // editorDisplayRow is one display type file in the overview.
 type editorDisplayRow struct {
-	Name       string
-	Kind       string
-	Size       string
-	Density    string // ppi of an image display, charset of a text display
-	Gray       string
-	Power      string
-	Error      string
-	OpenURL    string
-	DeleteURL  string
-	Warn       string
-	RenameURL  string
-	RenameWarn string
+	Name    string
+	Kind    string
+	Size    string
+	Density string // ppi of an image display, charset of a text display
+	Gray    string
+	Power   string
+	Error   string
+	OpenURL string
 }
 
 // editorDeviceRow is one device file in the overview.
 type editorDeviceRow struct {
-	ID         string
-	Display    string
-	MAC        string
-	Address    string // source address of the last contact (ADR 0082)
-	Plan       string
-	Problem    string // the file parses but cannot sync, e.g. a missing display type (ADR 0079)
-	Error      string
-	OpenURL    string
-	DeleteURL  string
-	Warn       string
-	RenameURL  string
-	RenameWarn string
+	ID      string
+	Display string
+	MAC     string
+	Address string // source address of the last contact (ADR 0082)
+	Plan    string
+	Problem string // the file parses but cannot sync, e.g. a missing display type (ADR 0079)
+	Error   string
+	OpenURL string
 }
 
 // editorPlanRow is one plan file in the overview.
 type editorPlanRow struct {
-	Name       string
-	Rules      int
-	Fallback   string
-	Error      string
-	OpenURL    string
-	DeleteURL  string
-	Warn       string
-	RenameURL  string
-	RenameWarn string
+	Name     string
+	Rules    int
+	Fallback string
+	Error    string
+	OpenURL  string
 }
 
 // editorPageView is the shell of one page; the script reads the model, the
@@ -272,9 +254,7 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile, d
 			}
 		}
 	}
-	g := editorPageGroup{Name: name,
-		RenameURL:  "/api/pages/" + url.PathEscape(name) + "/rename?" + url.Values{"hash": {pageSetHash(files, name)}}.Encode(),
-		RenameWarn: pageRenameWarning(name, usedBy)}
+	g := editorPageGroup{Name: name}
 	for i, f := range files {
 		openable := f.Error == "" && (f.Display == "" || knownProfile(displays, f.Display))
 		v := editorVariant{Label: "shared", Selected: i == shown}
@@ -331,7 +311,6 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile, d
 	if f.Grid != [2]int{} {
 		g.Grid = fmt.Sprintf("%dx%d", f.Grid[0], f.Grid[1])
 	}
-	g.Warn = pageDeleteWarning(name, f.Display, usedBy)
 	switch {
 	case f.Error != "":
 		g.Error = f.Error
@@ -340,7 +319,6 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile, d
 	default:
 		g.OpenURL = "/ui/editor/page?" + url.Values{"name": {name}, "display": {display}}.Encode()
 	}
-	g.DeleteURL = pageDeleteURL(name, f.Display, f.Hash)
 	return g
 }
 
@@ -370,39 +348,8 @@ func pageDeleteWarning(name, display string, plans []string) string {
 	return msg + "\n\nPlans that name it: " + strings.Join(plans, ", ") + "."
 }
 
-// planDeleteWarning is the confirmation text of a plan: the file and the
-// devices that use it.
-func planDeleteWarning(name string, devices []string) string {
-	msg := "Delete plans/" + name + ".yaml?"
-	if len(devices) == 0 {
-		return msg + "\n\nNo device uses this plan."
-	}
-	return msg + "\n\nDevices that use it: " + strings.Join(devices, ", ") + "."
-}
-
-// deviceDeleteWarning is the confirmation text of a device.
-func deviceDeleteWarning(id string) string {
-	return "Delete devices/" + id + ".yaml?" +
-		"\n\nThe device cannot sync until a device file with its MAC exists again."
-}
-
-// displayDeleteWarning is the confirmation text of a display type: the file and
-// the page variants and devices that reference it.
-func displayDeleteWarning(name string, pages, devices []displayReference) string {
-	msg := "Delete displays/" + name + ".yaml?"
-	var refs []string
-	if len(pages) > 0 {
-		refs = append(refs, "page variants: "+referenceLabels(pages))
-	}
-	if len(devices) > 0 {
-		refs = append(refs, "devices: "+referenceLabels(devices))
-	}
-	if len(refs) == 0 {
-		return msg + "\n\nNo page variant or device uses this display type."
-	}
-	return msg + "\n\nAlso uses it → " + strings.Join(refs, "; ") + "."
-}
-
+// referenceLabels lists the named references of a display type, e.g. for the
+// rename confirmation.
 func referenceLabels(refs []displayReference) string {
 	labels := make([]string, 0, len(refs))
 	for _, r := range refs {
@@ -486,18 +433,8 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	v := editorListPage{Version: version, GoVersion: goVersion, Display: display, Tab: tab,
 		Groups: groupPageFiles(files, cfg.Profiles, display, plansByPage(plans))}
-	devicesByPlan := map[string][]string{}
-	for _, d := range cfg.Devices {
-		if d.Plan != "" {
-			devicesByPlan[d.Plan] = append(devicesByPlan[d.Plan], d.ID)
-		}
-	}
 	for _, p := range plans {
-		row := editorPlanRow{Name: p.Name, Rules: p.Rules, Fallback: p.Fallback, Error: p.Error,
-			DeleteURL:  "/api/plans/" + url.PathEscape(p.Name) + "?" + url.Values{"hash": {p.Hash}}.Encode(),
-			Warn:       planDeleteWarning(p.Name, devicesByPlan[p.Name]),
-			RenameURL:  "/api/plans/" + url.PathEscape(p.Name) + "/rename?" + url.Values{"hash": {p.Hash}}.Encode(),
-			RenameWarn: planRenameWarning(p.Name, devicesByPlan[p.Name])}
+		row := editorPlanRow{Name: p.Name, Rules: p.Rules, Fallback: p.Fallback, Error: p.Error}
 		if p.Error == "" {
 			row.OpenURL = "/ui/editor/plan?" + url.Values{"name": {p.Name}}.Encode()
 		}
@@ -509,11 +446,7 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	addresses := s.deviceClientIPs(cfg)
 	for _, d := range devices {
-		row := editorDeviceRow{ID: d.ID, Display: d.Display, MAC: d.MAC, Plan: d.Plan, Error: d.Error,
-			DeleteURL:  "/api/devices/" + url.PathEscape(d.ID) + "?" + url.Values{"hash": {d.Hash}}.Encode(),
-			Warn:       deviceDeleteWarning(d.ID),
-			RenameURL:  "/api/devices/" + url.PathEscape(d.ID) + "/rename?" + url.Values{"hash": {d.Hash}}.Encode(),
-			RenameWarn: deviceRenameWarning(d.ID)}
+		row := editorDeviceRow{ID: d.ID, Display: d.Display, MAC: d.MAC, Plan: d.Plan, Error: d.Error}
 		if key, err := deviceStateKey(d.MAC); err == nil {
 			row.Address = addresses[key]
 		}
@@ -538,12 +471,7 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("display type list for the page overview failed", "error", err)
 	}
 	for _, d := range displays {
-		row := editorDisplayRow{Name: d.Name, Kind: d.Kind, Power: d.Power, Error: d.Error,
-			DeleteURL: "/api/displays/" + url.PathEscape(d.Name) + "?" + url.Values{"hash": {d.Hash}}.Encode()}
-		pages, used := displayReferences(cfg, d.Name)
-		row.Warn = displayDeleteWarning(d.Name, pages, used)
-		row.RenameURL = "/api/displays/" + url.PathEscape(d.Name) + "/rename?" + url.Values{"hash": {d.Hash}}.Encode()
-		row.RenameWarn = displayRenameWarning(d.Name, pages, used)
+		row := editorDisplayRow{Name: d.Name, Kind: d.Kind, Power: d.Power, Error: d.Error}
 		if d.Size[0] > 0 && d.Size[1] > 0 {
 			row.Size = fmt.Sprintf("%d × %d", d.Size[0], d.Size[1])
 		}

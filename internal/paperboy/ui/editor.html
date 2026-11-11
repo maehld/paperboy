@@ -19,6 +19,8 @@ table { border-collapse: collapse; width: 100%; font-size: .92rem; }
 th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid #eee; vertical-align: baseline; }
 thead th { border-top: 0; }
 th { font-weight: 600; color: #666; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+tr.rowlink { cursor: pointer; }
+tr.rowlink:hover td { background: #f6f9fe; }
 td.open { text-align: right; white-space: nowrap; }
 td.page { line-height: 1.25; }
 td.page strong { font-weight: 600; }
@@ -84,18 +86,17 @@ details.new .hint { flex-basis: 100%; margin: 0; }
   {{end}}
   {{if .Groups}}
   <table id="page-table">
-    <thead><tr><th>Page</th><th>Variants</th><th>Kind</th><th>Grid</th><th>Title</th><th></th></tr></thead>
+    <thead><tr><th>Page</th><th>Variants</th><th>Kind</th><th>Grid</th><th>Title</th></tr></thead>
     <tbody>
       {{range .Groups}}
-      <tr>
-        <td class="page"><strong>{{.Name}}</strong>{{if .File}}<span class="sub">{{.File}}{{if .Shared}} · shared{{end}}</span>{{end}}</td>
+      <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
+        <td class="page">{{if .OpenURL}}<a href="{{.OpenURL}}"><strong>{{.Name}}</strong></a>{{else}}<strong>{{.Name}}</strong>{{end}}{{if .File}}<span class="sub">{{.File}}{{if .Shared}} · shared{{end}}</span>{{end}}</td>
         <td class="variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}{{if $v.URL}}<a href="{{$v.URL}}"{{if $v.Selected}} class="selected"{{end}}{{if $v.Title}} title="{{$v.Title}}"{{end}}>{{$v.Label}}</a>{{else}}<span class="missing" title="{{$v.Title}}">{{$v.Label}}</span>{{end}}{{if $v.DeleteURL}}<button class="delete" type="button" data-delete="{{$v.DeleteURL}}" data-warn="{{$v.Warn}}">Delete</button>{{end}}{{end}}</td>
         <td>{{.Kind}}</td>
         <td class="num">{{.Grid}}</td>
         <td>{{.Title}}</td>
-        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .RenameURL}}<button class="rename" type="button" data-rename="{{.RenameURL}}" data-warn="{{.RenameWarn}}">Rename</button>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
-      {{if .Error}}<tr class="detail"><td colspan="6"><p class="error">{{.Error}}</p></td></tr>{{end}}
+      {{if .Error}}<tr class="detail"><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
     </tbody>
   </table>
@@ -122,16 +123,15 @@ details.new .hint { flex-basis: 100%; margin: 0; }
   </div>
   {{if .Plans}}
   <table id="plan-table">
-    <thead><tr><th>Name</th><th>Rules</th><th>Fallback</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Rules</th><th>Fallback</th></tr></thead>
     <tbody>
       {{range .Plans}}
-      <tr>
-        <td>{{.Name}}</td>
+      <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
+        <td>{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
         <td class="num">{{.Rules}}</td>
         <td>{{.Fallback}}</td>
-        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .RenameURL}}<button class="rename" type="button" data-rename="{{.RenameURL}}" data-warn="{{.RenameWarn}}">Rename</button>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
-      {{if .Error}}<tr class="detail"><td colspan="4"><p class="error">{{.Error}}</p></td></tr>{{end}}
+      {{if .Error}}<tr class="detail"><td colspan="3"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
     </tbody>
   </table>
@@ -159,19 +159,18 @@ details.new .hint { flex-basis: 100%; margin: 0; }
   </div>
   {{if .Devices}}
   <table id="device-table">
-    <thead><tr><th>ID</th><th>Display type</th><th>MAC</th><th>Address</th><th>Plan</th><th></th></tr></thead>
+    <thead><tr><th>ID</th><th>Display type</th><th>MAC</th><th>Address</th><th>Plan</th></tr></thead>
     <tbody>
       {{range .Devices}}
-      <tr>
-        <td>{{.ID}}</td>
+      <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
+        <td>{{if .OpenURL}}<a href="{{.OpenURL}}">{{.ID}}</a>{{else}}{{.ID}}{{end}}</td>
         <td>{{.Display}}</td>
         <td class="num">{{.MAC}}</td>
         <td class="num">{{.Address}}</td>
         <td>{{.Plan}}</td>
-        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .RenameURL}}<button class="rename" type="button" data-rename="{{.RenameURL}}" data-warn="{{.RenameWarn}}">Rename</button>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
-      {{if .Problem}}<tr class="detail"><td colspan="6"><p class="error">{{.Problem}}</p></td></tr>{{end}}
-      {{if .Error}}<tr class="detail"><td colspan="6"><p class="error">{{.Error}}</p></td></tr>{{end}}
+      {{if .Problem}}<tr class="detail"><td colspan="5"><p class="error">{{.Problem}}</p></td></tr>{{end}}
+      {{if .Error}}<tr class="detail"><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
     </tbody>
   </table>
@@ -190,14 +189,14 @@ details.new .hint { flex-basis: 100%; margin: 0; }
     <thead><tr><th>MAC</th><th>Hardware</th><th>Firmware</th><th>Address</th><th>First seen</th><th>Last seen</th><th></th></tr></thead>
     <tbody>
       {{range .Unclaimed}}
-      <tr>
+      <tr class="rowlink" data-claim="{{.ClaimURL}}" data-mac="{{.MAC}}">
         <td class="num">{{.MAC}}</td>
         <td>{{.Hardware}}</td>
         <td>{{.Firmware}}</td>
         <td class="num">{{.Address}}</td>
         <td class="num">{{.FirstSeen}}</td>
         <td class="num">{{.LastSeen}}</td>
-        <td class="open"><a href="{{.ClaimURL}}">Claim</a><button class="delete" type="button" data-forget="{{.ForgetURL}}" data-mac="{{.MAC}}">Forget</button></td>
+        <td class="open"><a href="{{.ClaimURL}}" data-claim="{{.ClaimURL}}" data-mac="{{.MAC}}">Claim</a><button class="delete" type="button" data-forget="{{.ForgetURL}}" data-mac="{{.MAC}}">Forget</button></td>
       </tr>
       {{end}}
     </tbody>
@@ -224,19 +223,18 @@ details.new .hint { flex-basis: 100%; margin: 0; }
   </div>
   {{if .Types}}
   <table id="display-table">
-    <thead><tr><th>Name</th><th>Kind</th><th>Size</th><th>ppi / charset</th><th>Grays</th><th>Power</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Kind</th><th>Size</th><th>ppi / charset</th><th>Grays</th><th>Power</th></tr></thead>
     <tbody>
       {{range .Types}}
-      <tr>
-        <td>{{.Name}}</td>
+      <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
+        <td>{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
         <td>{{.Kind}}</td>
         <td class="num">{{.Size}}</td>
         <td>{{.Density}}</td>
         <td class="num">{{.Gray}}</td>
         <td>{{.Power}}</td>
-        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .RenameURL}}<button class="rename" type="button" data-rename="{{.RenameURL}}" data-warn="{{.RenameWarn}}">Rename</button>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
-      {{if .Error}}<tr class="detail"><td colspan="7"><p class="error">{{.Error}}</p></td></tr>{{end}}
+      {{if .Error}}<tr class="detail"><td colspan="6"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
     </tbody>
   </table>
@@ -270,65 +268,32 @@ for (const input of document.querySelectorAll('input[data-filter]')) {
   });
 }
 
-// Deleting a file asks first and names what still references it (ADR 0073);
-// the server refuses a file that changed since the row was read.
-for (const b of document.querySelectorAll('button[data-delete]')) {
-  b.addEventListener('click', async () => {
-    if (!confirm((b.dataset.warn || 'Delete this file?') + '\n\nA copy stays under state/editor/.')) return;
-    b.disabled = true;
-    let res;
-    try {
-      res = await fetch(b.dataset.delete, { method: 'DELETE' });
-    } catch (e) {
-      alert('Delete failed: ' + e);
-      b.disabled = false;
-      return;
-    }
-    if (res.ok) {
-      location.reload();
-      return;
-    }
-    let msg = '(' + res.status + ')';
-    try {
-      msg = (await res.json()).error || msg;
-    } catch (e) { /* not JSON */ }
-    alert('Delete failed: ' + msg);
-    b.disabled = false;
+// A row opens its object; links and buttons inside a row keep their own
+// meaning. Rename and Delete live in the editor of the object, so the list stays
+// a list of links (ADR 0083).
+for (const row of document.querySelectorAll('tr[data-href]')) {
+  row.addEventListener('click', (e) => {
+    if (e.target.closest('a, button')) return;
+    location.href = row.dataset.href;
   });
 }
 
-// Renaming moves the file (and a device's state) and leaves the references
-// alone; the confirmation names what keeps the old name (ADR 0079). The row
-// carries the hash it was read with, so a file changed in between is refused.
-for (const b of document.querySelectorAll('button[data-rename]')) {
-  b.addEventListener('click', async () => {
-    const old = (b.closest('tr').querySelector('td').textContent || '').trim();
-    if (!confirm(b.dataset.warn || 'Rename this file?')) return;
-    const name = (prompt('New name for ' + old + ': (lower case letters, digits and -)', '') || '').trim();
-    if (!name || name === old) return;
-    b.disabled = true;
-    let res;
-    try {
-      res = await fetch(b.dataset.rename, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      });
-    } catch (e) {
-      alert('Rename failed: ' + e);
-      b.disabled = false;
-      return;
-    }
-    if (res.ok) {
-      location.reload();
-      return;
-    }
-    let msg = '(' + res.status + ')';
-    try {
-      msg = (await res.json()).error || msg;
-    } catch (e) { /* not JSON */ }
-    alert('Rename failed: ' + msg);
-    b.disabled = false;
+// Claiming opens a new device file with the MAC prefilled; a click on the row
+// asks first, because it leaves the list and looks like a read (ADR 0080).
+function claim(url, mac) {
+  if (!confirm('Claim ' + (mac || 'this hardware') + '?\n\nThis opens a new device file with its MAC prefilled; nothing is written until you save it.')) return;
+  location.href = url;
+}
+for (const row of document.querySelectorAll('tr[data-claim]')) {
+  row.addEventListener('click', (e) => {
+    if (e.target.closest('a, button')) return;
+    claim(row.dataset.claim, row.dataset.mac);
+  });
+}
+for (const a of document.querySelectorAll('a[data-claim]')) {
+  a.addEventListener('click', (e) => {
+    e.preventDefault();
+    claim(a.dataset.claim, a.dataset.mac);
   });
 }
 // A state file of hardware without a device file (ADR 0080) can be forgotten;

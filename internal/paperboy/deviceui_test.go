@@ -18,7 +18,7 @@ func TestDeviceEditorOverview(t *testing.T) {
 
 	body := request(t, s, http.MethodGet, "/ui/editor?tab=devices", nil, nil).Body.String()
 	for _, want := range []string{
-		"<h2>Devices", "<td>kueche</td>", "<td>small</td>", "<td>tour</td>",
+		"<h2>Devices", `<a href="/ui/editor/device?id=kueche">kueche</a>`, "<td>small</td>", "<td>tour</td>",
 		"/ui/editor/device?id=kueche", "New device", `action="/ui/editor/device"`,
 	} {
 		if !strings.Contains(body, want) {
