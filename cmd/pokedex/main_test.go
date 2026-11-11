@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -52,11 +54,37 @@ func fixture(t *testing.T) (*httptest.Server, *atomic.Int32) {
 			}
 			png.Encode(w, img)
 		default:
+			if strings.HasPrefix(r.URL.Path, "/api/pokemon/") || strings.HasPrefix(r.URL.Path, "/api/pokemon-species/") {
+				genericMon(w, r.URL.Path)
+				return
+			}
 			http.NotFound(w, r)
 		}
 	}))
 	t.Cleanup(srv.Close)
 	return srv, &calls
+}
+
+// genericMon answers any Pokémon that a seed may pick with a synthesized one
+// of the same number and without artwork, so a test needs no fixture per
+// candidate.
+func genericMon(w http.ResponseWriter, path string) {
+	n, err := strconv.Atoi(strings.TrimPrefix(path[strings.LastIndex(path, "/")+1:], "mon-"))
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if strings.HasPrefix(path, "/api/pokemon-species/") {
+		fmt.Fprintf(w, `{"names":[{"name":"Mon %d","language":{"name":"en"}}],"flavor_text_entries":[]}`, n)
+		return
+	}
+	var stats []string
+	for _, name := range statOrder {
+		stats = append(stats, fmt.Sprintf(`{"base_stat":%d,"stat":{"name":%q}}`, 40+n%100, name))
+	}
+	fmt.Fprintf(w, `{"id":%d,"name":"mon-%d","height":10,"weight":100,"species":{"name":"mon-%d"},
+		"types":[{"slot":1,"type":{"name":"electric"}}],"stats":[%s],"sprites":{}}`,
+		n, n, n, strings.Join(stats, ","))
 }
 
 func configured(t *testing.T, cfg map[string]any) (*pokedex, *atomic.Int32) {
@@ -110,8 +138,8 @@ func TestRotation(t *testing.T) {
 	seen := map[string]bool{}
 	for i := 0; i < 40; i++ {
 		at := day.AddDate(0, 0, i)
-		k := p.key(at)
-		if k != p.key(at.Add(5*time.Hour)) {
+		k := p.key(at, "")
+		if k != p.key(at.Add(5*time.Hour), "") {
 			t.Fatal("pick changed within a day")
 		}
 		id, _ := atoiOK(k)
@@ -127,6 +155,81 @@ func TestRotation(t *testing.T) {
 	next := p.nextRotation(time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC))
 	if want := time.Date(2026, 11, 7, 23, 0, 0, 0, time.UTC); !next.Equal(want) {
 		t.Errorf("next rotation %v, want %v", next, want)
+	}
+}
+
+// TestSeedPicks checks that a seed gives its own pick of the interval and
+// that the pick stays put within one interval.
+func TestSeedPicks(t *testing.T) {
+	p := newPokedex(nil)
+	if err := p.Configure(plugin.Values{"generations": []any{1.0}}, &plugin.Request{Timezone: "UTC"}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
+	if p.key(at, "") != p.key(at, "") {
+		t.Fatal("the unseeded pick is not stable")
+	}
+	same, shared := 0, 0
+	for i := 0; i < 40; i++ {
+		day := at.AddDate(0, 0, i)
+		a, b := p.key(day, "kueche"), p.key(day, "flur")
+		if a != p.key(day.Add(2*time.Hour), "kueche") {
+			t.Fatalf("day %d: a seeded pick changed within the interval", i)
+		}
+		if a == b {
+			same++
+		}
+		if a == p.key(day, "") {
+			shared++
+		}
+	}
+	// 151 candidates: about a quarter of the days match by chance.
+	if same > 8 {
+		t.Errorf("%d of 40 days picked the same Pokémon for both seeds", same)
+	}
+	if shared > 8 {
+		t.Errorf("the seed had no effect on %d of 40 days", shared)
+	}
+}
+
+// TestSeedsRenderDifferentCards draws two cards with different seeds and
+// checks that they are loaded and drawn side by side.
+func TestSeedsRenderDifferentCards(t *testing.T) {
+	p, _ := configured(t, map[string]any{"mode": "random", "generations": []any{1.0}})
+	req, w1 := request("en", 400, 240, 125)
+	w2 := w1
+	w1.Args = map[string]any{"seed": "kueche"}
+	w2.Args = map[string]any{"seed": "flur"}
+	req.Widgets = []plugin.WidgetRequest{w1, w2,
+		{Widget: "card", Width: 400, Height: 240, Style: w1.Style}}
+	var m1, m2 *mon
+	for i := 0; i < 40; i++ {
+		now := time.Date(2026, 11, 7+i, 12, 0, 0, 0, time.UTC)
+		p.now = func() time.Time { return now }
+		if err := p.Prepare(req); err != nil {
+			t.Fatal(err)
+		}
+		if m1, _ = p.current(w1); m1 == nil {
+			t.Fatalf("day %d: seed kueche not loaded", i)
+		}
+		if m2, _ = p.current(w2); m2 == nil {
+			t.Fatalf("day %d: seed flur not loaded", i)
+		}
+		if m1.id != m2.id {
+			break
+		}
+	}
+	if m1.id == m2.id {
+		t.Fatalf("both seeds picked %d on 40 days", m1.id)
+	}
+	for _, w := range []plugin.WidgetRequest{w1, w2} {
+		img := render.NewCanvas(w.Width, w.Height, 4)
+		if err := p.Render(req, w, img); err != nil {
+			t.Fatalf("seed %v: %v", w.Args["seed"], err)
+		}
+	}
+	if _, err := p.current(plugin.WidgetRequest{Widget: "card", Args: map[string]any{"seed": "unprepared"}}); err == nil {
+		t.Error("a seed that was not prepared: no error")
 	}
 }
 
@@ -156,7 +259,7 @@ func TestLoadCachesResponses(t *testing.T) {
 	if calls.Load() != 4 {
 		t.Errorf("%d requests, want 4", calls.Load())
 	}
-	if _, err := p.load(context.Background(), "9999"); err == nil {
+	if _, err := p.load(context.Background(), "missingno"); err == nil {
 		t.Error("unknown pokemon: no error")
 	}
 }
@@ -183,6 +286,7 @@ func TestText(t *testing.T) {
 	p, _ := configured(t, map[string]any{"pokemon": "25"})
 	req, w := request("de", 20, 4, 0)
 	req.Page = plugin.PageInfo{Width: 20, Height: 4}
+	req.Widgets = []plugin.WidgetRequest{w}
 	if err := p.Prepare(req); err != nil {
 		t.Fatal(err)
 	}
@@ -224,6 +328,7 @@ func TestRenderCard(t *testing.T) {
 	} {
 		req, w := request("en", tc.w, tc.h, tc.ppi)
 		req.Levels = tc.l
+		req.Widgets = []plugin.WidgetRequest{w}
 		if err := p.Prepare(req); err != nil {
 			t.Fatal(err)
 		}

@@ -2,7 +2,8 @@
 // PokéAPI (https://pokeapi.co, no API key): either a fixed one or a random
 // one that changes every `rotate` interval. The widget "card" draws the
 // artwork, name, number, types, size, base stats and a flavor text; it has a
-// text variant for character displays.
+// text variant for character displays. Its optional argument `seed` gives
+// every use its own random Pokémon while all of them rotate together.
 //
 // The artwork is downloaded at runtime and quantized to the display's gray
 // levels. It is never stored on disk and never part of the repository.
@@ -18,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"image"
 	_ "image/png" // PokéAPI artwork is PNG
 	"io"
@@ -74,6 +76,13 @@ type mon struct {
 // statOrder is the order of the base stats on the card.
 var statOrder = [6]string{"hp", "attack", "defense", "special-attack", "special-defense", "speed"}
 
+// loaded is what Prepare fetched for one seed of the running request: the
+// Pokémon of the widget's seed, or the error that kept it away.
+type loaded struct {
+	mon *mon
+	err error
+}
+
 type pokedex struct {
 	client *http.Client
 	now    func() time.Time
@@ -91,13 +100,12 @@ type pokedex struct {
 	mu    sync.Mutex
 	mons  map[string]*mon
 	types map[string]map[string]string
-	cur   *mon
-	req   *plugin.Request
-	lang  string
+	curs  map[string]loaded // Pokémon per seed of the last Prepare
 }
 
 func newPokedex(c *http.Client) *pokedex {
-	return &pokedex{client: c, now: time.Now, gap: minGap, mons: map[string]*mon{}, types: map[string]map[string]string{}}
+	return &pokedex{client: c, now: time.Now, gap: minGap, mons: map[string]*mon{}, types: map[string]map[string]string{},
+		curs: map[string]loaded{}}
 }
 
 func (p *pokedex) Describe() plugin.Description {
@@ -108,7 +116,10 @@ func (p *pokedex) Describe() plugin.Description {
 		Config:  configKeys,
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "card", Title: "Pokémon card", Kinds: both, MinWidth: 240, MinHeight: 240,
-				Sizes: []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 4}, {Columns: 6, Rows: 8}}},
+				Sizes: []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 4}, {Columns: 6, Rows: 8}},
+				Args: map[string]plugin.Arg{
+					"seed": {Type: "string", Description: "a label such as a device name; every seed draws its own random Pokémon"},
+				}},
 		},
 	}
 }
@@ -183,13 +194,39 @@ func (p *pokedex) nextRotation(t time.Time) time.Time {
 
 // key names the Pokémon that is current at t: the configured one or the
 // random pick of the rotation interval. The pick only depends on the interval
-// number, so a restart keeps it.
-func (p *pokedex) key(t time.Time) string {
+// number and the widget's seed, so a restart keeps it and every seed gets its
+// own Pokémon of the same interval. Without a seed everything shares one pick.
+func (p *pokedex) key(t time.Time, seed string) string {
 	if p.fixed != "" {
 		return p.fixed
 	}
-	r := rand.New(rand.NewPCG(uint64(p.slot(t)), 0x706f6b65))
+	a, b := uint64(p.slot(t)), uint64(0x706f6b65)
+	if seed != "" {
+		b = fnv1a(seed)
+	}
+	r := rand.New(rand.NewPCG(a, b))
 	return strconv.Itoa(p.candidates[r.IntN(len(p.candidates))])
+}
+
+// fnv1a hashes a seed. It is stable across restarts and builds, which is what
+// makes the pick reproducible.
+func fnv1a(seed string) uint64 {
+	h := fnv.New64a()
+	h.Write([]byte(seed))
+	return h.Sum64()
+}
+
+// seedOf reads the widget's seed: a label such as a device name that gives
+// every use of the card its own random Pokémon.
+func seedOf(w plugin.WidgetRequest) (string, error) {
+	switch v := w.Arg()["seed"].(type) {
+	case nil:
+		return "", nil
+	case string:
+		return strings.TrimSpace(v), nil
+	default:
+		return "", fmt.Errorf("seed: %v is not a string", v)
+	}
 }
 
 // Start loads the current Pokémon ahead of the first request and reports a
@@ -199,7 +236,7 @@ func (p *pokedex) Start(ctx context.Context, notify func(widgets ...string)) {
 		first := true
 		for {
 			t := p.now()
-			if _, err := p.load(ctx, p.key(t)); err != nil {
+			if _, err := p.load(ctx, p.key(t, "")); err != nil {
 				if ctx.Err() != nil {
 					return
 				}
@@ -227,15 +264,49 @@ func (p *pokedex) Start(ctx context.Context, notify func(widgets ...string)) {
 	}()
 }
 
+// Prepare loads the Pokémon of every seed the request draws, so that Render
+// and Text only look them up. A seed that fails does not stop the others; the
+// request fails as a whole only when no card can be drawn.
 func (p *pokedex) Prepare(req *plugin.Request) error {
+	var seeds []string
+	seen := map[string]bool{}
+	for _, w := range req.Widgets {
+		if w.Widget != "card" {
+			continue // Render answers an unknown widget itself
+		}
+		seed, err := seedOf(w)
+		if err != nil {
+			continue // Render reports the bad value in its cell
+		}
+		if !seen[seed] {
+			seen[seed] = true
+			seeds = append(seeds, seed)
+		}
+	}
+	if len(seeds) == 0 {
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
-	m, err := p.load(ctx, p.key(p.now()))
-	if err != nil {
-		return err
+	curs := make(map[string]loaded, len(seeds))
+	var firstErr error
+	drawn := 0
+	for _, seed := range seeds {
+		m, err := p.load(ctx, p.key(p.now(), seed))
+		curs[seed] = loaded{mon: m, err: err}
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		drawn++
+	}
+	if drawn == 0 {
+		return firstErr
 	}
 	p.mu.Lock()
-	p.cur, p.req, p.lang = m, req, req.Lang()
+	p.curs = curs
 	p.mu.Unlock()
 	return nil
 }
@@ -395,7 +466,7 @@ func (p *pokedex) load(ctx context.Context, key string) (*mon, error) {
 		}
 	}
 	p.mu.Lock()
-	if len(p.mons) >= 8 { // only the current few are of interest
+	if len(p.mons) >= 16 { // only the current few are of interest, several seeds at once
 		p.mons = map[string]*mon{}
 	}
 	p.mons[key] = m
