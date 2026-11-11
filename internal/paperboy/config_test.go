@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maehld/paperboy/internal/download"
 )
 
 const validConfig = `
@@ -309,6 +311,42 @@ func TestLoadConfigRejectsFilePath(t *testing.T) {
 	}
 	if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "instance directory") {
 		t.Fatalf("file argument: %v", err)
+	}
+}
+
+// TestLoadConfigEmptyDownloadSection verifies that the bare key is the opt-in
+// (ADR 0060, 0062). YAML reads "download:" as null, which a pointer field
+// cannot tell from a missing section, yet the section's presence is what turns
+// the release checks on; a source is optional (the official repository).
+func TestLoadConfigEmptyDownloadSection(t *testing.T) {
+	cfg, _, err := loadConfig(t, "timezone: UTC\ndownload:\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Download == nil {
+		t.Fatal("an empty download section must enable the release checks")
+	}
+	if cfg.Download.Source != download.OfficialSource || cfg.Download.Interval != defaultDownloadInterval {
+		t.Fatalf("download: %+v", cfg.Download)
+	}
+}
+
+// TestLoadConfigDownloadSectionOptional guards the two neighbours of the bare
+// key: no section at all stays off, and a section without a source works.
+func TestLoadConfigDownloadSectionOptional(t *testing.T) {
+	cfg, _, err := loadConfig(t, "timezone: UTC\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Download != nil {
+		t.Fatalf("a missing download section must stay off: %+v", cfg.Download)
+	}
+	cfg, _, err = loadConfig(t, "timezone: UTC\ndownload:\n  interval: 2h\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Download == nil || cfg.Download.Source != download.OfficialSource || cfg.Download.Interval != 2*time.Hour {
+		t.Fatalf("download: %+v", cfg.Download)
 	}
 }
 

@@ -345,6 +345,13 @@ func (c *Config) minRefresh(d *Device, reported string) time.Duration {
 	}
 }
 
+// downloadFile mirrors the download section of paperboy.yaml (ADR 0060).
+type downloadFile struct {
+	Source   string   `yaml:"source"`   // empty = the official repository
+	Token    string   `yaml:"token"`    // optional bearer token for the release API
+	Interval Duration `yaml:"interval"` // between release checks
+}
+
 // fileConfig mirrors paperboy.yaml.
 type fileConfig struct {
 	Language string `yaml:"language"`  // de or en; default: system language
@@ -362,12 +369,8 @@ type fileConfig struct {
 		MinBatteryVolts float64 `yaml:"min_battery_volts"`
 		Version         string  `yaml:"version"` // pin for downloads and offers (ADR 0060)
 	} `yaml:"firmware"`
-	Download *struct {
-		Source   string   `yaml:"source"`
-		Token    string   `yaml:"token"`
-		Interval Duration `yaml:"interval"`
-	} `yaml:"download"`
-	Plugins map[string]struct {
+	Download *downloadFile `yaml:"download"`
+	Plugins  map[string]struct {
 		Command any               `yaml:"command"` // removed by ADR 0060; rejected with a hint
 		Version string            `yaml:"version"` // downloaded/pinned program version
 		Timeout Duration          `yaml:"timeout"`
@@ -376,6 +379,27 @@ type fileConfig struct {
 	} `yaml:"plugins"`
 	DisplayTypes any `yaml:"display_types"` // moved to displays/ (ADR 0071); rejected with a hint
 	Devices      any `yaml:"devices"`       // removed by ADR 0070; rejected with a hint
+}
+
+// hasSection reports whether the document names a top-level key, even without a
+// value. YAML reads "download:" as null, which a pointer field cannot tell from
+// a missing key, but for a section whose presence is the opt-in that difference
+// matters (ADR 0060).
+func hasSection(data []byte, key string) bool {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil || len(doc.Content) == 0 {
+		return false
+	}
+	m := doc.Content[0]
+	if m.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			return true
+		}
+	}
+	return false
 }
 
 // LoadConfig reads and validates the configuration of an instance directory
@@ -478,6 +502,12 @@ func LoadConfig(dir string) (*Config, error) {
 			return nil, fmt.Errorf("%s: plugin %s: config: %w", path, name, err)
 		}
 		c.Plugins = append(c.Plugins, Plugin{Name: name, Version: p.Version, Timeout: p.Timeout, Env: p.Env, Config: cfg})
+	}
+	// "download:" without a value decodes as null, which the pointer reads as a
+	// missing section, but the section's presence is the opt-in (ADR 0060): a
+	// bare key enables the checks with every default.
+	if f.Download == nil && hasSection(data, "download") {
+		f.Download = &downloadFile{}
 	}
 	if f.Download != nil {
 		token := ""
