@@ -135,29 +135,6 @@ func loadDeviceStates(dir string) (map[string]*deviceState, error) {
 	return state, nil
 }
 
-// deviceStateFiles lists the keys of the state files in dir, sorted.
-func deviceStateFiles(dir string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	keys := make([]string, 0, len(entries))
-	for _, e := range entries {
-		base, ok := strings.CutSuffix(e.Name(), ".json")
-		if e.IsDir() || !ok {
-			continue
-		}
-		if key := strings.ToUpper(base); validStateKey(key) {
-			keys = append(keys, key)
-		}
-	}
-	sort.Strings(keys)
-	return keys, nil
-}
-
 // formatMAC writes a MAC in the form the device files use, e.g.
 // AA:BB:CC:DD:EE:01; an unparsable address comes back trimmed.
 func formatMAC(mac string) string {
