@@ -133,6 +133,10 @@ type Device struct {
 	// MenuShowDuration is how long the menu stays open before it closes
 	// itself; 0 = the default (ADR 0057).
 	MenuShowDuration Duration
+	// Problem names why the device cannot sync; the loader keeps such a device
+	// so that renaming a display type leaves its file visible and repairable
+	// (ADR 0079). Empty = usable.
+	Problem string
 }
 
 // FirmwareConfig controls firmware updates offered in the sync (ADR 0043) and
@@ -547,8 +551,14 @@ func (c *Config) validate() error {
 	seenMAC := map[string]string{}
 	for i := range c.Devices {
 		d := &c.Devices[i]
-		if err := c.validateDevice(d); err != nil {
+		if err := c.normalizeDevice(d); err != nil {
 			return err
+		}
+		if _, ok := c.Profiles[d.Profile]; !ok {
+			// A device whose display type is gone stays loaded: renaming the
+			// type must not take the whole server down, and the operator can
+			// repair the file in the editor (ADR 0079).
+			d.Problem = fmt.Sprintf("display type %q is not configured", d.Profile)
 		}
 		if seenID[d.key()] {
 			return fmt.Errorf("duplicate device %s", d.key())
@@ -634,6 +644,19 @@ func validateProfile(name string, p *Profile) error {
 // defaults; the ID is its file name (ADR 0070). The API uses it too, so a
 // device the editor writes is as valid as one the server loaded.
 func (c *Config) validateDevice(d *Device) error {
+	if err := c.normalizeDevice(d); err != nil {
+		return err
+	}
+	if _, ok := c.Profiles[d.Profile]; !ok {
+		return fmt.Errorf("device %s: unknown display_type %q", d.ID, d.Profile)
+	}
+	return nil
+}
+
+// normalizeDevice checks what a device file decides on its own and fills the
+// defaults; whether its display type exists is a separate question, so the
+// loader can keep a device whose type was renamed (ADR 0079).
+func (c *Config) normalizeDevice(d *Device) error {
 	if !validName(d.ID) {
 		return fmt.Errorf("device %q: id must use a-z, 0-9 and -", d.ID)
 	}
@@ -659,9 +682,6 @@ func (c *Config) validateDevice(d *Device) error {
 	}
 	if err := d.Battery.validate("device " + d.ID); err != nil {
 		return err
-	}
-	if _, ok := c.Profiles[d.Profile]; !ok {
-		return fmt.Errorf("device %s: unknown display_type %q", d.ID, d.Profile)
 	}
 	if d.Refresh == 0 {
 		d.Refresh = c.Refresh

@@ -54,6 +54,7 @@ type dashboardDevice struct {
 	Firmware    string   // running version, available version and update status
 	Menu        string   // open menu phase and selected action (ADR 0057)
 	Actions     string   // "denied", empty when the device may use actions
+	Problem     string   // why the device cannot sync, empty when it can (ADR 0079)
 	Error       string   // last render or plan error
 }
 
@@ -109,6 +110,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			Firmware:    firmwareText(d),
 			Menu:        menuText(d.deviceState),
 			Actions:     actionsText(devices[d.ID]),
+			Problem:     d.Problem,
 			Error:       d.LastError,
 		})
 	}

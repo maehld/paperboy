@@ -71,10 +71,6 @@
   }
 
   function buildSelects() {
-    const display = el('display');
-    option(display, '', '— choose a display type —');
-    for (const name of state.displays) option(display, name, name);
-
     const actions = el('actions');
     option(actions, '', 'default (allow)');
     option(actions, 'allow', 'allow');
@@ -103,7 +99,7 @@
   // show fills the form from the model; it is called once per load or save.
   function show() {
     const d = state.device;
-    el('display').value = d.display_type || '';
+    fillDisplays(d.display_type);
     el('mac').value = d.mac || '';
     fillPlans(d.plan);
     el('refresh').value = d.refresh || '';
@@ -130,6 +126,18 @@
     for (const name of state.plans) option(plan, name, name);
     if (current && !state.plans.includes(current)) option(plan, current, current + ' (no such file)');
     plan.value = current || '';
+  }
+
+  // fillDisplays rebuilds the display type list; a display type that is not a
+  // file any more stays visible instead of silently vanishing from the form, so
+  // its disappearance is what the operator sees (ADR 0079).
+  function fillDisplays(current) {
+    const display = el('display');
+    display.innerHTML = '';
+    option(display, '', '— choose a display type —');
+    for (const name of state.displays) option(display, name, name);
+    if (current && !state.displays.includes(current)) option(display, current, current + ' (no such display type)');
+    display.value = current || '';
   }
 
   function renderLinks() {

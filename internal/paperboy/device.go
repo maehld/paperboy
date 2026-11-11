@@ -239,6 +239,18 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if d.Problem != "" {
+		// The device file points at a display type that is not configured, e.g.
+		// after a rename. Never a 401: that would make the firmware forget its
+		// key, and the file is the problem (ADR 0079).
+		st.LastSeen = now
+		stateData := s.stateSnapshotLocked()
+		s.mu.Unlock()
+		s.saveState(stateData)
+		slog.Warn("device cannot sync: its device file needs attention", "device", d.ID, "problem", d.Problem)
+		http.Error(w, d.Problem, http.StatusServiceUnavailable)
+		return
+	}
 	firstContact := st.LastSeen.IsZero()
 	st.LastSeen = now
 	st.WakeReason = req.Reason
@@ -561,6 +573,11 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 	if d == nil {
 		s.mu.Unlock()
 		http.Error(w, "unknown key", http.StatusUnauthorized)
+		return
+	}
+	if d.Problem != "" {
+		s.mu.Unlock()
+		http.Error(w, d.Problem, http.StatusServiceUnavailable)
 		return
 	}
 	if !cfg.Profiles[d.Profile].text() {

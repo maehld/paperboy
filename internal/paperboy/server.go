@@ -229,6 +229,7 @@ type deviceInfo struct {
 	FirmwareAvailable string `json:"firmware_available,omitempty"` // newest image for the hardware (ADR 0043)
 	FirmwareStatus    string `json:"firmware_status"`              // current, offered, available, failed, held or none
 	Power             string `json:"power"`                        // effective power source: battery or mains (ADR 0051)
+	Problem           string `json:"problem,omitempty"`            // why the device cannot sync, e.g. a missing display type (ADR 0079)
 }
 
 func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
@@ -244,7 +245,7 @@ func (s *Server) deviceInfos() []deviceInfo {
 	list := []deviceInfo{}
 	devices := make([]Device, 0, len(cfg.Devices))
 	for _, d := range cfg.Devices {
-		info := deviceInfo{ID: d.ID, Type: d.Type, MAC: d.MAC, Profile: d.Profile, Plan: d.Plan}
+		info := deviceInfo{ID: d.ID, Type: d.Type, MAC: d.MAC, Profile: d.Profile, Plan: d.Plan, Problem: d.Problem}
 		if st := s.state[d.key()]; st != nil {
 			info.deviceState = *st
 			info.Registered = st.APIKey != ""

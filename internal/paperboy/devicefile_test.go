@@ -1,6 +1,7 @@
 package paperboy
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -101,6 +102,49 @@ func TestDeviceFileValidation(t *testing.T) {
 	dev = unknown.device("kueche", nil)
 	if err := cfg.validateDevice(&dev); err == nil || !strings.Contains(err.Error(), "unknown display_type") {
 		t.Fatalf("unknown display type: %v", err)
+	}
+}
+
+// TestDeviceWithMissingDisplayTypeAnswers503: a device whose display type is
+// not configured stays configured (ADR 0079). It still registers, and sync and
+// text poll are answered with 503 rather than 401, so the firmware keeps its key
+// while the operator repairs the file.
+func TestDeviceWithMissingDisplayTypeAnswers503(t *testing.T) {
+	cfg := &Config{Dir: t.TempDir(), Profiles: map[string]Profile{"small": {Width: 40, Height: 20, PPI: 125}},
+		Devices: []Device{{ID: "test", MAC: "aa:bb:cc:dd:ee:01", Profile: "gone", Refresh: Duration(10 * time.Minute)}}}
+	if err := cfg.validate(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Devices[0].Problem == "" {
+		t.Fatalf("device problem missing: %+v", cfg.Devices[0])
+	}
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := register(t, s, `{"mac":"aa:bb:cc:dd:ee:01","hardware":"sticky"}`)
+	var reg struct{ Key, Device string }
+	if err := json.Unmarshal(rec.Body.Bytes(), &reg); rec.Code != http.StatusOK || err != nil || reg.Key == "" {
+		t.Fatalf("register: %d %s", rec.Code, rec.Body)
+	}
+	if rec := syncRaw(t, s, reg.Key, `{"reason":"timer"}`); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("sync: %d %s", rec.Code, rec.Body)
+	}
+	if rec := pollText(t, s, reg.Key, ""); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("text poll: %d %s", rec.Code, rec.Body)
+	}
+	// The contact is still recorded, so the dashboard shows the device as alive.
+	if st := s.state["test"]; st == nil || st.LastSeen.IsZero() {
+		t.Fatalf("state: %+v", st)
+	}
+	// The devices API and the dashboard name the reason.
+	info := s.deviceInfos()
+	if len(info) != 1 || !strings.Contains(info[0].Problem, `"gone"`) {
+		t.Fatalf("device info: %+v", info)
+	}
+	body := request(t, s, http.MethodGet, "/ui", nil, nil).Body.String()
+	if !strings.Contains(body, "display type &#34;gone&#34; is not configured") {
+		t.Fatalf("dashboard lacks the problem:\n%s", body)
 	}
 }
 

@@ -169,6 +169,7 @@ details.new .hint { flex-basis: 100%; margin: 0; }
         <td>{{.Plan}}</td>
         <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
+      {{if .Problem}}<tr class="detail"><td colspan="5"><p class="error">{{.Problem}}</p></td></tr>{{end}}
       {{if .Error}}<tr class="detail"><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
     </tbody>

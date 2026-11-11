@@ -99,6 +99,7 @@ type editorDeviceRow struct {
 	Display   string
 	MAC       string
 	Plan      string
+	Problem   string // the file parses but cannot sync, e.g. a missing display type (ADR 0079)
 	Error     string
 	OpenURL   string
 	DeleteURL string
@@ -454,6 +455,9 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 			Warn:      deviceDeleteWarning(d.ID)}
 		if d.Error == "" {
 			row.OpenURL = "/ui/editor/device?" + url.Values{"id": {d.ID}}.Encode()
+			if !knownProfile(cfg.Profiles, d.Display) {
+				row.Problem = fmt.Sprintf("display type %q is not configured: the device answers with 503 until its file names a configured display type", d.Display)
+			}
 		}
 		v.Devices = append(v.Devices, row)
 	}

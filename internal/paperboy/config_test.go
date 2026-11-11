@@ -182,6 +182,40 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
+// TestLoadConfigKeepsDeviceWithMissingDisplayType: renaming a display type
+// leaves device files that point at the old name. The loader keeps such a
+// device, marks it and loads the rest, so the server stays usable while the
+// operator repairs the file by hand (ADR 0079).
+func TestLoadConfigKeepsDeviceWithMissingDisplayType(t *testing.T) {
+	t.Setenv("TEST_PLACE", "Berlin")
+	devices := replaceDevice("flur", "display_type: sticky", "display_type: fehlt")
+	cfg, _, err := loadInstance(t, validConfig, validDisplays, devices)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Devices) != 2 {
+		t.Fatalf("devices: %+v", cfg.Devices)
+	}
+	flur, living := cfg.Devices[0], cfg.Devices[1]
+	if flur.ID != "flur" || !strings.Contains(flur.Problem, `"fehlt"`) || !strings.Contains(flur.Problem, "not configured") {
+		t.Fatalf("flur: %+v", flur)
+	}
+	if living.Problem != "" {
+		t.Fatalf("wohnzimmer: %+v", living)
+	}
+	// The defaults are filled before the display type is looked at, so the
+	// device is complete once its file names a configured type.
+	if flur.Refresh != Duration(10*time.Minute) || flur.MAC != "AA:BB:CC:DD:EE:02" {
+		t.Fatalf("flur defaults: %+v", flur)
+	}
+	// The strict API check still refuses the same device.
+	strict := flur
+	strict.Problem = ""
+	if err := cfg.validateDevice(&strict); err == nil || !strings.Contains(err.Error(), "unknown display_type") {
+		t.Fatalf("API check: %v", err)
+	}
+}
+
 func TestLoadConfigErrors(t *testing.T) {
 	t.Setenv("TEST_PLACE", "Berlin")
 	tests := []struct {
@@ -203,7 +237,6 @@ func TestLoadConfigErrors(t *testing.T) {
 		{"address", validConfig, nil, replaceDevice("wohnzimmer", `mac: "AA:BB:CC:DD:EE:01"`, "address: 10.0.0.1"), "opendisplay"},
 		{"text kind with gray levels", validConfig, replaceDisplay("e1001", "kind: image\nsize: [800, 480]", "kind: text\nsize: [20, 4]"), nil, "do not apply to kind text"},
 		{"unknown kind", validConfig, replaceDisplay("e1001", "kind: image", "kind: led"), nil, "unknown kind"},
-		{"unknown display type", validConfig, nil, replaceDevice("flur", "display_type: sticky", "display_type: fehlt"), "unknown display_type"},
 		{"duplicate mac", validConfig, nil, replaceDevice("flur", `"AA:BB:CC:DD:EE:02"`, `"AA:BB:CC:DD:EE:01"`), "duplicate device"},
 		{"bad size", validConfig, replaceDisplay("e1001", "size: [800, 480]", "size: [0, 480]"), nil, "invalid size"},
 		{"width_mm", validConfig, replaceDisplay("e1001", "ppi: 125", "width_mm: 163"), nil, "width_mm was replaced by ppi"},
