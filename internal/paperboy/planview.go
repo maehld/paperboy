@@ -96,6 +96,11 @@ func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 	view := planView{Device: dev.ID, Profile: dev.Profile, Plan: dev.Plan, At: at.Format(atLayout),
 		AtText: at.Format("Mon 2006-01-02 15:04"), Now: isNow}
 	view.Version, view.GoVersion = editorVersion(cfg)
+	if dev.Problem != "" {
+		view.Error = "The device cannot sync: " + dev.Problem + "."
+		s.writePlanView(w, view)
+		return
+	}
 	if dev.Plan == "" {
 		view.Error = "This device has no plan; it shows a notice page."
 		s.writePlanView(w, view)

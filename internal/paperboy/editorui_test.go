@@ -54,8 +54,48 @@ func TestEditorOverview(t *testing.T) {
 	if !strings.Contains(body, `display type &#34;old&#34; is not configured`) {
 		t.Fatalf("unknown variant not reported:\n%s", body)
 	}
+	// It opens through a configured display type of the same kind, so the
+	// orphaned file stays editable and can be saved as a variant (ADR 0079).
+	if !strings.Contains(body, "display=small&amp;name=solar&amp;source=old") {
+		t.Fatalf("a variant of an unknown display type is not offered:\n%s", body)
+	}
 	if strings.Contains(body, "/ui/editor/page?display=old") {
-		t.Fatalf("a variant of an unknown display type is offered:\n%s", body)
+		t.Fatalf("a variant of an unknown display type is offered for its own name:\n%s", body)
+	}
+}
+
+// TestEditorOrphanVariant opens a page variant whose display type is gone
+// through a configured display type of the same kind, so the file stays
+// editable and can be saved as that type's variant (ADR 0079).
+func TestEditorOrphanVariant(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "solar", "old", previewTemplate)
+	// A text variant needs a text display type of its own.
+	writePage(t, s, "clock", "gone", "kind: text\ngrid: [20, 4]\ncells:\n  - { at: [0, 0], span: [20, 1], widget: paperboy/text, args: { text: hi } }\n")
+
+	rec := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&source=old", nil, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("orphan image variant: %d %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"orphan":"old"`) {
+		t.Fatalf("orphan image variant lacks the marker:\n%s", body)
+	}
+	if !strings.Contains(body, `name=solar`) {
+		t.Fatalf("orphan image variant:\n%s", body)
+	}
+
+	// The text variant opens for the text display type.
+	if rec := request(t, s, http.MethodGet, "/ui/editor/page?name=clock&display=lcd&source=gone", nil, nil); rec.Code != http.StatusOK {
+		t.Fatalf("orphan text variant: %d %s", rec.Code, rec.Body)
+	}
+	// Without a source the variant is not there for the selected display type.
+	if rec := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("variant without source: %d %s", rec.Code, rec.Body)
+	}
+	// A source that has no file is a 404.
+	if rec := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&source=nope", nil, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing source: %d %s", rec.Code, rec.Body)
 	}
 }
 
@@ -182,7 +222,7 @@ func TestEditorPage(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		`<script id="editor-data" type="application/json">{"name":"solar","display":"small","kind":"image","width":40,"height":20,"new":false,"shared":false,"grid":[6,8],"reference":[6,8]}</script>`,
+		`<script id="editor-data" type="application/json">{"name":"solar","display":"small","kind":"image","width":40,"height":20,"new":false,"shared":false,"grid":[6,8],"reference":[6,8],"rename":{"url":"/api/pages/solar/rename","warn":"Rename page solar?`,
 		`<script src="/ui/editor.js"></script>`, `id="board"`, `id="palette"`, `id="palette-filter"`, `id="inspector"`,
 		`id="show-cells" checked`, `id="render-hint"`, `id="preview-error"`,
 	} {

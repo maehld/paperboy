@@ -49,6 +49,7 @@ type editorPage struct {
 	Display  string         `json:"display,omitempty"`
 	Path     string         `json:"path"` // relative to the instance directory
 	Hash     string         `json:"hash"`
+	SetHash  string         `json:"set_hash,omitempty"` // hash over every file of the page, for the rename (ADR 0079)
 	YAML     string         `json:"yaml"`
 	Template *page.Template `json:"template,omitempty"`
 	Error    string         `json:"error,omitempty"`
@@ -226,6 +227,9 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	}
 	out := editorPage{Name: name, Display: fileDisplay, Path: relativePath(cfg, path),
 		Hash: fileHash(data), YAML: string(data)}
+	if set, err := pageSetHashAt(cfg.Pages, name); err == nil {
+		out.SetHash = set
+	}
 	if t, err := page.Parse(bytes.NewReader(data)); err != nil {
 		out.Error = shortError(err)
 	} else {
@@ -293,8 +297,12 @@ func (s *Server) handleSavePage(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "written page does not read back: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, editorPage{Name: name, Display: display, Path: relativePath(cfg, path),
-		Hash: fileHash(data), YAML: string(data), Template: t})
+	out := editorPage{Name: name, Display: display, Path: relativePath(cfg, path),
+		Hash: fileHash(data), YAML: string(data), Template: t}
+	if set, err := pageSetHashAt(cfg.Pages, name); err == nil {
+		out.SetHash = set
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // planFiles lists the plan files of the instance directory: the data behind

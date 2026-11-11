@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -63,6 +64,10 @@ type editorPageGroup struct {
 	OpenURL   string
 	DeleteURL string // DELETE of the shown file (ADR 0073)
 	Warn      string // what the delete confirmation says
+	// RenameURL renames the whole page, RenameWarn is the confirmation that
+	// names the plans that keep the old name (ADR 0079).
+	RenameURL  string
+	RenameWarn string
 }
 
 type editorListPage struct {
@@ -81,39 +86,46 @@ type editorListPage struct {
 
 // editorDisplayRow is one display type file in the overview.
 type editorDisplayRow struct {
-	Name      string
-	Kind      string
-	Size      string
-	Density   string // ppi of an image display, charset of a text display
-	Gray      string
-	Power     string
-	Error     string
-	OpenURL   string
-	DeleteURL string
-	Warn      string
+	Name       string
+	Kind       string
+	Size       string
+	Density    string // ppi of an image display, charset of a text display
+	Gray       string
+	Power      string
+	Error      string
+	OpenURL    string
+	DeleteURL  string
+	Warn       string
+	RenameURL  string
+	RenameWarn string
 }
 
 // editorDeviceRow is one device file in the overview.
 type editorDeviceRow struct {
-	ID        string
-	Display   string
-	MAC       string
-	Plan      string
-	Error     string
-	OpenURL   string
-	DeleteURL string
-	Warn      string
+	ID         string
+	Display    string
+	MAC        string
+	Plan       string
+	Problem    string // the file parses but cannot sync, e.g. a missing display type (ADR 0079)
+	Error      string
+	OpenURL    string
+	DeleteURL  string
+	Warn       string
+	RenameURL  string
+	RenameWarn string
 }
 
 // editorPlanRow is one plan file in the overview.
 type editorPlanRow struct {
-	Name      string
-	Rules     int
-	Fallback  string
-	Error     string
-	OpenURL   string
-	DeleteURL string
-	Warn      string
+	Name       string
+	Rules      int
+	Fallback   string
+	Error      string
+	OpenURL    string
+	DeleteURL  string
+	Warn       string
+	RenameURL  string
+	RenameWarn string
 }
 
 // editorPageView is the shell of one page; the script reads the model, the
@@ -171,6 +183,8 @@ type editorState struct {
 	Span        *[2]int           `json:"span,omitempty"`   // its size on the reference grid
 	Args        map[string]string `json:"args,omitempty"`   // the args from the link, still as text
 	UsedBy      []string          `json:"usedBy,omitempty"` // plans that name the page, for the delete warning
+	Rename      *renameAction     `json:"rename,omitempty"` // nil for a new page (ADR 0079)
+	Orphan      string            `json:"orphan,omitempty"` // variant of a missing display type (ADR 0079)
 }
 
 // displayNames lists the configured display types alphabetically.
@@ -243,7 +257,9 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile, d
 			}
 		}
 	}
-	g := editorPageGroup{Name: name}
+	g := editorPageGroup{Name: name,
+		RenameURL:  "/api/pages/" + url.PathEscape(name) + "/rename?" + url.Values{"hash": {pageSetHash(files, name)}}.Encode(),
+		RenameWarn: pageRenameWarning(name, usedBy)}
 	for i, f := range files {
 		openable := f.Error == "" && (f.Display == "" || knownProfile(displays, f.Display))
 		v := editorVariant{Label: "shared", Selected: i == shown}
@@ -262,6 +278,15 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile, d
 		}
 		if openable && target != "" {
 			v.URL = "/ui/editor/page?" + url.Values{"name": {name}, "display": {target}}.Encode()
+		}
+		// A variant whose display type is gone stays openable through a
+		// configured display type of the same kind: the editor shows it and
+		// offers to save it as a variant of that type (ADR 0079).
+		if f.Error == "" && f.Display != "" && !knownProfile(displays, f.Display) {
+			if open := displayOfKind(displays, f.Kind); open != "" {
+				v.URL = "/ui/editor/page?" + url.Values{"name": {name}, "display": {open}, "source": {f.Display}}.Encode()
+				v.Title = fmt.Sprintf("display type %q is not configured; opened for %s", f.Display, open)
+			}
 		}
 		// A variant is reachable through the display type switch, the shared page
 		// through the row when it is the shown file; anything else keeps its own
@@ -396,6 +421,23 @@ func knownProfile(displays map[string]Profile, name string) bool {
 	return ok
 }
 
+// displayOfKind returns a configured display type of the given kind, so an
+// orphaned page variant can still be opened and saved as a variant of it
+// (ADR 0079).
+func displayOfKind(displays map[string]Profile, kind string) string {
+	names := make([]string, 0, len(displays))
+	for name := range displays {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if displays[name].text() == (kind == page.KindText) {
+			return name
+		}
+	}
+	return ""
+}
+
 func editorVersion(cfg *Config) (version, goVersion string) {
 	loc := cfg.Timezone
 	if loc == nil {
@@ -437,8 +479,10 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, p := range plans {
 		row := editorPlanRow{Name: p.Name, Rules: p.Rules, Fallback: p.Fallback, Error: p.Error,
-			DeleteURL: "/api/plans/" + url.PathEscape(p.Name) + "?" + url.Values{"hash": {p.Hash}}.Encode(),
-			Warn:      planDeleteWarning(p.Name, devicesByPlan[p.Name])}
+			DeleteURL:  "/api/plans/" + url.PathEscape(p.Name) + "?" + url.Values{"hash": {p.Hash}}.Encode(),
+			Warn:       planDeleteWarning(p.Name, devicesByPlan[p.Name]),
+			RenameURL:  "/api/plans/" + url.PathEscape(p.Name) + "/rename?" + url.Values{"hash": {p.Hash}}.Encode(),
+			RenameWarn: planRenameWarning(p.Name, devicesByPlan[p.Name])}
 		if p.Error == "" {
 			row.OpenURL = "/ui/editor/plan?" + url.Values{"name": {p.Name}}.Encode()
 		}
@@ -450,10 +494,15 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, d := range devices {
 		row := editorDeviceRow{ID: d.ID, Display: d.Display, MAC: d.MAC, Plan: d.Plan, Error: d.Error,
-			DeleteURL: "/api/devices/" + url.PathEscape(d.ID) + "?" + url.Values{"hash": {d.Hash}}.Encode(),
-			Warn:      deviceDeleteWarning(d.ID)}
+			DeleteURL:  "/api/devices/" + url.PathEscape(d.ID) + "?" + url.Values{"hash": {d.Hash}}.Encode(),
+			Warn:       deviceDeleteWarning(d.ID),
+			RenameURL:  "/api/devices/" + url.PathEscape(d.ID) + "/rename?" + url.Values{"hash": {d.Hash}}.Encode(),
+			RenameWarn: deviceRenameWarning(d.ID)}
 		if d.Error == "" {
 			row.OpenURL = "/ui/editor/device?" + url.Values{"id": {d.ID}}.Encode()
+			if !knownProfile(cfg.Profiles, d.Display) {
+				row.Problem = fmt.Sprintf("display type %q is not configured: the device answers with 503 until its file names a configured display type", d.Display)
+			}
 		}
 		v.Devices = append(v.Devices, row)
 	}
@@ -466,6 +515,8 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 			DeleteURL: "/api/displays/" + url.PathEscape(d.Name) + "?" + url.Values{"hash": {d.Hash}}.Encode()}
 		pages, used := displayReferences(cfg, d.Name)
 		row.Warn = displayDeleteWarning(d.Name, pages, used)
+		row.RenameURL = "/api/displays/" + url.PathEscape(d.Name) + "/rename?" + url.Values{"hash": {d.Hash}}.Encode()
+		row.RenameWarn = displayRenameWarning(d.Name, pages, used)
 		if d.Size[0] > 0 && d.Size[1] > 0 {
 			row.Size = fmt.Sprintf("%d × %d", d.Size[0], d.Size[1])
 		}
@@ -553,17 +604,52 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.Display, v.Text = display, p.text()
-	_, fileDisplay, err := existingPageFile(cfg.Pages, name, display)
-	missing := errors.Is(err, fs.ErrNotExist)
-	switch {
-	case missing && q.Get("new") != "1":
-		v.Error = fmt.Sprintf("there is no page %q for the display type %q yet", name, display)
-		renderEditorPage(w, v, http.StatusNotFound)
-		return
-	case err != nil && !missing:
-		v.Error = err.Error()
-		renderEditorPage(w, v, http.StatusInternalServerError)
-		return
+	source := q.Get("source")
+	orphan := ""
+	if source != "" {
+		if !page.ValidName(source) {
+			v.Error = fmt.Sprintf("display type %q: only a-z, 0-9 and -", source)
+			renderEditorPage(w, v, http.StatusBadRequest)
+			return
+		}
+		path, err := pageFilePath(cfg.Pages, name, source)
+		if err != nil {
+			v.Error = err.Error()
+			renderEditorPage(w, v, http.StatusBadRequest)
+			return
+		}
+		if _, err := os.Stat(path); err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				v.Error = err.Error()
+				renderEditorPage(w, v, http.StatusInternalServerError)
+				return
+			}
+			v.Error = fmt.Sprintf("there is no page %q for the display type %q", name, source)
+			renderEditorPage(w, v, http.StatusNotFound)
+			return
+		}
+		if !knownProfile(cfg.Profiles, source) {
+			orphan = source
+		}
+	}
+	fileDisplay := ""
+	missing := false
+	if orphan == "" && source == "" {
+		_, fd, err := existingPageFile(cfg.Pages, name, display)
+		fileDisplay = fd
+		missing = errors.Is(err, fs.ErrNotExist)
+		switch {
+		case missing && q.Get("new") != "1":
+			v.Error = fmt.Sprintf("there is no page %q for the display type %q yet", name, display)
+			renderEditorPage(w, v, http.StatusNotFound)
+			return
+		case err != nil && !missing:
+			v.Error = err.Error()
+			renderEditorPage(w, v, http.StatusInternalServerError)
+			return
+		}
+	} else if source != "" {
+		fileDisplay = source
 	}
 	// A page without a file starts as a new one; the shared flag makes it
 	// pages/<name>.yaml instead of a variant (ADR 0068). Without a display type
@@ -574,7 +660,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Warn("plan list for the page editor failed", "error", err)
 	}
-	v.Data = editorStateData(name, display, p, missing, shared, plansByPage(plans)[name])
+	v.Data = editorStateData(name, display, p, missing, shared, plansByPage(plans)[name], pageRenameAction(cfg, name, plansByPage(plans)[name]), orphan)
 	for _, n := range displayNames(cfg) {
 		params := url.Values{"name": {name}, "display": {n}}
 		if q.Get("new") == "1" {
@@ -592,9 +678,9 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 // editorStateData encodes the starting state for the script. The JSON is safe
 // to inline: encoding/json escapes <, > and &, so a page title can never close
 // the script element.
-func editorStateData(name, display string, p Profile, missing, shared bool, usedBy []string) template.JS {
+func editorStateData(name, display string, p Profile, missing, shared bool, usedBy []string, rename *renameAction, orphan string) template.JS {
 	state := editorState{Name: name, Display: display, Width: p.Width, Height: p.Height,
-		New: missing, Shared: shared, Reference: defaultGrid, UsedBy: usedBy}
+		New: missing, Shared: shared, Reference: defaultGrid, UsedBy: usedBy, Rename: rename, Orphan: orphan}
 	if p.text() {
 		state.Kind = page.KindText
 		state.Grid = [2]int{p.Width, p.Height}

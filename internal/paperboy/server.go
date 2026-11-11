@@ -175,19 +175,23 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/pages/{name}", s.handlePage)
 	mux.HandleFunc("PUT /api/pages/{name}", s.handleSavePage)
 	mux.HandleFunc("DELETE /api/pages/{name}", s.handleDeletePage)
+	mux.HandleFunc("POST /api/pages/{name}/rename", s.handleRenamePage)
 	mux.HandleFunc("GET /api/plans", s.handlePlans)
 	mux.HandleFunc("GET /api/plans/{name}", s.handlePlan)
 	mux.HandleFunc("PUT /api/plans/{name}", s.handleSavePlan)
 	mux.HandleFunc("DELETE /api/plans/{name}", s.handleDeletePlan)
+	mux.HandleFunc("POST /api/plans/{name}/rename", s.handleRenamePlan)
 	// Device files (ADR 0070).
 	mux.HandleFunc("GET /api/devices/{id}", s.handleDevice)
 	mux.HandleFunc("PUT /api/devices/{id}", s.handleSaveDevice)
 	mux.HandleFunc("DELETE /api/devices/{id}", s.handleDeleteDevice)
+	mux.HandleFunc("POST /api/devices/{id}/rename", s.handleRenameDevice)
 	// Display type files (ADR 0071).
 	mux.HandleFunc("GET /api/displays", s.handleDisplays)
 	mux.HandleFunc("GET /api/displays/{name}", s.handleDisplay)
 	mux.HandleFunc("PUT /api/displays/{name}", s.handleSaveDisplay)
 	mux.HandleFunc("DELETE /api/displays/{name}", s.handleDeleteDisplay)
+	mux.HandleFunc("POST /api/displays/{name}/rename", s.handleRenameDisplay)
 	mux.HandleFunc("POST /api/preview/{display}", s.handleDraftPreview)
 	return mux
 }
@@ -229,6 +233,7 @@ type deviceInfo struct {
 	FirmwareAvailable string `json:"firmware_available,omitempty"` // newest image for the hardware (ADR 0043)
 	FirmwareStatus    string `json:"firmware_status"`              // current, offered, available, failed, held or none
 	Power             string `json:"power"`                        // effective power source: battery or mains (ADR 0051)
+	Problem           string `json:"problem,omitempty"`            // why the device cannot sync, e.g. a missing display type (ADR 0079)
 }
 
 func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
@@ -244,7 +249,7 @@ func (s *Server) deviceInfos() []deviceInfo {
 	list := []deviceInfo{}
 	devices := make([]Device, 0, len(cfg.Devices))
 	for _, d := range cfg.Devices {
-		info := deviceInfo{ID: d.ID, Type: d.Type, MAC: d.MAC, Profile: d.Profile, Plan: d.Plan}
+		info := deviceInfo{ID: d.ID, Type: d.Type, MAC: d.MAC, Profile: d.Profile, Plan: d.Plan, Problem: d.Problem}
 		if st := s.state[d.key()]; st != nil {
 			info.deviceState = *st
 			info.Registered = st.APIKey != ""

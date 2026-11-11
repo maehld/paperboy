@@ -18,6 +18,7 @@
     plan: null,
     hash: '',
     isNew: !!start.new, // no file yet: the first save writes it (ADR 0073)
+    rename: start.rename || null, // endpoint and confirmation for a rename (ADR 0079)
     readOnly: false,
     dirty: false,
   };
@@ -41,6 +42,7 @@
   function updateSave() {
     el('save').disabled = !state.plan || state.readOnly;
     el('delete').hidden = state.isNew || !state.plan;
+    el('rename').hidden = state.isNew || !state.plan || !state.rename;
   }
 
   function changed() {
@@ -798,6 +800,43 @@
     renderAll();
   }
 
+  // rename moves the plan file; the devices that use it keep the old name, so
+  // the confirmation names them (ADR 0079).
+  async function rename() {
+    if (state.isNew || !state.plan || !state.rename) return;
+    const warn = state.rename.warn +
+      (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
+      '\n\nThe new name is yours to propagate: nothing is rewritten.';
+    if (!confirm(warn)) return;
+    const name = (prompt('New name for ' + state.name + ': (lower case letters, digits and -)', '') || '').trim();
+    if (!name || name === state.name) return;
+    setStatus('renaming…', '');
+    let res;
+    try {
+      res = await fetch(state.rename.url + '?hash=' + encodeURIComponent(state.hash), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+    } catch (e) {
+      setStatus('rename failed: ' + e, 'error');
+      return;
+    }
+    if (!res.ok) {
+      const body = await res.text();
+      let doc = {};
+      try {
+        doc = JSON.parse(body);
+      } catch (e) {
+        doc.error = body.trim();
+      }
+      setStatus(doc.error || 'rename failed (' + res.status + ')', 'error');
+      return;
+    }
+    state.dirty = false;
+    location.href = '/ui/editor/plan?name=' + encodeURIComponent(name);
+  }
+
   // remove deletes the file after naming the devices that use it; the server
   // refuses a file that changed since it was read (ADR 0073).
   async function remove() {
@@ -844,6 +883,7 @@
 
   el('save').addEventListener('click', save);
   el('delete').addEventListener('click', remove);
+  el('rename').addEventListener('click', rename);
   el('reload').addEventListener('click', () => location.reload());
   el('add-rule').addEventListener('click', addRule);
   el('add-action').addEventListener('click', addAction);

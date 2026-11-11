@@ -66,6 +66,7 @@ dd.oneline .muted { font-size: .78rem; }
       {{if .Menu}}<dt>Menu</dt><dd>{{.Menu}}</dd>{{end}}
       {{if .Actions}}<dt>Actions</dt><dd>{{.Actions}}</dd>{{end}}
     </dl>
+    {{if .Problem}}<p class="error">{{.Problem}} · <a href="/ui/editor/device?id={{.ID}}">edit the device file</a></p>{{end}}
     {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
   </section>
   {{end}}
