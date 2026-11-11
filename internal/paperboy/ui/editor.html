@@ -36,12 +36,15 @@ input, select, button { font: inherit; padding: .2rem .35rem; }
 button.delete { border: 0; background: none; color: #b00; font-size: .85rem; padding: 0; margin-left: .6rem; cursor: pointer; text-decoration: underline; }
 button.delete:hover { color: #800; }
 button.delete:disabled { color: #999; cursor: default; text-decoration: none; }
-details.new summary { list-style: none; display: inline-block; padding: .25rem .7rem; border: 1px solid #134e9c; border-radius: 6px; background: #134e9c; color: #fff; font-size: .9rem; cursor: pointer; user-select: none; }
-details.new summary::-webkit-details-marker { display: none; }
-details.new summary:hover { background: #0e3d7c; }
-details.new[open] summary { background: #fafafa; color: #134e9c; }
-details.new form { display: flex; flex-wrap: wrap; gap: .8rem; align-items: center; margin-top: .7rem; font-size: .9rem; padding: .6rem; background: #f8fafd; border: 1px solid #e1e7f0; border-radius: 6px; }
-details.new .hint { flex-basis: 100%; margin: 0; }
+button.new { border-color: #134e9c; background: #134e9c; color: #fff; }
+button.new:hover { background: #0e3d7c; }
+dialog { border: 1px solid #ccc; border-radius: 8px; padding: 1rem 1.1rem; width: min(26rem, 92vw); box-shadow: 0 8px 30px rgba(0, 0, 0, .18); }
+dialog::backdrop { background: rgba(0, 0, 0, .25); }
+dialog h3 { margin: 0 0 .7rem; font-size: 1rem; }
+dialog label { display: block; margin-bottom: .6rem; font-size: .9rem; }
+dialog label input, dialog label select { display: block; width: 100%; margin-top: .2rem; }
+dialog .hint { margin: .2rem 0 0; }
+dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .9rem; }
 .hint { margin: .6rem 0 0; font-size: .85rem; color: #666; }
 .empty { margin: 0; padding: 2rem 1rem; text-align: center; color: #888; border: 1px dashed #ccc; }
 </style>
@@ -61,25 +64,13 @@ details.new .hint { flex-basis: 100%; margin: 0; }
     <h2>Pages{{if .Groups}} <span class="count">{{len .Groups}}</span>{{end}}</h2>
     <span class="spacer"></span>
     <input class="filter" type="search" placeholder="Filter pages…" data-filter="page-table" aria-label="Filter pages">
-    {{if .Displays}}<details class="new">
-      <summary>New page</summary>
-      <form method="get" action="/ui/editor/page">
-        <input type="hidden" name="new" value="1">
-        <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. solar" title="lower case letters, digits and -"></label>
-        <label>Display type <select name="display">
-          <option value="">shared page, all display types</option>
-          {{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
-        </select></label>
-        <button type="submit">Create</button>
-        <p class="hint">Lower case letters, digits and <code>-</code>. A page is saved as <code>pages/&lt;name&gt;.&lt;display type&gt;.yaml</code>, a shared page as <code>pages/&lt;name&gt;.yaml</code>; a new page starts with the kind and grid of the chosen display type.</p>
-      </form>
-    </details>{{end}}
+    {{if .Displays}}<button class="new" type="button" data-dialog="new-page">New page</button>{{end}}
   </div>
   {{if .Displays}}
   <div class="switch">
     <span class="muted">Display type:</span>
     {{range .Displays}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
-    <span class="muted">· kind, grid, title and Open follow this display type: its variant, else the shared page</span>
+    <span class="muted">· kind, grid and title follow this display type: its variant, else the shared page</span>
   </div>
   {{else}}
   <p class="empty">No display types configured. Add one under <code>displays/</code>.</p>
@@ -103,6 +94,19 @@ details.new .hint { flex-basis: 100%; margin: 0; }
   {{else}}
   <p class="empty">No pages yet. A page is <code>pages/&lt;name&gt;.yaml</code>.</p>
   {{end}}
+  {{if .Displays}}<dialog id="new-page">
+    <form method="get" action="/ui/editor/page">
+      <h3>New page</h3>
+      <input type="hidden" name="new" value="1">
+      <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. solar" title="lower case letters, digits and -"></label>
+      <label>Display type <select name="display">
+        <option value="">shared page, all display types</option>
+        {{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+      </select></label>
+      <p class="hint">Lower case letters, digits and <code>-</code>. A shared page applies to every display type; a variant only to the chosen one.</p>
+      <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Create</button></div>
+    </form>
+  </dialog>{{end}}
 </section>
 {{end}}
 {{if eq .Tab "plans"}}
@@ -111,15 +115,7 @@ details.new .hint { flex-basis: 100%; margin: 0; }
     <h2>Plans{{if .Plans}} <span class="count">{{len .Plans}}</span>{{end}}</h2>
     <span class="spacer"></span>
     <input class="filter" type="search" placeholder="Filter plans…" data-filter="plan-table" aria-label="Filter plans">
-    <details class="new">
-      <summary>New plan</summary>
-      <form method="get" action="/ui/editor/plan">
-        <input type="hidden" name="new" value="1">
-        <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. tour" title="lower case letters, digits and -"></label>
-        <button type="submit">Create</button>
-        <p class="hint">Lower case letters, digits and <code>-</code>. The first save writes <code>plans/&lt;name&gt;.yaml</code>; a plan needs at least one rule with a page, and a device shows it once its file names the plan.</p>
-      </form>
-    </details>
+    <button class="new" type="button" data-dialog="new-plan">New plan</button>
   </div>
   {{if .Plans}}
   <table id="plan-table">
@@ -135,10 +131,18 @@ details.new .hint { flex-basis: 100%; margin: 0; }
       {{end}}
     </tbody>
   </table>
-  <p class="hint">A plan is <code>plans/&lt;name&gt;.yaml</code>: rules for the time of day and the pages a device shows. Deleting keeps a copy under <code>state/editor/</code>.</p>
   {{else}}
   <p class="empty">No plans yet. A plan is <code>plans/&lt;name&gt;.yaml</code>.</p>
   {{end}}
+  <dialog id="new-plan">
+    <form method="get" action="/ui/editor/plan">
+      <h3>New plan</h3>
+      <input type="hidden" name="new" value="1">
+      <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. tour" title="lower case letters, digits and -"></label>
+      <p class="hint">Lower case letters, digits and <code>-</code>. The first save writes the file.</p>
+      <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Create</button></div>
+    </form>
+  </dialog>
 </section>
 {{end}}
 {{if eq .Tab "devices"}}
@@ -147,15 +151,7 @@ details.new .hint { flex-basis: 100%; margin: 0; }
     <h2>Devices{{if .Devices}} <span class="count">{{len .Devices}}</span>{{end}}</h2>
     <span class="spacer"></span>
     <input class="filter" type="search" placeholder="Filter devices…" data-filter="device-table" aria-label="Filter devices">
-    <details class="new">
-      <summary>New device</summary>
-      <form method="get" action="/ui/editor/device">
-        <input type="hidden" name="new" value="1">
-        <label>ID <input name="id" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. wohnzimmer" title="lower case letters, digits and -"></label>
-        <button type="submit">Create</button>
-        <p class="hint">Lower case letters, digits and <code>-</code>. The ID becomes the file name and the device's stable ID; the display type and the MAC address follow on the device page.</p>
-      </form>
-    </details>
+    <button class="new" type="button" data-dialog="new-device">New device</button>
   </div>
   {{if .Devices}}
   <table id="device-table">
@@ -177,6 +173,15 @@ details.new .hint { flex-basis: 100%; margin: 0; }
   {{else}}
   <p class="empty">No devices yet. A device is <code>devices/&lt;id&gt;.yaml</code>.</p>
   {{end}}
+  <dialog id="new-device">
+    <form method="get" action="/ui/editor/device">
+      <h3>New device</h3>
+      <input type="hidden" name="new" value="1">
+      <label>ID <input name="id" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. wohnzimmer" title="lower case letters, digits and -"></label>
+      <p class="hint">Lower case letters, digits and <code>-</code>. The ID becomes the file name; display type and MAC follow on the device page.</p>
+      <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Create</button></div>
+    </form>
+  </dialog>
 </section>
 {{if .Unclaimed}}
 <section class="card">
@@ -201,7 +206,6 @@ details.new .hint { flex-basis: 100%; margin: 0; }
       {{end}}
     </tbody>
   </table>
-  <p class="hint">A display that registered with an unknown MAC leaves its state under <code>state/devices/</code>. <em>Claim</em> opens a new device file with its MAC; <em>Forget</em> deletes the state file.</p>
 </section>
 {{end}}
 {{end}}
@@ -211,15 +215,7 @@ details.new .hint { flex-basis: 100%; margin: 0; }
     <h2>Display types{{if .Types}} <span class="count">{{len .Types}}</span>{{end}}</h2>
     <span class="spacer"></span>
     <input class="filter" type="search" placeholder="Filter display types…" data-filter="display-table" aria-label="Filter display types">
-    <details class="new">
-      <summary>New display type</summary>
-      <form method="get" action="/ui/editor/display">
-        <input type="hidden" name="new" value="1">
-        <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. wohnzimmer" title="lower case letters, digits and -"></label>
-        <button type="submit">Create</button>
-        <p class="hint">Lower case letters, digits and <code>-</code>. The name becomes the file name and cannot be changed later: it is the suffix of page variants and a value in device files.</p>
-      </form>
-    </details>
+    <button class="new" type="button" data-dialog="new-display">New display type</button>
   </div>
   {{if .Types}}
   <table id="display-table">
@@ -238,10 +234,18 @@ details.new .hint { flex-basis: 100%; margin: 0; }
       {{end}}
     </tbody>
   </table>
-  <p class="hint">A display type is <code>displays/&lt;name&gt;.yaml</code>: kind, size, gray levels, pixel density and refresh floor. A rename moves only this file and names the page variants and devices that keep the old name; deleting keeps a copy under <code>state/editor/</code>.</p>
   {{else}}
   <p class="empty">No display types yet. A display type is <code>displays/&lt;name&gt;.yaml</code>.</p>
   {{end}}
+  <dialog id="new-display">
+    <form method="get" action="/ui/editor/display">
+      <h3>New display type</h3>
+      <input type="hidden" name="new" value="1">
+      <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. wohnzimmer" title="lower case letters, digits and -"></label>
+      <p class="hint">Lower case letters, digits and <code>-</code>. The name is the file name and stays fixed; it is the suffix of page variants and a value in device files.</p>
+      <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Create</button></div>
+    </form>
+  </dialog>
 </section>
 {{end}}
 <script>
@@ -265,6 +269,27 @@ for (const input of document.querySelectorAll('input[data-filter]')) {
       }
       body.hidden = shown === 0;
     }
+  });
+}
+
+// The New button asks for the name in a dialog; the form still submits as a
+// plain GET into the editor of the new object (ADR 0083).
+for (const b of document.querySelectorAll('button[data-dialog]')) {
+  b.addEventListener('click', () => {
+    const d = document.getElementById(b.dataset.dialog);
+    if (!d) return;
+    d.showModal();
+    const input = d.querySelector('input[name]');
+    if (input) input.focus();
+  });
+}
+for (const d of document.querySelectorAll('dialog')) {
+  for (const b of d.querySelectorAll('button[data-close]')) {
+    b.addEventListener('click', () => d.close());
+  }
+  // A click beside the form closes the dialog.
+  d.addEventListener('click', (e) => {
+    if (e.target === d) d.close();
   });
 }
 

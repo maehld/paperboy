@@ -78,3 +78,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0081](0081-plugin-state-over-the-protocol.md) | Plugin state and blobs over the protocol | Accepted, implemented; supersedes ADR-0065, amends the exact version match of ADR-0058 (newer versions are accepted) |
 | [0082](0082-menu-tap-controls-in-a-strip.md) | The menu's tap controls are their own strip | Proposed |
 | [0082](0082-device-address.md) | The address of a device in its state | Accepted, implemented |
+| [0083](0083-the-overview-links.md) | The overview links, the editors act | Accepted, implemented |

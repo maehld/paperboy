@@ -25,6 +25,7 @@ func TestEditorOverview(t *testing.T) {
 		"/ui/editor/page?display=small&amp;name=solar",  // the variant of the selected type
 		"/ui/editor/page?display=small&amp;name=shared", // the shared page follows the selection
 		"New page",
+		`data-dialog="new-page"`, `id="new-page"`, `action="/ui/editor/page"`,
 		`href="/ui/editor?display=small&amp;tab=pages" class="active">Pages<span class="count">2</span>`,
 		`href="/ui/editor?tab=plans">Plans<span class="count">`,
 		"<a href=\"/ui/downloads\">Downloads</a> · <a href=\"/ui/plugins\">Widgets</a> · <a class=\"active\" href=\"/ui/editor\">Editor",
@@ -163,7 +164,7 @@ func TestEditorTabs(t *testing.T) {
 	}
 	devices := tab("devices")
 	if !strings.Contains(devices, `id="device-table"`) || !strings.Contains(devices, `<a href="/ui/editor/device?id=wohnzimmer">wohnzimmer</a>`) ||
-		!strings.Contains(devices, "New device") {
+		!strings.Contains(devices, "New device") || !strings.Contains(devices, `data-dialog="new-device"`) {
 		t.Fatalf("devices tab:\n%s", devices)
 	}
 	// An unknown tab falls back to the pages.
