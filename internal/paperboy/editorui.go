@@ -63,6 +63,10 @@ type editorPageGroup struct {
 	OpenURL   string
 	DeleteURL string // DELETE of the shown file (ADR 0073)
 	Warn      string // what the delete confirmation says
+	// RenameURL renames the whole page, RenameWarn is the confirmation that
+	// names the plans that keep the old name (ADR 0079).
+	RenameURL  string
+	RenameWarn string
 }
 
 type editorListPage struct {
@@ -81,40 +85,46 @@ type editorListPage struct {
 
 // editorDisplayRow is one display type file in the overview.
 type editorDisplayRow struct {
-	Name      string
-	Kind      string
-	Size      string
-	Density   string // ppi of an image display, charset of a text display
-	Gray      string
-	Power     string
-	Error     string
-	OpenURL   string
-	DeleteURL string
-	Warn      string
+	Name       string
+	Kind       string
+	Size       string
+	Density    string // ppi of an image display, charset of a text display
+	Gray       string
+	Power      string
+	Error      string
+	OpenURL    string
+	DeleteURL  string
+	Warn       string
+	RenameURL  string
+	RenameWarn string
 }
 
 // editorDeviceRow is one device file in the overview.
 type editorDeviceRow struct {
-	ID        string
-	Display   string
-	MAC       string
-	Plan      string
-	Problem   string // the file parses but cannot sync, e.g. a missing display type (ADR 0079)
-	Error     string
-	OpenURL   string
-	DeleteURL string
-	Warn      string
+	ID         string
+	Display    string
+	MAC        string
+	Plan       string
+	Problem    string // the file parses but cannot sync, e.g. a missing display type (ADR 0079)
+	Error      string
+	OpenURL    string
+	DeleteURL  string
+	Warn       string
+	RenameURL  string
+	RenameWarn string
 }
 
 // editorPlanRow is one plan file in the overview.
 type editorPlanRow struct {
-	Name      string
-	Rules     int
-	Fallback  string
-	Error     string
-	OpenURL   string
-	DeleteURL string
-	Warn      string
+	Name       string
+	Rules      int
+	Fallback   string
+	Error      string
+	OpenURL    string
+	DeleteURL  string
+	Warn       string
+	RenameURL  string
+	RenameWarn string
 }
 
 // editorPageView is the shell of one page; the script reads the model, the
@@ -244,7 +254,9 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile, d
 			}
 		}
 	}
-	g := editorPageGroup{Name: name}
+	g := editorPageGroup{Name: name,
+		RenameURL:  "/api/pages/" + url.PathEscape(name) + "/rename?" + url.Values{"hash": {pageSetHash(files, name)}}.Encode(),
+		RenameWarn: pageRenameWarning(name, usedBy)}
 	for i, f := range files {
 		openable := f.Error == "" && (f.Display == "" || knownProfile(displays, f.Display))
 		v := editorVariant{Label: "shared", Selected: i == shown}
@@ -438,8 +450,10 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, p := range plans {
 		row := editorPlanRow{Name: p.Name, Rules: p.Rules, Fallback: p.Fallback, Error: p.Error,
-			DeleteURL: "/api/plans/" + url.PathEscape(p.Name) + "?" + url.Values{"hash": {p.Hash}}.Encode(),
-			Warn:      planDeleteWarning(p.Name, devicesByPlan[p.Name])}
+			DeleteURL:  "/api/plans/" + url.PathEscape(p.Name) + "?" + url.Values{"hash": {p.Hash}}.Encode(),
+			Warn:       planDeleteWarning(p.Name, devicesByPlan[p.Name]),
+			RenameURL:  "/api/plans/" + url.PathEscape(p.Name) + "/rename?" + url.Values{"hash": {p.Hash}}.Encode(),
+			RenameWarn: planRenameWarning(p.Name, devicesByPlan[p.Name])}
 		if p.Error == "" {
 			row.OpenURL = "/ui/editor/plan?" + url.Values{"name": {p.Name}}.Encode()
 		}
@@ -451,8 +465,10 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, d := range devices {
 		row := editorDeviceRow{ID: d.ID, Display: d.Display, MAC: d.MAC, Plan: d.Plan, Error: d.Error,
-			DeleteURL: "/api/devices/" + url.PathEscape(d.ID) + "?" + url.Values{"hash": {d.Hash}}.Encode(),
-			Warn:      deviceDeleteWarning(d.ID)}
+			DeleteURL:  "/api/devices/" + url.PathEscape(d.ID) + "?" + url.Values{"hash": {d.Hash}}.Encode(),
+			Warn:       deviceDeleteWarning(d.ID),
+			RenameURL:  "/api/devices/" + url.PathEscape(d.ID) + "/rename?" + url.Values{"hash": {d.Hash}}.Encode(),
+			RenameWarn: deviceRenameWarning(d.ID)}
 		if d.Error == "" {
 			row.OpenURL = "/ui/editor/device?" + url.Values{"id": {d.ID}}.Encode()
 			if !knownProfile(cfg.Profiles, d.Display) {
@@ -470,6 +486,8 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 			DeleteURL: "/api/displays/" + url.PathEscape(d.Name) + "?" + url.Values{"hash": {d.Hash}}.Encode()}
 		pages, used := displayReferences(cfg, d.Name)
 		row.Warn = displayDeleteWarning(d.Name, pages, used)
+		row.RenameURL = "/api/displays/" + url.PathEscape(d.Name) + "/rename?" + url.Values{"hash": {d.Hash}}.Encode()
+		row.RenameWarn = displayRenameWarning(d.Name, pages, used)
 		if d.Size[0] > 0 && d.Size[1] > 0 {
 			row.Size = fmt.Sprintf("%d × %d", d.Size[0], d.Size[1])
 		}

@@ -175,19 +175,23 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/pages/{name}", s.handlePage)
 	mux.HandleFunc("PUT /api/pages/{name}", s.handleSavePage)
 	mux.HandleFunc("DELETE /api/pages/{name}", s.handleDeletePage)
+	mux.HandleFunc("POST /api/pages/{name}/rename", s.handleRenamePage)
 	mux.HandleFunc("GET /api/plans", s.handlePlans)
 	mux.HandleFunc("GET /api/plans/{name}", s.handlePlan)
 	mux.HandleFunc("PUT /api/plans/{name}", s.handleSavePlan)
 	mux.HandleFunc("DELETE /api/plans/{name}", s.handleDeletePlan)
+	mux.HandleFunc("POST /api/plans/{name}/rename", s.handleRenamePlan)
 	// Device files (ADR 0070).
 	mux.HandleFunc("GET /api/devices/{id}", s.handleDevice)
 	mux.HandleFunc("PUT /api/devices/{id}", s.handleSaveDevice)
 	mux.HandleFunc("DELETE /api/devices/{id}", s.handleDeleteDevice)
+	mux.HandleFunc("POST /api/devices/{id}/rename", s.handleRenameDevice)
 	// Display type files (ADR 0071).
 	mux.HandleFunc("GET /api/displays", s.handleDisplays)
 	mux.HandleFunc("GET /api/displays/{name}", s.handleDisplay)
 	mux.HandleFunc("PUT /api/displays/{name}", s.handleSaveDisplay)
 	mux.HandleFunc("DELETE /api/displays/{name}", s.handleDeleteDisplay)
+	mux.HandleFunc("POST /api/displays/{name}/rename", s.handleRenameDisplay)
 	mux.HandleFunc("POST /api/preview/{display}", s.handleDraftPreview)
 	return mux
 }

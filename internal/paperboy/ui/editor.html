@@ -93,7 +93,7 @@ details.new .hint { flex-basis: 100%; margin: 0; }
         <td>{{.Kind}}</td>
         <td class="num">{{.Grid}}</td>
         <td>{{.Title}}</td>
-        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
+        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .RenameURL}}<button class="rename" type="button" data-rename="{{.RenameURL}}" data-warn="{{.RenameWarn}}">Rename</button>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
       {{if .Error}}<tr class="detail"><td colspan="6"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
@@ -129,7 +129,7 @@ details.new .hint { flex-basis: 100%; margin: 0; }
         <td>{{.Name}}</td>
         <td class="num">{{.Rules}}</td>
         <td>{{.Fallback}}</td>
-        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
+        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .RenameURL}}<button class="rename" type="button" data-rename="{{.RenameURL}}" data-warn="{{.RenameWarn}}">Rename</button>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
       {{if .Error}}<tr class="detail"><td colspan="4"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
@@ -167,7 +167,7 @@ details.new .hint { flex-basis: 100%; margin: 0; }
         <td>{{.Display}}</td>
         <td class="num">{{.MAC}}</td>
         <td>{{.Plan}}</td>
-        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
+        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .RenameURL}}<button class="rename" type="button" data-rename="{{.RenameURL}}" data-warn="{{.RenameWarn}}">Rename</button>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
       {{if .Problem}}<tr class="detail"><td colspan="5"><p class="error">{{.Problem}}</p></td></tr>{{end}}
       {{if .Error}}<tr class="detail"><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
@@ -207,13 +207,13 @@ details.new .hint { flex-basis: 100%; margin: 0; }
         <td>{{.Density}}</td>
         <td class="num">{{.Gray}}</td>
         <td>{{.Power}}</td>
-        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
+        <td class="open">{{if .OpenURL}}<a href="{{.OpenURL}}">Open</a>{{end}}{{if .RenameURL}}<button class="rename" type="button" data-rename="{{.RenameURL}}" data-warn="{{.RenameWarn}}">Rename</button>{{end}}{{if .DeleteURL}}<button class="delete" type="button" data-delete="{{.DeleteURL}}" data-warn="{{.Warn}}">Delete</button>{{end}}</td>
       </tr>
       {{if .Error}}<tr class="detail"><td colspan="7"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
     </tbody>
   </table>
-  <p class="hint">A display type is <code>displays/&lt;name&gt;.yaml</code>: kind, size, gray levels, pixel density and refresh floor. Renaming its file stays a manual step; deleting works here and keeps a copy under <code>state/editor/</code>.</p>
+  <p class="hint">A display type is <code>displays/&lt;name&gt;.yaml</code>: kind, size, gray levels, pixel density and refresh floor. A rename moves only this file and names the page variants and devices that keep the old name; deleting keeps a copy under <code>state/editor/</code>.</p>
   {{else}}
   <p class="empty">No display types yet. A display type is <code>displays/&lt;name&gt;.yaml</code>.</p>
   {{end}}
@@ -266,6 +266,41 @@ for (const b of document.querySelectorAll('button[data-delete]')) {
       msg = (await res.json()).error || msg;
     } catch (e) { /* not JSON */ }
     alert('Delete failed: ' + msg);
+    b.disabled = false;
+  });
+}
+
+// Renaming moves the file (and a device's state) and leaves the references
+// alone; the confirmation names what keeps the old name (ADR 0079). The row
+// carries the hash it was read with, so a file changed in between is refused.
+for (const b of document.querySelectorAll('button[data-rename]')) {
+  b.addEventListener('click', async () => {
+    const old = (b.closest('tr').querySelector('td').textContent || '').trim();
+    if (!confirm(b.dataset.warn || 'Rename this file?')) return;
+    const name = (prompt('New name for ' + old + ': (lower case letters, digits and -)', '') || '').trim();
+    if (!name || name === old) return;
+    b.disabled = true;
+    let res;
+    try {
+      res = await fetch(b.dataset.rename, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+    } catch (e) {
+      alert('Rename failed: ' + e);
+      b.disabled = false;
+      return;
+    }
+    if (res.ok) {
+      location.reload();
+      return;
+    }
+    let msg = '(' + res.status + ')';
+    try {
+      msg = (await res.json()).error || msg;
+    } catch (e) { /* not JSON */ }
+    alert('Rename failed: ' + msg);
     b.disabled = false;
   });
 }
