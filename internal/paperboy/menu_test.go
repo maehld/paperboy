@@ -597,7 +597,7 @@ func TestMenuLayout(t *testing.T) {
 		t.Fatalf("landscape cells: %+v", actions)
 	}
 
-	// With touch the action row shrinks and the strip sits below it (ADR 0080).
+	// With touch the action row shrinks and the strip sits below it (ADR 0082).
 	actions, controls, overlay = menuLayout(land, menuListPhase, 4, true)
 	if len(controls) != 3 {
 		t.Fatalf("strip must have the arrows and the close box: %+v", controls)
@@ -632,7 +632,7 @@ func TestMenuLayout(t *testing.T) {
 	}
 }
 
-// The close box is reachable with buttons only where it is drawn (ADR 0080).
+// The close box is reachable with buttons only where it is drawn (ADR 0082).
 func TestMenuCloseBoxNeedsTouch(t *testing.T) {
 	actions := []menuAction{{Key: "a", Title: "A"}, {Key: "b", Title: "B"}}
 	m := menuState{Open: true, Phase: menuListPhase, Selected: "b", Actions: actions}

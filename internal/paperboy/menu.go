@@ -149,7 +149,7 @@ func (m *menuState) stale(acts []plan.PlanAction) bool {
 
 // move walks the selection and scrolls so that it stays visible. On a touch
 // device the close box sits behind the last action, so `next` past the end
-// reaches it and `previous` returns (ADR 0080); without the control strip the
+// reaches it and `previous` returns (ADR 0082); without the control strip the
 // list simply wraps.
 func (m *menuState) move(delta int, touch bool) {
 	n := len(m.Actions)
@@ -197,7 +197,7 @@ type menuInput struct {
 	buttons []string // roles in order
 	holds   []int    // hold_ms of the matching buttons
 	shown   string   // hash the device painted last
-	touch   bool     // the device draws the tap-only control strip (ADR 0080)
+	touch   bool     // the device draws the tap-only control strip (ADR 0082)
 }
 
 // tap applies one touch inside the overlay (ADR 0057, issue #54). It returns
@@ -352,7 +352,7 @@ func (m *menuState) applyInput(in menuInput, acts []plan.PlanAction, now time.Ti
 				}
 			case buttonHome:
 				// The close box of the control strip has the selection: home
-				// dismisses the menu instead of running an action (ADR 0080).
+				// dismisses the menu instead of running an action (ADR 0082).
 				if m.CloseSel {
 					m.close()
 					return nil
@@ -678,7 +678,7 @@ func actionKinds(phase string) []string {
 
 // controlKinds returns the buttons of the strip under the action row. It only
 // exists for devices whose digitiser is turned on: the strip is meant to be
-// tapped, and a dead button is worse than none (ADR 0080).
+// tapped, and a dead button is worse than none (ADR 0082).
 func controlKinds(count int, touch bool) []string {
 	if !touch {
 		return nil
@@ -691,7 +691,7 @@ func controlKinds(count int, touch bool) []string {
 }
 
 // stripCells lays the control strip out as one compact group in the middle:
-// equal boxes with a gap between them, the close box last (ADR 0080).
+// equal boxes with a gap between them, the close box last (ADR 0082).
 func stripCells(strip image.Rectangle, kinds []string) []menuCell {
 	cells := make([]menuCell, 0, len(kinds))
 	if strip.Empty() || len(kinds) == 0 {
@@ -815,7 +815,7 @@ func drawMenu(img *image.Paletted, p Profile, v menuView, t texts) {
 		}
 		// The strip is a control, not an action: thinner, smaller, grey, and
 		// selected with a heavier frame and a larger glyph instead of an
-		// inverted fill (ADR 0080).
+		// inverted fill (ADR 0082).
 		selected := c.kind == cellClose && v.close
 		small := max(render.MinSize, size*0.6)
 		if selected {
@@ -835,7 +835,7 @@ func drawCell(img *image.Paletted, c menuCell, label string, size float64, selec
 	if control {
 		// A tap target of the control strip, not an action: a thin frame
 		// around a small glyph, and the selection inverts the box so it is
-		// unmistakable (ADR 0080).
+		// unmistakable (ADR 0082).
 		if selected {
 			render.FillColor(img, c.rect, render.Black)
 		} else {

@@ -136,7 +136,7 @@ type Device struct {
 	MenuShowDuration Duration
 	// Touch turns the menu's tap-only controls on: the strip under the action
 	// cells with the page arrows and the close box, drawn only for devices
-	// whose digitiser the operator wants to use (ADR 0080). Empty = use what
+	// whose digitiser the operator wants to use (ADR 0082). Empty = use what
 	// the firmware reported, which defaults to false.
 	Touch *bool
 	// Problem names why the device cannot sync; the loader keeps such a device
@@ -316,7 +316,7 @@ func (c *Config) power(d *Device, reported string) string {
 }
 
 // touch reports whether the device menu draws the tap-only control strip
-// (ADR 0080): the device file wins, otherwise what the firmware reported, and
+// (ADR 0082): the device file wins, otherwise what the firmware reported, and
 // without both the menu stays button-only.
 func (c *Config) touch(d *Device, reported bool) bool {
 	if d.Touch != nil {

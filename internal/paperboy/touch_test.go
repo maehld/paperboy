@@ -103,7 +103,7 @@ func TestMenuTapCloses(t *testing.T) {
 }
 
 // A device without touch has no close box at all: a tap where it would be must
-// not close the menu (ADR 0080).
+// not close the menu (ADR 0082).
 func TestMenuTapCloseNeedsTouch(t *testing.T) {
 	s, _, _ := menuServer(t, menuPlanActions, nil)
 	dev := menuDevice(t, s)

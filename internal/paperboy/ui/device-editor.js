@@ -376,7 +376,7 @@
   }
 
   // onCheck is onField for a checkbox: the model carries a real boolean, and
-  // false leaves the field out of the file (ADR 0080).
+  // false leaves the field out of the file (ADR 0082).
   function onCheck(id, key) {
     el(id).addEventListener('change', () => {
       if (state.readOnly) return;
