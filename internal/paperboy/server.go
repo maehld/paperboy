@@ -138,6 +138,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/profiles", s.handleProfiles)
 	mux.HandleFunc("GET /api/plugins", s.handlePlugins)
 	mux.HandleFunc("GET /api/devices", s.handleDevices)
+	mux.HandleFunc("DELETE /api/state/devices/{mac}", s.handleForgetDeviceState)
 	mux.HandleFunc("GET /api/preview/{display}/{page}", s.handlePreview)
 	mux.HandleFunc("GET /pages/{profile}/{page}/{file}", s.handleRenderedImage)
 	mux.HandleFunc("GET /hints/{file}", s.handleHint)
@@ -230,6 +231,23 @@ type deviceInfo struct {
 
 func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"devices": s.deviceInfos()})
+}
+
+// handleForgetDeviceState deletes the state file of one MAC, so hardware the
+// operator no longer needs disappears from the device editor (ADR 0080). A
+// configured device loses its key and registers again on its next sync.
+func (s *Server) handleForgetDeviceState(w http.ResponseWriter, r *http.Request) {
+	key, err := deviceStateKey(r.PathValue("mac"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid MAC address")
+		return
+	}
+	if err := s.forgetDeviceState(key); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	slog.Info("device state forgotten", "mac", formatStateKey(key))
+	writeJSON(w, http.StatusOK, map[string]string{"mac": formatStateKey(key)})
 }
 
 // deviceInfos builds the device list for the devices API and the dashboard.

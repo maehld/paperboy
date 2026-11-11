@@ -158,6 +158,16 @@ func deviceStateFiles(dir string) ([]string, error) {
 	return keys, nil
 }
 
+// formatMAC writes a MAC in the form the device files use, e.g.
+// AA:BB:CC:DD:EE:01; an unparsable address comes back trimmed.
+func formatMAC(mac string) string {
+	key, err := deviceStateKey(mac)
+	if err != nil {
+		return strings.TrimSpace(mac)
+	}
+	return formatStateKey(key)
+}
+
 // formatStateKey writes a device key as a MAC address, e.g. A0:B1:C2:D3:E4:F5.
 func formatStateKey(key string) string {
 	raw, err := hex.DecodeString(key)
@@ -182,4 +192,46 @@ func writeStateFile(path string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// unclaimedDevice is a state file whose MAC no device file uses: hardware that
+// registered but was never claimed (ADR 0080).
+type unclaimedDevice struct {
+	Key   string
+	MAC   string
+	State *deviceState
+}
+
+// unclaimedDevices lists the state entries that no configured device owns,
+// sorted by MAC. Callers take the configuration snapshot themselves.
+func (s *Server) unclaimedDevices(cfg *Config) []unclaimedDevice {
+	used := make(map[string]bool, len(cfg.Devices))
+	for i := range cfg.Devices {
+		used[cfg.Devices[i].stateKey()] = true
+	}
+	s.mu.Lock()
+	out := make([]unclaimedDevice, 0, len(s.state))
+	for key, st := range s.state {
+		if used[key] {
+			continue
+		}
+		out = append(out, unclaimedDevice{Key: key, MAC: formatStateKey(key), State: st})
+	}
+	s.mu.Unlock()
+	sort.Slice(out, func(i, j int) bool { return out[i].MAC < out[j].MAC })
+	return out
+}
+
+// forgetDeviceState drops the state file of one MAC, e.g. hardware that is no
+// longer used. The next register writes a new file, so nothing is lost that
+// cannot be rebuilt (ADR 0080).
+func (s *Server) forgetDeviceState(key string) error {
+	s.mu.Lock()
+	delete(s.state, key)
+	s.mu.Unlock()
+	err := os.Remove(deviceStateFile(s.devicesDir, key))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }

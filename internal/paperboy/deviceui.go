@@ -45,6 +45,7 @@ type deviceEditorView struct {
 type deviceEditorState struct {
 	ID       string        `json:"id"`
 	New      bool          `json:"new"`
+	MAC      string        `json:"mac,omitempty"` // prefill of a claimed state file (ADR 0080)
 	Displays []string      `json:"displays"`
 	Plans    []string      `json:"plans"`
 	Refresh  string        `json:"refresh"`   // default interval
@@ -90,6 +91,10 @@ func (s *Server) handleDeviceEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	st := deviceEditorState{ID: id, New: missing, Displays: displayNames(cfg),
 		Plans: []string{}, Refresh: time.Duration(cfg.Refresh).String(), MenuShow: menuShow.String()}
+	if missing {
+		// Claiming hardware from the devices tab prefills its MAC (ADR 0080).
+		st.MAC = formatMAC(q.Get("mac"))
+	}
 	if !missing {
 		st.Rename = &renameAction{URL: "/api/devices/" + url.PathEscape(id) + "/rename", Warn: deviceRenameWarning(id)}
 	}

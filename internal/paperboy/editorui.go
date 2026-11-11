@@ -79,9 +79,22 @@ type editorListPage struct {
 	Options   []uiOption         // display types of the new-page form
 	Plans     []editorPlanRow    // the plan files next to the pages (ADR 0069)
 	Devices   []editorDeviceRow  // the device files (ADR 0070)
+	Unclaimed []editorUnclaimed  // state files whose MAC no device file uses (ADR 0080)
 	Types     []editorDisplayRow // the display type files (ADR 0071)
 	Tabs      []uiTab            // the object types as sub-tabs
 	Tab       string             // the open sub-tab
+}
+
+// editorUnclaimed is one state file without a device file: hardware that
+// registered but was never claimed (ADR 0080).
+type editorUnclaimed struct {
+	MAC       string
+	Hardware  string
+	Firmware  string
+	FirstSeen string
+	LastSeen  string
+	ClaimURL  string
+	ForgetURL string
 }
 
 // editorDisplayRow is one display type file in the overview.
@@ -506,6 +519,14 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 		}
 		v.Devices = append(v.Devices, row)
 	}
+	for _, u := range s.unclaimedDevices(cfg) {
+		v.Unclaimed = append(v.Unclaimed, editorUnclaimed{
+			MAC: u.MAC, Hardware: u.State.Hardware, Firmware: u.State.Firmware,
+			FirstSeen: editorTime(cfg, u.State.FirstSeen), LastSeen: editorTime(cfg, u.State.LastSeen),
+			ClaimURL:  "/ui/editor/device?" + url.Values{"new": {"1"}, "id": {suggestDeviceID(u)}, "mac": {u.MAC}}.Encode(),
+			ForgetURL: "/api/state/devices/" + url.PathEscape(u.MAC),
+		})
+	}
 	displays, err := displayFileList(cfg.DisplaysDir)
 	if err != nil {
 		slog.Warn("display type list for the page overview failed", "error", err)
@@ -735,4 +756,33 @@ func (s *Server) handleEditorJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(editorJS)
+}
+
+// editorTime formats a state time in the configured zone; empty for zero.
+func editorTime(cfg *Config, t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	loc := cfg.Timezone
+	if loc == nil {
+		loc = time.UTC
+	}
+	return t.In(loc).Format("2006-01-02 15:04")
+}
+
+// suggestDeviceID proposes a device id for unclaimed hardware, e.g.
+// "sticky-ee99". The new-device form lets the operator change it.
+func suggestDeviceID(u unclaimedDevice) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(u.State.Hardware) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' {
+			b.WriteRune(r)
+		}
+	}
+	prefix := strings.Trim(b.String(), "-")
+	if prefix == "" {
+		prefix = "display"
+	}
+	mac := strings.ReplaceAll(u.MAC, ":", "")
+	return prefix + "-" + strings.ToLower(mac[max(0, len(mac)-4):])
 }
