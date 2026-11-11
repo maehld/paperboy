@@ -738,7 +738,7 @@ func menuLayout(p Profile, phase string, count int, touch bool) (actions, contro
 	overlay = overlayRect(p)
 	area := overlay
 	// The strip belongs to the list: on the confirmation screen it would
-	// offer a second "no" and page arrows that cannot page (ADR 0057, 0080).
+	// offer a second "no" and page arrows that cannot page (ADR 0057, 0082).
 	if phase == menuListPhase {
 		if strip := controlKinds(count, touch); len(strip) > 0 {
 			sh := max(22, overlay.Dy()/4)

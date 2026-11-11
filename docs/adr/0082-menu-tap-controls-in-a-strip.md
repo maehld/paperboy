@@ -1,4 +1,4 @@
-# 0080: The menu's tap controls are their own strip
+# 0082: The menu's tap controls are their own strip
 
 - Status: Proposed
 - Date: 2026-11-11
