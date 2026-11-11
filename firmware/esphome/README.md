@@ -8,9 +8,9 @@ installation, nothing installation-specific is compiled in.
 | File | Content |
 |---|---|
 | `common.yaml` | Shared cycle and device API (register, sync, download, sleep), included as a package |
-| `paperboy.h` | C++ helpers: sync body, event and log queue, RTC state, gray-level mapping, dithering, text lines and HD44780 character mapping |
+| `paperboy.h` | C++ helpers: sync body, event and log queue, RTC state, gray-level mapping, dithering (mono fallback), text lines and HD44780 character mapping |
 | `sticky.yaml` | reTerminal Sticky: pins, gray4 panel, touch, BQ27220 fuel gauge |
-| `e1001.yaml` | reTerminal E1001: pins, panel currently driven in black and white, ADC battery |
+| `e1001.yaml` | reTerminal E1001: pins, four-level UC8179 panel via `uc8179_gray4`, ADC battery |
 | `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep |
 | `lcd2004.yaml` | ESP32 dev board with a 20×4 HD44780 LCD behind a PCF8574 (I²C 0x27, SDA GPIO21, SCL GPIO22) |
 | `build.ps1` | Builds one hardware type with the pinned ESPHome version, optionally publishes it to an instance |
@@ -136,6 +136,11 @@ that Paperboy offers in the sync (ADR 0043); there is no native ESPHome OTA and
 no upload in the web UI, so nobody on the LAN can push an image. Everything
 else, including the rescue of a device that no longer syncs, goes over USB-C.
 
+`e1001.yaml` pulls the `uc8179_gray4` component from GitHub (ADR 0086), so its
+build needs network access once; ESPHome keeps the checkout under
+`~/.cache/esphome` and reuses it for a day (`refresh`). The component is pinned
+to a commit, and the *Firmware* workflow fetches it the same way.
+
 The *Firmware* workflow compiles all three hardware types with the same pinned
 version whenever `firmware/esphome/` changes, so a broken configuration fails on
 a pull request. A release tag attaches the images as one bundle,
@@ -167,7 +172,7 @@ that does not boot; that was tested with a deliberately broken image. Restoring 
 
 **Sticky**: ESP32-S3R8, 8 MB PSRAM, 32 MB flash; panel SSD1677 800×480, ESPHome
 model `Seeed-reTerminal-Sticky-gray4`. ESPHome bands gray4 luma at 32/96/160,
-so Paperboy's 0/85/170/255 are drawn inside the bands (`pb_draw_gray4`).
+so Paperboy's 0/85/170/255 are drawn inside the bands (`pb_paint_qoi_gray4`).
 Buttons OK GPIO4, Up GPIO5, Down GPIO6 (active low). Touch GT911 on I²C
 GPIO2/3, INT GPIO21, RST GPIO41, power GPIO42; needs `swap_xy`, `mirror_x` and
 `mirror_y` with `rotation: 180`. Power latch GPIO45/GPIO46 held through deep
@@ -175,11 +180,17 @@ sleep. BQ27220 fuel gauge at 0x55 on I²C GPIO0/1: state of charge 0x2C,
 voltage 0x08, current 0x0C, remaining capacity 0x10; currents and capacities
 read ten times too large and are divided by ten.
 
-**E1001**: ESP32-S3, octal PSRAM; panel GDEY075T7 (UC8179) 800×480, which
-supports four gray levels (2 bpp, custom LUTs, roughly 4× slower refresh). ESPHome's
-model `Seeed-reTerminal-E1001` drives it in black and white only (1 bpp, the same
-UC8179 driver as the Waveshare 7.5in V2), so Paperboy's gray levels are drawn as a
-fixed 2×2 pattern (`pb_draw_dithered`) until the firmware uses the panel's gray mode.
+**E1001**: ESP32-S3, octal PSRAM; panel GDEY075T7 (UC8179) 800×480 with four gray
+levels (2 bpp, LUTs, full refresh only, a few seconds). Seeed's ESPHome model
+`Seeed-reTerminal-E1001` drives it in black and white, so the firmware uses the
+external component `uc8179_gray4` instead (ADR 0086): it takes Paperboy's
+0/85/170/255 as black, dark gray, light gray and white, and the antialiased font
+edges of a page survive. That component is fetched at build time and pinned to a
+commit in `e1001.yaml`; its `lut_mode` (`otp`/`custom`) and `invert_colors` are
+substitutions there because panel batches differ — wrong or washed-out levels
+mean the other LUT mode, a negative picture means `invert_colors: true`. The
+driver refreshes synchronously, so the main loop pauses during a paint and
+presses in that window are not queued, and it has no partial-update mode.
 Buttons left to right GPIO5 (`previous`),
 GPIO4 (`next`), GPIO3 (green, `home`). Battery voltage on ADC GPIO1 through a 1:2 divider,
 enabled by GPIO21; no fuel gauge.

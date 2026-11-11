@@ -181,6 +181,16 @@ touchscreen:
       - lambda: "pb_touch_release();"
 
 script:
+  # The panel paints asynchronously, so after_paint waits until it is idle
+  # before it stores the shown hash.
+  - id: wait_paint
+    then:
+      - wait_until:
+          condition:
+            not:
+              epaper_spi.is_updating: epaper_display
+          timeout: 15s
+
   # BQ27220 fuel gauge. Measured: currents and capacities come ten times too
   # large (design capacity 7500 mAh for the 750 mAh cell); state of charge and
   # voltage are correct.
