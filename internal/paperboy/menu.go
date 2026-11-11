@@ -209,7 +209,7 @@ func (m *menuState) tap(x, y int, p Profile, touch bool, shown string, now time.
 	if !m.Open {
 		return nil
 	}
-	actions, controls, _, overlay := menuLayout(p, m.Phase, len(m.Actions), touch, m.Phase != menuListPhase)
+	actions, controls, overlay := menuLayout(p, m.Phase, len(m.Actions), touch)
 	at := image.Pt(x, y)
 	if !at.In(overlay) {
 		return nil
@@ -713,17 +713,30 @@ func stripCells(strip image.Rectangle, kinds []string) []menuCell {
 	return cells
 }
 
-// menuLayout computes the cells of one phase: the action row and, for touch
-// devices, the smaller control strip beneath it. The header keeps its strip on
-// top for confirmation and result text.
-func menuLayout(p Profile, phase string, count int, touch, header bool) (actions, controls []menuCell, headerRect, overlay image.Rectangle) {
+// confirmRect is the message box of the confirmation: centred over the page,
+// so it reads as a dialog instead of a full-width band (ADR 0081).
+func confirmRect(p Profile) image.Rectangle {
+	w := min(p.Width-8, max(320, p.Width*2/3))
+	h := min(p.Height-8, max(170, p.Height*9/20))
+	x := (p.Width - w) / 2
+	y := (p.Height - h) / 2
+	return image.Rect(x, y, x+w, y+h)
+}
+
+// menuLayout computes the cells of one phase. The list covers the top half,
+// with the control strip of a touch device beneath its actions; the
+// confirmation is a centred box with its two choices (ADR 0081).
+func menuLayout(p Profile, phase string, count int, touch bool) (actions, controls []menuCell, overlay image.Rectangle) {
+	if phase == menuConfirmPhase {
+		overlay = confirmRect(p)
+		inner := overlay.Inset(6)
+		titleH := max(24, inner.Dy()/3)
+		row := image.Rect(inner.Min.X, inner.Min.Y+titleH, inner.Max.X, inner.Max.Y)
+		actions = rowCells(row, p.Height > p.Width, []string{cellYes, cellNo})
+		return actions, nil, overlay
+	}
 	overlay = overlayRect(p)
 	area := overlay
-	if header {
-		h := max(18, overlay.Dy()/4)
-		headerRect = image.Rect(overlay.Min.X, overlay.Min.Y, overlay.Max.X, overlay.Min.Y+h)
-		area = image.Rect(overlay.Min.X, headerRect.Max.Y, overlay.Max.X, overlay.Max.Y)
-	}
 	// The strip belongs to the list: on the confirmation screen it would
 	// offer a second "no" and page arrows that cannot page (ADR 0057, 0080).
 	if phase == menuListPhase {
@@ -735,7 +748,7 @@ func menuLayout(p Profile, phase string, count int, touch, header bool) (actions
 		}
 	}
 	actions = rowCells(area, p.Height > p.Width, actionKinds(phase))
-	return actions, controls, headerRect, overlay
+	return actions, controls, overlay
 }
 
 // menuView is what the overlay shows in one request.
@@ -750,21 +763,23 @@ type menuView struct {
 	text    string
 }
 
-// drawMenu paints the overlay onto the page image (ADR 0057). The page stays
-// visible below the top half.
+// drawMenu paints the menu over the page image (ADR 0057): the list covers the
+// top half, the confirmation is a message box of its own (ADR 0081).
 func drawMenu(img *image.Paletted, p Profile, v menuView, t texts) {
-	overlay := overlayRect(p)
-	if overlay.Intersect(img.Rect).Empty() {
-		return
-	}
-	bg := image.Rect(overlay.Min.X, overlay.Min.Y, min(overlay.Max.X, img.Rect.Max.X), min(overlay.Max.Y, img.Rect.Max.Y))
-	render.FillColor(img, bg, render.White)
-	header := v.phase != menuListPhase
 	if v.phase == menuRunningPhase || v.phase == menuResultPhase || v.phase == menuEmptyPhase {
 		drawBanner(img, p, v)
 		return
 	}
-	actions, controls, headerRect, _ := menuLayout(p, v.phase, len(v.actions), v.touch, header)
+	actions, controls, overlay := menuLayout(p, v.phase, len(v.actions), v.touch)
+	if overlay.Intersect(img.Rect).Empty() {
+		return
+	}
+	if v.phase == menuConfirmPhase {
+		drawConfirm(img, p, v, actions, overlay, t)
+		return
+	}
+	bg := image.Rect(overlay.Min.X, overlay.Min.Y, min(overlay.Max.X, img.Rect.Max.X), min(overlay.Max.Y, img.Rect.Max.Y))
+	render.FillColor(img, bg, render.White)
 	size := max(render.MinSize, float64(overlay.Dy())/5)
 	if len(actions) > 0 {
 		c := actions[0].rect
@@ -776,10 +791,6 @@ func drawMenu(img *image.Paletted, p Profile, v menuView, t texts) {
 		var label string
 		var action *menuAction
 		switch c.kind {
-		case cellYes:
-			label = t.menuYes()
-		case cellNo:
-			label = t.menuNo()
 		case cellAction:
 			c.index = ai
 			if ai < len(v.actions) {
@@ -811,9 +822,6 @@ func drawMenu(img *image.Paletted, p Profile, v menuView, t texts) {
 			small = max(render.MinSize, size*0.8)
 		}
 		drawCell(img, *c, label, small, selected, false, true)
-	}
-	if header {
-		drawMenuHeader(img, headerRect, v, size, t)
 	}
 	// A rule under the overlay separates it from the page.
 	thickness := max(1, int(p.PPI/72*0.6))
@@ -928,20 +936,49 @@ func frameCell(img *image.Paletted, r image.Rectangle, t int) {
 	render.FillColor(img, image.Rect(r.Max.X-t, r.Min.Y, r.Max.X, r.Max.Y), render.Black)
 }
 
-func drawMenuHeader(img *image.Paletted, r image.Rectangle, v menuView, size float64, t texts) {
-	if r.Empty() {
-		return
+// drawConfirm paints the confirmation as a message box: the action's title on
+// top, then the two choices with the key that triggers each written beneath
+// them (ADR 0081).
+func drawConfirm(img *image.Paletted, p Profile, v menuView, cells []menuCell, box image.Rectangle, t texts) {
+	render.FillColor(img, box, render.White)
+	frameCell(img, box, 2)
+	inner := box.Inset(6)
+	titleH := max(24, inner.Dy()/3)
+	titleRect := image.Rect(inner.Min.X, inner.Min.Y, inner.Max.X, inner.Min.Y+titleH)
+	titleSize := max(render.MinSize, min(float64(titleRect.Dy())*0.58, float64(box.Dx())/16))
+	lines := wrapMenu(v.title, titleRect.Dx(), titleSize)
+	if v.text != "" && len(lines) > 1 {
+		lines = lines[:1]
 	}
-	render.FillColor(img, image.Rect(r.Min.X, r.Max.Y-1, r.Max.X, r.Max.Y), render.Black)
-	titleSize := min(size, float64(r.Dy())*0.5)
-	hintSize := max(render.MinSize, titleSize*0.62)
-	if v.title != "" {
-		render.Text(img, v.title, r.Min.X+5, r.Min.Y+int(titleSize*1.15)+3,
-			render.Style{Size: titleSize, Bold: true, Shrink: true}, r.Dx()-10, render.Black, render.Left)
+	lineH := int(titleSize * 1.2)
+	top := titleRect.Min.Y + (titleRect.Dy()-len(lines)*lineH)/2 + int(titleSize)
+	for _, line := range lines {
+		render.Text(img, line, titleRect.Min.X+titleRect.Dx()/2, top,
+			render.Style{Size: titleSize, Bold: true, Shrink: true}, titleRect.Dx(), render.Black, render.Center)
+		top += lineH
 	}
 	if v.text != "" {
-		render.Text(img, v.text, r.Min.X+5, r.Max.Y-5,
-			render.Style{Size: hintSize, Shrink: true}, r.Dx()-10, render.DarkGray, render.Left)
+		// A plugin's own explanation sits under the title, small and grey.
+		hintSize := max(render.MinSize, titleSize*0.55)
+		render.Text(img, v.text, titleRect.Min.X+titleRect.Dx()/2, top,
+			render.Style{Size: hintSize, Shrink: true}, titleRect.Dx(), render.DarkGray, render.Center)
+	}
+	for _, c := range cells {
+		label, key := t.menuYes(), t.menuYesKey()
+		if c.kind == cellNo {
+			label, key = t.menuNo(), t.menuNoKey()
+		}
+		frameCell(img, c.rect, 1)
+		in := c.rect.Inset(4)
+		word := max(render.MinSize, min(float64(in.Dy())*0.42, float64(in.Dx())/5))
+		keySize := max(render.MinSize, word*0.5)
+		block := int(word*1.2) + int(keySize*1.6)
+		top := in.Min.Y + (in.Dy()-block)/2 + int(word)
+		cx := in.Min.X + in.Dx()/2
+		render.Text(img, label, cx, top,
+			render.Style{Size: word, Bold: true, Shrink: true}, in.Dx(), render.Black, render.Center)
+		render.Text(img, key, cx, top+int(keySize*1.7),
+			render.Style{Size: keySize, Shrink: true}, in.Dx(), render.DarkGray, render.Center)
 	}
 }
 
@@ -1035,11 +1072,9 @@ func (s *Server) overlayMenu(cfg *Config, d *Device, served servedPage, m *menuS
 	case menuConfirmPhase:
 		if a := m.selected(); a != nil {
 			v.title = a.Title
-			if a.ConfirmText != "" {
-				v.text = a.ConfirmText
-			} else {
-				_, v.text = t.menuConfirm("")
-			}
+			// The plugins' own explanation, if any; the keys are written
+			// under Ja and Nein by the dialog itself (ADR 0081).
+			v.text = a.ConfirmText
 		}
 	case menuRunningPhase:
 		if a := m.selected(); a != nil {

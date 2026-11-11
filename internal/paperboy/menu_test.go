@@ -586,7 +586,7 @@ func TestMenuClosesWhenSelectionLeavesThePlan(t *testing.T) {
 
 func TestMenuLayout(t *testing.T) {
 	land := Profile{Width: 800, Height: 480}
-	actions, controls, _, overlay := menuLayout(land, menuListPhase, 4, false, false)
+	actions, controls, overlay := menuLayout(land, menuListPhase, 4, false)
 	if overlay != image.Rect(0, 0, 800, 240) || len(actions) != menuPerPage {
 		t.Fatalf("landscape: %v %v", overlay, actions)
 	}
@@ -598,7 +598,7 @@ func TestMenuLayout(t *testing.T) {
 	}
 
 	// With touch the action row shrinks and the strip sits below it (ADR 0080).
-	actions, controls, _, overlay = menuLayout(land, menuListPhase, 4, true, false)
+	actions, controls, overlay = menuLayout(land, menuListPhase, 4, true)
 	if len(controls) != 3 {
 		t.Fatalf("strip must have the arrows and the close box: %+v", controls)
 	}
@@ -613,14 +613,14 @@ func TestMenuLayout(t *testing.T) {
 	}
 
 	// A list that fits one page has no arrows, only the close box.
-	_, controls, _, _ = menuLayout(land, menuListPhase, 2, true, false)
+	_, controls, _ = menuLayout(land, menuListPhase, 2, true)
 	if len(controls) != 1 || controls[0].kind != cellClose {
 		t.Fatalf("single page: %+v", controls)
 	}
 
 	// Portrait: the action row is stacked and still above the strip.
 	port := Profile{Width: 480, Height: 800}
-	actions, controls, _, overlay = menuLayout(port, menuListPhase, 1, true, false)
+	actions, controls, overlay = menuLayout(port, menuListPhase, 1, true)
 	if overlay != image.Rect(0, 0, 480, 400) {
 		t.Fatalf("portrait overlay: %v", overlay)
 	}

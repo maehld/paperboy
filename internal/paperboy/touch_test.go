@@ -41,13 +41,19 @@ func tapAt(t *testing.T, s *Server, dev *testDevice, x, y int, shown string) map
 // cannot leave the tests tapping the wrong place.
 func tapCell(t *testing.T, s *Server, dev *testDevice, touch bool, kind string, index int) map[string]any {
 	t.Helper()
+	return tapCellShown(t, s, dev, touch, kind, index, "")
+}
+
+// tapCellShown is tapCell with the hash the device reports as painted.
+func tapCellShown(t *testing.T, s *Server, dev *testDevice, touch bool, kind string, index int, shown string) map[string]any {
+	t.Helper()
 	m := s.state[menuStateKey].Menu
-	actions, controls, _, _ := menuLayout(menuProfile, m.Phase, len(m.Actions), touch, m.Phase != menuListPhase)
+	actions, controls, _ := menuLayout(menuProfile, m.Phase, len(m.Actions), touch)
 	for _, c := range append(actions, controls...) {
 		if c.kind != kind || (kind == cellAction && c.index != index) {
 			continue
 		}
-		return tapAt(t, s, dev, c.rect.Min.X+c.rect.Dx()/2, c.rect.Min.Y+c.rect.Dy()/2, "")
+		return tapAt(t, s, dev, c.rect.Min.X+c.rect.Dx()/2, c.rect.Min.Y+c.rect.Dy()/2, shown)
 	}
 	t.Fatalf("no %s cell %d in phase %s", kind, index, m.Phase)
 	return nil
@@ -132,17 +138,19 @@ func TestMenuTapConfirmation(t *testing.T) {
 	if st := s.state[menuStateKey]; st.Menu.Phase != menuConfirmPhase {
 		t.Fatalf("menu state: %+v", st.Menu)
 	}
-	confirm := s.state[menuStateKey].Menu.ConfirmHash
+	if s.state[menuStateKey].Menu.ConfirmHash == "" {
+		t.Fatal("the confirmation screen has no hash")
+	}
 	if s.state[menuStateKey].Menu.find("act/go") == nil {
 		t.Fatal("action missing")
 	}
-	tapAt(t, s, dev, 300, 110, confirm) // "Nein", the right half of the confirm screen
+	tapCell(t, s, dev, false, cellNo, 0) // "Nein"
 	if st := s.state[menuStateKey]; st.Menu.Phase != menuListPhase {
 		t.Fatalf("Nein must return to the list: %+v", st.Menu)
 	}
 	// Confirming with a stale screen does nothing.
 	press(t, s, dev, buttonHome)
-	tapAt(t, s, dev, 100, 110, base) // "Ja" without the painted screen
+	tapCellShown(t, s, dev, false, cellYes, 0, base) // "Ja" without the painted screen
 	if len(p.runs) != 0 {
 		t.Fatalf("an unpainted yes ran the action: %v", p.runs)
 	}
