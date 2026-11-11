@@ -22,7 +22,7 @@ stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 
 mkdir -p "$stage/plugins" "$out"
-for app in calendar weather evcc pokedex xkcd departures myskoda; do
+for app in calendar weather evcc pokedex xkcd departures myskoda countdown; do
   version=$(tr -d '[:space:]' < "$root/cmd/$app/VERSION")
   if [ -z "$version" ]; then
     echo "no version in cmd/$app/VERSION" >&2

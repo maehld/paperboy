@@ -1,0 +1,11 @@
+# Countdowns: the days to a date. The two at the top repeat every year, the
+# lower ones are fixed dates, the last with a time and a progress bar.
+title: Countdown
+grid: [6, 8]
+style: { padding: 4.5 }
+cells:
+  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
+  - { at: [0, 1], span: [3, 4], widget: countdown/countdown, args: { label: Weihnachten, date: "12-24", since: "01-01" } }
+  - { at: [3, 1], span: [3, 4], widget: countdown/countdown, args: { label: Silvester, date: "12-31" } }
+  - { at: [0, 5], span: [6, 1], widget: countdown/countdown, args: { label: Sommerurlaub, date: "2027-06-19" } }
+  - { at: [0, 6], span: [6, 2], widget: countdown/countdown, args: { label: Ferien, date: "2027-07-10T08:00", since: "2026-12-21T08:00" } }

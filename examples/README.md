@@ -2,7 +2,7 @@
 
 The pages under `pages/` are grids of widgets from the shipped plugins
 (ADR 0049): `weather`, `calendar`, `evcc`, `departures`, `pokedex`, `xkcd`,
-`myskoda` and the built-in `paperboy` plugin. Copy the files you
+`myskoda`, `countdown` and the built-in `paperboy` plugin. Copy the files you
 need into the `pages/` directory of your instance and adapt the grid, the
 spans and the arguments.
 
@@ -22,6 +22,8 @@ spans and the arguments.
   departures, for leaving the house.
 - `pokemon.yaml` - a full-screen Pokédex card.
 - `comic.yaml` - a full-screen xkcd comic with title and alt text.
+- `countdown.yaml` - countdowns to Christmas and New Year (yearly, one with a
+  progress bar) and two fixed dates, the last with a time and a bar.
 - `uebersicht.lcd2004.yaml` - the overview on a 20×4 character display; its
   grid is the character grid.
 

@@ -255,6 +255,7 @@ Shipped plugins (one zip per platform: `paperboy-plugins-linux-amd64.zip` and `p
 - [`calendar`](docs/plugins/calendar.md) – agenda, week and month from CalDAV and iCalendar.
 - [`pokedex`](docs/plugins/pokedex.md) – a Pokémon card from [PokéAPI](https://pokeapi.co).
 - [`xkcd`](docs/plugins/xkcd.md) – [xkcd](https://xkcd.com) comics.
+- [`countdown`](docs/plugins/countdown.md) – days to a date, optionally with a progress bar.
 - [`paperboy`](docs/plugins/paperboy.md) – built in, no zip needed: header, text and clock.
 - A SolarAI plugin is still to come; it talks to SolarAI over HTTP itself, and SolarAI needs to know nothing about Paperboy.
 
@@ -365,6 +366,7 @@ cmd/weather/             Weather plugin: Open-Meteo (ADR 0049)
 cmd/calendar/            Calendar plugin: CalDAV and iCalendar (ADR 0048, 0049)
 cmd/evcc/                evcc plugin: energy flow, charging point, forecast
 cmd/xkcd/                xkcd plugin: comic with optional title and alt text
+cmd/countdown/           Countdown plugin: days to a date with a progress bar
 cmd/departures/          Departures plugin: EFA real-time departures (ADR 0053)
 cmd/odtest/              Test program for OpenDisplay devices (TCP and Bluetooth)
 pkg/plugin/              Plugin protocol and Go helper (public API)
