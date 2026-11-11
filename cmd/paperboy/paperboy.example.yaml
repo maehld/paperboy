@@ -35,6 +35,11 @@ plugins:
       api_key: ${SKODA_API_KEY}     # created in the MyŠkoda app, bound to the vehicle
       vin: TMBJB9NY5RF999999
       refresh: 1h                   # default; at least 10m (20 requests per hour)
+  rss:
+    config:
+      feeds:
+        - { name: Tagesschau, url: "https://www.tagesschau.de/xml/rss2/" }
+        - { name: heise, url: "https://www.heise.de/rss/heise-atom.xml" }
   calendar:
     timeout: 1m
     config:

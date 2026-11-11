@@ -260,6 +260,7 @@ Shipped plugins (one zip per platform: `paperboy-plugins-linux-amd64.zip` and `p
 - [`pokedex`](docs/plugins/pokedex.md) – a Pokémon card from [PokéAPI](https://pokeapi.co).
 - [`xkcd`](docs/plugins/xkcd.md) – [xkcd](https://xkcd.com) comics.
 - [`countdown`](docs/plugins/countdown.md) – days to a date, optionally with a progress bar.
+- [`rss`](docs/plugins/rss.md) – RSS and Atom feeds as a list or as a single headline.
 - [`paperboy`](docs/plugins/paperboy.md) – built in, no zip needed: header, text and clock.
 - A SolarAI plugin is still to come; it talks to SolarAI over HTTP itself, and SolarAI needs to know nothing about Paperboy.
 
