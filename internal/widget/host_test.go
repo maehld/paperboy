@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -29,9 +30,6 @@ func TestMain(m *testing.M) {
 
 func fakePlugin(mode string) {
 	appendFile(os.Getenv("FAKE_STARTS"))
-	if path := os.Getenv("FAKE_STATE"); path != "" {
-		os.WriteFile(path, []byte(os.Getenv(plugin.StateDirEnv)), 0o644)
-	}
 	if mode == "fail" {
 		os.Stderr.WriteString("broken")
 		os.Exit(1)
@@ -55,6 +53,21 @@ func fakePlugin(mode string) {
 				enc.Encode(plugin.Message{ID: req.ID, Version: version, Error: "config rejected"})
 				continue
 			}
+			// Record what Paperboy stored and sent (ADR 0081).
+			if path := os.Getenv("FAKE_STATE"); path != "" {
+				os.WriteFile(path, req.State, 0o644)
+			}
+			if path := os.Getenv("FAKE_BLOBS"); path != "" {
+				names := make([]string, 0, len(req.Blobs))
+				for name, data := range req.Blobs {
+					names = append(names, name+"="+string(data))
+				}
+				sort.Strings(names)
+				os.WriteFile(path, []byte(strings.Join(names, ",")), 0o644)
+			}
+			if path := os.Getenv("FAKE_ENV"); path != "" {
+				os.WriteFile(path, []byte(os.Getenv("PAPERBOY_STATE_DIR")), 0o644)
+			}
 			enc.Encode(plugin.Message{ID: req.ID, Version: version})
 			continue
 		}
@@ -75,6 +88,11 @@ func fakePlugin(mode string) {
 			var buf bytes.Buffer
 			png.Encode(&buf, image.NewGray(image.Rect(0, 0, width, w.Height)))
 			msg.Widgets = append(msg.Widgets, plugin.Result{PNG: buf.Bytes()})
+		}
+		if mode == "state" {
+			raw := json.RawMessage(`{"n":1}`)
+			msg.State = &raw
+			msg.Blobs = map[string][]byte{"render.png": []byte("png")}
 		}
 		enc.Encode(msg)
 		if mode == "changed" {
@@ -264,29 +282,51 @@ func TestHostKeepsProcessAndRestartsOnChange(t *testing.T) {
 	}
 }
 
-func TestHostCreatesStateDirectory(t *testing.T) {
+func TestHostKeepsPluginState(t *testing.T) {
 	f := newFake(t)
-	specs := f.spec("ok")
+	stateDir := filepath.Join(t.TempDir(), "state", "fake")
+	seen := filepath.Join(t.TempDir(), "state")
+	blobs := filepath.Join(t.TempDir(), "blobs")
+	env := filepath.Join(t.TempDir(), "env")
+	specs := f.spec("state")
 	s := specs["fake"]
-	s.StateDir = filepath.Join(t.TempDir(), "state", "fake")
-	// A configured value must not point the plugin elsewhere (ADR 0065).
-	s.Env[plugin.StateDirEnv] = filepath.Join(t.TempDir(), "elsewhere")
-	written := filepath.Join(t.TempDir(), "env")
-	s.Env["FAKE_STATE"] = written
+	s.StateDir = stateDir
+	s.Env["FAKE_STATE"], s.Env["FAKE_BLOBS"], s.Env["FAKE_ENV"] = seen, blobs, env
 	specs["fake"] = s
 	h := newHost(t, specs)
 	if out := h.Fetch(context.Background(), batch(w("fake", "a", 10, 5))); out[0].Err != nil {
 		t.Fatal(out[0].Err)
 	}
-	if fi, err := os.Stat(s.StateDir); err != nil || !fi.IsDir() {
+	if fi, err := os.Stat(stateDir); err != nil || !fi.IsDir() {
 		t.Fatalf("state directory: %v", err)
 	}
-	data, err := os.ReadFile(written)
-	if err != nil {
-		t.Fatal(err)
+	// The answer's state and blob are stored, readable by the owner only.
+	data, err := os.ReadFile(filepath.Join(stateDir, "state.json"))
+	if err != nil || string(data) != `{"n":1}` {
+		t.Fatalf("state file: %q (%v)", data, err)
 	}
-	if got := string(data); got != s.StateDir {
-		t.Fatalf("%s = %q, want %q", plugin.StateDirEnv, got, s.StateDir)
+	if fi, err := os.Stat(filepath.Join(stateDir, "state.json")); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("state file mode: %v %v", fi, err)
+	}
+	if data, err := os.ReadFile(filepath.Join(stateDir, "blobs", "render.png")); err != nil || string(data) != "png" {
+		t.Fatalf("blob: %q (%v)", data, err)
+	}
+	// The plugin has no writable directory of its own any more.
+	if data, err := os.ReadFile(env); err != nil || string(data) != "" {
+		t.Fatalf("PAPERBOY_STATE_DIR: %q (%v)", data, err)
+	}
+	// A restart, e.g. after a config change, hands the state and the blob back.
+	changed := specs["fake"]
+	changed.Config = map[string]any{"ok": true, "more": 1}
+	h.Configure(map[string]Spec{"fake": changed}, Env{Language: "de", Timezone: "UTC"})
+	if out := h.Fetch(context.Background(), batch(w("fake", "a", 10, 5))); out[0].Err != nil {
+		t.Fatal(out[0].Err)
+	}
+	if data, err := os.ReadFile(seen); err != nil || string(data) != `{"n":1}` {
+		t.Fatalf("state after the restart: %q (%v)", data, err)
+	}
+	if data, err := os.ReadFile(blobs); err != nil || string(data) != "render.png=png" {
+		t.Fatalf("blobs after the restart: %q (%v)", data, err)
 	}
 }
 

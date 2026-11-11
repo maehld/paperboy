@@ -31,10 +31,16 @@
 // Request.PtPx and Request.MMPx, so a widget looks the same on a small dense
 // panel and a large coarse one. Text displays get neither.
 //
+// State (ADR 0081): a plugin keeps what it needs between restarts as JSON.
+// Every request carries the stored object in Request.State, every answer and
+// event may return a new one in Message.State (missing = unchanged, null =
+// forget it). Large values such as images are declared in
+// Description.Blobs, arrive base64-coded in Request.Blobs on configure and are
+// written back through Message.Blobs. Paperboy stores both itself; a plugin
+// gets no writable directory.
+//
 // Environment: a plugin process sees PAPERBOY_LANGUAGE and PAPERBOY_TIMEZONE,
-// and it runs in the plugins directory. Paperboy starts it with
-// PAPERBOY_STATE_DIR, a directory of its own that survives restarts (ADR
-// 0065); the files inside belong to the plugin.
+// and it runs in the plugins directory.
 package plugin
 
 import (
@@ -59,10 +65,12 @@ import (
 // Version is the protocol version a request carries. Version 3 (ADR 0050)
 // added page.ppi and style.text_px and dropped style.text_size. Version 4
 // (ADR 0057) added actions: describe.actions, the actions and action requests,
-// and action results. Plugins report the version in every answer
-// (Message.Version); Paperboy refuses a plugin that speaks another version
-// (ADR 0058).
-const Version = 4
+// and action results. Version 5 (ADR 0081) added the plugin state and blobs:
+// Request.state, Message.state, describe.blobs and the blobs of configure and
+// answers; it removed PAPERBOY_STATE_DIR. Plugins report the version in every
+// answer (Message.Version); Paperboy refuses a plugin that speaks another
+// version (ADR 0058).
+const Version = 5
 
 // Actions of a request.
 const (
@@ -76,17 +84,6 @@ const (
 
 // EventChanged tells Paperboy that widgets are out of date.
 const EventChanged = "changed"
-
-// StateDirEnv names the environment variable with the directory Paperboy keeps
-// for a plugin between restarts (ADR 0065). Paperboy creates it before the
-// plugin starts and never touches the files inside; a plugin uses it to skip
-// work after a restart, for example a request that would count against an API
-// quota. The built-in plugin has no such directory.
-const StateDirEnv = "PAPERBOY_STATE_DIR"
-
-// StateDir returns the plugin's state directory, or "" when it runs without
-// one (the built-in plugin, tests).
-func StateDir() string { return os.Getenv(StateDirEnv) }
 
 // Request is one line Paperboy writes to standard input.
 type Request struct {
@@ -104,6 +101,12 @@ type Request struct {
 	// the plan's order. Device is set for both requests.
 	Actions []ActionCall `json:"actions,omitempty"`
 	Device  *DeviceInfo  `json:"device,omitempty"`
+	// State is the JSON object the plugin stored last time; missing when it
+	// has none (ADR 0081). It travels with every request.
+	State json.RawMessage `json:"state,omitempty"`
+	// Blobs are the files a plugin keeps besides its state, base64 in JSON.
+	// They arrive with configure only, because they can be large.
+	Blobs map[string][]byte `json:"blobs,omitempty"`
 }
 
 // DeviceInfo identifies the display an action is meant for.
@@ -168,6 +171,11 @@ type Message struct {
 	Description *Description   `json:"description,omitempty"`
 	Event       string         `json:"event,omitempty"`
 	Changed     []string       `json:"changed,omitempty"` // widgets of a "changed" event; empty = all
+	// State is the JSON object to store for the next start (ADR 0081). A
+	// missing field means unchanged, a null value forgets the stored state.
+	State *json.RawMessage `json:"state,omitempty"`
+	// Blobs are changed files to store, base64 in JSON; missing = unchanged.
+	Blobs map[string][]byte `json:"blobs,omitempty"`
 }
 
 // Result is one widget: a PNG for render, lines for text, or an error.
@@ -187,6 +195,10 @@ type Description struct {
 	Widgets []WidgetInfo   `json:"widgets"`
 	Actions []ActionSpec   `json:"actions,omitempty"` // actions a plan may list (ADR 0057)
 	Config  map[string]Arg `json:"config,omitempty"`  // keys of the plugin's config section
+	// Blobs names the files the plugin keeps besides its state, e.g.
+	// "render.png" (ADR 0081). Paperboy stores them under blobs/ of the
+	// plugin's directory and lists devices the files it does not expect.
+	Blobs []string `json:"blobs,omitempty"`
 }
 
 // Kinds of displays a widget supports.
@@ -349,6 +361,22 @@ type Ager interface {
 	MaxAge(req *Request) time.Duration
 }
 
+// Stater is implemented by plugins that keep state between restarts. Prepare
+// loads it from Request.State in Configure; State returns the whole object to
+// store, nil meaning "nothing yet" (ADR 0081). Paperboy stores it after every
+// answer and event.
+type Stater interface {
+	State() json.RawMessage
+}
+
+// Blober is implemented by plugins that keep files besides their state, such
+// as a downloaded image. Blobs returns the ones that changed since the last
+// call, so the plugin must clear its dirty marks when it returns them; nil
+// means unchanged (ADR 0081). Paperboy stores each valid name under blobs/.
+type Blober interface {
+	Blobs() map[string][]byte
+}
+
 // Serve answers requests from standard input until it closes and exits the
 // process with status 1 on a broken stream.
 func Serve(h Handler) {
@@ -390,7 +418,7 @@ func ServeIO(ctx context.Context, h Handler, in io.Reader, out io.Writer) error 
 			started = true
 			if s, ok := h.(Starter); ok {
 				s.Start(ctx, func(widgets ...string) {
-					send(Message{Version: Version, Event: EventChanged, Changed: widgets})
+					send(withState(h, Message{Version: Version, Event: EventChanged, Changed: widgets}))
 				})
 			}
 		}
@@ -434,6 +462,25 @@ func Handle(h Handler, req *Request) (m Message) {
 		handleActions(h, req, &m)
 	default:
 		m.Error = fmt.Sprintf("unknown action %q", req.Action)
+	}
+	if m.Error == "" {
+		m = withState(h, m)
+	}
+	return m
+}
+
+// withState attaches what the plugin wants stored to an answer or an event.
+func withState(h Handler, m Message) Message {
+	if st, ok := h.(Stater); ok {
+		if data := st.State(); len(data) > 0 {
+			raw := json.RawMessage(data)
+			m.State = &raw
+		}
+	}
+	if b, ok := h.(Blober); ok {
+		if blobs := b.Blobs(); len(blobs) > 0 {
+			m.Blobs = blobs
+		}
 	}
 	return m
 }

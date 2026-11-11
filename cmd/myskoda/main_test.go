@@ -527,8 +527,6 @@ func stateServer(t *testing.T) (srv *httptest.Server, api, images *atomic.Int64)
 
 func TestStateSurvivesRestart(t *testing.T) {
 	const vin = "TMBJB9NY5RF999999"
-	dir := t.TempDir()
-	t.Setenv(plugin.StateDirEnv, dir)
 	srv, api, images := stateServer(t)
 	cfg := plugin.Values{"api_key": "secret", "vin": vin, "base": srv.URL, "refresh": "1h"}
 
@@ -544,13 +542,15 @@ func TestStateSurvivesRestart(t *testing.T) {
 		return first.data != nil && first.image != nil && first.image.img != nil
 	}, "the first load")
 	waitFor(t, func() bool {
-		_, err := os.Stat(filepath.Join(dir, "state.json"))
-		return err == nil
-	}, "the state file")
+		first.mu.Lock()
+		defer first.mu.Unlock()
+		return first.pending != nil && len(first.blob) > 0
+	}, "the state and the render image")
+	state, blob := first.State(), first.Blobs()
 	cancel()
 
 	second := &myskoda{client: srv.Client()}
-	if err := second.Configure(cfg, &plugin.Request{}); err != nil {
+	if err := second.Configure(cfg, &plugin.Request{State: state, Blobs: blob}); err != nil {
 		t.Fatal(err)
 	}
 	if second.data == nil {
@@ -572,8 +572,6 @@ func TestStateSurvivesRestart(t *testing.T) {
 }
 
 func TestRateLimitWaitSurvivesRestart(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv(plugin.StateDirEnv, dir)
 	var mu sync.Mutex
 	hits := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -594,13 +592,15 @@ func TestRateLimitWaitSurvivesRestart(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	first.Start(ctx, func(...string) {})
 	waitFor(t, func() bool {
-		_, err := os.Stat(filepath.Join(dir, "state.json"))
-		return err == nil
-	}, "the state file after the 429")
+		first.mu.Lock()
+		defer first.mu.Unlock()
+		return first.pending != nil
+	}, "the state after the 429")
+	state := first.State()
 	cancel()
 
 	second := &myskoda{client: srv.Client()}
-	if err := second.Configure(cfg, &plugin.Request{}); err != nil {
+	if err := second.Configure(cfg, &plugin.Request{State: state}); err != nil {
 		t.Fatal(err)
 	}
 	if second.loadErr == nil || !strings.Contains(second.loadErr.Error(), "rate limit") {
@@ -618,8 +618,6 @@ func TestRateLimitWaitSurvivesRestart(t *testing.T) {
 }
 
 func TestStoredStateOfAnotherVehicleIsIgnored(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv(plugin.StateDirEnv, dir)
 	other := &myskoda{apiKey: "secret"}
 	s := storedState{Version: stateVersion, VIN: "OTHER0000000000000", Key: other.fingerprint(),
 		Vehicle: &vehicle{VIN: "OTHER0000000000000", Name: "Other"}}
@@ -627,11 +625,9 @@ func TestStoredStateOfAnotherVehicleIsIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "state.json"), data, 0o600); err != nil {
-		t.Fatal(err)
-	}
 	m := &myskoda{client: http.DefaultClient}
-	if err := m.Configure(plugin.Values{"api_key": "secret", "vin": "TMBJB9NY5RF999999"}, &plugin.Request{}); err != nil {
+	if err := m.Configure(plugin.Values{"api_key": "secret", "vin": "TMBJB9NY5RF999999"},
+		&plugin.Request{State: data}); err != nil {
 		t.Fatal(err)
 	}
 	if m.data != nil {
@@ -640,13 +636,9 @@ func TestStoredStateOfAnotherVehicleIsIgnored(t *testing.T) {
 }
 
 func TestBrokenStateIsIgnored(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv(plugin.StateDirEnv, dir)
-	if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte("{"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	m := &myskoda{client: http.DefaultClient}
-	if err := m.Configure(plugin.Values{"api_key": "secret", "vin": "TMBJB9NY5RF999999"}, &plugin.Request{}); err != nil {
+	if err := m.Configure(plugin.Values{"api_key": "secret", "vin": "TMBJB9NY5RF999999"},
+		&plugin.Request{State: []byte("{")}); err != nil {
 		t.Fatal(err)
 	}
 	if m.data != nil {

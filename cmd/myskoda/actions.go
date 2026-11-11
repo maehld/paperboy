@@ -305,9 +305,9 @@ func (m *myskoda) command(req *plugin.Request, endpoint, state string, body any)
 			wait = ans.wait
 		}
 		m.next = time.Now().Add(wait)
-		s := m.snapshot()
+		snapshot := m.snapshot()
+		m.pending = &snapshot
 		m.mu.Unlock()
-		m.persist(s)
 	}
 	return "", true
 }

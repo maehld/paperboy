@@ -207,7 +207,42 @@ func (actionFewerStates) Actions(*Request) ([]ActionState, error) {
 }
 
 func TestVersion(t *testing.T) {
-	if Version != 4 {
+	if Version != 5 {
 		t.Fatalf("protocol version = %d", Version)
+	}
+}
+
+type stateHandler struct {
+	testHandler
+	state json.RawMessage
+	blobs map[string][]byte
+}
+
+func (h *stateHandler) State() json.RawMessage   { return h.state }
+func (h *stateHandler) Blobs() map[string][]byte { return h.blobs }
+
+// TestStateTravelsWithEveryAnswer checks the protocol fields of ADR 0081: the
+// state is its own field, a plugin answers with what should be stored, and a
+// plugin without state adds nothing.
+func TestStateTravelsWithEveryAnswer(t *testing.T) {
+	h := &stateHandler{state: json.RawMessage(`{"n":1}`), blobs: map[string][]byte{"render.png": []byte("png")}}
+	m := Handle(h, &Request{ID: "1", Action: ActionDescribe})
+	if m.State == nil || string(*m.State) != `{"n":1}` {
+		t.Fatalf("state: %v", m.State)
+	}
+	if string(m.Blobs["render.png"]) != "png" {
+		t.Fatalf("blobs: %v", m.Blobs)
+	}
+	if m := Handle(&testHandler{}, &Request{ID: "2", Action: ActionDescribe}); m.State != nil || m.Blobs != nil {
+		t.Fatalf("a plugin without state must not add fields: %+v", m)
+	}
+	// Paperboy sends the stored state with every request, so a plugin can read
+	// it without another round trip.
+	var req Request
+	if err := json.Unmarshal([]byte(`{"id":"3","action":"render","state":{"vin":"x"},"blobs":{"render.png":"cG5n"}}`), &req); err != nil {
+		t.Fatal(err)
+	}
+	if string(req.State) != `{"vin":"x"}` || string(req.Blobs["render.png"]) != "png" {
+		t.Fatalf("request state: %s %v", req.State, req.Blobs)
 	}
 }
