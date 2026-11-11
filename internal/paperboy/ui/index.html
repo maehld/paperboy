@@ -61,6 +61,7 @@ dd.oneline .muted { font-size: .78rem; }
       {{if .Refresh}}<dt>Refresh</dt><dd>{{.Refresh}}</dd>{{end}}
       <dt>Last seen</dt>
       <dd>{{.SeenAgo}}</dd>
+      {{if .Address}}<dt>Address</dt><dd>{{.Address}}</dd>{{end}}
       <dt>Power</dt><dd class="oneline" title="{{.Power}}{{if .PowerOrigin}} ({{.PowerOrigin}}){{end}}">{{.Power}}{{if .PowerOrigin}} <span class="muted">({{.PowerOrigin}})</span>{{end}}</dd>
       {{if .Firmware}}<dt>Firmware</dt><dd>{{.Firmware}}</dd>{{end}}
       {{if .Menu}}<dt>Menu</dt><dd>{{.Menu}}</dd>{{end}}

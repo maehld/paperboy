@@ -21,6 +21,7 @@ type deviceState struct {
 	FirstSeen      time.Time `json:"first_seen,omitempty"`
 	LastInput      time.Time `json:"last_input,omitempty"`
 	LastSeen       time.Time `json:"last_seen,omitempty"`
+	ClientIP       string    `json:"client_ip,omitempty"` // source address of the last register, sync or text poll
 	BatteryVoltage string    `json:"battery_voltage,omitempty"`
 	BatteryPercent *float64  `json:"battery_percent,omitempty"` // fuel gauge, if the hardware has one
 	BatteryMAH     *float64  `json:"battery_mah,omitempty"`     // remaining capacity from the fuel gauge
@@ -180,6 +181,7 @@ type unclaimedDevice struct {
 	MAC       string
 	Hardware  string
 	Firmware  string
+	ClientIP  string
 	FirstSeen time.Time
 	LastSeen  time.Time
 }
@@ -198,10 +200,27 @@ func (s *Server) unclaimedDevices(cfg *Config) []unclaimedDevice {
 			continue
 		}
 		out = append(out, unclaimedDevice{Key: key, MAC: formatStateKey(key),
-			Hardware: st.Hardware, Firmware: st.Firmware, FirstSeen: st.FirstSeen, LastSeen: st.LastSeen})
+			Hardware: st.Hardware, Firmware: st.Firmware, ClientIP: st.ClientIP,
+			FirstSeen: st.FirstSeen, LastSeen: st.LastSeen})
 	}
 	s.mu.Unlock()
 	sort.Slice(out, func(i, j int) bool { return out[i].MAC < out[j].MAC })
+	return out
+}
+
+// deviceClientIPs returns the source address of the last contact of every
+// configured device, keyed by its state key. Callers take the configuration
+// snapshot themselves; the map is a copy, so no lock is needed afterwards.
+func (s *Server) deviceClientIPs(cfg *Config) map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]string, len(cfg.Devices))
+	for i := range cfg.Devices {
+		key := cfg.Devices[i].stateKey()
+		if st := s.state[key]; st != nil && st.ClientIP != "" {
+			out[key] = st.ClientIP
+		}
+	}
 	return out
 }
 

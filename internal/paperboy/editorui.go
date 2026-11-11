@@ -91,6 +91,7 @@ type editorUnclaimed struct {
 	MAC       string
 	Hardware  string
 	Firmware  string
+	Address   string // source address of the last contact (ADR 0082)
 	FirstSeen string
 	LastSeen  string
 	ClaimURL  string
@@ -118,6 +119,7 @@ type editorDeviceRow struct {
 	ID         string
 	Display    string
 	MAC        string
+	Address    string // source address of the last contact (ADR 0082)
 	Plan       string
 	Problem    string // the file parses but cannot sync, e.g. a missing display type (ADR 0079)
 	Error      string
@@ -505,12 +507,16 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Warn("device list for the page overview failed", "error", err)
 	}
+	addresses := s.deviceClientIPs(cfg)
 	for _, d := range devices {
 		row := editorDeviceRow{ID: d.ID, Display: d.Display, MAC: d.MAC, Plan: d.Plan, Error: d.Error,
 			DeleteURL:  "/api/devices/" + url.PathEscape(d.ID) + "?" + url.Values{"hash": {d.Hash}}.Encode(),
 			Warn:       deviceDeleteWarning(d.ID),
 			RenameURL:  "/api/devices/" + url.PathEscape(d.ID) + "/rename?" + url.Values{"hash": {d.Hash}}.Encode(),
 			RenameWarn: deviceRenameWarning(d.ID)}
+		if key, err := deviceStateKey(d.MAC); err == nil {
+			row.Address = addresses[key]
+		}
 		if d.Error == "" {
 			row.OpenURL = "/ui/editor/device?" + url.Values{"id": {d.ID}}.Encode()
 			if !knownProfile(cfg.Profiles, d.Display) {
@@ -521,7 +527,7 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, u := range s.unclaimedDevices(cfg) {
 		v.Unclaimed = append(v.Unclaimed, editorUnclaimed{
-			MAC: u.MAC, Hardware: u.Hardware, Firmware: u.Firmware,
+			MAC: u.MAC, Hardware: u.Hardware, Firmware: u.Firmware, Address: u.ClientIP,
 			FirstSeen: editorTime(cfg, u.FirstSeen), LastSeen: editorTime(cfg, u.LastSeen),
 			ClaimURL:  "/ui/editor/device?" + url.Values{"new": {"1"}, "id": {suggestDeviceID(u)}, "mac": {u.MAC}}.Encode(),
 			ForgetURL: "/api/state/devices/" + url.PathEscape(u.MAC),

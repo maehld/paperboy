@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -150,6 +151,17 @@ func validReportedPower(p string) error {
 	return fmt.Errorf("power %q: expected battery or mains", p)
 }
 
+// clientIP is the source address of a request, the address the device reaches
+// Paperboy from. It comes from the connection, never from a header: the device
+// API is reached directly, and a header would be content the caller chooses
+// (ADR 0082). A reverse proxy shows its own address instead.
+func clientIP(r *http.Request) string {
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return strings.Trim(r.RemoteAddr, "[]")
+}
+
 // decodeDeviceJSON reads a size-limited JSON body; unknown fields are ignored
 // so newer firmware can add fields without breaking older servers.
 func decodeDeviceJSON(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -185,6 +197,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		st.FirstSeen = s.now()
 	}
 	st.Hardware, st.Firmware = req.Hardware, req.Firmware
+	st.ClientIP = clientIP(r)
 	if req.Power != "" {
 		st.ReportedPower = req.Power
 	}
@@ -263,6 +276,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		// after a rename. Never a 401: that would make the firmware forget its
 		// key, and the file is the problem (ADR 0079).
 		st.LastSeen = now
+		st.ClientIP = clientIP(r)
 		stateData := s.stateSnapshotLocked(st)
 		s.mu.Unlock()
 		s.saveState(d.stateKey(), stateData)
@@ -272,6 +286,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	}
 	firstContact := st.LastSeen.IsZero()
 	st.LastSeen = now
+	st.ClientIP = clientIP(r)
 	st.WakeReason = req.Reason
 	if req.Firmware != "" {
 		st.Firmware = req.Firmware
@@ -608,6 +623,7 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 	}
 	// Only kept in memory; the next sync persists it.
 	st.LastSeen = now
+	st.ClientIP = clientIP(r)
 	critical := st.BatteryLevel == batteryCritical
 	voltage := st.BatteryVoltage
 	var choice planChoice

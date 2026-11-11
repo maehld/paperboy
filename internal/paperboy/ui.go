@@ -50,6 +50,7 @@ type dashboardDevice struct {
 	Text        []string // text displays: the last served lines
 	Refresh     string   // "every 10 min", empty when unknown
 	SeenAgo     string   // last contact, "never" when unknown
+	Address     string   // source address of the last contact, empty when unknown (ADR 0082)
 	ServedAgo   string   // age of the last served page
 	Firmware    string   // running version, available version and update status
 	Menu        string   // open menu phase and selected action (ADR 0057)
@@ -106,6 +107,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			Text:        d.LastText,
 			Refresh:     refreshText(d.LastRefresh),
 			SeenAgo:     agoText(d.LastSeen, now),
+			Address:     d.ClientIP,
 			ServedAgo:   agoText(d.LastPageTime, now),
 			Firmware:    firmwareText(d),
 			Menu:        menuText(d.deviceState),
