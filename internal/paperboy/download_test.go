@@ -181,11 +181,22 @@ func TestDownloadInstallsPluginsAndFirmware(t *testing.T) {
 		offer["path"] != "/firmware/e1001-v1.0.0.bin" {
 		t.Fatalf("firmware offer: %v", offer)
 	}
+	// The page says when the program and the image arrived: the file times of
+	// what Paperboy installed.
+	arrived := time.Date(2026, 3, 4, 5, 6, 0, 0, time.UTC)
+	for _, file := range []string{program, filepath.Join(cfg.FirmwareDir, "e1001-v1.0.0.bin")} {
+		if err := os.Chtimes(file, arrived, arrived); err != nil {
+			t.Fatal(err)
+		}
+	}
 	body := htmlRequest(t, s, "/ui/downloads").Body.String()
-	for _, want := range []string{"Release checks", "testplugin", "v2.1.0", "e1001", "e1001-v1.0.0.bin"} {
+	for _, want := range []string{"Release checks", "testplugin", "v2.1.0", "e1001", "e1001-v1.0.0.bin", "Downloaded", "2026-03-04 05:06"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("downloads page lacks %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, "/ui/editor/device") {
+		t.Fatalf("downloads page still lists the devices: %s", body)
 	}
 	// The dashboard keeps a link, not the card: a running check must not
 	// reload every device card.
