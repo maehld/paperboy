@@ -16,7 +16,7 @@ A Go plugin implements `plugin.Handler` (`Describe`, `Configure`, `Render`). It 
 
 Paperboy ships the plugins below. One zip per platform (`paperboy-plugins-linux-amd64.zip`, `paperboy-plugins-windows-amd64.zip`) contains all of them. Unpacked in the instance directory, the zip creates `plugins/` with `<plugin>-v<version>`. Each plugin raises its version only when it changes (ADR 0075); the version is in `cmd/<plugin>/VERSION`. Every plugin has its own documentation under `docs/plugins/`:
 
-- [`evcc`](evcc.md) – PV, home, grid, battery, energy flow, loadpoints, forecast and the energy history of the day, week, month and year from [evcc](https://evcc.io); the first shipped plugin with actions, `evcc/mode` switches a charge mode from the device menu.
+- [`evcc`](evcc.md) – PV, home, grid, battery, energy flow, loadpoints, forecast, the energy history of the day, week, month and year as a table or a bar chart, and evcc's values and charging statistics from [evcc](https://evcc.io); the first shipped plugin with actions, `evcc/mode` switches a charge mode from the device menu.
 - [`departures`](departures.md) – real-time public transport departures from an EFA installation.
 - [`myskoda`](myskoda.md) – battery, charging plans, parking position and the vehicle image from the [MyŠkoda Public API](https://public.api.connect.skoda-auto.cz/docs).
 - [`weather`](weather.md) – current weather and forecast from [Open-Meteo](https://open-meteo.com/).

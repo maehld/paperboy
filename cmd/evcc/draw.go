@@ -29,6 +29,10 @@ func (e *evcc) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Pa
 		e.forecast(w, img)
 	case "history":
 		return e.historyWidget(w, img)
+	case "chart":
+		return e.chartWidget(w, img)
+	case "values":
+		return e.valuesWidget(w, img)
 	default:
 		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 	}
@@ -52,6 +56,19 @@ func (e *evcc) power(w float64) string {
 		return e.num(math.Round(a), 0) + " W"
 	}
 	return e.num(a/1000, 1) + " kW"
+}
+
+// signed formats power with + for import or discharge and - for export or
+// charge.
+func (e *evcc) signed(w float64) string {
+	if math.Abs(w) < flowIdle {
+		return e.power(0)
+	}
+	sign := "+"
+	if w < 0 {
+		sign = "-"
+	}
+	return sign + e.power(w)
 }
 
 func (e *evcc) energy(wh float64) string {
@@ -384,6 +401,8 @@ func (e *evcc) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, erro
 		return lines, nil
 	case "history":
 		return e.historyText(w)
+	case "values":
+		return e.valuesText(w)
 	}
 	return nil, fmt.Errorf("%w %q for text displays", plugin.ErrUnknownWidget, w.Widget)
 }

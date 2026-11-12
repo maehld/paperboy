@@ -10,10 +10,13 @@
 //   - "forecast": the solar forecast and the grid price of the coming hours,
 //   - "history": the energy of today, yesterday, this and last week, this and
 //     last month and this year for PV, the battery, the grid, the home or one
-//     charging point.
+//     charging point,
+//   - "chart": one of those series as bars over a day, week, month or year,
+//   - "values": the values of /api/state, such as meter readings, prices and
+//     evcc's charging statistics.
 //
-// "site", "flow", "loadpoint" and "history" have text variants for character
-// displays.
+// "site", "flow", "loadpoint", "history" and "values" have text variants for
+// character displays.
 //
 //	plugins:
 //	  evcc:
@@ -50,27 +53,41 @@ var configKeys = map[string]plugin.Arg{
 // state is the part of /api/state the widgets use. Newer evcc versions answer
 // with the object directly, older ones wrap it in "result".
 type state struct {
-	SiteTitle       string      `json:"siteTitle"`
-	PVPower         float64     `json:"pvPower"`
-	HomePower       float64     `json:"homePower"`
-	Grid            *gridMeter  `json:"grid"`
-	GridPowerLegacy *float64    `json:"gridPower"`
-	Battery         *battery    `json:"battery"`
-	TariffGrid      *float64    `json:"tariffGrid"`
-	TariffFeedIn    *float64    `json:"tariffFeedIn"`
-	Currency        string      `json:"currency"`
-	Loadpoints      []loadpoint `json:"loadpoints"`
-	Forecast        *forecast   `json:"forecast"`
+	SiteTitle       string                `json:"siteTitle"`
+	PVPower         float64               `json:"pvPower"`
+	PVEnergy        float64               `json:"pvEnergy"`
+	HomePower       float64               `json:"homePower"`
+	Grid            *gridMeter            `json:"grid"`
+	GridPowerLegacy *float64              `json:"gridPower"`
+	Battery         *battery              `json:"battery"`
+	TariffGrid      *float64              `json:"tariffGrid"`
+	TariffFeedIn    *float64              `json:"tariffFeedIn"`
+	Currency        string                `json:"currency"`
+	Loadpoints      []loadpoint           `json:"loadpoints"`
+	Forecast        *forecast             `json:"forecast"`
+	Statistics      map[string]statistics `json:"statistics"`
+}
+
+// statistics is evcc's summary of the charging sessions of a period: "30d",
+// "365d", "thisYear" and "total".
+type statistics struct {
+	AvgPrice        float64 `json:"avgPrice"` // per kWh
+	ChargedKWh      float64 `json:"chargedKWh"`
+	SolarPercentage float64 `json:"solarPercentage"`
 }
 
 type gridMeter struct {
-	Power float64 `json:"power"`
+	Power        float64 `json:"power"`
+	Energy       float64 `json:"energy"`       // kWh imported since the installation
+	ReturnEnergy float64 `json:"returnEnergy"` // kWh exported
 }
 
 type battery struct {
-	Power    float64 `json:"power"`
-	SoC      float64 `json:"soc"`
-	Capacity float64 `json:"capacity"`
+	Power        float64 `json:"power"`
+	SoC          float64 `json:"soc"`
+	Capacity     float64 `json:"capacity"`
+	Energy       float64 `json:"energy"`       // kWh charged since the installation
+	ReturnEnergy float64 `json:"returnEnergy"` // kWh discharged
 }
 
 type loadpoint struct {
@@ -126,7 +143,8 @@ type evcc struct {
 	loadErr error
 	ready   chan struct{}
 
-	hist      map[string][]dayValue
+	hist      map[string][]energyPoint
+	hours     map[string][]energyPoint
 	histErr   error
 	histReady chan struct{}
 
@@ -163,6 +181,20 @@ func (e *evcc) Describe() plugin.Description {
 					"source": {Type: "string", Default: "pv", Description: "pv, battery, loadpoint, grid or home", Enum: []any{"pv", "battery", "loadpoint", "grid", "home"}},
 					"metric": {Type: "string", Default: "energy", Description: "energy, or return for battery discharge and grid export", Enum: []any{"energy", "return"}},
 					"index":  {Type: "int", Default: 0, Description: "loadpoint, counted from 0 (source loadpoint)"},
+				}},
+			{Widget: "values", Title: "Values", Kinds: both, MinWidth: 120, MinHeight: 40,
+				Sizes: []plugin.Span{{Columns: 3, Rows: 1}, {Columns: 3, Rows: 2}, {Columns: 3, Rows: 3}, {Columns: 6, Rows: 1}, {Columns: 6, Rows: 2}},
+				Args: map[string]plugin.Arg{
+					"values":  {Type: "list", Default: []any{"pv", "home", "grid", "battery"}, Description: "the values to show", Enum: valueEnum()},
+					"columns": {Type: "int", Default: 1, Description: "values next to each other: 1 to 4", Enum: []any{1, 2, 3, 4}},
+				}},
+			{Widget: "chart", Title: "Energy chart", Kinds: []string{plugin.KindImage}, MinWidth: 240, MinHeight: 100,
+				Sizes: []plugin.Span{{Columns: 6, Rows: 3}, {Columns: 6, Rows: 4}, {Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}},
+				Args: map[string]plugin.Arg{
+					"source": {Type: "string", Default: "pv", Description: "pv, battery, loadpoint, grid or home", Enum: []any{"pv", "battery", "loadpoint", "grid", "home"}},
+					"metric": {Type: "string", Default: "energy", Description: "energy, or return for battery discharge and grid export", Enum: []any{"energy", "return"}},
+					"index":  {Type: "int", Default: 0, Description: "loadpoint, counted from 0 (source loadpoint)"},
+					"period": {Type: "string", Default: "year", Description: "today, yesterday, week, last_week, month, last_month, year or last_year", Enum: []any{"today", "yesterday", "week", "last_week", "month", "last_month", "year", "last_year"}},
 				}},
 			{Widget: "forecast", Title: "Solar forecast and grid price", Kinds: []string{plugin.KindImage}, MinWidth: 240, MinHeight: 100,
 				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}},

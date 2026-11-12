@@ -19,6 +19,8 @@ grid, the spans and the arguments.
 - `energie.yaml` - evcc energy flow with site values and the charging point.
 - `ertrag.yaml` - evcc energy history: PV yield, battery discharge and the
   first loadpoint for today, yesterday, the week, the month and the year.
+- `werte.yaml` - evcc values: meter readings and charging statistics as a
+  list, without a graph.
 - `abfahrten.yaml` - real-time departures; `abfahrten.lcd2004.yaml` on 20×4.
 - `nachrichten.yaml` - two RSS feeds: headlines with summaries and a mixed
   list of all sources.

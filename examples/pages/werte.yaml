@@ -1,0 +1,8 @@
+# evcc values without a graph: meter readings and charging statistics.
+title: Werte
+grid: [6, 8]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
+  - { at: [0, 1], span: [3, 7], widget: evcc/values, args: { values: [pv_energy, grid_import, grid_export, battery_charge, battery_discharge] } }
+  - { at: [3, 1], span: [3, 7], widget: evcc/values, args: { values: [charge_total, charge_total_solar, charge_total_price, charge_year, charge_year_solar, charge_year_price] } }

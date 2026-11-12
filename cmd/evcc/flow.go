@@ -539,16 +539,7 @@ func fillPolygon(img *image.Paletted, c color.Color, pts ...fpt) {
 // - export) and battery (state of charge, + discharging, - charging).
 func (e *evcc) flowText(w plugin.WidgetRequest) []string {
 	s := e.cur
-	signed := func(v float64) string {
-		if math.Abs(v) < flowIdle {
-			return e.power(0)
-		}
-		sign := "+"
-		if v < 0 {
-			sign = "-"
-		}
-		return sign + e.power(v)
-	}
+	signed := e.signed
 	line := func(l, v string) string { return plugin.Columns(l, v, w.Width) }
 	out := []string{line("PV", e.power(s.PVPower)), line(e.t("Haus", "Home"), e.power(s.HomePower))}
 	for _, lp := range s.activeLoadpoints() {

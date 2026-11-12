@@ -13,8 +13,12 @@ import (
 	"github.com/maehld/paperboy/pkg/render"
 )
 
-const stateJSON = `{"siteTitle":"Home","pvPower":4200,"homePower":800,"grid":{"power":-2100},
-"battery":{"power":-1300,"soc":81,"capacity":9.6},"tariffGrid":0.27,"currency":"EUR",
+const stateJSON = `{"siteTitle":"Home","pvPower":4200,"homePower":800,"pvEnergy":26009.5,
+"grid":{"power":-2100,"energy":9697.5,"returnEnergy":11141.6},
+"battery":{"power":-1300,"soc":81,"capacity":9.6,"energy":6013.7,"returnEnergy":6362.4},
+"tariffGrid":0.27,"currency":"EUR",
+"statistics":{"thisYear":{"avgPrice":0.1639,"chargedKWh":145.3,"solarPercentage":55.1},
+"total":{"avgPrice":0.1705,"chargedKWh":1234.5,"solarPercentage":54.8}},
 "loadpoints":[{"title":"Garage","mode":"pv","vehicleTitle":"Octavia","vehicleSoc":64,"vehicleRange":180,
 "effectiveLimitSoc":80,"chargePower":3700,"sessionEnergy":5400,"sessionSolarPercentage":90,"charging":true,
 "connected":true,"phasesActive":1,"chargeRemainingDuration":2400000000000}],
@@ -63,7 +67,7 @@ func newTestPlugin(t *testing.T) (*evcc, *plugin.Request) {
 func TestWidgets(t *testing.T) {
 	e, req := newTestPlugin(t)
 	style := plugin.Style{Padding: 8, Rule: 1, TextPx: 28.8}
-	for _, name := range []string{"site", "loadpoint", "forecast"} {
+	for _, name := range []string{"site", "loadpoint", "forecast", "values"} {
 		img := render.NewCanvas(400, 200, 4)
 		if err := e.Render(req, plugin.WidgetRequest{Widget: name, Width: 400, Height: 200, Style: style}, img); err != nil {
 			t.Fatalf("%s: %v", name, err)
