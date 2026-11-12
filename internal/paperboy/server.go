@@ -48,6 +48,7 @@ type Server struct {
 	fwNotes   map[string]string        // device ID → last logged reason for withholding an update
 	pages     *pageLoader              // pages by file, reloaded on change (own lock)
 	skipNotes map[string]string        // "<profile>/<page>" → last logged reason for skipping it
+	qoiNotes  map[string]string        // page path → last logged reason for simplifying it (ADR 0088)
 	widgets   *widget.Host             // plugins and their widget cache (ADR 0049; own lock)
 	download  *downloadStatus          // release checks (ADR 0060; own lock)
 }
@@ -427,7 +428,7 @@ func (s *Server) handleRenderedImage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writePageImage(w, r, rp.data)
+	s.writePageImage(w, r, rp.data)
 }
 
 // handleHint serves notice pages such as "Plan fehlt".
@@ -444,19 +445,24 @@ func (s *Server) handleHint(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writePageImage(w, r, data)
+	s.writePageImage(w, r, data)
 }
 
-// qoiLimit is the response buffer the firmware allocates for a page (ADR 0072).
-// A page above it is still served, but the firmware keeps its old picture and
-// reports the page in the next sync, so the log names it here first.
-const qoiLimit = 96 * 1024
+// qoiLimit is the response buffer the firmware allocates for a page: a
+// compile-time constant there (max_response_buffer_size in common.yaml, 512 KiB
+// in PSRAM), and a larger answer is truncated, which makes the device keep its
+// old picture. A four-level 800x480 page cannot exceed one QOI byte per pixel
+// (384 KB), so the buffer holds every page of the shipped panels; Paperboy
+// keeps its own limit in step and only has to simplify a page above it
+// (ADR 0088).
+const qoiLimit = 512 * 1024
 
 // writePageImage serves a rendered page as PNG (browsers, the dashboard) or, on
 // ?format=qoi, as QOI for the firmware, which decodes that far faster
 // (ADR 0072). The device's shown hash stays the hash of the PNG, so the
-// encoding is the device's business only.
-func writePageImage(w http.ResponseWriter, r *http.Request, data []byte) {
+// encoding is the device's business only, including a page that had to be
+// simplified to fit the firmware's buffer (ADR 0088).
+func (s *Server) writePageImage(w http.ResponseWriter, r *http.Request, data []byte) {
 	if r.URL.Query().Get("format") != "qoi" {
 		writePNG(w, data)
 		return
@@ -467,13 +473,37 @@ func writePageImage(w http.ResponseWriter, r *http.Request, data []byte) {
 		writePNG(w, data)
 		return
 	}
-	qoi := encodeQOI(img)
-	if len(qoi) > qoiLimit {
-		slog.Warn("page is too large as QOI for the firmware", "page", r.URL.Path, "bytes", len(qoi), "limit", qoiLimit)
-	}
+	qoi := qoiWithin(img, qoiLimit)
+	s.noteQOI(r.URL.Path, qoi)
 	w.Header().Set("Content-Type", "image/qoi")
-	w.Header().Set("Content-Length", strconv.Itoa(len(qoi)))
-	w.Write(qoi)
+	w.Header().Set("Content-Length", strconv.Itoa(len(qoi.data)))
+	w.Write(qoi.data)
+}
+
+// noteQOI reports a page that Paperboy could not send as it is, once per page
+// and reduction.
+func (s *Server) noteQOI(path string, qoi qoiResult) {
+	note := qoi.note
+	if !qoi.fits {
+		note = "does not fit the buffer even without dither"
+	}
+	if note == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.qoiNotes == nil {
+		s.qoiNotes = map[string]string{}
+	}
+	if s.qoiNotes[path] == note {
+		return
+	}
+	s.qoiNotes[path] = note
+	if !qoi.fits {
+		slog.Error("page is too large as QOI for the firmware", "page", path, "bytes", len(qoi.data), "limit", qoiLimit)
+		return
+	}
+	slog.Warn("page sent simplified for the firmware", "page", path, "bytes", len(qoi.data), "reduction", note)
 }
 
 func writePNG(w http.ResponseWriter, data []byte) {
