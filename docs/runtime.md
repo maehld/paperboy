@@ -12,11 +12,11 @@ Paperboy serves its operator pages on the same address as the device API. They n
 
 ### Plan preview
 
-The *preview* link on a device card opens `/ui/plan?device=<id>` (ADR 0054), a read-only view of the plan of the device. It shows every rule with its time window, `rotate` and `refresh`, the fallback, the rule that applies now (or at the time picked with `&at=YYYY-MM-DDTHH:MM`) and the next rule change. Each page is previewed for the display type of the device; pages the device would skip show the reason, broken pages their error. The view does not change the page cursor or the state of the device.
+The **Plan preview** button at the foot of a device card opens `/ui/plan?device=<id>` (ADR 0054), a read-only view of the plan of the device. It shows every rule with its time window, `rotate` and `refresh`, the fallback, the rule that applies now (or at the time picked with `&at=YYYY-MM-DDTHH:MM`) and the next rule change. Each page is previewed for the display type of the device; pages the device would skip show the reason, broken pages their error. The view does not change the page cursor or the state of the device.
 
 ### Virtual display
 
-The *virtual* link on a device card and in the plan view opens `/ui/virtual?plan=<plan>&display=<type>` (ADR 0091). The page acts as a display of that type: it syncs like the firmware, shows the page the plan picks, pages with the buttons of the plan and opens the device menu. Optional URL parameters replace what a device file would decide: `refresh`, `menu` (5–60 s), `page_timeout` (all seconds) and `power=mains|battery`. The URL is the only configuration, so a link is a display. The cursor and the menu live in memory and not in `state/devices/`, so no device is touched. *Reset* starts again at the first page.
+The **Virtual display** button at the foot of a device card and the *virtual display* link in the plan view open `/ui/virtual?plan=<plan>&display=<type>` (ADR 0091). The page acts as a display of that type: it syncs like the firmware, shows the page the plan picks, pages with the buttons of the plan and opens the device menu. Optional URL parameters replace what a device file would decide: `refresh`, `menu` (5–60 s), `page_timeout` (all seconds) and `power=mains|battery`. The URL is the only configuration, so a link is a display. The cursor and the menu live in memory and not in `state/devices/`, so no device is touched. *Reset* starts again at the first page.
 
 Paperboy resolves, selects and confirms actions like on a device, but never runs them: the result banner says *Simulated* and names the action. `←`/`→`/Enter and press-and-hold work, *Full screen* hides the chrome, and a debug line below the display names the active rule, the page, the refresh, the wake and the last error.
 
