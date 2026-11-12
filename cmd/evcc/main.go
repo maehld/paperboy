@@ -1,12 +1,19 @@
 // Command evcc is a Paperboy plugin (ADR 0049) for evcc (https://evcc.io). It
-// polls the evcc REST API (/api/state) in the background and draws:
+// polls the evcc REST API (/api/state and /api/history/energy) in the
+// background and draws:
 //
 //   - "site": PV, home, grid and home battery as tiles,
-//   - "flow": an energy flow diagram, boxes for PV, grid, home, battery and\n//     active loadpoints joined by arrows whose width shows the power,\n//   - "loadpoint": one charging point with vehicle, mode, state of charge,
+//   - "flow": an energy flow diagram, boxes for PV, grid, home, battery and
+//     active loadpoints joined by arrows whose width shows the power,
+//   - "loadpoint": one charging point with vehicle, mode, state of charge,
 //     charge power and session energy,
-//   - "forecast": the solar forecast and the grid price of the coming hours.
+//   - "forecast": the solar forecast and the grid price of the coming hours,
+//   - "history": the energy of today, yesterday, this and last week, this and
+//     last month and this year for PV, the battery, the grid, the home or one
+//     charging point.
 //
-// "site", "flow" and "loadpoint" have text variants for character displays.
+// "site", "flow", "loadpoint" and "history" have text variants for character
+// displays.
 //
 //	plugins:
 //	  evcc:
@@ -35,8 +42,9 @@ func main() {
 }
 
 var configKeys = map[string]plugin.Arg{
-	"url":     {Type: "string", Required: true, Description: "evcc base URL, e.g. http://evcc:7070"},
-	"refresh": {Type: "duration", Default: "30s", Description: "how often /api/state is read"},
+	"url":             {Type: "string", Required: true, Description: "evcc base URL, e.g. http://evcc:7070"},
+	"refresh":         {Type: "duration", Default: "30s", Description: "how often /api/state is read"},
+	"history_refresh": {Type: "duration", Default: "15m", Description: "how often the energy history (/api/history/energy) is read"},
 }
 
 // state is the part of /api/state the widgets use. Newer evcc versions answer
@@ -110,11 +118,17 @@ type evcc struct {
 	base    string
 	refresh time.Duration
 
+	historyRefresh time.Duration
+
 	mu      sync.Mutex
 	data    *state
 	at      time.Time
 	loadErr error
 	ready   chan struct{}
+
+	hist      map[string][]dayValue
+	histErr   error
+	histReady chan struct{}
 
 	cur  *state
 	req  *plugin.Request
@@ -143,6 +157,13 @@ func (e *evcc) Describe() plugin.Description {
 				Args: map[string]plugin.Arg{
 					"index": {Type: "int", Default: 0, Description: "loadpoint, counted from 0"},
 				}},
+			{Widget: "history", Title: "Energy history", Kinds: both, MinWidth: 160, MinHeight: 100,
+				Sizes: []plugin.Span{{Columns: 2, Rows: 4}, {Columns: 2, Rows: 7}, {Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 2}},
+				Args: map[string]plugin.Arg{
+					"source": {Type: "string", Default: "pv", Description: "pv, battery, loadpoint, grid or home", Enum: []any{"pv", "battery", "loadpoint", "grid", "home"}},
+					"metric": {Type: "string", Default: "energy", Description: "energy, or return for battery discharge and grid export", Enum: []any{"energy", "return"}},
+					"index":  {Type: "int", Default: 0, Description: "loadpoint, counted from 0 (source loadpoint)"},
+				}},
 			{Widget: "forecast", Title: "Solar forecast and grid price", Kinds: []string{plugin.KindImage}, MinWidth: 240, MinHeight: 100,
 				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}},
 				Args: map[string]plugin.Arg{
@@ -167,13 +188,24 @@ func (e *evcc) Configure(cfg plugin.Values, _ *plugin.Request) error {
 	if refresh < 10*time.Second {
 		return errors.New("refresh must be at least 10s")
 	}
-	e.base, e.refresh = u.String(), refresh
+	historyRefresh, err := cfg.Duration("history_refresh", 15*time.Minute)
+	if err != nil {
+		return err
+	}
+	if historyRefresh < time.Minute {
+		return errors.New("history_refresh must be at least 1m")
+	}
+	e.base, e.refresh, e.historyRefresh = u.String(), refresh, historyRefresh
 	return nil
 }
 
-// Start polls evcc and reports a change when a displayed value moved.
+// Start polls evcc and reports a change when a displayed value moved. The
+// energy history has its own loop: a year of day buckets must not delay the
+// state poll.
 func (e *evcc) Start(ctx context.Context, notify func(widgets ...string)) {
 	e.ready = make(chan struct{})
+	e.histReady = make(chan struct{})
+	go e.watchHistory(ctx, notify)
 	go func() {
 		first := true
 		var last string
@@ -267,6 +299,12 @@ func (e *evcc) Prepare(req *plugin.Request) error {
 	case <-e.ready:
 	case <-time.After(10 * time.Second):
 		return errors.New("evcc state is still loading")
+	}
+	// The history may be missing (an evcc without the energy database); its
+	// widgets then show the reason and the others keep working.
+	select {
+	case <-e.histReady:
+	case <-time.After(10 * time.Second):
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()

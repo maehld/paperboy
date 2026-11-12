@@ -27,6 +27,8 @@ func (e *evcc) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Pa
 		e.flow(w, img)
 	case "forecast":
 		e.forecast(w, img)
+	case "history":
+		return e.historyWidget(w, img)
 	default:
 		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 	}
@@ -380,6 +382,8 @@ func (e *evcc) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, erro
 			lines = append(lines, plugin.Columns(e.t("Sitzung", "Session"), e.energy(lp.SessionEnergy), w.Width))
 		}
 		return lines, nil
+	case "history":
+		return e.historyText(w)
 	}
 	return nil, fmt.Errorf("%w %q for text displays", plugin.ErrUnknownWidget, w.Widget)
 }

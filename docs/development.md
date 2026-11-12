@@ -23,7 +23,7 @@ The workflows build the three deliverables (ADR 0056). *CI* runs formatting, vet
 cmd/paperboy/            Startup, options and example configuration
 cmd/weather/             Weather plugin: Open-Meteo (ADR 0049)
 cmd/calendar/            Calendar plugin: CalDAV and iCalendar (ADR 0048, 0049)
-cmd/evcc/                evcc plugin: energy flow, charging point, forecast
+cmd/evcc/                evcc plugin: energy flow, charging point, forecast, history
 cmd/xkcd/                xkcd plugin: comic with optional title and alt text
 cmd/countdown/           Countdown plugin: days to a date with a progress bar
 cmd/departures/          Departures plugin: EFA real-time departures (ADR 0053)

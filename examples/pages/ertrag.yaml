@@ -1,0 +1,10 @@
+# evcc energy history: PV yield, battery discharge and one loadpoint, each
+# with today, yesterday, the week, the month and the year.
+title: Erträge
+grid: [6, 8]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
+  - { at: [0, 1], span: [2, 7], widget: evcc/history, args: { source: pv } }
+  - { at: [2, 1], span: [2, 7], widget: evcc/history, args: { source: battery, metric: return } }
+  - { at: [4, 1], span: [2, 7], widget: evcc/history, args: { source: loadpoint, index: 0 } }
