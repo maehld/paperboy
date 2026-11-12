@@ -71,7 +71,7 @@ Go **1.27 or newer**. Dependencies: `golang.org/x/image` **v0.24.0** (ADR 0013),
 
 ## Planned work
 
-Paperboy v2 (ADR 0049) replaced the data document (ADR 0024), the region model (ADR 0032), the block templates with their typography, formats and icons (ADR 0034, 0035, 0038, 0046), exec providers (ADR 0036) and text-line templates (ADR 0044) with plugins that provide widgets on a grid. The ADRs stay as history; the README describes only v2. The spike that led there is documented in `docs/spikes/plugin-fragments.md`. Existing installations migrate by hand (README); there is no migration code.
+Paperboy v2 (ADR 0049) replaced the data document (ADR 0024), the region model (ADR 0032), the block templates with their typography, formats and icons (ADR 0034, 0035, 0038, 0046), exec providers (ADR 0036) and text-line templates (ADR 0044) with plugins that provide widgets on a grid. The ADRs stay as history; the README describes only v2. The spike that led there is documented in `docs/spikes/plugin-fragments.md`. Existing installations migrate by hand; there is no migration code.
 
 Still in place from v1: the device API (ADR 0042) with text displays (ADR 0044, 0045), plans (ADR 0025), configuration reload (ADR 0047), device status and dashboard (ADR 0039, 0040), firmware distribution (ADR 0043) and the battery warning (ADR 0020). ADR 0041's firmware compiles for `sticky`, `e1001` and `lcd2004` but is not yet flashed; the rollback test with a deliberately broken image succeeded, so `firmware.update: auto` may be used on real devices. CalDAV against the real iCloud was tested on 2026-11-05 with the v1 provider; the plugin mode uses the same code but has not run against iCloud yet.
 

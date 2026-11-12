@@ -1,8 +1,12 @@
+<p align="center">
+  <img src="docs/logo/paperboy-lockup.svg" alt="Paperboy" width="320">
+</p>
+
 # Paperboy
 
-Paperboy is a small display service for ePaper and text displays. A page is a grid of widgets, and every widget comes from a plugin: a long-running program that draws it in exactly the size of its cell (ADR 0049). Paperboy composes the pages, chooses them per device with plans and delivers them to devices running the Paperboy firmware on ESPHome (ADR 0041; deep sleep, battery operation) over its own device API (ADR 0042).
+Paperboy is a display service for ePaper displays and text displays. It runs on your computer, composes pages and sends them to the displays in your network.
 
-Paperboy evolved from SolarAI's display service `displayd` (ADR 0028); the Git history of the carried-over files is preserved.
+A page is a grid of cells, and each cell shows a widget. Every widget comes from a plugin: a long-running program that draws the widget in the exact size of its cell (ADR 0049). Paperboy composes the page, selects it for each device with a plan and delivers it over the device API (ADR 0042). The devices run the Paperboy firmware on ESPHome (ADR 0041) with deep sleep, so a battery device wakes up only for its next sync.
 
 ```text
 Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ paperboy ◀──POST /api/device/sync── Display (Paperboy firmware)
@@ -10,32 +14,22 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
 
 ## Quick start
 
-1. Create an instance directory with the fixed layout (ADR 0037): `paperboy.yaml` plus `displays/`, `pages/`, `plans/`, `devices/` and, for your own plugins, `plugins/`. Copy `cmd/paperboy/paperboy.example.yaml` to `<instance>/paperboy.yaml`, configure the plugins, copy the display types from `examples/displays` (or create them in the editor) and create one file per display under `devices/` (ADR 0070): the MAC address is the allow list, unknown devices are rejected and appear as unclaimed hardware in the devices tab, where *Claim* asks first and then opens a new device file with the MAC prefilled (ADR 0080).
-2. Copy pages from `examples/pages`, a plan from `examples/plans` and a device from `examples/devices` into the instance, then set `plan: standard` on the device (or assign it in the editor). Without a plan a device only shows a notice page.
-3. Put the plugins into the instance's `plugins/`: unpack `paperboy-plugins-<os>-<arch>.zip` (attached to each release, otherwise an artifact of the *Plugins* workflow) in the instance directory, or build them yourself (`./scripts/package-plugins.sh` builds the zip locally), or let Paperboy fetch them with a `download` section (see [Downloads](#downloads)). The zip creates versioned programs such as `plugins/weather-v1.4.0` (ADR 0075). Then start:
+1. Create the instance directory with the fixed layout (ADR 0037): `paperboy.yaml`, `displays/`, `pages/`, `plans/`, `devices/` and, for your own plugins, `plugins/`.
+2. Configure `paperboy.yaml`: copy `cmd/paperboy/paperboy.example.yaml` to `<instance>/paperboy.yaml` and adapt the `plugins` section.
+3. Add the display types: copy the files from `examples/displays`, or create them in the editor at `/ui/editor?tab=displays` (ADR 0071).
+4. Add pages and a plan: copy files from `examples/pages` and `examples/plans` into the instance.
+5. Add one device file under `devices/` for every display (ADR 0070). Copy `examples/devices/wohnzimmer.yaml`, or create the device in the editor. Set `plan: standard` in the device file, or assign the plan in the editor.
+6. Put the plugins into `plugins/`: unpack `paperboy-plugins-<os>-<arch>.zip` in the instance directory. The zip is attached to each release; otherwise it is an artifact of the *Plugins* workflow. You can also run `./scripts/package-plugins.sh` to build the zip, or let Paperboy fetch the programs with a `download` section (see [Downloads](#downloads)). The zip creates versioned programs such as `plugins/weather-v1.4.0` (ADR 0075).
+7. Start the server:
    ```sh
    go run ./cmd/paperboy -config . -listen :8090
-   # look at a page without a device:
+   # show a page without a device:
    curl -o page.png http://127.0.0.1:8090/api/preview/e1001/uebersicht
    ```
-   Alternatively as a container: `Dockerfile` and `compose.example.yaml`. The image contains only Paperboy; use the `linux/amd64` plugin zip in the mounted instance directory.
-4. Flash the Paperboy firmware (ADR 0041, see [firmware/esphome/README.md](firmware/esphome/README.md)); the release images are in `paperboy-firmware.zip`, or let Paperboy fetch them (see [Downloads](#downloads)). Enter `http://<computer>:8090` as the Paperboy URL in the device's web UI. The device registers with its MAC address; unknown MACs are rejected and logged.
+   You can also run Paperboy in a container (`Dockerfile`, `compose.example.yaml`). The image contains Paperboy only. Use the `linux/amd64` plugin zip in the mounted instance directory.
+8. Flash the Paperboy firmware (ADR 0041, see [firmware/esphome/README.md](firmware/esphome/README.md)). The release images are in `paperboy-firmware.zip`, or Paperboy fetches them for you (see [Downloads](#downloads)). Enter `http://<computer>:8090` as the Paperboy URL in the web UI of the device. The device registers with its MAC address. Paperboy rejects and logs an unknown MAC address.
 
-**Migrating from Paperboy v1:** v2 has no data API, no exec providers and no upload token (ADR 0049). Remove the `server` and `providers` sections from `paperboy.yaml` (both abort the start with a hint) and add `plugins` instead; the weather and calendar providers are plugins now and take their settings from `config` instead of flags. Rewrite the pages as grids (see below); old templates with `rows` and `blocks` are rejected and show a notice page. `state/data.json` and the `icons/` directory are no longer used. Device state moved from `state/devices.json` to `state/devices/<MAC>.json` and plugin state from the plugin-written directory to `state/plugins/<id>/`; both change without migration (ADR 0080, 0081), so devices get new keys on their next sync and plugins start empty unless the files are moved by hand.
-
-**Migrating to physical sizes (ADR 0050):** replace `width_mm` with `ppi` in every image display type (`ppi = pixels × 25.4 / mm` of the same side; a leftover `width_mm` aborts the start with a hint) and rewrite page styles in points: `text_size` is no longer a fraction (`0.06` is rejected; at 125 ppi, 0.06 of 480 px is about 16 pt), and `padding`, `rule` and `divider` are points now (8 px ≈ 4.5 pt, 1 px ≈ 0.6 pt at 125 ppi). Old pixel values there still parse but get bigger, so check them. Third-party plugins have to be rebuilt against protocol version 3 (`style.text_size` is gone; use `text_px` or `Request.TextPx`).
-
-**Migrating to program names (ADR 0060):** remove `command:` from every plugin section — it aborts the start with a hint. A plugin's program is now named after the plugin: `plugins/weather`, `plugins/weather-v2.1.0` (`.exe` on Windows), or `weather` on `PATH`; the unversioned file wins and stays yours (an unpacked plugin zip works as before), and the optional `version` key pins a downloaded one. Firmware images move from `firmware/<hardware>/<hardware>-<version>.bin` to `firmware/<hardware>-v<version>.bin`; the old layout is still read, so nothing has to move, and devices get the new path with the offer.
-
-**Migrating to display type files (ADR 0071):** the `display_types:` section of `paperboy.yaml` moved to `displays/<name>.yaml`, one file per display type; a leftover section aborts the start with a hint. Split the map into files without the map level, e.g. `displays/e1001.yaml` with `kind: image`, `size: [800, 480]`, `gray_levels: 4`, `ppi: 125`. The name (the file name) is what page variants and `display_type:` in the device files use, so it does not change. Renaming a display type later is done in the display type editor (ADR 0079): the file moves, the page variants and device files keep the old name and are updated there.
-
-**Migrating to plugin protocol version 4 (ADR 0057):** the action menu moves the protocol to version 4. Paperboy checks the version in every answer (ADR 0058) and refuses a plugin that reports version 3 or none, with the expected version in the error; unpack the current plugin zip after updating Paperboy. Plans without `actions` need no change.
-
-**Migrating to plugin protocol version 5 (ADR 0081):** plugin state is part of the protocol now, and blobs replace the writable `state/plugins/<plugin>/` directory. Paperboy refuses version 4 plugins, so unpack the current plugin zip; the plugin state starts empty (for myskoda: the last vehicle answer and the render image) and is rebuilt on the next load. From version 5 on the protocol only grows additively, so later Paperboy releases keep the plugins of this one working.
-
-**Migrating devices to `devices/` (ADR 0070):** the `devices:` section of `paperboy.yaml` moved into `devices/<id>.yaml`, one file per device. A leftover section aborts the start with a hint. For every entry, create `devices/<id>.yaml` with the keys of the entry (without the map level) and remove the section, or create the devices in the editor at `/ui/editor` and delete the section afterwards:
-
-**Migrating to plugin versions (ADR 0075):** every plugin carries its own version now (`cmd/<plugin>/VERSION`), and the zip names the programs `<plugin>-v<version>` instead of `<plugin>`. A program that an older zip unpacked as `plugins/weather` still wins over every download and is never updated — delete it once if Paperboy should fetch that plugin. A `version:` pin names a plugin version (`v1.4.0`), not a release tag; a pin that still names a tag fails with "no release carries v…".
+The MAC address in a device file is the allow list. Paperboy shows an unknown device as unclaimed hardware in the devices tab. *Claim* asks first, then opens a new device file with the MAC prefilled (ADR 0080). Without a plan, a device shows a notice page.
 
 ## Releases
 
@@ -47,7 +41,7 @@ GitHub releases are the distribution point (ADR 0056). Each tag names a tested c
 | `plugins-vX.Y.Z` | plugin zips only |
 | `firmware-vX.Y.Z` | firmware bundle only (`X.Y.Z` is the highest `fw_version` in the bundle) |
 
-The tag names the release, not what is inside: every plugin and every firmware image carries its own version, raised only when it changed (ADR 0043, 0075).
+The tag names the release, not what is inside. Every plugin and every firmware image carries its own version, and that version changes only with a change (ADR 0043, 0075).
 
 | Asset | Use |
 |---|---|
@@ -56,11 +50,11 @@ The tag names the release, not what is inside: every plugin and every firmware i
 | `paperboy-firmware.zip` | unpack in the instance directory: creates `firmware/` with `<hardware>-v<version>.bin` of every hardware type (ADR 0043, 0059, 0060, 0063) |
 | `SHA256SUMS` | checksums of all assets of the release |
 
-The container image is published separately as `ghcr.io/maehld/paperboy` (`X.Y.Z`, `X.Y` and `latest`). A release is created by pushing a tag, for example `git tag v2.1.0 && git push origin v2.1.0`; the *Release* workflow builds everything and attaches it to one release.
+The container image is published separately as `ghcr.io/maehld/paperboy` (`X.Y.Z`, `X.Y` and `latest`). To create a release, push a tag: `git tag v2.1.0 && git push origin v2.1.0`. The *Release* workflow builds all assets and attaches them to one release. A tag with a suffix (`v1.4.0-rc.1`, `plugins-v1.4.0-rc.1`) becomes a prerelease; only the `latest` channel installs it (ADR 0089, see [Downloads](#downloads)).
 
 ## Downloads
 
-With a `download` section Paperboy fetches the plugin programs and firmware images from the releases itself (ADR 0060) and verifies every file against the release's `SHA256SUMS`:
+A `download` section makes Paperboy fetch plugin programs and firmware images from the releases (ADR 0060). Paperboy verifies every file against the `SHA256SUMS` of the release.
 
 ```yaml
 download:
@@ -71,16 +65,16 @@ download:
   firmware_channel: stable                   # optional: stable or latest, per train
 ```
 
-The key alone is enough: a bare `download:` uses the official source and checks every 24 h. Without the section the checks stay off.
+A bare `download:` key is enough. It uses the official source and checks every 24 hours. Without the section, the checks stay off.
 
-- It runs at startup and then after `interval` (default 24 h), in the background; the *Downloads* page (`/ui/downloads`) has a **Check now** button that starts a check at once. An instance without internet keeps working as before, and nothing else needs the section.
-- **Plugins**: a configured plugin whose program is missing gets the newest one as `plugins/<plugin>-v<version>` (`weather-v1.4.0`, `weather-v1.4.0.exe` on Windows). A downloaded program is updated when the plugin zip ships a higher version of that plugin — an unchanged plugin is left alone, however many releases pass (ADR 0075). The old file stays and only that plugin restarts. A `version` pin in the plugin section names a plugin version (`v1.4.0`) and is never moved.
-- **Firmware**: every image of the bundle lands in `firmware/<hardware>-v<version>.bin` (ADR 0061); a `firmware.version` pin picks the release that carries exactly that image, which is also how a rollback is pinned. Devices are still only offered an update with `firmware.update: auto`.
-- **Channels** (ADR 0089): `stable` (default) installs only releases that GitHub does not mark as a prerelease, `latest` also installs them. A version may carry a suffix (`weather-v1.4.0-rc.1`, `e1001-v1.4.0-rc.1.bin`), so an rc and the final are two files and a pin can name either. A channel never downgrades: going back from `latest` to `stable` keeps the newer program — rolling back is a pin. A pin bypasses the channel and may pick an rc out of a prerelease release.
-- A program **without** a version in `plugins/` (`weather`) always wins - it is your build - and is neither replaced nor pinned; download it by hand or delete it to hand the plugin back to the releases.
-- Programs and images are never overwritten, so they pile up. The *Downloads* page shows both sizes and offers a **Preview cleanup**: it lists what it would delete and keeps the version in use, everything a pin names, the firmware a device reports or is being offered, files without a version, and the newest two versions of every plugin and hardware type (ADR 0090). Deleting a newer plugin file rolls back to the older one for the rest of the server run; a `version` pin keeps the older one across restarts, and a firmware pin keeps the older image on offer.
-- The download cache under `state/download/` cleans itself: it keeps one archive per train and asset, and the previous one is dropped once the next has been verified and installed. The learned entry lists stay, so a pin costs no download.
-- The *Downloads* page shows the source, the last check, the running check, the program and version behind every plugin, the images in `firmware/` and the firmware each device reports; the devices page only warns when the last check failed.
+- A check runs at startup and then after `interval` (default 24 h) in the background. The *Downloads* page (`/ui/downloads`) has a **Check now** button that starts a check at once. An instance without internet keeps working.
+- **Plugins**: a configured plugin without a program gets the newest one as `plugins/<plugin>-v<version>` (`weather-v1.4.0`, `weather-v1.4.0.exe` on Windows). Paperboy updates a downloaded program when the plugin zip has a higher version of that plugin. An unchanged plugin stays as it is, however many releases pass (ADR 0075). The old file stays, and only that plugin restarts. A `version` pin names a plugin version (`v1.4.0`) and never moves.
+- **Firmware**: every image of the bundle lands in `firmware/<hardware>-v<version>.bin` (ADR 0061). A `firmware.version` pin selects the release with exactly that image; this is also how you pin a rollback. Paperboy offers an update only with `firmware.update: auto`.
+- **Channels** (ADR 0089): `stable` (default) installs only releases that GitHub does not mark as a prerelease. It also refuses a version with a suffix inside an unflagged release. `latest` installs prereleases too. A version may carry a suffix (`weather-v1.4.0-rc.1`, `e1001-v1.4.0-rc.1.bin`), so an rc and the final are two files, and a pin can name either. A channel never downgrades: after a switch from `latest` to `stable`, the newer program stays; use a pin for a rollback. A pin bypasses the channel and can select an rc from a prerelease.
+- A program **without** a version in `plugins/` (`weather`) always wins. It is your build. Paperboy neither replaces nor pins it. Download such a plugin by hand, or delete the program to give the plugin back to the releases.
+- Programs and images are never overwritten, so they pile up. The *Downloads* page shows the size of both inventories and a **Preview cleanup**. The preview lists what a cleanup would delete. It keeps the version in use and every version a pin names. It also keeps the firmware a device reports or is offered, files without a version, and the newest two versions of every plugin and hardware type (ADR 0090). If you delete a newer plugin file, Paperboy rolls back to the older one for the rest of the run. A `version` pin keeps the older one across restarts, and a firmware pin keeps the older image on offer.
+- Paperboy cleans the download cache under `state/download/`. It keeps one archive per train and asset, and drops the previous one after the next is verified and installed. The learned entry lists stay, so a pin costs no download.
+- The *Downloads* page shows the source, the interval, the last check and the running check. It shows the program and version behind every plugin, the images in `firmware/` and the firmware each device reports. It also shows the channel of each train and notes when a running version is not one the channel would deliver. The dashboard warns only when the last check failed.
 
 ## Instance directory
 
@@ -96,18 +90,18 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
   plugins/           plugin programs <plugin>-v<version>, e.g. from paperboy-plugins-<os>-<arch>.zip
   firmware/          OTA images <hardware>-v<version>.bin (ADR 0043, 0060)
   state/             written by Paperboy only
-    devices/         state of every MAC: <MAC>.json with API key, page cursor, battery and the address of the last contact (ADR 0080, 0082)
+    devices/         state of every MAC: <MAC>.json with API key, page cursor, battery and the address of the last contact (ADR 0080, 0083)
     plugins/         plugin state <id>/state.json and the declared blobs <id>/blobs/<name> (ADR 0081)
     download/        cache per train: plugins/ and firmware/ with cache.json and one archive each (ADR 0060, 0090)
-    editor/          backups of pages, plans, devices and display types written or deleted by the editor (ADR 0066, 0072)
+    editor/          backups of pages, plans, devices and display types written or deleted by the editor (ADR 0066, 0070, 0071, 0073)
 ```
 
-- `paperboy.yaml`, `displays/`, `pages/`, `plans/`, `devices/`, `plugins/` and `firmware/` are yours. Paperboy only reads them; only the download feature (ADR 0060) adds plugin and firmware files there. The editor writes display types, pages, plans and devices through the API (ADR 0066, 0070, 0071).
-- `state/` is created at startup and is the only directory Paperboy writes. Back up `state/devices/` anyway: it holds the API keys, page cursors, battery levels, the address of the last contact and last served pages; without it the devices get new keys on their next sync (401, then registration by MAC). A state file whose MAC no device file uses is unclaimed hardware, shown in the devices tab of the editor with *Claim* (asks first) and *Forget*; the state follows the MAC, so renaming or deleting a device file does not touch it.
+- `paperboy.yaml`, `displays/`, `pages/`, `plans/`, `devices/`, `plugins/` and `firmware/` are yours. Paperboy only reads them. Only the download feature (ADR 0060) adds plugin and firmware files there. The editor writes display types, pages, plans and devices through the API (ADR 0066, 0070, 0071).
+- `state/` is created at startup and is the only directory Paperboy writes. Back up `state/devices/`: it holds the API keys, page cursors, battery levels, the address of the last contact and last served pages. Without it, the devices get new keys on their next sync (401, then registration by MAC). A state file whose MAC no device file uses is unclaimed hardware. The devices tab of the editor shows it with *Claim* (asks first) and *Forget*. The state follows the MAC, so renaming or deleting a device file does not touch it.
 
 ## Configuration
 
-`paperboy.yaml` is the only configuration format (ADR 0026) and lives in the instance directory. Parsing is strict: unknown keys, duplicate MAC addresses and unsupported protocols abort the start. A plan that is missing or broken does not: it is logged and the device gets a notice page, because plan files may be added while the server runs (ADR 0047).
+`paperboy.yaml` is the only configuration format (ADR 0026) and lives in the instance directory. Paperboy parses the file strictly: an unknown key, a duplicate MAC address and an unsupported protocol reject the configuration. A plan that is missing or broken does not: Paperboy logs it and the device gets a notice page, because plan files may be added while the server runs (ADR 0047).
 
 ```yaml
 language: de            # de or en; default: system language
@@ -134,19 +128,19 @@ download:              # optional: fetch plugins and firmware from the releases 
   source: https://github.com/maehld/paperboy
   token: ${GITHUB_TOKEN}
   interval: 24h        # optional: between checks, at least 1h (ADR 0062)
-# No display types here: they are files under displays/ (ADR 0071), see below.
-# No devices here: they are files under devices/ (ADR 0070), see below.
+  plugin_channel: stable    # optional: stable (default) or latest (ADR 0089)
+  firmware_channel: stable  # optional: stable or latest
+# Display types are files under displays/ (ADR 0071); devices are files under devices/ (ADR 0070).
 ```
 
-- The devices moved out of this file into `devices/<id>.yaml`, one file per device (ADR 0070); a leftover `devices:` section aborts the start with a hint. The device files are listed under [Devices](#devices).
-- `plugins` declares the plugins (ADR 0049). `config` is the plugin's own section; string values expand `${VAR}` from Paperboy's environment (an unset variable aborts loading, `$$` is a literal `$`), so secrets stay out of the file. The plugin checks its keys and rejects unknown ones; a rejected configuration shows up as a notice in the plugin's cells and in the log. The name `paperboy` is reserved for the built-in plugin.
-- `language` (`de` or `en`) selects the language of the built-in image texts, the number format and the language plugins draw in. Without it Paperboy uses the system language (Windows UI language, otherwise `LANG`/`LC_ALL`/`LC_MESSAGES`) and falls back to English. `timezone` (IANA name) applies to plans and built-in dates; without it the system timezone is used.
-- `-config` names the instance directory (default `.`); Paperboy reads `<dir>/paperboy.yaml` and finds all other directories there. A file argument is rejected with an explanation, and a `.json` configuration is no longer read.
-- The configuration is reloaded on change without a restart (ADR 0047): handlers pick up a modified `paperboy.yaml` or a changed file under `displays/` or `devices/` on the next request, plugins whose section changed are restarted (their cached widgets are dropped), and a broken file keeps the last valid configuration while a missing one leaves the current configuration alone. With no usable file at startup in an existing instance directory the server still starts (degraded: no display types, no devices) and applies the file as soon as it loads, even when its mod time did not change; a wrong `-config` stays fatal.
+- `plugins` declares the plugins (ADR 0049). `config` is the plugin's own section. String values expand `${VAR}` from the environment of Paperboy: an unset variable rejects the configuration, `$$` is a literal `$`, so secrets stay out of the file. The plugin checks its keys and rejects unknown ones. A rejected configuration appears as a notice in the cells of that plugin and in the log. The name `paperboy` is reserved for the built-in plugin.
+- `language` (`de` or `en`) selects the language of the built-in image texts, the number format and the language plugins draw in. Without it, Paperboy uses the system language (Windows UI language, otherwise `LANG`/`LC_ALL`/`LC_MESSAGES`) and falls back to English. `timezone` (IANA name) applies to plans and built-in dates; without it, Paperboy uses the system timezone.
+- `-config` names the instance directory (default `.`). Paperboy reads `<dir>/paperboy.yaml` and finds all other directories there. Paperboy rejects a file argument with an explanation and does not read a `.json` configuration.
+- Paperboy reloads the configuration on change without a restart (ADR 0047). Handlers pick up a modified `paperboy.yaml` or a changed file under `displays/` or `devices/` on the next request. Plugins whose section changed are restarted, and their cached widgets are dropped. A broken file keeps the last valid configuration. If `paperboy.yaml` is not usable at startup in an existing instance directory, the server still starts in degraded mode. It serves no display types and no devices, and applies the file as soon as it loads, also when its mod time did not change. A wrong `-config` stays fatal.
 
 ## Display types
 
-A display type is `displays/<name>.yaml` (ADR 0071). The file name is the name pages and devices use: it is the suffix of `pages/<page>.<name>.yaml` and the `display_type:` of a device. The files are parsed as strictly as pages and plans, a broken one aborts the start and names the file:
+A display type is `displays/<name>.yaml` (ADR 0071). The file name is the name that pages and devices use: it is the suffix of `pages/<page>.<name>.yaml` and the `display_type:` of a device. Paperboy parses the file as strictly as pages and plans. A broken file rejects the configuration and names the file.
 
 ```yaml
 kind: image
@@ -157,14 +151,14 @@ min_refresh: 60s   # never report a shorter interval
 power: auto        # auto (default), battery or mains (ADR 0051)
 ```
 
-- A display type with `kind: text` is a text display (ADR 0044): `size: [columns, rows]` in characters (at most 80 × 24) and `charset: utf8|ascii|hd44780` (default `utf8`); `gray_levels` and `ppi` are rejected for it.
-- An image display type needs `ppi`, its pixel density (pixels per inch, 20–1000; ADR 0050). It does not depend on the orientation: compute it from either side, `ppi = pixels × 25.4 / millimetres` of the active area. Page styles are in points and are converted with it, so a widget has the same physical size on a small dense panel and a large coarse one.
-- Display types are created, edited and renamed at `/ui/editor?tab=displays` (ADR 0071, ADR 0079); the files stay the source of truth, so a hand edit is picked up on the next request. A rename moves `displays/<name>.yaml` and nothing else: the confirmation names the page variants and devices that keep the old name, and those stay editable — a device whose display type is missing answers with 503 until its file is fixed, and an orphaned page variant opens through a configured type of the same kind and can be saved as that type's variant. Deleting works in the editor (ADR 0073): the confirmation names the page variants and devices that keep pointing at the missing type, and a copy stays under `state/editor/`.
-- At least one display type has to exist for the instance to start; a file that does not parse or validate aborts the start and names the file. No device has to use a type, and a page variant of a type that is not configured is listed with its error instead of disappearing.
+- A display type with `kind: text` is a text display (ADR 0044). `size: [columns, rows]` is in characters and at most 80 × 24. `charset: utf8|ascii|hd44780` defaults to `utf8`. Paperboy rejects `gray_levels` and `ppi` for a text display.
+- An image display type needs `ppi`, its pixel density (pixels per inch, 20–1000; ADR 0050). The density does not depend on the orientation: compute it from either side, `ppi = pixels × 25.4 / millimetres` of the active area. Page styles are in points and are converted with it, so a widget has the same physical size on a small dense panel and a large coarse one.
+- Create, edit and rename display types at `/ui/editor?tab=displays` (ADR 0071, 0079). The files stay the source of truth, so Paperboy picks up a hand edit on the next request. A rename moves `displays/<name>.yaml` and nothing else. The confirmation names the page variants and devices that keep the old name. Those stay editable. A device whose display type is missing answers with 503 until its file is fixed. An orphaned page variant opens through a configured type of the same kind and can be saved as that type's variant. Delete works in the editor (ADR 0073). The confirmation names the page variants and devices that keep pointing at the missing type, and a copy stays under `state/editor/`.
+- Paperboy needs at least one display type. Without one it rejects the configuration (see [Configuration](#configuration)). Several devices can share a display type. No device has to use a type. A page variant of a type that is not configured is listed with its error instead of disappearing.
 
 ## Devices
 
-A device is `devices/<id>.yaml` (ADR 0070). The file name is the stable device ID (a-z, 0-9, `-`); it appears in logs and in `GET /api/devices`, while its state lives under its MAC in `state/devices/` (ADR 0080). The files are parsed as strictly as pages and plans, a broken one aborts the start and names the file:
+A device is `devices/<id>.yaml` (ADR 0070). The file name is the stable device ID (a-z, 0-9, `-`). It appears in logs and in `GET /api/devices`, while its state lives under its MAC in `state/devices/` (ADR 0080). Paperboy parses the file as strictly as pages and plans. A broken file rejects the configuration and names the file.
 
 ```yaml
 display_type: e1001
@@ -177,31 +171,14 @@ battery: { warn_volts: 3.5 }   # optional; empty values inherit defaults.battery
 firmware: hold          # optional: keep the device on its firmware (ADR 0043)
 actions: allow          # optional: allow (default) or deny the device menu (ADR 0057)
 menu_show_duration: 30s # optional, overrides defaults.menu_show_duration
+touch: false            # optional: draw the menu's tap controls (ADR 0082)
 ```
 
-- `protocol` accepts only `paperboy` (the default) for now: devices running the Paperboy firmware (ADR 0042). `trmnl` was removed and aborts the start, as do the v1 sections `server` and `providers` (ADR 0049). `opendisplay` is rejected until plans cover it; `text-http`/`image-http` were replaced by the device API (ADR 0044) and abort the start.
-- `plan` should name an existing `plans/<name>.yaml`; a missing or broken plan is logged and shows a notice page instead of aborting the start, so a plan file can be added while the server runs (ADR 0047). Without `plan` the device shows a notice page in the configured language („Kein Plan konfiguriert“ / “No plan configured”).
-- Devices are created and assigned in the editor at `/ui/editor` (ADR 0070); the files stay the source of truth, so a hand edit is picked up on the next request.
-- Paperboy keeps the source address of the last register, sync or text poll in the device's state file (`client_ip`, ADR 0083) and shows it on the dashboard, in the devices tab and in `GET /api/devices`. It comes from the connection, never from a header, so a reverse proxy in front of Paperboy would show its own address.
-
-## Behavior
-
-- **Display types** (`displays/<name>.yaml`, ADR 0071: size, grayscale levels, pixel density, minimum interval) determine the layout; `GET /api/profiles` lists them. Several devices can share a display type. Pages are delivered as PNG with 1 bit or 2 bits (4 gray levels).
-- **Plans** (ADR 0025): every device points to a plan (`plans/<name>.yaml`) that selects its pages according to time rules. A device without a plan shows a notice page.
-- **Interval**: `defaults.refresh` (at least 1 minute) or the device's `refresh`; a plan rule may override it (down to `1s`). The reported interval never goes below the floor of the device's power source (ADR 0051): battery devices keep one minute or the display type's `min_refresh` if that is longer; mains devices go down to `min_refresh`, by default `1s` for text and `10s` for image displays. Unchanged image → the display does not redraw.
-- **Power source** (ADR 0051): `power: auto|battery|mains` on the display type, overridable per device; default `auto`. The firmware reports `power` (`battery` or `mains`) in register and sync: the Sticky measures USB power on GPIO9, the E1001 cannot detect it and reports `battery`, text displays report `mains`. `auto` uses the last report (`reported_power` in `/api/devices`, next to the effective `power`) and behaves as `battery` until the device reports one, so text displays with older firmware fall back to a one-minute floor until they are updated or set to `power: mains`. The sync answers `sleep: false` for mains devices: the ePaper firmware then stays awake with Wi-Fi up and syncs again after `refresh_s` instead of deep sleeping. A page whose composition did not change keeps its PNG and hash, so short intervals cause no redraw.
-- **Device API** (ADR 0042, ADR 0064): `POST /api/device/register` with `{"mac", "hardware", "firmware"}` (optionally `power`) returns `{"key", "device"}` for a configured MAC (an existing key is kept) and `403` otherwise. Every wake sends one `POST /api/device/sync` with `Authorization: Bearer <key>`: `reason` (`timer`, `button`, `touch`, `powercycle`, `menu`, `result`), `events` (buttons by role `next`, `previous`, `home`, optionally `hold_ms`; touches with `x`/`y`; each with a monotonically increasing `id`, and a repeated ID is ignored), `shown` (hash on the panel), `battery` (`volts` required, `percent`, `mah`, `ma` optional), `rssi`, `power` and `log` entries. The answer names the image (`image.path` relative to the Paperboy URL, `image.hash`), the deep-sleep time `refresh_s`, `listen_s` (0 after a timer wake, 20 s after input), `sleep` (`false` for mains devices, ADR 0051), the server `time` in Unix seconds, `firmware` (an update offer, otherwise `null`) and `wake` (`{reason, after_s}`, a one-shot wake for the menu deadline or an action result, otherwise absent). An unknown key gets `401` and the device registers again; an invalid body gets `400`.
-- **Text displays** (ADR 0044): register and sync like ePaper displays, but the sync answers `"image": null` and `"text": {"lines", "hash"}`, and `listen_s` is always 0 (they run on mains power and never sleep). Between syncs they poll `GET /api/device/text?shown=<hash>` with their key every `refresh_s`, which the plan decides (ADR 0045; the firmware syncs at most once a minute and uses one minute until its first sync): the answer is `{"lines", "hash"}`, unchanged text gets `204`. The poll renders the page the cursor points to without advancing it and writes nothing to the device state file, but updates the shown content in memory for `/api/devices` and the dashboard; an image display gets `409`. Notices (no plan, broken page, critical battery) are word-wrapped into the lines.
-- **Buttons**: events apply in order before rendering. `next` = next page, `previous` = one page back (wrapping), long `next`/`previous` = first page of the active rule, `home` = the device menu (ADR 0057, ADR 0067, see [Actions](#actions)): short `home` always opens it — even when the plan offers no actions, then it is an empty banner —, `next`/`previous` move the selection, `home` confirms, long `home` closes it and keeps the page. After `page_timeout` (5 min) back to the first page. Touches operate the device menu when it is open (the Sticky sends taps, ADR 0064, issue #54); outside a menu they are only logged. The server decides at 700 ms whether a press was long; the firmware only measures and reports `hold_ms`.
-- **Stale widgets**: when a plugin fails, Paperboy keeps showing its last widgets and marks the page: a bar „Veraltet: calendar/agenda“ (“Outdated: …”) on image displays, `!` in the last column of the first line on text displays (`notices: none` turns both off). A widget that never rendered becomes a hatched notice inside its cell with the reason.
-- **Battery warning** (ADR 0020): fed by `battery.volts` of the sync. With `battery` in `defaults` or on a device, every page below `warn_volts` gets the bar „Akku schwach – bitte laden“ (“Battery low – please charge”); below `critical_volts` a full-screen image „Akku fast leer“ (“Battery almost empty”) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` no warning. All texts use the configured `language`.
-- **Firmware updates** (ADR 0043): put OTA images into `firmware/<hardware>-v<version>.bin` of the instance (`firmware/esphome/build.ps1 -Hardware sticky -Instance <dir>` does it). The highest version (compared part by part as numbers; a `firmware.version` pin narrows it to exactly that image, ADR 0060) is offered in the sync as `{"version", "path", "md5"}` when `firmware.update` is `auto`, the device has no `firmware: hold`, its reported version differs (a lower file is a rollback), its battery reading is at least `min_battery_volts` and not at warning level (text displays run on mains power and skip the battery condition), and the version has not failed three times on that device. A sync that still reports the old version after an offer counts as a failure; a changed image (new MD5) or clearing `firmware_failures` in the device's state file `state/devices/<MAC>.json` allows new attempts. Images are served at `GET /firmware/<file>` without a token; other file names are ignored and listed in the log and on the dashboard. `GET /api/devices` adds `firmware_available` and `firmware_status` (`current`, `offered`, `available`, `failed`, `held`, `none`). Test the rollback with a broken image before using `update: auto`.
-- **Device logs**: the sync carries firmware log entries (`level`, `message`, optional `source`, `time` and `id`). Paperboy writes one line per entry with device, level, source and age; an entry with a `time` or `id` that a repeated sync delivers again is logged only once.
-- `GET /api/devices` shows every configured device with registration, hardware, firmware, battery voltage (and `battery_percent`/`battery_mah` from a fuel gauge), signal strength, wake reason and last sync (without keys), plus what it is showing (ADR 0039): `last_page`, `last_page_kind` (`page`, `notice` or `battery`), `last_page_hash`, `last_page_url` and `last_refresh` (text displays: `last_text` instead of `last_page_url`), the last render or plan error in `last_error`, and a derived `status` (`ok`, `late`, `never` or `unregistered`). `late` means the last sync is more than twice the reported refresh old; devices deep-sleep, so an idle device is not an offline one.
-- **Dashboard:** `GET /` redirects to `/ui`, a read-only overview of all devices (ADR 0040). Each card shows the status, the plan and its active rule, a preview of the last served page (the lines for text displays), refresh, last contact, battery and the last render or plan error. It is a server-rendered Go template without JavaScript, refreshes itself every 30 seconds and needs no token. The header shows the running build: version (or `dev`), short commit with `+dirty` for local changes, and commit date from the VCS stamp; the Go toolchain is in the tooltip.
-- **Plan preview:** the *preview* link on a device card opens `/ui/plan?device=<id>` (ADR 0054), a read-only view of the device's plan: every rule with its time window, `rotate` and `refresh`, the fallback, the rule that applies now (or at the time picked with `&at=YYYY-MM-DDTHH:MM`) and the next rule change. Each page is previewed for the device's display type; pages the device would skip show the reason, broken pages their error. The view does not change the device's page cursor or state.
-- **Virtual display:** the *virtual* link on a device card and in the plan view opens `/ui/virtual?plan=<plan>&display=<type>` (ADR 0091). The page acts as a display of that type: it syncs like the firmware, shows the page the plan picks, pages with the plan's buttons and opens the device menu. Optional URL parameters replace what a device file would decide: `refresh`, `menu` (5–60 s), `page_timeout` (all seconds) and `power=mains|battery`; the URL is the only configuration, so a link is a display. Cursor and menu live in memory and not in `state/devices/`, so no device is touched; *Reset* starts again at the first page. Actions are resolved, selected and confirmed like on a device but never run: the result banner says *Simulated* and names the action. `←`/`→`/Enter and press-and-hold work, *Full screen* hides the chrome, and a debug line below the display names the active rule, the page, the refresh, the wake and the last error.
-- **Security:** devices are admitted by allow list and use their own key; the device API answers with plain HTTP status codes (`400`, `401`, `403`). The dashboard, the editor, the preview, the virtual display, `GET /api/plugins` and the page and plan API need no token, so keep Paperboy in a trusted network; whoever reaches `/ui` can change the pages and plans. Only plugins named in `paperboy.yaml` run, so the configuration file is executable content.
+- `protocol` accepts only `paperboy` (the default): devices running the Paperboy firmware (ADR 0042). Paperboy rejects `trmnl` (removed), `opendisplay` (not supported yet) and `text-http`/`image-http` (the device API replaced them, ADR 0044).
+- `plan` should name an existing `plans/<name>.yaml`. Paperboy logs a missing or broken plan and shows a notice page instead of rejecting the configuration, so you can add a plan file while the server runs (ADR 0047). Without `plan`, the device shows a notice page in the configured language (*No plan configured* / *Kein Plan konfiguriert*).
+- Create and assign devices in the editor at `/ui/editor` (ADR 0070). The files stay the source of truth, so Paperboy picks up a hand edit on the next request.
+- Paperboy keeps the source address of the last register, sync or text poll in the state file of the device (`client_ip`, ADR 0083). It shows the address on the dashboard, in the devices tab and in `GET /api/devices`. The address comes from the connection, never from a header, so a reverse proxy in front of Paperboy would show its own address.
+- `touch: true` makes the device menu draw its tap controls. A device without touch keeps the button-only menu (ADR 0082). If the key is absent, Paperboy uses what the firmware reported.
 
 ## Pages
 
@@ -220,21 +197,18 @@ cells:
   - { at: [3, 4], span: [3, 4], widget: weather/days, args: { days: 3 } }
 ```
 
-- `widget` is `<plugin>/<widget>`; `args` go to the widget unchanged. `at` is the top-left cell (column, row, from 0), `span` the size in cells (default `[1, 1]`). Cells must stay inside the grid and must not overlap; empty cells stay white.
-- On an image display the grid divides the pixels. Paperboy asks every plugin for its widgets in exactly the pixel size of the cell and the panel's gray levels, quantizes the PNG to the palette (nearest gray, no dithering) and pastes it 1:1, so nothing is ever scaled. A plugin that answers with another size gets a notice in its cell.
-- `style` is in points (1 pt = 1/72 inch, ADR 0050) and is passed to every widget, converted to pixels with the display type's `ppi`: `padding` (inner margin, default 4.5 pt ≈ 1.6 mm), `rule` (separator width, default 0.6 pt ≈ 0.2 mm, never thinner than 1 px) and `text_size` (base text height, 4–144 pt, default 16 pt, at most 0.12 of the display height), so widgets of different plugins match. A cell's `style` overrides it. `divider` (points, at least 1 px) draws lines between the cells (Paperboy, not the widgets).
+- `widget` is `<plugin>/<widget>`. Paperboy passes `args` to the widget unchanged. `at` is the top-left cell (column, row, from 0), and `span` is the size in cells (default `[1, 1]`). Cells must stay inside the grid and must not overlap. Empty cells stay white.
+- On an image display the grid divides the pixels. Paperboy asks every plugin for its widgets in exactly the pixel size of the cell and the gray levels of the panel. It quantizes the PNG to the palette (nearest gray, no dithering) and pastes it 1:1, so Paperboy never scales a widget. The PNG has 1 bit or 2 bits (4 gray levels), depending on the display type. A plugin that answers with another size gets a notice in its cell.
+- `style` is in points (1 pt = 1/72 inch, ADR 0050). Paperboy passes it to every widget and converts it to pixels with the `ppi` of the display type. `padding` is the inner margin (default 4.5 pt ≈ 1.6 mm). `rule` is the separator width (default 0.6 pt ≈ 0.2 mm, never thinner than 1 px). `text_size` is the base text height (4–144 pt, default 16 pt, at most 0.12 of the display height), so widgets of different plugins match. `divider` (points, at least 1 px, default 0 = none) draws lines between the cells; Paperboy draws them, not the widgets. The `style` of a cell overrides the page style.
 - The **built-in plugin** `paperboy` needs no configuration and provides `paperboy/header`, `paperboy/text` and `paperboy/clock` (see [docs/plugins/paperboy.md](docs/plugins/paperboy.md)).
-- `kind: image` (default) or `kind: text` says which displays a page is for. A plan may serve image and text displays alike: when a device pages through a rule, pages that do not fit its display type are skipped – no variant and no shared page, the other kind, or a text grid that is not the display's character grid. Each skip is logged once per display type and page. When no page of the rule fits, the device gets a notice „Keine passende Seite“. A broken page is not skipped; it shows its error as a notice.
-- Preview without a device: `GET /api/preview/<display type>/<page>` (PNG, or `text/plain` for text displays; optional `?at=YYYY-MM-DDTHH:MM` renders the page as at that time in the configured timezone). `GET /api/plugins` lists every plugin with its widgets, the sizes they are designed for, their arguments and the plugin's config keys.
-- **Widgets:** `/ui/plugins` (linked from the dashboard) opens the widgets page, the page editor without a page: pick a widget in the palette – or open it without one and it starts with the built-in header – and it is drawn in its cell size on the chosen display type, with its size, arguments and style in the inspector and the finished cell in the snippet panel, ready to copy into a page. Sizes are spans on a reference grid of 6 × 8 cells (`?grid=` changes it). A single widget is available as `GET /api/widget/<plugin>/<widget>?display=<type>` with `span=3x2` (and `grid=6x8`) or `width`/`height` in pixels, and arguments as `arg.<name>=<value>` (JSON values keep their type, e.g. `arg.days=3`); it answers a PNG or `text/plain`, and a failing widget the notice a page would show, with the reason in `X-Widget-Error`. Neither needs a token.
-- **Page editor:** `/ui/editor` (linked from every view) lists every page once: for the selected display type it shows the file that resolves (its variant, else the shared page) with kind, grid, title and parse error and the variants the page has as links to their own file; a row opens its page, and *New page* asks for the name and the display type in a dialog (ADR 0084). `/ui/editor/page?name=<page>&display=<type>` builds one page for a display type (ADR 0068): title, grid (fixed to the character grid on text displays), style, the widget palette from `/api/plugins` filtered by the display's kind – click a widget and then a free cell, or drag it –, the span, the position, the arguments and the style of the selected cell. A placed box is moved with the pointer (it stays where it was grabbed) or by its position and resized by the handles on its right edge, bottom edge and corner; a size or position that would overlap another box is not applied (ADR 0085). A live draft preview shows the result. Nothing is written before *Save*: the editor sends the model with the hash it read, so a file changed on disk answers `409` and asks for a reload; a shared page stays the shared file until *Save as … variant*. A file that does not parse is listed with its error and opens read-only, because the API takes a model, not text. *Delete* and *Rename* sit in the editor's action bar: Delete removes the file the editor shows (and, on a variant's link, the file neither the row nor the display type switch can reach) after naming the plans that use the page (ADR 0073); Rename moves the shared page and every variant as one set and names the plans that keep the old name (ADR 0079); a variant of a display type that is no longer configured opens through a configured type of the same kind and is saved as that type's variant.
-- **Plan editor:** the same overview lists the plans next to the pages and creates a new plan in a dialog (ADR 0073): the file is written by the first save and needs at least one rule with a page. `/ui/editor/plan?name=<plan>` edits one (ADR 0069): rules in their order with name, time window (`from`/`to` as times of day, days as checkboxes), pages in their order with `rotate` and `refresh`, the fallback, and the actions the device menu offers, built from the plugins' actions with their arguments and confirmation. Rules that an earlier rule always overrides are marked, pages that the plan's own devices would skip are named, each device links to its `/ui/plan` preview and to its device page, and a save works like the page editor's. *Delete* removes the plan after naming the devices that use it. *Rename* moves the file and names the devices that keep the old name (ADR 0079).
-- **Device editor:** the overview also lists the files under `devices/` with display type, MAC, address and plan and creates new ones in a dialog; hardware that registered with an unknown MAC appears below them as unclaimed, with its hardware, firmware, address and first and last contact, *Claim* (asks first, then opens a new device file with the MAC prefilled) and *Forget* (deletes its state file, ADR 0080). `/ui/editor/device?id=<id>` edits one (ADR 0070): display type, MAC address, plan chosen from the plan files, `refresh`, the device menu (`actions`, `menu_show_duration`), the power source, the firmware hold and the battery thresholds, with a link to the device's plan preview and the current file text. Assigning a plan is this single small write, so `paperboy.yaml` is never touched; a save works like the page editor's, and a new device file needs a display type and a MAC address. *Delete* removes the file; the device stops syncing until a file with its MAC exists again (ADR 0073), and its state waits under the MAC. *Rename* moves only the file; the state stays with the MAC, so the page cursor, battery reading and menu survive (ADR 0079, 0080).
-- **Display type editor:** the *Displays* tab lists the files under `displays/` with kind, size, `ppi` or `charset`, gray levels and power, and creates new types in a dialog; `/ui/editor/display?name=<name>` edits one (ADR 0071) with the fields of its kind, the physical size computed from `ppi`, the page variants and devices that reference it, and the current file text. The `ppi` field has a helper that converts the panel's diagonal in inches or one side of its active area in millimetres into `ppi` from the pixel size in the form, and says so when the two disagree, because an inch diagonal is usually rounded. Saving works like the other editors. *Rename* moves only the file and names the page variants and devices that keep the old name (ADR 0079); *Delete* removes the file after naming the page variants and devices that reference it (ADR 0073).
+- `kind: image` (default) or `kind: text` says which displays a page is for. A plan may serve image and text displays alike. When a device pages through a rule, Paperboy skips pages that do not fit its display type. A page does not fit when it has no variant and no shared page or when it has the other kind. It also does not fit when its text grid is not the character grid of the display. Paperboy logs each skip once per display type and page. When no page of the rule fits, the device gets a notice (*No matching page*). Paperboy does not skip a broken page; it shows its error as a notice.
+- **Stale widgets**: when a plugin fails, Paperboy keeps showing its last widgets and marks the page. An image display gets a bar (*Outdated: calendar/agenda*, German *Veraltet: …*), a text display gets `!` in the last column of the first line. `notices: none` turns both off. A widget that never rendered becomes a hatched notice inside its cell with the reason.
+- Preview without a device: `GET /api/preview/<display type>/<page>` (PNG, or `text/plain` for text displays; an optional `?at=YYYY-MM-DDTHH:MM` renders the page as at that time in the configured timezone). `GET /api/profiles` lists the display types.
+- The page editor at `/ui/editor` builds a page from the same model (see [Web UI](#web-ui)).
 
 ### Text pages
 
-A page for a text display (display type `kind: text`, ADR 0044) says `kind: text`; its grid is the character grid and must match the display size, and cells are measured in characters:
+A page for a text display (display type `kind: text`, ADR 0044) says `kind: text`. Its grid is the character grid and must match the display size, and cells are measured in characters:
 
 ```yaml
 kind: text
@@ -245,35 +219,13 @@ cells:
   - { at: [0, 2], span: [20, 2], widget: calendar/agenda }
 ```
 
-Plugins answer with lines for the cell; Paperboy converts them to the display type's `charset`, cuts them to the cell width and pads them. `ascii` transliterates (ä → ae, ° → o, € → EUR), `hd44780` keeps `ä ö ü ß ° µ` for the firmware's ROM mapping, writes `Ä Ö Ü` as `A O U` (the ROM has no capital umlauts and the width must stay) and transliterates the rest. Set `charset: hd44780` for HD44780 displays; with the default `utf8` the firmware has to guess. A widget without a text variant shows its error in the cell.
+Plugins answer with lines for the cell. Paperboy converts them to the `charset` of the display type, cuts them to the cell width and pads them. `ascii` transliterates (ä → ae, ° → o, € → EUR). `hd44780` keeps `ä ö ü ß ° µ` for the ROM mapping of the firmware, writes `Ä Ö Ü` as `A O U` (the ROM has no capital umlauts, and the width must stay) and transliterates the rest. Set `charset: hd44780` for HD44780 displays; with the default `utf8` the firmware has to guess. A widget without a text variant shows its error in the cell.
 
-The pages in `examples/pages` (`uebersicht`, `kalender`, `wetter`, `laden` and the 20 × 4 variants `uebersicht.lcd2004` and `laden.lcd2004`) use the shipped plugins; `examples/plans/standard.yaml` pages through them.
-
-## Plugins
-
-A plugin is a long-running program that provides widgets (ADR 0049). Paperboy starts it on first use, sends it its `config` section once (`configure`), and then asks it for widgets; it keeps the results until the plugin's `max_age` (default 5 minutes) or until the plugin reports a change, and renders widgets that are still in use again in the background, so a device never waits for a plugin. A plugin that exits or does not answer within `timeout` is restarted; meanwhile its last widgets are shown as stale, and a failing plugin is not asked again for a minute.
-
-**Protocol** ([`docs/plugins/protocol.md`](docs/plugins/protocol.md), `pkg/plugin`): one JSON object per line on stdin, one answer per line on stdout with the same `id`. Actions are `configure`, `state`, `describe`, `render` (`levels` 2 or 4, `widgets: [{widget, width, height, args, style}]` → base64 PNGs), `text` (the same in characters → `lines`), `actions` (the state of concrete plan actions) and `action` (run one). Every request carries `language`, `timezone`, `now` and the `page` (`title`, `number`, `count`, display `width`/`height`, and for image displays `ppi`). Protocol version 5 (ADR 0050, 0057, 0081): each widget's `style` holds `padding`, `rule` and `text_px` in pixels, already converted from the page's points; Go plugins use `Request.TextPx`, `PtPx` and `MMPx` for physical sizes. `describe` lists widgets and, optionally, actions, plus the plugin's own `version` (ADR 0075); an action request names a concrete `action` and its `args` and gets `actions` states (title, disabled reason, confirmation) or a `result` (`ok`, `message`, `changed`). Between answers a plugin may print `{"event": "changed", "changed": ["agenda"]}`. Right after `configure` a protocol 5 plugin gets one `state` request with the stored JSON and its declared `blobs` (base64); every answer may send new values back (missing = unchanged, `null` = forget the state), and large values such as an image are declared as `blobs` in `describe` (ADR 0081). Paperboy writes `state/plugins/<id>/state.json` and `state/plugins/<id>/blobs/<name>` itself. A plugin keeps no files itself: `PAPERBOY_STATE_DIR` is gone. It ends when stdin closes. Every plugin also sees `PAPERBOY_LANGUAGE` and `PAPERBOY_TIMEZONE` in its environment. Every answer names the protocol version the plugin was built against (`"version": 5`). Paperboy requires at least 5, accepts newer versions because the protocol only grows additively, and refuses a plugin below that or without a version, with the mismatch as the cell's error and one log line (ADR 0058). Go plugins get this from `pkg/plugin` automatically; plugins in other languages must print the field.
-
-A Go plugin implements `plugin.Handler` (`Describe`, `Configure`, `Render`), optionally `Texter`, `Preparer`, `Starter` (background work with a `notify` callback), `Ager` (`max_age`), `Actioner` (actions for the device menu) and `Stater`/`Blober` (state and files Paperboy keeps between restarts), calls `plugin.Serve` and draws with `pkg/render` – the fonts, gray levels, fills and icon masks Paperboy itself uses, so its widgets look like the rest of the page. Plugins in other languages speak the same JSON lines.
-
-Shipped plugins (one zip per platform: `paperboy-plugins-linux-amd64.zip` and `paperboy-plugins-windows-amd64.zip`; unpacked in the instance directory they create `plugins/` with `<plugin>-v<version>`, each version raised only when that plugin changed, ADR 0075). Each plugin has its own documentation under `docs/plugins/`:
-
-- [`evcc`](docs/plugins/evcc.md) – PV, home, grid, battery, energy flow, loadpoints and forecast from [evcc](https://evcc.io); the first shipped plugin with actions, `evcc/mode` switches a charge mode from the device menu.
-- [`departures`](docs/plugins/departures.md) - real-time public transport departures from an EFA installation.
-- [`myskoda`](docs/plugins/myskoda.md) - battery, charging plans, parking position and the vehicle image from the [MyŠkoda Public API](https://public.api.connect.skoda-auto.cz/docs).
-- [`weather`](docs/plugins/weather.md) – current weather and forecast from [Open-Meteo](https://open-meteo.com/).
-- [`calendar`](docs/plugins/calendar.md) – agenda, week and month from CalDAV and iCalendar.
-- [`pokedex`](docs/plugins/pokedex.md) – a Pokémon card from [PokéAPI](https://pokeapi.co).
-- [`xkcd`](docs/plugins/xkcd.md) – [xkcd](https://xkcd.com) comics.
-- [`countdown`](docs/plugins/countdown.md) – days to a date, optionally with a progress bar.
-- [`rss`](docs/plugins/rss.md) – RSS and Atom feeds as a list or as a single headline.
-- [`paperboy`](docs/plugins/paperboy.md) – built in, no zip needed: header, text and clock.
-- A SolarAI plugin is still to come; it talks to SolarAI over HTTP itself, and SolarAI needs to know nothing about Paperboy.
+The pages in `examples/pages` (`uebersicht`, `kalender`, `wetter`, `laden` and the 20 × 4 variants `uebersicht.lcd2004` and `laden.lcd2004`) use the shipped plugins. `examples/plans/standard.yaml` pages through them.
 
 ## Plans
 
-Which pages a device shows is decided by a plan, `<name>.yaml` in `plans/`. A device points to it with `plan: wohnzimmer` in its `devices/<id>.yaml`; several devices may share a plan. A plan only names pages, so it works for devices of different display types. A plan is created and edited in the browser at `/ui/editor` (ADR 0069, 0072): the *Plans* tab creates one, `/ui/editor/plan?name=<plan>` edits it, and the device's page assigns it (ADR 0070). Deleting a plan keeps a copy under `state/editor/`; the confirmation names the devices still using it.
+Which pages a device shows is decided by a plan, `<name>.yaml` in `plans/`. A device points to it with `plan: wohnzimmer` in its `devices/<id>.yaml`, and several devices may share a plan. A plan only names pages, so it works for devices of different display types. Create and edit a plan in the browser at `/ui/editor` (ADR 0069, 0072): the *Plans* tab creates one, `/ui/editor/plan?name=<plan>` edits it, and the device page assigns it (ADR 0070). When you delete a plan, a copy stays under `state/editor/`; the confirmation names the devices that still use it.
 
 ```yaml
 rules:
@@ -282,7 +234,7 @@ rules:
     pages: [kalender, uebersicht]
   - name: tag
     when: { from: "09:00", to: "19:00" }
-    pages: [uebersicht, wetter, solar]
+    pages: [uebersicht, wetter, energie]
     rotate: true
     refresh: 5m
   - name: nacht
@@ -292,13 +244,14 @@ rules:
 fallback: nacht
 ```
 
-- The first matching rule wins. A `when` without `from`/`to` always matches; `from` is inclusive, `to` exclusive. `to < from` wraps over midnight and then belongs to the day the window starts. Days accept German and English short names.
-- Times use the global `timezone` from the configuration (ADR 0033); plans have no timezone of their own, and a `timezone` key is rejected.
-- `pages` is the paging order within the rule. `rotate: true` moves on at every timed refresh, otherwise only a button changes the page. Buttons page within the active rule only, holding returns to its first page, and after `page_timeout` the device shows the first page again unless the rule rotates.
-- `refresh` replaces the device interval. The reported interval is capped to the next rule boundary (but never below the floor of the device's power source), so a sleeping device wakes up for a rule change.
-- `fallback` names the rule used when nothing matches; without a match and without a fallback the device gets a notice page.
-- Plans are reloaded on change without a restart; a broken file keeps the last valid version. A missing or broken page also leads to a notice page, so devices never see a server error.
-- Plans serve devices on the Paperboy firmware. Data conditions (`when.data`) follow later and are rejected when loading a plan.
+- The first matching rule wins. A `when` without `from`/`to` always matches. `from` is inclusive, `to` exclusive. `to < from` wraps over midnight and then belongs to the day the window starts. Days accept German and English short names.
+- Times use the global `timezone` from the configuration (ADR 0033). Plans have no timezone of their own, and Paperboy rejects a `timezone` key.
+- `pages` is the paging order within the rule. `rotate: true` moves on at every timed refresh; otherwise only a button changes the page. Buttons page within the active rule only, a long press returns to its first page, and after `page_timeout` the device shows the first page again unless the rule rotates.
+- `refresh` replaces the device interval. Paperboy caps the reported interval to the next rule boundary (but never below the floor of the power source of the device), so a sleeping device wakes up for a rule change.
+- `fallback` names the rule used when nothing matches. Without a match and without a fallback, the device gets a notice page.
+- A rule needs a name (a-z, 0-9, `-`) and at least one page. Rule names must be unique, and a rule must not name the same page twice.
+- Paperboy reloads plans on change without a restart; a broken file keeps the last valid version. A missing or broken page also leads to a notice page, so devices never see a server error.
+- Plans serve devices on the Paperboy firmware. Paperboy rejects `when.data`, because data conditions are not implemented yet.
 
 ### Actions
 
@@ -309,32 +262,172 @@ actions:
   - action: evcc/mode
     args: { loadpoint: 0, mode: now }
     id: charge-now
-    title: "Charge now"          # optional; otherwise the plugin's title
+    title: "Charge now"          # optional; otherwise the title of the plugin
   - action: evcc/mode
     args: { loadpoint: 1, mode: now }
     id: charge-now-2             # required: evcc/mode appears twice
-  - paperboy/refresh             # short form for actions without args
 ```
 
-- `action` is `plugin/action`; `args` are the action's arguments from the plugin's `describe`.
+- `action` is `plugin/action`. `args` are the arguments of the action from the `describe` answer of the plugin. An action without arguments can be a single string instead of a map.
 - `id` is optional and plan-local. It becomes mandatory for **every** entry of an action as soon as the same `action` appears more than once, and IDs must be unique. The menu keeps its selection by `id`, or by `plugin/action` when there is no `id`, so reordering the list or changing `args`/`title` does not change the identity.
-- Exact duplicates of `action` and `args` are rejected. An unknown plugin, action or argument disables the entry with a reason instead of breaking the plan. A plugin that reports another protocol version is refused as a whole (ADR 0058), not used without its actions.
-- A page-level or rule-level `actions` key is rejected with a hint.
+- Paperboy rejects exact duplicates of `action` and `args`. An unknown plugin, action or argument disables the entry with a reason instead of breaking the plan. Paperboy refuses a plugin that reports another protocol version as a whole (ADR 0058); it does not use the plugin without its actions.
+- Paperboy rejects an `actions` key on a rule or a page with a hint.
 
 #### The device menu
 
-Short `home` always opens the menu — also when the plan offers no actions, then it shows a "Keine Aktionen" ("No actions") banner instead of the action grid. A device with `actions: deny`, a text display, a critical battery and a missing plan have no menu. Paperboy draws it as an overlay over the top half of the current page — one row of `X`, up to three actions and `<`/`>`, stacked in the same order on portrait displays. The page below stays visible, and the menu pauses rotation and `page_timeout`.
+A short `home` always opens the menu. It also opens when the plan offers no actions; then it shows a *No actions* (*Keine Aktionen*) banner instead of the action grid. A device with `actions: deny` has no menu. A text display, a device with a critical battery and a device without a plan have no menu either. Paperboy draws the menu as an overlay over the top half of the current page. It has one row with `X`, up to three actions and `<`/`>`, stacked in the same order on portrait displays. The page below stays visible, and the menu pauses rotation and `page_timeout`.
 
-- `next`/`previous` move the selection and wrap; `<`/`>` page through the list in steps of three.
-- `home` runs the selected action. If the plugin asks for a confirmation (`confirm` in its `describe`), Paperboy shows a confirmation screen first and runs the action only after the device reports that screen as painted (`shown` hash): the first `home` opens the menu or the confirmation, never runs an action blind.
-- A menu without a runnable action, and `home` on a disabled one, show the plugin's reason as a banner.
-- A long `home` closes the menu and keeps the page. On a device with `touch: true` the menu draws a control strip under the actions: `X` closes it, `<`/`>` page the list, and `next` past the last action selects the `X` — on a button-only device the strip is not drawn at all (ADR 0082). A tap on a confirming action opens its confirmation first; a tap never opens the menu.
-- With the menu closed, a long `next` or `previous` goes to the first page of the active rule. Long presses inside the menu are ignored, so the direction buttons only move the selection there.
-- Unavailable actions stay visible, hatched, with the plugin's reason. A plugin that is down keeps its actions visible as unavailable instead of hiding them.
-- The menu closes itself after `menu_show_duration` (default 30 s, at most 60 s) and asks for a one-shot wake at that deadline (`wake` in the sync answer, ADR 0064), so it closes without waiting for the next regular refresh. The empty banner closes after ten seconds at the latest; any input dismisses it.
-- An action gets about five seconds inside the sync. If it is not done by then a thin banner at the top says "running", and Paperboy schedules one result wake (`reason: result`) for the outcome. The outcome itself is a banner too ("Erledigt: …" or "Fehlgeschlagen: …") without cells or a close box; the next input or the next regular sync clears it.
-- A device with `actions: deny` keeps the old meaning of `home` (page 1); the dashboard marks it as denied.
+- `next`/`previous` move the selection and wrap. `<`/`>` page through the list in steps of three.
+- `home` runs the selected action. If the plugin asks for a confirmation (`confirm` in its `describe`), Paperboy shows a confirmation screen first. It runs the action only after the device reports that screen as painted (`shown` hash): the first `home` opens the menu or the confirmation, it never runs an action blind.
+- A menu without a runnable action, and `home` on a disabled action, show the reason of the plugin as a banner.
+- A long `home` closes the menu and keeps the page. On a device with `touch: true` the menu draws a control strip under the actions: `X` closes it, `<`/`>` page the list, and `next` past the last action selects the `X`. On a button-only device the strip is not drawn at all (ADR 0082). A tap on a confirming action opens its confirmation first; a tap never opens the menu.
+- With the menu closed, a long `next` or `previous` goes to the first page of the active rule. Paperboy ignores long presses inside the menu, so the direction buttons only move the selection there.
+- Unavailable actions stay visible, hatched, with the reason of the plugin. A plugin that is down keeps its actions visible as unavailable instead of hiding them.
+- The menu closes itself after `menu_show_duration` (default 30 s, at most 60 s). It asks for a one-shot wake at that deadline (`wake` in the sync answer, ADR 0064), so it closes without waiting for the next regular refresh. The empty banner closes after ten seconds at the latest; any input dismisses it.
+- An action gets about five seconds inside the sync. If it is not done by then, a thin banner at the top says *Running …* (*Wird ausgeführt …*), and Paperboy schedules one result wake (`reason: result`) for the outcome. The outcome is a banner too (*Done: …* or *Failed: …*, German *Erledigt: …* or *Fehlgeschlagen: …*) without cells or a close box. The next input or the next regular sync clears it.
+- With `actions: deny`, `home` goes to page 1, and the dashboard marks the device as denied.
 - Plugin actions set target states (e.g. `mode: now`), never toggles, so a repeated sync is safe.
+
+## Plugins
+
+A plugin is a long-running program that provides widgets (ADR 0049). Paperboy starts it on first use and sends its `config` section once (`configure`). Then it asks for widgets. Paperboy keeps the results until the `max_age` of the plugin (default 5 minutes) or until the plugin reports a change. It renders widgets that are still in use again in the background, so a device never waits for a plugin. When a plugin exits or does not answer within `timeout`, Paperboy restarts it. Until then, the last widgets appear as stale. A failing plugin is not asked again for a minute.
+
+**Protocol** ([`docs/plugins/protocol.md`](docs/plugins/protocol.md), `pkg/plugin`): one JSON object per line on stdin, one answer per line on stdout with the same `id`. Actions are `configure`, `state`, `describe`, `render` (`levels` 2 or 4, `widgets: [{widget, width, height, args, style}]` → base64 PNGs), `text` (the same in characters → `lines`), `actions` (the state of concrete plan actions) and `action` (run one). Every request carries `language`, `timezone`, `now` and the `page` (`title`, `number`, `count`, display `width`/`height`, and for image displays `ppi`).
+
+**Protocol version 5** (ADR 0050, 0057, 0081): each widget's `style` holds `padding`, `rule` and `text_px` in pixels, already converted from the points of the page. Go plugins use `Request.TextPx`, `PtPx` and `MMPx` for physical sizes. `describe` lists widgets and, optionally, actions, plus the plugin's own `version` (ADR 0075). An action request names a concrete `action` and its `args` and gets `actions` states (title, disabled reason, confirmation) or a `result` (`ok`, `message`, `changed`). Between answers a plugin may print `{"event": "changed", "changed": ["agenda"]}`.
+
+Right after `configure`, a protocol 5 plugin gets one `state` request with the stored JSON and its declared `blobs` (base64). Every answer may send new values back: missing = unchanged, `null` = forget the state. A plugin declares large values such as an image as `blobs` in `describe` (ADR 0081). Paperboy writes `state/plugins/<id>/state.json` and `state/plugins/<id>/blobs/<name>` itself. A plugin keeps no files itself; Paperboy sets no `PAPERBOY_STATE_DIR`. It ends when stdin closes. Every plugin also sees `PAPERBOY_LANGUAGE` and `PAPERBOY_TIMEZONE` in its environment.
+
+Every answer names the protocol version the plugin was built against (`"version": 5`). Paperboy requires at least 5 and accepts newer versions, because the protocol only grows additively. It refuses a plugin below that or without a version. A mismatch appears as the error of the cell and as one log line (ADR 0058).
+
+A Go plugin implements `plugin.Handler` (`Describe`, `Configure`, `Render`). It can also implement `Texter`, `Preparer`, `Starter` (background work with a `notify` callback), `Ager` (`max_age`), `Actioner` (actions for the device menu) and `Stater`/`Blober` (state and files Paperboy keeps between restarts). It calls `plugin.Serve` and draws with `pkg/render`: the fonts, gray levels, fills and icon masks Paperboy itself uses, so its widgets look like the rest of the page. Plugins in other languages speak the same JSON lines.
+
+Paperboy ships the plugins below. One zip per platform (`paperboy-plugins-linux-amd64.zip`, `paperboy-plugins-windows-amd64.zip`) contains all of them. Unpacked in the instance directory, the zip creates `plugins/` with `<plugin>-v<version>`. Each plugin raises its version only when it changes (ADR 0075); the version is in `cmd/<plugin>/VERSION`. Every plugin has its own documentation under `docs/plugins/`:
+
+- [`evcc`](docs/plugins/evcc.md) – PV, home, grid, battery, energy flow, loadpoints and forecast from [evcc](https://evcc.io); the first shipped plugin with actions, `evcc/mode` switches a charge mode from the device menu.
+- [`departures`](docs/plugins/departures.md) – real-time public transport departures from an EFA installation.
+- [`myskoda`](docs/plugins/myskoda.md) – battery, charging plans, parking position and the vehicle image from the [MyŠkoda Public API](https://public.api.connect.skoda-auto.cz/docs).
+- [`weather`](docs/plugins/weather.md) – current weather and forecast from [Open-Meteo](https://open-meteo.com/).
+- [`calendar`](docs/plugins/calendar.md) – agenda, week and month from CalDAV and iCalendar.
+- [`pokedex`](docs/plugins/pokedex.md) – a Pokémon card from [PokéAPI](https://pokeapi.co).
+- [`xkcd`](docs/plugins/xkcd.md) – [xkcd](https://xkcd.com) comics.
+- [`countdown`](docs/plugins/countdown.md) – days to a date, optionally with a progress bar.
+- [`rss`](docs/plugins/rss.md) – RSS and Atom feeds as a list or as a single headline.
+- [`paperboy`](docs/plugins/paperboy.md) – built in, no zip needed: header, text and clock.
+
+## Web UI
+
+Paperboy serves its operator pages on the same address as the device API. They need no token (see [Security](#security)).
+
+### Dashboard
+
+`GET /` redirects to `/ui`, a read-only overview of all devices (ADR 0040). Each card shows the status, the plan and its active rule. It also shows a preview of the last served page (the lines for text displays), refresh, last contact, battery and the last render or plan error. The page is a server-rendered Go template without JavaScript, refreshes itself every 30 seconds and needs no token. Rendered PNGs live in memory only, so after a restart a card omits `last_page_url` and uses the page preview or a placeholder. The header shows the running build: version (or `dev`), short commit with `+dirty` for local changes, and commit date from the VCS stamp; the Go toolchain is in the tooltip. Every page links the editor.
+
+### Plan preview
+
+The *preview* link on a device card opens `/ui/plan?device=<id>` (ADR 0054), a read-only view of the plan of the device. It shows every rule with its time window, `rotate` and `refresh`, the fallback, the rule that applies now (or at the time picked with `&at=YYYY-MM-DDTHH:MM`) and the next rule change. Each page is previewed for the display type of the device; pages the device would skip show the reason, broken pages their error. The view does not change the page cursor or the state of the device.
+
+### Virtual display
+
+The *virtual* link on a device card and in the plan view opens `/ui/virtual?plan=<plan>&display=<type>` (ADR 0091). The page acts as a display of that type: it syncs like the firmware, shows the page the plan picks, pages with the buttons of the plan and opens the device menu. Optional URL parameters replace what a device file would decide: `refresh`, `menu` (5–60 s), `page_timeout` (all seconds) and `power=mains|battery`. The URL is the only configuration, so a link is a display. The cursor and the menu live in memory and not in `state/devices/`, so no device is touched. *Reset* starts again at the first page.
+
+Paperboy resolves, selects and confirms actions like on a device, but never runs them: the result banner says *Simulated* and names the action. `←`/`→`/Enter and press-and-hold work, *Full screen* hides the chrome, and a debug line below the display names the active rule, the page, the refresh, the wake and the last error.
+
+### Widgets page
+
+`/ui/plugins` (linked from the dashboard) opens the page editor without a page. Pick a widget in the palette, or open the page without a widget and it starts with the built-in header. Paperboy draws the widget in its cell size on the chosen display type. The inspector shows its size, arguments and style. The snippet panel shows the finished cell, ready to copy into a page. Sizes are spans on a reference grid of 6 × 8 cells (`?grid=` changes it), and plugins declare their sizes as spans of that grid.
+
+`GET /api/plugins` lists every plugin with its widgets, the sizes they are designed for, their arguments and the config keys of the plugin. A single widget is available as `GET /api/widget/<plugin>/<widget>?display=<type>` with `span=3x2` (and `grid=6x8`) or `width`/`height` in pixels, and arguments as `arg.<name>=<value>` (JSON values keep their type, e.g. `arg.days=3`). It answers a PNG or `text/plain`, and for a failing widget the notice a page would show, with the reason in `X-Widget-Error`.
+
+### Editors
+
+`/ui/editor` is one overview with a sub-tab per object type (`?tab=pages|plans|devices|displays`, default pages). Each tab has one card with its count, a filter field and its new-object button in the header. The button asks for the name in a dialog (a page also chooses the display type) and opens the editor of the new object. A row opens its object: the name is a link, and a click on the row follows it. Rename and Delete live in the editor and name the references (ADR 0073, 0079, 0084). Only the Delete of a page variant that neither the row nor the display type switch reaches stays in the list. Every editor shows the same action bar `← <list>` · object · status · Rename · Delete · Reload · Save (ADR 0076). A save sends the model with the hash it read, so a file changed on disk answers `409` and asks for a reload. Paperboy keeps the last ten old versions under `state/editor/`.
+
+#### Page editor
+
+The pages tab lists every page once. For the selected display type it shows the file that resolves (its variant, else the shared page) with kind, grid, title and parse error, and the variants of the page as links. `/ui/editor/page?name=<page>&display=<type>` builds one page for a display type (ADR 0068). It edits the title, the grid and the style. On text displays the grid is fixed to the character grid. The palette from `/api/plugins` is filtered by the kind of the display. For the selected cell the editor sets the span, the position, the arguments and the style.
+
+Click a widget and then a free cell, or drag it from the palette. A placed box is moved with the pointer (it stays where it was grabbed) or by its position. Resize it by the handles on its right edge, bottom edge and corner; a size or position that would overlap another box is not applied (ADR 0085). A live draft preview shows the result.
+
+The board is the rendered draft with the cell boxes on top (ADR 0074): an image as its background, the text lines one character per slot. A *Cells* switch hides the overlay (remembered per browser, forced on while placing), and a "rendering…" hint covers the debounce.
+
+Nothing is written before *Save*. A shared page stays the shared file until *Save as … variant*. A file that does not parse is listed with its error and opens read-only, because the API takes a model, not text. *Delete* removes the file the editor shows after naming the plans that use the page (ADR 0073). *Rename* moves the shared page and every variant as one set and names the plans that keep the old name (ADR 0079). A variant of a display type that is no longer configured opens through a configured type of the same kind and is saved as that type's variant.
+
+#### Plan editor
+
+`/ui/editor/plan?name=<plan>` edits a plan (ADR 0069). A missing file opens as a new plan that the first save writes. The editor edits rules in their order: name, time window (`from`/`to` as times of day, days as checkboxes), pages in their order with `rotate` and `refresh`, and the fallback. It also edits the actions the device menu offers, built from the actions of the plugins with their arguments and confirmation.
+
+The editor marks rules that an earlier rule always overrides. It names pages that the own devices of the plan would skip, and links each device to its `/ui/plan` preview and to its device page. *Delete* removes the plan after naming the devices that use it. *Rename* moves the file and names the devices that keep the old name (ADR 0079).
+
+#### Device editor
+
+The devices tab lists the files under `devices/` with display type, MAC, address and plan, and creates new ones in a dialog. Hardware that registered with an unknown MAC appears below them as unclaimed, with its hardware, firmware, address and first and last contact. *Claim* asks first, then opens a new device file with the MAC prefilled; *Forget* deletes its state file (ADR 0080).
+
+`/ui/editor/device?id=<id>` edits one (ADR 0070): display type, MAC address, plan chosen from the plan files, `refresh`, the device menu (`actions`, `menu_show_duration`, `touch`), the power source, the firmware hold and the battery thresholds. It links the plan preview of the device and the current file text. The editor writes only the device file, so a plan assignment never touches `paperboy.yaml`. A new device file needs a display type and a MAC address.
+
+*Delete* removes the file; the device stops syncing until a file with its MAC exists again (ADR 0073), and its state waits under the MAC. *Rename* moves only the file; the state stays with the MAC, so the page cursor, battery reading and menu survive (ADR 0079, 0080).
+
+#### Display type editor
+
+The displays tab lists the files under `displays/` with kind, size, `ppi` or `charset`, gray levels and power, and creates new types in a dialog. `/ui/editor/display?name=<name>` edits one (ADR 0071) with the fields of its kind, the physical size computed from `ppi`, the page variants and devices that reference it, and the current file text.
+
+The `ppi` field has a helper. It converts the diagonal of the panel in inches or one side of its active area in millimetres into `ppi` from the pixel size in the form. It says so when the two disagree, because an inch diagonal is usually rounded. *Rename* moves only the file and names the page variants and devices that keep the old name (ADR 0079). *Delete* removes the file after naming the page variants and devices that reference it (ADR 0073).
+
+## Device API
+
+`POST /api/device/register` with `{"mac", "hardware", "firmware"}` (optionally `power` and `touch`) returns `{"key", "device"}` for a configured MAC (an existing key is kept) and `403` otherwise (ADR 0042, ADR 0064). Every wake sends one `POST /api/device/sync` with `Authorization: Bearer <key>`:
+
+- `reason`: `timer`, `button`, `touch`, `powercycle`, `menu` or `result`.
+- `events`: buttons by role `next`, `previous`, `home`, optionally with `hold_ms`; touches with `x`/`y`. Each event has a monotonically increasing `id`, and Paperboy ignores a repeated ID.
+- `shown`: the hash on the panel.
+- `battery`: `volts` is required, `percent`, `mah` and `ma` are optional.
+- `rssi`, `power` and `log` entries.
+
+The answer names the image (`image.path` relative to the Paperboy URL, `image.hash`) and the deep-sleep time `refresh_s`. It also names `listen_s` (0 after a timer wake, 20 s after input) and `sleep` (`false` for mains devices, ADR 0051). It names the server `time` in Unix seconds and `firmware` (an update offer, otherwise `null`). `wake` (`{reason, after_s}`) is a one-shot wake for the menu deadline or an action result; otherwise it is absent. An unknown key gets `401`, and the device registers again. An invalid body gets `400`.
+
+A device whose file has a `Problem` answers with `503` and the reason, never with `401` (ADR 0079).
+
+**Text displays** (ADR 0044): register and sync like ePaper displays, but the sync answers `"image": null` and `"text": {"lines", "hash"}`, and `listen_s` is always 0. They run on mains power and never sleep. Between syncs they poll `GET /api/device/text?shown=<hash>` with their key every `refresh_s`, which the plan decides (ADR 0045; the firmware syncs at most once a minute and uses one minute until its first sync). The answer is `{"lines", "hash"}`; unchanged text gets `204`. The poll renders the page the cursor points to without advancing it and writes nothing to the state file of the device. It updates the shown content in memory for `/api/devices` and the dashboard. An image display gets `409`. Paperboy word-wraps notices (no plan, broken page, critical battery) into the lines.
+
+**Buttons**: events apply in order before rendering. `next` = next page, `previous` = one page back (wrapping), a long `next`/`previous` = first page of the active rule, `home` = the device menu (ADR 0057, ADR 0067, see [Actions](#actions)). A short `home` always opens the menu, also when the plan offers no actions; then it is an empty banner. With the menu open, `next`/`previous` move the selection and `home` confirms; a long `home` closes the menu and keeps the page. After `page_timeout` (5 min) the device shows the first page again. Touches operate the device menu when it is open (the Sticky sends taps, ADR 0064, issue #54); outside a menu, Paperboy only logs them. The server decides at 700 ms whether a press was long; the firmware only measures and reports `hold_ms`.
+
+## Operation
+
+### Intervals
+
+`defaults.refresh` (at least 1 minute) or the `refresh` of the device applies; the `refresh` of a device may go down to 1 s. A plan rule may override it (down to `1s`). The reported interval never goes below the floor of the power source (ADR 0051). Battery devices keep one minute or the `min_refresh` of the display type if that is longer. Mains devices go down to `min_refresh`: by default `1s` for text and `10s` for image displays. When the composed image does not change, the display does not redraw.
+
+### Power source
+
+`power: auto|battery|mains` on the display type, overridable per device; default `auto` (ADR 0051). The firmware reports `power` (`battery` or `mains`) in register and sync: the Sticky measures USB power on GPIO9, the E1001 cannot detect it and reports `battery`, and text displays report `mains`. `auto` uses the last report (`reported_power` in `/api/devices`, next to the effective `power`) and behaves as `battery` until the device reports one. Text displays with older firmware therefore fall back to a one-minute floor until you update them or set `power: mains`. The sync answers `sleep: false` for mains devices: the ePaper firmware then stays awake with Wi-Fi up and syncs again after `refresh_s` instead of deep sleeping.
+
+### Battery warning
+
+The warning is fed by `battery.volts` of the sync (ADR 0020). With `battery` in `defaults` or on a device, every page below `warn_volts` gets the bar *Battery low – please charge* (*Akku schwach – bitte laden*). Below `critical_volts` a full-screen image *Battery almost empty* (*Akku fast leer*) appears instead, and buttons then do not page. A level ends only `hysteresis_volts` above its threshold. Without `battery` there is no warning. All texts use the configured `language`.
+
+### Firmware updates
+
+Put OTA images into `firmware/<hardware>-v<version>.bin` of the instance (`firmware/esphome/build.ps1 -Hardware sticky -Instance <dir>` does it). Paperboy offers the highest version in the sync as `{"version", "path", "md5"}`. It compares the version part by part as numbers; a `firmware.version` pin narrows it to exactly that image (ADR 0060). It offers an update when all of these conditions hold (ADR 0043):
+
+- `firmware.update` is `auto`.
+- The device has no `firmware: hold`.
+- The reported version differs (a lower file is a rollback).
+- The battery reading is at least `min_battery_volts` and not at warning level (text displays run on mains power and skip the battery condition).
+- The version has not failed three times on that device.
+
+A sync that still reports the old version after an offer counts as a failure. A changed image (new MD5) or clearing `firmware_failures` in the state file `state/devices/<MAC>.json` allows new attempts. Paperboy serves images at `GET /firmware/<file>` without a token; it ignores other file names and lists them in the log and on the dashboard. `GET /api/devices` adds `firmware_available` and `firmware_status` (`current`, `offered`, `available`, `failed`, `held`, `none`). Test the rollback with a broken image before you use `update: auto`.
+
+### Device logs
+
+The sync carries firmware log entries (`level`, `message`, optional `source`, `time` and `id`). Paperboy writes one line per entry with device, level, source and age. An entry with a `time` or `id` that a repeated sync delivers again is logged only once.
+
+### Device list
+
+`GET /api/devices` shows every configured device without keys: registration, hardware, firmware, battery voltage (and `battery_percent`/`battery_mah` from a fuel gauge), signal strength, wake reason and last sync. It also shows what the device is showing (ADR 0039). The fields are `last_page`, `last_page_kind` (`page`, `notice` or `battery`), `last_page_hash`, `last_page_url` and `last_refresh` (text displays: `last_text` instead of `last_page_url`). The last render or plan error is in `last_error`, and a derived `status` is `ok`, `late`, `never` or `unregistered`. `late` means the last sync is more than twice the reported refresh old; devices deep-sleep, so an idle device is not an offline one.
+
+## Security
+
+Devices are admitted by allow list and use their own key. The device API answers with plain HTTP status codes (`400`, `401`, `403`). The dashboard, the editor, the preview, the virtual display, `GET /api/devices`, `GET /api/plugins` and the page and plan API need no token, so keep Paperboy in a trusted network. Whoever reaches `/ui` can change the pages and plans. Only plugins named in `paperboy.yaml` run, so the configuration file is executable content.
 
 ## OpenDisplay
 
@@ -365,13 +458,11 @@ go vet ./...
 ./scripts/package-plugins.sh dist  # the plugin zip for the host platform (GOOS/GOARCH select another)
 ```
 
-The dashboard header shows version, commit and commit date. The commit and its date come from Go's VCS stamping, which works as long as the Git repository is present; the container image therefore keeps `.git` in the build context and installs the git binary in its build stage (the alpine Go image ships none).
+The dashboard header shows version, commit and commit date. The commit and its date come from Go's VCS stamping, which works as long as the Git repository is present. The container image therefore keeps `.git` in the build context and installs the git binary in its build stage (the alpine Go image ships none).
 
-The version name cannot come from VCS stamping: Go stamps any working-tree build with a pseudo-version derived from the commit (`v0.0.0-…`), even when the exact commit is tagged. Release builds therefore pass the tag in, `-ldflags "-X github.com/maehld/paperboy/internal/paperboy.version=v2.0.0"`, which `release.yml`, the container image (`--build-arg VERSION=…`) and `scripts/build.ps1 -Version` do. A build without it reports `dev` plus the short commit. `go version -m <binary>` shows what was stamped.
+The version name cannot come from VCS stamping. Go stamps any working-tree build with a pseudo-version derived from the commit (`v0.0.0-…`), even when the exact commit is tagged. Release builds therefore pass the tag in: `-ldflags "-X github.com/maehld/paperboy/internal/paperboy.version=v2.0.0"`. `release.yml`, the container image (`--build-arg VERSION=…`) and `scripts/build.ps1 -Version` do this. A build without it reports `dev` plus the short commit. A build without a repository or with `-buildvcs=false` reports `dev`. `go version -m <binary>` shows what was stamped.
 
-The workflows follow the three deliverables (ADR 0056): *CI* runs formatting, vet, tests and a cross-build on every change, *Plugins* and *Firmware* build their artifacts (the firmware only when `firmware/esphome/` changes), *Docker* publishes the image and *Release* collects everything into one GitHub release on a tag.
-
-A build without a repository or with `-buildvcs=false` reports `dev`. `go version -m <binary>` shows what was stamped. Untagged builds show `dev` plus commit; `git tag v0.1.0` gives release builds a version name.
+The workflows build the three deliverables (ADR 0056). *CI* runs formatting, vet, tests and a cross-build on every change. *Plugins* and *Firmware* build their artifacts; the firmware only when `firmware/esphome/` changes. *Docker* publishes the image, and *Release* collects everything into one GitHub release on a tag.
 
 ```text
 cmd/paperboy/            Startup, options and example configuration
@@ -381,6 +472,9 @@ cmd/evcc/                evcc plugin: energy flow, charging point, forecast
 cmd/xkcd/                xkcd plugin: comic with optional title and alt text
 cmd/countdown/           Countdown plugin: days to a date with a progress bar
 cmd/departures/          Departures plugin: EFA real-time departures (ADR 0053)
+cmd/myskoda/             MyŠkoda plugin: vehicle state and commands
+cmd/pokedex/             Pokédex plugin: a Pokémon card from PokéAPI
+cmd/rss/                 RSS and Atom plugin: feed list and headline
 cmd/odtest/              Test program for OpenDisplay devices (TCP and Bluetooth)
 pkg/plugin/              Plugin protocol and Go helper (public API)
 pkg/render/              Fonts, palettes and drawing shared by Paperboy and plugins (public API)
@@ -389,6 +483,8 @@ internal/page/           Pages: grid parsing and composition from widgets
 internal/widget/         Plugin processes, widget cache and background refresh
 internal/builtin/        Built-in plugin "paperboy": header, text, clock
 internal/plan/           Display plans: time rules that select pages per device (ADR 0025)
+internal/download/       Release downloads and the verification against SHA256SUMS
+internal/semver/         Version grammar for plugin and firmware names (ADR 0089)
 internal/opendisplay/    OpenDisplay protocol; odble = Bluetooth transport
 firmware/esphome/        Paperboy firmware on ESPHome for Sticky and E1001 (ADR 0041)
 docs/adr/                Architecture decisions
@@ -399,5 +495,5 @@ docs/adr/                Architecture decisions
 Paperboy is published under the [MIT licence](LICENSE). Third-party material keeps its own licence:
 
 - The OpenMoji pictograms in `cmd/weather/icons/` and `cmd/evcc/icons/` are [CC BY-SA 4.0](cmd/weather/icons/README.md); the licence travels with the plugin zip.
-- The firmware in `firmware/esphome/` is a Paperboy configuration for [ESPHome](https://esphome.io). The images built from it contain ESPHome's runtime, whose C++ parts are GPLv3; the sources are in this repository. The bundled Go fonts (`pkg/render`) come with their own BSD-style licence.
+- The firmware in `firmware/esphome/` is a Paperboy configuration for [ESPHome](https://esphome.io). The images built from it contain the ESPHome runtime, whose C++ parts are GPLv3; the sources are in this repository. The bundled Go fonts (`pkg/render`) come with their own BSD-style licence.
 - The examples and the plugin test fixtures are fictional; xkcd comics are CC BY-NC 2.5 and are fetched at runtime, never shipped.
