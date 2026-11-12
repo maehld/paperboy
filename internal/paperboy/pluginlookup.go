@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/maehld/paperboy/internal/semver"
 )
 
 // pluginProgram finds the program of a plugin (ADR 0060):
@@ -44,37 +46,38 @@ func highestPluginVersion(dir, name string) string {
 		return ""
 	}
 	best := ""
-	var bestParts []int
+	var bestVersion semver.Version
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
-		version, parts, ok := parsePluginProgram(name, e.Name())
+		parsed, ver, ok := parsePluginProgram(name, e.Name())
 		if !ok {
 			continue
 		}
-		if best == "" || compareVersions(parts, bestParts) > 0 {
-			best, bestParts = version, parts
+		if best == "" || semver.Compare(ver, bestVersion) > 0 {
+			best, bestVersion = parsed, ver
 		}
 	}
 	return best
 }
 
 // parsePluginProgram returns the version of a downloaded plugin program
-// <name>-v<version> (with the Windows .exe suffix when there is one).
-func parsePluginProgram(name, file string) (string, []int, bool) {
+// <name>-v<version> (with the Windows .exe suffix when there is one); the
+// version may carry a prerelease suffix (ADR 0089).
+func parsePluginProgram(name, file string) (string, semver.Version, bool) {
 	file = strings.TrimSuffix(file, ".exe")
 	rest, ok := strings.CutPrefix(file, name+"-")
 	if !ok {
-		return "", nil, false
+		return "", semver.Version{}, false
 	}
-	version, ok := strings.CutPrefix(rest, "v")
-	if !ok || !firmwareVersionPattern.MatchString(version) {
-		return "", nil, false
-	}
-	parts, ok := versionParts(version)
+	raw, ok := strings.CutPrefix(rest, "v")
 	if !ok {
-		return "", nil, false
+		return "", semver.Version{}, false
 	}
-	return "v" + version, parts, true
+	ver, ok := semver.Parse(raw)
+	if !ok {
+		return "", semver.Version{}, false
+	}
+	return "v" + raw, ver, true
 }

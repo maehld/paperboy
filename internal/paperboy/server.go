@@ -165,6 +165,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /ui/editor/device.js", s.handleDeviceEditorJS)
 	mux.HandleFunc("GET /ui/editor/display.js", s.handleDisplayEditorJS)
 	mux.HandleFunc("POST /ui/download", s.handleDownloadCheck)
+	mux.HandleFunc("POST /ui/downloads/prune", s.handlePrune)
 	mux.HandleFunc("GET /api/widget/{plugin}/{widget}", s.handleWidget)
 	// Page and plan editing (ADR 0066, ADR 0073).
 	mux.HandleFunc("GET /api/pages", s.handlePages)

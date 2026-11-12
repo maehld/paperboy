@@ -10,22 +10,23 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/maehld/paperboy/internal/semver"
 )
 
 // firmwareImage is one OTA image in <instance>/firmware/ (ADR 0043, 0060).
 type firmwareImage struct {
 	Hardware string
-	Version  string // without the leading v, e.g. 1.0.0
+	Version  string // without the leading v, e.g. 1.0.0 or 1.4.0-rc.1
 	File     string // <hardware>-v<version>.bin
 	MD5      string
 	path     string
-	parts    []int
+	ver      semver.Version
 }
 
 // URLPath is where the device downloads the image.
@@ -33,83 +34,41 @@ func (img *firmwareImage) URLPath() string {
 	return "/firmware/" + img.File
 }
 
-var firmwareVersionPattern = regexp.MustCompile(`^[0-9]+(\.[0-9]+)*$`)
-
 // firmwareOldLayout marks an old firmware/<hardware>/ directory on the
 // dashboard; its images are still read (ADR 0060).
 const firmwareOldLayout = "old layout"
 
 // parseFirmwareName returns the version of <hardware>-v<version>.bin. The v is
 // optional so that hand-placed images of the old layout keep working (ADR 0043,
-// 0060).
-func parseFirmwareName(hardware, name string) (string, []int, bool) {
+// 0060); the version may carry a prerelease suffix (ADR 0089).
+func parseFirmwareName(hardware, name string) (string, semver.Version, bool) {
 	rest, ok := strings.CutPrefix(name, hardware+"-")
 	if !ok {
-		return "", nil, false
+		return "", semver.Version{}, false
 	}
-	version, ok := strings.CutSuffix(rest, ".bin")
+	text, ok := strings.CutSuffix(rest, ".bin")
 	if !ok {
-		return "", nil, false
+		return "", semver.Version{}, false
 	}
-	version = strings.TrimPrefix(version, "v")
-	if !firmwareVersionPattern.MatchString(version) {
-		return "", nil, false
+	text = strings.TrimPrefix(text, "v")
+	ver, ok := semver.Parse(text)
+	if !ok {
+		return "", semver.Version{}, false
 	}
-	parts, ok := versionParts(version)
-	return version, parts, ok
+	return text, ver, true
 }
 
 // pinVersion normalizes a configured firmware version ("v1.0.0" and "1.0.0"
-// name the same image); the empty string means no pin.
-func pinVersion(pin string) []int {
+// name the same image); ok is false without a pin.
+func pinVersion(pin string) (semver.Version, bool) {
 	pin = strings.TrimPrefix(strings.TrimSpace(pin), "v")
-	if !firmwareVersionPattern.MatchString(pin) {
-		return nil
-	}
-	parts, ok := versionParts(pin)
-	if !ok {
-		return nil
-	}
-	return parts
-}
-
-// versionParts splits a dot-separated numeric version.
-func versionParts(version string) ([]int, bool) {
-	var parts []int
-	for _, p := range strings.Split(version, ".") {
-		n, err := strconv.Atoi(p)
-		if err != nil || n < 0 {
-			return nil, false
-		}
-		parts = append(parts, n)
-	}
-	return parts, true
-}
-
-// compareVersions compares part by part as numbers; missing parts count as 0.
-func compareVersions(a, b []int) int {
-	for i := 0; i < max(len(a), len(b)); i++ {
-		var x, y int
-		if i < len(a) {
-			x = a[i]
-		}
-		if i < len(b) {
-			y = b[i]
-		}
-		if x != y {
-			if x < y {
-				return -1
-			}
-			return 1
-		}
-	}
-	return 0
+	return semver.Parse(pin)
 }
 
 // sameVersion reports whether the device runs the image's version.
 func sameVersion(reported string, img *firmwareImage) bool {
-	parts, ok := versionParts(reported)
-	return ok && compareVersions(parts, img.parts) == 0
+	ver, ok := semver.Parse(reported)
+	return ok && semver.Compare(ver, img.ver) == 0
 }
 
 // md5Entry caches the checksum of one file; mod and size detect changes.
@@ -142,7 +101,7 @@ func (f *firmwareStore) latest(hardware, pin string) (*firmwareImage, []string) 
 	if f == nil || !validName(hardware) {
 		return nil, nil
 	}
-	want := pinVersion(pin)
+	want, pinned := pinVersion(pin)
 	var best *firmwareImage
 	var invalid []string
 	scan := func(dir, label string) {
@@ -157,17 +116,17 @@ func (f *firmwareStore) latest(hardware, pin string) (*firmwareImage, []string) 
 			if e.IsDir() || !strings.HasPrefix(e.Name(), hardware+"-") {
 				continue
 			}
-			version, parts, ok := parseFirmwareName(hardware, e.Name())
+			imgVersion, ver, ok := parseFirmwareName(hardware, e.Name())
 			if !ok {
 				invalid = append(invalid, label+e.Name())
 				continue
 			}
-			if want != nil && compareVersions(parts, want) != 0 {
+			if pinned && semver.Compare(want, ver) != 0 {
 				continue
 			}
-			if best == nil || compareVersions(parts, best.parts) > 0 {
-				best = &firmwareImage{Hardware: hardware, Version: version, File: e.Name(),
-					path: filepath.Join(dir, e.Name()), parts: parts}
+			if best == nil || semver.Compare(ver, best.ver) > 0 {
+				best = &firmwareImage{Hardware: hardware, Version: imgVersion, File: e.Name(),
+					path: filepath.Join(dir, e.Name()), ver: ver}
 			}
 		}
 	}
@@ -204,11 +163,11 @@ func (f *firmwareStore) installed() []firmwareImage {
 	}
 	var out []firmwareImage
 	add := func(hardware, file, path string) {
-		version, parts, ok := parseFirmwareName(hardware, file)
+		imgVersion, ver, ok := parseFirmwareName(hardware, file)
 		if !ok {
 			return
 		}
-		out = append(out, firmwareImage{Hardware: hardware, Version: version, File: file, path: path, parts: parts})
+		out = append(out, firmwareImage{Hardware: hardware, Version: imgVersion, File: file, path: path, ver: ver})
 	}
 	for _, e := range entries {
 		if e.IsDir() {
@@ -232,7 +191,7 @@ func (f *firmwareStore) installed() []firmwareImage {
 		if out[i].Hardware != out[j].Hardware {
 			return out[i].Hardware < out[j].Hardware
 		}
-		return compareVersions(out[i].parts, out[j].parts) > 0
+		return semver.Compare(out[i].ver, out[j].ver) > 0
 	})
 	return out
 }
@@ -406,8 +365,9 @@ func (s *Server) settleFirmwareLocked(d *Device, st *deviceState) {
 		return
 	}
 	st.FirmwarePending = false
-	parts, ok := versionParts(st.FirmwareOffered)
-	if reported, rok := versionParts(st.Firmware); ok && rok && compareVersions(parts, reported) == 0 {
+	offered, okOffered := semver.Parse(st.FirmwareOffered)
+	reported, okReported := semver.Parse(st.Firmware)
+	if okOffered && okReported && semver.Compare(offered, reported) == 0 {
 		st.FirmwareFailures = 0
 		slog.Info("firmware updated", "device", d.ID, "firmware", st.Firmware)
 		return

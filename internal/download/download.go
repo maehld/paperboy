@@ -18,12 +18,13 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/maehld/paperboy/internal/semver"
 )
 
 // FirmwareAsset is the firmware bundle of a release; its name is constant
@@ -40,9 +41,6 @@ const (
 	maxEntry = 32 << 20
 )
 
-// pluginVersionPattern is what may follow -v in a plugin program's name.
-var pluginVersionPattern = regexp.MustCompile(`^[0-9]+(\.[0-9]+)*$`)
-
 // Asset is one file of a release.
 type Asset struct {
 	Name string `json:"name"`
@@ -51,9 +49,10 @@ type Asset struct {
 
 // Release is one release as far as Paperboy needs it.
 type Release struct {
-	Tag     string  `json:"tag"`     // v2.1.0, plugins-v2.2.0, firmware-v1.0.0
-	Version string  `json:"version"` // tag without the train prefix: 2.1.0
-	Assets  []Asset `json:"assets"`
+	Tag        string  `json:"tag"`        // v2.1.0, plugins-v2.2.0, firmware-v1.0.0
+	Version    string  `json:"version"`    // tag without the train prefix: 2.1.0
+	Prerelease bool    `json:"prerelease"` // published as a prerelease (ADR 0089)
+	Assets     []Asset `json:"assets"`
 }
 
 // Asset returns the named asset of the release.
@@ -94,11 +93,13 @@ type cacheFile struct {
 	PluginZips map[string][]string `json:"plugin_zips,omitempty"` // tag -> entries of its plugin zip (ADR 0075)
 }
 
-// List returns the recent releases, newest first. The answer is cached with its
-// ETag, so a check that changes nothing costs one conditional request.
+// List returns the recent releases, newest first, drafts aside. Prereleases are
+// part of the answer: the channel decides per train whether they may be used
+// (ADR 0089). The answer is cached with its ETag, so a check that changes
+// nothing costs one conditional request.
 func (c *Client) List(ctx context.Context) ([]Release, error) {
 	cache := c.readCache()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiBase()+"?per_page=30", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiBase()+"?per_page=100", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -134,10 +135,10 @@ func (c *Client) List(ctx context.Context) ([]Release, error) {
 	}
 	releases := make([]Release, 0, len(raw))
 	for _, r := range raw {
-		if r.Draft || r.Prerelease {
+		if r.Draft {
 			continue
 		}
-		rel := Release{Tag: r.TagName, Version: versionOf(r.TagName)}
+		rel := Release{Tag: r.TagName, Version: versionOf(r.TagName), Prerelease: r.Prerelease}
 		for _, a := range r.Assets {
 			u := a.URL
 			if u == "" {
@@ -153,7 +154,8 @@ func (c *Client) List(ctx context.Context) ([]Release, error) {
 	return releases, nil
 }
 
-// Latest returns the newest release that carries an asset matching pick.
+// Latest returns the newest release that carries an asset matching pick, a
+// prerelease included; callers that follow a channel filter before.
 func (c *Client) Latest(ctx context.Context, pick func(Asset) bool) (Release, bool, error) {
 	releases, err := c.List(ctx)
 	if err != nil {
@@ -209,16 +211,13 @@ func (c *Client) Fetch(ctx context.Context, rel Release, name string) (string, e
 }
 
 // Bundle returns the entry names of the release's firmware bundle and the local
-// zip; a bundle is only downloaded and read once per release.
+// zip; a bundle is only downloaded and read once per release. The answer needs
+// no file on disk: the entries outlive a pruned zip (ADR 0090), and Ensure
+// fetches the bundle again when it has to be unpacked.
 func (c *Client) Bundle(ctx context.Context, rel Release) ([]string, string, error) {
 	cache := c.readCache()
 	if entries, ok := cache.Bundles[rel.Tag]; ok {
-		local := filepath.Join(c.Dir, rel.Tag+"-"+bundleName(rel))
-		// A cache entry from before the constant bundle name points at a file
-		// that is no longer fetched: read the bundle again (ADR 0063).
-		if _, err := os.Stat(local); err == nil {
-			return entries, local, nil
-		}
+		return entries, filepath.Join(c.Dir, rel.Tag+"-"+bundleName(rel)), nil
 	}
 	name := bundleName(rel)
 	if name == "" {
@@ -255,9 +254,7 @@ func (c *Client) PluginZip(ctx context.Context, rel Release) (map[string]string,
 	cache := c.readCache()
 	local := filepath.Join(c.Dir, rel.Tag+"-"+PluginAsset())
 	if entries, ok := cache.PluginZips[rel.Tag]; ok {
-		if _, err := os.Stat(local); err == nil {
-			return pluginVersions(entries), local, nil
-		}
+		return pluginVersions(entries), local, nil
 	}
 	if _, ok := rel.Asset(PluginAsset()); !ok {
 		return nil, "", fmt.Errorf("%s: no plugin zip", rel.Tag)
@@ -278,6 +275,51 @@ func (c *Client) PluginZip(ctx context.Context, rel Release) (map[string]string,
 	return pluginVersions(entries), local, nil
 }
 
+// Ensure returns the local archive, fetching it when the cache no longer holds
+// it (ADR 0090): the entry lists survive a pruned zip, the zip itself does not.
+func (c *Client) Ensure(ctx context.Context, rel Release, name, local string) (string, error) {
+	if local != "" {
+		if _, err := os.Stat(local); err == nil {
+			return local, nil
+		}
+	}
+	return c.Fetch(ctx, rel, name)
+}
+
+// CachedVersions answers the plugin versions of a release whose zip was read
+// before, without downloading anything (ADR 0089). ok is false for a release
+// the cache does not know.
+func (c *Client) CachedVersions(tag string) (map[string]string, bool) {
+	entries, ok := c.readCache().PluginZips[tag]
+	if !ok {
+		return nil, false
+	}
+	return pluginVersions(entries), true
+}
+
+// Prune removes every archive in the cache directory except keep, so at most
+// one file per asset stays (ADR 0090). Best effort: a file that a running
+// program locks is logged and left for the next check, and cache.json is never
+// touched.
+func (c *Client) Prune(keep string) {
+	entries, err := os.ReadDir(c.Dir)
+	if err != nil {
+		return
+	}
+	keep = filepath.Base(keep)
+	cache := filepath.Base(c.cachePath())
+	for _, e := range entries {
+		if e.IsDir() || e.Name() == keep || e.Name() == cache {
+			continue
+		}
+		if err := os.Remove(filepath.Join(c.Dir, e.Name())); err != nil {
+			slog.Warn("download cache not removable", "file", e.Name(), "error", err)
+			continue
+		}
+		slog.Info("download cache pruned", "file", e.Name())
+	}
+}
+
 // pluginVersions maps every program of a plugin zip to the version its name
 // carries; entries without a version (an old zip) are left out.
 func pluginVersions(entries []string) map[string]string {
@@ -295,10 +337,13 @@ func pluginVersions(entries []string) map[string]string {
 // PluginEntry splits the name of a program from the plugin zip,
 // <plugin>-v<version>[.exe], into plugin and version. An unversioned program of
 // an older zip does not parse (ADR 0075).
-func PluginEntry(file string) (plugin, version string, ok bool) {
+func PluginEntry(file string) (plugin, ver string, ok bool) {
 	base := strings.TrimSuffix(file, ".exe")
 	name, rest, found := strings.Cut(base, "-v")
-	if !found || name == "" || !pluginVersionPattern.MatchString(rest) {
+	if !found || name == "" {
+		return "", "", false
+	}
+	if _, ok := semver.Parse(rest); !ok {
 		return "", "", false
 	}
 	return name, rest, true

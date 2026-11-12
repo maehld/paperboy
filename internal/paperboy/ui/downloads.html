@@ -27,6 +27,11 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .actions button { font: inherit; font-size: .9rem; padding: .25rem .7rem; border-radius: 6px; border: 1px solid #bbb; background: #fafafa; cursor: pointer; }
 .actions button:hover { background: #eee; }
 .actions button:disabled { color: #888; cursor: default; background: #f2f2f2; }
+.actions form { display: inline; }
+.actions a.button { display: inline-block; text-decoration: none; color: inherit; font-size: .9rem; padding: .25rem .7rem; border-radius: 6px; border: 1px solid #bbb; background: #fafafa; }
+.actions a.button:hover { background: #eee; }
+.ok { margin: 0 0 .7rem; padding: .5rem .6rem; background: #f1faf2; border-left: 3px solid #2a7; font-size: .85rem; }
+.hint { margin: .6rem 0 0; font-size: .8rem; color: #777; }
 </style>
 </head>
 <body>
@@ -42,6 +47,7 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   <dl>
     <dt>Source</dt><dd>{{.Source}}</dd>
     <dt>Interval</dt><dd>{{.Interval}}</dd>
+    <dt>Channels</dt><dd>Plugins {{.PluginChannel}} · Firmware {{.FirmwareChannel}}</dd>
     <dt>Last check</dt><dd>{{.LastCheck}}{{if .Running}} <span class="muted">· checking now</span>{{else if .LastOK}} <span class="muted">· last success {{.LastOK}}</span>{{end}}</dd>
   </dl>
   <div class="actions">
@@ -59,7 +65,7 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
     {{range .Plugins}}
     <tr>
       <td>{{.Name}}</td>
-      <td class="num">{{if .Version}}{{.Version}}{{else if eq .Program "not found"}}<span class="muted">missing</span>{{else}}<span class="muted">unversioned</span>{{end}}</td>
+      <td class="num">{{if .Version}}{{.Version}}{{else if eq .Program "not found"}}<span class="muted">missing</span>{{else}}<span class="muted">unversioned</span>{{end}}{{if .OutsideChannel}} <span class="muted">· not in the channel</span>{{end}}</td>
       <td class="num">{{if .Pin}}{{.Pin}}{{else}}<span class="muted">–</span>{{end}}</td>
       <td class="program">{{if eq .Program "not found"}}<span class="muted">–</span>{{else}}{{.Program}}{{end}}</td>
     </tr>
@@ -75,11 +81,37 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   <table>
     <tr><th>Hardware</th><th>Version</th><th>File</th></tr>
     {{range .Firmware}}
-    <tr><td>{{.Hardware}}</td><td class="num">{{.Version}}</td><td class="file">{{.File}}</td></tr>
+    <tr><td>{{.Hardware}}</td><td class="num">{{.Version}}{{if .OutsideChannel}} <span class="muted">· not in the channel</span>{{end}}</td><td class="file">{{.File}}</td></tr>
     {{end}}
   </table>
   {{else}}
   <p class="empty">No images in <code>firmware/</code>.</p>
+  {{end}}
+</section>
+<section class="card">
+  <h2>Inventory <span class="muted">cleanup by hand</span></h2>
+  {{if .Notice}}<p class="ok">{{.Notice}}</p>{{end}}
+  <dl>
+    <dt>Plugins</dt><dd>{{.InventoryPlugins}}</dd>
+    <dt>Firmware images</dt><dd>{{.InventoryFirmware}}</dd>
+  </dl>
+  {{if .Preview}}
+    {{if .Prune}}
+    <table>
+      <tr><th>Delete</th><th>Version</th></tr>
+      {{range .Prune}}<tr><td class="file">{{.File}}</td><td class="num">{{if .Version}}{{.Version}}{{else}}<span class="muted">–</span>{{end}}</td></tr>{{end}}
+    </table>
+    <div class="actions">
+      <form method="post" action="/ui/downloads/prune"><button type="submit">Delete {{len .Prune}} files</button></form>
+      <a class="button" href="/ui/downloads">Cancel</a>
+    </div>
+    {{else}}
+    <p class="empty">Nothing to prune: every file is in use, pinned, or one of the newest versions.</p>
+    <div class="actions"><a class="button" href="/ui/downloads">Back</a></div>
+    {{end}}
+  {{else}}
+  <div class="actions"><a class="button" href="/ui/downloads?prune=1">Preview cleanup</a></div>
+  <p class="hint">Paperboy never deletes programs or images by itself. The preview keeps the version in use, the ones a pin names, the firmware a device reports or is being offered, files without a version, and the newest two versions of every plugin and hardware type.</p>
   {{end}}
 </section>
 <section class="card">

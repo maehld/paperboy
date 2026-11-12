@@ -67,6 +67,8 @@ download:
   source: https://github.com/maehld/paperboy  # optional, this is the default
   token: ${GITHUB_TOKEN}                     # optional: rate limits, private forks
   interval: 24h                              # optional: between checks, at least 1h
+  plugin_channel: stable                     # optional: stable (default) or latest (ADR 0089)
+  firmware_channel: stable                   # optional: stable or latest, per train
 ```
 
 The key alone is enough: a bare `download:` uses the official source and checks every 24 h. Without the section the checks stay off.
@@ -74,8 +76,10 @@ The key alone is enough: a bare `download:` uses the official source and checks 
 - It runs at startup and then after `interval` (default 24 h), in the background; the *Downloads* page (`/ui/downloads`) has a **Check now** button that starts a check at once. An instance without internet keeps working as before, and nothing else needs the section.
 - **Plugins**: a configured plugin whose program is missing gets the newest one as `plugins/<plugin>-v<version>` (`weather-v1.4.0`, `weather-v1.4.0.exe` on Windows). A downloaded program is updated when the plugin zip ships a higher version of that plugin — an unchanged plugin is left alone, however many releases pass (ADR 0075). The old file stays and only that plugin restarts. A `version` pin in the plugin section names a plugin version (`v1.4.0`) and is never moved.
 - **Firmware**: every image of the bundle lands in `firmware/<hardware>-v<version>.bin` (ADR 0061); a `firmware.version` pin picks the release that carries exactly that image, which is also how a rollback is pinned. Devices are still only offered an update with `firmware.update: auto`.
+- **Channels** (ADR 0089): `stable` (default) installs only releases that GitHub does not mark as a prerelease, `latest` also installs them. A version may carry a suffix (`weather-v1.4.0-rc.1`, `e1001-v1.4.0-rc.1.bin`), so an rc and the final are two files and a pin can name either. A channel never downgrades: going back from `latest` to `stable` keeps the newer program — rolling back is a pin. A pin bypasses the channel and may pick an rc out of a prerelease release.
 - A program **without** a version in `plugins/` (`weather`) always wins - it is your build - and is neither replaced nor pinned; download it by hand or delete it to hand the plugin back to the releases.
-- Existing files are never overwritten or deleted, so versions pile up and are removed by hand. Deleting a newer plugin file rolls back to the older one for the rest of the server run; a `version` pin keeps the older one across restarts, and a firmware pin keeps the older image on offer.
+- Programs and images are never overwritten, so they pile up. The *Downloads* page shows both sizes and offers a **Preview cleanup**: it lists what it would delete and keeps the version in use, everything a pin names, the firmware a device reports or is being offered, files without a version, and the newest two versions of every plugin and hardware type (ADR 0090). Deleting a newer plugin file rolls back to the older one for the rest of the server run; a `version` pin keeps the older one across restarts, and a firmware pin keeps the older image on offer.
+- The download cache under `state/download/` cleans itself: it keeps one archive per train and asset, and the previous one is dropped once the next has been verified and installed. The learned entry lists stay, so a pin costs no download.
 - The *Downloads* page shows the source, the last check, the running check, the program and version behind every plugin, the images in `firmware/` and the firmware each device reports; the devices page only warns when the last check failed.
 
 ## Instance directory
@@ -94,7 +98,7 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
   state/             written by Paperboy only
     devices/         state of every MAC: <MAC>.json with API key, page cursor, battery and the address of the last contact (ADR 0080, 0082)
     plugins/         plugin state <id>/state.json and the declared blobs <id>/blobs/<name> (ADR 0081)
-    download/        cached release list and downloads (ADR 0060)
+    download/        cache per train: plugins/ and firmware/ with cache.json and one archive each (ADR 0060, 0090)
     editor/          backups of pages, plans, devices and display types written or deleted by the editor (ADR 0066, 0072)
 ```
 

@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/maehld/paperboy/internal/semver"
 )
 
 func writeProgram(t *testing.T, dir, name string) string {
@@ -51,10 +53,15 @@ func TestPluginProgramLookup(t *testing.T) {
 
 func TestParsePluginProgram(t *testing.T) {
 	for _, name := range []string{"weather-v2.1.0", "weather-v2.1.0.exe"} {
-		version, parts, ok := parsePluginProgram("weather", name)
-		if !ok || version != "v2.1.0" || compareVersions(parts, []int{2, 1, 0}) != 0 {
-			t.Fatalf("%s: %q %v %v", name, version, parts, ok)
+		version, parsed, ok := parsePluginProgram("weather", name)
+		if want, _ := semver.Parse("2.1.0"); !ok || version != "v2.1.0" || semver.Compare(parsed, want) != 0 {
+			t.Fatalf("%s: %q %v %v", name, version, parsed, ok)
 		}
+	}
+	// A program name may carry a prerelease suffix (ADR 0089).
+	if version, parsed, ok := parsePluginProgram("weather", "weather-v2.1.0-rc.1"); !ok ||
+		version != "v2.1.0-rc.1" || !parsed.Prerelease() {
+		t.Fatalf("prerelease program: %q %v %v", version, parsed, ok)
 	}
 	for _, name := range []string{"weather", "weather-2.1.0", "calendar-v1.0.0", "weather-v1.0.0.txt"} {
 		if _, _, ok := parsePluginProgram("weather", name); ok {
@@ -67,12 +74,15 @@ func TestParsePluginProgram(t *testing.T) {
 	if v, ok := pluginPin("v2.1.0"); !ok || v != "v2.1.0" {
 		t.Fatalf("pin normalization: %q %v", v, ok)
 	}
-	for _, pin := range []string{"main", "2.1.0-rc1", ""} {
+	for _, pin := range []string{"main", "2.1.0-rc 1", "", "v"} {
 		if _, ok := pluginPin(pin); ok {
 			t.Fatalf("pin %q must be rejected", pin)
 		}
 	}
 	if v, ok := pluginPin("v2"); !ok || v != "v2" {
 		t.Fatalf("a single number is a version: %q %v", v, ok)
+	}
+	if v, ok := pluginPin("2.1.0-rc.1"); !ok || v != "v2.1.0-rc.1" {
+		t.Fatalf("a prerelease pin is a version: %q %v", v, ok)
 	}
 }

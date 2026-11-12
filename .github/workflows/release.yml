@@ -92,17 +92,32 @@ jobs:
           mv "$RUNNER_TEMP/SHA256SUMS" SHA256SUMS
           cat SHA256SUMS
 
+      # A tag whose version carries a suffix (v1.4.0-rc.1, plugins-v1.4.0-rc.1)
+      # marks a prerelease delivery, which only the latest channel installs
+      # (ADR 0089). The train prefix has a hyphen too, so only the part after the
+      # last v is asked.
+      - name: Prerelease tag
+        id: tag
+        run: |
+          version="${GITHUB_REF_NAME##*v}"
+          case "$version" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
       - name: Release with generated notes
         if: startsWith(github.ref_name, 'v')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          prerelease: ${{ steps.tag.outputs.prerelease }}
           files: dist/*
 
       - name: Release with asset notes
         if: "!startsWith(github.ref_name, 'v')"
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ steps.tag.outputs.prerelease }}
           body: |
             Release of a single release train (ADR 0056).
 

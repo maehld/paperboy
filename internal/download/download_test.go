@@ -18,17 +18,17 @@ import (
 
 // releaseServer serves a fake release API and the files of its releases.
 type releaseServer struct {
-	t       *testing.T
-	tags    []string
-	files   map[string][]byte // "<tag>/<name>"
-	notMod  atomic.Int64
-	etag    string
-	noEtag  bool
-	sumsBad bool
+	t      *testing.T
+	tags   []string
+	files  map[string][]byte // "<tag>/<name>"
+	pre    map[string]bool   // tag -> published as a prerelease
+	notMod atomic.Int64
+	etag   string
+	noEtag bool
 }
 
 func newReleaseServer(t *testing.T, tags ...string) (*releaseServer, *httptest.Server) {
-	rs := &releaseServer{t: t, tags: tags, files: map[string][]byte{}, etag: `"v1"`}
+	rs := &releaseServer{t: t, tags: tags, files: map[string][]byte{}, pre: map[string]bool{}, etag: `"v1"`}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/repos/me/paperboy/releases", func(w http.ResponseWriter, r *http.Request) {
 		if rs.noEtag || r.Header.Get("If-None-Match") != rs.etag {
@@ -38,12 +38,13 @@ func newReleaseServer(t *testing.T, tags ...string) (*releaseServer, *httptest.S
 				URL  string `json:"browser_download_url"`
 			}
 			type release struct {
-				TagName string  `json:"tag_name"`
-				Assets  []asset `json:"assets"`
+				TagName    string  `json:"tag_name"`
+				Prerelease bool    `json:"prerelease"`
+				Assets     []asset `json:"assets"`
 			}
 			var out []release
 			for _, tag := range rs.tags {
-				rel := release{TagName: tag}
+				rel := release{TagName: tag, Prerelease: rs.pre[tag]}
 				for key := range rs.files {
 					fileTag, name, ok := strings.Cut(key, "/")
 					if ok && fileTag == tag {
@@ -150,12 +151,14 @@ func TestPluginEntry(t *testing.T) {
 		plugin, version string
 		ok              bool
 	}{
-		"testplugin-v1.4.0":     {"testplugin", "1.4.0", true},
-		"testplugin-v1.4.0.exe": {"testplugin", "1.4.0", true},
-		"testplugin-v2":         {"testplugin", "2", true},
-		"testplugin":            {"", "", false}, // an old zip ships unversioned programs
-		"testplugin-vnext":      {"", "", false},
-		"-v1.0.0":               {"", "", false},
+		"testplugin-v1.4.0":       {"testplugin", "1.4.0", true},
+		"testplugin-v1.4.0.exe":   {"testplugin", "1.4.0", true},
+		"testplugin-v2":           {"testplugin", "2", true},
+		"testplugin-v1.4.0-rc.1":  {"testplugin", "1.4.0-rc.1", true},
+		"testplugin-v1.4.0-bad/1": {"", "", false},
+		"testplugin":              {"", "", false}, // an old zip ships unversioned programs
+		"testplugin-vnext":        {"", "", false},
+		"-v1.0.0":                 {"", "", false},
 	}
 	for name, want := range cases {
 		plugin, version, ok := PluginEntry(name)
@@ -189,14 +192,98 @@ func TestPluginZipReadsTheVersionsInTheNames(t *testing.T) {
 	if len(versions) != 2 || versions["weather"] != "1.4.0" || versions["calendar"] != "1.0.0" {
 		t.Fatalf("versions: %v", versions)
 	}
-	// The entries are cached: removing the archive makes the client fetch it
-	// again, keeping the answer the same.
+	// The entry list outlives the zip (ADR 0090): after the cache dropped it,
+	// the versions come from cache.json without a download, and Ensure fetches
+	// the zip again only when it has to be unpacked.
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	again, _, err := c.PluginZip(context.Background(), rel)
-	if err != nil || again["weather"] != "1.4.0" {
-		t.Fatalf("second read: %v %v", again, err)
+	again, local, err := c.PluginZip(context.Background(), rel)
+	if err != nil || again["weather"] != "1.4.0" || local != path {
+		t.Fatalf("second read: %v %q %v", again, local, err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("a cached entry list must not download the zip again")
+	}
+	if _, err := c.Ensure(context.Background(), rel, PluginAsset(), local); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("Ensure must fetch the zip again: %v", err)
+	}
+}
+
+// TestListKeepsPrereleases verifies that the channel, not the list, decides
+// about a prerelease (ADR 0089).
+func TestListKeepsPrereleases(t *testing.T) {
+	rs, srv := newReleaseServer(t, "v2.2.0-rc.1", "v2.1.0")
+	rs.pre["v2.2.0-rc.1"] = true
+	rs.add(t, "v2.2.0-rc.1", FirmwareAsset, []byte("rc"))
+	rs.add(t, "v2.1.0", FirmwareAsset, []byte("final"))
+	c := New(srv.URL+"/repos/me/paperboy/releases", "", t.TempDir())
+
+	releases, err := c.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(releases) != 2 || releases[0].Tag != "v2.2.0-rc.1" || !releases[0].Prerelease || releases[1].Prerelease {
+		t.Fatalf("releases: %+v", releases)
+	}
+	if releases[0].Version != "2.2.0-rc.1" {
+		t.Fatalf("version of a prerelease tag: %q", releases[0].Version)
+	}
+}
+
+// TestCachedVersionsAnswersWithoutADownload reads a zip once and answers its
+// versions afterwards, which keeps a pin's lookup free (ADR 0090).
+func TestPruneKeepsOneZipPerAsset(t *testing.T) {
+	rs, srv := newReleaseServer(t, "v2.1.0", "v2.0.0")
+	for _, tag := range []string{"v2.1.0", "v2.0.0"} {
+		rs.add(t, tag, PluginAsset(), zipOf(t, map[string]string{"plugins/weather-v1.0.0": "program"}))
+	}
+	c := New(srv.URL+"/repos/me/paperboy/releases", "", t.TempDir())
+	releases, err := c.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, archive, err := c.PluginZip(context.Background(), releases[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(c.Dir, "notes.txt"), []byte("stray"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c.Prune(archive)
+	entries, err := os.ReadDir(c.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var left []string
+	for _, e := range entries {
+		left = append(left, e.Name())
+	}
+	if len(left) != 2 || left[0] != "cache.json" || left[1] != filepath.Base(archive) {
+		t.Fatalf("cache after pruning: %v", left)
+	}
+}
+
+func TestCachedVersionsAnswersWithoutADownload(t *testing.T) {
+	rs, srv := newReleaseServer(t, "v2.1.0")
+	rs.add(t, "v2.1.0", PluginAsset(), zipOf(t, map[string]string{"plugins/weather-v1.4.0-rc.1": "program"}))
+	c := New(srv.URL+"/repos/me/paperboy/releases", "", t.TempDir())
+	releases, err := c.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := c.CachedVersions("v2.1.0"); ok {
+		t.Fatal("an unread release has no cached versions")
+	}
+	if _, _, err := c.PluginZip(context.Background(), releases[0]); err != nil {
+		t.Fatal(err)
+	}
+	versions, ok := c.CachedVersions("v2.1.0")
+	if !ok || versions["weather"] != "1.4.0-rc.1" {
+		t.Fatalf("cached versions: %v %v", versions, ok)
 	}
 }
 

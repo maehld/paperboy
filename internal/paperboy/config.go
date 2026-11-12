@@ -25,6 +25,7 @@ import (
 	"github.com/maehld/paperboy/internal/builtin"
 	"github.com/maehld/paperboy/internal/download"
 	"github.com/maehld/paperboy/internal/page"
+	"github.com/maehld/paperboy/internal/semver"
 	"github.com/maehld/paperboy/internal/widget"
 )
 
@@ -159,7 +160,18 @@ type DownloadConfig struct {
 	Source   string        // release origin; empty = the official repository
 	Token    string        // optional bearer token for the release API
 	Interval time.Duration // between release checks; default 24h, at least 1h
+
+	// PluginChannel and FirmwareChannel say which deliveries a check may
+	// install (ADR 0089): stable skips prereleases, latest takes them.
+	PluginChannel   string
+	FirmwareChannel string
 }
+
+// The two release channels (ADR 0089).
+const (
+	channelStable = "stable"
+	channelLatest = "latest"
+)
 
 const (
 	firmwareAuto         = "auto"
@@ -347,9 +359,11 @@ func (c *Config) minRefresh(d *Device, reported string) time.Duration {
 
 // downloadFile mirrors the download section of paperboy.yaml (ADR 0060).
 type downloadFile struct {
-	Source   string   `yaml:"source"`   // empty = the official repository
-	Token    string   `yaml:"token"`    // optional bearer token for the release API
-	Interval Duration `yaml:"interval"` // between release checks
+	Source          string   `yaml:"source"`           // empty = the official repository
+	Token           string   `yaml:"token"`            // optional bearer token for the release API
+	Interval        Duration `yaml:"interval"`         // between release checks
+	PluginChannel   string   `yaml:"plugin_channel"`   // stable or latest (ADR 0089)
+	FirmwareChannel string   `yaml:"firmware_channel"` // stable or latest (ADR 0089)
 }
 
 // fileConfig mirrors paperboy.yaml.
@@ -519,7 +533,9 @@ func LoadConfig(dir string) (*Config, error) {
 			token, _ = v.(string)
 		}
 		c.Download = &DownloadConfig{Source: f.Download.Source, Token: token,
-			Interval: time.Duration(f.Download.Interval)}
+			Interval:        time.Duration(f.Download.Interval),
+			PluginChannel:   f.Download.PluginChannel,
+			FirmwareChannel: f.Download.FirmwareChannel}
 	}
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -565,8 +581,8 @@ func (c *Config) validate() error {
 		return fmt.Errorf("firmware: invalid min_battery_volts")
 	}
 	if v := strings.TrimPrefix(strings.TrimSpace(c.Firmware.Version), "v"); v != "" {
-		if pinVersion(v) == nil {
-			return fmt.Errorf("firmware: version %q: expected a version like 1.0.0", c.Firmware.Version)
+		if _, ok := semver.Parse(v); !ok {
+			return fmt.Errorf("firmware: version %q: expected a version like 1.0.0 or 1.0.0-rc.1", c.Firmware.Version)
 		}
 		c.Firmware.Version = v
 	} else {
@@ -575,6 +591,13 @@ func (c *Config) validate() error {
 	if d := c.Download; d != nil {
 		if d.Source == "" {
 			d.Source = download.OfficialSource
+		}
+		var err error
+		if d.PluginChannel, err = parseChannel(d.PluginChannel); err != nil {
+			return fmt.Errorf("download: plugin_channel %q: %w", strings.TrimSpace(d.PluginChannel), err)
+		}
+		if d.FirmwareChannel, err = parseChannel(d.FirmwareChannel); err != nil {
+			return fmt.Errorf("download: firmware_channel %q: %w", strings.TrimSpace(d.FirmwareChannel), err)
 		}
 		if d.Interval == 0 {
 			d.Interval = defaultDownloadInterval
@@ -629,7 +652,7 @@ func (c *Config) validate() error {
 		if p.Version != "" {
 			v, ok := pluginPin(p.Version)
 			if !ok {
-				return fmt.Errorf("plugin %s: version %q: expected a version like v2.1.0", p.Name, p.Version)
+				return fmt.Errorf("plugin %s: version %q: expected a version like v2.1.0 or v2.1.0-rc.1", p.Name, p.Version)
 			}
 			p.Version = v
 		}
@@ -766,12 +789,27 @@ func (c *Config) normalizeDevice(d *Device) error {
 
 // pluginPin normalizes a pinned plugin version to the form in the file name
 // (ADR 0060): "2.1.0" and "v2.1.0" both become "v2.1.0".
+// pluginPin normalizes a configured plugin version ("v1.4.0" and "1.4.0" name
+// the same program); the leading v travels in the file name.
 func pluginPin(pin string) (string, bool) {
 	v := strings.TrimPrefix(strings.TrimSpace(pin), "v")
-	if !firmwareVersionPattern.MatchString(v) {
+	if _, ok := semver.Parse(v); !ok {
 		return "", false
 	}
 	return "v" + v, true
+}
+
+// parseChannel reads a configured channel (ADR 0089): an empty value is the
+// stable channel every instance has been following so far.
+func parseChannel(name string) (string, error) {
+	switch ch := strings.TrimSpace(name); ch {
+	case "":
+		return channelStable, nil
+	case channelStable, channelLatest:
+		return ch, nil
+	default:
+		return "", fmt.Errorf("expected %s or %s", channelStable, channelLatest)
+	}
 }
 
 // pluginSpecs returns the plugins for the widget host, with the global

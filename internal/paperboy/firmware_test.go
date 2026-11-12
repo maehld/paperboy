@@ -8,18 +8,24 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maehld/paperboy/internal/semver"
 )
 
 func TestFirmwareVersions(t *testing.T) {
-	a, _ := versionParts("0.10.0")
-	b, _ := versionParts("0.9.2")
-	if compareVersions(a, b) <= 0 {
+	a, _ := semver.Parse("0.10.0")
+	b, _ := semver.Parse("0.9.2")
+	if semver.Compare(a, b) <= 0 {
 		t.Fatal("0.10.0 must be higher than 0.9.2")
 	}
-	c, _ := versionParts("1.2")
-	d, _ := versionParts("1.2.0")
-	if compareVersions(c, d) != 0 {
+	c, _ := semver.Parse("1.2")
+	d, _ := semver.Parse("1.2.0")
+	if semver.Compare(c, d) != 0 {
 		t.Fatal("missing parts count as zero")
+	}
+	// A prerelease is lower than the image it precedes (ADR 0089).
+	if rc, _ := semver.Parse("0.10.0-rc.1"); semver.Compare(rc, a) >= 0 {
+		t.Fatal("0.10.0-rc.1 must be lower than 0.10.0")
 	}
 	for _, name := range []string{"sticky-0.4.0.ota.bin", "e1001-1.0.bin", "sticky-.bin", "sticky-1..2.bin", "sticky-1.0.bin.txt", "sticky-v1.0.bin.old"} {
 		if _, _, ok := parseFirmwareName("sticky", name); ok {
@@ -38,14 +44,20 @@ func TestFirmwareVersions(t *testing.T) {
 	if _, ok := splitFirmwareName("notes.txt"); ok {
 		t.Fatal("notes.txt is no image")
 	}
-	// A pin names the version with or without the v.
+	// A pin names the version with or without the v, a prerelease included.
 	for _, pin := range []string{"v0.10.0", "0.10.0"} {
-		if p := pinVersion(pin); p == nil || compareVersions(p, a) != 0 {
+		if p, ok := pinVersion(pin); !ok || semver.Compare(p, a) != 0 {
 			t.Fatalf("pin %q: %v", pin, p)
 		}
 	}
-	if pinVersion("") != nil || pinVersion("nope") != nil {
-		t.Fatal("empty and invalid pins must be ignored")
+	if p, ok := pinVersion("v0.10.0-rc.1"); !ok || p.String() != "0.10.0-rc.1" {
+		t.Fatalf("prerelease pin: %v %v", p, ok)
+	}
+	if _, ok := pinVersion(""); ok {
+		t.Fatal("an empty pin is no pin")
+	}
+	if _, ok := pinVersion("nope"); ok {
+		t.Fatal("an invalid pin must be ignored")
 	}
 }
 
