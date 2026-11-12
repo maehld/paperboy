@@ -185,7 +185,7 @@ func (e *evcc) Describe() plugin.Description {
 			{Widget: "values", Title: "Values", Kinds: both, MinWidth: 120, MinHeight: 40,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 1}, {Columns: 3, Rows: 2}, {Columns: 3, Rows: 3}, {Columns: 6, Rows: 1}, {Columns: 6, Rows: 2}},
 				Args: map[string]plugin.Arg{
-					"values":  {Type: "list", Default: []any{"pv", "home", "grid", "battery"}, Description: "the values to show", Enum: valueEnum()},
+					"values":  {Type: "list", Default: []any{"pv", "home", "grid", "battery"}, Description: "the values to show", Enum: valueEnum(), EnumLabels: valueLabels(e.lang)},
 					"columns": {Type: "int", Default: 1, Description: "values next to each other: 1 to 4", Enum: []any{1, 2, 3, 4}},
 				}},
 			{Widget: "chart", Title: "Energy chart", Kinds: []string{plugin.KindImage}, MinWidth: 240, MinHeight: 100,
@@ -205,7 +205,7 @@ func (e *evcc) Describe() plugin.Description {
 	}
 }
 
-func (e *evcc) Configure(cfg plugin.Values, _ *plugin.Request) error {
+func (e *evcc) Configure(cfg plugin.Values, req *plugin.Request) error {
 	if err := cfg.Check(configKeys); err != nil {
 		return err
 	}
@@ -227,6 +227,9 @@ func (e *evcc) Configure(cfg plugin.Values, _ *plugin.Request) error {
 	if historyRefresh < time.Minute {
 		return errors.New("history_refresh must be at least 1m")
 	}
+	// Describe has no language of its own; the configure request is where the
+	// plugin learns it, so the arg labels match the widgets.
+	e.lang = req.Lang()
 	e.base, e.refresh, e.historyRefresh = u.String(), refresh, historyRefresh
 	return nil
 }

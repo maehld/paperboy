@@ -80,8 +80,18 @@ input[type=search] { margin-bottom: .4rem; }
 .inspector .arg { margin-bottom: .35rem; }
 .inspector .arg .name { font-size: .78rem; color: #555; display: block; }
 .inspector .arg .desc { font-size: .72rem; color: #888; display: block; }
-.inspector .arg .checks { display: flex; flex-wrap: wrap; gap: .1rem .7rem; margin-top: .15rem; }
-.inspector .arg .checks label { display: flex; align-items: center; gap: .25rem; font-size: .78rem; color: #333; }
+.inspector .arg .checks { margin-top: .25rem; }
+.inspector .arg .checks-bar { display: flex; align-items: center; gap: .4rem; margin-bottom: .3rem; font-size: .74rem; color: #777; }
+.inspector .arg .checks-count { font-variant-numeric: tabular-nums; }
+.inspector .arg .checks-actions { display: flex; gap: .25rem; margin-left: auto; }
+.inspector .arg .checks-actions button { font: inherit; font-size: .74rem; padding: .05rem .45rem; border: 1px solid #c8d3e3; border-radius: 999px; background: #f7f9fc; color: #134e9c; cursor: pointer; }
+.inspector .arg .checks-actions button:hover { background: #e8f0fc; border-color: #b9cce8; }
+.inspector .arg .checks-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .15rem .35rem; }
+.inspector .arg .check { display: flex; align-items: center; gap: .35rem; min-width: 0; padding: .18rem .3rem; border: 1px solid transparent; border-radius: 4px; font-size: .78rem; line-height: 1.25; color: #333; cursor: pointer; }
+.inspector .arg .check:hover { background: #f1f5fb; }
+.inspector .arg .check:has(input:checked) { background: #e8f0fc; border-color: #c9d9ef; color: #134e9c; }
+.inspector .arg .check input { flex: none; margin: 0; }
+.inspector .arg .check span { min-width: 0; overflow-wrap: anywhere; }
 .inspector .row-buttons { display: flex; gap: .5rem; margin-top: .6rem; }
 .inspector .muted { margin: 0 0 .4rem; }
 .panel-head .muted, .panel-head button { margin-left: auto; }

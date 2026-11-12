@@ -582,7 +582,7 @@
       for (const value of arg.enum) {
         const option = document.createElement('option');
         option.value = String(value);
-        option.textContent = String(value);
+        option.textContent = enumLabel(arg, value);
         control.appendChild(option);
       }
       control.value = current === undefined ? '' : String(current);
@@ -595,27 +595,68 @@
         changed();
       });
     } else if (arg.type === 'list' && Array.isArray(arg.enum) && arg.enum.length) {
-      // A list with a fixed set: one check box per value.
+      // A list with a fixed set: one check box per value in two columns,
+      // with a select all/none bar when the list is long enough to need it.
       control = document.createElement('div');
       control.className = 'checks';
+      control.setAttribute('role', 'group');
+      control.setAttribute('aria-label', name);
       const chosen = (Array.isArray(current) ? current : Array.isArray(arg.default) ? arg.default : []).map(String);
-      const pick = () => {
-        const picked = [...control.querySelectorAll('input')].filter((i) => i.checked).map((i) => i.value);
-        if (picked.length === 0) delete action.args[name];
-        else action.args[name] = picked;
-        changed();
-      };
+      const grid = document.createElement('div');
+      grid.className = 'checks-grid';
+      const boxes = [];
+      let count = null;
       for (const value of arg.enum) {
         const item = document.createElement('label');
+        item.className = 'check';
         const box = document.createElement('input');
         box.type = 'checkbox';
         box.value = String(value);
         box.checked = chosen.includes(String(value));
-        box.addEventListener('change', pick);
-        item.appendChild(box);
-        item.appendChild(document.createTextNode(String(value)));
-        control.appendChild(item);
+        const text = document.createElement('span');
+        text.textContent = enumLabel(arg, value);
+        text.title = String(value);
+        item.append(box, text);
+        grid.appendChild(item);
+        boxes.push(box);
       }
+      const pick = () => {
+        const picked = boxes.filter((i) => i.checked).map((i) => i.value);
+        if (count) count.textContent = picked.length + ' of ' + boxes.length;
+        // An empty pick stays an empty list when the arg has a default, so
+        // "None" means none and not "show the defaults again".
+        if (picked.length === 0) {
+          if (Array.isArray(arg.default)) action.args[name] = [];
+          else delete action.args[name];
+        } else {
+          action.args[name] = picked;
+        }
+        changed();
+      };
+      if (arg.enum.length > 3) {
+        const bar = document.createElement('div');
+        bar.className = 'checks-bar';
+        count = document.createElement('span');
+        count.className = 'checks-count';
+        count.textContent = chosen.length + ' of ' + arg.enum.length;
+        const actions = document.createElement('span');
+        actions.className = 'checks-actions';
+        for (const [label, title, on] of [['All', 'Select all values', true], ['None', 'Clear the selection', false]]) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = label;
+          button.title = title;
+          button.addEventListener('click', () => {
+            for (const box of boxes) box.checked = on;
+            pick();
+          });
+          actions.appendChild(button);
+        }
+        bar.append(count, actions);
+        control.appendChild(bar);
+      }
+      control.appendChild(grid);
+      for (const box of boxes) box.addEventListener('change', pick);
     } else {
       control = document.createElement('input');
       control.type = 'text';
@@ -638,6 +679,13 @@
       wrap.appendChild(desc);
     }
     return wrap;
+  }
+
+  // enumLabel is the display text of an enum value; the stored value stays
+  // the key, and plugins without labels keep the key as the label.
+  function enumLabel(arg, value) {
+    const key = String(value);
+    return (arg && arg.enum_labels && arg.enum_labels[key]) || key;
   }
 
   function argValue(raw, arg) {
