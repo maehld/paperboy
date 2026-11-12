@@ -20,7 +20,7 @@ Paperboy ships the plugins below. One zip per platform (`paperboy-plugins-linux-
 - [`departures`](departures.md) – real-time public transport departures from an EFA installation.
 - [`myskoda`](myskoda.md) – battery, charging plans, parking position and the vehicle image from the [MyŠkoda Public API](https://public.api.connect.skoda-auto.cz/docs).
 - [`weather`](weather.md) – current weather and forecast from [Open-Meteo](https://open-meteo.com/).
-- [`calendar`](calendar.md) – agenda, week and month from CalDAV and iCalendar.
+- [`calendar`](calendar.md) – agenda, week, month and birthdays from CalDAV and iCalendar.
 - [`pokedex`](pokedex.md) – a Pokémon card from [PokéAPI](https://pokeapi.co).
 - [`xkcd`](xkcd.md) – [xkcd](https://xkcd.com) comics.
 - [`countdown`](countdown.md) – days to a date, optionally with a progress bar.

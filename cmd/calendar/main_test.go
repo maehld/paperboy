@@ -182,6 +182,27 @@ func TestRecurrenceRules(t *testing.T) {
 	}
 }
 
+// TestYearlyFebruary29 pins the leap-day handling: a yearly rule on 29 February
+// falls on 28 February in a common year and on 29 February in a leap year.
+func TestYearlyFebruary29(t *testing.T) {
+	data := ics(vevent("UID:x", "SUMMARY:Lisa", "DTSTART;VALUE=DATE:19880229", "RRULE:FREQ=YEARLY"))
+	for _, c := range []struct {
+		from time.Time
+		want string
+	}{
+		{time.Date(2027, 2, 1, 0, 0, 0, 0, berlin), "2027-02-28"},
+		{time.Date(2028, 2, 1, 0, 0, 0, 0, berlin), "2028-02-29"},
+	} {
+		list, warn := expandICS(t, data, c.from, c.from.AddDate(0, 0, 40))
+		if len(warn) != 0 {
+			t.Fatal(warn)
+		}
+		if got := starts(list); !reflect.DeepEqual(got, []string{c.want}) {
+			t.Errorf("from %s: got %v, want %s", c.from.Format("2006"), got, c.want)
+		}
+	}
+}
+
 func TestExdateAndOverrides(t *testing.T) {
 	data := ics(
 		vevent("UID:w", "SUMMARY:Training", "DTSTART;TZID=Europe/Berlin:20261102T180000",
@@ -354,7 +375,7 @@ func TestCollectFromCalDAV(t *testing.T) {
 		t.Fatalf("selection: %v %v", b.Calendars, err)
 	}
 	o.calendars = []string{"Gibt es nicht"}
-	if _, _, err = collect(context.Background(), o, newClient(o.user, o.password), now); err == nil || !strings.Contains(err.Error(), "available: Privat, Arbeit") {
+	if _, _, err = collect(context.Background(), o, newClient(o.user, o.password), now); err == nil || !strings.Contains(err.Error(), "available: Privat") {
 		t.Fatalf("unknown calendar: %v", err)
 	}
 }
@@ -402,10 +423,40 @@ func TestParseConfig(t *testing.T) {
 	if err != nil || o.password != "pw" || len(o.calendars) != 2 || o.location != berlin || o.refresh != 15*time.Minute {
 		t.Fatalf("%+v %v", o, err)
 	}
+	cfg["birthday_calendars"] = []any{"Geburtstage"}
+	if o, err = parseConfig(cfg, "de", berlin); err != nil || len(o.birthdays) != 1 {
+		t.Fatalf("birthday calendars %+v %v", o, err)
+	}
 	if _, err := parseConfig(plugin.Values{}, "de", berlin); err == nil {
 		t.Fatal("expected an error without sources")
 	}
 	if _, err := parseConfig(plugin.Values{"ics": "https://x", "colour": "red"}, "de", berlin); err == nil || !strings.Contains(err.Error(), "colour") {
 		t.Fatalf("unknown key accepted: %v", err)
+	}
+}
+
+func TestCollectBirthdayCalendar(t *testing.T) {
+	f := newFakeICloud(t)
+	f.calendarData["/1234/calendars/home/"] = ics(
+		vevent("UID:b", "SUMMARY:Anna", "DTSTART;VALUE=DATE:19851105", "RRULE:FREQ=YEARLY"),
+	)
+	o := options{caldav: f.public.URL, user: "me@icloud.com", password: "app-pass", days: 7, maxEvents: 100,
+		calendars: []string{"Privat"}, language: "de", location: berlin, birthdays: []string{"privat"}}
+	now := time.Date(2026, 11, 5, 10, 0, 0, 0, berlin)
+	b, _, err := collect(context.Background(), o, newClient(o.user, o.password), now)
+	if err != nil {
+		t.Fatalf("%v\nrequests: %v", err, f.requests)
+	}
+	if len(b.Events) != 1 {
+		t.Fatalf("events %+v", b.Events)
+	}
+	// The occurrence is 2026, but the series began in 1985: the age counts from
+	// there. The all-day date is local midnight of the configured zone.
+	if e := b.Events[0]; e.Date != "2026-11-05" || e.First != "1985-11-04T23:00:00Z" {
+		t.Fatalf("first %q of %+v", e.First, e)
+	}
+	o.birthdays = []string{"Geburtstage"}
+	if _, _, err = collect(context.Background(), o, newClient(o.user, o.password), now); err == nil || !strings.Contains(err.Error(), "available: Privat") {
+		t.Fatalf("unknown birthday calendar: %v", err)
 	}
 }

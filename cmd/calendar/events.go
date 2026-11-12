@@ -9,8 +9,11 @@ import (
 
 // occurrence is one concrete appointment in the window.
 type occurrence struct {
-	Start    time.Time
-	End      time.Time
+	Start time.Time
+	End   time.Time
+	// First is DTSTART of the series, not of the occurrence: a yearly birthday
+	// carries the year of birth there.
+	First    time.Time
 	AllDay   bool
 	Title    string
 	Location string
@@ -61,11 +64,23 @@ func occurrences(roots []*component, calendar string, z *zones, from, to time.Ti
 		replaced[o.uid+"|"+key(*o.recur)] = true
 	}
 
+	// first keeps DTSTART of the series per UID, so an override that the server
+	// returns without its master still knows when the series began.
+	first := map[string]time.Time{}
+	for _, m := range masters {
+		if _, ok := first[m.uid]; !ok {
+			first[m.uid] = m.start.Time
+		}
+	}
+
 	var out []occurrence
 	add := func(m *master, start time.Time) {
 		occ := occurrence{
-			Start: start, AllDay: m.start.IsDate,
+			Start: start, First: m.start.Time, AllDay: m.start.IsDate,
 			Title: m.title, Location: m.location, Calendar: calendar, UID: m.uid,
+		}
+		if f, ok := first[m.uid]; ok {
+			occ.First = f
 		}
 		if m.start.IsDate {
 			occ.End = start.AddDate(0, 0, m.days)

@@ -9,7 +9,7 @@ rules:
     refresh: 5m
   - name: day
     when: { from: "07:00", to: "22:00" }
-    pages: [uebersicht, energie, ertrag, unterwegs, woche, kalender, wetter, laden, auto, abfahrten, nachrichten, pokemon, comic, countdown]
+    pages: [uebersicht, energie, ertrag, unterwegs, woche, kalender, wetter, laden, auto, abfahrten, nachrichten, pokemon, comic, countdown, geburtstage]
     rotate: true
     refresh: 10m
   - name: night

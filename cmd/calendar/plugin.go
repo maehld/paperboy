@@ -102,6 +102,17 @@ func (p *calendarPlugin) Describe() plugin.Description {
 					"headings": {Type: "bool", Default: true, Description: "day headings"},
 					"days":     {Type: "int", Description: "days to show starting today, 1 to the configured days (clamped); default: the configured days"},
 					"empty":    {Type: "bool", Description: "show days without events with \"No events\"; default true when days is set"},
+					"age":      {Type: "bool", Default: false, Description: "append the age of birthdays from the configured birthday calendars"},
+				},
+			},
+			{
+				Widget: "birthdays", Title: "Next birthdays", Kinds: both,
+				Sizes:    []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 3, Rows: 7}, {Columns: 6, Rows: 4}},
+				MinWidth: 160, MinHeight: 80,
+				Args: map[string]plugin.Arg{
+					"lines":    {Type: "int", Description: "number of text lines on image displays; default: as many as the page's text size allows (text displays use the cell height)"},
+					"headings": {Type: "bool", Default: true, Description: "day headings"},
+					"days":     {Type: "int", Description: "days to show starting today, 1 to the loaded window (the configured days, but at least the month grid's 42 days); default: the loaded window"},
 				},
 			},
 			{
@@ -165,7 +176,7 @@ func (p *calendarPlugin) Prepare(req *plugin.Request) error {
 
 func (p *calendarPlugin) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	switch w.Widget {
-	case "agenda":
+	case "agenda", "birthdays":
 		p.agenda(req, w, img)
 	case "month":
 		p.month(req, w, img)
@@ -181,8 +192,8 @@ func (p *calendarPlugin) Render(req *plugin.Request, w plugin.WidgetRequest, img
 // lines, the month as the remaining days of the week with their events.
 func (p *calendarPlugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
 	switch w.Widget {
-	case "agenda":
-		opts := p.agendaArgs(w.Arg(), w.Height > 2)
+	case "agenda", "birthdays":
+		opts := p.widgetArgs(w, w.Height > 2)
 		lines, hidden := p.agendaLines(w.Height, opts)
 		// A text display puts the summary on a line of its own, so keep one free
 		// while events remain.
@@ -190,7 +201,7 @@ func (p *calendarPlugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]st
 			lines, hidden = p.agendaLines(w.Height-1, opts)
 		}
 		if len(lines) == 0 {
-			return []string{p.text("Keine Termine", "No events")}, nil
+			return []string{p.emptyText(opts)}, nil
 		}
 		if hidden > 0 && len(lines) < w.Height {
 			lines = append(lines, agendaLine{text: p.moreText(hidden)})
@@ -201,9 +212,9 @@ func (p *calendarPlugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]st
 			case l.heading:
 				out = append(out, l.text+":")
 			case l.when != "":
-				out = append(out, shortWhen(l.when)+" "+l.text)
+				out = append(out, shortWhen(l.when)+" "+p.lineText(l, false))
 			default:
-				out = append(out, l.text)
+				out = append(out, p.lineText(l, false))
 			}
 		}
 		return out, nil
@@ -246,17 +257,38 @@ func (p *calendarPlugin) text(de, en string) string {
 // ---- agenda ----
 
 type agendaLine struct {
-	heading bool
-	event   bool
-	when    string
-	text    string
+	heading  bool
+	event    bool
+	when     string
+	text     string // title, or the heading or the "no events" text
+	location string // appended to the title when the cell asks for it
+	age      int    // birthday age in years, 0 when unknown
+}
+
+// lineText returns what a cell shows for an event line; text displays put the
+// age in parentheses to keep the line short.
+func (p *calendarPlugin) lineText(l agendaLine, wide bool) string {
+	text := l.text
+	if l.age > 0 {
+		if wide {
+			text += " " + fmt.Sprintf(p.text("wird %d", "turns %d"), l.age)
+		} else {
+			text += fmt.Sprintf(" (%d)", l.age)
+		}
+	}
+	if l.location != "" {
+		text += " · " + l.location
+	}
+	return text
 }
 
 type parsedEvent struct {
 	start, end time.Time
+	first      time.Time // DTSTART of the series; the birth date of a birthday
 	allDay     bool
 	title      string
 	location   string
+	calendar   string
 }
 
 func (p *calendarPlugin) parsed() []parsedEvent {
@@ -270,9 +302,40 @@ func (p *calendarPlugin) parsed() []parsedEvent {
 		if err2 != nil || en.Before(s) {
 			en = s
 		}
-		out = append(out, parsedEvent{start: s, end: en, allDay: e.AllDay, title: e.Title, location: e.Location})
+		first, err := time.Parse(time.RFC3339, e.First)
+		if err != nil {
+			first = s
+		}
+		out = append(out, parsedEvent{start: s, end: en, first: first, allDay: e.AllDay, title: e.Title, location: e.Location, calendar: e.Calendar})
 	}
 	return out
+}
+
+// birthday reports whether an event belongs to one of the configured birthday
+// calendars, matched by display name like the calendars section.
+func (p *calendarPlugin) birthday(calendar string) bool {
+	for _, name := range p.opts.birthdays {
+		if strings.EqualFold(strings.TrimSpace(name), calendar) {
+			return true
+		}
+	}
+	return false
+}
+
+// birthdayAge returns the age a person turns on the day of the occurrence. The
+// year comes from DTSTART of the recurring series, which the Apple and
+// Nextcloud birthday calendars carry. It reports false for other calendars,
+// implausible years and the day of birth itself.
+func (p *calendarPlugin) birthdayAge(e parsedEvent) (int, bool) {
+	if !p.birthday(e.calendar) || e.first.IsZero() {
+		return 0, false
+	}
+	year := e.first.In(p.loc).Year()
+	age := e.start.In(p.loc).Year() - year
+	if year < 1900 || age < 1 || age > 130 {
+		return 0, false
+	}
+	return age, true
 }
 
 func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) {
@@ -290,9 +353,10 @@ func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img
 	size := 0.6 * float64(lineH)
 	baseline := func(i int) int { return area.Min.Y + i*lineH + lineH/2 + int(size*0.36) }
 
-	all, whenW, inline := p.agendaLayout(lines, p.agendaArgs(a, lines > 1), area, size)
+	opts := p.widgetArgs(w, lines > 1)
+	all, whenW, inline := p.agendaLayout(lines, opts, area, size)
 	if len(all) == 0 {
-		render.Text(img, p.text("Keine Termine", "No events"), area.Min.X+area.Dx()/2, baseline(0),
+		render.Text(img, p.emptyText(opts), area.Min.X+area.Dx()/2, baseline(0),
 			render.Style{Size: size, Shrink: true}, area.Dx(), color.Black, render.Center)
 		return
 	}
@@ -318,7 +382,7 @@ func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img
 		if last && inline != "" {
 			width -= render.Measure(inline, size, false) + gap
 		}
-		text := render.Ellipsize(l.text, size, false, width)
+		text := render.Ellipsize(p.lineText(l, true), size, false, width)
 		render.TextAt(img, text, textX, y, size, false, color.Black, render.Left)
 		if last && inline != "" {
 			render.TextAt(img, inline, textX+render.Measure(text, size, false)+gap, y, size, false, color.Black, render.Left)
@@ -362,7 +426,7 @@ func (p *calendarPlugin) agendaLayout(lines int, o agendaOpts, area image.Rectan
 		// The separator matches the location that titles carry.
 		behind := "· " + more
 		switch {
-		case agendaMoreFits(all[len(all)-1], behind, size, gap, area.Max.X-textX):
+		case p.agendaMoreFits(all[len(all)-1], behind, size, gap, area.Max.X-textX):
 			inline = behind
 		case lines > 1:
 			all, hidden = p.agendaLines(lines-1, o)
@@ -382,13 +446,15 @@ func (p *calendarPlugin) moreText(n int) string {
 
 // agendaMoreFits reports whether the summary fits behind the line without
 // cutting its title; day headings and free days do not take one.
-func agendaMoreFits(l agendaLine, more string, size float64, gap, width int) bool {
-	return l.event && render.Measure(l.text, size, false)+gap+render.Measure(more, size, false) <= width
+func (p *calendarPlugin) agendaMoreFits(l agendaLine, more string, size float64, gap, width int) bool {
+	return l.event && render.Measure(p.lineText(l, true), size, false)+gap+render.Measure(more, size, false) <= width
 }
 
 // agendaOpts are the arguments of one agenda widget.
 type agendaOpts struct {
 	headings, location bool
+	age                bool // append the age of birthdays
+	birthdays          bool // only events of the configured birthday calendars
 	days               int  // days from today, 1 to the configured days
 	empty              bool // show days without events
 }
@@ -400,9 +466,39 @@ func (p *calendarPlugin) agendaArgs(a plugin.Values, headings bool) agendaOpts {
 	return agendaOpts{
 		headings: a.Bool("headings", headings),
 		location: a.Bool("location", false),
+		age:      a.Bool("age", false),
 		days:     min(max(a.Int("days", limit), 1), limit),
 		empty:    a.Bool("empty", set),
 	}
+}
+
+// widgetArgs reads the arguments of the agenda or the birthdays widget.
+func (p *calendarPlugin) widgetArgs(w plugin.WidgetRequest, headings bool) agendaOpts {
+	if w.Widget == "birthdays" {
+		return p.birthdayArgs(w.Arg(), headings)
+	}
+	return p.agendaArgs(w.Arg(), headings)
+}
+
+// birthdayArgs reads the arguments of the birthdays widget: only birthdays,
+// always with the age and never a day without one. The window reaches as far as
+// the loaded events do, which is at least the 42 days the month grid needs.
+func (p *calendarPlugin) birthdayArgs(a plugin.Values, headings bool) agendaOpts {
+	limit := max(p.opts.days, 42)
+	return agendaOpts{
+		birthdays: true,
+		age:       true,
+		headings:  a.Bool("headings", headings),
+		days:      min(max(a.Int("days", limit), 1), limit),
+	}
+}
+
+// emptyText is the message of a cell without events to show.
+func (p *calendarPlugin) emptyText(o agendaOpts) string {
+	if o.birthdays {
+		return p.text("Keine Geburtstage", "No birthdays")
+	}
+	return p.text("Keine Termine", "No events")
 }
 
 // agendaLines returns at most maxLines lines and the number of events that did
@@ -438,6 +534,9 @@ func (p *calendarPlugin) agendaList(maxLines int, o agendaOpts) ([]agendaLine, i
 	var upcoming []dated
 	horizon := today.AddDate(0, 0, o.days)
 	for _, e := range p.parsed() {
+		if o.birthdays && !p.birthday(e.calendar) {
+			continue
+		}
 		if !e.start.Before(horizon) {
 			continue
 		}
@@ -483,7 +582,7 @@ func (p *calendarPlugin) agendaList(maxLines int, o agendaOpts) ([]agendaLine, i
 			lastDay = d.day
 		}
 		if d.empty {
-			line := agendaLine{text: p.text("Keine Termine", "No events")}
+			line := agendaLine{text: p.emptyText(o)}
 			if !headings && !d.day.Equal(today) {
 				line.when = weekday(d.day, p.lang)
 			}
@@ -491,8 +590,17 @@ func (p *calendarPlugin) agendaList(maxLines int, o agendaOpts) ([]agendaLine, i
 			continue
 		}
 		line := agendaLine{event: true, when: p.when(d.parsedEvent, d.day, today, headings), text: strings.TrimSpace(d.title)}
+		if o.birthdays && headings {
+			// The day heading already names the date; a birthday is all-day.
+			line.when = ""
+		}
 		if location && strings.TrimSpace(d.location) != "" {
-			line.text += " · " + strings.TrimSpace(d.location)
+			line.location = strings.TrimSpace(d.location)
+		}
+		if o.age {
+			if age, ok := p.birthdayAge(d.parsedEvent); ok {
+				line.age = age
+			}
 		}
 		eventIdx = append(eventIdx, len(all))
 		all = append(all, line)

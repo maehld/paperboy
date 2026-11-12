@@ -1,0 +1,10 @@
+# The next birthdays with the age from the birthday calendar
+# (`birthday_calendars` in paperboy.yaml), next to the next few days with the
+# age in the agenda.
+title: Geburtstage
+grid: [6, 8]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
+  - { at: [0, 1], span: [4, 7], widget: calendar/birthdays, args: { lines: 12 } }
+  - { at: [4, 1], span: [2, 7], widget: calendar/agenda, args: { lines: 12, days: 3, empty: false, age: true } }
