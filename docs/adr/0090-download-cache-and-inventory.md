@@ -1,6 +1,6 @@
 # 0090: The download cache keeps one file, the inventory is pruned by hand
 
-- Status: Proposed
+- Status: Accepted, implemented
 - Date: 2026-11-12
 - Builds on: ADR 0043 (firmware distribution), 0060 (downloads), 0061 (every bundle image), 0062 (plugin updates), 0075 (a version per plugin), 0089 (release channels)
 - Amends: ADR 0060 §4 (the layout of `state/download`, and the learned entry lists outlive the zip)
@@ -43,9 +43,9 @@ Because a pin is answered from those lists, `Bundle` and `PluginZip` stop requir
 - every version a pin names in `paperboy.yaml` or a device file,
 - every version a device reports or is being offered right now,
 - programs whose name does not follow the version pattern — a hand-built or unversioned file (ADR 0075 §2),
-- the newest `keep` versions as a safety net (default 2).
+- the newest two versions as a safety net.
 
-It skips the file of a plugin that is running, and a delete that Windows refuses because the file is locked is simply retried on the next click. The result names what went, and nothing else in the instance directory is touched.
+A file that Windows refuses to delete because its program is running is logged and stays for the next click. The result names what went, and nothing else in the instance directory is touched.
 
 ### 5. A failed check deletes nothing
 

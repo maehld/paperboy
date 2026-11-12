@@ -25,10 +25,11 @@ type releaseFeed struct {
 	t     *testing.T
 	tags  []string
 	files map[string][]byte // "<tag>/<name>"
+	pre   map[string]bool   // tag -> published as a prerelease (ADR 0089)
 }
 
 func newReleaseFeed(t *testing.T, tags ...string) (*releaseFeed, *httptest.Server) {
-	f := &releaseFeed{t: t, tags: tags, files: map[string][]byte{}}
+	f := &releaseFeed{t: t, tags: tags, files: map[string][]byte{}, pre: map[string]bool{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/repos/me/paperboy/releases", func(w http.ResponseWriter, r *http.Request) {
 		type asset struct {
@@ -36,12 +37,13 @@ func newReleaseFeed(t *testing.T, tags ...string) (*releaseFeed, *httptest.Serve
 			URL  string `json:"browser_download_url"`
 		}
 		type release struct {
-			TagName string  `json:"tag_name"`
-			Assets  []asset `json:"assets"`
+			TagName    string  `json:"tag_name"`
+			Prerelease bool    `json:"prerelease"`
+			Assets     []asset `json:"assets"`
 		}
 		var out []release
 		for _, tag := range f.tags {
-			rel := release{TagName: tag}
+			rel := release{TagName: tag, Prerelease: f.pre[tag]}
 			for key := range f.files {
 				fileTag, name, ok := strings.Cut(key, "/")
 				if ok && fileTag == tag {
@@ -427,4 +429,169 @@ func exeSuffix() string {
 		return ".exe"
 	}
 	return ""
+}
+
+// prereleaseFeed is a release feed with one final and one prerelease release,
+// each carrying a plugin program and a firmware image of the same version.
+func prereleaseFeed(t *testing.T) (*releaseFeed, *httptest.Server) {
+	t.Helper()
+	feed, srv := newReleaseFeed(t, "v2.2.0-rc.1", "v2.1.0")
+	feed.pre["v2.2.0-rc.1"] = true
+	feed.add("v2.2.0-rc.1", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.1.0-rc.1"): "rc program"}))
+	feed.add("v2.2.0-rc.1", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.1.0-rc.1.bin": "rc image"}))
+	feed.add("v2.1.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.0.0"): "released program"}))
+	feed.add("v2.1.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "released image"}))
+	return feed, srv
+}
+
+// TestDownloadChannels verifies that the channel decides which delivery a check
+// may install (ADR 0089).
+func TestDownloadChannels(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		channel string
+		program string
+		image   string
+	}{
+		{"stable", "", "testplugin-v1.0.0", "e1001-v1.0.0.bin"},
+		{"latest", "  plugin_channel: latest\n  firmware_channel: latest\n", "testplugin-v1.1.0-rc.1", "e1001-v1.1.0-rc.1.bin"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, srv := prereleaseFeed(t)
+			s := testDownloadServer(t, downloadConfigInterval(t, srv.URL+"/repos/me/paperboy/releases", "", "", tc.channel))
+			if err := s.downloadOnce(context.Background(), s.config()); err != nil {
+				t.Fatal(err)
+			}
+			cfg := s.config()
+			program, _ := pluginProgram(cfg.PluginsDir, "testplugin", "")
+			if !strings.HasSuffix(program, tc.program+exeSuffix()) {
+				t.Fatalf("plugin program: %q", program)
+			}
+			if _, err := os.Stat(filepath.Join(cfg.FirmwareDir, tc.image)); err != nil {
+				t.Fatalf("firmware image %s: %v", tc.image, err)
+			}
+			// The other channel's image is not touched: a check installs one
+			// delivery, it does not mix them.
+			other := "e1001-v1.1.0-rc.1.bin"
+			if tc.name == "latest" {
+				other = "e1001-v1.0.0.bin"
+			}
+			if _, err := os.Stat(filepath.Join(cfg.FirmwareDir, other)); !os.IsNotExist(err) {
+				t.Fatalf("channel %s installed %s", tc.name, other)
+			}
+		})
+	}
+}
+
+// TestDownloadPinBypassesChannel verifies that a pin names a version, not a
+// delivery: a version out of a prerelease release is installed although the
+// channel is stable (ADR 0089).
+func TestDownloadPinBypassesChannel(t *testing.T) {
+	feed, srv := newReleaseFeed(t, "plugins-v2.2.0-rc.1", "v2.1.0")
+	feed.pre["plugins-v2.2.0-rc.1"] = true
+	feed.add("plugins-v2.2.0-rc.1", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.5.0-rc.1"): "pinned rc"}))
+	feed.add("v2.1.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
+	s := testDownloadServer(t, downloadConfig(t, srv.URL+"/repos/me/paperboy/releases", "    version: v1.5.0-rc.1\n", ""))
+	if err := s.downloadOnce(context.Background(), s.config()); err != nil {
+		t.Fatal(err)
+	}
+	program, version := pluginProgram(s.config().PluginsDir, "testplugin", "v1.5.0-rc.1")
+	if !strings.HasSuffix(program, "testplugin-v1.5.0-rc.1"+exeSuffix()) || version != "v1.5.0-rc.1" {
+		t.Fatalf("pinned prerelease: %q %q", program, version)
+	}
+}
+
+// TestDownloadChannelSkipsPrereleaseInAStableRelease covers the second guard: a
+// release nobody flagged must not smuggle an rc into stable (ADR 0089).
+func TestDownloadChannelSkipsPrereleaseInAStableRelease(t *testing.T) {
+	feed, srv := newReleaseFeed(t, "v2.1.0")
+	feed.add("v2.1.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.0.0-rc.1"): "rc program"}))
+	feed.add("v2.1.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0-rc.1.bin": "rc image"}))
+	s := testDownloadServer(t, downloadConfig(t, srv.URL+"/repos/me/paperboy/releases", "", ""))
+	if err := s.downloadOnce(context.Background(), s.config()); err != nil {
+		t.Fatal(err)
+	}
+	if program, _ := pluginProgram(s.config().PluginsDir, "testplugin", ""); program != "" {
+		t.Fatalf("stable installed a prerelease program: %q", program)
+	}
+	entries, err := os.ReadDir(s.config().FirmwareDir)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("stable installed a prerelease image: %v", entries)
+	}
+}
+
+// TestDownloadChannelValidation checks the two keys and their defaults.
+func TestDownloadChannelValidation(t *testing.T) {
+	cfg, _, err := loadConfig(t, downloadConfig(t, "https://example.invalid", "", ""))
+	if err != nil || cfg.Download.PluginChannel != channelStable || cfg.Download.FirmwareChannel != channelStable {
+		t.Fatalf("default channels: %+v %v", cfg.Download, err)
+	}
+	cfg, _, err = loadConfig(t, downloadConfigInterval(t, "https://example.invalid", "", "",
+		"  plugin_channel: latest\n"))
+	if err != nil || cfg.Download.PluginChannel != channelLatest || cfg.Download.FirmwareChannel != channelStable {
+		t.Fatalf("one key alone: %+v %v", cfg.Download, err)
+	}
+	if _, _, err := loadConfig(t, downloadConfigInterval(t, "https://example.invalid", "", "",
+		"  firmware_channel: beta\n")); err == nil || !strings.Contains(err.Error(), "expected stable or latest") {
+		t.Fatalf("unknown channel: %v", err)
+	}
+}
+
+// TestDownloadCacheKeepsOneFilePerTrain verifies the cache layout: one directory
+// per train, one zip per asset, and the learned entry lists survive it
+// (ADR 0090).
+func TestDownloadCacheKeepsOneFilePerTrain(t *testing.T) {
+	feed, srv := newReleaseFeed(t, "v2.1.0")
+	feed.add("v2.1.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.0.0"): "program"}))
+	feed.add("v2.1.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
+	s := testDownloadServer(t, downloadConfig(t, srv.URL+"/repos/me/paperboy/releases", "", ""))
+	check := func() {
+		t.Helper()
+		if err := s.downloadOnce(context.Background(), s.config()); err != nil {
+			t.Fatal(err)
+		}
+		for _, train := range []string{"plugins", "firmware"} {
+			dir := filepath.Join(s.config().Dir, "state", "download", train)
+			files := cacheFiles(t, dir)
+			if len(files) != 1 {
+				t.Fatalf("%s cache: %v", train, files)
+			}
+			if _, err := os.Stat(filepath.Join(dir, "cache.json")); err != nil {
+				t.Fatalf("%s cache.json: %v", train, err)
+			}
+		}
+	}
+	check()
+	feed.tags = []string{"v2.2.0", "v2.1.0"}
+	feed.add("v2.2.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.1.0"): "newer program"}))
+	feed.add("v2.2.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.1.0.bin": "newer image"}))
+	check()
+	if _, version := pluginProgram(s.config().PluginsDir, "testplugin", ""); version != "v1.1.0" {
+		t.Fatalf("the second check must install the newer program, got %q", version)
+	}
+	// The programs and images are the inventory: both versions stay (ADR 0090).
+	for _, name := range []string{"testplugin-v1.0.0", "testplugin-v1.1.0"} {
+		if _, err := os.Stat(filepath.Join(s.config().PluginsDir, name+exeSuffix())); err != nil {
+			t.Fatalf("inventory lost %s: %v", name, err)
+		}
+	}
+}
+
+// cacheFiles lists the archives of a cache directory, cache.json aside.
+func cacheFiles(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, e := range entries {
+		if e.Name() != "cache.json" && !e.IsDir() {
+			out = append(out, e.Name())
+		}
+	}
+	return out
 }

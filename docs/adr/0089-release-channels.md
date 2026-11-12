@@ -1,6 +1,6 @@
 # 0089: Release channels and prerelease versions
 
-- Status: Proposed
+- Status: Accepted, implemented
 - Date: 2026-11-12
 - Builds on: ADR 0043 (firmware distribution), 0056 (release trains), 0060 (downloads), 0062 (plugin updates and download control), 0075 (a version per plugin)
 - Amends: ADR 0060 §1 (the newest release is the newest of the chosen channel), ADR 0062 §1 (newer within that channel), ADR 0075 §2 (a program's name may carry a prerelease suffix)
@@ -27,7 +27,7 @@ A second question is what a prerelease is *called*. If the flag alone marks it, 
 
 ### 1. A version may carry a prerelease suffix
 
-`1.4.0`, `1.4.0-rc.1`, `1.4.0-rc.2`, `1.4.0-beta.3`. `internal/version` parses and compares them by SemVer precedence: the numeric parts first, then the suffix, where a version without one is the highest, numeric segments compare as numbers and the others lexically, and missing segments count as zero. The names keep their shape: `plugins/<plugin>-v<version>` and `firmware/<hardware>-v<version>.bin` (ADR 0075, 0043).
+`1.4.0`, `1.4.0-rc.1`, `1.4.0-rc.2`, `1.4.0-beta.3`. `internal/semver` parses and compares them by SemVer precedence: the numeric parts first, then the suffix, where a version without one is the highest, numeric segments compare as numbers and the others lexically, and missing segments count as zero. The names keep their shape: `plugins/<plugin>-v<version>` and `firmware/<hardware>-v<version>.bin` (ADR 0075, 0043).
 
 `versionParts`, `compareVersions` and `pinVersion` (all `[]int`) are replaced by that type, and `pluginVersionNewer` and the firmware store use it. A version that does not parse is logged; today `pluginVersionNewer` answers "not newer" for an unparsable candidate, so an rc-capable version would silently never install.
 
