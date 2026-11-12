@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -40,7 +41,6 @@ type downloadsView struct {
 	Error           string // last error, empty when the check succeeded
 	Plugins         []downloadPluginRow
 	Firmware        []downloadFirmwareRow
-	Devices         []downloadDeviceRow
 	Issues          []string // ignored files in the firmware directory
 
 	// The inventory of plugins/ and firmware/ and its prune action (ADR 0090).
@@ -58,6 +58,7 @@ type downloadPluginRow struct {
 	Version        string // downloaded version, empty for a hand-built or PATH program
 	Pin            string // pinned version
 	Program        string // file name of the program, "not found" when unresolved
+	Downloaded     string // when the program file arrived, empty when unknown
 	OutsideChannel bool   // a prerelease while the channel delivers finals only
 }
 
@@ -66,14 +67,8 @@ type downloadFirmwareRow struct {
 	Hardware       string
 	Version        string
 	File           string
+	Downloaded     string // when the image arrived, empty when unknown
 	OutsideChannel bool
-}
-
-// downloadDeviceRow is one device and the firmware it reports.
-type downloadDeviceRow struct {
-	ID       string
-	Hardware string
-	Firmware string
 }
 
 // handleDownloads shows the release checks, their result and what runs where.
@@ -102,8 +97,11 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 		row := downloadPluginRow{Name: p.Name, Program: "not found"}
 		if spec, ok := specs[p.Name]; ok {
 			row.Version = spec.Version
-			if len(spec.Command) > 0 && spec.Command[0] != p.Name {
-				row.Program = filepath.Base(spec.Command[0])
+			if len(spec.Command) > 0 {
+				if spec.Command[0] != p.Name {
+					row.Program = filepath.Base(spec.Command[0])
+				}
+				row.Downloaded = fileTime(spec.Command[0], loc)
 			}
 		}
 		if pin, ok := pluginPin(p.Version); ok {
@@ -115,12 +113,9 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(v.Plugins, func(i, j int) bool { return v.Plugins[i].Name < v.Plugins[j].Name })
 	for _, img := range s.firmware.installed() {
 		v.Firmware = append(v.Firmware, downloadFirmwareRow{Hardware: img.Hardware, Version: img.Version, File: img.File,
+			Downloaded:     fileTime(img.path, loc),
 			OutsideChannel: cfg.Download != nil && outsideChannel(cfg.Download.FirmwareChannel, img.Version)})
 	}
-	for _, d := range s.deviceInfos() {
-		v.Devices = append(v.Devices, downloadDeviceRow{ID: d.ID, Hardware: d.Hardware, Firmware: firmwareText(d)})
-	}
-	sort.Slice(v.Devices, func(i, j int) bool { return v.Devices[i].ID < v.Devices[j].ID })
 
 	pluginFiles, pluginBytes, firmwareFiles, firmwareBytes := inventorySummary(cfg)
 	v.InventoryPlugins = inventoryText(pluginFiles, pluginBytes)
@@ -136,6 +131,17 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 	if err := downloadsTmpl.Execute(w, v); err != nil {
 		slog.Error("downloads page rendering failed", "error", err)
 	}
+}
+
+// fileTime prints when a program or image was written into the instance: for a
+// file Paperboy downloaded that is the time of the download, for one dropped in
+// by hand the time of the copy. Empty when the file cannot be read.
+func fileTime(path string, loc *time.Location) string {
+	info, err := os.Stat(path)
+	if err != nil || info.ModTime().IsZero() {
+		return ""
+	}
+	return downloadTime(info.ModTime(), loc)
 }
 
 // outsideChannel reports whether a version in use is one the channel would not

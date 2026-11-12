@@ -61,12 +61,13 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   <h2>Plugins{{if .Plugins}} <span class="muted">{{len .Plugins}}</span>{{end}}</h2>
   {{if .Plugins}}
   <table>
-    <tr><th>Plugin</th><th>Version</th><th>Pin</th><th>Program</th></tr>
+    <tr><th>Plugin</th><th>Version</th><th>Pin</th><th>Downloaded</th><th>Program</th></tr>
     {{range .Plugins}}
     <tr>
       <td>{{.Name}}</td>
       <td class="num">{{if .Version}}{{.Version}}{{else if eq .Program "not found"}}<span class="muted">missing</span>{{else}}<span class="muted">unversioned</span>{{end}}{{if .OutsideChannel}} <span class="muted">· not in the channel</span>{{end}}</td>
       <td class="num">{{if .Pin}}{{.Pin}}{{else}}<span class="muted">–</span>{{end}}</td>
+      <td class="num">{{if .Downloaded}}{{.Downloaded}}{{else}}<span class="muted">–</span>{{end}}</td>
       <td class="program">{{if eq .Program "not found"}}<span class="muted">–</span>{{else}}{{.Program}}{{end}}</td>
     </tr>
     {{end}}
@@ -79,9 +80,9 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   <h2>Firmware images{{if .Firmware}} <span class="muted">{{len .Firmware}}</span>{{end}}</h2>
   {{if .Firmware}}
   <table>
-    <tr><th>Hardware</th><th>Version</th><th>File</th></tr>
+    <tr><th>Hardware</th><th>Version</th><th>Downloaded</th><th>File</th></tr>
     {{range .Firmware}}
-    <tr><td>{{.Hardware}}</td><td class="num">{{.Version}}{{if .OutsideChannel}} <span class="muted">· not in the channel</span>{{end}}</td><td class="file">{{.File}}</td></tr>
+    <tr><td>{{.Hardware}}</td><td class="num">{{.Version}}{{if .OutsideChannel}} <span class="muted">· not in the channel</span>{{end}}</td><td class="num">{{if .Downloaded}}{{.Downloaded}}{{else}}<span class="muted">–</span>{{end}}</td><td class="file">{{.File}}</td></tr>
     {{end}}
   </table>
   {{else}}
@@ -112,23 +113,6 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   {{else}}
   <div class="actions"><a class="button" href="/ui/downloads?prune=1">Preview cleanup</a></div>
   <p class="hint">Paperboy never deletes programs or images by itself. The preview keeps the version in use, the ones a pin names, the firmware a device reports or is being offered, files without a version, and the newest two versions of every plugin and hardware type.</p>
-  {{end}}
-</section>
-<section class="card">
-  <h2>Devices</h2>
-  {{if .Devices}}
-  <table>
-    <tr><th>ID</th><th>Hardware</th><th>Firmware</th></tr>
-    {{range .Devices}}
-    <tr>
-      <td><a href="/ui/editor/device?id={{.ID}}">{{.ID}}</a></td>
-      <td>{{if .Hardware}}{{.Hardware}}{{else}}<span class="muted">unknown</span>{{end}}</td>
-      <td>{{if .Firmware}}{{.Firmware}}{{else}}<span class="muted">never reported</span>{{end}}</td>
-    </tr>
-    {{end}}
-  </table>
-  {{else}}
-  <p class="empty">No devices configured.</p>
   {{end}}
 </section>
 {{if .Issues}}<p class="error">Ignored firmware files (expected &lt;hardware&gt;-v&lt;version&gt;.bin): {{range $i, $f := .Issues}}{{if $i}}, {{end}}{{$f}}{{end}}</p>{{end}}
