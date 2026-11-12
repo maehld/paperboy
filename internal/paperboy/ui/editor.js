@@ -62,6 +62,13 @@
     ].join(' · ');
   }
 
+  // updateFile names the open file behind the page name: "shared" or the
+  // display type of the variant (ADR 0094).
+  function updateFile() {
+    const label = el('file-label');
+    if (label) label.textContent = state.fileDisplay || 'shared';
+  }
+
   // orphaned reports whether the opened file belongs to a display type that is
   // not configured any more; Save stays off until it is saved as a variant of
   // the open display type (ADR 0079).
@@ -1348,6 +1355,7 @@
     state.fileDisplay = state.display;
     state.hash = '';
     setStatus('the next save writes the variant; the shared page stays unchanged', '');
+    updateFile();
     updateWhere();
     updateSave();
   }
@@ -1426,6 +1434,7 @@
     renderPalette();
     renderBoard();
     renderInspector();
+    updateFile();
     updateWhere();
     updateSave();
     schedulePreview();

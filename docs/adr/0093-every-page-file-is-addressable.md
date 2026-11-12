@@ -1,6 +1,6 @@
 # 0093: Every page file is addressable
 
-- Status: Accepted, implemented
+- Status: Accepted, implemented; the chip links and the Delete in the list superseded by ADR-0094
 - Date: 2026-11-12
 - Builds on: ADR 0066 (page API), 0068 (page editor), 0073 (delete in the editor), 0079 (renaming and orphaned variants), 0084 (the overview links, the editors act)
 - Answers: issue #181

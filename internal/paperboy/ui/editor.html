@@ -15,7 +15,6 @@ a { color: #134e9c; }
 .card-head { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-bottom: .7rem; }
 .card-head .spacer { margin-left: auto; }
 .card-head .filter { max-width: 18rem; }
-.switch { margin-bottom: .6rem; }
 table { border-collapse: collapse; width: 100%; font-size: .92rem; }
 th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid #eee; vertical-align: baseline; }
 thead th { border-top: 0; }
@@ -25,12 +24,9 @@ tr.rowlink:hover td { background: #f6f9fe; }
 td.open { text-align: right; white-space: nowrap; }
 td.page { line-height: 1.25; }
 td.page strong { font-weight: 600; }
-td.variants { white-space: nowrap; }
-td.variants a { text-decoration: none; }
-td.variants a.selected { font-weight: 700; color: #111; }
-td.variants a.broken { color: #b00; }
-td.variants .missing { color: #b00; }
-td.variants button.delete { margin-left: .4rem; font-size: .78rem; }
+td.variants { white-space: nowrap; color: #444; }
+td.variants span[title] { cursor: help; }
+td.variants .broken { color: #b00; }
 td.num { font-variant-numeric: tabular-nums; }
 .error { margin: .4rem 0 0; padding: .4rem .6rem; background: #fff2f2; border-left: 3px solid #c22; font-size: .85rem; word-break: break-word; }
 input, select, button { font: inherit; padding: .2rem .35rem; }
@@ -65,17 +61,9 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <h2>Pages{{if .Groups}} <span class="count">{{len .Groups}}</span>{{end}}</h2>
     <span class="spacer"></span>
     <input class="filter" type="search" placeholder="Filter pages…" data-filter="page-table" aria-label="Filter pages">
-    {{if .Displays}}<button class="new" type="button" data-dialog="new-page">New page</button>{{end}}
+    {{if .Options}}<button class="new" type="button" data-dialog="new-page">New page</button>{{end}}
   </div>
-  {{if .Displays}}
-  <div class="switch">
-    <span class="muted">Display type:</span>
-    {{range .Displays}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
-    <span class="muted">· kind, grid and title follow this display type: its variant, else the shared page</span>
-  </div>
-  {{else}}
-  <p class="empty">No display types configured. Add one under <code>displays/</code>.</p>
-  {{end}}
+  {{if not .Options}}<p class="empty">No display types configured. Add one under <code>displays/</code>.</p>{{end}}
   {{if .Groups}}
   <table id="page-table">
     <thead><tr><th>Page</th><th>Variants</th><th>Kind</th><th>Grid</th><th>Title</th></tr></thead>
@@ -83,7 +71,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
       {{range .Groups}}
       <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
         <td class="page">{{if .OpenURL}}<a href="{{.OpenURL}}"><strong>{{.Name}}</strong></a>{{else}}<strong>{{.Name}}</strong>{{end}}</td>
-        <td class="variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}{{if $v.URL}}<a href="{{$v.URL}}"{{if $v.Class}} class="{{$v.Class}}"{{end}}{{if $v.Title}} title="{{$v.Title}}"{{end}}>{{$v.Label}}</a>{{else}}<span class="missing" title="{{$v.Title}}">{{$v.Label}}</span>{{end}}{{if $v.DeleteURL}}<button class="delete" type="button" data-delete="{{$v.DeleteURL}}" data-warn="{{$v.Warn}}">Delete</button>{{end}}{{end}}</td>
+        <td class="variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}<span{{if $v.Class}} class="{{$v.Class}}"{{end}} title="{{$v.Title}}">{{$v.Label}}</span>{{end}}</td>
         <td>{{.Kind}}</td>
         <td class="num">{{.Grid}}</td>
         <td>{{.Title}}</td>
@@ -96,14 +84,14 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   {{else}}
   <p class="empty">No pages yet. A page is <code>pages/&lt;name&gt;.yaml</code>.</p>
   {{end}}
-  {{if .Displays}}<dialog id="new-page">
+  {{if .Options}}<dialog id="new-page">
     <form method="get" action="/ui/editor/page">
       <h3>New page</h3>
       <input type="hidden" name="new" value="1">
       <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. solar" title="lower case letters, digits and -"></label>
       <label>Display type <select name="display">
         <option value="">shared page, all display types</option>
-        {{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+        {{range .Options}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
       </select></label>
       <p class="hint">Lower case letters, digits and <code>-</code>. A shared page applies to every display type; a variant only to the chosen one.</p>
       <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Create</button></div>
@@ -292,34 +280,6 @@ for (const d of document.querySelectorAll('dialog')) {
   // A click beside the form closes the dialog.
   d.addEventListener('click', (e) => {
     if (e.target === d) d.close();
-  });
-}
-
-// A file that cannot be opened in an editor keeps its Delete here; every other
-// file is deleted in its editor (ADR 0093). The confirmation names what still
-// references the file (ADR 0073).
-for (const b of document.querySelectorAll('button[data-delete]')) {
-  b.addEventListener('click', async () => {
-    if (!confirm((b.dataset.warn || 'Delete this file?') + '\n\nA copy stays under state/editor/.')) return;
-    b.disabled = true;
-    let res;
-    try {
-      res = await fetch(b.dataset.delete, { method: 'DELETE' });
-    } catch (e) {
-      alert('Delete failed: ' + e);
-      b.disabled = false;
-      return;
-    }
-    if (res.ok) {
-      location.reload();
-      return;
-    }
-    let msg = '(' + res.status + ')';
-    try {
-      msg = (await res.json()).error || msg;
-    } catch (e) { /* not JSON */ }
-    alert('Delete failed: ' + msg);
-    b.disabled = false;
   });
 }
 
