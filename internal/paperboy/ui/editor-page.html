@@ -106,9 +106,9 @@ input[type=search] { margin-bottom: .4rem; }
   <button id="reload" type="button">Reload</button>
   <button class="primary" id="save" type="button">Save</button>
 </div>{{end}}
-<div class="switch">
+<div class="switch" id="display-switch">
   <span class="muted">Display type:</span>
-  {{range .Displays}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
+  {{range .Displays}}<a href="{{.URL}}" data-display="{{.Name}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
   {{if .WidgetsPage}}<span class="status" id="status"></span>{{end}}
 </div>
 <main>

@@ -192,9 +192,13 @@ func (s *Server) handleWidgetsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.Text = p.text()
+	// The display type switch keeps the widget, its size and its args, so
+	// changing the display type does not drop the cell (issue #171).
+	link := widgetLinkParams(q)
 	for _, n := range displayNames(cfg) {
+		link.Set("display", n)
 		v.Displays = append(v.Displays, displayLink{Name: n, Selected: n == display,
-			URL: "/ui/plugins?" + url.Values{"display": {n}}.Encode()})
+			URL: "/ui/plugins?" + link.Encode()})
 	}
 	var span [2]int
 	if sz, err := parseSize(q.Get("span")); err == nil {
@@ -219,6 +223,22 @@ func widgetArgValues(q url.Values) map[string]string {
 			continue
 		}
 		out[name] = raw
+	}
+	return out
+}
+
+// widgetLinkParams collects what the widgets page link carries besides the
+// display type: the widget, its span and its args. The display type switch and
+// `updateURL` in the script use it, so a switched or edited view keeps the cell.
+func widgetLinkParams(q url.Values) url.Values {
+	out := url.Values{}
+	for _, k := range []string{"widget", "span"} {
+		if v := strings.TrimSpace(q.Get(k)); v != "" {
+			out.Set(k, v)
+		}
+	}
+	for name, raw := range widgetArgValues(q) {
+		out.Set("arg."+name, raw)
 	}
 	return out
 }
