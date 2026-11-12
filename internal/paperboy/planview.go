@@ -51,6 +51,7 @@ type planView struct {
 	Device     string
 	Profile    string
 	Plan       string
+	VirtualURL string // the same plan as a virtual display (ADR 0091)
 	At         string // selected time as atLayout
 	AtText     string // selected time for reading
 	Now        bool   // the selected time is now
@@ -95,6 +96,7 @@ func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 	}
 	view := planView{Device: dev.ID, Profile: dev.Profile, Plan: dev.Plan, At: at.Format(atLayout),
 		AtText: at.Format("Mon 2006-01-02 15:04"), Now: isNow}
+	view.VirtualURL = virtualURL(dev.Plan, dev.Profile)
 	view.Version, view.GoVersion = editorVersion(cfg)
 	if dev.Problem != "" {
 		view.Error = "The device cannot sync: " + dev.Problem + "."

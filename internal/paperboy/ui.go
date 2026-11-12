@@ -83,6 +83,7 @@ type dashboardDevice struct {
 	Actions     string   // "denied", empty when the device may use actions
 	Problem     string   // why the device cannot sync, empty when it can (ADR 0079)
 	Error       string   // last render or plan error
+	VirtualURL  string   // the plan as a virtual display, empty without a plan (ADR 0091)
 }
 
 type dashboardPage struct {
@@ -140,6 +141,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			Actions:     actionsText(devices[d.ID]),
 			Problem:     d.Problem,
 			Error:       d.LastError,
+			VirtualURL:  virtualURL(d.Plan, d.Profile),
 		})
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

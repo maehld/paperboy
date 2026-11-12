@@ -37,7 +37,10 @@ type Server struct {
 
 	mu    sync.Mutex
 	state map[string]*deviceState // device key (MAC) → state
-	plans *planLoader             // device plans (ADR 0025)
+	// virtual holds the state of the virtual displays, keyed by plan and
+	// display type: in memory only, never in state/devices (ADR 0091).
+	virtual map[string]*deviceState
+	plans   *planLoader // device plans (ADR 0025)
 	// actionRuns holds the actions that outlive their sync (ADR 0064).
 	actionRuns map[string]*actionRun
 
@@ -102,7 +105,7 @@ func New(cfg *Config) (*Server, error) {
 	}
 	s := &Server{cfg: newConfigLoader(cfg.Dir, cfg), ctx: context.Background(),
 		widgets:    &widget.Host{Builtin: map[string]plugin.Handler{builtin.Name: builtin.Plugin{}}},
-		devicesDir: devicesDir, now: time.Now, state: state,
+		devicesDir: devicesDir, now: time.Now, state: state, virtual: map[string]*deviceState{},
 		plans: newPlanLoader(), actionRuns: map[string]*actionRun{}, rendered: map[string]*renderedPage{}, hints: map[string][]byte{},
 		logs: newLogSeen(), fwNotes: map[string]string{}, pages: newPageLoader(), skipNotes: map[string]string{}}
 	s.firmware = newFirmwareStore(cfg.FirmwareDir)
@@ -152,6 +155,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /ui/downloads", s.handleDownloads)
 	mux.HandleFunc("GET /ui/plugins", s.handleWidgetsPage)
 	mux.HandleFunc("GET /ui/plan", s.handlePlanView)
+	mux.HandleFunc("GET /ui/virtual", s.handleVirtual)
+	mux.HandleFunc("GET /ui/virtual.js", s.handleVirtualJS)
+	mux.HandleFunc("POST /ui/virtual/sync", s.handleVirtualSync)
+	mux.HandleFunc("POST /ui/virtual/reset", s.handleVirtualReset)
 	mux.HandleFunc("GET /ui/editor", s.handleEditor)
 	mux.HandleFunc("GET /ui/editor/page", s.handleEditorPage)
 	mux.HandleFunc("GET /ui/editor/plan", s.handlePlanEditor)
