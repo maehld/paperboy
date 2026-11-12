@@ -23,33 +23,37 @@ type calendarPlugin struct {
 	lang string
 	now  time.Time
 
-	events []event // snapshot for the current request
+	events    []event  // snapshot for the current request
+	calendars []string // the names of the loaded calendars, for the widget filter
 
-	mu      sync.Mutex
-	loaded  []event
-	loadErr error
-	ready   chan struct{} // closed after the first load
+	mu              sync.Mutex
+	loaded          []event
+	loadedCalendars []string
+	loadErr         error
+	ready           chan struct{} // closed after the first load
 }
 
 // Start loads the calendars in the background, right away and then every
 // -refresh, and reports a change when the events differ.
 func (p *calendarPlugin) Start(ctx context.Context, notify func(widgets ...string)) {
-	p.ready = make(chan struct{})
+	if p.ready == nil {
+		p.ready = make(chan struct{})
+	}
 	go func() {
 		first := true
 		var last string
 		for {
-			events, err := p.load(ctx)
+			b, err := p.load(ctx)
 			p.mu.Lock()
 			if err != nil {
 				p.loadErr = err
 				fmt.Fprintln(os.Stderr, "calendar:", err)
 			} else {
-				p.loaded, p.loadErr = events, nil
+				p.loaded, p.loadedCalendars, p.loadErr = b.Events, b.Calendars, nil
 			}
 			p.mu.Unlock()
 			if err == nil {
-				sum, _ := json.Marshal(events)
+				sum, _ := json.Marshal(b.Events)
 				if !first && string(sum) != last {
 					notify()
 				}
@@ -70,7 +74,7 @@ func (p *calendarPlugin) Start(ctx context.Context, notify func(widgets ...strin
 
 // load reads all sources for a window that starts a week before the first of
 // the month, so the month grid shows past days too.
-func (p *calendarPlugin) load(ctx context.Context) ([]event, error) {
+func (p *calendarPlugin) load(ctx context.Context) (branch, error) {
 	o := p.opts
 	local := time.Now().In(o.location)
 	from := midnight(local).AddDate(0, 0, -(local.Day() - 1 + 7))
@@ -79,14 +83,15 @@ func (p *calendarPlugin) load(ctx context.Context) ([]event, error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 	b, _, err := collect(ctx, o, newClient(o.user, o.password), from)
-	if err != nil {
-		return nil, err
-	}
-	return b.Events, nil
+	return b, err
 }
 
 func (p *calendarPlugin) Describe() plugin.Description {
 	both := []string{plugin.KindImage, plugin.KindText}
+	calendars := plugin.Arg{Type: "list", Description: "only these calendars; default all"}
+	if choices := p.calendarChoices(); len(choices) > 0 {
+		calendars.Enum = choices
+	}
 	return plugin.Description{
 		Title:   "Calendar",
 		Version: version(),
@@ -97,12 +102,13 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				Sizes:    []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 3, Rows: 7}, {Columns: 6, Rows: 4}},
 				MinWidth: 160, MinHeight: 80,
 				Args: map[string]plugin.Arg{
-					"lines":    {Type: "int", Description: "number of text lines on image displays; default: as many as the page's text size allows (text displays use the cell height)"},
-					"location": {Type: "bool", Default: false, Description: "append the location to the title"},
-					"headings": {Type: "bool", Default: true, Description: "day headings"},
-					"days":     {Type: "int", Description: "days to show starting today, 1 to the configured days (clamped); default: the configured days"},
-					"empty":    {Type: "bool", Description: "show days without events with \"No events\"; default true when days is set"},
-					"age":      {Type: "bool", Default: false, Description: "append the age of birthdays from the configured birthday calendars"},
+					"lines":     {Type: "int", Description: "number of text lines on image displays; default: as many as the page's text size allows (text displays use the cell height)"},
+					"location":  {Type: "bool", Default: false, Description: "append the location to the title"},
+					"headings":  {Type: "bool", Default: true, Description: "day headings"},
+					"days":      {Type: "int", Description: "days to show starting today, 1 to the configured days (clamped); default: the configured days"},
+					"empty":     {Type: "bool", Description: "show days without events with \"No events\"; default true when days is set"},
+					"age":       {Type: "bool", Default: false, Description: "append the age of birthdays from the configured birthday calendars"},
+					"calendars": calendars,
 				},
 			},
 			{
@@ -110,9 +116,10 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				Sizes:    []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 3, Rows: 7}, {Columns: 6, Rows: 4}},
 				MinWidth: 160, MinHeight: 80,
 				Args: map[string]plugin.Arg{
-					"lines":    {Type: "int", Description: "number of text lines on image displays; default: as many as the page's text size allows (text displays use the cell height)"},
-					"headings": {Type: "bool", Default: true, Description: "day headings"},
-					"days":     {Type: "int", Description: "days to show starting today, 1 to the loaded window (the configured days, but at least the month grid's 42 days); default: the loaded window"},
+					"lines":     {Type: "int", Description: "number of text lines on image displays; default: as many as the page's text size allows (text displays use the cell height)"},
+					"headings":  {Type: "bool", Default: true, Description: "day headings"},
+					"days":      {Type: "int", Description: "days to show starting today, 1 to the loaded window (the configured days, but at least the month grid's 42 days); default: the loaded window"},
+					"calendars": calendars,
 				},
 			},
 			{
@@ -120,7 +127,8 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				Sizes:    []plugin.Span{{Columns: 3, Rows: 7}, {Columns: 6, Rows: 7}},
 				MinWidth: 210, MinHeight: 160,
 				Args: map[string]plugin.Arg{
-					"titles": {Type: "bool", Default: true, Description: "event titles in the day cells when they fit"},
+					"titles":    {Type: "bool", Default: true, Description: "event titles in the day cells when they fit"},
+					"calendars": calendars,
 				},
 			},
 			{
@@ -128,12 +136,44 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				Sizes:    []plugin.Span{{Columns: 6, Rows: 4}, {Columns: 6, Rows: 7}},
 				MinWidth: 320, MinHeight: 160,
 				Args: map[string]plugin.Arg{
-					"days":  {Type: "int", Default: 7, Description: "number of day columns, 1 to 14 (5 for a work week); text displays show as many days as lines"},
-					"start": {Type: "string", Default: "week", Description: "first column: week = start of the week (Monday for German, Sunday otherwise), today = today (default week; today on text displays)", Enum: []any{"week", "today"}},
+					"days":      {Type: "int", Default: 7, Description: "number of day columns, 1 to 14 (5 for a work week); text displays show as many days as lines"},
+					"start":     {Type: "string", Default: "week", Description: "first column: week = start of the week (Monday for German, Sunday otherwise), today = today (default week; today on text displays)", Enum: []any{"week", "today"}},
+					"calendars": calendars,
 				},
 			},
 		},
 	}
+}
+
+// calendarChoices lists the loaded calendar names for the widget arg's enum,
+// so the editors offer one check box per calendar. Before the first load it
+// falls back to the configured names and waits for the load when those are
+// empty too.
+func (p *calendarPlugin) calendarChoices() []any {
+	p.mu.Lock()
+	ready := p.ready
+	names := append([]string(nil), p.loadedCalendars...)
+	if len(names) == 0 {
+		names = append([]string(nil), p.opts.calendars...)
+	}
+	p.mu.Unlock()
+	if len(names) == 0 && ready != nil {
+		select {
+		case <-ready:
+		case <-time.After(10 * time.Second):
+		}
+		p.mu.Lock()
+		names = append([]string(nil), p.loadedCalendars...)
+		p.mu.Unlock()
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	out := make([]any, len(names))
+	for i, name := range names {
+		out[i] = name
+	}
+	return out
 }
 
 // Configure reads the config section; the calendars load in Start.
@@ -143,6 +183,9 @@ func (p *calendarPlugin) Configure(cfg plugin.Values, req *plugin.Request) error
 		return err
 	}
 	p.opts = o
+	if p.ready == nil {
+		p.ready = make(chan struct{})
+	}
 	return nil
 }
 
@@ -171,21 +214,21 @@ func (p *calendarPlugin) Prepare(req *plugin.Request) error {
 		return p.loadErr
 	}
 	p.events = p.loaded
+	p.calendars = p.loadedCalendars
 	return nil
 }
 
 func (p *calendarPlugin) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	switch w.Widget {
 	case "agenda", "birthdays":
-		p.agenda(req, w, img)
+		return p.agenda(req, w, img)
 	case "month":
-		p.month(req, w, img)
+		return p.month(req, w, img)
 	case "week":
-		p.week(req, w, img)
+		return p.week(req, w, img)
 	default:
 		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 	}
-	return nil
 }
 
 // Text fills the widgets of a character display: the agenda as "time title"
@@ -193,7 +236,10 @@ func (p *calendarPlugin) Render(req *plugin.Request, w plugin.WidgetRequest, img
 func (p *calendarPlugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
 	switch w.Widget {
 	case "agenda", "birthdays":
-		opts := p.widgetArgs(w, w.Height > 2)
+		opts, err := p.widgetArgs(w, w.Height > 2)
+		if err != nil {
+			return nil, err
+		}
 		lines, hidden := p.agendaLines(w.Height, opts)
 		// A text display puts the summary on a line of its own, so keep one free
 		// while events remain.
@@ -219,11 +265,19 @@ func (p *calendarPlugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]st
 		}
 		return out, nil
 	case "week":
-		return p.weekLines(w), nil
+		evs, err := p.eventsFor(w)
+		if err != nil {
+			return nil, err
+		}
+		return p.weekLines(w, evs), nil
 	case "month":
+		evs, err := p.eventsFor(w)
+		if err != nil {
+			return nil, err
+		}
 		now := p.now.In(p.loc)
 		today := midnight(now)
-		byDay := p.eventsByDay(today, w.Height)
+		byDay := p.eventsByDay(evs, today, w.Height)
 		var out []string
 		for i := range w.Height {
 			day := today.AddDate(0, 0, i)
@@ -291,9 +345,9 @@ type parsedEvent struct {
 	calendar   string
 }
 
-func (p *calendarPlugin) parsed() []parsedEvent {
+func (p *calendarPlugin) parsed(events []event) []parsedEvent {
 	var out []parsedEvent
-	for _, e := range p.events {
+	for _, e := range events {
 		s, err1 := time.Parse(time.RFC3339, e.Start)
 		en, err2 := time.Parse(time.RFC3339, e.End)
 		if err1 != nil {
@@ -338,7 +392,7 @@ func (p *calendarPlugin) birthdayAge(e parsedEvent) (int, bool) {
 	return age, true
 }
 
-func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) {
+func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	a := w.Arg()
 	pad := w.Style.Padding
 	rule := w.Style.Rule
@@ -348,17 +402,20 @@ func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img
 	lines := max(a.Int("lines", area.Dy()*10/max(int(req.TextPx(w)*10), 1)), 1)
 	lineH := area.Dy() / lines
 	if area.Empty() || lineH < 1 {
-		return
+		return nil
 	}
 	size := 0.6 * float64(lineH)
 	baseline := func(i int) int { return area.Min.Y + i*lineH + lineH/2 + int(size*0.36) }
 
-	opts := p.widgetArgs(w, lines > 1)
+	opts, err := p.widgetArgs(w, lines > 1)
+	if err != nil {
+		return err
+	}
 	all, whenW, inline := p.agendaLayout(lines, opts, area, size)
 	if len(all) == 0 {
 		render.Text(img, p.emptyText(opts), area.Min.X+area.Dx()/2, baseline(0),
 			render.Style{Size: size, Shrink: true}, area.Dx(), color.Black, render.Center)
-		return
+		return nil
 	}
 	gap := int(size * 0.6)
 	textX := area.Min.X
@@ -388,6 +445,7 @@ func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img
 			render.TextAt(img, inline, textX+render.Measure(text, size, false)+gap, y, size, false, color.Black, render.Left)
 		}
 	}
+	return nil
 }
 
 // agendaLayout fits the agenda into a cell of lines lines: it returns the lines
@@ -457,6 +515,7 @@ type agendaOpts struct {
 	birthdays          bool // only events of the configured birthday calendars
 	days               int  // days from today, 1 to the configured days
 	empty              bool // show days without events
+	events             []event
 }
 
 // agendaArgs reads the agenda arguments; days is clamped to 1..configured days.
@@ -472,12 +531,58 @@ func (p *calendarPlugin) agendaArgs(a plugin.Values, headings bool) agendaOpts {
 	}
 }
 
-// widgetArgs reads the arguments of the agenda or the birthdays widget.
-func (p *calendarPlugin) widgetArgs(w plugin.WidgetRequest, headings bool) agendaOpts {
-	if w.Widget == "birthdays" {
-		return p.birthdayArgs(w.Arg(), headings)
+// widgetArgs reads the arguments of the agenda or the birthdays widget and
+// narrows the events to the calendars it asks for.
+func (p *calendarPlugin) widgetArgs(w plugin.WidgetRequest, headings bool) (agendaOpts, error) {
+	evs, err := p.eventsFor(w)
+	if err != nil {
+		return agendaOpts{}, err
 	}
-	return p.agendaArgs(w.Arg(), headings)
+	var o agendaOpts
+	if w.Widget == "birthdays" {
+		o = p.birthdayArgs(w.Arg(), headings)
+	} else {
+		o = p.agendaArgs(w.Arg(), headings)
+	}
+	o.events = evs
+	return o, nil
+}
+
+// eventsFor narrows the loaded events to the widget's calendars argument. An
+// unknown name is an error that lists the available calendars, so a renamed
+// calendar does not silently leave an empty cell. CheckEnums already rejects
+// it once the describe answer carries the enum; this also covers the phase
+// before the first load, when the enum is still missing.
+func (p *calendarPlugin) eventsFor(w plugin.WidgetRequest) ([]event, error) {
+	wanted := w.Arg().Strings("calendars")
+	if len(wanted) == 0 {
+		return p.events, nil
+	}
+	known := make(map[string]bool, len(p.calendars))
+	for _, name := range p.calendars {
+		known[strings.ToLower(strings.TrimSpace(name))] = true
+	}
+	picked := make(map[string]bool, len(wanted))
+	for _, name := range wanted {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if key == "" {
+			continue
+		}
+		if !known[key] {
+			return nil, fmt.Errorf("calendar %q not found; available: %s", strings.TrimSpace(name), strings.Join(p.calendars, ", "))
+		}
+		picked[key] = true
+	}
+	if len(picked) == 0 {
+		return p.events, nil
+	}
+	out := make([]event, 0, len(p.events))
+	for _, e := range p.events {
+		if picked[strings.ToLower(strings.TrimSpace(e.Calendar))] {
+			out = append(out, e)
+		}
+	}
+	return out, nil
 }
 
 // birthdayArgs reads the arguments of the birthdays widget: only birthdays,
@@ -533,7 +638,11 @@ func (p *calendarPlugin) agendaList(maxLines int, o agendaOpts) ([]agendaLine, i
 	}
 	var upcoming []dated
 	horizon := today.AddDate(0, 0, o.days)
-	for _, e := range p.parsed() {
+	events := o.events
+	if events == nil {
+		events = p.events
+	}
+	for _, e := range p.parsed(events) {
 		if o.birthdays && !p.birthday(e.calendar) {
 			continue
 		}
@@ -670,11 +779,11 @@ var monthNames = map[string][12]string{
 // month draws the current month as a grid from Monday to Sunday. Today is
 // inverted; days with events show their titles when the cell is tall enough,
 // otherwise a bar under the day number.
-func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) {
+func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	pad := w.Style.Padding
 	area := img.Rect.Inset(pad)
 	if area.Dx() < 70 || area.Dy() < 60 {
-		return
+		return nil
 	}
 	now := p.now.In(p.loc)
 	today := midnight(now)
@@ -708,7 +817,11 @@ func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img 
 	}
 	render.HLine(img, x0, gridTop-1, x0+gridW, 2)
 
-	byDay := p.eventsByDay(gridStart, weeks*7)
+	evs, err := p.eventsFor(w)
+	if err != nil {
+		return err
+	}
+	byDay := p.eventsByDay(evs, gridStart, weeks*7)
 	numSize := min(float64(cellH)*0.32, float64(cellW)*0.42)
 	lineSize := max(min(float64(cellH)*0.22, req.TextPx(w)*0.8), req.PtPx(6.3), render.MinSize)
 	for i := range weeks * 7 {
@@ -767,13 +880,14 @@ func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img 
 	for r := 1; r <= weeks; r++ {
 		render.HLine(img, x0, gridTop+r*cellH, x0+gridW, 1)
 	}
+	return nil
 }
 
 // eventsByDay lists the event titles of every day of the grid, all-day
 // events first.
-func (p *calendarPlugin) eventsByDay(start time.Time, days int) [][]string {
+func (p *calendarPlugin) eventsByDay(events []event, start time.Time, days int) [][]string {
 	out := make([][]string, days)
-	evs := p.parsed()
+	evs := p.parsed(events)
 	sort.SliceStable(evs, func(i, j int) bool {
 		if evs[i].allDay != evs[j].allDay {
 			return evs[i].allDay

@@ -281,7 +281,9 @@ type Arg struct {
 	Required    bool   `json:"required,omitempty"`
 	Description string `json:"description,omitempty"`
 	// Enum lists the allowed values, if there is a fixed set (ADR 0055);
-	// for a list, the allowed elements. Optional: editors offer a choice,
+	// for a list, the allowed elements. A plugin may compute them from its
+	// current data on every describe, as the calendar plugin does for its
+	// calendar names. Optional: editors offer a choice,
 	// Check and Handle reject other values.
 	Enum []any `json:"enum,omitempty"`
 	// EnumLabels names the values for the editor, keyed by fmt.Sprint of the
