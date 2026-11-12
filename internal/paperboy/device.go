@@ -284,9 +284,35 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, d.Problem, http.StatusServiceUnavailable)
 		return
 	}
+	s.mu.Unlock()
+	resp := s.serveSync(cfg, d, st, &req, now, syncOptions{
+		firmware:    img,
+		pageTimeout: time.Duration(cfg.PageTimeout),
+		clientIP:    clientIP(r),
+	})
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// syncOptions is what a wake needs beyond the request itself: the firmware
+// image a device may be offered and the page timeout in force. virtual marks a
+// display without hardware (ADR 0091): it gets no firmware offer, does not run
+// its actions and writes no state file.
+type syncOptions struct {
+	firmware    *firmwareImage
+	pageTimeout time.Duration
+	virtual     bool
+	clientIP    string // source address of the contact, empty for a virtual display
+}
+
+// serveSync applies one wake to the state of a device and answers what to show
+// and when to come back (ADR 0042). The caller has resolved the device and
+// holds no lock; page selection happens under the state lock, rendering and
+// plugin calls do not.
+func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncRequest, now time.Time, opt syncOptions) syncResponse {
+	s.mu.Lock()
 	firstContact := st.LastSeen.IsZero()
 	st.LastSeen = now
-	st.ClientIP = clientIP(r)
+	st.ClientIP = opt.clientIP
 	st.WakeReason = req.Reason
 	if req.Firmware != "" {
 		st.Firmware = req.Firmware
@@ -307,13 +333,16 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	prevLevel := st.BatteryLevel
 	st.BatteryLevel = nextBatteryLevel(cfg.battery(d), prevLevel, st.BatteryVoltage)
 	critical := st.BatteryLevel == batteryCritical
-	pageTimeout := time.Duration(cfg.PageTimeout)
-	s.settleFirmwareLocked(d, st)
-	var volts float64
-	if req.Battery != nil {
-		volts = req.Battery.Volts
+	pageTimeout := opt.pageTimeout
+	var offer *firmwareOffer
+	if !opt.virtual {
+		s.settleFirmwareLocked(d, st)
+		var volts float64
+		if req.Battery != nil {
+			volts = req.Battery.Volts
+		}
+		offer = s.offerFirmwareLocked(d, st, cfg, opt.firmware, volts, req.Battery != nil, now)
 	}
-	offer := s.offerFirmwareLocked(d, st, cfg, img, volts, req.Battery != nil, now)
 
 	var buttons []string
 	var holds []int
@@ -430,7 +459,10 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		choice.title, choice.text = cfg.texts().noPlan()
 	}
 	logged := *st
-	stateData := s.stateSnapshotLocked(st)
+	var stateData []byte
+	if !opt.virtual {
+		stateData = s.stateSnapshotLocked(st)
+	}
 	s.mu.Unlock()
 	s.saveState(d.stateKey(), stateData)
 	s.logDevice(d.ID, req.Log)
@@ -446,17 +478,30 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	// Drawing and rendering happen without the lock: a slow page, a font problem
 	// or a panicking template must never block the other devices.
 	if invoke != nil {
-		run := s.startAction(cfg, d, *invoke, now)
-		select {
-		case <-run.done:
-		case <-time.After(actionBudget):
-			slog.Info("action still running", "device", d.ID, "action", invoke.Action)
+		if opt.virtual {
+			// A virtual display stops before the plugin call (ADR 0091): the
+			// banner names the action instead of claiming a result.
+			title := invoke.Title
+			if title == "" {
+				title = invoke.Action
+			}
+			menu.Phase, menu.Result, menu.ResultOK, menu.Simulated, menu.ConfirmHash =
+				menuResultPhase, title, true, true, ""
+			st.Menu = menu
+			slog.Info("virtual display: action not run", "device", d.ID, "action", invoke.Action)
+		} else {
+			run := s.startAction(cfg, d, *invoke, now)
+			select {
+			case <-run.done:
+			case <-time.After(actionBudget):
+				slog.Info("action still running", "device", d.ID, "action", invoke.Action)
+			}
+			s.mu.Lock()
+			if st := s.state[d.stateKey()]; st != nil {
+				menu = st.Menu
+			}
+			s.mu.Unlock()
 		}
-		s.mu.Lock()
-		if st := s.state[d.stateKey()]; st != nil {
-			menu = st.Menu
-		}
-		s.mu.Unlock()
 	}
 	var served servedPage
 	switch {
@@ -496,13 +541,20 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	var pageData []byte
-	if st = s.state[d.stateKey()]; st != nil {
+	if !opt.virtual {
+		// A background action may have finished and replaced the menu while
+		// the page was rendered; a virtual display has no such path.
+		st = s.state[d.stateKey()]
+	}
+	if st != nil {
 		st.LastPage, st.LastPageKind, st.LastPageHash = shownPage, shownKind, served.hash
 		st.LastPageTime, st.LastRefresh = now, int(refresh.Seconds())
 		st.LastText = served.lines
 		st.LastError = errText
 		st.Menu = menu
-		pageData = s.stateSnapshotLocked(st)
+		if !opt.virtual {
+			pageData = s.stateSnapshotLocked(st)
+		}
 	}
 	s.mu.Unlock()
 	s.saveState(d.stateKey(), pageData)
@@ -514,7 +566,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("battery warning", "device", d.ID, "level", level, "battery", logged.BatteryVoltage)
 	}
 	listen := time.Duration(0)
-	if input && !textDisplay {
+	if input && !textDisplay && !opt.virtual {
 		listen = listenAfterInput
 	}
 	wake := menuWake(menu, d, now, critical)
@@ -556,7 +608,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	} else {
 		resp.Image = &syncImage{Path: served.path, Hash: served.hash}
 	}
-	writeJSON(w, http.StatusOK, resp)
+	return resp
 }
 
 // menuWake names the one-shot wake the device needs (ADR 0064): the menu
