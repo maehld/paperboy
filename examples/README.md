@@ -31,8 +31,8 @@ grid, the spans and the arguments.
 - `countdown.yaml` - countdowns to Christmas and New Year (yearly, one with a
   progress bar) and two fixed dates, the last with a time and a bar.
 - `geburtstage.yaml` - the next birthdays with the age next to a short agenda
-  that shows the age too and stays on two calendars; `geburtstage.lcd2004.yaml`
-  puts them on 20×4.
+  limited to the private calendar; `geburtstage.lcd2004.yaml` puts them on
+  20×4.
 - `uebersicht.lcd2004.yaml` - the overview on a 20×4 character display; its
   grid is the character grid.
 - `hinweise.lcd2004.yaml` - a scrolling line on a 20×4 character display: a

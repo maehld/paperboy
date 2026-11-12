@@ -36,6 +36,7 @@ const requestTimeout = 50 * time.Second
 
 type options struct {
 	caldav    string
+	carddav   string
 	user      string
 	password  string
 	calendars []string
@@ -56,8 +57,9 @@ func main() {
 // configKeys are the keys of the plugin's config section.
 var configKeys = map[string]plugin.Arg{
 	"caldav":             {Type: "string", Description: "CalDAV server or calendar URL, e.g. https://caldav.icloud.com"},
-	"user":               {Type: "string", Description: "CalDAV user name, for iCloud the Apple ID"},
-	"password":           {Type: "string", Description: "CalDAV password; use ${VAR} to read it from the environment"},
+	"carddav":            {Type: "string", Description: "CardDAV server for contact birthdays, e.g. https://contacts.icloud.com"},
+	"user":               {Type: "string", Description: "CalDAV or CardDAV user name, for iCloud the Apple ID"},
+	"password":           {Type: "string", Description: "CalDAV or CardDAV password; use ${VAR} to read it from the environment"},
 	"calendars":          {Type: "list", Description: "CalDAV calendars to include by name; default all"},
 	"birthday_calendars": {Type: "list", Description: "calendars whose yearly events are birthdays; their titles carry the age"},
 	"ics":                {Type: "list", Description: "iCalendar URLs (https:// or webcal://)"},
@@ -74,6 +76,7 @@ func parseConfig(cfg plugin.Values, language string, loc *time.Location) (option
 		return o, err
 	}
 	o.caldav = cfg.String("caldav", "")
+	o.carddav = cfg.String("carddav", "")
 	o.user = cfg.String("user", "")
 	o.password = cfg.String("password", "")
 	o.calendars = cfg.Strings("calendars")
@@ -88,14 +91,13 @@ func parseConfig(cfg plugin.Values, language string, loc *time.Location) (option
 	}
 	o.refresh = refresh
 	o.language, o.location = language, loc
-	if o.caldav == "" && len(o.ics) == 0 && len(o.icsFiles) == 0 {
-		return o, errors.New("caldav, ics or ics_files is required")
+	if o.caldav == "" && o.carddav == "" && len(o.ics) == 0 && len(o.icsFiles) == 0 {
+		return o, errors.New("caldav, carddav, ics or ics_files is required")
 	}
-	if o.caldav != "" {
-		if o.user == "" || o.password == "" {
-			return o, errors.New("caldav needs user and password")
-		}
-	} else if len(o.calendars) > 0 {
+	if (o.caldav != "" || o.carddav != "") && (o.user == "" || o.password == "") {
+		return o, errors.New("caldav or carddav needs user and password")
+	}
+	if o.caldav == "" && len(o.calendars) > 0 {
 		return o, errors.New("calendars needs caldav")
 	}
 	if o.days < 1 || o.days > 366 {
@@ -146,9 +148,28 @@ func collect(ctx context.Context, o options, c *client, now time.Time) (branch, 
 				return branch{}, nil, fmt.Errorf("calendar %q: %w", cal.Name, err)
 			}
 			occ, warn := occurrences(roots, cal.Name, z, from, to)
+			markBirthdays(occ, o.birthdays)
 			all = append(all, occ...)
 			warnings = append(warnings, prefix(cal.Name, warn)...)
 		}
+	}
+	if o.carddav != "" {
+		base, err := url.Parse(o.carddav)
+		if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" {
+			return branch{}, nil, fmt.Errorf("-carddav: invalid URL")
+		}
+		books, err := c.discoverAddressbooks(ctx, base)
+		if err != nil {
+			return branch{}, nil, err
+		}
+		birthdays, warn, err := readBirthdays(ctx, c, books)
+		if err != nil {
+			return branch{}, nil, err
+		}
+		warnings = append(warnings, warn...)
+		source := contactsCalendar(o.language)
+		names = append(names, source)
+		all = append(all, birthdayOccurrences(birthdays, source, from, to, o.location)...)
 	}
 	for _, link := range o.ics {
 		raw, err := c.fetchICS(ctx, link)
@@ -162,6 +183,7 @@ func collect(ctx context.Context, o options, c *client, now time.Time) (branch, 
 		name := calendarName(roots, link)
 		names = append(names, name)
 		occ, warn := occurrences(roots, name, z, from, to)
+		markBirthdays(occ, o.birthdays)
 		all = append(all, occ...)
 		warnings = append(warnings, prefix(name, warn)...)
 	}
@@ -177,6 +199,7 @@ func collect(ctx context.Context, o options, c *client, now time.Time) (branch, 
 		name := calendarName(roots, file)
 		names = append(names, name)
 		occ, warn := occurrences(roots, name, z, from, to)
+		markBirthdays(occ, o.birthdays)
 		all = append(all, occ...)
 		warnings = append(warnings, prefix(name, warn)...)
 	}
@@ -284,6 +307,7 @@ type event struct {
 	Title    string `json:"title"`
 	Location string `json:"location,omitempty"`
 	Calendar string `json:"calendar"`
+	Birthday bool   `json:"birthday,omitempty"`
 }
 
 type day struct {
@@ -340,6 +364,7 @@ func toEvent(o occurrence, loc *time.Location, language string) event {
 		Title:    title,
 		Location: o.Location,
 		Calendar: o.Calendar,
+		Birthday: o.Birthday,
 	}
 	if o.AllDay {
 		// All-day events are dates, not instants: they start at local
