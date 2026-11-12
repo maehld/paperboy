@@ -45,6 +45,54 @@ func TestValuesText(t *testing.T) {
 	}
 }
 
+// An explicit empty list is the editor's "None": it shows nothing, unlike an
+// absent arg, which keeps the default set.
+func TestValuesExplicitEmpty(t *testing.T) {
+	e, req := newTestPlugin(t)
+	lines, err := e.Text(req, plugin.WidgetRequest{Widget: "values", Width: 20, Height: 2,
+		Args: map[string]any{"values": []any{}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 0 {
+		t.Fatalf("empty selection drew %q", lines)
+	}
+	img := render.NewCanvas(300, 120, 2)
+	if err := e.Render(req, plugin.WidgetRequest{Widget: "values", Width: 300, Height: 120,
+		Args: map[string]any{"values": []any{}}, Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 20}}, img); err != nil {
+		t.Fatal(err)
+	}
+	if hasInk(img) {
+		t.Error("empty selection drew something")
+	}
+}
+
+// The values arg names its keys in the configured language; the keys stay
+// what a page stores.
+func TestDescribeValueLabels(t *testing.T) {
+	for lang, home := range map[string]string{"de": "Haus", "en": "Home"} {
+		e := &evcc{}
+		if err := e.Configure(plugin.Values{"url": "http://evcc:7070"}, &plugin.Request{Language: lang}); err != nil {
+			t.Fatal(err)
+		}
+		var values plugin.Arg
+		for _, w := range e.Describe().Widgets {
+			if w.Widget == "values" {
+				values = w.Args["values"]
+			}
+		}
+		if values.Enum == nil || values.EnumLabels == nil {
+			t.Fatalf("%s: values arg without enum or labels", lang)
+		}
+		if got := values.EnumLabels["home"]; got != home {
+			t.Errorf("%s: home label %q, want %q", lang, got, home)
+		}
+		if len(values.Enum) != len(stateValues) {
+			t.Errorf("%s: %d enum values, want %d", lang, len(values.Enum), len(stateValues))
+		}
+	}
+}
+
 func TestValuesWidget(t *testing.T) {
 	e, req := newTestPlugin(t)
 	style := plugin.Style{Padding: 8, Rule: 1, TextPx: 20}

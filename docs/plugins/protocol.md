@@ -225,6 +225,7 @@ stores it without touching the widget cache.
 | `required` | The key must be set |
 | `description` | Help text for an editor |
 | `enum` | Allowed values, or allowed elements of a list (ADR 0055) |
+| `enum_labels` | Display text per enum value, keyed by `fmt.Sprint` of the value; the stored value stays the key |
 
 `Values.Check(known)` rejects unknown keys, missing required keys and values
 outside `enum`. `Values.CheckEnums(known)` only checks the enums and leaves

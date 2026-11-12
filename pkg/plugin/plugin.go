@@ -284,6 +284,10 @@ type Arg struct {
 	// for a list, the allowed elements. Optional: editors offer a choice,
 	// Check and Handle reject other values.
 	Enum []any `json:"enum,omitempty"`
+	// EnumLabels names the values for the editor, keyed by fmt.Sprint of the
+	// value. The stored value stays the key, so a missing or renamed label
+	// never changes the page; without labels the editor shows the key.
+	EnumLabels map[string]string `json:"enum_labels,omitempty"`
 }
 
 // Allows reports whether value (or, for a list, each element) is one of the

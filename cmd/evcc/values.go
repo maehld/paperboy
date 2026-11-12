@@ -56,6 +56,20 @@ func valueEnum() []any {
 	return list
 }
 
+// valueLabels names the keys for the editor in the configured language. The
+// page keeps the keys, so the labels are only display text.
+func valueLabels(lang string) map[string]string {
+	labels := make(map[string]string, len(stateValues))
+	for _, v := range stateValues {
+		if lang == "de" {
+			labels[v.key] = v.de
+		} else {
+			labels[v.key] = v.en
+		}
+	}
+	return labels
+}
+
 func (e *evcc) valueLabel(v stateValue) string {
 	if e.lang == "de" {
 		return v.de
@@ -160,13 +174,25 @@ func (e *evcc) chargeValue(key string, st statistics) string {
 	return e.kwh(st.ChargedKWh)
 }
 
+// valueKeys reads the selected values: an absent arg means the default set,
+// while an explicit empty list (the editor's "None") stays empty.
+func (e *evcc) valueKeys(w plugin.WidgetRequest) []string {
+	if keys := w.Arg().Strings("values"); len(keys) > 0 {
+		return keys
+	}
+	if _, set := w.Arg()["values"]; set {
+		return nil
+	}
+	return []string{"pv", "home", "grid", "battery"}
+}
+
 // valuesWidget lists the selected values: label left, value right, a thin rule
 // between the rows. "columns" puts several of them next to each other for a
 // wide, flat cell; entries that do not fit are left out.
 func (e *evcc) valuesWidget(w plugin.WidgetRequest, img *image.Paletted) error {
-	keys := w.Arg().Strings("values")
+	keys := e.valueKeys(w)
 	if len(keys) == 0 {
-		keys = []string{"pv", "home", "grid", "battery"}
+		return nil
 	}
 	cols := w.Arg().Int("columns", 1)
 	if cols < 1 || cols > 4 {
@@ -222,10 +248,7 @@ func (e *evcc) valuesWidget(w plugin.WidgetRequest, img *image.Paletted) error {
 
 // valuesText puts one value per line.
 func (e *evcc) valuesText(w plugin.WidgetRequest) ([]string, error) {
-	keys := w.Arg().Strings("values")
-	if len(keys) == 0 {
-		keys = []string{"pv", "home", "grid", "battery"}
-	}
+	keys := e.valueKeys(w)
 	var lines []string
 	for _, key := range keys {
 		v, ok := stateValueByKey[key]
