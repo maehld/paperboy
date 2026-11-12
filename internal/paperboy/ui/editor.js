@@ -711,7 +711,10 @@
   function argValue(raw, arg) {
     const type = arg && arg.type;
     if (type === 'string' || type === 'duration') return raw;
-    if (type === 'list') return raw.split(',').map((s) => s.trim()).filter((s) => s !== '').map(jsonOrString);
+    if (type === 'list') {
+      if (Array.isArray(raw)) return raw.map((s) => jsonOrString(String(s)));
+      return raw.split(',').map((s) => s.trim()).filter((s) => s !== '').map(jsonOrString);
+    }
     return jsonOrString(raw);
   }
 
@@ -725,7 +728,7 @@
 
   function setArg(cell, name, raw, arg) {
     if (!arg || arg.type !== 'bool') {
-      if (raw === '' || raw === null) delete cell.args[name];
+      if (raw === '' || raw === null || (Array.isArray(raw) && raw.length === 0)) delete cell.args[name];
       else cell.args[name] = argValue(raw, arg);
       changed('inspector');
       return;
@@ -892,6 +895,26 @@
             changed('inspector');
           }
         });
+      } else if (arg.type === 'list' && Array.isArray(arg.enum) && arg.enum.length) {
+        // A list with a fixed set: one check box per value.
+        control = document.createElement('div');
+        control.className = 'checks';
+        const chosen = (Array.isArray(current) ? current : Array.isArray(arg.default) ? arg.default : []).map(String);
+        const pick = () => {
+          const picked = [...control.querySelectorAll('input')].filter((i) => i.checked).map((i) => i.value);
+          setArg(c, name, picked, arg);
+        };
+        for (const value of arg.enum) {
+          const item = document.createElement('label');
+          const box = document.createElement('input');
+          box.type = 'checkbox';
+          box.value = String(value);
+          box.checked = chosen.includes(String(value));
+          box.addEventListener('change', pick);
+          item.appendChild(box);
+          item.appendChild(document.createTextNode(String(value)));
+          control.appendChild(item);
+        }
       } else {
         control = document.createElement('input');
         control.type = 'text';

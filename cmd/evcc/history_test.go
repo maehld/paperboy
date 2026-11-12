@@ -285,12 +285,14 @@ func TestHistoryRequests(t *testing.T) {
 	if err := e.Prepare(req); err != nil {
 		t.Fatal(err)
 	}
-	if len(queries) != len(historySources) {
+	// A day range for the periods of the table and two days of hours for the
+	// charts of today and yesterday, one request per group each.
+	if len(queries) != 2*len(historySources) {
 		t.Fatalf("%d requests: %q", len(queries), queries)
 	}
 	joined := strings.Join(queries, "\n")
 	for _, want := range []string{
-		"aggregate=day", "group=pv", "grouped=true",
+		"aggregate=day", "aggregate=hour", "group=pv", "grouped=true",
 		"group=loadpoint", "group=grid", "group=home", "group=battery",
 	} {
 		if !strings.Contains(joined, want) {
@@ -339,7 +341,7 @@ func TestParseHistory(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(series) != 1 || len(series["pv"]) != 2 || series["pv"][1].energy != 5 || series["pv"][0].date != "2026-11-11" {
+		if len(series) != 1 || len(series["pv"]) != 2 || series["pv"][1].energy != 5 || series["pv"][0].date() != "2026-11-11" {
 			t.Fatalf("%+v", series)
 		}
 	}

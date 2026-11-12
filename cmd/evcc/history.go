@@ -23,10 +23,12 @@ import (
 // shows. All but the loadpoints are fetched grouped, so evcc sums the devices
 // of a group (its energy page does the same); a page picks one loadpoint's
 // series by index.
-var historySources = map[string]struct {
+type historySource struct {
 	group   string
 	grouped bool
-}{
+}
+
+var historySources = map[string]historySource{
 	"pv":        {"pv", true},
 	"battery":   {"battery", true},
 	"grid":      {"grid", true},
@@ -37,57 +39,68 @@ var historySources = map[string]struct {
 // historyOrder keeps the fetch order (and the first error) deterministic.
 var historyOrder = []string{"pv", "battery", "grid", "home", "loadpoint"}
 
-// dayValue is one day of the energy history, in kWh. evcc buckets days in its
-// own timezone; the date is what the range comparisons use.
-type dayValue struct {
-	date         string // YYYY-MM-DD
+// energyPoint is one bucket of the energy history, in kWh. evcc buckets in its
+// own timezone; at is the start of the bucket and its date is what the range
+// comparisons use.
+type energyPoint struct {
+	at           time.Time
 	energy       float64
 	returnEnergy float64 // battery discharge, grid export, otherwise 0
 }
 
+// date is the bucket's day in evcc's timezone, YYYY-MM-DD.
+func (p energyPoint) date() string { return p.at.Format("2006-01-02") }
+
 // historyDays is the key of one loadpoint series.
 func loadpointKey(title string) string { return "loadpoint:" + title }
 
-// fetchHistory reads the daily energy of every source: a year of day buckets
-// answers all periods the widget shows (this year, last month, last week,
-// today and yesterday) with a single request per group.
-func (e *evcc) fetchHistory(ctx context.Context) (map[string][]dayValue, error) {
+// fetchHistory reads the energy of every source: a year of day buckets for the
+// periods of the history widget and two days of hour buckets for the hourly
+// charts.
+func (e *evcc) fetchHistory(ctx context.Context) (map[string][]energyPoint, map[string][]energyPoint, error) {
 	now := time.Now()
 	// 13 months and a week reach back past 1 January and the first of last
 	// month in every calendar situation.
 	from := now.AddDate(0, -13, -7)
 
-	days := map[string][]dayValue{}
+	days := map[string][]energyPoint{}
+	hours := map[string][]energyPoint{}
 	var first error
 	for _, source := range historyOrder {
 		spec := historySources[source]
-		series, err := e.fetchHistoryGroup(ctx, spec.group, spec.grouped, from, now)
-		if err != nil {
-			if first == nil {
-				first = err
-			}
-			continue
+		if err := e.collect(ctx, source, spec, "day", from, now, days); err != nil && first == nil {
+			first = err
 		}
-		if spec.grouped {
-			days[source] = mergeDays(series)
-			continue
-		}
-		for title, list := range series {
-			days[loadpointKey(title)] = list
+		// Two days of hours answer the charts of today and yesterday.
+		if err := e.collect(ctx, source, spec, "hour", now.Add(-48*time.Hour), now, hours); err != nil && first == nil {
+			first = err
 		}
 	}
-	if first != nil {
-		return days, first
+	return days, hours, first
+}
+
+// collect reads one group and adds its series to out.
+func (e *evcc) collect(ctx context.Context, source string, spec historySource, aggregate string, from, to time.Time, out map[string][]energyPoint) error {
+	series, err := e.fetchHistoryGroup(ctx, spec.group, spec.grouped, aggregate, from, to)
+	if err != nil {
+		return err
 	}
-	return days, nil
+	if spec.grouped {
+		out[source] = mergePoints(series)
+		return nil
+	}
+	for title, list := range series {
+		out[loadpointKey(title)] = list
+	}
+	return nil
 }
 
 // fetchHistoryGroup reads one group; the answer is keyed by the series title.
-func (e *evcc) fetchHistoryGroup(ctx context.Context, group string, grouped bool, from, to time.Time) (map[string][]dayValue, error) {
+func (e *evcc) fetchHistoryGroup(ctx context.Context, group string, grouped bool, aggregate string, from, to time.Time) (map[string][]energyPoint, error) {
 	q := url.Values{
 		"from":      {from.Format(time.RFC3339)},
 		"to":        {to.Format(time.RFC3339)},
-		"aggregate": {"day"},
+		"aggregate": {aggregate},
 		"group":     {group},
 	}
 	if grouped {
@@ -124,7 +137,7 @@ type historyAnswer []struct {
 	} `json:"data"`
 }
 
-func parseHistory(body []byte) (map[string][]dayValue, error) {
+func parseHistory(body []byte) (map[string][]energyPoint, error) {
 	var wrapped struct {
 		Result json.RawMessage `json:"result"`
 	}
@@ -135,49 +148,49 @@ func parseHistory(body []byte) (map[string][]dayValue, error) {
 	if err := json.Unmarshal(body, &answer); err != nil {
 		return nil, fmt.Errorf("invalid /api/history/energy: %w", err)
 	}
-	out := map[string][]dayValue{}
+	out := map[string][]energyPoint{}
 	for _, s := range answer {
 		title := s.Title
 		if title == "" {
 			title = s.Group
 		}
-		list := make([]dayValue, 0, len(s.Data))
+		list := make([]energyPoint, 0, len(s.Data))
 		for _, d := range s.Data {
 			t, err := time.Parse(time.RFC3339, d.Start)
 			if err != nil {
 				return nil, fmt.Errorf("invalid /api/history/energy: %w", err)
 			}
-			list = append(list, dayValue{date: t.Format("2006-01-02"), energy: d.Energy, returnEnergy: d.ReturnEnergy})
+			list = append(list, energyPoint{at: t, energy: d.Energy, returnEnergy: d.ReturnEnergy})
 		}
 		out[title] = list
 	}
 	return out, nil
 }
 
-// mergeDays adds the series of a group day by day, as evcc's grouped answer
-// would.
-func mergeDays(series map[string][]dayValue) []dayValue {
-	sums := map[string]dayValue{}
+// mergePoints adds the series of a group bucket by bucket, as evcc's grouped
+// answer would.
+func mergePoints(series map[string][]energyPoint) []energyPoint {
+	sums := map[time.Time]energyPoint{}
 	for _, list := range series {
-		for _, d := range list {
-			s := sums[d.date]
-			s.date = d.date
-			s.energy += d.energy
-			s.returnEnergy += d.returnEnergy
-			sums[d.date] = s
+		for _, p := range list {
+			s := sums[p.at]
+			s.at = p.at
+			s.energy += p.energy
+			s.returnEnergy += p.returnEnergy
+			sums[p.at] = s
 		}
 	}
-	out := make([]dayValue, 0, len(sums))
-	for _, d := range sums {
-		out = append(out, d)
+	out := make([]energyPoint, 0, len(sums))
+	for _, p := range sums {
+		out = append(out, p)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].date < out[j].date })
+	sort.Slice(out, func(i, j int) bool { return out[i].at.Before(out[j].at) })
 	return out
 }
 
 // historyFingerprint covers the newest day of every series, which is the only
 // bucket that moves between two refreshes.
-func historyFingerprint(days map[string][]dayValue) string {
+func historyFingerprint(days map[string][]energyPoint) string {
 	keys := make([]string, 0, len(days))
 	for k := range days {
 		keys = append(keys, k)
@@ -190,7 +203,7 @@ func historyFingerprint(days map[string][]dayValue) string {
 			continue
 		}
 		last := list[len(list)-1]
-		fmt.Fprintf(&b, "%s=%s:%.1f/%.1f;", k, last.date, last.energy, last.returnEnergy)
+		fmt.Fprintf(&b, "%s=%s:%.1f/%.1f;", k, last.date(), last.energy, last.returnEnergy)
 	}
 	return b.String()
 }
@@ -201,7 +214,7 @@ func historyFingerprint(days map[string][]dayValue) string {
 func (e *evcc) watchHistory(ctx context.Context, notify func(widgets ...string)) {
 	var last string
 	for {
-		days, err := e.fetchHistory(ctx)
+		days, hours, err := e.fetchHistory(ctx)
 		e.mu.Lock()
 		if err != nil {
 			if e.histErr == nil || err.Error() != e.histErr.Error() {
@@ -215,9 +228,14 @@ func (e *evcc) watchHistory(ctx context.Context, notify func(widgets ...string))
 					days[key] = list
 				}
 			}
-			e.hist = days
+			for key, list := range e.hours {
+				if _, ok := hours[key]; !ok {
+					hours[key] = list
+				}
+			}
+			e.hist, e.hours = days, hours
 		} else {
-			e.hist, e.histErr = days, nil
+			e.hist, e.hours, e.histErr = days, hours, nil
 		}
 		e.mu.Unlock()
 		if err == nil {
@@ -240,11 +258,12 @@ func (e *evcc) watchHistory(ctx context.Context, notify func(widgets ...string))
 	}
 }
 
-// historyData returns the last history and the error of the last refresh.
-func (e *evcc) historyData() (map[string][]dayValue, error) {
+// historyData returns the last day and hour buckets and the error of the last
+// refresh.
+func (e *evcc) historyData() (map[string][]energyPoint, map[string][]energyPoint, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.hist, e.histErr
+	return e.hist, e.hours, e.histErr
 }
 
 // historyRow is one period of the widget; from is inclusive, to exclusive.
@@ -296,9 +315,9 @@ func (e *evcc) historyHeading(source, metric string) string {
 	return source
 }
 
-// historyValues resolves the widget's source, its heading and the daily values
-// of the last refresh.
-func (e *evcc) historyValues(w plugin.WidgetRequest) (string, string, []dayValue, error) {
+// historyValues resolves the widget's source, its heading and the values of the
+// last refresh: day buckets, or hour buckets for the hourly charts.
+func (e *evcc) historyValues(w plugin.WidgetRequest, hourly bool) (string, string, []energyPoint, error) {
 	source := w.Arg().String("source", "pv")
 	metric := w.Arg().String("metric", "energy")
 	if _, ok := historySources[source]; !ok {
@@ -316,14 +335,18 @@ func (e *evcc) historyValues(w plugin.WidgetRequest) (string, string, []dayValue
 		}
 		key, heading = loadpointKey(lp.Title), lp.Title
 	}
-	days, histErr := e.historyData()
-	if days == nil {
+	days, hours, histErr := e.historyData()
+	values := days
+	if hourly {
+		values = hours
+	}
+	if values == nil {
 		if histErr != nil {
 			return "", "", nil, fmt.Errorf("evcc history: %w", histErr)
 		}
 		return "", "", nil, errors.New("evcc history is still loading")
 	}
-	list, ok := days[key]
+	list, ok := values[key]
 	if !ok {
 		if histErr != nil {
 			return "", "", nil, fmt.Errorf("evcc history: %w", histErr)
@@ -334,10 +357,10 @@ func (e *evcc) historyValues(w plugin.WidgetRequest) (string, string, []dayValue
 }
 
 // sum adds the rows of a period.
-func (e *evcc) historySum(list []dayValue, row historyRow, metric string) float64 {
+func (e *evcc) historySum(list []energyPoint, row historyRow, metric string) float64 {
 	var sum float64
 	for _, d := range list {
-		if d.date < row.from || d.date >= row.to {
+		if d.date() < row.from || d.date() >= row.to {
 			continue
 		}
 		if metric == "return" {
@@ -349,20 +372,20 @@ func (e *evcc) historySum(list []dayValue, row historyRow, metric string) float6
 	return sum
 }
 
-// kwh formats a value of the history: one decimal below 100 kWh, none above.
+// kwh formats a value of the history: one decimal below 100 kWh, none above,
+// with a thousand separator.
 func (e *evcc) kwh(v float64) string {
-	decimals := 1
-	if v >= 100 {
-		decimals = 0
+	if v < 100 {
+		return e.num(v, 1) + " kWh"
 	}
-	return e.num(v, decimals) + " kWh"
+	return e.grouped(v) + " kWh"
 }
 
 // historyWidget draws the heading and the periods: label left, value right,
 // thin rules between the rows. Rows of the long periods drop first when the
 // cell is too small.
 func (e *evcc) historyWidget(w plugin.WidgetRequest, img *image.Paletted) error {
-	metric, heading, list, err := e.historyValues(w)
+	metric, heading, list, err := e.historyValues(w, false)
 	if err != nil {
 		return err
 	}
@@ -405,7 +428,7 @@ func (e *evcc) historyWidget(w plugin.WidgetRequest, img *image.Paletted) error 
 // historyText puts one period per line, with shorter labels so that a 20
 // column display keeps both label and value.
 func (e *evcc) historyText(w plugin.WidgetRequest) ([]string, error) {
-	metric, heading, list, err := e.historyValues(w)
+	metric, heading, list, err := e.historyValues(w, false)
 	if err != nil {
 		return nil, err
 	}

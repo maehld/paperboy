@@ -594,6 +594,28 @@
         }
         changed();
       });
+    } else if (arg.type === 'list' && Array.isArray(arg.enum) && arg.enum.length) {
+      // A list with a fixed set: one check box per value.
+      control = document.createElement('div');
+      control.className = 'checks';
+      const chosen = (Array.isArray(current) ? current : Array.isArray(arg.default) ? arg.default : []).map(String);
+      const pick = () => {
+        const picked = [...control.querySelectorAll('input')].filter((i) => i.checked).map((i) => i.value);
+        if (picked.length === 0) delete action.args[name];
+        else action.args[name] = picked;
+        changed();
+      };
+      for (const value of arg.enum) {
+        const item = document.createElement('label');
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.value = String(value);
+        box.checked = chosen.includes(String(value));
+        box.addEventListener('change', pick);
+        item.appendChild(box);
+        item.appendChild(document.createTextNode(String(value)));
+        control.appendChild(item);
+      }
     } else {
       control = document.createElement('input');
       control.type = 'text';
