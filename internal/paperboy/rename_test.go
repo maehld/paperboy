@@ -190,7 +190,7 @@ func TestEditorRenameButtons(t *testing.T) {
 	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"aa:bb:cc:dd:ee:01\"\nplan: tour\n")
 
 	for _, tc := range []struct{ tab, link string }{
-		{"pages", "/ui/editor/page?display=small&amp;name=solar"},
+		{"pages", "/ui/editor/page?display=small&amp;file=small&amp;name=solar"},
 		{"plans", "/ui/editor/plan?name=tour"},
 		{"devices", "/ui/editor/device?id=test"},
 		{"displays", "/ui/editor/display?name=small"},

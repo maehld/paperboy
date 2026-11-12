@@ -16,7 +16,8 @@
     height: start.height,
     reference: start.reference, // grid plugins declare their sizes on
     grid: start.grid, // grid a new page starts with
-    shared: !!start.shared, // a new page is written as pages/<name>.yaml
+    file: start.file || '', // display type of the open file; empty: the shared page
+    variantExists: !!start.variant_exists, // the display type has a variant next to the shared page
     widgetsPage: !!start.widgets_page, // the widgets page: one widget, no page
     usedBy: start.usedBy || [], // plans that name the page, for the delete warning
     rename: start.rename || null, // endpoint and confirmation for a rename (ADR 0079)
@@ -50,20 +51,15 @@
     s.className = 'status' + (kind ? ' ' + kind : '');
   }
 
+  // updateWhere names what the widgets page shows; the page editor keeps its
+  // bar to the name and the actions (ADR 0093).
   function updateWhere() {
-    if (state.widgetsPage) {
-      const c = state.template && state.template.cells[0];
-      el('where').textContent = [
-        c ? c.widget + ' · ' + c.span[0] + '×' + c.span[1] : 'no widget yet',
-        state.display + ' display',
-      ].join(' · ');
-      return;
-    }
-    const parts = [targetPath()];
-    parts.push(state.fileDisplay === '' ? 'shared by all display types' : 'only for ' + state.fileDisplay);
-    if (state.orphan && state.fileDisplay === state.orphan) parts.push('display type ' + state.orphan + ' is not configured');
-    if (state.dirty) parts.push('unsaved changes');
-    el('where').textContent = parts.join(' · ');
+    if (!state.widgetsPage) return;
+    const c = state.template && state.template.cells[0];
+    el('where').textContent = [
+      c ? c.widget + ' · ' + c.span[0] + '×' + c.span[1] : 'no widget yet',
+      state.display + ' display',
+    ].join(' · ');
   }
 
   // orphaned reports whether the opened file belongs to a display type that is
@@ -87,7 +83,9 @@
     if (rename) rename.hidden = state.widgetsPage || !state.rename;
     const specialize = el('specialize');
     if (!specialize) return;
-    specialize.hidden = state.widgetsPage || !(hasCell && (state.fileDisplay === '' || orphaned()));
+    // The shared page offers the variant only when the display type has none
+    // yet; an existing variant is reached through the file toggle (ADR 0093).
+    specialize.hidden = state.widgetsPage || !hasCell || !(orphaned() || (state.fileDisplay === '' && !state.variantExists));
     if (!specialize.hidden) specialize.textContent = 'Save as ' + state.display + ' variant';
   }
 
@@ -1237,10 +1235,12 @@
       loadWidgetsPage();
       return;
     }
-    const res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '?display=' + encodeURIComponent(state.orphan || state.display), { cache: 'no-store' });
+    // The open file is named exactly: empty is the shared page, else the
+    // display type of its variant (ADR 0093).
+    const res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '?display=' + encodeURIComponent(state.file), { cache: 'no-store' });
     if (res.status === 404) {
       state.template = blank();
-      state.fileDisplay = state.shared ? '' : state.display;
+      state.fileDisplay = state.file;
       state.hash = '';
       state.readOnly = false;
       state.dirty = false;
