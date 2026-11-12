@@ -105,11 +105,47 @@ jobs:
             *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
           esac
 
+      # The generated notes compare against the last stable release of the same
+      # train. Without this the API picks any reachable tag, so a Paperboy release
+      # could diff against plugins-v* or firmware-v*, and a final would diff
+      # against its own rc and hide everything since the last stable release.
+      - name: Previous release of the train
+        id: previous
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          case "$GITHUB_REF_NAME" in
+            plugins-v*)  prefix='plugins-v' ;;
+            firmware-v*) prefix='firmware-v' ;;
+            *)           prefix='v' ;;
+          esac
+          # Releases come newest first, so the first stable one of the train is
+          # the previous release. Drafts are invisible to a download anyway.
+          tags=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft | not) | .tag_name')
+          previous=''
+          while read -r tag; do
+            [ "$tag" = "$GITHUB_REF_NAME" ] && continue
+            case "$tag" in
+              "$prefix"*) version="${tag#"$prefix"}" ;;
+              *)          continue ;;
+            esac
+            # A version with a suffix is a prerelease, not a base for notes.
+            case "$version" in
+              *-*) continue ;;
+            esac
+            previous="$tag"
+            break
+          done <<< "$tags"
+          echo "tag=$previous" >> "$GITHUB_OUTPUT"
+          echo "previous release of the train: ${previous:-none}"
+
       - name: Release with generated notes
         if: startsWith(github.ref_name, 'v')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          previous_tag: ${{ steps.previous.outputs.tag }}
           prerelease: ${{ steps.tag.outputs.prerelease }}
           files: dist/*
 

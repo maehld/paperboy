@@ -57,7 +57,9 @@ jobs:
             type=ref,event=branch
             type=ref,event=pr
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            # A prerelease (v1.4.0-rc.1) gets only its full version; the moving
+            # X.Y tag stays with the last final release (ADR 0089).
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') }}
             type=sha,prefix=sha-,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 
