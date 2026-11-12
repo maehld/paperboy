@@ -98,7 +98,7 @@ input[type=search] { margin-bottom: .4rem; }
 {{else}}
 {{if not .WidgetsPage}}<div class="bar">
   <a href="/ui/editor?tab=pages">← Pages</a>
-  <h2>page {{.Name}}</h2>
+  <h2>page {{.Name}} - <span id="file-label">{{.File}}</span></h2>
   <span class="spacer"></span>
   <span class="status" id="status"></span>
   {{if .Toggle}}<a class="action" id="file-toggle" href="{{.Toggle.URL}}">{{.Toggle.Label}}</a>{{end}}

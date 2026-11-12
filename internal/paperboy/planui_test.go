@@ -165,7 +165,7 @@ func TestEditorOverviewPlans(t *testing.T) {
 	for _, want := range []string{
 		"<h2>Plans", "/ui/editor/plan?name=tour", `<a href="/ui/editor/plan?name=tour">tour</a>`, "<td>night</td>",
 		"<td>broken</td>", "yaml: unmarshal errors",
-		`href="/ui/editor?display=small&amp;tab=pages"`, // the way back to the pages
+		`href="/ui/editor?tab=pages"`, // the way back to the pages
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, body)

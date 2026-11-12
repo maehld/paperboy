@@ -141,7 +141,7 @@ func TestEditorBarsShareThePattern(t *testing.T) {
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
 	for _, page := range []struct{ path, back, name string }{
-		{"/ui/editor/page?name=eins&display=small", `<a href="/ui/editor?tab=pages">← Pages</a>`, "<h2>page eins</h2>"},
+		{"/ui/editor/page?name=eins&display=small", `<a href="/ui/editor?tab=pages">← Pages</a>`, `<h2>page eins - <span id="file-label">small</span></h2>`},
 		{"/ui/editor/plan?name=zimmer", `<a href="/ui/editor?tab=plans">← Plans</a>`, "<h2>plan zimmer</h2>"},
 		{"/ui/editor/device?id=test", `<a href="/ui/editor?tab=devices">← Devices</a>`, "<h2>device test</h2>"},
 		{"/ui/editor/display?name=small", `<a href="/ui/editor?tab=displays">← Display types</a>`, "<h2>display type small</h2>"},

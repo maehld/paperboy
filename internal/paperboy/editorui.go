@@ -37,29 +37,24 @@ var editorPageTmpl = template.Must(template.New("editor-page").Parse(editorPageT
 //go:embed ui/editor.js
 var editorJS []byte
 
-// editorVariant is one file of a page in the overview's variants column. Every
-// file is a link that opens exactly it; only a file that cannot be opened at
-// all keeps a Delete here (ADR 0093).
+// editorVariant is one file of a page in the overview's variants column. The
+// column only names the files; the row opens the page, so a file is not a link
+// of its own (ADR 0094).
 type editorVariant struct {
 	Label string // the display type, "shared" for pages/<name>.yaml
-	URL   string // opens exactly that file, empty when it cannot be opened
-	Class string // "selected" for the file the row shows, "broken" for a parse error
-	Title string // the file path and why it cannot be opened
-	// DeleteURL is only set when the file cannot be opened in an editor, so the
-	// list is the only place to remove it (ADR 0073).
-	DeleteURL string
-	Warn      string // what the delete confirmation says
+	Class string // "broken" for a parse error
+	Title string // the file path and why it opens for another display type
 }
 
-// editorPageGroup is one page in the overview: the file the selected display
-// type resolves to, with the files the page has next to it.
+// editorPageGroup is one page in the overview: the file the row shows, with the
+// files the page has next to it.
 type editorPageGroup struct {
 	Name     string
 	Kind     string
 	Grid     string
 	Title    string
 	Error    string // the shown file does not parse; the text names the file
-	Note     string // no file for the selected display type; a page with variants only is normal
+	Note     string // the shown file cannot be opened; the text names why
 	Variants []editorVariant
 	OpenURL  string
 }
@@ -67,8 +62,6 @@ type editorPageGroup struct {
 type editorListPage struct {
 	Version   string
 	GoVersion string
-	Display   string // the display type shared pages are opened with
-	Displays  []displayLink
 	Groups    []editorPageGroup
 	Options   []uiOption         // display types of the new-page form
 	Plans     []editorPlanRow    // the plan files next to the pages (ADR 0069)
@@ -134,6 +127,7 @@ type editorPageView struct {
 	Display     string
 	Text        bool
 	Error       string
+	File        string        // the open file: "shared" or the display type of the variant (ADR 0094)
 	WidgetsPage bool          // the widgets page without a page (ADR 0055)
 	Displays    []displayLink // display types this page can be opened for
 	Toggle      *fileToggle   // the other file of the page, shared or the variant (ADR 0093)
@@ -195,8 +189,12 @@ type editorState struct {
 
 // displayNames lists the configured display types alphabetically.
 func displayNames(cfg *Config) []string {
-	names := make([]string, 0, len(cfg.Profiles))
-	for name := range cfg.Profiles {
+	return sortedDisplays(cfg.Profiles)
+}
+
+func sortedDisplays(displays map[string]Profile) []string {
+	names := make([]string, 0, len(displays))
+	for name := range displays {
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -221,12 +219,12 @@ func editorDisplay(cfg *Config, requested string) string {
 	return ""
 }
 
-// groupPageFiles shows every page once: the file the selected display type
-// resolves to (its variant, else the shared page) with the files the page has
-// in its variants column. A variant of a display type that is not configured
-// stays listed, so an orphaned file stays visible and opens through a configured
-// display type of its kind (ADR 0079, 0092).
-func groupPageFiles(files []editorPageFile, displays map[string]Profile, display string, usedBy map[string][]string) []editorPageGroup {
+// groupPageFiles shows every page once: the file the row shows, with the files
+// the page has in its variants column. A page whose files do not belong to a
+// configured display type stays listed: a variant of a gone type opens through a
+// configured type of its kind (ADR 0079), and a broken file opens read-only
+// (ADR 0093).
+func groupPageFiles(files []editorPageFile, displays map[string]Profile) []editorPageGroup {
 	order := []string{}
 	byName := map[string][]editorPageFile{}
 	for _, f := range files {
@@ -237,37 +235,26 @@ func groupPageFiles(files []editorPageFile, displays map[string]Profile, display
 	}
 	groups := make([]editorPageGroup, 0, len(order))
 	for _, name := range order {
-		groups = append(groups, pageRow(name, byName[name], displays, display, usedBy[name]))
+		groups = append(groups, pageRow(name, byName[name], displays))
 	}
 	return groups
 }
 
-// pageRow shows one page for the selected display type: its kind, grid and
-// title describe the file that type resolves to. Every file of the page is a
-// link that opens exactly it, the shared page first and the resolved file in
-// bold (ADR 0093).
-func pageRow(name string, files []editorPageFile, displays map[string]Profile, display string, usedBy []string) editorPageGroup {
-	shown := -1
-	if display != "" {
-		for i, f := range files {
-			if f.Display == display {
-				shown = i
-				break
-			}
-		}
-	}
-	if shown < 0 {
-		for i, f := range files {
-			if f.Display == "" {
-				shown = i
-				break
-			}
+// pageRow shows one page: the shared page when it exists, else the first
+// variant in file order (ADR 0094). The variants column only names the files
+// with their path in the tooltip.
+func pageRow(name string, files []editorPageFile, displays map[string]Profile) editorPageGroup {
+	shown := 0
+	for i, f := range files {
+		if f.Display == "" {
+			shown = i
+			break
 		}
 	}
 	targets := make([]string, len(files))
 	reasons := make([]string, len(files))
 	for i, f := range files {
-		targets[i], reasons[i] = pageFileTarget(f, displays, display)
+		targets[i], reasons[i] = pageFileTarget(f, displays)
 	}
 	g := editorPageGroup{Name: name}
 	for i, f := range files {
@@ -275,25 +262,13 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile, d
 		if f.Display != "" {
 			v.Label = f.Display
 		}
-		if reasons[i] != "" {
-			v.Title += " — " + reasons[i]
-		}
 		if f.Error != "" {
 			v.Class = "broken"
 		}
-		if i == shown {
-			v.Class = strings.TrimSpace(v.Class + " selected")
-		}
-		if targets[i] != "" {
-			v.URL = pageEditURL(name, f.Display, targets[i])
-		} else {
-			v.DeleteURL, v.Warn = pageDeleteURL(name, f.Display, f.Hash), pageDeleteWarning(name, f.Display, usedBy)
+		if reasons[i] != "" {
+			v.Title += " — " + reasons[i]
 		}
 		g.Variants = append(g.Variants, v)
-	}
-	if shown < 0 {
-		g.Note = fmt.Sprintf("no file for display type %q and no shared page", display)
-		return g
 	}
 	f := files[shown]
 	g.Kind, g.Title = f.Kind, f.Title
@@ -306,8 +281,6 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile, d
 	switch {
 	case f.Error != "":
 		g.Error = pageFileName(name, f.Display) + ": " + f.Error
-	case display == "":
-		g.Error = "no display type configured to open it with"
 	case targets[shown] == "":
 		g.Note = reasons[shown]
 	}
@@ -317,10 +290,11 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile, d
 // pageFileTarget names the display type a page file is opened with and why it
 // cannot be opened at all. The file is addressed exactly, the display type only
 // supplies kind, pixels and ppi (ADR 0093). A broken file still opens read-only
-// when its display type is configured or the shared page fits a configured one;
-// a variant of a display type that is gone opens through a type of its kind,
-// except when it does not parse and its kind is unknown (ADR 0079).
-func pageFileTarget(f editorPageFile, displays map[string]Profile, selected string) (target, why string) {
+// when its display type is configured; without one it renders for the first
+// configured type (ADR 0094). A variant of a display type that is gone opens
+// through a type of its kind, except when it does not parse and its kind is
+// unknown (ADR 0079).
+func pageFileTarget(f editorPageFile, displays map[string]Profile) (target, why string) {
 	if f.Display != "" {
 		if knownProfile(displays, f.Display) {
 			return f.Display, ""
@@ -333,23 +307,18 @@ func pageFileTarget(f editorPageFile, displays map[string]Profile, selected stri
 		}
 		return "", fmt.Sprintf("display type %q is not configured", f.Display)
 	}
-	// The shared page is opened for the selected display type when its kind
-	// fits, else for any configured type of the file's kind.
-	if selected != "" {
-		if f.Error != "" {
-			return selected, ""
-		}
-		if p, ok := displays[selected]; ok && p.text() == (f.Kind == page.KindText) {
-			return selected, ""
-		}
-	}
-	if f.Error == "" {
-		if open := displayOfKind(displays, f.Kind); open != "" {
+	// The shared page is opened for the first configured type; its kind decides
+	// which type can render it, a broken file does not parse anyway.
+	if f.Error != "" {
+		if open := firstDisplay(displays); open != "" {
 			return open, ""
 		}
-		return "", "no configured display type has its kind"
+		return "", "no display type configured"
 	}
-	return "", "no display type configured"
+	if open := displayOfKind(displays, f.Kind); open != "" {
+		return open, ""
+	}
+	return "", "no configured display type has its kind"
 }
 
 // pageEditURL links exactly one file of a page: shared=1 for the shared page,
@@ -372,23 +341,6 @@ func pageFileName(name, display string) string {
 		return "pages/" + name + ".yaml"
 	}
 	return "pages/" + name + "." + display + ".yaml"
-}
-
-// pageDeleteURL names exactly the file of a row, so a shared page is never
-// mistaken for the variant of the selected display type.
-func pageDeleteURL(name, display, hash string) string {
-	return "/api/pages/" + url.PathEscape(name) + "?" + url.Values{
-		"display": {display}, "hash": {hash}}.Encode()
-}
-
-// pageDeleteWarning is the confirmation text of a page: the file and the plans
-// that name it (ADR 0073).
-func pageDeleteWarning(name, display string, plans []string) string {
-	msg := "Delete " + pageFileName(name, display) + "?"
-	if len(plans) == 0 {
-		return msg + "\n\nNo plan names this page."
-	}
-	return msg + "\n\nPlans that name it: " + strings.Join(plans, ", ") + "."
 }
 
 // referenceLabels lists the named references of a display type, e.g. for the
@@ -430,17 +382,22 @@ func knownProfile(displays map[string]Profile, name string) bool {
 // orphaned page variant can still be opened and saved as a variant of it
 // (ADR 0079).
 func displayOfKind(displays map[string]Profile, kind string) string {
-	names := make([]string, 0, len(displays))
-	for name := range displays {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
+	for _, name := range sortedDisplays(displays) {
 		if displays[name].text() == (kind == page.KindText) {
 			return name
 		}
 	}
 	return ""
+}
+
+// firstDisplay returns the alphabetically first configured display type, so a
+// broken page that does not parse still opens read-only for one (ADR 0094).
+func firstDisplay(displays map[string]Profile) string {
+	names := sortedDisplays(displays)
+	if len(names) == 0 {
+		return ""
+	}
+	return names[0]
 }
 
 func editorVersion(cfg *Config) (version, goVersion string) {
@@ -457,7 +414,6 @@ func editorVersion(cfg *Config) (version, goVersion string) {
 func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	q := r.URL.Query()
-	display := editorDisplay(cfg, q.Get("display"))
 	tab := q.Get("tab")
 	switch tab {
 	case "plans", "devices", "displays":
@@ -474,8 +430,8 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Warn("plan list for the page overview failed", "error", err)
 	}
-	v := editorListPage{Version: version, GoVersion: goVersion, Display: display, Tab: tab,
-		Groups: groupPageFiles(files, cfg.Profiles, display, plansByPage(plans))}
+	v := editorListPage{Version: version, GoVersion: goVersion, Tab: tab,
+		Groups: groupPageFiles(files, cfg.Profiles)}
 	for _, p := range plans {
 		row := editorPlanRow{Name: p.Name, Rules: p.Rules, Fallback: p.Fallback, Error: p.Error}
 		if p.Error == "" {
@@ -542,15 +498,13 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 		v.Types = append(v.Types, row)
 	}
 	for _, n := range displayNames(cfg) {
-		v.Displays = append(v.Displays, displayLink{Name: n, Selected: n == display,
-			URL: "/ui/editor?" + url.Values{"display": {n}}.Encode()})
-		v.Options = append(v.Options, uiOption{Value: n, Label: n, Selected: n == display})
+		v.Options = append(v.Options, uiOption{Value: n, Label: n})
 	}
 	v.Tabs = []uiTab{
-		{Name: "pages", Label: "Pages", Count: len(v.Groups), URL: editorTabURL("pages", display)},
-		{Name: "plans", Label: "Plans", Count: len(v.Plans), URL: editorTabURL("plans", "")},
-		{Name: "devices", Label: "Devices", Count: len(v.Devices), URL: editorTabURL("devices", "")},
-		{Name: "displays", Label: "Displays", Count: len(v.Types), URL: editorTabURL("displays", "")},
+		{Name: "pages", Label: "Pages", Count: len(v.Groups), URL: editorTabURL("pages")},
+		{Name: "plans", Label: "Plans", Count: len(v.Plans), URL: editorTabURL("plans")},
+		{Name: "devices", Label: "Devices", Count: len(v.Devices), URL: editorTabURL("devices")},
+		{Name: "displays", Label: "Displays", Count: len(v.Types), URL: editorTabURL("displays")},
 	}
 	for i := range v.Tabs {
 		v.Tabs[i].Selected = v.Tabs[i].Name == tab
@@ -562,13 +516,10 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// editorTabURL links one sub-tab; the pages tab keeps the chosen display type.
-func editorTabURL(tab, display string) string {
-	params := url.Values{"tab": {tab}}
-	if tab == "pages" && display != "" {
-		params.Set("display", display)
-	}
-	return "/ui/editor?" + params.Encode()
+// editorTabURL links one sub-tab; the pages tab no longer carries a display
+// type of its own (ADR 0094).
+func editorTabURL(tab string) string {
+	return "/ui/editor?" + url.Values{"tab": {tab}}.Encode()
 }
 
 // handleEditorPage opens one page for a display type. A page without a file
@@ -697,6 +648,11 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	stateFile := fileDisplay
 	if missing && !shared && stateFile == "" {
 		stateFile = display
+	}
+	// The editor names the open file behind the page name (ADR 0094).
+	v.File = "shared"
+	if stateFile != "" {
+		v.File = stateFile
 	}
 	v.Data = editorStateData(name, display, stateFile, p, missing, variantExists, plansByPage(plans)[name], pageRenameAction(cfg, name, plansByPage(plans)[name]), orphan)
 	for _, n := range displayNames(cfg) {
