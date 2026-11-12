@@ -12,7 +12,7 @@ widget, the top-right corner turned down like a newspaper.
 
 Everything is a filled shape in one colour on a transparent background — no strokes that depend on
 a renderer, no gradients, no white fills. The mark therefore scales to any size and inverts by
-inverting the colour.
+inverting the colour; `paperboy-lockup-inverted.svg` is the lockup in white for dark surfaces.
 
 | File | Use |
 |---|---|
@@ -20,8 +20,9 @@ inverting the colour.
 | `paperboy-small.svg` | 16 to 24 px (favicon, list icons): without dividers and with a thicker frame |
 | `paperboy-square.svg` | square cut on a white tile: repository avatar, container image |
 | `paperboy-lockup.svg` | mark and wordmark, for headers and the README |
+| `paperboy-lockup-inverted.svg` | the same lockup in white, for dark surfaces (README dark mode) |
 
-`preview.html` shows all files on light and dark surfaces and at their sizes; open it in a browser.
+`preview.html` shows the marks on light and dark surfaces and at their sizes; open it in a browser.
 It embeds the marks inline instead of linking them, so it renders from any location — a copy in a
 temp directory, an editor preview — and does not depend on the folder next to it. It is generated:
 change the SVGs and run `python3 build-preview.py`.

@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/logo/paperboy-lockup.svg" alt="Paperboy" width="320">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/paperboy-lockup-inverted.svg">
+    <img src="docs/logo/paperboy-lockup.svg" alt="Paperboy" width="320">
+  </picture>
 </p>
 
 # Paperboy

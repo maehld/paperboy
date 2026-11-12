@@ -10,6 +10,8 @@ import pathlib
 import re
 
 HERE = pathlib.Path(__file__).parent
+# paperboy-lockup-inverted.svg is the lockup in white for dark surfaces; the dark row below shows
+# the same mark inverted by CSS, so it is not embedded a second time.
 FILES = ["paperboy.svg", "paperboy-small.svg", "paperboy-square.svg", "paperboy-lockup.svg"]
 
 
