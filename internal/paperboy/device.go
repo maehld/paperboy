@@ -548,6 +548,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	}
 	if st != nil {
 		st.LastPage, st.LastPageKind, st.LastPageHash = shownPage, shownKind, served.hash
+		st.LastPages = served.pages
 		st.LastPageTime, st.LastRefresh = now, int(refresh.Seconds())
 		st.LastText = served.lines
 		st.LastError = errText

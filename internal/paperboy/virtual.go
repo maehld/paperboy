@@ -196,7 +196,7 @@ func (s *Server) handleVirtualSync(w http.ResponseWriter, r *http.Request) {
 		virtual:     true,
 	})
 	s.mu.Lock()
-	debug := virtualDebug{Rule: st.Rule, Page: st.Page, PageName: st.LastPage,
+	debug := virtualDebug{Rule: st.Rule, Page: st.Page, Pages: st.LastPages, PageName: st.LastPage,
 		PageKind: st.LastPageKind, Error: st.LastError}
 	if st.Menu.Open {
 		debug.Menu = st.Menu.Phase
@@ -220,6 +220,7 @@ type virtualSyncResponse struct {
 type virtualDebug struct {
 	Rule     string `json:"rule,omitempty"`
 	Page     int    `json:"page"`
+	Pages    int    `json:"pages,omitempty"`
 	PageName string `json:"page_name,omitempty"`
 	PageKind string `json:"page_kind,omitempty"`
 	Error    string `json:"error,omitempty"`

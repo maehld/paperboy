@@ -115,6 +115,9 @@ func TestVirtualDisplayPagesWithoutDevice(t *testing.T) {
 	if got := debugOf(first)["page_name"]; got != "eins" {
 		t.Fatalf("page name: %v", got)
 	}
+	if got := debugOf(first)["pages"]; got != float64(2) {
+		t.Fatalf("page count: %v", got)
+	}
 
 	second := virtualPress(t, s, query, imageHash(first), 1, buttonNext)
 	if path := imageOf(second)["path"].(string); !strings.Contains(path, "/pages/small/zwei/") {

@@ -29,7 +29,8 @@
     const d = out.debug || {};
     const parts = ["rule " + (d.rule || "none")];
     if (d.page_name) {
-      parts.push("page " + (d.page + 1) + " · " + d.page_name);
+      const count = d.pages > 1 ? "/" + d.pages : "";
+      parts.push("page " + (d.page + 1) + count + " · " + d.page_name);
     } else if (d.page_kind) {
       parts.push("page " + d.page_kind);
     }
