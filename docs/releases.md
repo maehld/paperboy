@@ -21,7 +21,7 @@ The tag names the release, not what is inside. Every plugin and every firmware i
 | `paperboy-firmware.zip` | unpack in the instance directory: creates `firmware/` with `<hardware>-v<version>.bin` of every hardware type (ADR 0043, 0059, 0060, 0063) |
 | `SHA256SUMS` | checksums of all assets of the release |
 
-The container image is published separately as `ghcr.io/maehld/paperboy` (`X.Y.Z`, `X.Y` and `latest`). To create a release, push a tag: `git tag v2.1.0 && git push origin v2.1.0`. The *Release* workflow builds all assets and attaches them to one release. A tag with a suffix (`v1.4.0-rc.1`, `plugins-v1.4.0-rc.1`) becomes a prerelease; only the `latest` channel installs it (ADR 0089, see [Downloads](#downloads)).
+The container image is published separately as `ghcr.io/maehld/paperboy` (`X.Y.Z`, `X.Y` and `latest`; a prerelease gets only its full version, so it never replaces `X.Y` or `latest`). To create a release, push a tag: `git tag v2.1.0 && git push origin v2.1.0`. The *Release* workflow builds all assets and attaches them to one release, with notes that compare against the last stable release of the same train. A tag with a suffix (`v1.4.0-rc.1`, `plugins-v1.4.0-rc.1`) becomes a prerelease; only the `latest` channel installs it (ADR 0089, see [Downloads](#downloads)).
 
 ## Downloads
 
