@@ -12,8 +12,9 @@ import (
 	"time"
 )
 
-// maxResponse bounds one CalDAV or iCalendar response.
-const maxResponse = 16 << 20
+// maxResponse bounds one CalDAV, CardDAV or iCalendar response. A CardDAV
+// answer carries whole vCards, photos included.
+const maxResponse = 64 << 20
 
 // client talks to a CalDAV server or fetches iCalendar files with optional
 // Basic authentication. Redirects are followed by hand: Go's client turns a
@@ -138,9 +139,11 @@ type propstat struct {
 type davProp struct {
 	Principal    hrefProp `xml:"DAV: current-user-principal"`
 	Home         hrefProp `xml:"urn:ietf:params:xml:ns:caldav calendar-home-set"`
+	AddressHome  hrefProp `xml:"urn:ietf:params:xml:ns:carddav addressbook-home-set"`
 	DisplayName  string   `xml:"DAV: displayname"`
 	ResourceType struct {
-		Calendar *struct{} `xml:"urn:ietf:params:xml:ns:caldav calendar"`
+		Calendar    *struct{} `xml:"urn:ietf:params:xml:ns:caldav calendar"`
+		Addressbook *struct{} `xml:"urn:ietf:params:xml:ns:carddav addressbook"`
 	} `xml:"DAV: resourcetype"`
 	Components *struct {
 		Comps []struct {
@@ -148,6 +151,7 @@ type davProp struct {
 		} `xml:"urn:ietf:params:xml:ns:caldav comp"`
 	} `xml:"urn:ietf:params:xml:ns:caldav supported-calendar-component-set"`
 	CalendarData string `xml:"urn:ietf:params:xml:ns:caldav calendar-data"`
+	AddressData  string `xml:"urn:ietf:params:xml:ns:carddav address-data"`
 }
 
 type hrefProp struct {

@@ -19,6 +19,9 @@ type occurrence struct {
 	Location string
 	Calendar string
 	UID      string
+	// Birthday marks a yearly birthday, whether it came from a configured
+	// birthday calendar or from the CardDAV contacts.
+	Birthday bool
 }
 
 // master is a VEVENT as read from the data, before recurrence expansion.
@@ -137,6 +140,20 @@ func sortOccurrences(list []occurrence) {
 		}
 		return a.Title < b.Title
 	})
+}
+
+// markBirthdays tags the occurrences of the configured birthday calendars, so
+// the widgets can read one flag whether a birthday came from a calendar or
+// from the CardDAV contacts.
+func markBirthdays(list []occurrence, calendars []string) {
+	for i := range list {
+		for _, name := range calendars {
+			if strings.EqualFold(strings.TrimSpace(name), list[i].Calendar) {
+				list[i].Birthday = true
+				break
+			}
+		}
+	}
 }
 
 // key identifies an instance for EXDATE and RECURRENCE-ID matching.

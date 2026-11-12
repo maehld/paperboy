@@ -343,6 +343,7 @@ type parsedEvent struct {
 	title      string
 	location   string
 	calendar   string
+	birthday   bool
 }
 
 func (p *calendarPlugin) parsed(events []event) []parsedEvent {
@@ -360,16 +361,20 @@ func (p *calendarPlugin) parsed(events []event) []parsedEvent {
 		if err != nil {
 			first = s
 		}
-		out = append(out, parsedEvent{start: s, end: en, first: first, allDay: e.AllDay, title: e.Title, location: e.Location, calendar: e.Calendar})
+		out = append(out, parsedEvent{start: s, end: en, first: first, allDay: e.AllDay, title: e.Title, location: e.Location, calendar: e.Calendar, birthday: e.Birthday})
 	}
 	return out
 }
 
-// birthday reports whether an event belongs to one of the configured birthday
+// birthday reports whether an event is a birthday: either the CardDAV contacts
+// already marked it, or it belongs to one of the configured birthday
 // calendars, matched by display name like the calendars section.
-func (p *calendarPlugin) birthday(calendar string) bool {
+func (p *calendarPlugin) birthday(e parsedEvent) bool {
+	if e.birthday {
+		return true
+	}
 	for _, name := range p.opts.birthdays {
-		if strings.EqualFold(strings.TrimSpace(name), calendar) {
+		if strings.EqualFold(strings.TrimSpace(name), e.calendar) {
 			return true
 		}
 	}
@@ -381,7 +386,7 @@ func (p *calendarPlugin) birthday(calendar string) bool {
 // Nextcloud birthday calendars carry. It reports false for other calendars,
 // implausible years and the day of birth itself.
 func (p *calendarPlugin) birthdayAge(e parsedEvent) (int, bool) {
-	if !p.birthday(e.calendar) || e.first.IsZero() {
+	if !p.birthday(e) || e.first.IsZero() {
 		return 0, false
 	}
 	year := e.first.In(p.loc).Year()
@@ -643,7 +648,7 @@ func (p *calendarPlugin) agendaList(maxLines int, o agendaOpts) ([]agendaLine, i
 		events = p.events
 	}
 	for _, e := range p.parsed(events) {
-		if o.birthdays && !p.birthday(e.calendar) {
+		if o.birthdays && !p.birthday(e) {
 			continue
 		}
 		if !e.start.Before(horizon) {

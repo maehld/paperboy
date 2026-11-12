@@ -44,10 +44,11 @@ plugins:
     timeout: 1m
     config:
       caldav: https://caldav.icloud.com
+      carddav: https://contacts.icloud.com   # iCloud birthdays come from the contacts
       user: me@icloud.com
       password: ${PAPERBOY_CALDAV_PASSWORD}   # iCloud: app-specific password
-      calendars: [Privat, Geburtstage]   # loaded for every display; each widget can narrow the set
-      birthday_calendars: [Geburtstage]   # iCloud fills it from the contact birthdays
+      calendars: [Privat]   # loaded for every display; each widget can narrow the set
+      # birthday_calendars: [Geburtstage]   # only for servers that publish a birthday calendar (Nextcloud)
 
 defaults:
   refresh: 5m
