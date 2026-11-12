@@ -132,11 +132,11 @@ func (p *calendarPlugin) shortDate(day time.Time) string {
 // week draws one column per day: weekday and date as heading (today
 // inverted), bars for all-day and multi-day events, then the timed events
 // with start time and ellipsized title and "+N weitere" for the rest.
-func (p *calendarPlugin) week(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) {
+func (p *calendarPlugin) week(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	area := img.Rect.Inset(w.Style.Padding)
 	n := weekDays(w.Arg(), 7)
 	if area.Dx() < n*24 || area.Dy() < 60 {
-		return
+		return nil
 	}
 	size := max(req.TextPx(w)*0.6, req.PtPx(6.3), render.MinSize)
 	lineH := int(size*1.25 + 0.5)
@@ -146,7 +146,11 @@ func (p *calendarPlugin) week(req *plugin.Request, w plugin.WidgetRequest, img *
 	today := midnight(p.now.In(p.loc))
 	first := p.weekFirst(w.Arg(), "week")
 
-	bars, timed := assignDays(p.parsed(), first, n, p.loc)
+	evs, err := p.eventsFor(w)
+	if err != nil {
+		return err
+	}
+	bars, timed := assignDays(p.parsed(evs), first, n, p.loc)
 
 	// Heading: weekday and date, today inverted.
 	headH := lineH*2 + pad
@@ -230,14 +234,15 @@ func (p *calendarPlugin) week(req *plugin.Request, w plugin.WidgetRequest, img *
 			render.Text(img, fmt.Sprintf(p.text("+%d weitere", "+%d more"), more), colX+pad, base, render.Style{Size: size, Bold: true, Shrink: true}, textW, color.Black, render.Left)
 		}
 	}
+	return nil
 }
 
 // weekLines is the text variant: one line per day, "Mo  7 title, 09:30 title".
 // With fewer lines than days only the first days are shown.
-func (p *calendarPlugin) weekLines(w plugin.WidgetRequest) []string {
+func (p *calendarPlugin) weekLines(w plugin.WidgetRequest, events []event) []string {
 	n := min(weekDays(w.Arg(), 7), max(w.Height, 1))
 	first := p.weekFirst(w.Arg(), "today") // few lines: start with today
-	bars, timed := assignDays(p.parsed(), first, n, p.loc)
+	bars, timed := assignDays(p.parsed(events), first, n, p.loc)
 	today := midnight(p.now.In(p.loc))
 	var out []string
 	for i := range n {

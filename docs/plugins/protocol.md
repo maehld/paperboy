@@ -230,7 +230,10 @@ stores it without touching the widget cache.
 `Values.Check(known)` rejects unknown keys, missing required keys and values
 outside `enum`. `Values.CheckEnums(known)` only checks the enums and leaves
 unknown keys alone; `Handle` applies it per widget before calling `Render` or
-`Text`.
+`Text`. `describe` is answered on demand, so a plugin may compute `enum` from
+the data it has loaded; the calendar plugin offers the discovered calendar
+names as check boxes. Paperboy validates against the answer current at that
+moment.
 
 ## State between restarts
 

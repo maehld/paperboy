@@ -46,7 +46,7 @@ plugins:
       caldav: https://caldav.icloud.com
       user: me@icloud.com
       password: ${PAPERBOY_CALDAV_PASSWORD}   # iCloud: app-specific password
-      calendars: [Privat, Geburtstage]
+      calendars: [Privat, Geburtstage]   # loaded for every display; each widget can narrow the set
       birthday_calendars: [Geburtstage]   # iCloud fills it from the contact birthdays
 
 defaults:

@@ -158,12 +158,12 @@ func TestWeekLines(t *testing.T) {
 	for _, e := range weekEvents(t, data) {
 		p.events = append(p.events, event{Start: e.start.Format(time.RFC3339), End: e.end.Format(time.RFC3339), AllDay: e.allDay, Title: e.title})
 	}
-	lines := p.weekLines(newWeekRequest(map[string]any{"days": 4, "start": "today"}, 7))
+	lines := p.weekLines(newWeekRequest(map[string]any{"days": 4, "start": "today"}, 7), p.events)
 	want := []string{">Di  3 09:30 Standup", " Mi  4 Trip", " Do  5 Trip", " Fr  6"}
 	if !reflect.DeepEqual(lines, want) {
 		t.Errorf("lines = %q, want %q", lines, want)
 	}
-	if got := len(p.weekLines(newWeekRequest(map[string]any{"days": 7}, 3))); got != 3 {
+	if got := len(p.weekLines(newWeekRequest(map[string]any{"days": 7}, 3), p.events)); got != 3 {
 		t.Errorf("limited to the height: %d", got)
 	}
 }
