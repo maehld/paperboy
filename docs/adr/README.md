@@ -87,3 +87,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0090](0090-download-cache-and-inventory.md) | The download cache keeps one file, the inventory is pruned by hand | Accepted, implemented |
 | [0091](0091-virtual-display.md) | A virtual display in the web UI | Accepted, implemented |
 | [0092](0092-scrolling-text-lines.md) | Scrolling lines on text displays | Accepted, implemented |
+| [0093](0093-every-page-file-is-addressable.md) | Every page file is addressable | Accepted, implemented; amends the Delete rule of ADR-0084 and the overview of ADR-0068 |

@@ -25,10 +25,10 @@ tr.rowlink:hover td { background: #f6f9fe; }
 td.open { text-align: right; white-space: nowrap; }
 td.page { line-height: 1.25; }
 td.page strong { font-weight: 600; }
-td.page .sub { display: block; color: #888; font: .78rem ui-monospace, Consolas, monospace; }
 td.variants { white-space: nowrap; }
 td.variants a { text-decoration: none; }
 td.variants a.selected { font-weight: 700; color: #111; }
+td.variants a.broken { color: #b00; }
 td.variants .missing { color: #b00; }
 td.variants button.delete { margin-left: .4rem; font-size: .78rem; }
 td.num { font-variant-numeric: tabular-nums; }
@@ -82,12 +82,13 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <tbody>
       {{range .Groups}}
       <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
-        <td class="page">{{if .OpenURL}}<a href="{{.OpenURL}}"><strong>{{.Name}}</strong></a>{{else}}<strong>{{.Name}}</strong>{{end}}{{if .File}}<span class="sub">{{.File}}{{if .Shared}} · shared{{end}}</span>{{end}}</td>
-        <td class="variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}{{if $v.URL}}<a href="{{$v.URL}}"{{if $v.Selected}} class="selected"{{end}}{{if $v.Title}} title="{{$v.Title}}"{{end}}>{{$v.Label}}</a>{{else}}<span class="missing" title="{{$v.Title}}">{{$v.Label}}</span>{{end}}{{if $v.DeleteURL}}<button class="delete" type="button" data-delete="{{$v.DeleteURL}}" data-warn="{{$v.Warn}}">Delete</button>{{end}}{{end}}</td>
+        <td class="page">{{if .OpenURL}}<a href="{{.OpenURL}}"><strong>{{.Name}}</strong></a>{{else}}<strong>{{.Name}}</strong>{{end}}</td>
+        <td class="variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}{{if $v.URL}}<a href="{{$v.URL}}"{{if $v.Class}} class="{{$v.Class}}"{{end}}{{if $v.Title}} title="{{$v.Title}}"{{end}}>{{$v.Label}}</a>{{else}}<span class="missing" title="{{$v.Title}}">{{$v.Label}}</span>{{end}}{{if $v.DeleteURL}}<button class="delete" type="button" data-delete="{{$v.DeleteURL}}" data-warn="{{$v.Warn}}">Delete</button>{{end}}{{end}}</td>
         <td>{{.Kind}}</td>
         <td class="num">{{.Grid}}</td>
         <td>{{.Title}}</td>
       </tr>
+      {{if .Note}}<tr class="detail"><td colspan="5"><p class="hint">{{.Note}}</p></td></tr>{{end}}
       {{if .Error}}<tr class="detail"><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
     </tbody>
@@ -294,9 +295,8 @@ for (const d of document.querySelectorAll('dialog')) {
   });
 }
 
-// A file that only the list can reach - a page variant that neither the row nor
-// the display type switch opens - keeps its Delete here; the other files are
-// deleted in their editor (ADR 0084). The confirmation names what still
+// A file that cannot be opened in an editor keeps its Delete here; every other
+// file is deleted in its editor (ADR 0093). The confirmation names what still
 // references the file (ADR 0073).
 for (const b of document.querySelectorAll('button[data-delete]')) {
   b.addEventListener('click', async () => {
