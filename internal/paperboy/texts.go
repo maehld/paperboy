@@ -105,6 +105,12 @@ func (t texts) menuResult(ok bool, message string) (string, string) {
 	return title, message
 }
 
+// menuSimulated is the banner of an action a virtual display did not run: it
+// names the action instead of claiming an outcome (ADR 0091).
+func (t texts) menuSimulated(title string) (string, string) {
+	return t.variant("Simuliert", "Simulated"), t.variant("Nicht ausgeführt: ", "Not executed: ") + title
+}
+
 func (t texts) menuExpired() string {
 	return t.variant("Menü geschlossen", "Menu closed")
 }

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Virtual display · {{.Plan}} · {{.Profile}} · Paperboy</title>
+<link rel="stylesheet" href="/ui/ui.css">
+<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
+<style>
+.screen { display: flex; justify-content: center; align-items: center; background: #fff; border: 1px solid #ccc; border-radius: 8px; padding: 1rem; min-height: 8rem; }
+#image { display: block; max-width: 100%; height: auto; image-rendering: pixelated; }
+#text { margin: 0; padding: 1rem 1.2rem; background: #2d4a12; color: #d8f5a0; font: 1.1rem/1.35 ui-monospace, Consolas, monospace; white-space: pre; overflow: auto; border-radius: 4px; }
+.controls { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; margin: .8rem 0 .4rem; }
+.controls button { min-width: 6.5rem; }
+.debug { margin: 0 0 .4rem; font: .85rem ui-monospace, Consolas, monospace; color: #333; word-break: break-word; }
+.debug.error { color: #b00; }
+details { margin-top: .4rem; }
+details pre { max-height: 18rem; overflow: auto; font-size: .8rem; }
+.hint { margin-top: .6rem; }
+/* Full screen is for showing a plan: the chrome disappears, the display and
+   the buttons stay. */
+body.show header, body.show .debug, body.show details, body.show .hint { display: none; }
+body.show { padding: .5rem; }
+body.show .screen { border: 0; padding: 0; }
+</style>
+</head>
+<body data-sync="{{.SyncURL}}" data-reset="{{.ResetURL}}">
+<header>
+  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
+  <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/plugins">Widgets</a> · <a href="/ui/editor">Editor</a></nav>
+  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
+</header>
+<div class="bar">
+  <h2>Virtual display</h2>
+  <span class="muted">plan {{.Plan}} · display type {{.Profile}} · {{.Width}}×{{.Height}} · {{.Power}}</span>
+  <span class="spacer"></span>
+  <button id="reset" type="button">Reset</button>
+  <button id="full" type="button">Full screen</button>
+</div>
+<main class="screen" id="screen">
+  <img id="image" alt="The page this display serves" width="{{.Width}}" height="{{.Height}}" hidden>
+  <pre id="text" hidden></pre>
+</main>
+<div class="controls">
+  <button data-role="previous" type="button">← Previous</button>
+  <button data-role="home" type="button">Home</button>
+  <button data-role="next" type="button">Next →</button>
+</div>
+<p class="debug" id="debug">waiting for the first sync…</p>
+<details><summary>Last sync</summary><pre id="json"></pre></details>
+<p class="hint">The URL is the configuration: <code>plan</code> and <code>display</code> are required, <code>refresh</code>, <code>menu</code>, <code>page_timeout</code> and <code>power</code> are optional. Keys: ← previous, → next, Enter home; hold a key or a button for a long press. Actions are shown but never run.</p>
+<script src="/ui/virtual.js"></script>
+</body>
+</html>

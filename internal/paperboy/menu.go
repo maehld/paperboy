@@ -80,6 +80,9 @@ type menuState struct {
 	Result      string       `json:"result,omitempty"`
 	Reason      string       `json:"reason,omitempty"` // why no action is available
 	ResultOK    bool         `json:"result_ok,omitempty"`
+	// Simulated marks a result the virtual display did not run: it names the
+	// action instead of reporting an outcome (ADR 0091).
+	Simulated bool `json:"simulated,omitempty"`
 }
 
 // allDisabled reports whether no action of the list can run now.
@@ -1113,7 +1116,11 @@ func (s *Server) overlayMenu(cfg *Config, d *Device, served servedPage, m *menuS
 		}
 		_, v.text = t.menuRunning("")
 	case menuResultPhase:
-		v.title, v.text = t.menuResult(m.ResultOK, m.Result)
+		if m.Simulated {
+			v.title, v.text = t.menuSimulated(m.Result)
+		} else {
+			v.title, v.text = t.menuResult(m.ResultOK, m.Result)
+		}
 	}
 	out, err := s.menuOverlay(served, d.Profile, prof, v, t)
 	if err != nil {
