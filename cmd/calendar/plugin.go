@@ -182,12 +182,18 @@ func (p *calendarPlugin) Render(req *plugin.Request, w plugin.WidgetRequest, img
 func (p *calendarPlugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
 	switch w.Widget {
 	case "agenda":
-		lines, hidden := p.agendaLines(w.Height, p.agendaArgs(w.Arg(), w.Height > 2))
+		opts := p.agendaArgs(w.Arg(), w.Height > 2)
+		lines, hidden := p.agendaLines(w.Height, opts)
+		// A text display puts the summary on a line of its own, so keep one free
+		// while events remain.
+		if hidden > 0 && len(lines) >= w.Height && w.Height > 1 {
+			lines, hidden = p.agendaLines(w.Height-1, opts)
+		}
 		if len(lines) == 0 {
 			return []string{p.text("Keine Termine", "No events")}, nil
 		}
-		if hidden > 0 {
-			lines = append(lines, agendaLine{text: fmt.Sprintf(p.text("+%d weitere", "+%d more"), hidden)})
+		if hidden > 0 && len(lines) < w.Height {
+			lines = append(lines, agendaLine{text: p.moreText(hidden)})
 		}
 		var out []string
 		for _, l := range lines {
@@ -241,6 +247,7 @@ func (p *calendarPlugin) text(de, en string) string {
 
 type agendaLine struct {
 	heading bool
+	event   bool
 	when    string
 	text    string
 }
@@ -283,23 +290,13 @@ func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img
 	size := 0.6 * float64(lineH)
 	baseline := func(i int) int { return area.Min.Y + i*lineH + lineH/2 + int(size*0.36) }
 
-	all, hidden := p.agendaLines(lines, p.agendaArgs(a, true))
+	all, whenW, inline := p.agendaLayout(lines, p.agendaArgs(a, lines > 1), area, size)
 	if len(all) == 0 {
 		render.Text(img, p.text("Keine Termine", "No events"), area.Min.X+area.Dx()/2, baseline(0),
 			render.Style{Size: size, Shrink: true}, area.Dx(), color.Black, render.Center)
 		return
 	}
-	if hidden > 0 {
-		all = append(all, agendaLine{text: fmt.Sprintf(p.text("+%d weitere", "+%d more"), hidden)})
-	}
 	gap := int(size * 0.6)
-	whenW := 0
-	for _, l := range all {
-		if !l.heading && l.when != "" {
-			whenW = max(whenW, render.Measure(l.when, size, false))
-		}
-	}
-	whenW = min(whenW, area.Dx()/2)
 	textX := area.Min.X
 	if whenW > 0 {
 		textX += whenW + gap
@@ -316,8 +313,77 @@ func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img
 		if l.when != "" {
 			render.Text(img, l.when, area.Min.X, y, render.Style{Size: size, Shrink: true}, whenW, color.Black, render.Left)
 		}
-		render.TextAt(img, render.Ellipsize(l.text, size, false, area.Max.X-textX), textX, y, size, false, color.Black, render.Left)
+		width := area.Max.X - textX
+		last := i == len(all)-1
+		if last && inline != "" {
+			width -= render.Measure(inline, size, false) + gap
+		}
+		text := render.Ellipsize(l.text, size, false, width)
+		render.TextAt(img, text, textX, y, size, false, color.Black, render.Left)
+		if last && inline != "" {
+			render.TextAt(img, inline, textX+render.Measure(text, size, false)+gap, y, size, false, color.Black, render.Left)
+		}
 	}
+}
+
+// agendaLayout fits the agenda into a cell of lines lines: it returns the lines
+// to draw, the width of the time column and the "+N more" summary when that one
+// goes behind the last line instead of taking a line of its own.
+func (p *calendarPlugin) agendaLayout(lines int, o agendaOpts, area image.Rectangle, size float64) ([]agendaLine, int, string) {
+	gap := int(size * 0.6)
+	columns := func(all []agendaLine) (whenW, textX int) {
+		for _, l := range all {
+			if !l.heading && l.when != "" {
+				whenW = max(whenW, render.Measure(l.when, size, false))
+			}
+		}
+		whenW = min(whenW, area.Dx()/2)
+		textX = area.Min.X
+		if whenW > 0 {
+			textX += whenW + gap
+		}
+		return whenW, textX
+	}
+
+	// A heading is only worth a line when another one is left for the events it
+	// introduces, otherwise a small cell would show the day and claim that it
+	// has no events.
+	all, hidden := p.agendaLines(lines, o)
+	if len(all) == 0 {
+		return nil, 0, ""
+	}
+	whenW, textX := columns(all)
+	// The summary follows the last event when it fits next to it without cutting
+	// the title. Otherwise it needs a line of its own, and only a cell with more
+	// than one line has one to spare.
+	var inline string
+	if hidden > 0 {
+		more := p.moreText(hidden)
+		// The separator matches the location that titles carry.
+		behind := "· " + more
+		switch {
+		case agendaMoreFits(all[len(all)-1], behind, size, gap, area.Max.X-textX):
+			inline = behind
+		case lines > 1:
+			all, hidden = p.agendaLines(lines-1, o)
+			whenW, textX = columns(all)
+			if hidden > 0 {
+				all = append(all, agendaLine{text: p.moreText(hidden)})
+			}
+		}
+	}
+	return all, whenW, inline
+}
+
+// moreText counts the events that did not fit.
+func (p *calendarPlugin) moreText(n int) string {
+	return fmt.Sprintf(p.text("+%d weitere", "+%d more"), n)
+}
+
+// agendaMoreFits reports whether the summary fits behind the line without
+// cutting its title; day headings and free days do not take one.
+func agendaMoreFits(l agendaLine, more string, size float64, gap, width int) bool {
+	return l.event && render.Measure(l.text, size, false)+gap+render.Measure(more, size, false) <= width
 }
 
 // agendaOpts are the arguments of one agenda widget.
@@ -339,7 +405,28 @@ func (p *calendarPlugin) agendaArgs(a plugin.Values, headings bool) agendaOpts {
 	}
 }
 
+// agendaLines returns at most maxLines lines and the number of events that did
+// not fit. Neither a day heading nor a day without events may use the last line
+// of a small cell while events are left, otherwise the cell would report that
+// there are none.
 func (p *calendarPlugin) agendaLines(maxLines int, o agendaOpts) ([]agendaLine, int) {
+	lines, hidden, events := p.agendaList(maxLines, o)
+	if events == 0 && hidden > 0 {
+		if o.headings {
+			o.headings = false
+			lines, hidden, events = p.agendaList(maxLines, o)
+		}
+		if events == 0 && o.empty {
+			o.empty = false
+			lines, hidden, events = p.agendaList(maxLines, o)
+		}
+	}
+	return lines, hidden
+}
+
+// agendaList builds the agenda lines, cuts them to maxLines and counts the
+// events that did not fit and those that did.
+func (p *calendarPlugin) agendaList(maxLines int, o agendaOpts) ([]agendaLine, int, int) {
 	headings, location := o.headings, o.location
 	now := p.now.In(p.loc)
 	today := midnight(now)
@@ -403,7 +490,7 @@ func (p *calendarPlugin) agendaLines(maxLines int, o agendaOpts) ([]agendaLine, 
 			all = append(all, line)
 			continue
 		}
-		line := agendaLine{when: p.when(d.parsedEvent, d.day, today, headings), text: strings.TrimSpace(d.title)}
+		line := agendaLine{event: true, when: p.when(d.parsedEvent, d.day, today, headings), text: strings.TrimSpace(d.title)}
 		if location && strings.TrimSpace(d.location) != "" {
 			line.text += " · " + strings.TrimSpace(d.location)
 		}
@@ -411,9 +498,9 @@ func (p *calendarPlugin) agendaLines(maxLines int, o agendaOpts) ([]agendaLine, 
 		all = append(all, line)
 	}
 	if len(all) <= maxLines {
-		return all, 0
+		return all, 0, len(eventIdx)
 	}
-	keep := maxLines - 1
+	keep := maxLines
 	for keep > 0 && all[keep-1].heading {
 		keep--
 	}
@@ -423,7 +510,7 @@ func (p *calendarPlugin) agendaLines(maxLines int, o agendaOpts) ([]agendaLine, 
 			shown++
 		}
 	}
-	return all[:keep], len(eventIdx) - shown
+	return all[:keep], len(eventIdx) - shown, shown
 }
 
 func (p *calendarPlugin) when(e parsedEvent, day, today time.Time, headings bool) string {
