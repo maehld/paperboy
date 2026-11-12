@@ -83,3 +83,5 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0086](0086-four-gray-levels-on-the-e1001.md) | Four gray levels on the E1001 | Accepted, implemented; supersedes the dithered grays of ADR-0041 for that hardware; the panel settings moved to the device in ADR-0087 |
 | [0087](0087-panel-settings-live-on-the-device.md) | Panel settings live on the device | Accepted, implemented; amends the substitution decision of ADR-0086 |
 | [0088](0088-pages-that-do-not-fit-the-buffer.md) | Pages that do not fit the firmware's buffer | Accepted, implemented; amends the size limit of ADR-0072 |
+| [0089](0089-release-channels.md) | Release channels and prerelease versions | Proposed |
+| [0090](0090-download-cache-and-inventory.md) | The download cache keeps one file, the inventory is pruned by hand | Proposed |
