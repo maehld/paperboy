@@ -117,8 +117,8 @@ func (j job) key(env Env) string {
 	args, _ := json.Marshal(j.widget.Args) // map keys are sorted
 	style, _ := json.Marshal(j.widget.Style)
 	page, _ := json.Marshal(j.page)
-	return fmt.Sprintf("%s|%s|%s|%d|%dx%d|%s|%s|%s|%s|%s", j.plugin, j.widget.Widget, j.action, j.levels,
-		j.widget.Width, j.widget.Height, args, style, page, env.Language, env.Timezone)
+	return fmt.Sprintf("%s|%s|%s|%d|%dx%d|%t|%s|%s|%s|%s|%s", j.plugin, j.widget.Widget, j.action, j.levels,
+		j.widget.Width, j.widget.Height, j.widget.Scroll, args, style, page, env.Language, env.Timezone)
 }
 
 // group is the batching key: the request header without the widgets.
@@ -202,7 +202,7 @@ func (h *Host) Fetch(ctx context.Context, b page.Batch) []page.Result {
 	jobs := make([]job, len(b.Widgets))
 	for i, w := range b.Widgets {
 		jobs[i] = job{plugin: w.Plugin, action: action, levels: levels, page: b.Page,
-			widget: plugin.WidgetRequest{Widget: w.Widget, Width: w.Width, Height: w.Height, Args: w.Args, Style: w.Style}}
+			widget: plugin.WidgetRequest{Widget: w.Widget, Width: w.Width, Height: w.Height, Scroll: w.Scroll, Args: w.Args, Style: w.Style}}
 		byPlugin[w.Plugin] = append(byPlugin[w.Plugin], i)
 	}
 	names := make([]string, 0, len(byPlugin))

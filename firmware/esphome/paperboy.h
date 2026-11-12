@@ -459,6 +459,12 @@ template<typename D> inline bool pb_paint_qoi_dithered(D &it, const std::string 
 
 // Lines on the text display and the hash Paperboy gave them.
 static std::vector<std::string> pb_lines;
+// Rows that scroll, aligned with pb_lines: the full text of a row whose cell
+// has scroll: true, "" for a static row (ADR 0092). The server sends the first
+// window in pb_lines, so a firmware without scrolling still shows a line.
+static std::vector<std::string> pb_scroll;
+static int pb_scroll_offset = 0;
+static int pb_scroll_hold = 0;
 static std::string pb_text_hash;
 
 // Takes the text object of a sync or text poll answer; true when it changed.
@@ -471,6 +477,12 @@ inline bool pb_take_text(JsonObject text) {
   for (JsonVariant v : text["lines"].as<JsonArray>()) {
     pb_lines.push_back(v.as<const char *>() ? v.as<const char *>() : "");
   }
+  pb_scroll.clear();
+  for (JsonVariant v : text["scroll"].as<JsonArray>()) {
+    pb_scroll.push_back(v.as<const char *>() ? v.as<const char *>() : "");
+  }
+  pb_scroll_offset = 0;
+  pb_scroll_hold = 4;  // show the start of a new line for a moment
   pb_text_hash = hash;
   pb_remember(hash);
   return true;
@@ -488,7 +500,90 @@ inline void pb_show_message(const std::string &text) {
     }
     start = end + 1;
   }
+  pb_scroll.clear();
+  pb_scroll_offset = 0;
+  pb_scroll_hold = 0;
   pb_text_hash.clear();
+}
+
+// pb_columns counts the characters of a UTF-8 string, not its bytes: the
+// display counts columns, and the server converted the text to its charset.
+inline int pb_columns(const std::string &s) {
+  int n = 0;
+  for (size_t i = 0; i < s.size(); i++) {
+    if (((unsigned char) s[i] & 0xC0) != 0x80) n++;
+  }
+  return n;
+}
+
+// pb_mid returns count characters of s starting at character start.
+inline std::string pb_mid(const std::string &s, int start, int count) {
+  std::string out;
+  int n = 0;
+  for (size_t i = 0; i < s.size();) {
+    size_t next = i + 1;
+    while (next < s.size() && ((unsigned char) s[next] & 0xC0) == 0x80) next++;
+    if (n >= start && n < start + count) out.append(s, i, next - i);
+    n++;
+    i = next;
+    if (n >= start + count) break;
+  }
+  return out;
+}
+
+// pb_pad fills a line up to cols characters so the LCD has no leftovers from
+// the previous content; a longer line stays as it is (setup instructions).
+inline std::string pb_pad(const std::string &s, int cols) {
+  std::string out = s;
+  int n = pb_columns(out);
+  if (n < cols) out.append(cols - n, ' ');
+  return out;
+}
+
+// pb_scrolls reports whether any row is wider than the display.
+inline bool pb_scrolls(int cols) {
+  for (const auto &s : pb_scroll) {
+    if (pb_columns(s) > cols) return true;
+  }
+  return false;
+}
+
+// pb_row returns the cols characters a row shows now: the window of a
+// scrolling row, or the static line.
+inline std::string pb_row(int row, int cols) {
+  if (row >= 0 && row < (int) pb_scroll.size() && pb_columns(pb_scroll[row]) > cols) {
+    // Two spaces separate the repetitions of the marquee.
+    std::string m = pb_scroll[row] + "  ";
+    int n = pb_columns(m);
+    std::string out = pb_mid(m, pb_scroll_offset % n, cols);
+    if (pb_columns(out) < cols) out += pb_mid(m, 0, cols - pb_columns(out));
+    return out;
+  }
+  return pb_pad(row >= 0 && row < (int) pb_lines.size() ? pb_lines[row] : "", cols);
+}
+
+// pb_scroll_step moves every scrolling row by one character and reports
+// whether the display has to be repainted. The first window holds for a
+// moment, and the marquee starts over after its longest row (ADR 0092).
+inline bool pb_scroll_step(int cols) {
+  if (!pb_scrolls(cols)) {
+    return false;
+  }
+  if (pb_scroll_hold > 0) {
+    pb_scroll_hold--;
+    return false;
+  }
+  int longest = 0;
+  for (const auto &s : pb_scroll) {
+    int n = pb_columns(s);
+    if (n > cols && n + 2 > longest) longest = n + 2;
+  }
+  pb_scroll_offset++;
+  if (pb_scroll_offset >= longest) {
+    pb_scroll_offset = 0;
+    pb_scroll_hold = 2;  // about a second at one step per 300 ms
+  }
+  return true;
 }
 
 // Maps the UTF-8 characters Paperboy keeps for charset hd44780 to the codes

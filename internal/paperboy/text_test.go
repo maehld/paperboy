@@ -28,6 +28,13 @@ cells:
   - { at: [0, 1], span: [8, 1], widget: paperboy/text, args: { text: Größe } }
 `)
 	writePageFile(t, filepath.Join(pages, "zwei.lcd.yaml"), "kind: text\ngrid: [8, 2]\ncells: [{span: [8, 1], widget: paperboy/text, args: {text: zwei}}]\n")
+	writePageFile(t, filepath.Join(pages, "scroll.lcd.yaml"), `
+kind: text
+grid: [8, 2]
+cells:
+  - { at: [0, 0], span: [8, 1], widget: paperboy/text, scroll: true, args: { text: "Lange Zeile hier" } }
+  - { at: [0, 1], span: [8, 1], widget: paperboy/text, args: { text: zwei } }
+`)
 	writePageFile(t, filepath.Join(pages, "kaputt.lcd.yaml"), "kind: text\ngrid: [8, 2]\ncells: [{widget: paperboy/text, args: {text: x}, colour: red}]\n")
 	if planYAML != "" {
 		writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), planYAML)
@@ -101,6 +108,9 @@ func TestTextDeviceSyncAndPoll(t *testing.T) {
 	lines, _ := text["lines"].([]any)
 	if len(lines) != 2 || lines[0] != "PV 42   " || lines[1] != "Groesse " {
 		t.Fatalf("sync text: %v", out)
+	}
+	if _, ok := text["scroll"]; ok {
+		t.Fatalf("a page without a scrolling cell carries no scroll field: %v", text)
 	}
 	if out["refresh_s"].(float64) != 2 {
 		t.Fatalf("refresh_s from the plan: %v", out["refresh_s"])
@@ -242,5 +252,54 @@ func TestPlanSkipsPagesForOtherDisplays(t *testing.T) {
 	lines := strings.Join(anyStrings(displayPage(t, s, dev)["text"].(map[string]any)["lines"]), "|")
 	if !strings.Contains(lines, "passende") {
 		t.Fatalf("no fitting page must show a notice: %q", lines)
+	}
+}
+
+const scrollPlan = `
+rules:
+  - name: immer
+    when: { from: "06:00", to: "22:00" }
+    pages: [scroll]
+    refresh: 2s
+fallback: immer
+`
+
+func TestTextScrollRows(t *testing.T) {
+	s, _ := textServer(t, scrollPlan)
+	dev := planDevice(t, s)
+	out := displayPage(t, s, dev)
+	text, _ := out["text"].(map[string]any)
+	lines, _ := text["lines"].([]any)
+	if len(lines) != 2 || lines[0] != "Lange Ze" {
+		t.Fatalf("sync lines: %v", out)
+	}
+	scroll, ok := text["scroll"].([]any)
+	if !ok || len(scroll) != 2 {
+		t.Fatalf("sync scroll: %v", text)
+	}
+	if scroll[0] != "Lange Zeile hier" || scroll[1] != "" {
+		t.Fatalf("scroll rows: %v", scroll)
+	}
+
+	rec := pollText(t, s, dev.key, "")
+	var polled syncText
+	if err := json.Unmarshal(rec.Body.Bytes(), &polled); rec.Code != http.StatusOK || err != nil {
+		t.Fatalf("poll: %d %s", rec.Code, rec.Body)
+	}
+	if len(polled.Scroll) != 2 || polled.Scroll[0] != "Lange Zeile hier" {
+		t.Fatalf("polled scroll: %+v", polled)
+	}
+}
+
+func TestHashTextCoversScroll(t *testing.T) {
+	static := []string{"Lange Ze", "zwei    "}
+	if hashText(static, nil) != hashText(static, []string{"", ""}) {
+		t.Error("a page without scrolling must keep the hash it had before the field existed")
+	}
+	if hashText(static, []string{"Lange Zeile A", ""}) == hashText(static, []string{"Lange Zeile B", ""}) {
+		t.Error("a change behind the visible columns must change the hash")
+	}
+	if hashText(static, []string{"Lange Zeile A", ""}) == hashText(static, nil) {
+		t.Error("a scrolling row must change the hash")
 	}
 }

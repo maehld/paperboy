@@ -31,6 +31,7 @@ type servedPage struct {
 	pages   int           // pages in the rule, for logging
 	hash    string        // content hash of the PNG or the lines; the device repaints when it changes
 	lines   []string      // text displays: the lines to show (ADR 0044)
+	scroll  []string      // text displays: full text of scrolling rows, "" for a static row (ADR 0092)
 	err     error         // render error that turned the page into a notice
 }
 
@@ -103,27 +104,44 @@ func (s *Server) display(cfg *Config, p Profile) page.Display {
 		Language: cfg.Language, Timezone: cfg.Timezone}
 }
 
-// hashLines is the content hash of a text page.
-func hashLines(lines []string) string {
-	return hashBytes([]byte(strings.Join(lines, "\n")))
+// hashText is the content hash of a text page. Scrolling rows are part of it,
+// so a change behind the visible columns still repaints the display (ADR 0092);
+// a page without scrolling keeps the hash it had before the field existed.
+func hashText(lines, scroll []string) string {
+	data := strings.Join(lines, "\n")
+	if scrollRows(scroll) != nil {
+		data += "\x00" + strings.Join(scroll, "\n")
+	}
+	return hashBytes([]byte(data))
+}
+
+// scrollRows drops the row list of a page without scrolling, so the answer
+// carries the field only when a row really moves (ADR 0092).
+func scrollRows(scroll []string) []string {
+	for _, s := range scroll {
+		if s != "" {
+			return scroll
+		}
+	}
+	return nil
 }
 
 // renderText renders pages/<name>.<profile>.yaml for a text display type
 // (ADR 0044). Like renderPage it turns a panic into an error.
-func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, pos pagePosition) (lines []string, err error) {
+func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, pos pagePosition) (text page.Text, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("text page rendering panicked", "profile", profile, "page", name, "panic", r, "stack", string(debug.Stack()))
-			lines, err = nil, fmt.Errorf("page rendering panicked: %v", r)
+			text, err = page.Text{}, fmt.Errorf("page rendering panicked: %v", r)
 		}
 	}()
 	p, ok := cfg.Profiles[profile]
 	if !ok || !p.text() {
-		return nil, fmt.Errorf("unknown text display type %q", profile)
+		return page.Text{}, fmt.Errorf("unknown text display type %q", profile)
 	}
 	tmpl, err := s.pages.get(cfg.Pages, name, profile)
 	if err != nil {
-		return nil, err
+		return page.Text{}, err
 	}
 	return tmpl.RenderText(s.display(cfg, p), page.Context{Now: now, Page: pos.index + 1, Pages: pos.count,
 		Widgets: s.widgetSource()})
@@ -150,7 +168,7 @@ func (s *Server) hint(cfg *Config, profile, title, text string) servedPage {
 	if p.text() {
 		lines := page.NoticeLines(s.display(cfg, p), title, text)
 		// Text displays come back sooner: their sync is cheap and they never sleep.
-		return servedPage{lines: lines, hash: hashLines(lines), refresh: time.Minute}
+		return servedPage{lines: lines, hash: hashText(lines, nil), refresh: time.Minute}
 	}
 	sp := s.notice(profile, placeholder(p, title, text))
 	sp.refresh = hintRefresh
@@ -339,11 +357,12 @@ func (s *Server) renderPlan(cfg *Config, d *Device, c planChoice, now time.Time,
 		return sp
 	}
 	if cfg.Profiles[d.Profile].text() {
-		lines, err := s.renderText(cfg, d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages})
+		text, err := s.renderText(cfg, d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages})
 		if err != nil {
 			return s.pageFailed(cfg, d, c, err, quiet)
 		}
-		return servedPage{lines: lines, hash: hashLines(lines), name: c.name, page: c.page, pages: c.pages, refresh: c.refresh}
+		return servedPage{lines: text.Lines, scroll: text.Scroll, hash: hashText(text.Lines, text.Scroll),
+			name: c.name, page: c.page, pages: c.pages, refresh: c.refresh}
 	}
 	rp, err := s.renderPage(cfg, d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages}, c.banners...)
 	if err != nil {

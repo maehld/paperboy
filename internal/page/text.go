@@ -43,15 +43,19 @@ func align(n int, s string, mode byte) string {
 	return s + strings.Repeat(" ", gap)
 }
 
-// fit replaces control characters and cuts or pads a line to n columns.
-func fit(s string, n int) string {
-	s = strings.Map(func(r rune) rune {
+// clean replaces control characters with spaces.
+func clean(s string) string {
+	return strings.Map(func(r rune) rune {
 		if r < ' ' || r == 0x7f {
 			return ' '
 		}
 		return r
 	}, s)
-	return align(n, s, 'l')
+}
+
+// fit replaces control characters and cuts or pads a line to n columns.
+func fit(s string, n int) string {
+	return align(n, clean(s), 'l')
 }
 
 // hd44780Kept are the characters of the A00 ROM the firmware maps itself.

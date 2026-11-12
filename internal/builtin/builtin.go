@@ -242,9 +242,16 @@ func (Plugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error
 		}
 		return []string{plugin.Columns(title, status, w.Width)}, nil
 	case "text":
+		align := a.String("align", "left")
 		var out []string
 		for _, l := range strings.Split(a.String("text", ""), "\n") {
-			out = append(out, plugin.Align(l, w.Width, a.String("align", "left")))
+			// A scrolling cell gets the whole line: Paperboy cuts the first
+			// window and the display scrolls the rest (ADR 0092).
+			if w.Scroll && len([]rune(l)) > w.Width {
+				out = append(out, l)
+				continue
+			}
+			out = append(out, plugin.Align(l, w.Width, align))
 		}
 		return out, nil
 	case "clock":

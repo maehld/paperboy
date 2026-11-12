@@ -124,6 +124,12 @@ Paperboy converts the page's points to pixels with the display's `ppi`
 (ADR 0050). Text displays get no `style` and no `ppi`; a widget sizes its text
 from `lines`/`columns` instead.
 
+A text widget in a cell with `scroll: true` gets `scroll: true` and may then
+answer lines longer than `width`: Paperboy shows the first `width` columns and
+the display scrolls the rest (ADR 0092). Without the field a line is cut at
+`width`, which is what every widget did before; a plugin that ignores the flag
+simply keeps its lines that fit.
+
 ```json
 {"id":"3","version":5,"action":"render","levels":4,"page":{"title":"Overview","number":1,"count":3,"width":800,"height":480,"ppi":125},"widgets":[{"widget":"site","width":400,"height":240,"args":{"short":true},"style":{"padding":8,"rule":1,"text_px":28}}]}
 ```

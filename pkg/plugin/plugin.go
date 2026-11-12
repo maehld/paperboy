@@ -149,9 +149,12 @@ type PageInfo struct {
 // WidgetRequest asks for one widget in an exact size: pixels for render,
 // columns and rows for text.
 type WidgetRequest struct {
-	Widget string         `json:"widget"`
-	Width  int            `json:"width"`
-	Height int            `json:"height"`
+	Widget string `json:"widget"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+	// Scroll asks a text widget for lines that may be wider than Width: the
+	// page scrolls the overflow instead of cutting it (ADR 0092).
+	Scroll bool           `json:"scroll,omitempty"`
 	Args   map[string]any `json:"args,omitempty"`
 	Style  Style          `json:"style"`
 }

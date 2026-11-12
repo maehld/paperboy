@@ -33,3 +33,29 @@ func TestHeaderDateFitsWidth(t *testing.T) {
 		}
 	}
 }
+
+func TestTextScrollKeepsLongLine(t *testing.T) {
+	req := &plugin.Request{Language: "de", Timezone: "UTC"}
+	long := "Eine Zeile, die nicht in die Zelle passt"
+	for _, c := range []struct {
+		scroll bool
+		want   string
+	}{
+		{false, long[:10]},
+		{true, long},
+	} {
+		w := plugin.WidgetRequest{Widget: "text", Width: 10, Scroll: c.scroll, Args: map[string]any{"text": long}}
+		lines, err := Plugin{}.Text(req, w)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if lines[0] != c.want {
+			t.Errorf("scroll %v: got %q, want %q", c.scroll, lines[0], c.want)
+		}
+	}
+	// A line that fits is aligned as before; Paperboy pads it to the cell.
+	w := plugin.WidgetRequest{Widget: "text", Width: 20, Scroll: true, Args: map[string]any{"text": "kurz"}}
+	if lines, _ := (Plugin{}).Text(req, w); lines[0] != "kurz" {
+		t.Errorf("short line: %q", lines[0])
+	}
+}

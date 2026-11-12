@@ -853,8 +853,8 @@ func (s *Server) renderDraft(cfg *Config, display string, tmpl *page.Template, n
 	d := s.display(cfg, cfg.Profiles[display])
 	ctx := page.Context{Now: now, Page: 1, Pages: 1, Widgets: s.widgetSource()}
 	if d.Text {
-		lines, err = tmpl.RenderText(d, ctx)
-		return nil, lines, err
+		text, err := tmpl.RenderText(d, ctx)
+		return nil, text.Lines, err
 	}
 	img, err = tmpl.RenderImage(d, ctx)
 	return img, nil, err

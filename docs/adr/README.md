@@ -86,3 +86,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0089](0089-release-channels.md) | Release channels and prerelease versions | Accepted, implemented; the cache layout and the ownership of `state/download` follow ADR-0090 |
 | [0090](0090-download-cache-and-inventory.md) | The download cache keeps one file, the inventory is pruned by hand | Accepted, implemented |
 | [0091](0091-virtual-display.md) | A virtual display in the web UI | Accepted, implemented |
+| [0092](0092-scrolling-text-lines.md) | Scrolling lines on text displays | Accepted, implemented |

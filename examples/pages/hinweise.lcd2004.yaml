@@ -1,0 +1,11 @@
+# A scrolling line on a 20x4 character display: a cell that spans the display
+# width and sets scroll may return more than 20 columns, and the display moves
+# the line instead of cutting it (ADR 0092). Short lines stay still.
+title: Hinweise
+kind: text
+grid: [20, 4]
+cells:
+  - { at: [0, 0], span: [20, 1], widget: paperboy/header }
+  - { at: [0, 1], span: [20, 1], widget: paperboy/text, scroll: true, args: { text: "Diese Zeile ist absichtlich zu lang für 20 Spalten und läuft deshalb durch." } }
+  - { at: [0, 2], span: [20, 1], widget: paperboy/text, args: { text: "Kurze Zeilen bleiben stehen." } }
+  - { at: [0, 3], span: [20, 1], widget: paperboy/clock }
