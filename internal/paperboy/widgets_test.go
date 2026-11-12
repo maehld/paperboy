@@ -75,11 +75,26 @@ func TestWidgetsPage(t *testing.T) {
 		t.Fatalf("the widgets page draws a board: %s", body)
 	}
 
-	// The link carries the widget, its size and its args.
-	body = preview(t, s, "/ui/plugins?display=small&widget=paperboy/clock&span=3x2&arg.format=date").Body.String()
+	// The link carries the widget, its size and its args, and the display type
+	// switch keeps them too, so a click opens the same cell on another type
+	// (issue #171).
+	body = preview(t, s, "/ui/plugins?display=small&widget=paperboy/clock&span=3x2&arg.format=date&arg.date=dd").Body.String()
 	for _, want := range []string{`"widget":"paperboy/clock"`, `"span":[3,2]`, `"format":"date"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("widgets page link misses %q: %s", want, body)
+		}
+	}
+	switchBox := body[strings.Index(body, `id="display-switch"`):]
+	switchBox = switchBox[:strings.Index(switchBox, "</div>")]
+	switchBox = strings.ReplaceAll(switchBox, "&amp;", "&")
+	for _, want := range []string{
+		`data-display="small"`,
+		`data-display="lcd"`,
+		`href="/ui/plugins?arg.date=dd&arg.format=date&display=small&span=3x2&widget=paperboy%2Fclock"`,
+		`href="/ui/plugins?arg.date=dd&arg.format=date&display=lcd&span=3x2&widget=paperboy%2Fclock"`,
+	} {
+		if !strings.Contains(switchBox, want) {
+			t.Fatalf("display type switch misses %q: %s", want, switchBox)
 		}
 	}
 

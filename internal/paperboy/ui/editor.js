@@ -961,21 +961,36 @@
   }
 
   // updateURL keeps the widgets page's link in step with the widget, so the view
-  // can be shared and a reload comes back to it. Args travel as the plain text
-  // the gallery forms send, not as JSON: the script reads them back by their
-  // declared type, so a JSON-quoted string would keep its quotes.
+  // can be shared and a reload comes back to it, and so does the display type
+  // switch, which opens the same cell on another display type. Args travel as
+  // the plain text the gallery forms send, not as JSON: the script reads them
+  // back by their declared type, so a JSON-quoted string would keep its quotes.
   function updateURL() {
     if (!state.widgetsPage) return;
     const c = state.template && state.template.cells[0];
-    const params = new URLSearchParams({ display: state.display });
-    if (c) {
-      params.set('widget', c.widget);
-      params.set('span', c.span[0] + 'x' + c.span[1]);
-      for (const [name, value] of Object.entries(c.args || {})) {
-        params.set('arg.' + name, Array.isArray(value) ? value.join(', ') : String(value));
+    const params = widgetParams(c);
+    const links = el('display-switch');
+    if (links) {
+      for (const a of links.querySelectorAll('a[data-display]')) {
+        const own = new URLSearchParams(params);
+        own.set('display', a.dataset.display);
+        a.href = '/ui/plugins?' + own.toString();
       }
     }
     history.replaceState(null, '', '/ui/plugins?' + params.toString());
+  }
+
+  // widgetParams is the query of a widgets page link: the display type, the
+  // widget and its size on the reference grid, and its args.
+  function widgetParams(c) {
+    const params = new URLSearchParams({ display: state.display });
+    if (!c) return params;
+    params.set('widget', c.widget);
+    params.set('span', c.span[0] + 'x' + c.span[1]);
+    for (const [name, value] of Object.entries(c.args || {})) {
+      params.set('arg.' + name, Array.isArray(value) ? value.join(', ') : String(value));
+    }
+    return params;
   }
 
   async function copyCell() {
