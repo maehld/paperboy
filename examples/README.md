@@ -28,6 +28,8 @@ grid, the spans and the arguments.
 - `comic.yaml` - a full-screen xkcd comic with title and alt text.
 - `countdown.yaml` - countdowns to Christmas and New Year (yearly, one with a
   progress bar) and two fixed dates, the last with a time and a bar.
+- `geburtstage.yaml` - the next birthdays with the age next to a short agenda
+  that shows the age too; `geburtstage.lcd2004.yaml` puts them on 20×4.
 - `uebersicht.lcd2004.yaml` - the overview on a 20×4 character display; its
   grid is the character grid.
 - `hinweise.lcd2004.yaml` - a scrolling line on a 20×4 character display: a

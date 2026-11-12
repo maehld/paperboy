@@ -274,6 +274,10 @@ func (r rrule) period(start time.Time, i int) []time.Time {
 		default:
 			if d := civil(y, sm, sd); d.Day() == sd {
 				days = append(days, d)
+			} else if sm == time.February && sd == 29 {
+				// A yearly rule on 29 February falls on 28 February in a common
+				// year, so a birthday does not vanish three years out of four.
+				days = append(days, civil(y, sm, 28))
 			}
 		}
 	}

@@ -39,6 +39,7 @@ type options struct {
 	user      string
 	password  string
 	calendars []string
+	birthdays []string
 	ics       []string
 	days      int
 	maxEvents int
@@ -54,15 +55,16 @@ func main() {
 
 // configKeys are the keys of the plugin's config section.
 var configKeys = map[string]plugin.Arg{
-	"caldav":     {Type: "string", Description: "CalDAV server or calendar URL, e.g. https://caldav.icloud.com"},
-	"user":       {Type: "string", Description: "CalDAV user name, for iCloud the Apple ID"},
-	"password":   {Type: "string", Description: "CalDAV password; use ${VAR} to read it from the environment"},
-	"calendars":  {Type: "list", Description: "CalDAV calendars to include by name; default all"},
-	"ics":        {Type: "list", Description: "iCalendar URLs (https:// or webcal://)"},
-	"ics_files":  {Type: "list", Description: "local iCalendar files"},
-	"days":       {Type: "int", Default: 14, Description: "days from today the agenda covers"},
-	"max_events": {Type: "int", Default: 200},
-	"refresh":    {Type: "duration", Default: "15m", Description: "how often the calendars are read again"},
+	"caldav":             {Type: "string", Description: "CalDAV server or calendar URL, e.g. https://caldav.icloud.com"},
+	"user":               {Type: "string", Description: "CalDAV user name, for iCloud the Apple ID"},
+	"password":           {Type: "string", Description: "CalDAV password; use ${VAR} to read it from the environment"},
+	"calendars":          {Type: "list", Description: "CalDAV calendars to include by name; default all"},
+	"birthday_calendars": {Type: "list", Description: "calendars whose yearly events are birthdays; their titles carry the age"},
+	"ics":                {Type: "list", Description: "iCalendar URLs (https:// or webcal://)"},
+	"ics_files":          {Type: "list", Description: "local iCalendar files"},
+	"days":               {Type: "int", Default: 14, Description: "days from today the agenda covers"},
+	"max_events":         {Type: "int", Default: 200},
+	"refresh":            {Type: "duration", Default: "15m", Description: "how often the calendars are read again"},
 }
 
 // parseConfig turns the config section into options.
@@ -75,6 +77,7 @@ func parseConfig(cfg plugin.Values, language string, loc *time.Location) (option
 	o.user = cfg.String("user", "")
 	o.password = cfg.String("password", "")
 	o.calendars = cfg.Strings("calendars")
+	o.birthdays = cfg.Strings("birthday_calendars")
 	o.ics = cfg.Strings("ics")
 	o.icsFiles = cfg.Strings("ics_files")
 	o.days = cfg.Int("days", 14)
@@ -180,6 +183,9 @@ func collect(ctx context.Context, o options, c *client, now time.Time) (branch, 
 	for tzid := range z.unknown {
 		warnings = append(warnings, fmt.Sprintf("unknown timezone %q, using %s", tzid, o.location))
 	}
+	if err := checkBirthdayCalendars(o.birthdays, names); err != nil {
+		return branch{}, nil, err
+	}
 	sort.Strings(warnings)
 	sortOccurrences(all)
 	if len(all) > o.maxEvents {
@@ -223,6 +229,24 @@ func selectCalendars(all []calendarRef, wanted []string) ([]calendarRef, error) 
 	return out, nil
 }
 
+// checkBirthdayCalendars verifies that every configured birthday calendar is
+// among the loaded ones, so a renamed calendar does not silently drop the ages.
+func checkBirthdayCalendars(wanted, names []string) error {
+	for _, w := range wanted {
+		found := false
+		for _, n := range names {
+			if strings.EqualFold(strings.TrimSpace(w), n) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("birthday calendar %q not found; available: %s", w, strings.Join(names, ", "))
+		}
+	}
+	return nil
+}
+
 func calendarName(roots []*component, link string) string {
 	for _, r := range roots {
 		if p, ok := r.prop("X-WR-CALNAME"); ok && strings.TrimSpace(p.Value) != "" {
@@ -253,6 +277,7 @@ type branch struct {
 type event struct {
 	Start    string `json:"start"`
 	End      string `json:"end"`
+	First    string `json:"first,omitempty"`
 	AllDay   bool   `json:"all_day"`
 	Date     string `json:"date"`
 	EndDate  string `json:"end_date"`
@@ -303,9 +328,14 @@ func toEvent(o occurrence, loc *time.Location, language string) event {
 			title = "(ohne Titel)"
 		}
 	}
+	first := o.First
+	if first.IsZero() {
+		first = o.Start
+	}
 	e := event{
 		Start:    o.Start.UTC().Format(time.RFC3339),
 		End:      o.End.UTC().Format(time.RFC3339),
+		First:    first.UTC().Format(time.RFC3339),
 		AllDay:   o.AllDay,
 		Title:    title,
 		Location: o.Location,
@@ -318,11 +348,13 @@ func toEvent(o occurrence, loc *time.Location, language string) event {
 		end := time.Date(o.End.Year(), o.End.Month(), o.End.Day(), 0, 0, 0, 0, loc)
 		e.Start = s.UTC().Format(time.RFC3339)
 		e.End = end.UTC().Format(time.RFC3339)
+		e.First = time.Date(first.Year(), first.Month(), first.Day(), 0, 0, 0, 0, loc).UTC().Format(time.RFC3339)
 		e.Date = s.Format("2006-01-02")
 		e.EndDate = end.AddDate(0, 0, -1).Format("2006-01-02")
 		return e
 	}
 	start, end := o.Start.In(loc), o.End.In(loc)
+	e.First = first.In(loc).Format(time.RFC3339)
 	e.Date = start.Format("2006-01-02")
 	last := end
 	if end.After(start) {
