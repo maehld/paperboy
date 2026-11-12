@@ -36,11 +36,14 @@ func TestParseState(t *testing.T) {
 
 func newTestPlugin(t *testing.T) (*evcc, *plugin.Request) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/state" {
+		switch r.URL.Path {
+		case "/api/state":
+			w.Write([]byte(stateJSON))
+		case "/api/history/energy":
+			writeHistoryFixture(w, r)
+		default:
 			http.NotFound(w, r)
-			return
 		}
-		w.Write([]byte(stateJSON))
 	}))
 	t.Cleanup(srv.Close)
 	e := &evcc{client: srv.Client()}
