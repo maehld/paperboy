@@ -394,7 +394,7 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		now = t
 	}
 	if p.text() {
-		lines, err := s.renderText(cfg, display, name, now, pagePosition{index: 0, count: 1})
+		text, err := s.renderText(cfg, display, name, now, pagePosition{index: 0, count: 1})
 		if errors.Is(err, page.ErrNotFound) {
 			http.NotFound(w, r)
 			return
@@ -405,7 +405,7 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write([]byte(strings.Join(lines, "\n") + "\n"))
+		w.Write([]byte(strings.Join(text.Lines, "\n") + "\n"))
 		return
 	}
 	rp, err := s.renderPage(cfg, display, name, now, pagePosition{index: 0, count: 1})

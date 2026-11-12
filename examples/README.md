@@ -28,6 +28,9 @@ grid, the spans and the arguments.
   progress bar) and two fixed dates, the last with a time and a bar.
 - `uebersicht.lcd2004.yaml` - the overview on a 20×4 character display; its
   grid is the character grid.
+- `hinweise.lcd2004.yaml` - a scrolling line on a 20×4 character display: a
+  full-width cell with `scroll: true` shows a line that is too wide as a
+  marquee instead of cutting it (ADR 0092).
 
 A page without a display type suffix serves every display type that has no own
 variant, so `uebersicht.yaml` works on 800×480 and on 400×300 panels alike: the
@@ -37,7 +40,7 @@ plugins draw every widget in the size of its cell. A text display needs its own
 The plugin names in the pages are the keys under `plugins` in `paperboy.yaml`;
 `cmd/paperboy/paperboy.example.yaml` declares all of them.
 
-`plans/standard.yaml` pages through the four pages during the day and shows
+`plans/standard.yaml` pages through its pages during the day and shows
 the overview at night. Copy it into the `plans/` directory of your instance and
 point a device at it with `plan: standard`. Its commented `evcc/mode` actions
 switch a loadpoint's charge mode from the device menu, one "now" and one "PV

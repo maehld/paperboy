@@ -11,8 +11,8 @@ installation, nothing installation-specific is compiled in.
 | `paperboy.h` | C++ helpers: sync body, event and log queue, RTC state, gray-level mapping, dithering (mono fallback), text lines and HD44780 character mapping |
 | `sticky.yaml` | reTerminal Sticky: pins, gray4 panel, touch, BQ27220 fuel gauge |
 | `e1001.yaml` | reTerminal E1001: pins, four-level UC8179 panel via `uc8179_gray4`, ADC battery |
-| `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep |
-| `lcd2004.yaml` | ESP32 dev board with a 20×4 HD44780 LCD behind a PCF8574 (I²C 0x27, SDA GPIO21, SCL GPIO22) |
+| `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep; a row whose cell set `scroll: true` moves one character per 300 ms (ADR 0092) |
+| `lcd2004.yaml` | ESP32 dev board with a 20×4 HD44780 LCD behind a PCF8574 (I²C 0x27, SDA GPIO21, SCL GPIO22); prints every row through `pb_row`, so a scrolling line shows its window |
 | `build.ps1` | Builds one hardware type with the pinned ESPHome version, optionally publishes it to an instance |
 
 ## Cycle

@@ -1,11 +1,13 @@
 package page
 
 import (
+	"bytes"
 	"errors"
 	"image"
 	"image/color"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -148,13 +150,16 @@ cells:
 			{Err: errors.New("down")},
 		}
 	}
-	lines, err := tmpl.RenderText(Display{Width: 10, Height: 3, Text: true, Charset: "ascii"}, Context{Widgets: src})
+	text, err := tmpl.RenderText(Display{Width: 10, Height: 3, Text: true, Charset: "ascii"}, Context{Widgets: src})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"Uebersich!", "10:00 ?   ", "Mo    down"}
-	if strings.Join(lines, "|") != strings.Join(want, "|") {
-		t.Fatalf("lines %q, want %q", lines, want)
+	if strings.Join(text.Lines, "|") != strings.Join(want, "|") {
+		t.Fatalf("lines %q, want %q", text.Lines, want)
+	}
+	if strings.Join(text.Scroll, "|") != "||" {
+		t.Fatalf("scroll %q, want no scrolling rows", text.Scroll)
 	}
 	if _, err := tmpl.RenderText(Display{Width: 20, Height: 4, Text: true}, Context{Widgets: src}); err == nil {
 		t.Fatal("a grid that does not match the display must fail")
@@ -195,5 +200,83 @@ func TestFits(t *testing.T) {
 	}
 	if _, err := Parse(strings.NewReader("kind: led\ngrid: [1, 1]\ncells: [{widget: a/b}]\n")); err == nil {
 		t.Error("unknown kind accepted")
+	}
+}
+
+func TestRenderTextScroll(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader(`
+kind: text
+grid: [10, 2]
+cells:
+  - { at: [0, 0], span: [10, 1], widget: paperboy/text, scroll: true }
+  - { at: [0, 1], span: [10, 1], widget: paperboy/text }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := func(b Batch) []Result {
+		if len(b.Widgets) != 2 || !b.Widgets[0].Scroll || b.Widgets[1].Scroll {
+			t.Fatalf("widgets: %+v", b.Widgets)
+		}
+		return []Result{
+			{Lines: []string{"Übersicht 12:00 Uhr  "}},
+			{Lines: []string{"Übersicht 12:00 Uhr"}},
+		}
+	}
+	text, err := tmpl.RenderText(Display{Width: 10, Height: 2, Text: true, Charset: "ascii"}, Context{Widgets: src})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"Uebersicht", "Uebersicht"}; strings.Join(text.Lines, "|") != strings.Join(want, "|") {
+		t.Fatalf("lines %q, want %q", text.Lines, want)
+	}
+	// Convert first: the display counts columns, and the full line keeps the
+	// text behind column 10 for the display to scroll (ADR 0092).
+	if want := []string{"Uebersicht 12:00 Uhr", ""}; strings.Join(text.Scroll, "|") != strings.Join(want, "|") {
+		t.Fatalf("scroll %q, want %q", text.Scroll, want)
+	}
+}
+
+func TestScrollNeedsTextPageAndFullWidth(t *testing.T) {
+	if _, err := Parse(strings.NewReader("grid: [10, 1]\ncells: [{span: [10, 1], widget: a/b, scroll: true}]\n")); err == nil {
+		t.Error("scroll on an image page accepted")
+	}
+	tmpl, err := Parse(strings.NewReader("kind: text\ngrid: [10, 2]\ncells: [{span: [6, 1], widget: a/b, scroll: true}]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpl.Fits(Display{Width: 10, Height: 2, Text: true}); err == nil {
+		t.Error("a scrolling cell that is not as wide as the display must not fit")
+	}
+	tmpl, err = Parse(strings.NewReader("kind: text\ngrid: [10, 2]\ncells: [{span: [10, 1], widget: a/b, scroll: true}]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpl.Fits(Display{Width: 10, Height: 2, Text: true}); err != nil {
+		t.Errorf("full-width scrolling cell: %v", err)
+	}
+}
+
+func TestEncodeScroll(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader("kind: text\ngrid: [10, 1]\ncells: [{span: [10, 1], widget: a/b, scroll: true}]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := Encode(tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "scroll: true") {
+		t.Fatalf("scroll missing in:\n%s", data)
+	}
+	back, err := Parse(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(tmpl, back) {
+		t.Fatalf("round trip changed the template\nwant %+v\ngot  %+v", tmpl, back)
+	}
+	if strings.Contains(string(data), "scroll: false") {
+		t.Fatalf("a static cell must not carry scroll:\n%s", data)
 	}
 }

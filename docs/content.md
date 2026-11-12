@@ -41,7 +41,7 @@ cells:
   - { at: [0, 2], span: [20, 2], widget: calendar/agenda }
 ```
 
-Plugins answer with lines for the cell. Paperboy converts them to the `charset` of the display type, cuts them to the cell width and pads them. `ascii` transliterates (ä → ae, ° → o, € → EUR). `hd44780` keeps `ä ö ü ß ° µ` for the ROM mapping of the firmware, writes `Ä Ö Ü` as `A O U` (the ROM has no capital umlauts, and the width must stay) and transliterates the rest. Set `charset: hd44780` for HD44780 displays; with the default `utf8` the firmware has to guess. A widget without a text variant shows its error in the cell.
+Plugins answer with lines for the cell. Paperboy converts them to the `charset` of the display type, cuts them to the cell width and pads them. `ascii` transliterates (ä → ae, ° → o, € → EUR). `hd44780` keeps `ä ö ü ß ° µ` for the ROM mapping of the firmware, writes `Ä Ö Ü` as `A O U` (the ROM has no capital umlauts, and the width must stay) and transliterates the rest. Set `charset: hd44780` for HD44780 displays; with the default `utf8` the firmware has to guess. A widget without a text variant shows its error in the cell. A cell that spans the whole display width may set `scroll: true` (ADR 0092): the widget then gets `scroll` in its request and may answer a line that is wider than the cell, Paperboy shows the first columns, and firmware 2.2.0 for text displays moves the rest as a marquee. Without the flag a long line is cut; `examples/pages/hinweise.lcd2004.yaml` shows the scrolling line.
 
 The pages in `examples/pages` (`uebersicht`, `kalender`, `wetter`, `laden` and the 20 × 4 variants `uebersicht.lcd2004` and `laden.lcd2004`) use the shipped plugins. `examples/plans/standard.yaml` pages through them.
 

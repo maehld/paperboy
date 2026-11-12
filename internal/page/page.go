@@ -53,6 +53,9 @@ type Cell struct {
 	Widget string         `yaml:"widget" json:"widget"`         // plugin/widget
 	Args   map[string]any `yaml:"args" json:"args,omitempty"`   // widget arguments
 	Style  *Style         `yaml:"style" json:"style,omitempty"` // overrides the page style for this widget
+	// Scroll lets a text widget return lines wider than the cell and shows
+	// them as a marquee (ADR 0092); the cell has to span the display's width.
+	Scroll bool `yaml:"scroll" json:"scroll,omitempty"`
 }
 
 // Plugin and widget name of the cell.
@@ -186,6 +189,9 @@ func (t *Template) validate() error {
 				return fmt.Errorf("%s: style: %w", where, err)
 			}
 		}
+		if c.Scroll && t.Kind != KindText {
+			return fmt.Errorf("%s: scroll is only for text pages (kind: text)", where)
+		}
 		for y := c.At[1]; y < c.At[1]+c.Span[1]; y++ {
 			for x := c.At[0]; x < c.At[0]+c.Span[0]; x++ {
 				if other := taken[y*cols+x]; other != 0 {
@@ -210,6 +216,12 @@ func (t *Template) Fits(d Display) error {
 	case d.Text && (t.Grid[0] != d.Width || t.Grid[1] != d.Height):
 		return fmt.Errorf("grid [%d, %d] does not match the text display (%d columns, %d rows)",
 			t.Grid[0], t.Grid[1], d.Width, d.Height)
+	}
+	for i, c := range t.Cells {
+		if c.Scroll && c.Span[0] != d.Width {
+			return fmt.Errorf("cell %d (%s): scroll needs the full display width of %d columns, got %d",
+				i+1, c.Widget, d.Width, c.Span[0])
+		}
 	}
 	return nil
 }

@@ -160,6 +160,7 @@
       const cell = { at: [c.at[0], c.at[1]], span: [c.span[0], c.span[1]], widget: c.widget, args: c.args || {} };
       const style = styleOut(c.style || {});
       if (Object.keys(style).length) cell.style = style;
+      if (c.scroll) cell.scroll = true;
       return cell;
     });
     return out;
@@ -810,6 +811,36 @@
     };
     atX.addEventListener('change', applyPos);
     atY.addEventListener('change', applyPos);
+
+    // A scrolling cell shows a line that is wider than the display as a
+    // marquee instead of cutting it (ADR 0092); only a full-width cell can.
+    if (text()) {
+      const scroll = document.createElement('input');
+      scroll.type = 'checkbox';
+      scroll.checked = c.scroll === true;
+      scroll.addEventListener('change', () => {
+        if (scroll.checked && c.span[0] !== t.grid[0]) {
+          setStatus('scroll needs the full display width', 'error');
+          scroll.checked = false;
+          return;
+        }
+        if (scroll.checked) c.scroll = true;
+        else delete c.scroll;
+        setStatus('');
+        changed('inspector');
+      });
+      const wrap = document.createElement('div');
+      wrap.className = 'arg';
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = 'Scroll';
+      wrap.append(name, scroll);
+      const hint = document.createElement('span');
+      hint.className = 'desc';
+      hint.textContent = 'Show a line that is too wide as a marquee; the widget may then return more than the cell width.';
+      wrap.appendChild(hint);
+      box.appendChild(wrap);
+    }
 
     // arguments from the plugin's schema (ADR 0055)
     const info = widgetInfo(c.widget.split('/')[0], c.widget.split('/')[1]);

@@ -58,6 +58,9 @@ func cellNode(c Cell) *yaml.Node {
 			add(n, "style", s)
 		}
 	}
+	if c.Scroll {
+		add(n, "scroll", valueNode(true))
+	}
 	return n
 }
 

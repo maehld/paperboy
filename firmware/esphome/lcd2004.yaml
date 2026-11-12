@@ -4,10 +4,13 @@
 #
 # Configure the display type in paperboy.yaml with kind: text, size: [20, 4]
 # and charset: hd44780; the firmware maps ä ö ü ß ° µ to the A00 ROM codes.
+# A page cell with scroll: true shows a longer line as a marquee (ADR 0092).
 
 substitutions:
   hardware: lcd2004
-  fw_version: "2.1.0"
+  fw_version: "2.2.0"
+  # Characters per row; text-common.yaml scrolls a row in this width.
+  text_columns: "20"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
 
@@ -32,6 +35,6 @@ display:
     address: 0x27
     update_interval: never
     lambda: |-
-      for (size_t row = 0; row < pb_lines.size() && row < 4; row++) {
-        it.print(0, row, pb_hd44780(pb_lines[row]).c_str());
+      for (int row = 0; row < 4; row++) {
+        it.print(0, row, pb_hd44780(pb_row(row, ${text_columns})).c_str());
       }

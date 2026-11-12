@@ -1,6 +1,7 @@
 # Shared part of the Paperboy firmware for text displays (ADR 0041, ADR 0044),
 # included as a package by the hardware files. The hardware file supplies the
-# board and the display (id text_display) whose lambda prints pb_lines.
+# board, the display (id text_display) whose lambda prints pb_lines, and the
+# substitution text_columns, the character width the marquee uses.
 #
 # Text displays run on mains power and never sleep (ADR 0044, ADR 0045,
 # ADR 0051); every sync reports power: mains, and the sleep field of the
@@ -167,6 +168,17 @@ interval:
                                   then:
                                     - script.execute: do_poll
 
+  # A row whose cell sets scroll: true is wider than the display; it moves one
+  # character per step (ADR 0092). pb_scroll_step reports false while nothing
+  # overflows, so a static page never repaints here.
+  - interval: 300ms
+    then:
+      - if:
+          condition:
+            lambda: "return pb_scroll_step(${text_columns});"
+          then:
+            - component.update: text_display
+
 script:
   - id: show_setup
     mode: single
@@ -323,7 +335,8 @@ script:
       - http_request.get:
           url: !lambda 'return pb_base(id(paperboy_url).state) + "/api/device/text?shown=" + pb_text_hash;'
           capture_response: true
-          max_response_buffer_size: 1024
+          # Lines plus the full text of scrolling rows (ADR 0092).
+          max_response_buffer_size: 2048
           request_headers:
             Authorization: !lambda "return id(auth_header).c_str();"
           on_response:

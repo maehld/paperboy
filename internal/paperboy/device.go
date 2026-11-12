@@ -84,8 +84,9 @@ type syncImage struct {
 
 // syncText is the content of a text display (ADR 0044).
 type syncText struct {
-	Lines []string `json:"lines"`
-	Hash  string   `json:"hash"`
+	Lines  []string `json:"lines"`
+	Scroll []string `json:"scroll,omitempty"` // full text of scrolling rows, "" for a static row (ADR 0092)
+	Hash   string   `json:"hash"`
 }
 
 type syncResponse struct {
@@ -605,7 +606,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		Wake:     wake,
 	}
 	if textDisplay {
-		resp.Text = &syncText{Lines: served.lines, Hash: served.hash}
+		resp.Text = &syncText{Lines: served.lines, Scroll: scrollRows(served.scroll), Hash: served.hash}
 	} else {
 		resp.Image = &syncImage{Path: served.path, Hash: served.hash}
 	}
@@ -729,5 +730,5 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	writeJSON(w, http.StatusOK, syncText{Lines: served.lines, Hash: served.hash})
+	writeJSON(w, http.StatusOK, syncText{Lines: served.lines, Scroll: scrollRows(served.scroll), Hash: served.hash})
 }

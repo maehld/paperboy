@@ -9,3 +9,8 @@ The built-in plugin `paperboy` runs inside Paperboy and needs no configuration. 
 - `clock`: the current time. Args: `format` (`time`, `date` or `datetime`, default `time`).
 
 Arguments with a fixed set of values reject anything else (ADR 0055); the widgets page offers them as choices.
+
+On a text display, a full-width cell with `scroll: true` lets a line run: the
+`text` widget returns a line that is wider than the cell untrimmed and the
+display shows it as a marquee instead of cutting it (ADR 0092). Without the
+flag a long line is cut as before, and `header`/`clock` keep their own fit.

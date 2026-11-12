@@ -87,8 +87,9 @@ type WidgetRequest struct {
 	Plugin string
 	Widget string
 	Args   map[string]any
-	Width  int // pixels or columns
-	Height int // pixels or rows
+	Width  int  // pixels or columns
+	Height int  // pixels or rows
+	Scroll bool // text displays: the widget may answer lines wider than Width (ADR 0092)
 	Style  plugin.Style
 }
 
@@ -305,24 +306,37 @@ func WithBanner(img *image.Paletted, texts ...string) *image.Paletted {
 	return out
 }
 
+// maxScrollColumns caps a scrolling line: the answer has to fit the firmware's
+// 2 KiB response buffer, and 120 columns already take 36 seconds per cycle.
+const maxScrollColumns = 120
+
+// Text is a composed text page: the lines the display shows and, for a
+// scrolling cell, the full text of its rows (ADR 0092). Scroll has one entry
+// per line; an empty entry is a static row.
+type Text struct {
+	Lines  []string
+	Scroll []string
+}
+
 // RenderText composes the page for a text display. The grid of a text page
 // is the character grid of the display; every widget fills its cell with
 // lines, cut and padded by Paperboy. A stale widget marks the last column of
 // the first line with "!".
-func (t *Template) RenderText(d Display, c Context) ([]string, error) {
+func (t *Template) RenderText(d Display, c Context) (Text, error) {
 	if err := t.Fits(d); err != nil {
-		return nil, err
+		return Text{}, err
 	}
 	batch := Batch{Text: true, Charset: d.Charset, Page: t.pageInfo(d, c)}
 	for _, cell := range t.Cells {
 		batch.Widgets = append(batch.Widgets, WidgetRequest{Plugin: cell.Plugin(), Widget: cell.Name(), Args: cell.Args,
-			Width: cell.Span[0], Height: cell.Span[1]})
+			Width: cell.Span[0], Height: cell.Span[1], Scroll: cell.Scroll})
 	}
 	results := fetch(c.Widgets, batch)
 	grid := make([][]rune, d.Height)
 	for y := range grid {
 		grid[y] = []rune(strings.Repeat(" ", d.Width))
 	}
+	scroll := make([]string, d.Height)
 	stale := false
 	for i, cell := range t.Cells {
 		r := results[i]
@@ -332,8 +346,18 @@ func (t *Template) RenderText(d Display, c Context) ([]string, error) {
 		}
 		stale = stale || r.Stale
 		for row := 0; row < cell.Span[1] && row < len(lines); row++ {
-			line := []rune(fit(Convert(d.Charset, lines[row]), cell.Span[0]))
-			copy(grid[cell.At[1]+row][cell.At[0]:], line)
+			// Convert before measuring or cutting: the display counts columns,
+			// not UTF-8 bytes.
+			text := clean(Convert(d.Charset, lines[row]))
+			y := cell.At[1] + row
+			if full := []rune(strings.TrimRight(text, " ")); cell.Scroll && len(full) > d.Width {
+				if len(full) > maxScrollColumns {
+					full = full[:maxScrollColumns]
+				}
+				scroll[y] = string(full)
+			}
+			line := []rune(fit(text, cell.Span[0]))
+			copy(grid[y][cell.At[0]:], line)
 		}
 	}
 	out := make([]string, d.Height)
@@ -345,7 +369,7 @@ func (t *Template) RenderText(d Display, c Context) ([]string, error) {
 		line[len(line)-1] = '!'
 		out[0] = string(line)
 	}
-	return out, nil
+	return Text{Lines: out, Scroll: scroll}, nil
 }
 
 // DefaultStyle is the style a widget gets on a page of display d without a
