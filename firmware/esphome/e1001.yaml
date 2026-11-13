@@ -17,7 +17,7 @@
 
 substitutions:
   hardware: e1001
-  fw_version: "2.4.2"
+  fw_version: "2.4.3"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
   # Initial option of the LUT mode select; the device remembers a change.
@@ -204,13 +204,40 @@ script:
       - lambda: |-
           // nothing to wait for
 
-  # No fuel gauge on the E1001: the voltage only.
+  # No fuel gauge on the E1001: the voltage, mapped to a percentage with the
+  # discharge curve of a single-cell LiPo.
   - id: read_battery
     then:
       - component.update: battery_voltage
       - lambda: |-
           float v = id(battery_voltage).state;
           pb_bat_volts = std::isfinite(v) && v > 0 ? v : NAN;
+          // Seeed's discharge curve for the E10xx (its ESPHome example),
+          // linearly interpolated and clamped to 0..100. The ADC measures under
+          // the device's own load, so the value reads a little low while it is
+          // awake.
+          static const float curve[][2] = {
+              {3.27f, 0.f},   {3.30f, 5.f},   {3.41f, 10.f}, {3.49f, 20.f},
+              {3.58f, 30.f},  {3.68f, 40.f},  {3.75f, 50.f}, {3.80f, 60.f},
+              {3.85f, 70.f},  {3.91f, 80.f},  {3.96f, 90.f}, {4.15f, 100.f},
+          };
+          if (std::isfinite(pb_bat_volts)) {
+            const int n = sizeof(curve) / sizeof(curve[0]);
+            if (pb_bat_volts >= curve[n - 1][0]) {
+              pb_bat_percent = curve[n - 1][1];
+            } else if (pb_bat_volts <= curve[0][0]) {
+              pb_bat_percent = curve[0][1];
+            } else {
+              for (int i = 1; i < n; i++) {
+                if (pb_bat_volts <= curve[i][0]) {
+                  const float v0 = curve[i - 1][0];
+                  const float p0 = curve[i - 1][1];
+                  pb_bat_percent = p0 + (curve[i][1] - p0) * (pb_bat_volts - v0) / (curve[i][0] - v0);
+                  break;
+                }
+              }
+            }
+          }
           // No GPIO sees USB power on the E1001 (ADR 0051); power: mains in
           // paperboy.yaml overrides this for a device on a charger.
           pb_power = "battery";

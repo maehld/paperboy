@@ -202,6 +202,13 @@ external component `uc8179_gray4` instead (ADR 0086): it takes Paperboy's
 edges of a page survive. That component is fetched at build time and pinned to a
 commit in `e1001.yaml`.
 
+The battery is read through the ADC on the divider (GPIO1, enabled by GPIO21).
+There is no fuel gauge, so the firmware maps the voltage to a percentage with
+Seeed's discharge curve for the E10xx (`3.27 V` = 0 % … `4.15 V` = 100 %,
+linearly interpolated) and sends it as `battery.percent`. The ADC measures under
+the device's own load, so the percentage reads a little low while it is awake;
+the voltage stays in the sync for the battery warning.
+
 Two properties differ between panel batches and belong to the device, not the
 image (ADR 0087); both are set in the device's web UI and survive a wake:
 
