@@ -44,6 +44,14 @@ const (
 	maxEntries = 1000
 	// refreshAhead renders a result again this long before it expires.
 	refreshAhead = 30 * time.Second
+	// conditionTTL keeps a conditions answer this long. Devices ask on every
+	// sync and a text display every second, while a plugin's data moves
+	// slower; a "changed" event drops the answer (ADR 0103).
+	conditionTTL = 10 * time.Second
+	// conditionTimeout bounds one conditions request, so a hanging plugin
+	// delays a sync less than its widget request would. The plugin is marked
+	// as failing, which also skips its widgets for a minute.
+	conditionTimeout = 5 * time.Second
 	// tick is the interval of the background loop.
 	tick = 5 * time.Second
 
@@ -90,8 +98,15 @@ type Host struct {
 	changes  map[string]int         // plugin -> number of "changed" events
 	mismatch map[string]bool        // plugin -> version mismatch already logged
 	blobNote map[string]bool        // plugin -> undeclared blobs already logged
+	conds    map[string]condition   // plugin -> last condition answer (ADR 0103)
 	builtMu  sync.Mutex
 	builtCfg map[string]bool
+}
+
+// condition is the cached answer to a conditions request.
+type condition struct {
+	active map[string]bool
+	at     time.Time
 }
 
 // entry is one cached widget and what is needed to render it again.
@@ -179,6 +194,7 @@ func (h *Host) Configure(specs map[string]Spec, env Env) {
 				delete(h.cache, k)
 			}
 		}
+		delete(h.conds, name)
 	}
 	h.mu.Unlock()
 	for _, p := range stop {
@@ -544,6 +560,68 @@ func (h *Host) Actions(ctx context.Context, name string, req plugin.Request) ([]
 	return msg.Actions, nil
 }
 
+// Conditions asks a plugin which of its declared conditions are active now
+// (ADR 0103). The answer is cached for conditionTTL, because a device asks on
+// every sync; a "changed" event drops it. A failing plugin answers with an
+// error and Paperboy treats every condition as inactive.
+func (h *Host) Conditions(ctx context.Context, name string) (map[string]bool, error) {
+	h.mu.Lock()
+	if c, ok := h.conds[name]; ok && h.now().Sub(c.at) < conditionTTL {
+		active := make(map[string]bool, len(c.active))
+		for k, v := range c.active {
+			active[k] = v
+		}
+		h.mu.Unlock()
+		return active, nil
+	}
+	env := h.env
+	blocked := h.now().Before(h.failing[name])
+	h.mu.Unlock()
+	if blocked {
+		return nil, errors.New("failed recently, retrying later")
+	}
+	req := plugin.Request{Version: plugin.Version, Action: plugin.ActionConditions,
+		Language: env.Language, Timezone: env.Timezone, Now: h.now()}
+	if handler, ok := h.Builtin[name]; ok {
+		h.builtMu.Lock()
+		msg := plugin.Handle(handler, &req)
+		h.builtMu.Unlock()
+		if msg.Error != "" {
+			return nil, errors.New(msg.Error)
+		}
+		return msg.Conditions, nil
+	}
+	spec, err := h.spec(name)
+	if err != nil {
+		return nil, err
+	}
+	lock := h.pluginLock(name)
+	lock.Lock()
+	defer lock.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, conditionTimeout)
+	defer cancel()
+	msg, err := h.call(ctx, spec, req)
+	if err == nil && msg.Error != "" {
+		err = errors.New(msg.Error)
+	}
+	if err != nil {
+		h.fail(name, err)
+		return nil, err
+	}
+	h.recover(name)
+	h.mu.Lock()
+	if h.conds == nil {
+		h.conds = map[string]condition{}
+	}
+	stored := make(map[string]bool, len(msg.Conditions))
+	for k, v := range msg.Conditions {
+		stored[k] = v
+	}
+	h.conds[name] = condition{active: stored, at: h.now()}
+	h.mu.Unlock()
+	return msg.Conditions, nil
+}
+
 // Invoke runs one concrete action (ADR 0057). The plugin decides whether it
 // needs a confirmation; the menu has asked before calling this.
 func (h *Host) Invoke(ctx context.Context, name string, req plugin.Request) (plugin.ActionOutcome, error) {
@@ -681,6 +759,8 @@ func (h *Host) expire(name string, widgets []string) {
 		}
 		e.expires = time.Time{}
 	}
+	// The plugin's data moved, so its condition answer is out of date too.
+	delete(h.conds, name)
 }
 
 func contains(list []string, s string) bool {

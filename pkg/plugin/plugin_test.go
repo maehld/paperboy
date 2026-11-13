@@ -208,8 +208,49 @@ func (actionFewerStates) Actions(*Request) ([]ActionState, error) {
 }
 
 func TestVersion(t *testing.T) {
-	if Version != 5 {
+	if Version != 6 {
 		t.Fatalf("protocol version = %d", Version)
+	}
+}
+
+type conditionHandler struct{ testHandler }
+
+func (conditionHandler) Describe() Description {
+	return Description{Conditions: []ConditionSpec{
+		{Name: "low", Title: "Low"},
+		{Name: "high", Title: "High"},
+	}}
+}
+
+func (conditionHandler) Conditions(*Request) (map[string]bool, error) {
+	return map[string]bool{"low": true, "high": false}, nil
+}
+
+func TestConditions(t *testing.T) {
+	h := &conditionHandler{}
+	m := Handle(h, &Request{Action: ActionConditions})
+	if m.Error != "" || !m.Conditions["low"] || m.Conditions["high"] {
+		t.Fatalf("conditions: %+v", m)
+	}
+	if d := h.Describe(); len(d.Conditions) != 2 || d.Conditions[0].Name != "low" {
+		t.Fatalf("describe: %+v", d.Conditions)
+	}
+	// A plugin without conditions answers with an error, which Paperboy treats
+	// as "nothing active" (ADR 0103).
+	if m := Handle(&testHandler{}, &Request{Action: ActionConditions}); m.Error == "" {
+		t.Fatal("a plugin without conditions must be rejected")
+	}
+}
+
+type failingConditions struct{ testHandler }
+
+func (failingConditions) Conditions(*Request) (map[string]bool, error) {
+	return nil, errors.New("no data")
+}
+
+func TestConditionsError(t *testing.T) {
+	if m := Handle(&failingConditions{}, &Request{Action: ActionConditions}); m.Error != "no data" {
+		t.Fatalf("conditions error: %+v", m)
 	}
 }
 

@@ -4,9 +4,10 @@ Paperboy and its plugins talk over standard input and standard output, one
 JSON object per line (ADR 0049). This document is the reference for the wire
 format; the Go types live in [`pkg/plugin`](../../pkg/plugin/plugin.go).
 
-- Current version: **5** (ADR 0050 added version 3, ADR 0057 added
-  actions, ADR 0081 added plugin state and blobs and made 5 the minimum). From
-  version 5 on the protocol only grows additively.
+- Current version: **6** (ADR 0050 added version 3, ADR 0057 added
+  actions, ADR 0081 added plugin state and blobs and made 5 the minimum,
+  ADR 0103 added conditions). From version 5 on the protocol only grows
+  additively.
 - Paperboy starts a plugin on first use and keeps it running.
 - Paperboy writes one request line; the plugin writes exactly one answer line
   with the same `id`. Between answers the plugin may write events without an
@@ -23,7 +24,7 @@ Every request carries:
 |---|---|
 | `id` | Request identifier; the answer repeats it |
 | `version` | Protocol version, currently `5` |
-| `action` | `configure`, `state`, `describe`, `render`, `text`, `actions` or `action` |
+| `action` | `configure`, `state`, `describe`, `render`, `text`, `actions`, `action` or `conditions` |
 | `language` | `"de"` or `"en"` |
 | `timezone` | IANA name such as `Europe/Berlin` |
 | `now` | Time of the request, RFC 3339 |
@@ -89,6 +90,9 @@ the plan's action validation.
       }
     ],
     "config": {"url": {"type": "string", "required": true}},
+    "conditions": [
+      {"name": "low", "title": "Low", "description": "the reading is below the low threshold"}
+    ],
     "blobs": ["render.png"]
   }
 }
@@ -103,9 +107,33 @@ the plan's action validation.
 - `confirm` is optional. `required: true` makes the device ask before running
   the action; `text` overrides Paperboy's generic confirmation text.
 - A plugin without actions omits `actions` or sends an empty list.
+- `conditions[].name` is the condition name without the plugin prefix. A plan
+  depends on it as `plugin/name` (ADR 0103). The plugin decides what makes the
+  condition active; thresholds and units stay in its configuration.
 - `blobs` names the files the plugin keeps besides its state, such as a
   downloaded image (ADR 0081). Paperboy logs files below `blobs/` that the
   plugin does not declare.
+
+### `conditions`
+
+Reports every declared condition and whether it is active now.
+
+```json
+{"id":"6","version":6,"action":"conditions","language":"de","timezone":"Europe/Berlin","now":"2026-11-07T12:00:00+01:00"}
+```
+
+```json
+{"id":"6","conditions":{"urgent":false,"low":true,"high":false}}
+```
+
+- A missing name, an empty answer and an error answer all count as inactive.
+  Paperboy never turns missing data into an alarm page.
+- The plugin decides what "active" means; a stale value should be reported as
+  inactive, because the page would otherwise show a warning about old data.
+- Paperboy caches the answer for a few seconds and drops it on a `changed`
+  event, so a plugin should send `changed` when a condition may have flipped.
+- A plugin without conditions answers with an error; plans that name one of
+  its conditions never match.
 
 ### `render` and `text`
 
@@ -193,11 +221,13 @@ Runs exactly one concrete action. Paperboy sends one `actions` entry.
 ## Answers and events
 
 An answer carries `id`, its `version` and optionally `error`, plus the payload
-for its request: `widgets`, `actions`, `result`, `description` or `max_age`.
+for its request: `widgets`, `actions`, `result`, `conditions`, `description`
+or `max_age`.
 `Handle` fills `version` with the protocol version the plugin was built
 against, in every answer and in the `changed` event. Paperboy calls
 `Message.CheckVersion` on every answer and refuses the plugin when the version
-is missing, older than 4 or newer than 5 (ADR 0058): the cells show the error
+is missing or older than 5 (ADR 0058, ADR 0081); newer versions are accepted,
+because the protocol only grows additively. The cells show the error
 and the plugin is dropped with one log line. Plugins written by hand in another
 language must print the field themselves.
 
@@ -303,6 +333,7 @@ widgets use the same fonts, gray levels and scalings as Paperboy's own.
 | 3 | `page.ppi` and `style.text_px` in pixels; `style.text_size` removed (ADR 0050) |
 | 4 | Actions: `describe.actions`, `actions`, `action`, `actions`/`result` answers, `device` (ADR 0057) |
 | 5 | Plugin state and blobs: the `state` request, `answer.state`/`answer.blobs`, `describe.blobs`; `PAPERBOY_STATE_DIR` removed (ADR 0081) |
+| 6 | Conditions: `describe.conditions`, the `conditions` request and `answer.conditions` (ADR 0103) |
 
 A plugin is used as a whole or not at all (ADR 0058). The check is a floor,
 not equality: Paperboy requires at least version 5 and accepts newer ones,

@@ -80,6 +80,13 @@ func whenNode(w *When) *yaml.Node {
 		}
 		add(n, "days", days)
 	}
+	if len(w.Conditions) > 0 {
+		conds := newSeq(true)
+		for _, ref := range w.Conditions {
+			conds.Content = append(conds.Content, str(ref))
+		}
+		add(n, "conditions", conds)
+	}
 	return n
 }
 

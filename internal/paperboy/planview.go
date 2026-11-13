@@ -36,13 +36,21 @@ type planViewPage struct {
 }
 
 type planViewRule struct {
-	Name     string
-	When     string
-	Rotate   bool
-	Refresh  string
-	Active   bool // the rule the device shows at the selected time
-	Fallback bool // the plan's fallback rule
-	Pages    []planViewPage
+	Name       string
+	When       string
+	Rotate     bool
+	Refresh    string
+	Active     bool // the rule the device shows at the selected time
+	Fallback   bool // the plan's fallback rule
+	Conditions []planViewCondition
+	Pages      []planViewPage
+}
+
+// planViewCondition is one condition of a rule and its state right now
+// (ADR 0103).
+type planViewCondition struct {
+	Name   string
+	Active bool
 }
 
 type planView struct {
@@ -59,6 +67,7 @@ type planView struct {
 	ByFallback bool   // the active rule applies as the fallback only
 	Next       string // next rule change, empty when the plan has no time windows
 	Error      string // plan missing, broken or not configured
+	Conditions bool   // a rule uses plugin conditions (ADR 0103)
 	Rules      []planViewRule
 }
 
@@ -117,12 +126,21 @@ func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 		}
 		view.Error = "Plan invalid, the last valid version is shown: " + shortError(err)
 	}
-	sel, ok := p.Select(at)
+	// Conditions are live; the selected time only moves the time windows
+	// (ADR 0103).
+	conds := s.evaluateConditions(r.Context(), p)
+	for _, rule := range p.Rules {
+		if len(rule.When.Conditions) > 0 {
+			view.Conditions = true
+			break
+		}
+	}
+	sel, ok := p.Select(at, conds)
 	if ok {
 		view.Active = sel.Rule
 		view.ByFallback = true
 		for i := range p.Rules {
-			if p.Rules[i].Name == sel.Rule && p.Matches(i, at) {
+			if p.Rules[i].Name == sel.Rule && p.Matches(i, at, conds) {
 				view.ByFallback = false
 			}
 		}
@@ -130,7 +148,7 @@ func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 	if until := p.UntilNextBoundary(at); until > 0 {
 		next := at.Add(until)
 		view.Next = next.Format("Mon 15:04")
-		if nsel, ok := p.Select(next); ok {
+		if nsel, ok := p.Select(next, conds); ok {
 			view.Next += " → " + nsel.Rule
 		}
 	}
@@ -138,6 +156,9 @@ func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 	for _, rule := range p.Rules {
 		vr := planViewRule{Name: rule.Name, When: whenText(rule.When), Rotate: rule.Rotate,
 			Active: rule.Name == view.Active, Fallback: rule.Name == p.Fallback}
+		for _, ref := range rule.When.Conditions {
+			vr.Conditions = append(vr.Conditions, planViewCondition{Name: ref, Active: conds[ref]})
+		}
 		if rule.Refresh > 0 {
 			vr.Refresh = refreshText(int(time.Duration(rule.Refresh) / time.Second))
 		}
@@ -196,6 +217,9 @@ func whenText(w plan.When) string {
 			days[i] = strings.ToLower(time.Weekday(d).String()[:3])
 		}
 		parts = append(parts, strings.Join(days, ", "))
+	}
+	if len(w.Conditions) > 0 {
+		parts = append(parts, "if "+strings.Join(w.Conditions, " and "))
 	}
 	if len(parts) == 0 {
 		return "always"

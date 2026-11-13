@@ -98,6 +98,35 @@ func TestEncodeRejectsInvalidPlan(t *testing.T) {
 
 func clock(minutes int) *Clock { c := Clock(minutes); return &c }
 
+// TestEncodeConditions verifies the written form and the JSON model of
+// conditions (ADR 0103).
+func TestEncodeConditions(t *testing.T) {
+	p := parse(t, `
+rules:
+  - name: zucker
+    when: { conditions: [dexcom/low, dexcom/high] }
+    pages: [zucker]
+`)
+	data, err := Encode(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `when: {conditions: [dexcom/low, dexcom/high]}`) {
+		t.Fatalf("layout:\n%s", data)
+	}
+	again, err := Parse(bytes.NewReader(data), nil)
+	if err != nil {
+		t.Fatalf("reparse: %v\n%s", err, data)
+	}
+	if !reflect.DeepEqual(p.Rules, again.Rules) {
+		t.Fatalf("round trip changed the plan\nwant %+v\ngot  %+v", p.Rules, again.Rules)
+	}
+	j, err := json.Marshal(p)
+	if err != nil || !strings.Contains(string(j), `"conditions":["dexcom/low","dexcom/high"]`) {
+		t.Fatalf("json: %s %v", j, err)
+	}
+}
+
 // TestPlanJSONRoundTrip verifies the JSON model the editor API uses: clocks
 // and weekdays keep their written form, and the result encodes to the same
 // plan file.

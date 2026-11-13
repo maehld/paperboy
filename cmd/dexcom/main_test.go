@@ -539,6 +539,41 @@ func TestRefusedCredentials(t *testing.T) {
 	}
 }
 
+// Conditions are the plan's input (ADR 0103): a band is active only while the
+// newest reading is current, and the urgent range also counts as low.
+func TestConditions(t *testing.T) {
+	now := time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC)
+	req := &plugin.Request{Now: now}
+	d := &dexcom{unit: unitMGDL, set: map[string]float64{"low": 100}}
+	check := func(want map[string]bool, what string) {
+		t.Helper()
+		got, err := d.Conditions(req)
+		if err != nil {
+			t.Fatalf("%s: %v", what, err)
+		}
+		for name, on := range got {
+			if on != want[name] {
+				t.Fatalf("%s: %s = %v, want %v (%v)", what, name, on, want[name], got)
+			}
+		}
+	}
+	// No reading yet: nothing is active.
+	check(map[string]bool{}, "no readings")
+	// A low reading of 5 minutes ago.
+	d.readings = []reading{{at: now.Add(-5 * time.Minute), value: 95}}
+	check(map[string]bool{"low": true}, "low")
+	// The urgent range is below the low threshold too.
+	d.readings = []reading{{at: now.Add(-5 * time.Minute), value: 50}}
+	check(map[string]bool{"urgent": true, "low": true}, "urgent")
+	d.readings = []reading{{at: now.Add(-5 * time.Minute), value: 300}}
+	check(map[string]bool{"high": true}, "high")
+	d.readings = []reading{{at: now.Add(-5 * time.Minute), value: 120}}
+	check(map[string]bool{}, "in band")
+	// A stale reading does not switch a page, even when it is low.
+	d.readings = []reading{{at: now.Add(-staleAfter - time.Minute), value: 60}}
+	check(map[string]bool{}, "stale")
+}
+
 // The plugin as the widget host talks to it: describe, configure, render and
 // text over the JSON lines of the protocol.
 func TestProtocol(t *testing.T) {

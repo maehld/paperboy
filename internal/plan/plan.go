@@ -150,16 +150,27 @@ func (a *PlanAction) UnmarshalYAML(v *yaml.Node) error {
 	return v.Decode((*plain)(a))
 }
 
-// When is a time window. Days apply to the day the window starts, so a window
-// across midnight belongs to its start day. All conditions are combined.
+// When is a time window and the conditions a rule needs. All conditions are
+// combined, with the time window as AND.
 type When struct {
 	From *Clock `yaml:"from" json:"from,omitempty"`
 	To   *Clock `yaml:"to" json:"to,omitempty"`
 	Days []Day  `yaml:"days" json:"days,omitempty"`
-	// Data conditions are specified in ADR 0025 but not implemented yet.
-	// Rejecting them keeps operators from relying on something that is ignored.
+	// Conditions are named plugin states that must all be active, written as
+	// "plugin/condition" (ADR 0103). A missing or failing plugin, an unknown
+	// name and a stale value all count as inactive, so a rule that warns
+	// about missing data never fires.
+	Conditions []string `yaml:"conditions" json:"conditions,omitempty"`
+	// Data conditions from ADR 0025 pointed into a shared data document that
+	// no longer exists (ADR 0049). Rejecting them keeps operators from relying
+	// on something that is ignored.
 	Data []any `yaml:"data" json:"data,omitempty"`
 }
+
+// Conditions says whether a condition is active now, keyed by
+// "plugin/condition". A plan without conditions ignores it, and a nil map
+// means nothing is active.
+type Conditions map[string]bool
 
 // Selection is the evaluated rule.
 type Selection struct {
@@ -190,11 +201,12 @@ func Parse(r io.Reader, loc *time.Location) (*Plan, error) {
 }
 
 // Select returns the first matching rule, otherwise the fallback rule. ok is
-// false when neither matches.
-func (p *Plan) Select(now time.Time) (Selection, bool) {
+// false when neither matches. conds is the current state of the plan's
+// conditions; nil means none is active.
+func (p *Plan) Select(now time.Time, conds Conditions) (Selection, bool) {
 	local := now.In(p.loc)
 	for i := range p.Rules {
-		if p.Rules[i].When.matches(local) {
+		if p.Rules[i].When.matches(local, conds) {
 			return p.selectRule(i), true
 		}
 	}
@@ -214,13 +226,14 @@ func (p *Plan) selectRule(i int) Selection {
 	return s
 }
 
-// Matches reports whether the time window of rule i matches now, without the
-// fallback. It lets a viewer tell a matching rule from the fallback.
-func (p *Plan) Matches(i int, now time.Time) bool {
+// Matches reports whether rule i matches now, without the fallback. It lets a
+// viewer tell a matching rule from the fallback. Time windows only; conditions
+// are evaluated with conds as well.
+func (p *Plan) Matches(i int, now time.Time, conds Conditions) bool {
 	if i < 0 || i >= len(p.Rules) {
 		return false
 	}
-	return p.Rules[i].When.matches(now.In(p.loc))
+	return p.Rules[i].When.matches(now.In(p.loc), conds)
 }
 
 // UntilNextBoundary returns the time until the next window starts or ends, so
@@ -281,7 +294,12 @@ func (w *When) dayAllowed(d time.Weekday) bool {
 	return false
 }
 
-func (w *When) matches(t time.Time) bool {
+func (w *When) matches(t time.Time, conds Conditions) bool {
+	for _, ref := range w.Conditions {
+		if !conds[ref] {
+			return false
+		}
+	}
 	m := t.Hour()*60 + t.Minute()
 	if w.From == nil || w.To == nil {
 		return w.dayAllowed(t.Weekday())
@@ -339,7 +357,7 @@ func (p *Plan) validateActions() error {
 		if a.Action == "" {
 			return fmt.Errorf("actions[%d]: action missing", i)
 		}
-		if !validAction(a.Action) {
+		if !validRef(a.Action) {
 			return fmt.Errorf("actions[%d]: action %q: expected plugin/action", i, a.Action)
 		}
 		if a.ID != "" && !validName(a.ID) {
@@ -397,7 +415,17 @@ func (r *Rule) validate() error {
 	}
 	w := &r.When
 	if len(w.Data) > 0 {
-		return fmt.Errorf("when.data: data conditions are not implemented yet")
+		return fmt.Errorf("when.data: there is no shared data document any more; name a plugin condition in when.conditions (ADR 0103)")
+	}
+	refs := map[string]bool{}
+	for _, ref := range w.Conditions {
+		if !validRef(ref) {
+			return fmt.Errorf("condition %q: expected plugin/condition", ref)
+		}
+		if refs[ref] {
+			return fmt.Errorf("duplicate condition %q", ref)
+		}
+		refs[ref] = true
 	}
 	if (w.From == nil) != (w.To == nil) {
 		return fmt.Errorf("when: from and to must be given together")
@@ -420,8 +448,9 @@ func validName(s string) bool {
 	return true
 }
 
-// validAction reports whether s is "plugin/action" with valid names.
-func validAction(s string) bool {
-	plugin, action, ok := strings.Cut(s, "/")
-	return ok && validName(plugin) && validName(action)
+// validRef reports whether s is "plugin/name" with valid names, as used by an
+// action or a condition.
+func validRef(s string) bool {
+	plugin, name, ok := strings.Cut(s, "/")
+	return ok && validName(plugin) && validName(name)
 }

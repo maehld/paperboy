@@ -73,7 +73,30 @@ fallback: nacht
 - `fallback` names the rule used when nothing matches. Without a match and without a fallback, the device gets a notice page.
 - A rule needs a name (a-z, 0-9, `-`) and at least one page. Rule names must be unique, and a rule must not name the same page twice.
 - Paperboy reloads plans on change without a restart; a broken file keeps the last valid version. A missing or broken page also leads to a notice page, so devices never see a server error.
-- Plans serve devices on the Paperboy firmware. Paperboy rejects `when.data`, because data conditions are not implemented yet.
+- Plans serve devices on the Paperboy firmware.
+
+### Conditions
+
+A rule can depend on **conditions** that plugins declare, such as "the glucose reading is low" (ADR 0103). The condition names are `plugin/condition`; a plugin declares them in its `describe` answer, and the plugin configuration holds the thresholds, so the page switch and the widget's colouring always agree.
+
+```yaml
+rules:
+  - name: unterzucker
+    when: { conditions: [dexcom/low] }
+    pages: [zucker]
+  - name: tag
+    when: { from: "07:00", to: "22:00" }
+    pages: [uebersicht]
+fallback: tag
+```
+
+- Conditions combine with `from`/`to`/`days` as AND, and the first matching rule wins. A rule with only conditions matches whenever they are active.
+- A plugin that is not configured, a name it does not declare, a failing answer and a stale value all count as **inactive**, so missing data never raises an alarm page; the plan falls through to its next rule.
+- Paperboy asks the plugins named in a plan before it selects the page and caches the answer briefly. A change reaches a device at its next wake, so the `refresh` of the rule that shows the normal page sets how quickly.
+- The plan editor offers the declared conditions as check boxes per rule, and the plan view shows each condition as active or inactive (`if dexcom/low`). The plan view evaluates conditions at the current moment, even when you preview another time.
+- `when.data` from ADR 0025 is rejected with a hint, because the shared data document no longer exists.
+
+Dexcom offers `urgent`, `low` (including the urgent range) and `high`, following its configured thresholds and inactive while the reading is older than 15 minutes; see [the dexcom page](plugins/dexcom.md) for an example plan.
 
 ### Actions
 

@@ -12,6 +12,7 @@ form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-b
 .rule { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
 .rule.active { border: 2px solid #17692c; }
 .rule h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.conditions { margin: -.3rem 0 .6rem; font-size: .85rem; color: #444; }
 .badge { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; padding: .12rem .45rem; border-radius: 999px; border: 1px solid currentColor; font-weight: 600; }
 .badge.active { color: #17692c; }
 .badge.fallback { color: #666; }
@@ -41,7 +42,7 @@ figure .error { margin: 0; }
 {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
 {{if .Rules}}
 <p class="summary">{{if .Now}}Now{{else}}At{{end}} ({{.AtText}}):
-  {{if .Active}}rule <strong>{{.Active}}</strong>{{if .ByFallback}} (fallback){{end}}{{else}}no rule applies, the device shows a notice{{end}}{{if .Next}} · next change {{.Next}}{{end}}</p>
+  {{if .Active}}rule <strong>{{.Active}}</strong>{{if .ByFallback}} (fallback){{end}}{{else}}no rule applies, the device shows a notice{{end}}{{if .Next}} · next change {{.Next}}{{end}}{{if .Conditions}} · conditions evaluated now{{end}}</p>
 {{range .Rules}}
 <section class="rule{{if .Active}} active{{end}}">
   <h2>{{.Name}}
@@ -49,6 +50,7 @@ figure .error { margin: 0; }
     {{if .Fallback}}<span class="badge fallback">fallback</span>{{end}}
     <span class="muted">{{.When}}{{if .Rotate}} · rotate{{end}}{{if .Refresh}} · {{.Refresh}}{{end}}</span>
   </h2>
+  {{if .Conditions}}<p class="conditions">{{range $i, $c := .Conditions}}{{if $i}} · {{end}}{{$c.Name}} <span class="badge{{if $c.Active}} active{{end}}">{{if $c.Active}}active{{else}}inactive{{end}}</span>{{end}}</p>{{end}}
   <div class="pages">
     {{range .Pages}}
     <figure>

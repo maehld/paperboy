@@ -66,6 +66,23 @@ Single values as rows, like the `values` widget of the evcc plugin. The list arg
 
 Without `values` all entries are shown; `columns` sets one or two columns. Rows that do not fit the cell are left out, so the order of the list is the order of importance. Image and text variants.
 
+## Conditions in a plan
+
+A plan can switch to a page while the reading is out of its band (ADR 0103). The plugin declares three conditions, named after its thresholds: `urgent`, `low` (including the urgent range) and `high`. A condition is active only while the newest reading is current; an older reading than 15 minutes makes all of them inactive, so the device never shows an alarm page for data that is gone.
+
+```yaml
+rules:
+  - name: unterzucker
+    when: { conditions: [dexcom/low] }
+    pages: [glukose]
+  - name: tag
+    when: { from: "07:00", to: "22:00" }
+    pages: [uebersicht, glukose]
+fallback: tag
+```
+
+Set `low`, `high` and `urgent` in the plugin configuration; they colour the widget and steer the page switch alike. The device reacts at its next wake, so the `refresh` of the rule that shows the normal page decides how quickly it notices. A plugin that is down or has no data leaves the conditions inactive and the plan falls through to that rule.
+
 ## Data and state
 
 The service keeps one day. The first read takes the whole day; after that the plugin asks for the readings it missed since the last poll (`maxCount` = the missed five-minute values plus one for context, at most 288) and merges them into the stored series, dropping duplicates and anything older than 24 hours. A poll therefore moves a handful of values instead of a day.

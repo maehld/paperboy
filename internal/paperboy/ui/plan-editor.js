@@ -68,7 +68,12 @@
       const w = r.when || {};
       return {
         name: r.name || '',
-        when: { from: w.from || '', to: w.to || '', days: (w.days || []).filter((d) => DAYS.includes(d)) },
+        when: {
+          from: w.from || '',
+          to: w.to || '',
+          days: (w.days || []).filter((d) => DAYS.includes(d)),
+          conditions: (w.conditions || []).slice(),
+        },
         pages: (r.pages || []).slice(),
         rotate: !!r.rotate,
         refresh: r.refresh || '',
@@ -97,6 +102,7 @@
         }
         const days = DAYS.filter((d) => r.when.days.includes(d));
         if (days.length) rule.when.days = days;
+        if (r.when.conditions.length) rule.when.conditions = r.when.conditions.slice();
         if (r.rotate) rule.rotate = true;
         if (r.refresh) rule.refresh = r.refresh;
         return rule;
@@ -270,6 +276,36 @@
       changed();
     });
     grid.appendChild(field('Rotate', rotate));
+
+    // Conditions are named plugin states, e.g. dexcom/low (ADR 0103). A
+    // condition a configured plugin does not declare stays visible so that a
+    // plan written by hand is not silently broken.
+    const conds = document.createElement('span');
+    conds.className = 'days';
+    const offered = allConditions();
+    const known = new Set(offered.map((c) => c.value));
+    const values = offered.map((c) => c.value).concat(rule.when.conditions.filter((v) => !known.has(v)));
+    if (!values.length) {
+      const note = document.createElement('span');
+      note.className = 'muted';
+      note.textContent = 'no plugin declares conditions';
+      conds.appendChild(note);
+    }
+    for (const value of values) {
+      const label = document.createElement('label');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = rule.when.conditions.includes(value);
+      box.addEventListener('change', () => {
+        rule.when.conditions = values.filter((v) => (v === value ? box.checked : rule.when.conditions.includes(v)));
+        changed();
+      });
+      const text = document.createElement('span');
+      text.textContent = known.has(value) ? value : value + ' (not offered)';
+      label.append(box, text);
+      conds.appendChild(label);
+    }
+    grid.appendChild(field('Conditions', conds));
     card.appendChild(grid);
 
     const pages = document.createElement('div');
@@ -370,22 +406,23 @@
   // ---- warnings ----
 
   function alwaysMatches(w) {
-    return !w.from && !w.to && !w.days.length;
+    return !w.from && !w.to && !w.days.length && !w.conditions.length;
   }
 
   function windowKey(w) {
-    return w.from + '|' + w.to + '|' + DAYS.filter((d) => w.days.includes(d)).join(',');
+    return w.from + '|' + w.to + '|' + DAYS.filter((d) => w.days.includes(d)).join(',') + '|' + w.conditions.slice().sort().join(',');
   }
 
   // shadowReason names the earlier rule that keeps a rule from ever matching:
-  // one that matches at any time, or one with the same time window.
+  // one that matches at any time, or one with the same time window and the
+  // same conditions.
   function shadowReason(i) {
     const rules = state.plan.rules;
     for (let j = 0; j < i; j++) {
       const name = rules[j].name || 'rule #' + (j + 1);
       if (alwaysMatches(rules[j].when)) return 'never matches: ' + name + ' matches at any time and comes first';
       if (windowKey(rules[j].when) === windowKey(rules[i].when)) {
-        return 'never matches: ' + name + ' has the same time window and comes first';
+        return 'never matches: ' + name + ' has the same time window and conditions and comes first';
       }
     }
     return '';
@@ -402,6 +439,10 @@
       const { from, to } = rule.when;
       if ((from && !to) || (!from && to)) messages.push('from and to must be given together');
       if (from && to && from === to) messages.push('from and to must differ');
+      const offered = allConditions().map((c) => c.value);
+      for (const ref of rule.when.conditions) {
+        if (!offered.includes(ref)) messages.push(ref + ': no plugin declares this condition');
+      }
       if (!rule.pages.length) messages.push('no pages');
       for (const page of new Set(rule.pages)) {
         if (rule.pages.filter((p) => p === page).length > 1) messages.push('page ' + page + ' is listed twice');
@@ -449,6 +490,16 @@
   }
 
   // ---- actions ----
+
+  function allConditions() {
+    const out = [];
+    for (const plugin of state.plugins) {
+      for (const c of (plugin.description && plugin.description.conditions) || []) {
+        out.push({ value: plugin.name + '/' + c.name, spec: c });
+      }
+    }
+    return out.sort((a, b) => a.value.localeCompare(b.value));
+  }
 
   function allActions() {
     const out = [];
@@ -771,7 +822,7 @@
     const taken = new Set(ruleNames());
     let n = state.plan.rules.length + 1;
     while (taken.has('rule-' + n)) n++;
-    state.plan.rules.push({ name: 'rule-' + n, when: { from: '', to: '', days: [] }, pages: [], rotate: false, refresh: '' });
+    state.plan.rules.push({ name: 'rule-' + n, when: { from: '', to: '', days: [], conditions: [] }, pages: [], rotate: false, refresh: '' });
     changed();
     renderRules();
     renderFallback();

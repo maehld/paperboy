@@ -135,7 +135,7 @@ actions:
 		at(t, 2026, time.October, 21, 12, 0),
 		at(t, 2026, time.October, 21, 23, 0),
 	} {
-		sel, ok := p.Select(now)
+		sel, ok := p.Select(now, nil)
 		if !ok || len(sel.Actions) != 3 || sel.Actions[1].ID != "charge-now-2" {
 			t.Fatalf("selection at %s: %+v %v", now.Format(time.RFC3339), sel, ok)
 		}
@@ -177,12 +177,12 @@ func TestSelect(t *testing.T) {
 		{at(t, 2026, time.October, 25, 12, 0), "tag"},  // Sunday noon
 	}
 	for _, c := range cases {
-		sel, ok := p.Select(c.at)
+		sel, ok := p.Select(c.at, nil)
 		if !ok || sel.Rule != c.rule {
 			t.Fatalf("%s: got %q (%v), want %q", c.at.Format(time.RFC3339), sel.Rule, ok, c.rule)
 		}
 	}
-	if sel, _ := p.Select(at(t, 2026, time.October, 21, 12, 0)); len(sel.Pages) != 3 || !sel.Rotate {
+	if sel, _ := p.Select(at(t, 2026, time.October, 21, 12, 0), nil); len(sel.Pages) != 3 || !sel.Rotate {
 		t.Fatalf("tag selection: %+v", sel)
 	}
 }
@@ -195,15 +195,15 @@ rules:
     pages: [nacht]
 `)
 	// Saturday 03:00 belongs to the window that started on Friday.
-	if sel, ok := p.Select(at(t, 2026, time.October, 24, 3, 0)); !ok || sel.Rule != "freitagnacht" {
+	if sel, ok := p.Select(at(t, 2026, time.October, 24, 3, 0), nil); !ok || sel.Rule != "freitagnacht" {
 		t.Fatalf("Saturday night: %+v %v", sel, ok)
 	}
 	// Friday 03:00 belongs to Thursday's window.
-	if _, ok := p.Select(at(t, 2026, time.October, 23, 3, 0)); ok {
+	if _, ok := p.Select(at(t, 2026, time.October, 23, 3, 0), nil); ok {
 		t.Fatal("Friday morning must not match")
 	}
 	// Saturday 07:00 is outside the window.
-	if _, ok := p.Select(at(t, 2026, time.October, 24, 7, 0)); ok {
+	if _, ok := p.Select(at(t, 2026, time.October, 24, 7, 0), nil); ok {
 		t.Fatal("Saturday morning must not match")
 	}
 }
@@ -217,10 +217,10 @@ rules:
   - name: immer
     pages: [b]
 `)
-	if sel, _ := p.Select(at(t, 2026, time.October, 21, 12, 10)); sel.Rule != "genau" {
+	if sel, _ := p.Select(at(t, 2026, time.October, 21, 12, 10), nil); sel.Rule != "genau" {
 		t.Fatalf("first rule must win: %+v", sel)
 	}
-	if sel, _ := p.Select(at(t, 2026, time.October, 21, 13, 0)); sel.Rule != "immer" {
+	if sel, _ := p.Select(at(t, 2026, time.October, 21, 13, 0), nil); sel.Rule != "immer" {
 		t.Fatalf("always rule: %+v", sel)
 	}
 }
@@ -233,7 +233,7 @@ rules:
     when: { from: "09:00", to: "19:00" }
     pages: [a]
 `)
-	if _, ok := p.Select(at(t, 2026, time.October, 21, 20, 0)); ok {
+	if _, ok := p.Select(at(t, 2026, time.October, 21, 20, 0), nil); ok {
 		t.Fatal("no rule must match outside the window")
 	}
 	// A fallback applies regardless of its own time window.
@@ -247,8 +247,68 @@ rules:
     pages: [b]
 fallback: notfall
 `)
-	if sel, ok := p.Select(at(t, 2026, time.October, 21, 20, 0)); !ok || sel.Rule != "notfall" {
+	if sel, ok := p.Select(at(t, 2026, time.October, 21, 20, 0), nil); !ok || sel.Rule != "notfall" {
 		t.Fatalf("fallback selection: %+v %v", sel, ok)
+	}
+}
+
+// TestSelectConditions checks that a rule with conditions only matches while
+// they are active, together with its time window (ADR 0103).
+func TestSelectConditions(t *testing.T) {
+	p := parse(t, `
+rules:
+  - name: unterzucker
+    when: { conditions: [dexcom/low] }
+    pages: [zucker]
+  - name: tag
+    when: { from: "07:00", to: "22:00" }
+    pages: [uebersicht]
+`)
+	now := at(t, 2026, time.October, 21, 12, 0)
+	if sel, ok := p.Select(now, Conditions{"dexcom/low": true}); !ok || sel.Rule != "unterzucker" {
+		t.Fatalf("active condition: %+v %v", sel, ok)
+	}
+	if sel, ok := p.Select(now, Conditions{"dexcom/low": false}); !ok || sel.Rule != "tag" {
+		t.Fatalf("inactive condition: %+v %v", sel, ok)
+	}
+	// A missing answer counts as inactive, never as a warning page.
+	if sel, ok := p.Select(now, nil); !ok || sel.Rule != "tag" {
+		t.Fatalf("nil conditions: %+v %v", sel, ok)
+	}
+	if p.Matches(0, now, Conditions{"dexcom/low": true}) != true || p.Matches(0, now, nil) {
+		t.Fatal("Matches must consider conditions")
+	}
+
+	// Conditions combine with the time window as AND.
+	p = parse(t, `
+rules:
+  - name: nachts
+    when: { from: "22:00", to: "06:00", conditions: [dexcom/low] }
+    pages: [zucker]
+`)
+	if _, ok := p.Select(at(t, 2026, time.October, 21, 12, 0), Conditions{"dexcom/low": true}); ok {
+		t.Fatal("conditions must not override the time window")
+	}
+	if _, ok := p.Select(at(t, 2026, time.October, 21, 23, 0), nil); ok {
+		t.Fatal("an inactive condition must not match")
+	}
+}
+
+func TestConditionErrors(t *testing.T) {
+	cases := map[string]string{
+		"data":           `rules: [{name: a, pages: [x], when: {data: [{path: a}]}}]`,
+		"missing plugin": `rules: [{name: a, pages: [x], when: {conditions: [low]}}]`,
+		"bad name":       `rules: [{name: a, pages: [x], when: {conditions: [dexcom/Low]}}]`,
+		"duplicate":      `rules: [{name: a, pages: [x], when: {conditions: [dexcom/low, dexcom/low]}}]`,
+	}
+	for name, yaml := range cases {
+		if _, err := Parse(strings.NewReader(yaml), berlin(t)); err == nil {
+			t.Fatalf("%s: expected an error", name)
+		}
+	}
+	// The hint for when.data names the replacement.
+	if _, err := Parse(strings.NewReader(cases["data"]), berlin(t)); err == nil || !strings.Contains(err.Error(), "when.conditions") {
+		t.Fatalf("data hint: %v", err)
 	}
 }
 

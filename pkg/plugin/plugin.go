@@ -21,6 +21,8 @@
 //   - "actions": report the current state of concrete actions, one answer per
 //     requested action (ADR 0057).
 //   - "action": run exactly one concrete action and report the outcome.
+//   - "conditions": report the state of the named conditions a plan may
+//     depend on (ADR 0103).
 //
 // Plugins written in Go implement Handler, call Serve and draw with
 // pkg/render, so widgets share the fonts and gray levels of Paperboy.
@@ -72,9 +74,11 @@ import (
 // (ADR 0057) added actions: describe.actions, the actions and action requests,
 // and action results. Version 5 (ADR 0081) added the plugin state and blobs:
 // the state request, Message.state, describe.blobs and the blobs of answers.
+// Version 6 (ADR 0103) added conditions: describe.conditions, the conditions
+// request and Message.conditions.
 // Plugins report the version in every answer (Message.Version); Paperboy
 // refuses a plugin that speaks less than MinVersion (ADR 0081).
-const Version = 5
+const Version = 6
 
 // MinVersion is the oldest protocol Paperboy accepts. Version 5 is the cut
 // that introduced state and blobs; from here on the protocol grows additively,
@@ -90,6 +94,9 @@ const (
 	ActionText      = "text"
 	ActionList      = "actions" // states of concrete actions
 	ActionInvoke    = "action"  // run one concrete action
+	// ActionConditions asks for the state of the named conditions a plan may
+	// depend on (ADR 0103).
+	ActionConditions = "conditions"
 )
 
 // EventChanged tells Paperboy that widgets are out of date.
@@ -176,15 +183,19 @@ type Message struct {
 	// Version is the protocol version the plugin speaks. Handle fills it; a
 	// plugin written by hand must set it, and a missing version counts as one
 	// from before the field existed (ADR 0058).
-	Version     int            `json:"version,omitempty"`
-	Error       string         `json:"error,omitempty"` // the request failed as a whole
-	Widgets     []Result       `json:"widgets,omitempty"`
-	Actions     []ActionState  `json:"actions,omitempty"` // answers to an actions request, in request order
-	Result      *ActionOutcome `json:"result,omitempty"`  // answer to an action request
-	MaxAge      int            `json:"max_age,omitempty"` // seconds the results stay valid; 0 = Paperboy's default
-	Description *Description   `json:"description,omitempty"`
-	Event       string         `json:"event,omitempty"`
-	Changed     []string       `json:"changed,omitempty"` // widgets of a "changed" event; empty = all
+	Version int            `json:"version,omitempty"`
+	Error   string         `json:"error,omitempty"` // the request failed as a whole
+	Widgets []Result       `json:"widgets,omitempty"`
+	Actions []ActionState  `json:"actions,omitempty"` // answers to an actions request, in request order
+	Result  *ActionOutcome `json:"result,omitempty"`  // answer to an action request
+	// Conditions is the answer to a conditions request: every declared
+	// condition of the plugin, true while it is active (ADR 0103). A missing
+	// name counts as inactive.
+	Conditions  map[string]bool `json:"conditions,omitempty"`
+	MaxAge      int             `json:"max_age,omitempty"` // seconds the results stay valid; 0 = Paperboy's default
+	Description *Description    `json:"description,omitempty"`
+	Event       string          `json:"event,omitempty"`
+	Changed     []string        `json:"changed,omitempty"` // widgets of a "changed" event; empty = all
 	// State is the JSON object to store for the next start (ADR 0081). A
 	// missing field means unchanged, a null value forgets the stored state.
 	State *json.RawMessage `json:"state,omitempty"`
@@ -205,10 +216,13 @@ type Description struct {
 	// Version is the plugin's own version, e.g. from a VERSION file next to
 	// its source. Paperboy compares it with the file name of the program and
 	// logs a mismatch (ADR 0075); empty means the plugin does not say.
-	Version string         `json:"version,omitempty"`
-	Widgets []WidgetInfo   `json:"widgets"`
-	Actions []ActionSpec   `json:"actions,omitempty"` // actions a plan may list (ADR 0057)
-	Config  map[string]Arg `json:"config,omitempty"`  // keys of the plugin's config section
+	Version string       `json:"version,omitempty"`
+	Widgets []WidgetInfo `json:"widgets"`
+	Actions []ActionSpec `json:"actions,omitempty"` // actions a plan may list (ADR 0057)
+	// Conditions are the named states a plan may depend on (ADR 0103). A
+	// plugin reports them on the conditions request.
+	Conditions []ConditionSpec `json:"conditions,omitempty"`
+	Config     map[string]Arg  `json:"config,omitempty"` // keys of the plugin's config section
 	// Blobs names the files the plugin keeps besides its state, e.g.
 	// "render.png" (ADR 0081). Paperboy stores them under blobs/ of the
 	// plugin's directory and logs files it does not expect.
@@ -247,6 +261,15 @@ type ActionSpec struct {
 	Title   string         `json:"title"`
 	Args    map[string]Arg `json:"args,omitempty"` // the same schema as widget args
 	Confirm *Confirm       `json:"confirm,omitempty"`
+}
+
+// ConditionSpec describes one named condition a plugin reports (ADR 0103).
+// Plans refer to it as "plugin/name"; the plugin decides what makes it active,
+// so thresholds and units stay in its configuration.
+type ConditionSpec struct {
+	Name        string `json:"name"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
 }
 
 // Confirm says whether an action needs a confirmation before it runs and which
@@ -360,6 +383,14 @@ type Texter interface {
 type Actioner interface {
 	Actions(req *Request) ([]ActionState, error)
 	Invoke(req *Request, call ActionCall) (ActionOutcome, error)
+}
+
+// Conditioner is implemented by plugins whose named conditions a plan may
+// depend on (ADR 0103). Conditions answers every condition of Describe, true
+// while it is active now. A plugin without it has no conditions, so plans that
+// name one of its conditions never match.
+type Conditioner interface {
+	Conditions(req *Request) (map[string]bool, error)
 }
 
 // Preparer is implemented by plugins that set up shared state once per
@@ -487,6 +518,8 @@ func Handle(h Handler, req *Request) (m Message) {
 		}
 	case ActionList, ActionInvoke:
 		handleActions(h, req, &m)
+	case ActionConditions:
+		handleConditions(h, req, &m)
 	default:
 		m.Error = fmt.Sprintf("unknown action %q", req.Action)
 	}
@@ -597,6 +630,23 @@ func handleActions(h Handler, req *Request, m *Message) {
 	if ag, ok := h.(Ager); ok {
 		m.MaxAge = int(ag.MaxAge(req) / time.Second)
 	}
+}
+
+// handleConditions answers a conditions request. A plugin without the
+// Conditioner interface has none; Paperboy treats such an answer as an error
+// and every condition as inactive (ADR 0103).
+func handleConditions(h Handler, req *Request, m *Message) {
+	c, ok := h.(Conditioner)
+	if !ok {
+		m.Error = "this plugin has no conditions"
+		return
+	}
+	active, err := c.Conditions(req)
+	if err != nil {
+		m.Error = err.Error()
+		return
+	}
+	m.Conditions = active
 }
 
 func renderOne(h Handler, req *Request, w WidgetRequest) (res Result) {

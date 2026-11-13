@@ -82,6 +82,14 @@ func fakePlugin(mode string) {
 		if mode == "hang" {
 			continue
 		}
+		if req.Action == plugin.ActionConditions {
+			msg := plugin.Message{ID: req.ID, Version: version, Conditions: map[string]bool{"low": true}}
+			if mode == "condfail" {
+				msg.Error = "no data"
+			}
+			enc.Encode(msg)
+			continue
+		}
 		msg := plugin.Message{ID: req.ID, Version: version, MaxAge: 60}
 		for _, w := range req.Widgets {
 			if req.Action == plugin.ActionText {
@@ -185,6 +193,37 @@ func TestHostCachesAndBatches(t *testing.T) {
 	h.Fetch(context.Background(), b)
 	if n, s := runs(f.count), runs(f.starts); n != 2 || s != 1 {
 		t.Errorf("requests %d (want 2), starts %d (want 1)", n, s)
+	}
+}
+
+func TestHostConditionsAreCached(t *testing.T) {
+	f := newFake(t)
+	h := newHost(t, f.spec("ok"))
+	active, err := h.Conditions(context.Background(), "fake")
+	if err != nil || !active["low"] || active["high"] {
+		t.Fatalf("conditions: %v %v", active, err)
+	}
+	if _, err := h.Conditions(context.Background(), "fake"); err != nil {
+		t.Fatal(err)
+	}
+	if n := runs(f.count); n != 1 {
+		t.Errorf("plugin got %d conditions requests, want 1 (cached)", n)
+	}
+	// A changed event makes the next sync ask again (ADR 0103).
+	h.expire("fake", nil)
+	if _, err := h.Conditions(context.Background(), "fake"); err != nil {
+		t.Fatal(err)
+	}
+	if n := runs(f.count); n != 2 {
+		t.Errorf("plugin got %d conditions requests after changed, want 2", n)
+	}
+	if _, err := h.Conditions(context.Background(), "nope"); err == nil {
+		t.Error("an unknown plugin must answer with an error")
+	}
+	// A failing plugin yields an error, so its conditions count as inactive.
+	h2 := newHost(t, f.spec("condfail"))
+	if _, err := h2.Conditions(context.Background(), "fake"); err == nil {
+		t.Error("a failing conditions answer must be an error")
 	}
 }
 

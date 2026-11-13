@@ -98,11 +98,12 @@ type dexcom struct {
 }
 
 var (
-	_ plugin.Handler = (*dexcom)(nil)
-	_ plugin.Texter  = (*dexcom)(nil)
-	_ plugin.Starter = (*dexcom)(nil)
-	_ plugin.Ager    = (*dexcom)(nil)
-	_ plugin.Stater  = (*dexcom)(nil)
+	_ plugin.Handler     = (*dexcom)(nil)
+	_ plugin.Texter      = (*dexcom)(nil)
+	_ plugin.Starter     = (*dexcom)(nil)
+	_ plugin.Ager        = (*dexcom)(nil)
+	_ plugin.Stater      = (*dexcom)(nil)
+	_ plugin.Conditioner = (*dexcom)(nil)
 )
 
 func (d *dexcom) Describe() plugin.Description {
@@ -111,6 +112,11 @@ func (d *dexcom) Describe() plugin.Description {
 		Title:   "Dexcom",
 		Version: version(),
 		Config:  configKeys,
+		Conditions: []plugin.ConditionSpec{
+			{Name: "urgent", Title: "Urgent low", Description: "the reading is below the urgent threshold; inactive when that threshold is 0"},
+			{Name: "low", Title: "Low", Description: "the reading is below the low threshold, including the urgent range"},
+			{Name: "high", Title: "High", Description: "the reading is above the high threshold"},
+		},
 		Widgets: []plugin.WidgetInfo{
 			{
 				Widget: "glucose", Title: "Glucose reading", Kinds: both,
@@ -233,6 +239,36 @@ func (d *dexcom) MaxAge(*plugin.Request) time.Duration {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.refresh
+}
+
+// Conditions reports the bands a plan can depend on (ADR 0103). They are all
+// inactive while the newest reading is older than staleAfter, so a stale value
+// never switches a page; a failed load is an error, which Paperboy also treats
+// as inactive.
+func (d *dexcom) Conditions(req *plugin.Request) (map[string]bool, error) {
+	l, err := d.limits()
+	if err != nil {
+		return nil, err
+	}
+	rs, loadErr, _ := d.snapshot()
+	if loadErr != nil {
+		return nil, loadErr
+	}
+	active := map[string]bool{"urgent": false, "low": false, "high": false}
+	last, ok := current(rs, req.Now)
+	if !ok || req.Now.Sub(last.at) > staleAfter {
+		return active, nil
+	}
+	switch level(last.value, l) {
+	case "urgent":
+		// The urgent range is below the low threshold as well.
+		active["urgent"], active["low"] = true, true
+	case "low":
+		active["low"] = true
+	case "high":
+		active["high"] = true
+	}
+	return active, nil
 }
 
 // Start polls the service in the background.
