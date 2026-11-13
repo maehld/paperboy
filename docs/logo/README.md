@@ -39,9 +39,12 @@ The logo is part of the project and covered by `LICENSE`.
 The built-in plugin draws the mark from this geometry instead of a raster copy:
 `paperboy/logo` (`internal/builtin/logo.go`) scales it to any cell and
 `wordmark: true` adds the lockup's wordmark in Go Mono Bold. The firmware draws
-the same shapes (`pb_logo_ink` in `firmware/esphome/paperboy.h`): above the
-instructions of the Wi-Fi and Paperboy URL screens and alone for 5 s at power-on
-(ADR 0095). A change to the shapes has to touch both.
+the same shapes (`pb_logo_ink` in `firmware/esphome/paperboy.h`): the lockup
+above the instructions of the Wi-Fi and Paperboy URL screens and alone for 5 s at
+power-on, with the firmware version (ADR 0095, 0098). It prints the wordmark in
+Go Mono Bold from a subset of this face (`firmware/esphome/fonts/`), because the
+firmware cannot draw outlines; a change to the shapes or the wordmark has to
+touch both, and the font subset follows the design.
 
 ## What the UI serves
 

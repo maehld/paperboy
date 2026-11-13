@@ -13,13 +13,14 @@ installation, nothing installation-specific is compiled in.
 | `e1001.yaml` | reTerminal E1001: pins, four-level UC8179 panel via `uc8179_gray4`, ADC battery |
 | `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep; a row whose cell set `scroll: true` moves one character per 300 ms (ADR 0092) |
 | `lcd2004.yaml` | ESP32 dev board with a 20×4 HD44780 LCD behind a PCF8574 (I²C 0x27, SDA GPIO21, SCL GPIO22); prints every row through `pb_row`, so a scrolling line shows its window |
+| `fonts/` | Go Mono Bold as a subset, the face of the logo's wordmark and the firmware version (ADR 0098), with its licence |
 | `build.ps1` | Builds one hardware type with the pinned ESPHome version, optionally publishes it to an instance |
 
 ## Cycle
 
 | Step | Request | Notes |
 |---|---|---|
-| Power-on | none | the mark of the logo in the middle of the panel for 5 s (ADR 0095); a timer or button wake gets no splash, so a page change stays as fast as it is |
+| Power-on | none | the lockup of the logo and the firmware version in the middle of the panel for 5 s (ADR 0095, 0098); a timer or button wake gets no splash, so a page change stays as fast as it is |
 | First contact | `POST /api/device/register` with `mac`, `hardware`, `firmware` | the key is kept in flash; `403` shows "Paperboy does not know this display" with the MAC |
 | Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `rssi`, `power`, `log` | `401` drops the key, registers again and repeats the sync; a failed request keeps the event queue and is retried up to three times (ADR 0064) |
 | No key | `POST /api/device/register` is retried three times as well | without a key and with an unreachable server the device shows the setup screen with its address and the URL it has, instead of sleeping silently |
@@ -99,16 +100,18 @@ limit of 120 s after the last input forces deep sleep otherwise.
 | Device key | `POST /api/device/register` by MAC | flash |
 
 While Wi-Fi or the Paperboy URL is missing, or Paperboy does not know the MAC,
-the display shows instructions with the device's address and MAC, the mark of
-Paperboy's logo above them, and stays awake for up to 10 minutes before retrying
-in an hour. The same screen appears when the URL is set but no server answers
-there; it then also prints the URL the device has, so a typo is visible without a
-serial log. A power-on shows the mark alone for 5 s before the cycle starts
-(ADR 0095); the geometry comes from `pb_logo_ink` in `paperboy.h`, the same
-shapes the `logo` widget of the built-in plugin draws, so no bitmap sits in
-flash. The splash drops the shown hash on purpose: after a firmware update the
-RTC memory survives the reboot, and an unchanged page must still repaint over
-the mark.
+the display shows instructions with the device's address and MAC, the lockup of
+Paperboy's logo and the firmware version above them, and stays awake for up to
+10 minutes before retrying in an hour. The same screen appears when the URL is
+set but no server answers there; it then also prints the URL the device has, so a
+typo is visible without a serial log. A power-on shows the lockup and the version
+alone for 5 s before the cycle starts (ADR 0095, 0098); the mark comes from
+`pb_logo_ink` in `paperboy.h`, the same geometry the `logo` widget of the
+built-in plugin draws, so no bitmap sits in flash. The wordmark and the version
+use Go Mono Bold from `fonts/` (a subset, see [`fonts/README.md`](fonts/README.md))
+because the face is not on Google Fonts. The splash drops the shown hash on
+purpose: after a firmware update the RTC memory survives the reboot, and an
+unchanged page must still repaint over the lockup.
 
 ## Text displays
 

@@ -5,7 +5,7 @@
 
 substitutions:
   hardware: sticky
-  fw_version: "2.5.0"
+  fw_version: "2.6.0"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
 
@@ -168,9 +168,10 @@ display:
     update_interval: never
     lambda: |-
       if (pb_splash) {
-        pb_draw_splash(it);
+        pb_draw_splash(it, id(wordmark_large), id(version_large), "v${fw_version}");
       } else if (id(setup_mode)) {
-        pb_draw_setup(it, id(setup_font), id(setup_text));
+        pb_draw_setup(it, id(setup_font), id(wordmark_small), id(version_small), "v${fw_version}",
+                      id(setup_text));
       } else if (!pb_qoi_valid(pb_page_qoi)) {
         // Truncated answer (page larger than the 96 KiB buffer) or not QOI:
         // keep the old picture instead of painting half a page.

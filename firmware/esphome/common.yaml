@@ -129,6 +129,21 @@ font:
   - file: "gfonts://Inter@500"
     id: setup_font
     size: 28
+  # The wordmark of docs/logo in Go Mono Bold, and the firmware version next to
+  # it (ADR 0098). The subset under fonts/ holds the glyphs of "paperboy" and
+  # the digits; Go Mono is not on Google Fonts.
+  - file: "fonts/Go-Mono-Bold.ttf"
+    id: wordmark_small
+    size: 36
+  - file: "fonts/Go-Mono-Bold.ttf"
+    id: wordmark_large
+    size: 84
+  - file: "fonts/Go-Mono-Bold.ttf"
+    id: version_small
+    size: 28
+  - file: "fonts/Go-Mono-Bold.ttf"
+    id: version_large
+    size: 40
 
 globals:
   - id: wake_reason
