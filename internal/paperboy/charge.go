@@ -9,6 +9,16 @@ import (
 // in 10 mA steps, so a few milliamps are noise, not charging.
 const idleMA = 20
 
+// copyFloat detaches a reading from the sync request, so the stored state never
+// shares a pointer with it.
+func copyFloat(p *float64) *float64 {
+	if p == nil {
+		return nil
+	}
+	value := *p
+	return &value
+}
+
 // chargeReading is the battery state at one end of a charging episode: the
 // state of charge when the hardware has a fuel gauge, else the voltage.
 type chargeReading struct {
@@ -41,7 +51,7 @@ func trackCharge(st *deviceState, b *syncBattery, now time.Time) {
 	if b == nil {
 		return
 	}
-	reading := chargeReading{Percent: b.Percent, Volts: strconv.FormatFloat(b.Volts, 'f', 2, 64)}
+	reading := chargeReading{Percent: copyFloat(b.Percent), Volts: strconv.FormatFloat(b.Volts, 'f', 2, 64)}
 	switch {
 	case charging(b) && st.Charge == nil:
 		st.Charge = &chargeEpisode{Start: now, From: &reading}
@@ -50,4 +60,20 @@ func trackCharge(st *deviceState, b *syncBattery, now time.Time) {
 		episode.End, episode.To = now, &reading
 		st.LastCharge, st.Charge = &episode, nil
 	}
+}
+
+// trackBattery folds one sync's battery reading into the state: the charging
+// episode (issue #205) and the daily samples of the runtime estimate (issue
+// #207). A charge is no discharge, so it clears the samples and the series
+// starts again with the first reading after it.
+func trackBattery(st *deviceState, b *syncBattery, now time.Time) {
+	if b == nil {
+		return
+	}
+	trackCharge(st, b, now)
+	if charging(b) {
+		st.BatteryHistory = nil
+		return
+	}
+	st.BatteryHistory = addSample(st.BatteryHistory, b, now)
 }

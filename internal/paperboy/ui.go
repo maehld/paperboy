@@ -72,6 +72,7 @@ type dashboardDevice struct {
 	Power      string // charge state with the charge or voltage, e.g. "Charging · 50 %" (ADR 0051)
 	Battery    string // raw fuel gauge reading for the details, e.g. "3.83 V · 50 % · +568 mA"
 	LastCharge string // last finished charging episode, e.g. "2 h ago · 41 → 50 %" (issue #205)
+	Runtime    string // estimated battery runtime, e.g. "~12 d" (issue #207)
 	Width      int
 	Height     int
 	Text       []string // text displays: the last served lines
@@ -131,6 +132,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			Power:      powerText(d.Power, d.deviceState),
 			Battery:    batteryText(d.deviceState),
 			LastCharge: chargeText(d.deviceState, now),
+			Runtime:    runtimeText(batteryRuntime(d.deviceState)),
 			Width:      profiles[d.Profile].Width,
 			Height:     profiles[d.Profile].Height,
 			Text:       d.LastText,
