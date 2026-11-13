@@ -538,6 +538,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	display := q.Get("display")
+	namedDisplay := display != "" // the link names the display type of a variant
 	if display != "" && !knownProfile(cfg.Profiles, display) {
 		v.Error = fmt.Sprintf("display type %q is not configured", display)
 		renderEditorPage(w, v, http.StatusBadRequest)
@@ -570,7 +571,31 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	}
 	fileDisplay := ""
 	missing := false
-	if file == "" && !sharedFile {
+	switch {
+	case file == "" && !sharedFile && newPage:
+		// A new page is exactly the file the editor would write (ADR 0068):
+		// the variant of a named display type, else the shared page. The other
+		// files of the page must not open in its place (ADR 0094): the shared
+		// page is often of the other kind, so its grid would not fit the
+		// display type and the editor would write the wrong page.
+		if namedDisplay {
+			fileDisplay = display
+		}
+		path, err := pageFilePath(cfg.Pages, name, fileDisplay)
+		if err != nil {
+			v.Error = err.Error()
+			renderEditorPage(w, v, http.StatusBadRequest)
+			return
+		}
+		if _, err := os.Stat(path); err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				v.Error = err.Error()
+				renderEditorPage(w, v, http.StatusInternalServerError)
+				return
+			}
+			missing = true
+		}
+	case file == "" && !sharedFile:
 		_, fd, err := existingPageFile(cfg.Pages, name, display)
 		fileDisplay = fd
 		missing = errors.Is(err, fs.ErrNotExist)
@@ -584,7 +609,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 			renderEditorPage(w, v, http.StatusInternalServerError)
 			return
 		}
-	} else {
+	default:
 		if !sharedFile {
 			fileDisplay = file
 		}
@@ -619,7 +644,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	// A page without a file starts as a new one; the shared flag makes it
 	// pages/<name>.yaml instead of a variant (ADR 0068). Without a display type
 	// the overview asks for a shared page.
-	wantsShared := sharedFile || (newPage && q.Get("display") == "")
+	wantsShared := sharedFile || (newPage && !namedDisplay)
 	shared := fileDisplay == "" && (!missing || wantsShared)
 	variantExists := display != "" && pageFileExists(cfg.Pages, name, display)
 	sharedExists := pageFileExists(cfg.Pages, name, "")

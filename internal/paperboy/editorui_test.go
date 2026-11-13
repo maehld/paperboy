@@ -351,6 +351,38 @@ func TestEditorPage(t *testing.T) {
 	}
 }
 
+// TestEditorNewPageResolvesItsOwnFile starts a new page as exactly the file the
+// editor would write (ADR 0068). The other files of the page must not open in
+// its place (ADR 0094): a shared page of the same name is often of the other
+// kind, so a text variant made from it would carry the image grid.
+func TestEditorNewPageResolvesItsOwnFile(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "wetter", "", previewTemplate)     // shared image page
+	writePage(t, s, "solar", "small", previewTemplate) // a variant only
+
+	// A new text variant next to the shared image page starts with the
+	// character grid of the text display, not with the shared page.
+	body := request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&display=lcd&new=1", nil, nil).Body.String()
+	if !strings.Contains(body, `"file":"lcd","kind":"text","width":20,"height":4,"new":true,"variant_exists":false,"grid":[20,4]`) {
+		t.Fatalf("new text variant next to a shared page:\n%s", body)
+	}
+	// A new image variant is its own file as well.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&display=small&new=1", nil, nil).Body.String()
+	if !strings.Contains(body, `"file":"small","kind":"image","width":40,"height":20,"new":true`) {
+		t.Fatalf("new image variant next to a shared page:\n%s", body)
+	}
+	// The shared page is not opened as a variant either.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&new=1", nil, nil).Body.String()
+	if !strings.Contains(body, `"file":"","kind":"image","width":40,"height":20,"new":true`) {
+		t.Fatalf("new shared page next to a variant:\n%s", body)
+	}
+	// A new page whose file exists opens that file, as before.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&new=1", nil, nil).Body.String()
+	if !strings.Contains(body, `"file":"small","kind":"image","width":40,"height":20,"new":false`) {
+		t.Fatalf("new link to an existing variant:\n%s", body)
+	}
+}
+
 // TestEditorPageWithoutDisplayTypes explains a configuration that has no
 // display type instead of drawing an empty editor.
 func TestEditorPageWithoutDisplayTypes(t *testing.T) {

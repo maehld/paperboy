@@ -1339,6 +1339,22 @@
       loadWidgetsPage();
       return;
     }
+    // A new page has no file yet. The page API resolves a display type like the
+    // runtime, variant first and shared page second, so asking for it could
+    // open the shared page of the same name in its place - often of the other
+    // kind, with a grid that does not fit (ADR 0094). The server already
+    // decided that this page is new.
+    if (start.new) {
+      state.template = blank();
+      state.fileDisplay = state.file;
+      state.hash = '';
+      state.setHash = '';
+      state.readOnly = false;
+      state.dirty = false;
+      state.selected = -1;
+      renderAll();
+      return;
+    }
     // The open file is named exactly: empty is the shared page, else the
     // display type of its variant (ADR 0093).
     const res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '?display=' + encodeURIComponent(state.file), { cache: 'no-store' });
