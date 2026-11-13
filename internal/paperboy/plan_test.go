@@ -30,7 +30,7 @@ func planServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 	writePageFile(t, filepath.Join(plans, "zimmer.yaml"), planYAML)
 
 	cfg := &Config{Dir: dir, Timezone: time.UTC,
-		Profiles: map[string]Profile{"small": {Width: 40, Height: 20, PPI: 125, Gray: true}},
+		Profiles: map[string]Profile{"small": {Width: 40, Height: 20, PPI: 125, Levels: 4}},
 		Devices: []Device{{ID: "test", MAC: planDeviceMAC, Profile: "small", Plan: "zimmer",
 			Refresh: Duration(10 * time.Minute)}}}
 	if err := cfg.validate(); err != nil {

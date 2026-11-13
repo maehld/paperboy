@@ -16,7 +16,7 @@ const menuStateKey = "AABBCCDDEE02"
 
 // menuProfile is the display the menu tests run on: 400x300, so the overlay is
 // the top half, 400x150.
-var menuProfile = Profile{Width: 400, Height: 300, PPI: 125, Gray: true}
+var menuProfile = Profile{Width: 400, Height: 300, PPI: 125, Levels: 4}
 
 // tapAt sends a touch at x/y; shown is the hash the device painted last.
 func tapAt(t *testing.T, s *Server, dev *testDevice, x, y int, shown string) map[string]any {

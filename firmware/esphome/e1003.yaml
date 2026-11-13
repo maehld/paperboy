@@ -9,10 +9,10 @@
 # selector this panel accepts and the mirrored X axis of the panel batch, so
 # only the SPI bus and the model are configured here.
 #
-# Paperboy currently composes pages for 2 or 4 gray levels, so the first image
-# uses those; pb_paint_qoi_gray16 maps any luminance in a page onto the panel's
-# 16 levels, and the full QOI buffer plus a 16-level palette can follow in
-# Paperboy (issue #192).
+# Paperboy composes pages for 2, 4 or 16 gray levels since ADR 0104, so a
+# display type with gray_levels: 16 uses the panel fully; pb_paint_qoi_gray16
+# maps any luminance in a page onto the panel's 16 levels. The server still
+# simplifies 16-level pages above its 512 KiB QOI limit (issue #192).
 #
 # Buttons: green GPIO3 = home, right white GPIO4 = next, left white GPIO5 =
 # previous. Battery: voltage divider on GPIO1, enabled by GPIO40; no fuel

@@ -303,7 +303,7 @@ func TestNoticePageStaysSmall(t *testing.T) {
 			tmpl.Cells = append(tmpl.Cells, page.Cell{At: [2]int{col, row}, Widget: "weather/current"})
 		}
 	}
-	img, err := tmpl.RenderImage(page.Display{Width: 800, Height: 480, Gray: true, PPI: 125}, page.Context{
+	img, err := tmpl.RenderImage(page.Display{Width: 800, Height: 480, Levels: 4, PPI: 125}, page.Context{
 		Now: time.Now(), Page: 1, Pages: 1,
 		Widgets: func(b page.Batch) []page.Result {
 			out := make([]page.Result, len(b.Widgets))

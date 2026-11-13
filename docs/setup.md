@@ -91,7 +91,7 @@ A display type is `displays/<name>.yaml` (ADR 0071). The file name is the name t
 ```yaml
 kind: image
 size: [800, 480]
-gray_levels: 4     # 1 or 4
+gray_levels: 4     # 1, 4 or 16 (16 needs a panel and firmware that draw it)
 ppi: 125           # pixels per inch, required for image displays (800 px / 163 mm)
 min_refresh: 60s   # never report a shorter interval
 power: auto        # auto (default), battery or mains (ADR 0051)

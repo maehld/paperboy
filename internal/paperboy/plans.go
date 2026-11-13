@@ -100,7 +100,7 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 
 // display describes a display type for the page package.
 func (s *Server) display(cfg *Config, p Profile) page.Display {
-	return page.Display{Width: p.Width, Height: p.Height, Gray: p.Gray, Text: p.text(), Charset: p.Charset, PPI: p.PPI,
+	return page.Display{Width: p.Width, Height: p.Height, Levels: p.Levels, Text: p.text(), Charset: p.Charset, PPI: p.PPI,
 		Language: cfg.Language, Timezone: cfg.Timezone}
 }
 

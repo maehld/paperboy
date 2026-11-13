@@ -285,19 +285,21 @@ disables the I2C pins GPIO19/20, and switches the battery divider off. That
 follows a community measurement of the E1003's deep-sleep current and still has
 to be verified on the device.
 
-The first image has no 16-level Paperboy support yet: it uses `it8951` with
-`force_temperature: 16`, paints QOI pages with `pb_paint_qoi_gray16` and has a
-3 MiB QOI buffer. A display type that works today (4 of the panel's 16 levels,
-all Paperboy composes now) is:
+The first image uses `it8951` with `force_temperature: 16`, paints QOI pages
+with `pb_paint_qoi_gray16` and has a 3 MiB QOI buffer. Paperboy supports
+16-level display types since ADR 0104:
 
 ```yaml
 kind: image
 size: [1872, 1404]
 ppi: 227
-gray_levels: 4
+gray_levels: 16
 ```
 
-`gray_levels: 16` is planned with the palette in `pkg/render` (issue #192).
+A 16-level page of this size can exceed the server's 512 KiB QOI limit, so it
+may be sent simplified (without dither) until that limit follows in issue
+#192. A display type with `gray_levels: 4` still works and uses four of the
+panel's 16 levels.
 
 Open on the hardware: the measured deep-sleep current, the GT911 transform, the
 waveform temperature (the image forces 16 °C, the preset 25 °C, Seeed's driver

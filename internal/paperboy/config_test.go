@@ -152,10 +152,10 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.Refresh != Duration(10*time.Minute) || cfg.PageTimeout != Duration(3*time.Minute) {
 		t.Fatalf("defaults: %v %v", cfg.Refresh, cfg.PageTimeout)
 	}
-	if p := cfg.Profiles["e1001"]; p.Width != 800 || p.Height != 480 || !p.Gray || p.PPI != 125 || p.MinRefresh != Duration(2*time.Minute) {
+	if p := cfg.Profiles["e1001"]; p.Width != 800 || p.Height != 480 || p.Levels != 4 || p.PPI != 125 || p.MinRefresh != Duration(2*time.Minute) {
 		t.Fatalf("e1001: %+v", p)
 	}
-	if p := cfg.Profiles["sticky"]; p.Gray || p.MinRefresh != 0 || p.Power != powerAuto {
+	if p := cfg.Profiles["sticky"]; p.Levels != 2 || p.MinRefresh != 0 || p.Power != powerAuto {
 		t.Fatalf("sticky: %+v", p)
 	}
 	devFlur, devWohnzimmer := &cfg.Devices[0], &cfg.Devices[1]
@@ -255,7 +255,7 @@ func TestLoadConfigErrors(t *testing.T) {
 		{"plugin name", strings.Replace(validConfig, "  weather:\n", "  Weather:\n", 1), nil, nil, "name must use"},
 		{"plugin reserved", strings.Replace(validConfig, "  weather:\n", "  paperboy:\n", 1), nil, nil, "reserved"},
 		{"plugin variable", strings.Replace(validConfig, "${TEST_PLACE}", "${TEST_MISSING}", 1), nil, nil, "TEST_MISSING is not set"},
-		{"gray levels", validConfig, replaceDisplay("e1001", "gray_levels: 4", "gray_levels: 2"), nil, "gray_levels must be 1 or 4"},
+		{"gray levels", validConfig, replaceDisplay("e1001", "gray_levels: 4", "gray_levels: 2"), nil, "gray_levels must be 1, 4 or 16"},
 		{"directories", "directories:\n  pages: pages\n" + validConfig, nil, nil, "field directories not found"},
 		{"firmware update", strings.Replace(validConfig, "update: auto", "update: always", 1), nil, nil, "expected auto or off"},
 		{"firmware volts", strings.Replace(validConfig, "min_battery_volts: 3.7", "min_battery_volts: 7", 1), nil, nil, "min_battery_volts"},

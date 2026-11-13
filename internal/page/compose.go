@@ -20,7 +20,7 @@ import (
 type Display struct {
 	Width    int
 	Height   int
-	Gray     bool    // four gray levels instead of black and white
+	Levels   int     // gray tones of an image display: 2, 4 or 16 (0 = 2)
 	Text     bool    // character display
 	Charset  string  // text displays only
 	PPI      float64 // pixels per inch of an image display (ADR 0050)
@@ -57,8 +57,8 @@ func (d Display) language() string {
 }
 
 func (d Display) levels() int {
-	if d.Gray {
-		return 4
+	if d.Levels > 2 {
+		return d.Levels
 	}
 	return 2
 }

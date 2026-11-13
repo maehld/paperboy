@@ -13,7 +13,7 @@ import (
 
 func testServer(t *testing.T) (*Server, *time.Time) {
 	t.Helper()
-	cfg := &Config{Dir: t.TempDir(), Profiles: map[string]Profile{"small": {Width: 40, Height: 20, PPI: 125, Gray: true}},
+	cfg := &Config{Dir: t.TempDir(), Profiles: map[string]Profile{"small": {Width: 40, Height: 20, PPI: 125, Levels: 4}},
 		Devices: []Device{{ID: "test", MAC: "aa:bb:cc:dd:ee:01", Profile: "small", Refresh: Duration(10 * time.Minute)}}}
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)

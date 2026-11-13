@@ -62,8 +62,8 @@ func (f displayFile) check(name string) error {
 	if f.WidthMM != nil {
 		return fmt.Errorf("display type %s: width_mm was replaced by ppi (ADR 0050): replace it with ppi = pixels × 25.4 / mm of the same side", name)
 	}
-	if f.GrayLevels != 0 && f.GrayLevels != 1 && f.GrayLevels != 4 {
-		return fmt.Errorf("display type %s: gray_levels must be 1 or 4", name)
+	if f.GrayLevels != 0 && f.GrayLevels != 1 && f.GrayLevels != 4 && f.GrayLevels != 16 {
+		return fmt.Errorf("display type %s: gray_levels must be 1, 4 or 16", name)
 	}
 	if !validRotation(f.Rotation) {
 		return fmt.Errorf("display type %s: rotation must be 0, 90, 180 or 270", name)
@@ -73,12 +73,16 @@ func (f displayFile) check(name string) error {
 
 // profile builds the runtime display type; validateProfile fills the defaults.
 func (f displayFile) profile() Profile {
+	levels := 2
+	if f.GrayLevels > 2 {
+		levels = f.GrayLevels
+	}
 	return Profile{
 		Kind:       f.Kind,
 		Charset:    f.Charset,
 		Width:      f.Size[0],
 		Height:     f.Size[1],
-		Gray:       f.GrayLevels == 4,
+		Levels:     levels,
 		PPI:        f.PPI,
 		MinRefresh: f.MinRefresh,
 		Power:      f.Power,

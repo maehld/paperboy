@@ -58,10 +58,14 @@
     }
 
     const gray = el('gray');
-    for (const value of ['1', '4']) {
+    for (const [value, label] of [
+      ['1', '1 (black and white)'],
+      ['4', '4 (four gray levels)'],
+      ['16', '16 (sixteen gray levels)'],
+    ]) {
       const o = document.createElement('option');
       o.value = value;
-      o.textContent = value === '4' ? '4 (four gray levels)' : '1 (black and white)';
+      o.textContent = label;
       gray.appendChild(o);
     }
 
@@ -101,7 +105,7 @@
     el('kind').value = d.kind || 'image';
     el('width').value = d.size ? d.size[0] : '';
     el('height').value = d.size ? d.size[1] : '';
-    el('gray').value = String(d.gray_levels === 4 ? 4 : 1);
+    el('gray').value = String(d.gray_levels === 4 || d.gray_levels === 16 ? d.gray_levels : 1);
     el('ppi').value = d.ppi || '';
     el('charset').value = d.charset || 'utf8';
     el('min_refresh').value = d.min_refresh || '';
@@ -237,7 +241,7 @@
     const d = Object.assign(empty('image'), doc || {});
     d.kind = d.kind === 'text' ? 'text' : 'image';
     d.size = d.size && d.size.length === 2 ? d.size : [0, 0];
-    d.gray_levels = d.gray_levels === 4 ? 4 : 1;
+    d.gray_levels = d.gray_levels === 4 || d.gray_levels === 16 ? d.gray_levels : 1;
     d.ppi = Number(d.ppi) || 0;
     d.charset = d.charset || '';
     d.min_refresh = d.min_refresh || '';

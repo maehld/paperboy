@@ -82,13 +82,21 @@ func TestDisplayFileValidation(t *testing.T) {
 	if err := validateProfile("e1001", &p); err != nil {
 		t.Fatal(err)
 	}
-	if p.Power != powerAuto || p.Kind != kindImage || p.Gray || p.Width != 800 {
+	if p.Power != powerAuto || p.Kind != kindImage || p.Levels != 2 || p.Width != 800 {
 		t.Fatalf("image defaults: %+v", p)
 	}
 	text := displayFile{Kind: kindText, Size: [2]int{20, 4}}
 	tp := text.profile()
 	if err := validateProfile("lcd", &tp); err != nil || tp.Charset != "utf8" {
 		t.Fatalf("text defaults: %+v %v", tp, err)
+	}
+	sixteen := displayFile{Kind: kindImage, Size: [2]int{1872, 1404}, GrayLevels: 16, PPI: 227}
+	sp := sixteen.profile()
+	if err := validateProfile("e1003", &sp); err != nil {
+		t.Fatal(err)
+	}
+	if sp.Levels != 16 {
+		t.Fatalf("16-level display type: %+v", sp)
 	}
 
 	for _, tc := range []struct {
@@ -106,7 +114,7 @@ func TestDisplayFileValidation(t *testing.T) {
 		{"text charset", displayFile{Kind: kindText, Size: [2]int{20, 4}, Charset: "latin1"}, "expected utf8"},
 		{"ppi on text", displayFile{Kind: kindText, Size: [2]int{20, 4}, PPI: 125}, "do not apply to kind text"},
 		{"gray on text", displayFile{Kind: kindText, Size: [2]int{20, 4}, GrayLevels: 4}, "do not apply to kind text"},
-		{"gray levels", displayFile{Size: [2]int{800, 480}, PPI: 125, GrayLevels: 2}, "gray_levels must be 1 or 4"},
+		{"gray levels", displayFile{Size: [2]int{800, 480}, PPI: 125, GrayLevels: 2}, "gray_levels must be 1, 4 or 16"},
 		{"min refresh", displayFile{Size: [2]int{800, 480}, PPI: 125, MinRefresh: Duration(500 * time.Millisecond)}, "at least 1s"},
 		{"power", displayFile{Size: [2]int{800, 480}, PPI: 125, Power: "solar"}, "expected auto, battery or mains"},
 		{"rotation", displayFile{Size: [2]int{480, 800}, PPI: 125, Rotation: 45}, "rotation must be 0, 90, 180 or 270"},

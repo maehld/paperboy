@@ -29,7 +29,7 @@ func virtualServer(t *testing.T, planYAML, actions string) (*Server, *time.Time,
 	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), planYAML+actions)
 	cfg := &Config{Dir: dir, Language: "en", Timezone: time.UTC,
 		Profiles: map[string]Profile{
-			"small": {Width: 400, Height: 300, PPI: 125, Gray: true},
+			"small": {Width: 400, Height: 300, PPI: 125, Levels: 4},
 			"lcd":   {Kind: kindText, Width: 20, Height: 4, Charset: "utf8"},
 		}}
 	if err := cfg.validate(); err != nil {
