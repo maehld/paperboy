@@ -368,19 +368,42 @@ template<typename D> void pb_draw_logo(D &it, int x, int y, int height) {
   }
 }
 
-// The mark in the middle of the panel: the splash of a power-on.
-template<typename D> void pb_draw_splash(D &it) {
-  int height = it.get_height() / 2;
-  int width = (int) (height * 64.0f / 48.0f + 0.5f);
-  pb_draw_logo(it, (it.get_width() - width) / 2, (it.get_height() - height) / 2, height);
+// The lockup of Paperboy's logo (docs/logo, ADR 0098): the mark, a gap and the
+// wordmark in Go Mono Bold, centered at center_x with the mark's top at y. The
+// wordmark is drawn at the baseline of the design, 0.80 of the height; size is
+// the pixel size of the wordmark font and has to match its YAML entry.
+template<typename D, typename F>
+void pb_draw_lockup(D &it, int center_x, int y, int height, int size, F *wordmark) {
+  int mark_width = (int) (height * 64.0f / 48.0f + 0.5f);
+  int gap = (int) (height * 16.66f / 48.0f + 0.5f);
+  int word_width = (int) (8 * 0.6f * size + 0.5f);  // Go Mono advances 0.6 em
+  int x = center_x - (mark_width + gap + word_width) / 2;
+  pb_draw_logo(it, x, y, height);
+  it.print(x + mark_width + gap, y + (int) (height * 0.80f + 0.5f), wordmark, esphome::Color::BLACK,
+           esphome::display::TextAlign::BASELINE_LEFT, "paperboy", esphome::Color::WHITE);
 }
 
-// The Wi-Fi and Paperboy URL screens: the mark at the top, the instructions
-// below it (pb_draw_text, 44 px per line).
-template<typename D, typename F> void pb_draw_setup(D &it, F *font, const std::string &text) {
-  const int height = 64;
-  int width = (int) (height * 64.0f / 48.0f + 0.5f);
-  pb_draw_logo(it, (it.get_width() - width) / 2, 16, height);
+// The splash of a power-on: the lockup and the firmware version in the middle of
+// the panel, so a device says what it is and which image runs on it.
+template<typename D, typename W, typename V>
+void pb_draw_splash(D &it, W *wordmark, V *version_font, const std::string &version) {
+  const int mark = 132;     // the mark's height, with wordmark_large at 84 px
+  const int group = 200;    // mark, gap and the version line together
+  int y = (it.get_height() - group) / 2;
+  pb_draw_lockup(it, it.get_width() / 2, y, mark, 84, wordmark);
+  it.print(it.get_width() / 2, y + 195, version_font, esphome::Color::BLACK,
+           esphome::display::TextAlign::BASELINE_CENTER, version.c_str(), esphome::Color::WHITE);
+}
+
+// The Wi-Fi and Paperboy URL screens: the lockup as a header (wordmark_small at
+// 36 px), the version in the corner and the instructions below it (pb_draw_text,
+// 44 px per line).
+template<typename D, typename F, typename W, typename V>
+void pb_draw_setup(D &it, F *font, W *wordmark, V *version_font, const std::string &version,
+                   const std::string &text) {
+  pb_draw_lockup(it, it.get_width() / 2, 16, 56, 36, wordmark);
+  it.print(it.get_width() - 24, 48, version_font, esphome::Color::BLACK,
+           esphome::display::TextAlign::BASELINE_RIGHT, version.c_str(), esphome::Color::WHITE);
   pb_draw_text(it, font, text, 96);
 }
 

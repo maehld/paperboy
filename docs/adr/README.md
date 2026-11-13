@@ -92,3 +92,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0095](0095-the-logo-on-pages-and-devices.md) | The Paperboy logo on pages and on the device | Accepted, implemented |
 | [0096](0096-a-password-for-the-operator-ui.md) | A password for the operator UI | Accepted, implemented; supersedes the "no token" decision of ADR-0040 and ADR-0049 for the operator UI; the device API keeps its key (ADR-0042) |
 | [0097](0097-page-downloads-take-the-device-key.md) | Page downloads take the device key | Accepted, implemented; the dashboard reads the last image through a UI route (ADR-0040, ADR-0096) |
+| [0098](0098-the-device-shows-the-lockup-and-its-version.md) | The device shows the lockup and its firmware version | Accepted, implemented |
