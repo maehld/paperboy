@@ -73,6 +73,14 @@ defaults:
 #   plugin_channel: stable                       # stable (default) or latest (ADR 0089)
 #   firmware_channel: stable                     # stable skips prereleases, latest takes them
 
+# Optional: the dashboard, the editors and their API ask for this password
+# (ADR 0096); without the section the UI is open to everyone who can reach the
+# -listen address, which Paperboy warns about at startup unless it listens on
+# loopback only. The displays keep their own key (ADR 0042) and download their
+# pages and firmware without it.
+# ui:
+#   password: ${PAPERBOY_UI_PASSWORD}
+
 # Display types are files under displays/<name>.yaml (ADR 0071), one per type;
 # the file name is the name pages and devices use. A leftover display_types
 # section here aborts the start. Copy the files from examples/displays or create

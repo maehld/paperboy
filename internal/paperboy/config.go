@@ -281,10 +281,18 @@ type Config struct {
 	Devices     []Device
 	Plugins     []Plugin // plugins (ADR 0049)
 	Battery     *Battery // default low-battery warning; nil = off
+	UI          UIConfig // operator UI password (ADR 0096)
 
 	// degraded marks a start without a usable paperboy.yaml (ADR 0047). Such a
 	// configuration is retried from disk even when the file did not change.
 	degraded bool
+}
+
+// UIConfig is the operator UI section (ADR 0096). The password guards every
+// route of the UI and its API; an empty password keeps the UI open like a v2
+// instance that never set one.
+type UIConfig struct {
+	Password string // ui.password, ${VAR} already expanded from the environment
 }
 
 // Plugin is one plugin (ADR 0049): a long-running program in the plugins
@@ -384,7 +392,10 @@ type fileConfig struct {
 		Version         string  `yaml:"version"` // pin for downloads and offers (ADR 0060)
 	} `yaml:"firmware"`
 	Download *downloadFile `yaml:"download"`
-	Plugins  map[string]struct {
+	UI       struct {
+		Password string `yaml:"password"` // operator UI password (ADR 0096)
+	} `yaml:"ui"`
+	Plugins map[string]struct {
 		Command any               `yaml:"command"` // removed by ADR 0060; rejected with a hint
 		Version string            `yaml:"version"` // downloaded/pinned program version
 		Timeout Duration          `yaml:"timeout"`
@@ -536,6 +547,15 @@ func LoadConfig(dir string) (*Config, error) {
 			Interval:        time.Duration(f.Download.Interval),
 			PluginChannel:   f.Download.PluginChannel,
 			FirmwareChannel: f.Download.FirmwareChannel}
+	}
+	// The UI password is a secret like a plugin's, so ${VAR} works here too
+	// (ADR 0031, 0096).
+	if f.UI.Password != "" {
+		v, err := expandValue(f.UI.Password)
+		if err != nil {
+			return nil, fmt.Errorf("%s: ui: password: %w", path, err)
+		}
+		c.UI.Password, _ = v.(string)
 	}
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
