@@ -73,6 +73,7 @@ dd.oneline .muted { font-size: .78rem; }
         <dt>Type</dt><dd class="oneline">{{.Type}}{{if .Hardware}} <span class="muted">({{.Hardware}})</span>{{else}} <span class="muted">(hardware unknown)</span>{{end}}</dd>
         {{if .Battery}}<dt>Battery</dt><dd>{{.Battery}}</dd>{{end}}
         {{if .Charge}}<dt>Charged</dt><dd>{{.Charge}}</dd>{{end}}
+        {{if .Runtime}}<dt>Runtime</dt><dd>{{.Runtime}}</dd>{{end}}
         {{if .Refresh}}<dt>Refresh</dt><dd>{{.Refresh}}</dd>{{end}}
         {{if .Address}}<dt>Address</dt><dd>{{.Address}}</dd>{{end}}
         {{if .Firmware}}<dt>Firmware</dt><dd>{{.Firmware}}</dd>{{end}}

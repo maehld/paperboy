@@ -337,6 +337,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		st.BatteryPercent, st.BatteryMAH, st.BatteryMA = b.Percent, b.MAH, b.MA
 		st.BatteryCharging = b.Charging
 		st.trackCharge(b, now)
+		st.recordBatterySample(b, now)
 	}
 	prevLevel := st.BatteryLevel
 	st.BatteryLevel = nextBatteryLevel(cfg.battery(d), prevLevel, st.BatteryVoltage)
@@ -657,6 +658,34 @@ func (st *deviceState) trackCharge(b *syncBattery, now time.Time) {
 	}
 	st.LastCharge = st.Charge
 	st.Charge = nil
+}
+
+// The runtime estimate keeps one battery sample per half day and at most two
+// weeks of them (issue #207): the state of charge moves slowly, so a denser
+// history would only add noise.
+const (
+	sampleInterval    = 12 * time.Hour
+	maxBatterySamples = 14
+)
+
+// recordBatterySample keeps the discharge history that feeds the runtime
+// estimate. A charge resets it, because the slope of a charge is not a
+// discharge; between samples the current reading comes from the battery itself.
+func (st *deviceState) recordBatterySample(b *syncBattery, now time.Time) {
+	if b.Percent == nil {
+		return
+	}
+	if b.MA != nil && *b.MA > idleMA {
+		st.BatterySamples = nil
+		return
+	}
+	if n := len(st.BatterySamples); n > 0 && now.Sub(st.BatterySamples[n-1].Time) < sampleInterval {
+		return
+	}
+	st.BatterySamples = append(st.BatterySamples, batterySample{Time: now, Percent: b.Percent})
+	if len(st.BatterySamples) > maxBatterySamples {
+		st.BatterySamples = st.BatterySamples[len(st.BatterySamples)-maxBatterySamples:]
+	}
 }
 
 // menuWake names the one-shot wake the device needs (ADR 0064): the menu

@@ -72,6 +72,7 @@ type dashboardDevice struct {
 	Power      string // charge state with the charge or voltage, e.g. "Charging · 50 %" (ADR 0051)
 	Battery    string // raw fuel gauge reading for the details, e.g. "3.83 V · 50 % · +568 mA"
 	Charge     string // last finished charge for the details, e.g. "2 h ago · 41 → 50 %"
+	Runtime    string // estimated remaining runtime, e.g. "~5 d" (issue #207)
 	Width      int
 	Height     int
 	Text       []string // text displays: the last served lines
@@ -131,6 +132,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			Power:      powerText(d.Power, d.deviceState),
 			Battery:    batteryText(d.deviceState),
 			Charge:     chargeText(d.deviceState, now),
+			Runtime:    runtimeText(d.deviceState),
 			Width:      profiles[d.Profile].Width,
 			Height:     profiles[d.Profile].Height,
 			Text:       d.LastText,
@@ -280,6 +282,58 @@ func chargeText(st deviceState, now time.Time) string {
 		text += fmt.Sprintf(" · from %.0f %%", *c.StartPercent)
 	}
 	return text
+}
+
+// runtimeText estimates how long the battery will last from the discharge
+// history (issue #207): a least-squares slope over the samples of the current
+// discharge period, applied to the charge that is left. It needs samples over
+// at least a day and a falling charge; a flat or rising charge gives nothing.
+func runtimeText(st deviceState) string {
+	if st.BatteryPercent == nil || len(st.BatterySamples) < 2 {
+		return ""
+	}
+	first := st.BatterySamples[0]
+	last := st.BatterySamples[len(st.BatterySamples)-1]
+	if last.Time.Sub(first.Time) < 24*time.Hour {
+		return ""
+	}
+	var n, sumX, sumY, sumXY, sumXX float64
+	for _, s := range st.BatterySamples {
+		if s.Percent == nil {
+			continue
+		}
+		x := s.Time.Sub(first.Time).Hours()
+		n++
+		sumX += x
+		sumY += *s.Percent
+		sumXY += x * *s.Percent
+		sumXX += x * x
+	}
+	den := n*sumXX - sumX*sumX
+	if n < 2 || den == 0 {
+		return ""
+	}
+	slope := (n*sumXY - sumX*sumY) / den // percent per hour
+	if slope >= 0 {
+		return ""
+	}
+	hours := *st.BatteryPercent / -slope
+	if hours <= 0 || hours > 100000 {
+		return ""
+	}
+	return "~" + runtimeSpan(time.Duration(hours*float64(time.Hour)))
+}
+
+// runtimeSpan prints a coarse duration for the runtime estimate: days above
+// two days, hours above one, minutes below.
+func runtimeSpan(d time.Duration) string {
+	switch {
+	case d >= 48*time.Hour:
+		return fmt.Sprintf("%.0f d", d.Hours()/24)
+	case d >= time.Hour:
+		return fmt.Sprintf("%.0f h", d.Hours())
+	}
+	return fmt.Sprintf("%.0f min", d.Minutes())
 }
 
 func planText(plan string) string {
