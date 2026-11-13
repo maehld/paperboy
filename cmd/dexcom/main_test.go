@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"io"
@@ -308,6 +309,109 @@ func TestAlarmStates(t *testing.T) {
 	if err := d.Render(req, plugin.WidgetRequest{Widget: "glucose", Width: 400, Height: 240, Style: style()}, img); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// A Sticky cell of 6x3 is 800x180 px, while the base text of the page is 52 px
+// tall at 236 ppi: the chart has to draw there instead of staying blank. The
+// heading and the scale labels follow the cell height, and without a header the
+// plot gets the header's room too.
+func TestGraphInAShortCell(t *testing.T) {
+	now := time.Date(2026, 11, 13, 20, 0, 0, 0, time.UTC)
+	d, _, req := newTestDexcom(t, now)
+	if err := d.update(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	sticky := plugin.Style{Padding: 15, Rule: 2, TextPx: 16 * 236.0 / 72}
+	draw := func(width, height int, header bool) *image.Paletted {
+		img := render.NewCanvas(width, height, 4)
+		w := plugin.WidgetRequest{Widget: "graph", Width: width, Height: height, Style: sticky,
+			Args: map[string]any{"header": header}}
+		if err := d.Render(req, w, img); err != nil {
+			t.Fatalf("graph at %dx%d, header %v: %v", width, height, header, err)
+		}
+		return img
+	}
+	withHeader := draw(800, 180, true)
+	top, rows := inkRows(withHeader)
+	if rows < 40 {
+		t.Errorf("the 800x180 chart marks only %d rows", rows)
+	}
+	if top > 60 {
+		t.Errorf("the 800x180 chart starts at row %d, want the header inside the first 60", top)
+	}
+	bare := draw(800, 180, false)
+	bareTop, bareRows := inkRows(bare)
+	if bareTop >= top {
+		t.Errorf("without a header the chart starts at row %d, with one at %d", bareTop, top)
+	}
+	if bareRows <= rows {
+		t.Errorf("without a header the chart marks %d rows, with one %d", bareRows, rows)
+	}
+
+	// A cell with no room left is reported, so Paperboy draws its notice
+	// instead of an empty cell.
+	img := render.NewCanvas(800, 60, 4)
+	w := plugin.WidgetRequest{Widget: "graph", Width: 800, Height: 60, Style: sticky}
+	if err := d.Render(req, w, img); !errors.Is(err, plugin.ErrTooSmall) {
+		t.Errorf("graph at 800x60: error = %v, want ErrTooSmall", err)
+	}
+}
+
+// The trend of the values widget is drawn as the arrow of the glucose widget,
+// not as the ASCII arrow the text variant uses.
+func TestValuesTrendArrow(t *testing.T) {
+	now := time.Date(2026, 11, 13, 20, 0, 0, 0, time.UTC)
+	d, _, req := newTestDexcom(t, now)
+	d.mu.Lock()
+	d.readings = []reading{
+		{at: now.Add(-5 * time.Minute), value: 110, trend: "SingleUp"},
+		{at: now, value: 120, trend: "SingleUp"},
+	}
+	d.mu.Unlock()
+
+	img := render.NewCanvas(300, 60, 4)
+	w := plugin.WidgetRequest{Widget: "values", Width: 300, Height: 60, Style: style(),
+		Args: map[string]any{"values": []any{"trend"}}}
+	if err := d.Render(req, w, img); err != nil {
+		t.Fatal(err)
+	}
+	if !hasInk(img, image.Rect(0, 0, 60, 60)) {
+		t.Error("the row has no label")
+	}
+	if !hasInk(img, image.Rect(240, 0, 300, 60)) {
+		t.Error("the arrow is missing at the right edge")
+	}
+}
+
+// hasInk reports whether the area holds a pixel that is not white.
+func hasInk(img *image.Paletted, area image.Rectangle) bool {
+	for y := area.Min.Y; y < area.Max.Y; y++ {
+		for x := area.Min.X; x < area.Max.X; x++ {
+			if _, _, _, a := img.At(x, y).RGBA(); a > 0 {
+				if r, _, _, _ := img.At(x, y).RGBA(); r < 0xffff {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// inkRows counts the rows with a non-white pixel and names the first one.
+func inkRows(img *image.Paletted) (first, count int) {
+	first = -1
+	for y := img.Rect.Min.Y; y < img.Rect.Max.Y; y++ {
+		for x := img.Rect.Min.X; x < img.Rect.Max.X; x++ {
+			if r, _, _, _ := img.At(x, y).RGBA(); r < 0xffff {
+				if first < 0 {
+					first = y
+				}
+				count++
+				break
+			}
+		}
+	}
+	return first, count
 }
 
 // After the first read, a poll asks for the values of the gap only.

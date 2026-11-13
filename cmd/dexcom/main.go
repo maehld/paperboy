@@ -120,12 +120,14 @@ func (d *dexcom) Describe() plugin.Description {
 			},
 			{
 				Widget: "graph", Title: "Glucose history", Kinds: []string{plugin.KindImage},
-				Sizes:    []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 4}},
+				Sizes:    []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 4}, {Columns: 6, Rows: 3}},
 				MinWidth: 200, MinHeight: 120,
 				Args: map[string]plugin.Arg{
 					"period": {Type: "string", Default: "day", Enum: []any{"day", "hour"},
 						EnumLabels:  map[string]string{"day": "Today", "hour": "Last hour"},
 						Description: "which part of the history the chart shows"},
+					"header": {Type: "bool", Default: true,
+						Description: "show the title and the unit above the chart"},
 				},
 			},
 			{

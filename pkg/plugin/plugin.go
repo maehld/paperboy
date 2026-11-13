@@ -641,6 +641,16 @@ func textOne(t Texter, req *Request, w WidgetRequest) (res Result) {
 // ErrUnknownWidget is returned for a widget name the plugin does not know.
 var ErrUnknownWidget = errors.New("unknown widget")
 
+// ErrTooSmall is returned by a widget whose cell leaves no room to draw in.
+// Paperboy draws the error as the cell's hatched notice, so a widget that
+// cannot draw anything says why instead of leaving the cell blank.
+var ErrTooSmall = errors.New("cell too small")
+
+// TooSmall reports that w's cell is too small for the widget.
+func TooSmall(w WidgetRequest) error {
+	return fmt.Errorf("%w: %dx%d", ErrTooSmall, w.Width, w.Height)
+}
+
 // Location returns the request's timezone, or the local one.
 func (r *Request) Location() *time.Location {
 	if r.Timezone != "" {

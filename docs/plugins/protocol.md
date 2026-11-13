@@ -139,9 +139,12 @@ simply keeps its lines that fit.
 ```
 
 An answer carries one result per widget, in the request's order. A widget that
-fails sets `error`; the other widgets still draw. `max_age` (seconds) tells
-Paperboy how long it may reuse the results; `0` means its default of five
-minutes.
+fails sets `error`; the other widgets still draw. Paperboy draws the error as a
+hatched notice in the widget's cell, so a widget must report a cell it cannot
+draw in instead of leaving it blank: `plugin.TooSmall(w)` wraps
+`plugin.ErrTooSmall` with the cell's pixel size and reads
+`cell too small: 800x180`. `max_age` (seconds) tells Paperboy how long it may
+reuse the results; `0` means its default of five minutes.
 
 ### `actions`
 

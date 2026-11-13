@@ -39,9 +39,13 @@ Outside the band the value is drawn inverted (light on dark), below `urgent` it 
 
 The text variant is one line: `112 mg/dL` and the change, the alarm or the age next to it (`examples/pages/glukose.lcd2004.yaml`).
 
+The arrow beside the value is the trend the sensor reports with every reading: the direction and the speed of the change. Dexcom derives it from the last readings and names seven states, from `DoubleUp` (rising faster than 3 mg/dL per minute) over `SingleUp`, `FortyFiveUp` and `Flat` (inside ±1 mg/dL per minute) down to `DoubleDown`. The plugin does not compute it itself; it draws the reported state at 0, ±45 or ±90 degrees and as two arrows for the `Double` states.
+
 ## Widget `graph`
 
 The readings of the day (`period: day`, the default) or of the last hour (`period: hour`). The band is two labelled lines, and the area the curve spends outside the band is filled, so a spike above `high` or a dip below `low` shows how far it went and how long it lasted. The hour variant marks the five-minute points.
+
+`header: false` drops the title (`Heute`/`Letzte Stunde`) and the unit, so the chart itself gets the room. The title and the scale labels follow the base text of the page but never take more than a share of the cell, so the chart still draws in a short cell such as a Sticky's `span: [6,3]` (800 × 180 px).
 
 Image displays only.
 
@@ -55,7 +59,7 @@ Single values as rows, like the `values` widget of the evcc plugin. The list arg
 | `avg`, `in_band` | Average and share inside the band over the last day |
 | `min`, `max` | The lowest and highest reading of the last day |
 | `delta` | The change over the last 15 minutes |
-| `trend` | The trend as an ASCII arrow |
+| `trend` | The trend: the same arrow the `glucose` widget draws, the ASCII arrow on text displays |
 | `age` | How old the newest reading is |
 | `count` | How many readings the day has |
 | `band` | The configured target band |

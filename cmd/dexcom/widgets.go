@@ -57,7 +57,7 @@ func (d *dexcom) glucoseWidget(req *plugin.Request, w plugin.WidgetRequest, img 
 	}
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Dx() < 40 || b.Dy() < 30 {
-		return nil
+		return plugin.TooSmall(w)
 	}
 	last, ok := current(rs, req.Now)
 	if !ok {
@@ -202,9 +202,10 @@ func (d *dexcom) graphWidget(req *plugin.Request, w plugin.WidgetRequest, img *i
 	}
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Dx() < 60 || b.Dy() < 40 {
-		return nil
+		return plugin.TooSmall(w)
 	}
 	period := w.Arg().String("period", "day")
+	header := w.Arg().Bool("header", true)
 	now := req.Now
 	end := now
 	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, req.Location())
@@ -223,14 +224,21 @@ func (d *dexcom) graphWidget(req *plugin.Request, w plugin.WidgetRequest, img *i
 		return nil
 	}
 
-	// plot area: room for the title, the scale labels and the hour marks
+	// Plot area: room for the title, the scale labels and the hour marks. Both
+	// texts follow the base text of the page, but never take more room than the
+	// cell has: a short cell keeps enough height for the plot (a Sticky cell of
+	// 6x3 is 800x180 px while the base text is 52 px tall).
 	base := req.TextPx(w)
-	titleSize := max(base*0.9, float64(b.Dy())*0.05)
-	labelSize := max(base*0.6, 8.0)
+	titleSize := max(min(base*0.9, float64(b.Dy())*0.16), render.MinSize)
+	labelSize := max(min(base*0.6, titleSize*0.7), render.MinSize)
 	left := render.Measure(fmt.Sprintf("%.0f", l.max), labelSize, false) + 6
-	plot := image.Rect(b.Min.X+left, b.Min.Y+int(titleSize*1.6), b.Max.X, b.Max.Y-int(labelSize*1.9))
+	top := b.Min.Y
+	if header {
+		top += int(titleSize * 1.6)
+	}
+	plot := image.Rect(b.Min.X+left, top, b.Max.X, b.Max.Y-int(labelSize*1.9))
 	if plot.Dx() < 20 || plot.Dy() < 20 {
-		return nil
+		return plugin.TooSmall(w)
 	}
 	xAt := func(t time.Time) int {
 		f := float64(t.Sub(start)) / float64(span)
@@ -313,11 +321,13 @@ func (d *dexcom) graphWidget(req *plugin.Request, w plugin.WidgetRequest, img *i
 		}
 	}
 
-	render.TextAt(img, title, b.Min.X, b.Min.Y+int(titleSize), titleSize, true, ink, render.Left)
-	render.TextAt(img, l.unit, b.Max.X, b.Min.Y+int(titleSize), titleSize*0.8, false, mid, render.Right)
+	if header {
+		render.TextAt(img, title, b.Min.X, b.Min.Y+int(titleSize), titleSize, true, ink, render.Left)
+		render.TextAt(img, l.unit, b.Max.X, b.Min.Y+int(titleSize), titleSize*0.8, false, mid, render.Right)
+	}
 	if len(window) == 0 {
 		textFit(img, req.T("keine Daten", "no data"), plot.Min.X+plot.Dx()/2, plot.Min.Y+plot.Dy()/2,
-			base, false, mid, render.Center, plot.Dx())
+			min(base, float64(plot.Dy())*0.5), false, mid, render.Center, plot.Dx())
 	}
 	return nil
 }
@@ -460,7 +470,10 @@ func (d *dexcom) valuesWidget(req *plugin.Request, w plugin.WidgetRequest, img *
 	}
 	keys := d.valueKeysFor(w)
 	b := img.Rect.Inset(w.Style.Padding)
-	if b.Empty() || len(keys) == 0 {
+	if b.Empty() {
+		return plugin.TooSmall(w)
+	}
+	if len(keys) == 0 {
 		return nil
 	}
 	cols := w.Arg().Int("columns", 1)
@@ -488,9 +501,13 @@ func (d *dexcom) valuesWidget(req *plugin.Request, w plugin.WidgetRequest, img *
 		x := b.Min.X + int(float64(col)*cellW)
 		rowY := b.Min.Y + int(float64(row)*rowH)
 		baseline := rowY + int(rowH*0.72)
+		width := int(cellW) - 2
+		if v.key == "trend" && d.trendGlyph(req, img, rs, x, width, baseline, rowH) {
+			render.Text(img, d.entryLabel(req, v), x, baseline, label, width, ink, render.Left)
+			continue
+		}
 		text := d.entryText(req, l, rs, v.key)
 		valueW := render.Measure(text, value.Size, true)
-		width := int(cellW) - 2
 		render.Text(img, d.entryLabel(req, v), x, baseline, label, width-valueW-gap, ink, render.Left)
 		render.Text(img, text, x+int(cellW)-1, baseline, value, valueW, ink, render.Right)
 		if row > 0 && col == 0 {
@@ -521,6 +538,32 @@ func (d *dexcom) valuesText(req *plugin.Request, w plugin.WidgetRequest) ([]stri
 		lines = append(lines, plugin.Columns(d.entryLabel(req, v), d.entryText(req, l, rs, key), w.Width))
 	}
 	return lines, nil
+}
+
+// trendGlyph draws the trend arrow of the newest reading at the right edge of a
+// row. It reports false when there is no reading or the sensor names no trend,
+// so the row falls back to the ASCII arrow.
+func (d *dexcom) trendGlyph(req *plugin.Request, img *image.Paletted, rs []reading, x, width, baseline int, rowH float64) bool {
+	last, ok := current(rs, req.Now)
+	if !ok {
+		return false
+	}
+	angle, count, ok := trendAngle(last.trend)
+	if !ok {
+		return false
+	}
+	size := int(min(rowH*0.62, float64(width)*0.2))
+	if size < 6 {
+		return false
+	}
+	span := size
+	if count >= 2 {
+		span = size * 4 / 3
+	}
+	cx := x + width - 1 - span/2
+	cy := baseline - int(rowH*0.22)
+	drawTrend(img, cx, cy, size, angle, count, ink)
+	return true
 }
 
 // ---- small helpers ----
