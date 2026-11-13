@@ -156,10 +156,27 @@ func pagePath(out map[string]any) string {
 	return imageOf(out)["path"].(string)
 }
 
+// testAPIKey returns the key of the one device a test instance registered, so
+// a page download passes the check of ADR 0097.
+func testAPIKey(s *Server) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, st := range s.state {
+		if st.APIKey != "" {
+			return st.APIKey
+		}
+	}
+	return ""
+}
+
 func fetchImage(t *testing.T, s *Server, imagePath string) *httptest.ResponseRecorder {
 	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, imagePath, nil)
+	if key := testAPIKey(s); key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, imagePath, nil))
+	s.Handler().ServeHTTP(rec, req)
 	return rec
 }
 

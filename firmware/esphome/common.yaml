@@ -620,6 +620,8 @@ script:
           url: !lambda "return pb_base(id(paperboy_url).state) + id(image_path) + \"?format=qoi\";"
           capture_response: true
           max_response_buffer_size: 524288
+          request_headers:
+            Authorization: !lambda "return id(auth_header).c_str();"
           on_response:
             then:
               - lambda: |-
