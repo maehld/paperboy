@@ -52,6 +52,21 @@ func TestSyncLogUsesPageName(t *testing.T) {
 	}
 }
 
+// TestSyncLogShowsBatteryCurrent checks that the fuel gauge current is logged
+// with its sign, so charging is visible in the journal (issue #199).
+func TestSyncLogShowsBatteryCurrent(t *testing.T) {
+	logs := captureLog(t)
+	s, _ := planServer(t, testPlan)
+	dev := planDevice(t, s)
+	charging := 412.6
+	dev.req.Battery = &syncBattery{Volts: 3.91, MA: &charging}
+	displayPage(t, s, dev)
+	lines := logLines(logs(), "display sync")
+	if len(lines) == 0 || !strings.Contains(lines[len(lines)-1], "battery_ma=+413") {
+		t.Fatalf("charge current must be logged with its sign: %q", lines)
+	}
+}
+
 // TestSyncLogMarksNoticePages makes sure a notice is not disguised as a
 // regular page.
 func TestSyncLogMarksNoticePages(t *testing.T) {

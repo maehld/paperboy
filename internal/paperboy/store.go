@@ -25,6 +25,7 @@ type deviceState struct {
 	BatteryVoltage string    `json:"battery_voltage,omitempty"`
 	BatteryPercent *float64  `json:"battery_percent,omitempty"` // fuel gauge, if the hardware has one
 	BatteryMAH     *float64  `json:"battery_mah,omitempty"`     // remaining capacity from the fuel gauge
+	BatteryMA      *float64  `json:"battery_ma,omitempty"`      // current from the fuel gauge, positive while charging
 	RSSI           string    `json:"rssi,omitempty"`
 	Firmware       string    `json:"firmware,omitempty"`
 	Hardware       string    `json:"hardware,omitempty"` // firmware image type, e.g. "sticky"

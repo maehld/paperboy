@@ -335,8 +335,8 @@ func firmwareText(d deviceInfo) string {
 	return running + " → " + d.FirmwareAvailable + " · " + d.FirmwareStatus
 }
 
-// batteryText shows the voltage, the fuel gauge charge if known and, when a
-// threshold was crossed, its level.
+// batteryText shows the voltage, the fuel gauge charge and current if known
+// and, when a threshold was crossed, its level.
 func batteryText(st deviceState) string {
 	if st.BatteryVoltage == "" {
 		return ""
@@ -344,6 +344,9 @@ func batteryText(st deviceState) string {
 	text := st.BatteryVoltage + " V"
 	if st.BatteryPercent != nil {
 		text += fmt.Sprintf(" · %.0f %%", *st.BatteryPercent)
+	}
+	if st.BatteryMA != nil {
+		text += fmt.Sprintf(" · %+.0f mA", *st.BatteryMA)
 	}
 	switch st.BatteryLevel {
 	case batteryWarn:

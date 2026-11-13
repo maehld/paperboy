@@ -109,6 +109,8 @@ func TestDashboardAfterRestart(t *testing.T) {
 func TestDashboardPower(t *testing.T) {
 	cfg := &Config{Profiles: map[string]Profile{"auto": {}, "fixed": {Power: powerMains}}}
 	volts := deviceState{BatteryVoltage: "4.12"}
+	percent, discharging := 61.0, -68.0
+	gauged := deviceState{BatteryVoltage: "3.91", BatteryPercent: &percent, BatteryMA: &discharging}
 	for _, c := range []struct {
 		dev      Device
 		reported string
@@ -120,6 +122,7 @@ func TestDashboardPower(t *testing.T) {
 		{Device{Profile: "fixed"}, "", volts, "Mains · 4.12 V", "set on display type"},
 		{Device{Profile: "auto"}, powerMains, deviceState{}, "Mains", "reported by firmware"},
 		{Device{Profile: "auto"}, "", volts, "Battery · 4.12 V", "fallback"},
+		{Device{Profile: "auto"}, powerBattery, gauged, "Battery · 3.91 V · 61 % · -68 mA", "reported by firmware"},
 	} {
 		got := powerSource(cfg.power(&c.dev, c.reported), c.st)
 		if origin := powerOrigin(cfg, &c.dev, c.reported); got != c.want || origin != c.origin {
