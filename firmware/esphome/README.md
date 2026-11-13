@@ -191,7 +191,8 @@ read ten times too large and are divided by ten. The BQ25616's charge enable
 (`EN_BAT_CHGn`, GPIO39) is active low: the firmware drives it low at boot and
 holds it through deep sleep (like the power latch), because Seeed's Arduino and
 ESPHome examples do the same and a floating pin leaves charging to chance. Its
-`STAT` (GPIO40) is unused.
+`STAT` (GPIO40) is read with a pull-up and reported as `battery.charging`, so
+Paperboy can cross-check the fuel gauge current.
 
 **E1001**: ESP32-S3, octal PSRAM; panel GDEY075T7 (UC8179) 800×480 with four gray
 levels (2 bpp, LUTs, full refresh only, a few seconds). Seeed's ESPHome model

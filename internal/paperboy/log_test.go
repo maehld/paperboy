@@ -59,11 +59,13 @@ func TestSyncLogShowsBatteryCurrent(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	dev := planDevice(t, s)
 	charging := 412.6
-	dev.req.Battery = &syncBattery{Volts: 3.91, MA: &charging}
+	wantsCharge := true
+	dev.req.Battery = &syncBattery{Volts: 3.91, MA: &charging, Charging: &wantsCharge}
 	displayPage(t, s, dev)
 	lines := logLines(logs(), "display sync")
-	if len(lines) == 0 || !strings.Contains(lines[len(lines)-1], "battery_ma=+413") {
-		t.Fatalf("charge current must be logged with its sign: %q", lines)
+	if len(lines) == 0 || !strings.Contains(lines[len(lines)-1], "battery_ma=+413") ||
+		!strings.Contains(lines[len(lines)-1], "charger=charging") {
+		t.Fatalf("charge current and charger state must be logged: %q", lines)
 	}
 }
 
