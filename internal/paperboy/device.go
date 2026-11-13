@@ -332,6 +332,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		st.BatteryVoltage = strconv.FormatFloat(b.Volts, 'f', 2, 64)
 		st.BatteryPercent, st.BatteryMAH, st.BatteryMA = b.Percent, b.MAH, b.MA
 		st.BatteryCharging = b.Charging
+		trackCharge(st, b, now)
 	}
 	prevLevel := st.BatteryLevel
 	st.BatteryLevel = nextBatteryLevel(cfg.battery(d), prevLevel, st.BatteryVoltage)
