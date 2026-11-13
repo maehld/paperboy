@@ -54,11 +54,11 @@ type downloadsView struct {
 }
 
 // downloadPluginRow is one configured plugin with the program the resolver
-// picked and the version pinned in paperboy.yaml.
+// picked and whether paperboy.yaml pins its version.
 type downloadPluginRow struct {
 	Name           string
 	Version        string // downloaded version, empty for a hand-built or PATH program
-	Pin            string // pinned version
+	Pinned         bool   // paperboy.yaml pins the version
 	Program        string // file name of the program, "not found" when unresolved
 	Downloaded     string // when the program file arrived, empty when unknown
 	OutsideChannel bool   // a prerelease while the channel delivers finals only
@@ -70,6 +70,7 @@ type downloadFirmwareRow struct {
 	Version        string
 	File           string
 	Downloaded     string // when the image arrived, empty when unknown
+	Pinned         bool   // firmware.version names this image
 	OutsideChannel bool
 }
 
@@ -107,17 +108,22 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 				row.Downloaded = fileTime(spec.Command[0], loc)
 			}
 		}
-		if pin, ok := pluginPin(p.Version); ok {
-			row.Pin = pin
-		}
-		row.OutsideChannel = cfg.Download != nil && outsideChannel(cfg.Download.PluginChannel, row.Version)
+		_, row.Pinned = pluginPin(p.Version)
+		// A pin bypasses the channel (ADR 0089), so the note would contradict
+		// the marker.
+		row.OutsideChannel = cfg.Download != nil && !row.Pinned &&
+			outsideChannel(cfg.Download.PluginChannel, row.Version)
 		v.Plugins = append(v.Plugins, row)
 	}
 	sort.Slice(v.Plugins, func(i, j int) bool { return v.Plugins[i].Name < v.Plugins[j].Name })
+	pinned, hasPin := pinVersion(cfg.Firmware.Version)
 	for _, img := range s.firmware.installed() {
-		v.Firmware = append(v.Firmware, downloadFirmwareRow{Hardware: img.Hardware, Version: img.Version, File: img.File,
-			Downloaded:     fileTime(img.path, loc),
-			OutsideChannel: cfg.Download != nil && outsideChannel(cfg.Download.FirmwareChannel, img.Version)})
+		row := downloadFirmwareRow{Hardware: img.Hardware, Version: img.Version, File: img.File,
+			Downloaded: fileTime(img.path, loc),
+			Pinned:     hasPin && semver.Compare(pinned, img.ver) == 0}
+		row.OutsideChannel = cfg.Download != nil && !row.Pinned &&
+			outsideChannel(cfg.Download.FirmwareChannel, img.Version)
+		v.Firmware = append(v.Firmware, row)
 	}
 
 	pluginFiles, pluginBytes, firmwareFiles, firmwareBytes := inventorySummary(cfg)

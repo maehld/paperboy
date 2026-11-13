@@ -250,6 +250,19 @@ func TestDownloadHonoursPins(t *testing.T) {
 	if offer := offerOf(displayPage(t, s, dev)); offer == nil || offer["version"] != "0.9.0" {
 		t.Fatalf("pinned offer: %v", offer)
 	}
+	// The releases page marks a version a pin selects instead of a pin column.
+	body := htmlRequest(t, s, "/ui/downloads").Body.String()
+	for _, want := range []string{
+		"v1.2.0 <span class=\"muted\">(pinned)</span>",
+		"0.9.0 <span class=\"muted\">(pinned)</span>",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("downloads page lacks %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "<th>Pin</th>") {
+		t.Fatalf("downloads page still has a pin column: %s", body)
+	}
 }
 
 // TestDownloadSkipsHandPlacedProgram verifies that an unversioned program wins
