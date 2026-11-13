@@ -7,6 +7,11 @@ The built-in plugin `paperboy` runs inside Paperboy and needs no configuration. 
 - `header`: page header. Args: `title` (default the page title), `subtitle`, `clock`, `date` (weekday and date before the clock, in the longest of four forms that fits, e.g. „Samstag, 7. November 2026“, „Sa, 7.11.2026“, „Sa, 7.11.“, „7.11.“; left out when none fits), `page_indicator`, `align` (`left`, `center` or `right`, default `left`).
 - `text`: fixed text. Args: `text` (with `\n` for line breaks), `align` (`left`, `center` or `right`, default `center`), `size`, `bold`.
 - `clock`: the current time. Args: `format` (`time`, `date` or `datetime`, default `time`).
+- `logo`: the Paperboy mark — the page of four by three cells with one cell drawn and the top-right corner turned down ([docs/logo](../logo/README.md)) — centered in the cell and as large as the cell allows. Arg `wordmark` (default `false`) adds the wordmark in Go Mono Bold, so the cell shows the lockup. Image displays only.
+
+```yaml
+- { at: [0, 0], span: [4, 3], widget: paperboy/logo, args: { wordmark: true } }
+```
 
 Arguments with a fixed set of values reject anything else (ADR 0055); the widgets page offers them as choices.
 
