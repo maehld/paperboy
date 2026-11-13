@@ -167,10 +167,15 @@ func noisyPage(w, h int) *image.Paletted {
 // every pixel changes between black and white, so QOI spends one index byte on
 // each of them and nothing can be a run.
 func alternatingPage(w, h int) *image.Paletted {
-	img := render.NewCanvas(w, h, 4)
+	return alternatingPageAt(w, h, 4)
+}
+
+func alternatingPageAt(w, h, levels int) *image.Paletted {
+	img := render.NewCanvas(w, h, levels)
+	last := uint8(len(img.Palette) - 1)
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
-			img.Pix[y*img.Stride+x] = uint8((x + y) % 2 * 3)
+			img.Pix[y*img.Stride+x] = uint8((x+y)%2) * last
 		}
 	}
 	return img
@@ -233,9 +238,9 @@ func TestFillPatternsStaySmall(t *testing.T) {
 	}
 }
 
-// TestWorstPageFitsBuffer is the reason the firmware buffer is 512 KiB: with a
-// page palette every pixel costs at most one QOI byte, so 800x480 stays below
-// 384 KB (ADR 0088).
+// TestWorstPageFitsBuffer holds the 800x480 worst case below the 384 KB a
+// paletted page can reach; the 512 KiB firmware buffer of these panels is
+// larger still (ADR 0088).
 func TestWorstPageFitsBuffer(t *testing.T) {
 	for _, img := range []struct {
 		name string
@@ -250,6 +255,18 @@ func TestWorstPageFitsBuffer(t *testing.T) {
 		if size > qoiLimit {
 			t.Errorf("%s does not fit the %d byte buffer with %d bytes", img.name, qoiLimit, size)
 		}
+	}
+}
+
+func TestE1003PageFitsBuffer(t *testing.T) {
+	img := alternatingPageAt(1872, 1404, 16)
+	size := len(encodeQOI(img))
+	t.Logf("1872x1404 alternating 16-level page: %d bytes", size)
+	if size > qoiLimit {
+		t.Errorf("the E1003 worst case is %d bytes, above the %d byte limit", size, qoiLimit)
+	}
+	if got := decodeQOI(t, encodeQOI(img)).Bounds(); got != img.Bounds() {
+		t.Fatalf("decoded bounds %v, want %v", got, img.Bounds())
 	}
 }
 

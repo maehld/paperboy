@@ -46,7 +46,7 @@ image dominated. A plain GET of the same page took 34–61 ms while the same byt
 through `online_image` took 2.6 s whatever their size, and QOI through it still
 took 2.26 s: the per-pixel work of ESPHome's decoders was the cost, not the
 transfer or the format (the frame is always 800×480). The firmware therefore
-fetches the page itself (`http_request.get` into a 512 KiB buffer in PSRAM) and
+fetches the page itself (`http_request.get` into its QOI buffer in PSRAM) and
 decodes it into the panel buffer with `pb_paint_qoi_gray4`/`pb_paint_qoi_dithered`
 (ADR 0072, 0088); `online_image` and its 384 KB image buffer are gone. Together with
 `fast_connect` (saves BSSID and channel, no scan before every wake) a page
@@ -61,8 +61,8 @@ Paperboy's palette costs at most one QOI byte per pixel, so even an 800×480 pag
 of alternating black and white (the worst case, measured 384 KB) fits; Paperboy
 keeps its own `qoiLimit` in step and only has to simplify a page for a display
 with many more pixels (ADR 0088). The E1003's 1872×1404 page can reach about
-2.6 MB, so its buffer covers the whole panel while the server still simplifies
-pages above 512 KiB. The response is moved into `pb_page_qoi`
+2.6 MB, and the server's `qoiLimit` follows its 3 MiB buffer, so a 16-level
+page is sent as drawn (ADR 0104). The response is moved into `pb_page_qoi`
 (`std::move(body)`), which keeps the peak at twice the buffer: the raw read
 buffer plus the string.
 
@@ -296,10 +296,9 @@ ppi: 227
 gray_levels: 16
 ```
 
-A 16-level page of this size can exceed the server's 512 KiB QOI limit, so it
-may be sent simplified (without dither) until that limit follows in issue
-#192. A display type with `gray_levels: 4` still works and uses four of the
-panel's 16 levels.
+A 16-level page of this size fits the server's 3 MiB QOI limit (ADR 0104), so
+it is sent as drawn. A display type with `gray_levels: 4` still works and uses
+four of the panel's 16 levels.
 
 Open on the hardware: the measured deep-sleep current, the GT911 transform, the
 waveform temperature (the image forces 16 °C, the preset 25 °C, Seeed's driver

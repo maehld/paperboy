@@ -117,9 +117,9 @@ type qoiResult struct {
 // (ADR 0088). The firmware reads an answer into a fixed buffer and truncates
 // anything above it, so a larger page loses its dither pattern instead: a 3x3
 // median keeps text, rules and fills and flattens the noise, which is what
-// makes such a page large. The buffer is sized so that every page of the
-// shipped panels fits without this (one QOI byte per pixel at worst), so it
-// only guards a display type with many more pixels.
+// makes such a page large. The limit follows the largest firmware buffer, so
+// every page of the shipped panels fits without this (one QOI byte per pixel
+// at worst); it only guards a display type with still more pixels (ADR 0104).
 func qoiWithin(img image.Image, limit int) qoiResult {
 	if data := encodeQOI(img); len(data) <= limit {
 		return qoiResult{data: data, fits: true}

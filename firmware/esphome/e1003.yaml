@@ -11,8 +11,8 @@
 #
 # Paperboy composes pages for 2, 4 or 16 gray levels since ADR 0104, so a
 # display type with gray_levels: 16 uses the panel fully; pb_paint_qoi_gray16
-# maps any luminance in a page onto the panel's 16 levels. The server still
-# simplifies 16-level pages above its 512 KiB QOI limit (issue #192).
+# maps any luminance in a page onto the panel's 16 levels. The server's QOI
+# limit follows this image's 3 MiB buffer (ADR 0104).
 #
 # Buttons: green GPIO3 = home, right white GPIO4 = next, left white GPIO5 =
 # previous. Battery: voltage divider on GPIO1, enabled by GPIO40; no fuel

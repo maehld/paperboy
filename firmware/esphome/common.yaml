@@ -613,11 +613,12 @@ script:
 
   # Fetches the page as QOI (ADR 0072) and repaints the panel with it. The
   # display lambda decodes it straight into the panel buffer, which is what
-  # makes a page change short. The buffer is 512 KiB in PSRAM (the chips have
-  # 8 MB): a four-level 800x480 page costs at most one QOI byte per pixel, so
-  # every page fits with room to spare, and Paperboy keeps its own limit in
-  # step (ADR 0088). The response is moved into pb_page_qoi instead of copied,
-  # which keeps the peak at twice the buffer.
+  # makes a page change short. The buffer is 512 KiB in PSRAM for the 800x480
+  # panels (the chips have 8 MB; a hardware type may override qoi_buffer): a
+  # four-level 800x480 page costs at most one QOI byte per pixel, so every page
+  # fits with room to spare, and Paperboy keeps its own limit in step (ADR
+  # 0088). The response is moved into pb_page_qoi instead of copied, which
+  # keeps the peak at twice the buffer.
   - id: fetch_page
     mode: single
     then:
