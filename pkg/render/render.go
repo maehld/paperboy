@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gobold"
+	"golang.org/x/image/font/gofont/gomonobold"
 	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
@@ -61,6 +62,7 @@ var (
 	fonts    struct {
 		regular *opentype.Font
 		bold    *opentype.Font
+		mono    *opentype.Font
 	}
 
 	faceMu    sync.Mutex
@@ -69,12 +71,24 @@ var (
 
 type faceKey struct {
 	bold bool
+	mono bool
 	size int
 }
 
 // Face returns the cached Go font face for a pixel size, rounded to whole
 // pixels with full hinting.
 func Face(size float64, bold bool) font.Face {
+	return face(size, bold, false)
+}
+
+// MonoFace returns Go Mono Bold for a pixel size: the face of Paperboy's
+// wordmark in docs/logo, for text that has to match the logo. It is not a page
+// typeface.
+func MonoFace(size float64) font.Face {
+	return face(size, true, true)
+}
+
+func face(size float64, bold, mono bool) font.Face {
 	fontOnce.Do(func() {
 		var err error
 		if fonts.regular, err = opentype.Parse(goregular.TTF); err != nil {
@@ -83,16 +97,22 @@ func Face(size float64, bold bool) font.Face {
 		if fonts.bold, err = opentype.Parse(gobold.TTF); err != nil {
 			panic(err)
 		}
+		if fonts.mono, err = opentype.Parse(gomonobold.TTF); err != nil {
+			panic(err)
+		}
 	})
 	n := max(int(math.Round(size)), MinSize)
-	key := faceKey{bold: bold, size: n}
+	key := faceKey{bold: bold, mono: mono, size: n}
 	faceMu.Lock()
 	defer faceMu.Unlock()
 	if f, ok := faceCache[key]; ok {
 		return f
 	}
 	src := fonts.regular
-	if bold {
+	switch {
+	case mono:
+		src = fonts.mono
+	case bold:
 		src = fonts.bold
 	}
 	f, err := opentype.NewFace(src, &opentype.FaceOptions{Size: float64(n), DPI: 72, Hinting: font.HintingFull})
@@ -138,6 +158,28 @@ func TextAt(dst draw.Image, s string, x, baseline int, size float64, bold bool, 
 	}
 	d := font.Drawer{Dst: dst, Src: image.NewUniform(c), Face: f, Dot: fixed.P(x, baseline)}
 	d.DrawString(s)
+}
+
+// MonoText draws s in Go Mono Bold at a fixed size, anchored like TextAt.
+func MonoText(dst draw.Image, s string, x, baseline int, size float64, c color.Color, align Align) {
+	if s == "" {
+		return
+	}
+	f := MonoFace(size)
+	w := font.MeasureString(f, s).Ceil()
+	switch align {
+	case Center:
+		x -= w / 2
+	case Right:
+		x -= w
+	}
+	d := font.Drawer{Dst: dst, Src: image.NewUniform(c), Face: f, Dot: fixed.P(x, baseline)}
+	d.DrawString(s)
+}
+
+// MeasureMono returns the advance width of s in Go Mono Bold.
+func MeasureMono(s string, size float64) int {
+	return font.MeasureString(MonoFace(size), s).Ceil()
 }
 
 // Ellipsize shortens s with "…" until it fits maxWidth.

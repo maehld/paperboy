@@ -17,7 +17,7 @@
 
 substitutions:
   hardware: e1001
-  fw_version: "2.4.3"
+  fw_version: "2.5.0"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
   # Initial option of the LUT mode select; the device remembers a change.
@@ -151,9 +151,12 @@ display:
       id(epaper_display)->set_lut_mode(id(lut_mode_select)->current_option() == "custom"
                                            ? esphome::uc8179_gray4::LUT_MODE_CUSTOM
                                            : esphome::uc8179_gray4::LUT_MODE_OTP);
-      if (id(setup_mode)) {
+      if (pb_splash) {
         it.fill(Color::WHITE);
-        pb_draw_text(it, id(setup_font), id(setup_text));
+        pb_draw_splash(it);
+      } else if (id(setup_mode)) {
+        it.fill(Color::WHITE);
+        pb_draw_setup(it, id(setup_font), id(setup_text));
       } else if (!pb_qoi_valid(pb_page_qoi)) {
         // Truncated answer (page larger than the 96 KiB buffer) or not QOI:
         // keep the old picture instead of painting half a page.

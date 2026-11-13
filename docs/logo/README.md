@@ -34,6 +34,15 @@ change, regenerate the path instead of setting it as text.
 
 The logo is part of the project and covered by `LICENSE`.
 
+## The mark in pages and on devices
+
+The built-in plugin draws the mark from this geometry instead of a raster copy:
+`paperboy/logo` (`internal/builtin/logo.go`) scales it to any cell and
+`wordmark: true` adds the lockup's wordmark in Go Mono Bold. The firmware draws
+the same shapes (`pb_logo_ink` in `firmware/esphome/paperboy.h`): above the
+instructions of the Wi-Fi and Paperboy URL screens and alone for 5 s at power-on
+(ADR 0095). A change to the shapes has to touch both.
+
 ## What the UI serves
 
 `internal/paperboy/ui/logo.svg` and `internal/paperboy/ui/favicon.svg` are the copies Paperboy

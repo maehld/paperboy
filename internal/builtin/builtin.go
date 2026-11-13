@@ -1,6 +1,6 @@
 // Package builtin is Paperboy's own plugin "paperboy" (ADR 0049). It runs in
 // the Paperboy process and offers the widgets that need no data source: a
-// page header, free text and a clock.
+// page header, free text, a clock and the Paperboy logo.
 package builtin
 
 import (
@@ -49,6 +49,10 @@ func (Plugin) Describe() plugin.Description {
 				Args: map[string]plugin.Arg{
 					"format": {Type: "string", Default: "time", Description: "time, date or datetime", Enum: []any{"time", "date", "datetime"}},
 				}},
+			{Widget: "logo", Title: "Paperboy logo", Kinds: []string{plugin.KindImage}, Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 3, Rows: 2}, {Columns: 4, Rows: 3}, {Columns: 6, Rows: 3}},
+				Args: map[string]plugin.Arg{
+					"wordmark": {Type: "bool", Default: false, Description: "with the wordmark, as in the lockup"},
+				}},
 		},
 	}
 }
@@ -75,6 +79,8 @@ func (p Plugin) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.P
 		p.text(w, img)
 	case "clock":
 		p.clock(req, w, img)
+	case "logo":
+		p.logo(w, img)
 	default:
 		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 	}

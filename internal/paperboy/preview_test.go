@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/maehld/paperboy/pkg/plugin"
 )
 
 const previewTemplate = `
@@ -104,7 +106,13 @@ func TestPluginsListsBuiltin(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(out.Plugins) != 1 || out.Plugins[0].Name != "paperboy" || out.Plugins[0].Description == nil ||
-		len(out.Plugins[0].Description.Widgets) != 3 {
+		len(out.Plugins[0].Description.Widgets) != 4 {
 		t.Fatalf("plugins: %s", rec.Body)
+	}
+	// The logo is an image widget: a text display cannot show the mark.
+	for _, w := range out.Plugins[0].Description.Widgets {
+		if w.Widget == "logo" && (len(w.Kinds) != 1 || w.Kinds[0] != plugin.KindImage) {
+			t.Errorf("logo kinds: %v", w.Kinds)
+		}
 	}
 }

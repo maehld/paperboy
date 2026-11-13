@@ -64,6 +64,10 @@ inline void pb_time(const char *step) {
 // after the panel painted it (ADR 0064).
 static bool pb_paint_pending = false;
 
+// True while the power-on splash shows the mark instead of a page: the display
+// lambda draws it then, and no page may be painted meanwhile (ADR 0095).
+static bool pb_splash = false;
+
 // Battery reading of this wake; NAN = not measured. Set by the device file's
 // read_battery script before any decision uses it.
 static float pb_bat_volts = NAN;
@@ -298,9 +302,8 @@ inline std::string pb_base(const std::string &url) {
   return s;
 }
 
-// Setup instructions, one line per '\n'.
-template<typename D, typename F> void pb_draw_text(D &it, F *font, const std::string &text) {
-  int y = 24;
+// Setup instructions, one line per '\n', starting at y.
+template<typename D, typename F> void pb_draw_text(D &it, F *font, const std::string &text, int y) {
   size_t start = 0;
   while (start <= text.size()) {
     size_t end = text.find('\n', start);
@@ -313,6 +316,72 @@ template<typename D, typename F> void pb_draw_text(D &it, F *font, const std::st
     }
     start = end + 1;
   }
+}
+
+// The mark of Paperboy's logo (docs/logo): a page of four by three cells of 16
+// units, a frame of 3 units with the top-right corner turned down, dividers of
+// 2 units and one cell drawn by a widget. Every shape is filled, so the mark
+// needs one colour and only spans have to be drawn; it scales to any size.
+// Same geometry as the `logo` widget of the built-in plugin.
+inline bool pb_logo_ink(float x, float y) {
+  if (x < 0 || y < 0 || x >= 64.0f || y >= 48.0f) {
+    return false;
+  }
+  // The page is cut at the top right: the outer path M0 0 H48 L64 16 V48 H0 Z
+  // keeps every point below the diagonal x - y = 48.
+  if (x - y > 48.0f) {
+    return false;
+  }
+  // Inside the hole of the frame (the inner path, 3 units wide) only the
+  // dividers, the drawn cell and the turned-down corner are ink.
+  if (x >= 3.0f && x < 61.0f && y >= 3.0f && y < 45.0f && x - y <= 43.757f) {
+    if ((x >= 15.0f && x < 17.0f) || (x >= 31.0f && x < 33.0f) ||
+        (x >= 47.0f && x < 49.0f && y < 16.0f)) {
+      return true;  // dividers between the columns
+    }
+    if ((y >= 15.0f && y < 17.0f) || (y >= 31.0f && y < 33.0f)) {
+      return true;  // dividers between the rows
+    }
+    if (x < 16.0f && y >= 32.0f) {
+      return true;  // the cell a widget draws
+    }
+    return x >= 48.0f && y < 16.0f;  // the turned-down corner
+  }
+  return true;
+}
+
+// Draws the mark with its top-left corner at (x, y) at the given height; the
+// width follows from the design. The display lambda sets the pixels, as the QOI
+// decoder does, so every panel display can draw it.
+template<typename D> void pb_draw_logo(D &it, int x, int y, int height) {
+  int width = (int) (height * 64.0f / 48.0f + 0.5f);
+  if (width < 1 || height < 1) {
+    return;
+  }
+  for (int row = 0; row < height; row++) {
+    float v = (row + 0.5f) * 48.0f / height;
+    for (int col = 0; col < width; col++) {
+      if (pb_logo_ink((col + 0.5f) * 64.0f / width, v)) {
+        it.draw_pixel_at(x + col, y + row, esphome::Color::BLACK);
+      }
+    }
+  }
+}
+
+// The mark in the middle of the panel: the splash of a power-on.
+template<typename D> void pb_draw_splash(D &it) {
+  int height = it.get_height() / 2;
+  int width = (int) (height * 64.0f / 48.0f + 0.5f);
+  pb_draw_logo(it, (it.get_width() - width) / 2, (it.get_height() - height) / 2, height);
+}
+
+// The Wi-Fi and Paperboy URL screens: the mark at the top, the instructions
+// below it (pb_draw_text, 44 px per line).
+template<typename D, typename F> void pb_draw_setup(D &it, F *font, const std::string &text) {
+  const int height = 64;
+  int width = (int) (height * 64.0f / 48.0f + 0.5f);
+  pb_draw_logo(it, (it.get_width() - width) / 2, 16, height);
+  pb_draw_text(it, font, text, 96);
 }
 
 // Paperboy draws its four levels as 0, 85, 170 and 255.
