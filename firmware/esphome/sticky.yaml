@@ -5,7 +5,7 @@
 
 substitutions:
   hardware: sticky
-  fw_version: "2.3.1"
+  fw_version: "2.3.2"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
 
@@ -17,11 +17,14 @@ esphome:
     - priority: 800
       then:
         - lambda: |-
-            // The power latch is held through deep sleep (see on_shutdown).
+            // The power latch and the charge enable are held through deep
+            // sleep (see on_shutdown).
+            gpio_hold_dis(GPIO_NUM_39);
             gpio_hold_dis(GPIO_NUM_45);
             gpio_hold_dis(GPIO_NUM_46);
     - priority: 600
       then:
+        - output.turn_on: charge_enable
         - output.turn_on: pwr_hold
         - output.turn_on: pwr_lock
         - lambda: |-
@@ -60,6 +63,7 @@ esphome:
       then:
         - lambda: |-
             gpio_set_level(GPIO_NUM_42, 0);  // touch panel power off
+            gpio_hold_en(GPIO_NUM_39);
             gpio_hold_en(GPIO_NUM_45);
             gpio_hold_en(GPIO_NUM_46);
             gpio_deep_sleep_hold_en();
@@ -80,6 +84,13 @@ logger:
   hardware_uart: UART0
 
 output:
+  # The BQ25616 charge enable (EN_BAT_CHGn) is active LOW (Seeed's Arduino and
+  # ESPHome examples drive it low), so the output is inverted: turning it on
+  # enables charging. It stays on through deep sleep like the power latch.
+  - platform: gpio
+    pin: GPIO39
+    inverted: true
+    id: charge_enable
   - platform: gpio
     pin: GPIO45
     id: pwr_hold

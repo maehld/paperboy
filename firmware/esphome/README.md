@@ -187,7 +187,11 @@ GPIO2/3, INT GPIO21, RST GPIO41, power GPIO42; needs `swap_xy`, `mirror_x` and
 `mirror_y` with `rotation: 180`. Power latch GPIO45/GPIO46 held through deep
 sleep. BQ27220 fuel gauge at 0x55 on I²C GPIO0/1: state of charge 0x2C,
 voltage 0x08, current 0x0C, remaining capacity 0x10; currents and capacities
-read ten times too large and are divided by ten.
+read ten times too large and are divided by ten. The BQ25616's charge enable
+(`EN_BAT_CHGn`, GPIO39) is active low: the firmware drives it low at boot and
+holds it through deep sleep (like the power latch), because Seeed's Arduino and
+ESPHome examples do the same and a floating pin leaves charging to chance. Its
+`STAT` (GPIO40) is unused.
 
 **E1001**: ESP32-S3, octal PSRAM; panel GDEY075T7 (UC8179) 800×480 with four gray
 levels (2 bpp, LUTs, full refresh only, a few seconds). Seeed's ESPHome model
