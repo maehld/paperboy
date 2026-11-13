@@ -14,27 +14,39 @@ import (
 	"time"
 )
 
+// chargeSession records one charging episode of a device with a fuel gauge
+// (issue #205): the first and the last sync that reported a charge current and
+// the state of charge at those points.
+type chargeSession struct {
+	Start        time.Time `json:"start,omitempty"`
+	StartPercent *float64  `json:"start_percent,omitempty"`
+	End          time.Time `json:"end,omitempty"`
+	EndPercent   *float64  `json:"end_percent,omitempty"`
+}
+
 // deviceState is persisted per device in state/devices/<MAC>.json (ADR 0080).
 type deviceState struct {
-	APIKey          string    `json:"api_key"`
-	Page            int       `json:"page"`
-	FirstSeen       time.Time `json:"first_seen,omitempty"`
-	LastInput       time.Time `json:"last_input,omitempty"`
-	LastSeen        time.Time `json:"last_seen,omitempty"`
-	ClientIP        string    `json:"client_ip,omitempty"` // source address of the last register, sync or text poll
-	BatteryVoltage  string    `json:"battery_voltage,omitempty"`
-	BatteryPercent  *float64  `json:"battery_percent,omitempty"`  // fuel gauge, if the hardware has one
-	BatteryMAH      *float64  `json:"battery_mah,omitempty"`      // remaining capacity from the fuel gauge
-	BatteryMA       *float64  `json:"battery_ma,omitempty"`       // current from the fuel gauge, positive while charging
-	BatteryCharging *bool     `json:"battery_charging,omitempty"` // charger's own state (e.g. the Sticky's STAT pin)
-	RSSI            string    `json:"rssi,omitempty"`
-	Firmware        string    `json:"firmware,omitempty"`
-	Hardware        string    `json:"hardware,omitempty"` // firmware image type, e.g. "sticky"
-	WakeReason      string    `json:"wake_reason,omitempty"`
-	BatteryLevel    string    `json:"battery_level,omitempty"`  // "", "warn" or "critical"
-	Rule            string    `json:"rule,omitempty"`           // name of the active plan rule
-	ReportedPower   string    `json:"reported_power,omitempty"` // power source the hardware last reported (ADR 0051)
-	TouchReported   bool      `json:"reported_touch,omitempty"` // the firmware reports a digitiser (ADR 0080)
+	APIKey          string         `json:"api_key"`
+	Page            int            `json:"page"`
+	FirstSeen       time.Time      `json:"first_seen,omitempty"`
+	LastInput       time.Time      `json:"last_input,omitempty"`
+	LastSeen        time.Time      `json:"last_seen,omitempty"`
+	ClientIP        string         `json:"client_ip,omitempty"` // source address of the last register, sync or text poll
+	BatteryVoltage  string         `json:"battery_voltage,omitempty"`
+	BatteryPercent  *float64       `json:"battery_percent,omitempty"`  // fuel gauge, if the hardware has one
+	BatteryMAH      *float64       `json:"battery_mah,omitempty"`      // remaining capacity from the fuel gauge
+	BatteryMA       *float64       `json:"battery_ma,omitempty"`       // current from the fuel gauge, positive while charging
+	BatteryCharging *bool          `json:"battery_charging,omitempty"` // charger's own state (e.g. the Sticky's STAT pin)
+	Charge          *chargeSession `json:"charge,omitempty"`           // running charging episode (issue #205)
+	LastCharge      *chargeSession `json:"last_charge,omitempty"`      // last finished one
+	RSSI            string         `json:"rssi,omitempty"`
+	Firmware        string         `json:"firmware,omitempty"`
+	Hardware        string         `json:"hardware,omitempty"` // firmware image type, e.g. "sticky"
+	WakeReason      string         `json:"wake_reason,omitempty"`
+	BatteryLevel    string         `json:"battery_level,omitempty"`  // "", "warn" or "critical"
+	Rule            string         `json:"rule,omitempty"`           // name of the active plan rule
+	ReportedPower   string         `json:"reported_power,omitempty"` // power source the hardware last reported (ADR 0051)
+	TouchReported   bool           `json:"reported_touch,omitempty"` // the firmware reports a digitiser (ADR 0080)
 
 	// What the device was last pointed at; set after rendering, so a failed
 	// render shows up as a notice instead of a page that was never drawn.

@@ -71,6 +71,7 @@ type dashboardDevice struct {
 	Waiting    string // placeholder text when there is neither an image nor text
 	Power      string // charge state with the charge or voltage, e.g. "Charging · 50 %" (ADR 0051)
 	Battery    string // raw fuel gauge reading for the details, e.g. "3.83 V · 50 % · +568 mA"
+	Charge     string // last finished charge for the details, e.g. "2 h ago · 41 → 50 %"
 	Width      int
 	Height     int
 	Text       []string // text displays: the last served lines
@@ -129,6 +130,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			Waiting:    waiting,
 			Power:      powerText(d.Power, d.deviceState),
 			Battery:    batteryText(d.deviceState),
+			Charge:     chargeText(d.deviceState, now),
 			Width:      profiles[d.Profile].Width,
 			Height:     profiles[d.Profile].Height,
 			Text:       d.LastText,
@@ -213,10 +215,6 @@ func imageText(d deviceInfo, text bool) (image, waiting string) {
 	return "", "Nothing served yet"
 }
 
-// idleMA is the current below which the fuel gauge counts as idle: it reports
-// in 10 mA steps, so a few milliamps are noise, not charging.
-const idleMA = 20
-
 // powerState names what the device does with its battery (ADR 0051). The fuel
 // gauge current is the only reading that tells charging from connected, and it
 // also catches a device that drains although it reports mains; without a gauge
@@ -263,6 +261,25 @@ func currentText(ma float64) string {
 		return "0 mA"
 	}
 	return fmt.Sprintf("%+.0f mA", ma)
+}
+
+// chargeText describes the last finished charge for the card's details, e.g.
+// "2 h ago · 41 → 50 %" (issue #205).
+func chargeText(st deviceState, now time.Time) string {
+	c := st.LastCharge
+	if c == nil || c.End.IsZero() {
+		return ""
+	}
+	text := agoText(c.End, now)
+	switch {
+	case c.StartPercent != nil && c.EndPercent != nil:
+		text += fmt.Sprintf(" · %.0f → %.0f %%", *c.StartPercent, *c.EndPercent)
+	case c.EndPercent != nil:
+		text += fmt.Sprintf(" · to %.0f %%", *c.EndPercent)
+	case c.StartPercent != nil:
+		text += fmt.Sprintf(" · from %.0f %%", *c.StartPercent)
+	}
+	return text
 }
 
 func planText(plan string) string {

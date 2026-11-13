@@ -57,6 +57,10 @@ type syncEvent struct {
 	Y      int    `json:"y"`
 }
 
+// idleMA is the current below which the fuel gauge counts as idle: it reports
+// in 10 mA steps, so a few milliamps are noise, not charging.
+const idleMA = 20
+
 type syncBattery struct {
 	Volts    float64  `json:"volts"`
 	Percent  *float64 `json:"percent"`
@@ -332,6 +336,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		st.BatteryVoltage = strconv.FormatFloat(b.Volts, 'f', 2, 64)
 		st.BatteryPercent, st.BatteryMAH, st.BatteryMA = b.Percent, b.MAH, b.MA
 		st.BatteryCharging = b.Charging
+		st.trackCharge(b, now)
 	}
 	prevLevel := st.BatteryLevel
 	st.BatteryLevel = nextBatteryLevel(cfg.battery(d), prevLevel, st.BatteryVoltage)
@@ -627,6 +632,31 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		resp.Image = &syncImage{Path: served.path, Hash: served.hash}
 	}
 	return resp
+}
+
+// trackCharge follows the charging episodes of a device from its fuel gauge
+// current (issue #205). A sync with a charge current opens an episode and keeps
+// the last charge seen during it; the first sync without one closes the
+// episode and keeps it as the last charge for the card's details.
+func (st *deviceState) trackCharge(b *syncBattery, now time.Time) {
+	if b.MA == nil {
+		return
+	}
+	if *b.MA > idleMA {
+		if st.Charge == nil {
+			st.Charge = &chargeSession{Start: now, StartPercent: b.Percent}
+		}
+		return
+	}
+	if st.Charge == nil {
+		return
+	}
+	st.Charge.End = now
+	if b.Percent != nil {
+		st.Charge.EndPercent = b.Percent
+	}
+	st.LastCharge = st.Charge
+	st.Charge = nil
 }
 
 // menuWake names the one-shot wake the device needs (ADR 0064): the menu
