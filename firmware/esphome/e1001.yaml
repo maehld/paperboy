@@ -17,7 +17,10 @@
 
 substitutions:
   hardware: e1001
-  fw_version: "2.7.0"
+  fw_version: "2.8.0"
+  # The mounting this image is built for; a device adds its quarter turn to it
+  # at runtime (ADR 0102).
+  compiled_rotation: 0
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
   # Initial option of the LUT mode select; the device remembers a change.
@@ -144,6 +147,10 @@ display:
         pullup: true
     update_interval: never
     lambda: |-
+      // The panel is built for the landscape orientation; a device adds its
+      // quarter turn (ADR 0102) and the component starts from the compiled
+      // rotation after every wake.
+      pb_rotate_display(it, ${compiled_rotation});
       // Panel properties, per device (ADR 0087): the settings live in flash and
       // are applied here so that every paint uses them, including the first
       // one after a wake.
@@ -163,6 +170,11 @@ display:
         // keep the old picture instead of painting half a page.
         pb_note_for_next_wake("page not paintable: " + id(image_path));
         ESP_LOGE("paperboy", "page is not a complete QOI image");
+      } else if (!pb_qoi_fits(pb_page_qoi, it.get_width(), it.get_height())) {
+        // A page of the wrong orientation would be clipped below the panel:
+        // refuse it and let the server's rotation be fixed (ADR 0102).
+        pb_note_for_next_wake("page does not fit the rotated display; check rotation");
+        ESP_LOGE("paperboy", "page size does not fit the rotated display");
       } else {
         // pb_paint_qoi_gray4 leaves white pixels alone, so start from white.
         it.fill(Color::WHITE);

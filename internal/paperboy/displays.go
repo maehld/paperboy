@@ -34,6 +34,7 @@ type displayFile struct {
 	Charset    string   `yaml:"charset" json:"charset,omitempty"`
 	MinRefresh Duration `yaml:"min_refresh" json:"min_refresh,omitempty"`
 	Power      string   `yaml:"power" json:"power,omitempty"`
+	Rotation   int      `yaml:"rotation" json:"rotation,omitempty"`           // page → panel, ADR 0102
 	WidthMM    *int     `yaml:"width_mm,omitempty" json:"width_mm,omitempty"` // removed by ADR 0050, rejected with a hint
 }
 
@@ -64,6 +65,9 @@ func (f displayFile) check(name string) error {
 	if f.GrayLevels != 0 && f.GrayLevels != 1 && f.GrayLevels != 4 {
 		return fmt.Errorf("display type %s: gray_levels must be 1 or 4", name)
 	}
+	if !validRotation(f.Rotation) {
+		return fmt.Errorf("display type %s: rotation must be 0, 90, 180 or 270", name)
+	}
 	return nil
 }
 
@@ -78,6 +82,7 @@ func (f displayFile) profile() Profile {
 		PPI:        f.PPI,
 		MinRefresh: f.MinRefresh,
 		Power:      f.Power,
+		Rotation:   f.Rotation,
 	}
 }
 
@@ -170,6 +175,9 @@ func encodeDisplayFile(f *displayFile) ([]byte, error) {
 	if f.Power != "" {
 		set("power", plainScalar(f.Power))
 	}
+	if f.Rotation != 0 {
+		set("rotation", intScalar(f.Rotation))
+	}
 	return marshalFile(root)
 }
 
@@ -183,15 +191,16 @@ func floatScalar(v float64) *yaml.Node {
 
 // editorDisplayFile is one display type file in the overview of the editor.
 type editorDisplayFile struct {
-	Name    string  `json:"name"`
-	Kind    string  `json:"kind,omitempty"`
-	Size    [2]int  `json:"size"`
-	Gray    int     `json:"gray_levels,omitempty"`
-	PPI     float64 `json:"ppi,omitempty"`
-	Charset string  `json:"charset,omitempty"`
-	Power   string  `json:"power,omitempty"`
-	Hash    string  `json:"hash"`
-	Error   string  `json:"error,omitempty"`
+	Name     string  `json:"name"`
+	Kind     string  `json:"kind,omitempty"`
+	Size     [2]int  `json:"size"`
+	Gray     int     `json:"gray_levels,omitempty"`
+	PPI      float64 `json:"ppi,omitempty"`
+	Charset  string  `json:"charset,omitempty"`
+	Power    string  `json:"power,omitempty"`
+	Rotation int     `json:"rotation,omitempty"`
+	Hash     string  `json:"hash"`
+	Error    string  `json:"error,omitempty"`
 }
 
 // displayFileList reads the display type files of an instance directory for
@@ -216,8 +225,8 @@ func displayFileList(dir string) ([]editorDisplayFile, error) {
 			list = append(list, f)
 			continue
 		}
-		f.Kind, f.Size, f.Gray, f.PPI, f.Charset, f.Power =
-			display.Kind, display.Size, display.GrayLevels, display.PPI, display.Charset, display.Power
+		f.Kind, f.Size, f.Gray, f.PPI, f.Charset, f.Power, f.Rotation =
+			display.Kind, display.Size, display.GrayLevels, display.PPI, display.Charset, display.Power, display.Rotation
 		if err := display.check(name); err != nil {
 			f.Error = shortError(err)
 		} else {

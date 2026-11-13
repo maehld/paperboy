@@ -32,6 +32,7 @@
       menu_show_duration: '',
       touch: false,
       power: '',
+      rotation: null,
       firmware: '',
       battery: null,
     };
@@ -85,6 +86,13 @@
     option(power, 'battery', 'battery');
     option(power, 'mains', 'mains');
 
+    const rotation = el('rotation');
+    option(rotation, '', "the display type's setting");
+    option(rotation, '0', '0° (as the firmware is built)');
+    option(rotation, '90', '90° clockwise');
+    option(rotation, '180', '180°');
+    option(rotation, '270', '270° clockwise');
+
     const firmware = el('firmware');
     option(firmware, '', 'offer updates');
     option(firmware, 'hold', 'hold');
@@ -110,6 +118,7 @@
     el('menu').value = d.menu_show_duration || '';
     el('touch').checked = !!d.touch;
     el('power').value = d.power || '';
+    el('rotation').value = d.rotation === null || d.rotation === undefined ? '' : String(d.rotation);
     el('firmware').value = d.firmware || '';
     const b = d.battery || {};
     el('warn').value = b.warn_volts || '';
@@ -170,6 +179,7 @@
     if (d.refresh) out.refresh = d.refresh;
     if (d.menu_show_duration) out.menu_show_duration = d.menu_show_duration;
     if (d.touch) out.touch = true;
+    if (d.rotation !== null && d.rotation !== undefined && d.rotation !== '') out.rotation = Number(d.rotation);
     const b = {};
     for (const key of ['warn_volts', 'critical_volts', 'hysteresis_volts']) {
       const v = Number(d.battery && d.battery[key]);
@@ -182,6 +192,7 @@
   // normalize keeps the model in the shape serialize expects.
   function normalize(doc) {
     const d = Object.assign(empty(), doc || {});
+    d.rotation = d.rotation === undefined || d.rotation === null || d.rotation === '' ? null : Number(d.rotation);
     d.battery =
       d.battery && (d.battery.warn_volts || d.battery.critical_volts || d.battery.hysteresis_volts)
         ? {
@@ -407,6 +418,11 @@
   onCheck('touch', 'touch');
   onField('power', 'power');
   onField('firmware', 'firmware');
+  el('rotation').addEventListener('change', () => {
+    if (state.readOnly) return;
+    state.device.rotation = el('rotation').value === '' ? null : Number(el('rotation').value);
+    changed();
+  });
   onBattery('warn', 'warn_volts');
   onBattery('critical', 'critical_volts');
   onBattery('hysteresis', 'hysteresis_volts');

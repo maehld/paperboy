@@ -86,6 +86,8 @@ pre.file { margin: 0; padding: .5rem .6rem; background: #f7f9fc; border: 1px sol
       <p class="hint">The shortest interval the device is told to use; empty keeps the default of the power source (ADR 0051).</p>
       <label class="field"><span>power</span><select id="power"></select></label>
       <p class="hint">auto follows what the firmware reports and falls back to battery (ADR 0051).</p>
+      <label class="field image-only"><span>rotation</span><select id="rotation"></select></label>
+      <p class="hint image-only">Turns composed pages clockwise before the firmware paints them (ADR 0102). A portrait page on a landscape panel needs 90 or 270; a device may override this for its mounting.</p>
     </section>
   </div>
   <div class="col">

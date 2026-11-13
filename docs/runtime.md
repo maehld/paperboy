@@ -54,13 +54,13 @@ The editor marks rules that an earlier rule always overrides. It names pages tha
 
 The devices tab lists the files under `devices/` with display type, MAC, address and plan, and creates new ones in a dialog. Hardware that registered with an unknown MAC appears below them as unclaimed, with its hardware, firmware, address and first and last contact. *Claim* asks first, then opens a new device file with the MAC prefilled; *Forget* deletes its state file (ADR 0080).
 
-`/ui/editor/device?id=<id>` edits one (ADR 0070): display type, MAC address, plan chosen from the plan files, `refresh`, the device menu (`actions`, `menu_show_duration`, `touch`), the power source, the firmware hold and the battery thresholds. It links the plan preview of the device and the current file text. The editor writes only the device file, so a plan assignment never touches `paperboy.yaml`. A new device file needs a display type and a MAC address.
+`/ui/editor/device?id=<id>` edits one (ADR 0070): display type, MAC address, plan chosen from the plan files, `refresh`, the device menu (`actions`, `menu_show_duration`, `touch`), the power source, the rotation (a device override, ADR 0102), the firmware hold and the battery thresholds. It links the plan preview of the device and the current file text. The editor writes only the device file, so a plan assignment never touches `paperboy.yaml`. A new device file needs a display type and a MAC address.
 
 *Delete* removes the file; the device stops syncing until a file with its MAC exists again (ADR 0073), and its state waits under the MAC. *Rename* moves only the file; the state stays with the MAC, so the page cursor, battery reading and menu survive (ADR 0079, 0080).
 
 #### Display type editor
 
-The displays tab lists the files under `displays/` with kind, size, `ppi` or `charset`, gray levels and power, and creates new types in a dialog. `/ui/editor/display?name=<name>` edits one (ADR 0071) with the fields of its kind, the physical size computed from `ppi`, the page variants and devices that reference it, and the current file text.
+The displays tab lists the files under `displays/` with kind, size, `ppi` or `charset`, gray levels and power, and creates new types in a dialog. `/ui/editor/display?name=<name>` edits one (ADR 0071) with the fields of its kind, the rotation of an image display (ADR 0102), the physical size computed from `ppi`, the page variants and devices that reference it, and the current file text.
 
 The `ppi` field has a helper. It converts the diagonal of the panel in inches or one side of its active area in millimetres into `ppi` from the pixel size in the form. It says so when the two disagree, because an inch diagonal is usually rounded. *Rename* moves only the file and names the page variants and devices that keep the old name (ADR 0079). *Delete* removes the file after naming the page variants and devices that reference it (ADR 0073).
 
@@ -74,7 +74,7 @@ The `ppi` field has a helper. It converts the diagonal of the panel in inches or
 - `battery`: `volts` is required, `percent`, `mah` and `ma` are optional. `ma` is the current from the fuel gauge, positive while charging. `charging` is the charger's own state (the Sticky reads the BQ25616's `STAT` pin) and cross-checks the gauge.
 - `rssi`, `power` and `log` entries.
 
-The answer names the image (`image.path` relative to the Paperboy URL, `image.hash`) and the deep-sleep time `refresh_s`. It also names `listen_s` (0 after a timer wake, 20 s after input) and `sleep` (`false` for mains devices, ADR 0051). It names the server `time` in Unix seconds and `firmware` (an update offer, otherwise `null`). `wake` (`{reason, after_s}`) is a one-shot wake for the menu deadline or an action result; otherwise it is absent. An unknown key gets `401`, and the device registers again. An invalid body gets `400`.
+The answer names the image (`image.path` relative to the Paperboy URL, `image.hash`) and the deep-sleep time `refresh_s`. It also names `listen_s` (0 after a timer wake, 20 s after input) and `sleep` (`false` for mains devices, ADR 0051). It names the server `time` in Unix seconds and `firmware` (an update offer, otherwise `null`). `rotation` is the effective page rotation in degrees clockwise (0, 90, 180 or 270), omitted when it is 0; the firmware applies it before painting and to touches (ADR 0102). `wake` (`{reason, after_s}`) is a one-shot wake for the menu deadline or an action result; otherwise it is absent. An unknown key gets `401`, and the device registers again. An invalid body gets `400`.
 
 A device whose file has a `Problem` answers with `503` and the reason, never with `401` (ADR 0079).
 

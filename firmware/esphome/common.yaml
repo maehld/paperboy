@@ -346,26 +346,8 @@ script:
                 then:
                   - script.execute: sync_and_show
 
-  # Touches carry no meaning yet; Paperboy logs them (ADR 0042).
-  - id: touched
-    mode: queued
-    parameters:
-      x: int
-      y: int
-    then:
-      - if:
-          condition:
-            lambda: "return !id(setup_mode) && !id(api_key).state.empty();"
-          then:
-            - lambda: |-
-                pb_touch(x, y);
-                if (id(wake_reason) != "button") id(wake_reason) = "touch";
-            - script.execute: awake_limit
-            - if:
-                condition:
-                  lambda: "return !id(busy);"
-                then:
-                  - script.execute: sync_and_show
+  # Touches are handled by the hardware file that has a digitiser (sticky.yaml):
+  # it knows the compiled orientation the touch transform was measured in.
 
   # ---------------------------------------------------------------- setup
 
@@ -526,6 +508,9 @@ script:
                     id(listen_s) = root["listen_s"] | 0;
                     // Older servers send no sleep field: keep deep sleeping.
                     id(stay_awake) = !(root["sleep"] | true);
+                    // The page rotation for this mounting (ADR 0102). Older
+                    // servers omit it, which keeps the compiled orientation.
+                    pb_set_rotation(root["rotation"] | 0);
                     id(fw_offered) = root["firmware"]["version"] | "";
                     id(fw_path) = root["firmware"]["path"] | "";
                     id(fw_md5) = root["firmware"]["md5"] | "";

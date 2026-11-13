@@ -35,6 +35,7 @@ refresh: 10m
 power: mains
 actions: deny
 menu_show_duration: 45s
+rotation: 180
 battery: { warn_volts: 3.5, critical_volts: 3.3 }
 firmware: hold
 `
@@ -46,8 +47,9 @@ firmware: hold
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "refresh: 10m\n") || !strings.Contains(string(data), "menu_show_duration: 45s\n") {
-		t.Fatalf("durations:\n%s", data)
+	if !strings.Contains(string(data), "refresh: 10m\n") || !strings.Contains(string(data), "menu_show_duration: 45s\n") ||
+		!strings.Contains(string(data), "rotation: 180\n") {
+		t.Fatalf("durations and rotation:\n%s", data)
 	}
 	again, err := parseDeviceFile(data)
 	if err != nil {
@@ -102,6 +104,28 @@ func TestDeviceFileValidation(t *testing.T) {
 	dev = unknown.device("kueche", nil)
 	if err := cfg.validateDevice(&dev); err == nil || !strings.Contains(err.Error(), "unknown display_type") {
 		t.Fatalf("unknown display type: %v", err)
+	}
+
+	// A rotation is an override of the display type and accepts only quarter
+	// turns; a text display has no pixels to turn (ADR 0102).
+	rotated, _ := parseDeviceFile([]byte("display_type: e1001\nmac: \"aa:bb:cc:dd:ee:01\"\nrotation: 90\n"))
+	dev = rotated.device("kueche", nil)
+	if err := cfg.validateDevice(&dev); err != nil {
+		t.Fatalf("rotation 90: %v", err)
+	}
+	if dev.Rotation == nil || *dev.Rotation != 90 {
+		t.Fatalf("rotation lost: %+v", dev)
+	}
+	badRotation, _ := parseDeviceFile([]byte("display_type: e1001\nmac: \"aa:bb:cc:dd:ee:01\"\nrotation: 45\n"))
+	dev = badRotation.device("kueche", nil)
+	if err := cfg.validateDevice(&dev); err == nil || !strings.Contains(err.Error(), "rotation must be 0, 90, 180 or 270") {
+		t.Fatalf("rotation 45: %v", err)
+	}
+	cfg.Profiles["lcd"] = Profile{Kind: kindText, Width: 20, Height: 4, Charset: "utf8", Power: powerAuto}
+	textRotation, _ := parseDeviceFile([]byte("display_type: lcd\nmac: \"aa:bb:cc:dd:ee:01\"\nrotation: 90\n"))
+	dev = textRotation.device("kueche", nil)
+	if err := cfg.validateDevice(&dev); err == nil || !strings.Contains(err.Error(), "does not apply to text displays") {
+		t.Fatalf("rotation on text: %v", err)
 	}
 }
 

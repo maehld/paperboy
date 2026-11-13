@@ -91,6 +91,24 @@ type Profile struct {
 	PPI        float64  `json:"ppi,omitempty"`         // image displays: pixels per inch (ADR 0050)
 	MinRefresh Duration `json:"min_refresh,omitempty"` // configured floor; 0 = default of the power source (ADR 0051)
 	Power      string   `json:"power"`                 // auto, battery or mains (ADR 0051)
+	// Rotation turns composed pages clockwise before the firmware paints them
+	// (ADR 0102): 0, 90, 180 or 270 degrees relative to the orientation the
+	// firmware was built for. A portrait page on a landscape panel needs 90 or
+	// 270; a device may override it for its mounting.
+	Rotation int `json:"rotation,omitempty"`
+}
+
+// validRotation reports whether n is one of the quarter turns a device and a
+// display type may name (ADR 0102).
+func validRotation(n int) bool { return n == 0 || n == 90 || n == 180 || n == 270 }
+
+// rotation returns the effective rotation of d (ADR 0102): the device's
+// override, else the display type's.
+func (c *Config) rotation(d *Device) int {
+	if d.Rotation != nil {
+		return *d.Rotation
+	}
+	return c.Profiles[d.Profile].Rotation
 }
 
 // Power sources (ADR 0051). auto follows what the hardware reports and falls
@@ -140,6 +158,9 @@ type Device struct {
 	// whose digitiser the operator wants to use (ADR 0082). Empty = use what
 	// the firmware reported, which defaults to false.
 	Touch *bool
+	// Rotation overrides the display type's rotation for this mounting
+	// (ADR 0102). nil = the display type's.
+	Rotation *int
 	// Problem names why the device cannot sync; the loader keeps such a device
 	// so that renaming a display type leaves its file visible and repairable
 	// (ADR 0079). Empty = usable.
@@ -646,11 +667,13 @@ func (c *Config) validate() error {
 		if err := c.normalizeDevice(d); err != nil {
 			return err
 		}
-		if _, ok := c.Profiles[d.Profile]; !ok {
+		if p, ok := c.Profiles[d.Profile]; !ok {
 			// A device whose display type is gone stays loaded: renaming the
 			// type must not take the whole server down, and the operator can
 			// repair the file in the editor (ADR 0079).
 			d.Problem = fmt.Sprintf("display type %q is not configured", d.Profile)
+		} else if err := checkDeviceRotation(d, p); err != nil {
+			return err
 		}
 		if seenID[d.key()] {
 			return fmt.Errorf("duplicate device %s", d.key())
@@ -715,6 +738,12 @@ func validateProfile(name string, p *Profile) error {
 	} else if p.PPI < 20 || p.PPI > 1000 {
 		return fmt.Errorf("display type %s: ppi is required for image displays: pixels per inch between 20 and 1000, e.g. 125 (ADR 0050)", name)
 	}
+	if !validRotation(p.Rotation) {
+		return fmt.Errorf("display type %s: rotation must be 0, 90, 180 or 270", name)
+	}
+	if p.Rotation != 0 && p.text() {
+		return fmt.Errorf("display type %s: rotation does not apply to text displays", name)
+	}
 	if p.Width < 1 || p.Height < 1 || p.Width > 4096 || p.Height > 4096 {
 		return fmt.Errorf("display type %s: invalid size", name)
 	}
@@ -739,8 +768,18 @@ func (c *Config) validateDevice(d *Device) error {
 	if err := c.normalizeDevice(d); err != nil {
 		return err
 	}
-	if _, ok := c.Profiles[d.Profile]; !ok {
+	p, ok := c.Profiles[d.Profile]
+	if !ok {
 		return fmt.Errorf("device %s: unknown display_type %q", d.ID, d.Profile)
+	}
+	return checkDeviceRotation(d, p)
+}
+
+// checkDeviceRotation rejects a rotation the display type cannot use: text
+// displays have no pixels to turn (ADR 0102).
+func checkDeviceRotation(d *Device, p Profile) error {
+	if d.Rotation != nil && *d.Rotation != 0 && p.text() {
+		return fmt.Errorf("device %s: rotation does not apply to text displays", d.ID)
 	}
 	return nil
 }
@@ -784,6 +823,9 @@ func (c *Config) normalizeDevice(d *Device) error {
 	}
 	if d.Power != "" && !validPower(d.Power) {
 		return fmt.Errorf("device %s: power %q: expected auto, battery or mains", d.ID, d.Power)
+	}
+	if d.Rotation != nil && !validRotation(*d.Rotation) {
+		return fmt.Errorf("device %s: rotation must be 0, 90, 180 or 270", d.ID)
 	}
 	if d.Plan != "" && !validName(d.Plan) {
 		return fmt.Errorf("device %s: plan %q: only a-z, 0-9 and -", d.ID, d.Plan)

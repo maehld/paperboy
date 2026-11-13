@@ -139,16 +139,62 @@ inline void pb_button(const std::string &role, uint32_t hold_ms) {
   }
 }
 
+// The quarter turn the device asks for on top of the orientation the firmware
+// was built for (ADR 0102). It is re-applied on every paint, because the
+// display component starts from the compiled rotation after each boot.
+static int pb_rotation = 0;
+
+// pb_set_rotation takes a rotation from the sync answer; anything that is not
+// a quarter turn falls back to 0 instead of painting into an unknown space.
+inline void pb_set_rotation(int deg) {
+  deg = ((deg % 360) + 360) % 360;
+  switch (deg) {
+    case 0:
+    case 90:
+    case 180:
+    case 270:
+      pb_rotation = deg;
+      break;
+    default:
+      pb_rotation = 0;
+  }
+}
+
+// pb_rotate_display applies the relative rotation to a display whose compiled
+// orientation is built_deg. The generic DisplayBuffer rotation maps both the
+// drawing coordinates and get_width()/get_height(), so the QOI, the splash and
+// the setup screens follow it.
+template<typename D> inline void pb_rotate_display(D &it, int built_deg) {
+  switch ((built_deg + pb_rotation) % 360) {
+    case 90:
+      it.set_rotation(esphome::display::DISPLAY_ROTATION_90_DEGREES);
+      break;
+    case 180:
+      it.set_rotation(esphome::display::DISPLAY_ROTATION_180_DEGREES);
+      break;
+    case 270:
+      it.set_rotation(esphome::display::DISPLAY_ROTATION_270_DEGREES);
+      break;
+    default:
+      it.set_rotation(esphome::display::DISPLAY_ROTATION_0_DEGREES);
+  }
+}
+
 // One contact is one event. The panel reports a position continuously while a
 // finger rests on it, so a tap is the first report of a contact and every
 // further report is dropped until the finger lifts (on_release). The old
 // 800 ms gap also swallowed a deliberate second tap (issue #136). A contact
 // that reports nothing for ten seconds counts as lifted, so a missed release
 // cannot mute the panel.
+//
+// The touch transform was measured in the compiled orientation; the event
+// carries page coordinates, so the relative rotation turns it the same way the
+// display turns the pixels (ADR 0102). width/height are the dimensions of the
+// compiled space (the panel's native size for the shipped hardware).
 static bool pb_touch_down = false;
 static uint32_t pb_touch_last_ms = 0;
 
-inline void pb_touch(int x, int y) {
+inline void pb_touch(int x, int y, int width, int height) {
   uint32_t now_ms = esphome::millis();
   if (pb_touch_down && now_ms - pb_touch_last_ms < 10000) {
     pb_touch_last_ms = now_ms;
@@ -156,9 +202,25 @@ inline void pb_touch(int x, int y) {
   }
   pb_touch_down = true;
   pb_touch_last_ms = now_ms;
+  int page_x = x;
+  int page_y = y;
+  switch (pb_rotation) {
+    case 90:
+      page_x = y;
+      page_y = width - 1 - x;
+      break;
+    case 180:
+      page_x = width - 1 - x;
+      page_y = height - 1 - y;
+      break;
+    case 270:
+      page_x = height - 1 - y;
+      page_y = x;
+      break;
+  }
   pb_event_seq++;
   if (!pb_queue_event(esphome::str_sprintf("{\"id\":%lu,\"type\":\"touch\",\"x\":%d,\"y\":%d}",
-                                           (unsigned long) pb_event_seq, x, y))) {
+                                           (unsigned long) pb_event_seq, page_x, page_y))) {
     pb_note_for_next_wake("event queue full");
   }
 }
@@ -520,6 +582,24 @@ inline int pb_qoi_level(uint8_t r, uint8_t g, uint8_t b) {
 // keeps every page below that buffer (ADR 0088), so this is the last resort.
 inline bool pb_qoi_valid(const std::string &data) {
   return pb_qoi_each(data, [](int, int, uint8_t, uint8_t, uint8_t) {});
+}
+
+// pb_qoi_fits reports whether the stream names exactly the size the rotated
+// display expects. draw_pixel_at() clips silently, so a page of the wrong
+// orientation would leave the rest of the previous picture on the panel; the
+// caller notes it instead of painting half a page (issue #117).
+inline bool pb_qoi_fits(const std::string &data, int width, int height) {
+  const uint8_t *p = reinterpret_cast<const uint8_t *>(data.data());
+  if (data.size() < 14 || std::memcmp(p, "qoif", 4) != 0) {
+    return false;
+  }
+  const int w = static_cast<int>((static_cast<uint32_t>(p[4]) << 24) |
+                                 (static_cast<uint32_t>(p[5]) << 16) |
+                                 (static_cast<uint32_t>(p[6]) << 8) | p[7]);
+  const int h = static_cast<int>((static_cast<uint32_t>(p[8]) << 24) |
+                                 (static_cast<uint32_t>(p[9]) << 16) |
+                                 (static_cast<uint32_t>(p[10]) << 8) | p[11]);
+  return w == width && h == height;
 }
 
 // Four-level panel, used by both hardware types that draw pages: the Sticky's
