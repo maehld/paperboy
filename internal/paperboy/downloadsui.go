@@ -39,6 +39,8 @@ type downloadsView struct {
 	LastCheck       string // time of the last check, "never" before the first one
 	LastOK          string // time of the last successful check, empty when unknown
 	Error           string // last error, empty when the check succeeded
+	Updates         string // what the check says about Paperboy itself (ADR 0101)
+	UpdateURL       string // release page of that version, empty when unknown
 	Plugins         []downloadPluginRow
 	Firmware        []downloadFirmwareRow
 	Issues          []string // ignored files in the firmware directory
@@ -86,11 +88,12 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 		v.Interval = downloadIntervalText(cfg.Download.Interval)
 		v.PluginChannel = cfg.Download.PluginChannel
 		v.FirmwareChannel = cfg.Download.FirmwareChannel
-		running, lastCheck, lastOK, lastErr, _, _ := s.download.view()
+		running, lastCheck, lastOK, lastErr, _, _, update := s.download.view()
 		v.Running = running
 		v.LastCheck = downloadTime(lastCheck, loc)
 		v.LastOK = downloadTime(lastOK, loc)
 		v.Error = lastErr
+		v.Updates, v.UpdateURL = paperboyUpdateText(update)
 	}
 	specs := cfg.pluginSpecs()
 	for _, p := range cfg.Plugins {
@@ -152,6 +155,22 @@ func outsideChannel(channel, running string) bool {
 	}
 	parsed, ok := semver.Parse(strings.TrimPrefix(running, "v"))
 	return ok && parsed.Prerelease()
+}
+
+// paperboyUpdateText is the line about Paperboy's own release: the newer
+// version, which the template links, or why there is none (ADR 0101).
+func paperboyUpdateText(update paperboyUpdate) (text, url string) {
+	switch {
+	case !update.Checked:
+		return "not checked yet", ""
+	case !update.Compared:
+		return "dev build, no comparison", ""
+	case !update.Found:
+		return "no release in the channel", ""
+	case update.Version != "":
+		return update.Version + " is available", update.URL
+	}
+	return "up to date", ""
 }
 
 // inventoryText prints the size of one inventory directory for the page.

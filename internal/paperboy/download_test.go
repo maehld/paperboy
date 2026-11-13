@@ -402,7 +402,7 @@ func TestDownloadCheckEndpoint(t *testing.T) {
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if running, _, _, _, _, _ := s.download.view(); !running {
+		if running, _, _, _, _, _, _ := s.download.view(); !running {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -431,6 +431,132 @@ func TestDownloadsPageWithoutDownloadSection(t *testing.T) {
 	}
 	if !strings.Contains(htmlRequest(t, s, "/ui").Body.String(), `href="/ui/downloads"`) {
 		t.Fatal("the dashboard does not link the downloads page")
+	}
+}
+
+// paperboyConfig is an instance configuration with only a download section: a
+// check has no plugin or firmware work to do, so only the hint about Paperboy
+// itself runs (ADR 0101).
+func paperboyConfig(t *testing.T, source string) string {
+	t.Helper()
+	return fmt.Sprintf(timezoneConfig, "UTC") + `
+download:
+  source: ` + source + `
+plugins: {}
+`
+}
+
+// setBuildVersion gives the test binary the version a release build carries
+// (ADR 0056), which the hint compares against the releases (ADR 0101).
+func setBuildVersion(t *testing.T, version string) {
+	t.Helper()
+	old := build
+	build = buildVersion{Version: version, Go: old.Go}
+	t.Cleanup(func() { build = old })
+}
+
+// TestPaperboyReleaseHint names a newer Paperboy release and installs nothing:
+// the channel follows the running version, so a final build is never pointed at
+// an rc (ADR 0101).
+func TestPaperboyReleaseHint(t *testing.T) {
+	feed, srv := newReleaseFeed(t, "v2.5.0-rc.1", "v2.4.0", "plugins-v9.9.9")
+	feed.pre["v2.5.0-rc.1"] = true
+	source := srv.URL + "/repos/me/paperboy/releases"
+
+	for _, tc := range []struct {
+		name    string
+		running string
+		want    string // newest version the running one hears about
+		page    string // line on the releases page
+	}{
+		{"a final build follows the finals", "v2.3.0", "2.4.0", "2.4.0 is available"},
+		{"a final build that is current", "v2.4.0", "", "up to date"},
+		{"an rc follows the prereleases", "v2.5.0-rc.0", "2.5.0-rc.1", "2.5.0-rc.1 is available"},
+		{"the newest rc is current", "v2.5.0-rc.1", "", "up to date"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setBuildVersion(t, tc.running)
+			s := testDownloadServer(t, paperboyConfig(t, source))
+			// The feed carries no firmware bundle, so the firmware half fails;
+			// the hint still runs and stays out of the check's error (ADR 0101).
+			_ = s.downloadOnce(context.Background(), s.config())
+
+			_, _, _, _, _, _, update := s.download.view()
+			if !update.Compared || !update.Found || update.Version != tc.want {
+				t.Fatalf("hint after %s: %+v, want version %q", tc.running, update, tc.want)
+			}
+			body := htmlRequest(t, s, "/ui/downloads").Body.String()
+			if !strings.Contains(body, tc.page) {
+				t.Fatalf("downloads page lacks %q: %s", tc.page, body)
+			}
+			dash := htmlRequest(t, s, "/ui").Body.String()
+			if tc.want == "" {
+				if strings.Contains(dash, "is available") {
+					t.Fatalf("dashboard points at a release although %s is current: %s", tc.running, dash)
+				}
+				return
+			}
+			// The version itself is the link; this feed has no browsable page,
+			// so the text stays plain (ADR 0101).
+			if !strings.Contains(dash, ">"+tc.want+" is available</p>") {
+				t.Fatalf("dashboard lacks the hint %q: %s", tc.want, dash)
+			}
+		})
+	}
+}
+
+// TestPaperboyReleaseHintForDevBuild stays quiet: a local build has no release
+// version to compare with (ADR 0056, 0101).
+func TestPaperboyReleaseHintForDevBuild(t *testing.T) {
+	_, srv := newReleaseFeed(t, "v9.9.9")
+	s := testDownloadServer(t, paperboyConfig(t, srv.URL+"/repos/me/paperboy/releases"))
+	setBuildVersion(t, "v0.0.0-20261030223002-0bb9c234b652")
+
+	_ = s.downloadOnce(context.Background(), s.config())
+	_, _, _, _, _, _, update := s.download.view()
+	if !update.Checked || update.Compared || update.Found || update.Version != "" {
+		t.Fatalf("a dev build must not compare: %+v", update)
+	}
+	if body := htmlRequest(t, s, "/ui/downloads").Body.String(); !strings.Contains(body, "dev build, no comparison") {
+		t.Fatalf("downloads page lacks the dev build note: %s", body)
+	}
+	if dash := htmlRequest(t, s, "/ui").Body.String(); strings.Contains(dash, "is available") {
+		t.Fatalf("the dashboard names a release for a dev build: %s", dash)
+	}
+}
+
+// TestPaperboyReleaseHintWithoutPaperboyTrain stays silent instead of failing
+// the check: a mirror may only carry plugin and firmware releases (ADR 0101).
+func TestPaperboyReleaseHintWithoutPaperboyTrain(t *testing.T) {
+	_, srv := newReleaseFeed(t, "plugins-v9.9.9", "firmware-v1.0.0")
+	s := testDownloadServer(t, paperboyConfig(t, srv.URL+"/repos/me/paperboy/releases"))
+	setBuildVersion(t, "v2.0.0")
+
+	_ = s.downloadOnce(context.Background(), s.config())
+	_, _, _, _, _, _, update := s.download.view()
+	if !update.Compared || update.Found || update.Version != "" {
+		t.Fatalf("a source without Paperboy releases: %+v", update)
+	}
+	if body := htmlRequest(t, s, "/ui/downloads").Body.String(); !strings.Contains(body, "no release in the channel") {
+		t.Fatalf("downloads page lacks the note about the missing release: %s", body)
+	}
+}
+
+// TestReleasePage links the public source and refuses to build a page for an API
+// endpoint or another host (ADR 0101).
+func TestReleasePage(t *testing.T) {
+	const want = "https://github.com/maehld/paperboy/releases/tag/v2.4.0"
+	for _, tc := range []struct{ source, want string }{
+		{"", want},
+		{"https://github.com/maehld/paperboy", want},
+		{"https://github.com/maehld/paperboy/", want},
+		{"https://github.com/maehld/paperboy/releases", want},
+		{"https://example.com/repos/me/paperboy/releases", ""},
+		{"https://api.github.com/repos/me/paperboy/releases", ""},
+	} {
+		if got := releasePage(tc.source, "v2.4.0"); got != tc.want {
+			t.Fatalf("release page of %q: %q, want %q", tc.source, got, tc.want)
+		}
 	}
 }
 

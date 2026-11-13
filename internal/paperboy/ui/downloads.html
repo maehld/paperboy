@@ -48,6 +48,7 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
     <dt>Source</dt><dd>{{.Source}}</dd>
     <dt>Interval</dt><dd>{{.Interval}}</dd>
     <dt>Channels</dt><dd>Plugins {{.PluginChannel}} · Firmware {{.FirmwareChannel}}</dd>
+    <dt>Paperboy</dt><dd>{{if .UpdateURL}}<a href="{{.UpdateURL}}">{{.Updates}}</a>{{else}}{{.Updates}}{{end}}</dd>
     <dt>Last check</dt><dd>{{.LastCheck}}{{if .Running}} <span class="muted">· checking now</span>{{else if .LastOK}} <span class="muted">· last success {{.LastOK}}</span>{{end}}</dd>
   </dl>
   <div class="actions">

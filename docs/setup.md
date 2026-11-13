@@ -18,7 +18,7 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
   state/             written by Paperboy only
     devices/         state of every MAC: <MAC>.json with API key, page cursor, battery and the address of the last contact (ADR 0080, 0083)
     plugins/         plugin state <id>/state.json and the declared blobs <id>/blobs/<name> (ADR 0081)
-    download/        cache per train: plugins/ and firmware/ with cache.json and one archive each (ADR 0060, 0090)
+    download/        cache per train: plugins/ and firmware/ with cache.json and one archive each, paperboy/ with cache.json only (ADR 0060, 0090, 0101)
     editor/          backups of pages, plans, devices and display types written or deleted by the editor (ADR 0066, 0070, 0071, 0073)
 ```
 
@@ -50,7 +50,7 @@ firmware:
   update: auto         # auto or off (default); offers the images in firmware/ (ADR 0043)
   min_battery_volts: 3.6
   version: v1.0.0      # optional: pin the offered image version (ADR 0060)
-download:              # optional: fetch plugins and firmware from the releases (ADR 0060)
+download:              # optional: fetch plugins and firmware from the releases and name a newer Paperboy (ADR 0060, 0101)
   source: https://github.com/maehld/paperboy
   token: ${GITHUB_TOKEN}
   interval: 24h        # optional: between checks, at least 1h (ADR 0062)
