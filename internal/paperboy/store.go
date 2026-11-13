@@ -31,10 +31,16 @@ type deviceState struct {
 	Firmware        string    `json:"firmware,omitempty"`
 	Hardware        string    `json:"hardware,omitempty"` // firmware image type, e.g. "sticky"
 	WakeReason      string    `json:"wake_reason,omitempty"`
-	BatteryLevel    string    `json:"battery_level,omitempty"`  // "", "warn" or "critical"
-	Rule            string    `json:"rule,omitempty"`           // name of the active plan rule
-	ReportedPower   string    `json:"reported_power,omitempty"` // power source the hardware last reported (ADR 0051)
-	TouchReported   bool      `json:"reported_touch,omitempty"` // the firmware reports a digitiser (ADR 0080)
+	BatteryLevel    string    `json:"battery_level,omitempty"` // "", "warn" or "critical"
+	Rule            string    `json:"rule,omitempty"`          // name of the active plan rule
+
+	// Charging episodes from the fuel gauge current (issue #205): the one that
+	// runs right now and the last one that finished.
+	Charge     *chargeEpisode `json:"charge,omitempty"`
+	LastCharge *chargeEpisode `json:"last_charge,omitempty"`
+
+	ReportedPower string `json:"reported_power,omitempty"` // power source the hardware last reported (ADR 0051)
+	TouchReported bool   `json:"reported_touch,omitempty"` // the firmware reports a digitiser (ADR 0080)
 
 	// What the device was last pointed at; set after rendering, so a failed
 	// render shows up as a notice instead of a page that was never drawn.

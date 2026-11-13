@@ -71,6 +71,7 @@ type dashboardDevice struct {
 	Waiting    string // placeholder text when there is neither an image nor text
 	Power      string // charge state with the charge or voltage, e.g. "Charging · 50 %" (ADR 0051)
 	Battery    string // raw fuel gauge reading for the details, e.g. "3.83 V · 50 % · +568 mA"
+	LastCharge string // last finished charging episode, e.g. "2 h ago · 41 → 50 %" (issue #205)
 	Width      int
 	Height     int
 	Text       []string // text displays: the last served lines
@@ -129,6 +130,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			Waiting:    waiting,
 			Power:      powerText(d.Power, d.deviceState),
 			Battery:    batteryText(d.deviceState),
+			LastCharge: chargeText(d.deviceState, now),
 			Width:      profiles[d.Profile].Width,
 			Height:     profiles[d.Profile].Height,
 			Text:       d.LastText,
@@ -212,10 +214,6 @@ func imageText(d deviceInfo, text bool) (image, waiting string) {
 	}
 	return "", "Nothing served yet"
 }
-
-// idleMA is the current below which the fuel gauge counts as idle: it reports
-// in 10 mA steps, so a few milliamps are noise, not charging.
-const idleMA = 20
 
 // powerState names what the device does with its battery (ADR 0051). The fuel
 // gauge current is the only reading that tells charging from connected, and it
@@ -367,6 +365,26 @@ func batteryText(st deviceState) string {
 	}
 	if st.BatteryMA != nil {
 		text += " · " + currentText(*st.BatteryMA)
+	}
+	return text
+}
+
+// chargeText is the details line for the last finished charging episode: when
+// it ended and what it did (issue #205). Only what the hardware reported is
+// shown, so a gauge without a percentage shows the voltage instead.
+func chargeText(st deviceState, now time.Time) string {
+	episode := st.LastCharge
+	if episode == nil || episode.End.IsZero() {
+		return ""
+	}
+	text := agoText(episode.End, now)
+	if from, to := episode.From, episode.To; from != nil && to != nil {
+		switch {
+		case from.Percent != nil && to.Percent != nil:
+			text += fmt.Sprintf(" · %.0f → %.0f %%", *from.Percent, *to.Percent)
+		case from.Volts != "" && to.Volts != "":
+			text += " · " + from.Volts + " → " + to.Volts + " V"
+		}
 	}
 	return text
 }
