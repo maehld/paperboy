@@ -71,6 +71,10 @@ static float pb_bat_percent = NAN;
 static float pb_bat_mah = NAN;
 static float pb_bat_ma = NAN;
 
+// Charger state from the BQ25616 STAT pin: 1 while charging, 0 idle or full,
+// -1 when the hardware has no such pin. Set by the device file.
+static int pb_charging = -1;
+
 // Power source for the next sync (ADR 0051): "battery", "mains" or empty when
 // the hardware cannot tell. Set by the device file.
 static std::string pb_power;
@@ -191,6 +195,8 @@ inline std::string pb_sync_body(const std::string &firmware, const std::string &
       b += esphome::str_sprintf(",\"mah\":%.1f", pb_bat_mah);
     if (std::isfinite(pb_bat_ma))
       b += esphome::str_sprintf(",\"ma\":%.1f", pb_bat_ma);
+    if (pb_charging >= 0)
+      b += std::string(",\"charging\":") + (pb_charging ? "true" : "false");
     b += "}";
   }
   b += esphome::str_sprintf(",\"rssi\":%d", rssi);

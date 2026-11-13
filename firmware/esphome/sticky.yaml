@@ -5,7 +5,7 @@
 
 substitutions:
   hardware: sticky
-  fw_version: "2.3.1"
+  fw_version: "2.3.3"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
 
@@ -17,11 +17,14 @@ esphome:
     - priority: 800
       then:
         - lambda: |-
-            // The power latch is held through deep sleep (see on_shutdown).
+            // The power latch and the charge enable are held through deep
+            // sleep (see on_shutdown).
+            gpio_hold_dis(GPIO_NUM_39);
             gpio_hold_dis(GPIO_NUM_45);
             gpio_hold_dis(GPIO_NUM_46);
     - priority: 600
       then:
+        - output.turn_on: charge_enable
         - output.turn_on: pwr_hold
         - output.turn_on: pwr_lock
         - lambda: |-
@@ -60,6 +63,7 @@ esphome:
       then:
         - lambda: |-
             gpio_set_level(GPIO_NUM_42, 0);  // touch panel power off
+            gpio_hold_en(GPIO_NUM_39);
             gpio_hold_en(GPIO_NUM_45);
             gpio_hold_en(GPIO_NUM_46);
             gpio_deep_sleep_hold_en();
@@ -80,6 +84,13 @@ logger:
   hardware_uart: UART0
 
 output:
+  # The BQ25616 charge enable (EN_BAT_CHGn) is active LOW (Seeed's Arduino and
+  # ESPHome examples drive it low), so the output is inverted: turning it on
+  # enables charging. It stays on through deep sleep like the power latch.
+  - platform: gpio
+    pin: GPIO39
+    inverted: true
+    id: charge_enable
   - platform: gpio
     pin: GPIO45
     id: pwr_hold
@@ -111,6 +122,14 @@ i2c:
     frequency: 100kHz
 
 binary_sensor:
+  # The BQ25616's STAT is the CHARGE_STATE pin: open drain, low while
+  # charging. The LED shows the same state; the pull-up lets the firmware
+  # read it. Reported as battery.charging, so Paperboy can cross-check the
+  # fuel gauge current.
+  - platform: gpio
+    id: charger_state
+    internal: true
+    pin: { number: GPIO40, mode: INPUT_PULLUP }
   # Presses while awake are queued and sent with the next sync.
   - platform: gpio
     id: button_ok
@@ -210,6 +229,9 @@ script:
           pb_bat_percent = rd(0x2C, v) && v <= 100 ? (float) v : NAN;
           pb_bat_ma = rd(0x0C, v) ? (int16_t) v / 10.0f : NAN;
           pb_bat_mah = rd(0x10, v) ? v / 10.0f : NAN;
+          // STAT is low while the charger pushes current. Read the pin here
+          // rather than trusting only the gauge, which cannot see a full cell.
+          pb_charging = id(charger_state).state ? 0 : 1;
       # USB 5 V reaches GPIO9 through a 5.1k/5.1k divider (PWR_IN_VOLT in the
       # schematic): about 2.5 V with USB, 0 V without (ADR 0051).
       - component.update: usb_volts

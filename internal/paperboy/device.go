@@ -58,10 +58,11 @@ type syncEvent struct {
 }
 
 type syncBattery struct {
-	Volts   float64  `json:"volts"`
-	Percent *float64 `json:"percent"`
-	MAH     *float64 `json:"mah"`
-	MA      *float64 `json:"ma"`
+	Volts    float64  `json:"volts"`
+	Percent  *float64 `json:"percent"`
+	MAH      *float64 `json:"mah"`
+	MA       *float64 `json:"ma"`
+	Charging *bool    `json:"charging"` // charger's own state, e.g. the Sticky's STAT pin
 }
 
 type syncRequest struct {
@@ -330,6 +331,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	if b := req.Battery; b != nil {
 		st.BatteryVoltage = strconv.FormatFloat(b.Volts, 'f', 2, 64)
 		st.BatteryPercent, st.BatteryMAH, st.BatteryMA = b.Percent, b.MAH, b.MA
+		st.BatteryCharging = b.Charging
 	}
 	prevLevel := st.BatteryLevel
 	st.BatteryLevel = nextBatteryLevel(cfg.battery(d), prevLevel, st.BatteryVoltage)
@@ -600,6 +602,15 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	// or discharging (negative); only devices with a gauge send it.
 	if logged.BatteryMA != nil {
 		attrs = append(attrs, "battery_ma", fmt.Sprintf("%+.0f", *logged.BatteryMA))
+	}
+	// The charger's own state (the Sticky's STAT pin) next to the gauge
+	// current, so the log shows when the two disagree.
+	if logged.BatteryCharging != nil {
+		charger := "idle"
+		if *logged.BatteryCharging {
+			charger = "charging"
+		}
+		attrs = append(attrs, "charger", charger)
 	}
 	slog.Info("display sync", attrs...)
 	resp := syncResponse{
