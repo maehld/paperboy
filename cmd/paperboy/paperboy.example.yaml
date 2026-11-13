@@ -34,8 +34,12 @@ plugins:
       password: ${DEXCOM_PASSWORD}
       app_id: 00000000-0000-0000-0000-000000000000   # of the app that created the share
       region: eu                        # eu or us; the account may live on another host
-  departures:
-    config: { stop: "City, Stop name", walk_minutes: 4 }   # Westfalenfahrplan by default, see docs/plugins/departures.md
+  departures:                                            # Westfalenfahrplan by default, see docs/plugins/departures.md
+    config:
+      stops:                                             # the widget picks one by name (arg stop)
+        - { name: Marktplatz, stop: "City, Marktplatz" }
+        - { name: Hauptbahnhof, stop: "City, Hauptbahnhof" }
+      walk_minutes: 4
   myskoda:
     config:
       api_key: ${SKODA_API_KEY}     # created in the MyŠkoda app, bound to the vehicle

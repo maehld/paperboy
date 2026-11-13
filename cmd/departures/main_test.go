@@ -87,8 +87,8 @@ func configured(t *testing.T, cfg plugin.Values, dm string) (*departures, *plugi
 	t.Cleanup(srv.Close)
 	p := &departures{client: srv.Client()}
 	cfg["base"] = srv.URL
-	if _, ok := cfg["stop"]; !ok {
-		cfg["stop"] = "Beispielstadt, Marktplatz" // resolved through the stop finder fixture
+	if _, ok := cfg["stops"]; !ok {
+		cfg["stops"] = []any{"Beispielstadt, Marktplatz"} // resolved through the stop finder fixture
 	}
 	req := &plugin.Request{Language: "de", Timezone: "Europe/Berlin", Now: now,
 		Page: plugin.PageInfo{Width: 400, Height: 480, PPI: 125}}
@@ -104,9 +104,85 @@ func configured(t *testing.T, cfg plugin.Values, dm string) (*departures, *plugi
 	return p, req, &finds
 }
 
+// first is the view of the first configured stop.
+func first(t *testing.T, p *departures) *stopView {
+	t.Helper()
+	v, ok := p.views[p.stops[0].spec.Name]
+	if !ok {
+		t.Fatalf("no view for %q", p.stops[0].spec.Name)
+	}
+	return v
+}
+
+func TestMultipleStops(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/XML_STOPFINDER_REQUEST":
+			w.Write(fixture(t, "stopfinder.json"))
+		case "/XML_DM_REQUEST":
+			switch r.URL.Query().Get("name_dm") {
+			case "de:00000:1001":
+				w.Write(fixture(t, "dm.json"))
+			case "de:00000:2002":
+				w.Write(fixture(t, "dm_locality.json"))
+			default:
+				http.Error(w, "boom", http.StatusInternalServerError)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	p := &departures{client: srv.Client()}
+	req := &plugin.Request{Language: "de", Timezone: "Europe/Berlin", Now: now,
+		Page: plugin.PageInfo{Width: 400, Height: 480, PPI: 125}}
+	cfg := plugin.Values{"base": srv.URL, "stops": []any{
+		map[string]any{"name": "Markt", "stop": "Beispielstadt, Marktplatz"},
+		map[string]any{"name": "Hbf", "stop": "de:00000:2002"},
+		map[string]any{"name": "Kaputt", "stop": "de:00000:9999"},
+	}}
+	if err := p.Configure(cfg, req); err != nil {
+		t.Fatal(err)
+	}
+	names := p.Describe().Widgets[0].Args["stop"]
+	if names.Default != "Markt" || len(names.Enum) != 3 || names.Enum[2] != "Kaputt" {
+		t.Errorf("stop arg: %+v", names)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	p.Start(ctx, func(...string) {})
+	if err := p.Prepare(req); err != nil {
+		t.Fatal(err)
+	}
+
+	// Without the arg the widget shows the first stop.
+	line, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 20, Height: 1})
+	if err != nil || len(line) != 1 || !strings.HasPrefix(line[0], "355 Depot") {
+		t.Errorf("default stop: %q %v", line, err)
+	}
+	// The arg picks another stop with its own header.
+	hbf, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 40, Height: 2,
+		Args: map[string]any{"stop": "Hbf", "header": true}})
+	if err != nil || len(hbf) != 2 || hbf[0] != "Hauptbahnhof, Beispielstadt" || !strings.HasPrefix(hbf[1], "1 Depot") {
+		t.Errorf("Hbf: %q %v", hbf, err)
+	}
+	if v := p.views["Hbf"]; v.name != "Beispielstadt, Hauptbahnhof" {
+		t.Errorf("Hbf name: %q", v.name)
+	}
+	// One failing stop does not affect the others, but reports its own error.
+	if _, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 40, Height: 2,
+		Args: map[string]any{"stop": "Kaputt"}}); err == nil || !strings.Contains(err.Error(), "HTTP 500") {
+		t.Errorf("broken stop: %v", err)
+	}
+	if _, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 40, Height: 2,
+		Args: map[string]any{"stop": "Nirgendwo"}}); err == nil {
+		t.Error("unknown stop accepted")
+	}
+}
+
 func TestResolveOnceAndText(t *testing.T) {
 	p, req, finds := configured(t, plugin.Values{}, "dm_disruption.json")
-	if _, err := p.resolve(context.Background()); err != nil || atomic.LoadInt32(finds) != 1 {
+	if _, err := p.resolve(context.Background(), p.stops[0]); err != nil || atomic.LoadInt32(finds) != 1 {
 		t.Fatalf("stop finder asked %d times: %v", atomic.LoadInt32(finds), err)
 	}
 	lines, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 20, Height: 4})
@@ -137,20 +213,21 @@ func TestResolveOnceAndText(t *testing.T) {
 
 func TestFilters(t *testing.T) {
 	p, _, _ := configured(t, plugin.Values{"lines": []any{"R82"}}, "dm_disruption.json")
-	if len(p.cur) != 1 || p.cur[0].Line != "R82" {
-		t.Fatalf("lines: %+v", p.cur)
+	if list := first(t, p).list; len(list) != 1 || list[0].Line != "R82" {
+		t.Fatalf("lines: %+v", list)
 	}
 	p, _, _ = configured(t, plugin.Values{"directions": []any{"dorf"}, "max": 2}, "dm_disruption.json")
-	if len(p.cur) != 2 || !strings.Contains(p.cur[0].Destination, "Musterdorf") {
-		t.Fatalf("directions: %+v", p.cur)
+	if list := first(t, p).list; len(list) != 2 || !strings.Contains(list[0].Destination, "Musterdorf") {
+		t.Fatalf("directions: %+v", list)
 	}
 	// The delayed 355 leaves at 11:41, the R82 at 11:50: 15 minutes of
 	// walking hide the first only.
 	p, req, _ := configured(t, plugin.Values{"walk_minutes": 15}, "dm_disruption.json")
-	if p.cur[0].Line != "R82" {
-		t.Fatalf("walk_minutes: first is %+v", p.cur[0])
+	list := first(t, p).list
+	if list[0].Line != "R82" {
+		t.Fatalf("walk_minutes: first is %+v", list[0])
 	}
-	for _, d := range p.cur {
+	for _, d := range list {
 		if d.when().Before(req.Now.Add(15 * time.Minute)) {
 			t.Errorf("not reachable: %+v", d)
 		}
@@ -159,8 +236,9 @@ func TestFilters(t *testing.T) {
 
 func TestFingerprintIgnoresCountdown(t *testing.T) {
 	p, req, _ := configured(t, plugin.Values{}, "dm.json")
-	a := fingerprint(p.visible(p.data, req.Now))
-	if b := fingerprint(p.visible(p.data, req.Now.Add(2*time.Minute))); a != b {
+	data := p.loaded(p.stops[0])
+	a := fingerprint(p.visible(data, req.Now))
+	if b := fingerprint(p.visible(data, req.Now.Add(2*time.Minute))); a != b {
 		t.Error("the countdown changed the fingerprint")
 	}
 	disrupted, _, _ := parseDepartures(fixture(t, "dm_disruption.json"))
@@ -199,14 +277,27 @@ func TestRender(t *testing.T) {
 
 func TestConfigure(t *testing.T) {
 	for _, bad := range []plugin.Values{{"backend": "hafas"}, {"base": "westfalenfahrplan.de"}, {"refresh": "5s"},
-		{"max": 0}, {"max": 99}, {"walk_minutes": -1}, {}, {"stop": " "}, {"token": "x"}} {
+		{"max": 0}, {"max": 99}, {"walk_minutes": -1}, {}, {"token": "x"},
+		{"stop": "X"}, {"stops": []any{}}, {"stops": "X"}, {"stops": []any{""}},
+		{"stops": []any{map[string]any{"name": "x"}}},
+		{"stops": []any{map[string]any{"stop": "X", "id": "Y"}}},
+		{"stops": []any{"X", map[string]any{"name": "X", "stop": "Y"}}}} {
 		if err := (&departures{}).Configure(bad, &plugin.Request{}); err == nil {
 			t.Errorf("%v accepted", bad)
 		}
 	}
 	p := &departures{}
-	if err := p.Configure(plugin.Values{"stop": "X"}, &plugin.Request{}); err != nil || p.stop != "X" || p.base != defaultBase {
-		t.Errorf("defaults: %+v %v", p, err)
+	if err := p.Configure(plugin.Values{"stops": []any{"X", map[string]any{"name": "Hbf", "stop": "Y"}}}, &plugin.Request{}); err != nil || p.base != defaultBase {
+		t.Fatalf("defaults: %+v %v", p, err)
+	}
+	if len(p.stops) != 2 || p.stops[0].spec.Name != "X" || p.stops[0].spec.Query != "X" ||
+		p.stops[1].spec.Name != "Hbf" || p.stops[1].spec.Query != "Y" {
+		t.Errorf("stops: %+v %+v", p.stops[0].spec, p.stops[1].spec)
+	}
+	d := p.Describe()
+	arg := d.Widgets[0].Args["stop"]
+	if arg.Default != "X" || len(arg.Enum) != 2 || arg.Enum[1] != "Hbf" {
+		t.Errorf("stop arg: %+v", arg)
 	}
 }
 
@@ -250,21 +341,21 @@ func TestLocalityText(t *testing.T) {
 	}
 	// The filter matches the full name, including the dropped locality.
 	p, _, _ = configured(t, plugin.Values{"directions": []any{"beispielstadt"}}, "dm_locality.json")
-	if len(p.cur) != 2 {
-		t.Errorf("directions on the locality: %+v", p.cur)
+	if list := first(t, p).list; len(list) != 2 {
+		t.Errorf("directions on the locality: %+v", list)
 	}
 }
 
 func TestLocalityImage(t *testing.T) {
 	p, req, _ := configured(t, plugin.Values{}, "dm_locality.json")
-	if p.curLocal != "Beispielstadt" {
-		t.Fatalf("locality %q", p.curLocal)
+	if v := first(t, p); v.locality != "Beispielstadt" {
+		t.Fatalf("locality %q", v.locality)
 	}
 	const size = 20.0
 	if s := destinationSize([]string{"Depot", "Bahnhof"}, size, 200); s != size {
 		t.Errorf("short names shrunk to %v", s)
 	}
-	long := p.destination(p.cur[3], "auto", "after")
+	long := first(t, p).destination(first(t, p).list[3], "auto", "after")
 	medium := "Universität Westf"
 	w := render.Measure(medium, size*0.9, false)
 	// One size for all rows: the medium name decides, the short one follows.

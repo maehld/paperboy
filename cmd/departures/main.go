@@ -6,12 +6,16 @@
 //
 //   - "departures": line, destination, minutes or time, delay, cancellations.
 //
-// The widget has a text variant for character displays.
+// One plugin serves several stops; the widget picks one of them by name
+// (ADR 0100). The widget has a text variant for character displays.
 //
 //	plugins:
 //	  departures:
 //	    command: [departures]
-//	    config: { stop: "City, Stop name", walk_minutes: 4 }
+//	    config:
+//	      stops:
+//	        - { name: Marktplatz, stop: "City, Marktplatz" }
+//	        - { name: Hauptbahnhof, stop: "City, Hauptbahnhof" }
 package main
 
 import (
@@ -46,12 +50,44 @@ const (
 var configKeys = map[string]plugin.Arg{
 	"backend":      {Type: "string", Default: "efa", Description: "data source; only efa (rapidJSON interface of an EFA installation) exists", Enum: []any{"efa"}},
 	"base":         {Type: "string", Default: defaultBase, Description: "EFA base URL, without /XML_DM_REQUEST"},
-	"stop":         {Type: "string", Required: true, Description: "stop name or stop ID (e.g. de:00000:1001); a name is resolved once"},
+	"stops":        {Type: "list", Required: true, Description: "the stops a widget can pick, as {name, stop} entries; a plain string uses itself as the name, and a name or ID is resolved once"},
 	"lines":        {Type: "list", Description: "only these lines (e.g. [355, R82]); default all"},
 	"directions":   {Type: "list", Description: "only destinations containing one of these words; default all"},
-	"max":          {Type: "int", Default: 8, Description: "most departures shown, 1 to 20"},
-	"refresh":      {Type: "duration", Default: "60s", Description: "how often the stop is polled, at least 30s"},
+	"max":          {Type: "int", Default: 8, Description: "most departures shown per stop, 1 to 20"},
+	"refresh":      {Type: "duration", Default: "60s", Description: "how often every stop is polled, at least 30s"},
 	"walk_minutes": {Type: "int", Default: 0, Description: "hide departures leaving sooner than this many minutes"},
+}
+
+// stopSpec is one configured stop: the name a widget picks and the stop it
+// stands for.
+type stopSpec struct {
+	Name  string
+	Query string
+}
+
+// stop is a configured stop with what the stop finder and the departure
+// monitor said about it.
+type stop struct {
+	spec stopSpec
+
+	id       string // resolved once
+	name     string // EFA's name, e.g. "City, Marktplatz"
+	only     string // the stop without its locality, e.g. "Marktplatz"
+	locality string // the locality of the stop, e.g. "City"
+
+	data    []departure
+	err     error
+	lastLog string // last error written to stderr
+}
+
+// stopView is one stop as a request shows it.
+type stopView struct {
+	list     []departure
+	err      error
+	loaded   bool // data arrived at least once
+	name     string
+	only     string
+	locality string
 }
 
 // departure is one stop event, already reduced to what the widget shows.
@@ -83,26 +119,17 @@ func (d departure) delay() int {
 type departures struct {
 	client  *http.Client
 	base    string
-	stop    string
+	stops   []*stop
 	lines   []string
 	dirs    []string
 	max     int
 	refresh time.Duration
 	walk    time.Duration
 
-	mu       sync.Mutex
-	stopID   string // resolved once
-	stopName string
-	stopOnly string // stop without its locality, e.g. "Marktplatz"
-	locality string // locality of the monitored stop, e.g. "Bielefeld"
-	data     []departure
-	loadErr  error
-	ready    chan struct{}
+	mu    sync.Mutex
+	views map[string]*stopView // of the current request, by configured name
+	ready chan struct{}
 
-	cur      []departure
-	curName  string
-	curStop  string
-	curLocal string
 	req      *plugin.Request
 	lang     string
 	location *time.Location
@@ -110,6 +137,14 @@ type departures struct {
 
 func (p *departures) Describe() plugin.Description {
 	both := []string{plugin.KindImage, plugin.KindText}
+	names := make([]any, 0, len(p.stops))
+	for _, s := range p.stops {
+		names = append(names, s.spec.Name)
+	}
+	first := ""
+	if len(p.stops) > 0 {
+		first = p.stops[0].spec.Name
+	}
 	return plugin.Description{
 		Title:   "Departures",
 		Version: version(),
@@ -118,6 +153,7 @@ func (p *departures) Describe() plugin.Description {
 			{Widget: "departures", Title: "Real-time departures", Kinds: both, MinWidth: 200, MinHeight: 60,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 3}, {Columns: 6, Rows: 4}},
 				Args: map[string]plugin.Arg{
+					"stop":   {Type: "string", Default: first, Enum: names, Description: "one of the configured stops by name; default the first"},
 					"header": {Type: "bool", Default: false, Description: "show the stop name above the departures"},
 					"time":   {Type: "string", Default: "auto", Description: "auto: minutes, a clock time from one hour on; minutes; clock", Enum: []any{"auto", "minutes", "clock"}},
 					"locality": {Type: "string", Default: "auto", Description: "locality of a destination (\"City, Stop\"): auto drops it when it is the monitored stop's locality; always drops it; never keeps it",
@@ -130,6 +166,9 @@ func (p *departures) Describe() plugin.Description {
 }
 
 func (p *departures) Configure(cfg plugin.Values, _ *plugin.Request) error {
+	if _, ok := cfg["stop"]; ok {
+		return errors.New("stop is no longer a config key, list it under stops: stops: [{name: \"<name>\", stop: \"<stop>\"}]")
+	}
 	if err := cfg.Check(configKeys); err != nil {
 		return err
 	}
@@ -155,39 +194,83 @@ func (p *departures) Configure(cfg plugin.Values, _ *plugin.Request) error {
 	if walk < 0 || walk > 120 {
 		return errors.New("walk_minutes must be between 0 and 120")
 	}
-	stop := strings.TrimSpace(cfg.String("stop", ""))
-	if stop == "" {
-		return errors.New("stop is required: a stop name or ID")
+	stops, err := parseStops(cfg["stops"])
+	if err != nil {
+		return err
 	}
-	p.base, p.stop, p.max, p.refresh, p.walk = u.String(), stop, max, refresh, time.Duration(walk)*time.Minute
+	p.base, p.stops, p.max, p.refresh, p.walk = u.String(), stops, max, refresh, time.Duration(walk)*time.Minute
 	p.lines, p.dirs = cfg.Strings("lines"), cfg.Strings("directions")
 	return nil
 }
 
-// Start polls the stop and reports a change when the shown departures move.
+// parseStops reads the configured stops: {name, stop} entries or a plain
+// string, which uses itself as the name.
+func parseStops(raw any) ([]*stop, error) {
+	list, ok := raw.([]any)
+	if !ok || len(list) == 0 {
+		return nil, errors.New("stops: expected a list of {name, stop} entries")
+	}
+	var out []*stop
+	seen := map[string]bool{}
+	for i, item := range list {
+		var spec stopSpec
+		switch v := item.(type) {
+		case string:
+			spec.Query = strings.TrimSpace(v)
+		case map[string]any:
+			for key := range v {
+				if key != "name" && key != "stop" {
+					return nil, fmt.Errorf("stops[%d]: unknown key %q", i, key)
+				}
+			}
+			name, _ := v["name"].(string)
+			query, _ := v["stop"].(string)
+			spec = stopSpec{Name: strings.TrimSpace(name), Query: strings.TrimSpace(query)}
+		default:
+			return nil, fmt.Errorf("stops[%d]: expected a {name, stop} entry", i)
+		}
+		if spec.Query == "" {
+			return nil, fmt.Errorf("stops[%d]: stop is required: a stop name or ID", i)
+		}
+		if spec.Name == "" {
+			spec.Name = spec.Query
+		}
+		if seen[spec.Name] {
+			return nil, fmt.Errorf("stops[%d]: the name %q is used twice", i, spec.Name)
+		}
+		seen[spec.Name] = true
+		out = append(out, &stop{spec: spec})
+	}
+	return out, nil
+}
+
+// Start polls every stop and reports a change when the shown departures move.
 func (p *departures) Start(ctx context.Context, notify func(widgets ...string)) {
 	p.ready = make(chan struct{})
 	go func() {
 		first := true
-		var last string
+		last := make(map[string]string, len(p.stops))
 		for {
-			deps, err := p.fetch(ctx, time.Now())
-			p.mu.Lock()
-			if err != nil {
-				if p.loadErr == nil || err.Error() != p.loadErr.Error() {
-					fmt.Fprintln(os.Stderr, "departures:", err)
-				}
-				p.loadErr = err
-			} else {
-				p.data, p.loadErr = deps, nil
+			var wg sync.WaitGroup
+			for _, s := range p.stops {
+				wg.Add(1)
+				go func(s *stop) {
+					defer wg.Done()
+					p.poll(ctx, s)
+				}(s)
 			}
-			p.mu.Unlock()
-			if err == nil {
-				sum := fingerprint(p.visible(deps, time.Now()))
-				if !first && sum != last {
-					notify()
+			wg.Wait()
+			now := time.Now()
+			moved := false
+			for _, s := range p.stops {
+				sum := fingerprint(p.visible(p.loaded(s), now))
+				if !first && sum != last[s.spec.Name] {
+					moved = true
 				}
-				last = sum
+				last[s.spec.Name] = sum
+			}
+			if moved {
+				notify()
 			}
 			if first {
 				close(p.ready)
@@ -200,6 +283,38 @@ func (p *departures) Start(ctx context.Context, notify func(widgets ...string)) 
 			}
 		}
 	}()
+}
+
+// poll reads one stop and keeps its last data and the other stops untouched
+// when it fails.
+func (p *departures) poll(ctx context.Context, s *stop) {
+	deps, err := p.fetch(ctx, s)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err != nil {
+		if err.Error() != s.lastLog {
+			fmt.Fprintln(os.Stderr, p.errorText(s, err))
+			s.lastLog = err.Error()
+		}
+		s.err = err
+		return
+	}
+	s.data, s.err, s.lastLog = deps, nil, ""
+}
+
+// errorText names the stop when there is more than one.
+func (p *departures) errorText(s *stop, err error) string {
+	if len(p.stops) == 1 {
+		return fmt.Sprintf("departures: %v", err)
+	}
+	return fmt.Sprintf("departures: %s: %v", s.spec.Name, err)
+}
+
+// loaded is the stop's last data.
+func (p *departures) loaded(s *stop) []departure {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return s.data
 }
 
 // fingerprint covers what the widget shows, but not the countdown, which
@@ -258,19 +373,19 @@ func matchesAny(s string, words []string) bool {
 
 var stopIDPattern = regexp.MustCompile(`^(de:\d+:\d+|\d{5,})`)
 
-// resolve returns the stop ID, asking the stop finder only once.
-func (p *departures) resolve(ctx context.Context) (string, error) {
+// resolve returns the stop's ID, asking the stop finder only once per stop.
+func (p *departures) resolve(ctx context.Context, s *stop) (string, error) {
 	p.mu.Lock()
-	id := p.stopID
+	id := s.id
 	p.mu.Unlock()
 	if id != "" {
 		return id, nil
 	}
-	if stopIDPattern.MatchString(p.stop) {
-		id = p.stop
+	if stopIDPattern.MatchString(s.spec.Query) {
+		id = s.spec.Query
 	} else {
 		q := url.Values{
-			"outputFormat": {"rapidJSON"}, "type_sf": {"any"}, "name_sf": {p.stop},
+			"outputFormat": {"rapidJSON"}, "type_sf": {"any"}, "name_sf": {s.spec.Query},
 			"locationServerActive": {"1"}, "language": {"de"},
 		}
 		body, err := p.get(ctx, "/XML_STOPFINDER_REQUEST", q)
@@ -279,19 +394,19 @@ func (p *departures) resolve(ctx context.Context) (string, error) {
 		}
 		loc, err := parseStopFinder(body)
 		if err != nil {
-			return "", fmt.Errorf("stop %q: %w", p.stop, err)
+			return "", fmt.Errorf("stop %q: %w", s.spec.Query, err)
 		}
 		id = loc.ID
 		p.mu.Lock()
-		p.stopName = loc.Name
-		p.stopOnly = loc.stopNameOnly()
+		s.name = loc.Name
+		s.only = loc.stopNameOnly()
 		if loc.Parent.Type == "locality" {
-			p.locality = loc.Parent.Name
+			s.locality = loc.Parent.Name
 		}
 		p.mu.Unlock()
 	}
 	p.mu.Lock()
-	p.stopID = id
+	s.id = id
 	p.mu.Unlock()
 	return id, nil
 }
@@ -369,10 +484,10 @@ func (p *departures) get(ctx context.Context, path string, q url.Values) ([]byte
 	return body, nil
 }
 
-// fetch reads the departure monitor. More events than shown are requested,
-// because the filters remove some.
-func (p *departures) fetch(ctx context.Context, _ time.Time) ([]departure, error) {
-	id, err := p.resolve(ctx)
+// fetch reads the departure monitor of one stop. More events than shown are
+// requested, because the filters remove some.
+func (p *departures) fetch(ctx context.Context, s *stop) ([]departure, error) {
+	id, err := p.resolve(ctx, s)
 	if err != nil {
 		return nil, err
 	}
@@ -392,11 +507,11 @@ func (p *departures) fetch(ctx context.Context, _ time.Time) ([]departure, error
 	}
 	p.mu.Lock()
 	if loc.Name != "" {
-		p.stopName = loc.Name
-		p.stopOnly = loc.stopNameOnly()
+		s.name = loc.Name
+		s.only = loc.stopNameOnly()
 	}
 	if loc.Parent.Type == "locality" && loc.Parent.Name != "" {
-		p.locality = loc.Parent.Name
+		s.locality = loc.Parent.Name
 	}
 	p.mu.Unlock()
 	return deps, nil
@@ -483,29 +598,63 @@ func (p *departures) Prepare(req *plugin.Request) error {
 		return errors.New("departures are still loading")
 	}
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.data == nil && p.loadErr != nil {
-		return p.loadErr
+	p.views = make(map[string]*stopView, len(p.stops))
+	for _, s := range p.stops {
+		p.views[s.spec.Name] = p.view(s, req.Now)
 	}
-	p.cur = p.visible(p.data, req.Now)
-	p.curName = p.stopName
-	p.curStop = p.stopOnly
-	p.curLocal = p.locality
-	if p.curLocal == "" {
-		p.curLocal, _, _ = strings.Cut(p.stopName, ", ") // "City, Stop" without a parent
-		if p.curLocal == p.stopName {
-			p.curLocal = ""
-		}
-	}
-	if p.curStop == "" {
-		if _, after, ok := strings.Cut(p.stopName, ", "); ok && after != "" {
-			p.curStop = after
-		} else {
-			p.curStop = p.stopName
-		}
-	}
+	p.mu.Unlock()
 	p.req, p.lang, p.location = req, req.Lang(), req.Location()
 	return nil
+}
+
+// view builds what one request shows of a stop; p.mu must be held.
+func (p *departures) view(s *stop, now time.Time) *stopView {
+	v := &stopView{
+		list:     p.visible(s.data, now),
+		err:      s.err,
+		loaded:   s.data != nil,
+		name:     s.name,
+		only:     s.only,
+		locality: s.locality,
+	}
+	v.fill(s.spec)
+	return v
+}
+
+// selected is the stop the widget picks, the first configured one by default.
+func (p *departures) selected(w plugin.WidgetRequest) (*stopView, error) {
+	name := w.Arg().String("stop", "")
+	if name == "" && len(p.stops) > 0 {
+		name = p.stops[0].spec.Name
+	}
+	v, ok := p.views[name]
+	if !ok {
+		return nil, fmt.Errorf("stop: %q is not one of the configured stops", name)
+	}
+	if v.err != nil && !v.loaded {
+		return nil, v.err
+	}
+	return v, nil
+}
+
+// fill completes what EFA did not say: the name itself, the stop without its
+// locality and, from "City, Stop", the locality.
+func (v *stopView) fill(spec stopSpec) {
+	if v.name == "" {
+		v.name = spec.Query
+	}
+	if v.locality == "" {
+		if city, _, ok := strings.Cut(v.name, ", "); ok && city != v.name {
+			v.locality = city
+		}
+	}
+	if v.only == "" {
+		if _, after, ok := strings.Cut(v.name, ", "); ok && after != "" {
+			v.only = after
+		} else {
+			v.only = v.name
+		}
+	}
 }
 
 // MaxAge: the countdown moves every minute, so results live half of it.

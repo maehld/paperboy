@@ -94,3 +94,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0097](0097-page-downloads-take-the-device-key.md) | Page downloads take the device key | Accepted, implemented; the dashboard reads the last image through a UI route (ADR-0040, ADR-0096) |
 | [0098](0098-the-device-shows-the-lockup-and-its-version.md) | The device shows the lockup and its firmware version | Accepted, implemented |
 | [0099](0099-glucose-readings-from-the-dexcom-share-service.md) | Glucose readings from the Dexcom Share service | Accepted, implemented |
+| [0100](0100-one-stop-per-departures-widget.md) | One stop per departures widget | Accepted, implemented; replaces the single `stop` of ADR-0053 |
