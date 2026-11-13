@@ -108,6 +108,7 @@ func (p *calendarPlugin) Describe() plugin.Description {
 					"days":      {Type: "int", Description: "days to show starting today, 1 to the configured days (clamped); default: the configured days"},
 					"empty":     {Type: "bool", Description: "show days without events with \"No events\"; default true when days is set"},
 					"age":       {Type: "bool", Default: false, Description: "append the age of birthdays from the configured birthday calendars"},
+					"more":      {Type: "bool", Default: true, Description: "show \"+N more\" for events that did not fit"},
 					"calendars": calendars,
 				},
 			},
@@ -119,6 +120,7 @@ func (p *calendarPlugin) Describe() plugin.Description {
 					"lines":     {Type: "int", Description: "number of text lines on image displays; default: as many as the page's text size allows (text displays use the cell height)"},
 					"headings":  {Type: "bool", Default: true, Description: "day headings"},
 					"days":      {Type: "int", Description: "days to show starting today, 1 to the loaded window (the configured days, but at least the month grid's 42 days); default: the loaded window"},
+					"more":      {Type: "bool", Default: true, Description: "show \"+N more\" for birthdays that did not fit"},
 					"calendars": calendars,
 				},
 			},
@@ -138,6 +140,7 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				Args: map[string]plugin.Arg{
 					"days":      {Type: "int", Default: 7, Description: "number of day columns, 1 to 14 (5 for a work week); text displays show as many days as lines"},
 					"start":     {Type: "string", Default: "week", Description: "first column: week = start of the week (Monday for German, Sunday otherwise), today = today (default week; today on text displays)", Enum: []any{"week", "today"}},
+					"more":      {Type: "bool", Default: true, Description: "show \"+N more\" for events that did not fit"},
 					"calendars": calendars,
 				},
 			},
@@ -243,13 +246,13 @@ func (p *calendarPlugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]st
 		lines, hidden := p.agendaLines(w.Height, opts)
 		// A text display puts the summary on a line of its own, so keep one free
 		// while events remain.
-		if hidden > 0 && len(lines) >= w.Height && w.Height > 1 {
+		if opts.more && hidden > 0 && len(lines) >= w.Height && w.Height > 1 {
 			lines, hidden = p.agendaLines(w.Height-1, opts)
 		}
 		if len(lines) == 0 {
 			return []string{p.emptyText(opts)}, nil
 		}
-		if hidden > 0 && len(lines) < w.Height {
+		if opts.more && hidden > 0 && len(lines) < w.Height {
 			lines = append(lines, agendaLine{text: p.moreText(hidden)})
 		}
 		var out []string
@@ -484,7 +487,7 @@ func (p *calendarPlugin) agendaLayout(lines int, o agendaOpts, area image.Rectan
 	// the title. Otherwise it needs a line of its own, and only a cell with more
 	// than one line has one to spare.
 	var inline string
-	if hidden > 0 {
+	if hidden > 0 && o.more {
 		more := p.moreText(hidden)
 		// The separator matches the location that titles carry.
 		behind := "· " + more
@@ -517,6 +520,7 @@ func (p *calendarPlugin) agendaMoreFits(l agendaLine, more string, size float64,
 type agendaOpts struct {
 	headings, location bool
 	age                bool // append the age of birthdays
+	more               bool // show "+N more" for events that did not fit
 	birthdays          bool // only events of the configured birthday calendars
 	days               int  // days from today, 1 to the configured days
 	empty              bool // show days without events
@@ -531,6 +535,7 @@ func (p *calendarPlugin) agendaArgs(a plugin.Values, headings bool) agendaOpts {
 		headings: a.Bool("headings", headings),
 		location: a.Bool("location", false),
 		age:      a.Bool("age", false),
+		more:     a.Bool("more", true),
 		days:     min(max(a.Int("days", limit), 1), limit),
 		empty:    a.Bool("empty", set),
 	}
@@ -599,6 +604,7 @@ func (p *calendarPlugin) birthdayArgs(a plugin.Values, headings bool) agendaOpts
 		birthdays: true,
 		age:       true,
 		headings:  a.Bool("headings", headings),
+		more:      a.Bool("more", true),
 		days:      min(max(a.Int("days", limit), 1), limit),
 	}
 }
