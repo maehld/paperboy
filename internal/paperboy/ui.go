@@ -60,32 +60,34 @@ func serveSVG(w http.ResponseWriter, data []byte) {
 // dashboardDevice is one card of the overview. It carries display-ready texts
 // so the template holds no formatting logic.
 type dashboardDevice struct {
-	ID         string
-	Status     string // ok, late, never or unregistered
-	Type       string // display type: the operator's label for the page layout
-	Hardware   string // hardware the device reports; empty until it registered
-	Plan       string // plan name, "no plan" when empty
-	Rule       string // active plan rule, empty when unknown
-	Content    string // page name, "notice", "battery warning" or empty
-	ImageURL   string // last served image, else the current page's preview; empty for a placeholder
-	Waiting    string // placeholder text when there is neither an image nor text
-	Power      string // charge state with the charge or voltage, e.g. "Charging · 50 %" (ADR 0051)
-	Battery    string // raw fuel gauge reading for the details, e.g. "3.83 V · 50 % · +568 mA"
-	LastCharge string // last finished charging episode, e.g. "2 h ago · 41 → 50 %" (issue #205)
-	Runtime    string // estimated battery runtime, e.g. "~12 d" (issue #207)
-	Width      int
-	Height     int
-	Text       []string // text displays: the last served lines
-	Refresh    string   // "every 10 min", empty when unknown
-	SeenAgo    string   // last contact, "never" when unknown
-	Address    string   // source address of the last contact, empty when unknown (ADR 0083)
-	ServedAgo  string   // age of the last served page
-	Firmware   string   // running version, available version and update status
-	Menu       string   // open menu phase and selected action (ADR 0057)
-	Actions    string   // "denied", empty when the device may use actions
-	Problem    string   // why the device cannot sync, empty when it can (ADR 0079)
-	Error      string   // last render or plan error
-	VirtualURL string   // the plan as a virtual display, empty without a plan (ADR 0091)
+	ID          string
+	Status      string // ok, late, never or unregistered
+	Type        string // display type: the operator's label for the page layout
+	Hardware    string // hardware the device reports; empty until it registered
+	Plan        string // plan name, "no plan" when empty
+	Rule        string // active plan rule, empty when unknown
+	Content     string // page name, "notice", "battery warning" or empty
+	ImageURL    string // last served image, else the current page's preview; empty for a placeholder
+	Waiting     string // placeholder text when there is neither an image nor text
+	Power       string // charge state with the charge or voltage, e.g. "Charging · 50 %" (ADR 0051)
+	Battery     string // raw fuel gauge reading for the details, e.g. "3.83 V · 50 % · +568 mA"
+	LastCharge  string // last finished charging episode, e.g. "2 h ago · 41 → 50 %" (issue #205)
+	Runtime     string // estimated battery runtime, e.g. "~12 d" or "still collecting" (issue #207, #236)
+	RuntimeNote string // "estimated" or "early estimate", empty while collecting
+	RuntimeHint string // tooltip on the Runtime row: the data behind it
+	Width       int
+	Height      int
+	Text        []string // text displays: the last served lines
+	Refresh     string   // "every 10 min", empty when unknown
+	SeenAgo     string   // last contact, "never" when unknown
+	Address     string   // source address of the last contact, empty when unknown (ADR 0083)
+	ServedAgo   string   // age of the last served page
+	Firmware    string   // running version, available version and update status
+	Menu        string   // open menu phase and selected action (ADR 0057)
+	Actions     string   // "denied", empty when the device may use actions
+	Problem     string   // why the device cannot sync, empty when it can (ADR 0079)
+	Error       string   // last render or plan error
+	VirtualURL  string   // the plan as a virtual display, empty without a plan (ADR 0091)
 }
 
 type dashboardPage struct {
@@ -121,33 +123,36 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	cards := []dashboardDevice{}
 	for _, d := range s.deviceInfos() {
 		image, waiting := imageText(d, profiles[d.Profile].text())
+		runtimeValue, runtimeNote, runtimeHint := runtimeCard(d.Power, d.deviceState)
 		cards = append(cards, dashboardDevice{
-			ID:         d.ID,
-			Status:     d.Status,
-			Type:       d.Profile,
-			Hardware:   d.Hardware,
-			Plan:       planText(d.Plan),
-			Rule:       d.Rule,
-			Content:    contentText(d.deviceState),
-			ImageURL:   image,
-			Waiting:    waiting,
-			Power:      powerText(d.Power, d.deviceState),
-			Battery:    batteryText(d.deviceState),
-			LastCharge: chargeText(d.deviceState, now),
-			Runtime:    runtimeText(batteryRuntime(d.deviceState)),
-			Width:      profiles[d.Profile].Width,
-			Height:     profiles[d.Profile].Height,
-			Text:       d.LastText,
-			Refresh:    refreshText(d.LastRefresh),
-			SeenAgo:    agoText(d.LastSeen, now),
-			Address:    d.ClientIP,
-			ServedAgo:  agoText(d.LastPageTime, now),
-			Firmware:   firmwareText(d),
-			Menu:       menuText(d.deviceState),
-			Actions:    actionsText(devices[d.ID]),
-			Problem:    d.Problem,
-			Error:      d.LastError,
-			VirtualURL: virtualURL(d.Plan, d.Profile),
+			ID:          d.ID,
+			Status:      d.Status,
+			Type:        d.Profile,
+			Hardware:    d.Hardware,
+			Plan:        planText(d.Plan),
+			Rule:        d.Rule,
+			Content:     contentText(d.deviceState),
+			ImageURL:    image,
+			Waiting:     waiting,
+			Power:       powerText(d.Power, d.deviceState),
+			Battery:     batteryText(d.deviceState),
+			LastCharge:  chargeText(d.deviceState, now),
+			Runtime:     runtimeValue,
+			RuntimeNote: runtimeNote,
+			RuntimeHint: runtimeHint,
+			Width:       profiles[d.Profile].Width,
+			Height:      profiles[d.Profile].Height,
+			Text:        d.LastText,
+			Refresh:     refreshText(d.LastRefresh),
+			SeenAgo:     agoText(d.LastSeen, now),
+			Address:     d.ClientIP,
+			ServedAgo:   agoText(d.LastPageTime, now),
+			Firmware:    firmwareText(d),
+			Menu:        menuText(d.deviceState),
+			Actions:     actionsText(devices[d.ID]),
+			Problem:     d.Problem,
+			Error:       d.LastError,
+			VirtualURL:  virtualURL(d.Plan, d.Profile),
 		})
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -375,6 +380,32 @@ func batteryText(st deviceState) string {
 		text += " · " + currentText(*st.BatteryMA)
 	}
 	return text
+}
+
+// runtimeCard builds the Runtime row of a card: the value, the muted note next
+// to it and the tooltip that names the data behind it (issue #207, #236). The
+// row stays hidden on mains and on hardware without a battery reading, and it
+// says "still collecting" until the series shows a measurable discharge.
+func runtimeCard(power string, st deviceState) (value, note, hint string) {
+	if power == powerMains || st.BatteryVoltage == "" {
+		return "", "", ""
+	}
+	e := estimateBattery(st)
+	switch {
+	case e.Samples < 2:
+		return "still collecting", "", "waiting for the second sample"
+	case e.Runtime > 0:
+		value = runtimeText(e.Runtime)
+		if e.Span >= settledAfter {
+			note = "estimated"
+		} else {
+			note = "early estimate"
+		}
+		return value, note, dataSpanText(e.Span) + " of data"
+	case e.Wait > 0:
+		return "still collecting", "", dataSpanText(e.Span) + " of data · estimate in " + runtimeText(e.Wait)
+	}
+	return "still collecting", "", dataSpanText(e.Span) + " of data · no discharge yet"
 }
 
 // chargeText is the details line for the last finished charging episode: when

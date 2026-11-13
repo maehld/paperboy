@@ -63,9 +63,9 @@ func trackCharge(st *deviceState, b *syncBattery, now time.Time) {
 }
 
 // trackBattery folds one sync's battery reading into the state: the charging
-// episode (issue #205) and the daily samples of the runtime estimate (issue
-// #207). A charge is no discharge, so it clears the samples and the series
-// starts again with the first reading after it.
+// episode (issue #205) and the hourly samples of the runtime estimate (issue
+// #207, #236). A charge is no discharge, so it clears the samples and the
+// series starts again with the first reading after it.
 func trackBattery(st *deviceState, b *syncBattery, now time.Time) {
 	if b == nil {
 		return
