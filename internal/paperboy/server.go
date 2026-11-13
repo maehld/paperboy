@@ -11,6 +11,7 @@ import (
 	"image/png"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -44,16 +45,17 @@ type Server struct {
 	// actionRuns holds the actions that outlive their sync (ADR 0064).
 	actionRuns map[string]*actionRun
 
-	rendered  map[string]*renderedPage // "<profile>/<page>" → last render
-	hints     map[string][]byte        // content hash → notice page
-	logs      *logSeen                 // delivered device log entries (own lock)
-	firmware  *firmwareStore           // OTA images (ADR 0043; own lock)
-	fwNotes   map[string]string        // device ID → last logged reason for withholding an update
-	pages     *pageLoader              // pages by file, reloaded on change (own lock)
-	skipNotes map[string]string        // "<profile>/<page>" → last logged reason for skipping it
-	qoiNotes  map[string]string        // page path → last logged reason for simplifying it (ADR 0088)
-	widgets   *widget.Host             // plugins and their widget cache (ADR 0049; own lock)
-	download  *downloadStatus          // release checks (ADR 0060; own lock)
+	rendered     map[string]*renderedPage // "<profile>/<page>" → last render
+	hints        map[string]hintPage      // content hash → notice page (ADR 0097 keeps its display type)
+	logs         *logSeen                 // delivered device log entries (own lock)
+	firmware     *firmwareStore           // OTA images (ADR 0043; own lock)
+	fwNotes      map[string]string        // device ID → last logged reason for withholding an update
+	pages        *pageLoader              // pages by file, reloaded on change (own lock)
+	skipNotes    map[string]string        // "<profile>/<page>" → last logged reason for skipping it
+	qoiNotes     map[string]string        // page path → last logged reason for simplifying it (ADR 0088)
+	pageKeyNotes map[string]string        // page path → last logged reason for refusing it (ADR 0097)
+	widgets      *widget.Host             // plugins and their widget cache (ADR 0049; own lock)
+	download     *downloadStatus          // release checks (ADR 0060; own lock)
 }
 
 // config returns the current configuration, reloading it from paperboy.yaml
@@ -106,7 +108,7 @@ func New(cfg *Config) (*Server, error) {
 	s := &Server{cfg: newConfigLoader(cfg.Dir, cfg), ctx: context.Background(),
 		widgets:    &widget.Host{Builtin: map[string]plugin.Handler{builtin.Name: builtin.Plugin{}}},
 		devicesDir: devicesDir, now: time.Now, state: state, virtual: map[string]*deviceState{},
-		plans: newPlanLoader(), actionRuns: map[string]*actionRun{}, rendered: map[string]*renderedPage{}, hints: map[string][]byte{},
+		plans: newPlanLoader(), actionRuns: map[string]*actionRun{}, rendered: map[string]*renderedPage{}, hints: map[string]hintPage{},
 		logs: newLogSeen(), fwNotes: map[string]string{}, pages: newPageLoader(), skipNotes: map[string]string{}}
 	s.firmware = newFirmwareStore(cfg.FirmwareDir)
 	s.download = newDownloadStatus()
@@ -153,8 +155,8 @@ func (s *Server) deviceRoutes() []route {
 		{"POST /api/device/register", s.handleRegister},
 		{"POST /api/device/sync", s.handleSync},
 		{"GET /api/device/text", s.handleText},
-		{"GET /pages/{profile}/{page}/{file}", s.handleRenderedImage},
-		{"GET /hints/{file}", s.handleHint},
+		{"GET /pages/{profile}/{page}/{file}", s.requirePageKey(s.handleRenderedImage)},
+		{"GET /hints/{file}", s.requirePageKey(s.handleHint)},
 		{"GET /firmware/{file}", s.handleFirmware},
 	}
 }
@@ -207,6 +209,7 @@ func (s *Server) uiRoutes() []route {
 		{"POST /api/plans/{name}/rename", s.handleRenamePlan},
 		// Device files (ADR 0070).
 		{"GET /api/devices/{id}", s.handleDevice},
+		{"GET /api/devices/{id}/image", s.handleDeviceImage},
 		{"PUT /api/devices/{id}", s.handleSaveDevice},
 		{"DELETE /api/devices/{id}", s.handleDeleteDevice},
 		{"POST /api/devices/{id}/rename", s.handleRenameDevice},
@@ -295,7 +298,7 @@ type deviceInfo struct {
 	APIKey            string `json:"api_key,omitempty"` // shadows the embedded key; never exposed
 	Registered        bool   `json:"registered"`
 	Status            string `json:"status"`                       // ok, late, never or unregistered
-	LastPageURL       string `json:"last_page_url,omitempty"`      // where the last served image sits
+	LastPageURL       string `json:"last_page_url,omitempty"`      // UI route for the last served image (ADR 0097)
 	FirmwareAvailable string `json:"firmware_available,omitempty"` // newest image for the hardware (ADR 0043)
 	FirmwareStatus    string `json:"firmware_status"`              // current, offered, available, failed, held or none
 	Power             string `json:"power"`                        // effective power source: battery or mains (ADR 0051)
@@ -304,6 +307,54 @@ type deviceInfo struct {
 
 func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"devices": s.deviceInfos()})
+}
+
+// lastImagePath is the UI route that serves the last image a device received
+// (ADR 0040, 0097).
+func lastImagePath(id string) string {
+	return "/api/devices/" + url.PathEscape(id) + "/image"
+}
+
+// handleDeviceImage serves the last image a device received. The page routes
+// ask for the device key (ADR 0097) and the operator's browser has no key, so
+// the dashboard reads the last served image through the UI instead of falling
+// back to a live preview.
+func (s *Server) handleDeviceImage(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	var device *Device
+	for i := range cfg.Devices {
+		if cfg.Devices[i].ID == r.PathValue("id") {
+			device = &cfg.Devices[i]
+			break
+		}
+	}
+	if device == nil {
+		http.NotFound(w, r)
+		return
+	}
+	s.mu.Lock()
+	var data []byte
+	var hash, kind, page string
+	if st := s.state[device.stateKey()]; st != nil {
+		hash, kind, page = st.LastPageHash, st.LastPageKind, st.LastPage
+	}
+	switch {
+	case kind == "page" && page != "":
+		if rp := s.rendered[device.Profile+"/"+page]; rp != nil && rp.hash == hash {
+			data = rp.data
+		}
+	default:
+		if hp, ok := s.hints[hash]; ok && hp.profile == device.Profile {
+			data = hp.data
+		}
+	}
+	s.mu.Unlock()
+	if data == nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writePNG(w, data)
 }
 
 // handleForgetDeviceState deletes the state file of one MAC, so hardware the
@@ -341,13 +392,15 @@ func (s *Server) deviceInfos() []deviceInfo {
 		info.Power = cfg.power(&d, info.ReportedPower)
 		// Rendered images live in memory only: after a restart the stored
 		// hash points nowhere, so the URL is left out instead of a dead link.
+		// Page downloads carry the device key (ADR 0097), so the card links the
+		// UI's own route for the last served image (ADR 0040).
 		if info.LastPageHash != "" && !cfg.Profiles[d.Profile].text() {
 			if info.LastPageKind == "page" && info.LastPage != "" {
-				if s.rendered[d.Profile+"/"+info.LastPage] != nil {
-					info.LastPageURL = fmt.Sprintf("/pages/%s/%s/%s.png", d.Profile, info.LastPage, info.LastPageHash)
+				if rp := s.rendered[d.Profile+"/"+info.LastPage]; rp != nil && rp.hash == info.LastPageHash {
+					info.LastPageURL = lastImagePath(d.ID)
 				}
-			} else if s.hints[info.LastPageHash] != nil {
-				info.LastPageURL = "/hints/" + info.LastPageHash + ".png"
+			} else if hp, ok := s.hints[info.LastPageHash]; ok && hp.profile == d.Profile {
+				info.LastPageURL = lastImagePath(d.ID)
 			}
 		}
 		list = append(list, info)
@@ -512,13 +565,13 @@ func (s *Server) handleHint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	data := s.hints[key]
+	hp := s.hints[key]
 	s.mu.Unlock()
-	if data == nil {
+	if hp.data == nil {
 		http.NotFound(w, r)
 		return
 	}
-	s.writePageImage(w, r, data)
+	s.writePageImage(w, r, hp.data)
 }
 
 // qoiLimit is the response buffer the firmware allocates for a page: a

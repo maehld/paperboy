@@ -32,8 +32,10 @@ func TestDevicesAPIShowsServedPage(t *testing.T) {
 	if info["last_page_hash"] != hash || !strings.HasSuffix(path, "/"+hash+".png") {
 		t.Fatalf("hash %v, want %q in %q", info["last_page_hash"], hash, path)
 	}
-	if info["last_page_url"] != path {
-		t.Fatalf("page url %v, want %q", info["last_page_url"], path)
+	// The card reads the last served image through the UI, because the page
+	// route itself needs the device key (ADR 0097).
+	if info["last_page_url"] != "/api/devices/test/image" {
+		t.Fatalf("page url %v", info["last_page_url"])
 	}
 	if info["last_refresh"] != float64(600) || info["status"] != "ok" {
 		t.Fatalf("refresh/status: %v", info)
@@ -67,8 +69,7 @@ func TestDevicesAPIReportsNoticeKeepsError(t *testing.T) {
 	if _, ok := info["last_page"]; ok {
 		t.Fatalf("a notice has no page name: %v", info)
 	}
-	url, _ := info["last_page_url"].(string)
-	if !strings.HasPrefix(url, "/hints/") {
+	if url, _ := info["last_page_url"].(string); url != "/api/devices/test/image" {
 		t.Fatalf("notice url: %q", url)
 	}
 	if err, _ := info["last_error"].(string); !strings.Contains(err, "kaputt") {

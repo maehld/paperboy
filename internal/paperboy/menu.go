@@ -1047,7 +1047,7 @@ func wrapMenu(s string, width int, size float64) []string {
 // the result as a notice page, so the page cache is not overwritten.
 func (s *Server) menuOverlay(page servedPage, profile string, p Profile, v menuView, t texts) (servedPage, error) {
 	s.mu.Lock()
-	data := s.hints[page.hash]
+	data := s.hints[page.hash].data
 	if len(data) == 0 {
 		if rp := s.rendered[profile+"/"+page.name]; rp != nil && rp.hash == page.hash {
 			data = rp.data

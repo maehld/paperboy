@@ -147,13 +147,21 @@ func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, po
 		Widgets: s.widgetSource()})
 }
 
+// hintPage is a generated notice page and the display type it was drawn for:
+// notice pages contain a page of the instance (the menu is drawn over one), so
+// a device may only fetch those of its own type (ADR 0097).
+type hintPage struct {
+	data    []byte
+	profile string
+}
+
 // notice registers a generated page and returns where it is served. Only the
 // registration needs the lock; drawing happens before.
 func (s *Server) notice(profile string, img *image.Paletted) servedPage {
 	data := encodePNG(img)
 	key := hashBytes(data)
 	s.mu.Lock()
-	s.hints[key] = data
+	s.hints[key] = hintPage{data: data, profile: profile}
 	s.mu.Unlock()
 	return servedPage{path: "/hints/" + key + ".png", hash: key}
 }

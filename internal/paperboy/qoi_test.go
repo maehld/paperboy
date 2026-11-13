@@ -9,7 +9,6 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -136,9 +135,9 @@ func TestRenderedImageAsQOI(t *testing.T) {
 	}
 	data := encodePNG(img)
 	s.rendered["small/eins"] = &renderedPage{data: data, hash: hashBytes(data)}
+	planDevice(t, s) // the download needs a device key (ADR 0097)
 
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/pages/small/eins/"+hashBytes(data)+".png?format=qoi", nil))
+	rec := fetchImage(t, s, "/pages/small/eins/"+hashBytes(data)+".png?format=qoi")
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/qoi" {
 		t.Fatalf("qoi response: %d %q", rec.Code, rec.Header().Get("Content-Type"))
 	}
@@ -147,8 +146,7 @@ func TestRenderedImageAsQOI(t *testing.T) {
 	}
 
 	// Without the parameter the same URL stays a PNG for browsers.
-	rec = httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/pages/small/eins/"+hashBytes(data)+".png", nil))
+	rec = fetchImage(t, s, "/pages/small/eins/"+hashBytes(data)+".png")
 	if rec.Header().Get("Content-Type") != "image/png" {
 		t.Fatalf("plain response: %q", rec.Header().Get("Content-Type"))
 	}
@@ -332,9 +330,9 @@ func TestWorstPageOverHTTP(t *testing.T) {
 	img := alternatingPage(800, 480)
 	data := encodePNG(img)
 	s.rendered["small/gross"] = &renderedPage{data: data, hash: hashBytes(data)}
+	planDevice(t, s) // the download needs a device key (ADR 0097)
 
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/pages/small/gross/"+hashBytes(data)+".png?format=qoi", nil))
+	rec := fetchImage(t, s, "/pages/small/gross/"+hashBytes(data)+".png?format=qoi")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("qoi response: %d", rec.Code)
 	}
