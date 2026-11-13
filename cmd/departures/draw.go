@@ -27,6 +27,10 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 	if err != nil {
 		return err
 	}
+	v, err := p.selected(w)
+	if err != nil {
+		return err
+	}
 	b := img.Bounds()
 	pad := w.Style.Padding
 	rule := max(w.Style.Rule, 1)
@@ -36,8 +40,8 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 	top := b.Min.Y + pad
 	left, right := b.Min.X+pad, b.Max.X-pad
 
-	if w.Arg().Bool("header", false) && p.curName != "" {
-		render.Text(img, p.header(order), left, top+int(size), render.Style{Size: size, Bold: true, Shrink: true}, right-left, color.Black, render.Left)
+	if w.Arg().Bool("header", false) && v.name != "" {
+		render.Text(img, v.header(order), left, top+int(size), render.Style{Size: size, Bold: true, Shrink: true}, right-left, color.Black, render.Left)
 		top += rowH
 		render.HLine(img, left, top-rule-int(size*0.2), right, rule)
 	}
@@ -45,7 +49,7 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 	if rows < 1 {
 		return fmt.Errorf("cell too small for a departure (%d px high)", b.Dy())
 	}
-	deps := p.cur
+	deps := v.list
 	if len(deps) > rows {
 		deps = deps[:rows]
 	}
@@ -78,7 +82,7 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 	destW := destEnd - gap/2 - destX
 	names := make([]string, len(deps))
 	for i, d := range deps {
-		names[i] = p.destination(d, locMode, order)
+		names[i] = v.destination(d, locMode, order)
 	}
 	destSize := destinationSize(names, size, destW)
 	for i, d := range deps {
@@ -162,21 +166,25 @@ func (p *departures) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string
 	if err != nil {
 		return nil, err
 	}
-	var lines []string
-	if w.Arg().Bool("header", false) && p.curName != "" {
-		lines = append(lines, plugin.Align(p.header(order), w.Width, "left"))
+	v, err := p.selected(w)
+	if err != nil {
+		return nil, err
 	}
-	if len(p.cur) == 0 {
+	var lines []string
+	if w.Arg().Bool("header", false) && v.name != "" {
+		lines = append(lines, plugin.Align(v.header(order), w.Width, "left"))
+	}
+	if len(v.list) == 0 {
 		lines = append(lines, p.t("Keine Abfahrten", "No departures"))
 	}
-	for _, d := range p.cur {
+	for _, d := range v.list {
 		right := p.timeIn(d, req.Now, mode, true)
 		if dl := delayText(d); dl != "" && !d.Cancelled {
 			right = dl + " " + right
 		}
 		left := d.Line
 		if d.Destination != "" {
-			left += " " + p.destination(d, locMode, order)
+			left += " " + v.destination(d, locMode, order)
 		}
 		lines = append(lines, plugin.Columns(left, right, w.Width))
 	}
@@ -204,31 +212,31 @@ func localityOrder(w plugin.WidgetRequest) (string, error) {
 	return "", fmt.Errorf("locality_order: %q is not after, before or none", o)
 }
 
-// header is the monitored stop as shown above the departures.
-func (p *departures) header(order string) string {
-	if p.curStop == "" {
-		return p.curName
+// header is the selected stop as shown above the departures.
+func (v *stopView) header(order string) string {
+	if v.only == "" {
+		return v.name
 	}
-	if order == "none" || p.curLocal == "" {
-		return p.curStop
+	if order == "none" || v.locality == "" {
+		return v.only
 	}
 	if order == "before" {
-		return p.curLocal + ", " + p.curStop
+		return v.locality + ", " + v.only
 	}
-	return p.curStop + ", " + p.curLocal
+	return v.only + ", " + v.locality
 }
 
 // destination is the name shown for a departure. EFA names destinations
 // "City, Stop"; locality decides whether the city stays, locality_order where
 // it sits.
-func (p *departures) destination(d departure, mode, order string) string {
+func (v *stopView) destination(d departure, mode, order string) string {
 	city, stop, ok := splitLocality(d.Destination)
 	if !ok {
 		return d.Destination
 	}
 	keep := mode == "never"
 	if mode == "auto" {
-		keep = p.curLocal == "" || !strings.EqualFold(city, p.curLocal)
+		keep = v.locality == "" || !strings.EqualFold(city, v.locality)
 	}
 	if !keep || order == "none" {
 		return stop

@@ -6,15 +6,32 @@ Real-time public transport departures from an EFA installation (ADR 0053). The d
 
 | Key | Description |
 |---|---|
-| `stop` | Required: a stop name (resolved once) or a stop ID like `de:00000:1001` |
+| `stops` | Required: the stops a widget can pick, as `{name, stop}` entries. `stop` is a stop name (resolved once) or a stop ID like `de:00000:1001`, `name` is what the widget selects; a plain string entry uses itself as the name. Names must be unique |
 | `lines`, `directions` | Filters; `directions` matches words in the destination |
-| `max` | Number of departures, default 8 |
+| `max` | Number of departures per stop, default 8 |
 | `refresh` | Default `60s`, at least `30s` |
 | `walk_minutes` | Hide departures you can no longer reach |
 | `base` | Another EFA installation, e.g. `https://efa.vrr.de/standard` |
 | `backend` | Only `efa` |
 
+```yaml
+plugins:
+  departures:
+    command: [departures]
+    config:
+      stops:
+        - { name: Marktplatz, stop: "Beispielstadt, Marktplatz" }
+        - { name: Hauptbahnhof, stop: "Beispielstadt, Hauptbahnhof" }
+```
+
+One plugin polls every configured stop in parallel and keeps a failing stop's
+last departures, so the other stops and their widgets stay unaffected. A
+widget that has no `stop` shows the first configured stop.
+
 ## Widget `departures`
+
+The arg `stop` picks one of the configured stops by name (a choice of the
+configured names, no "all"): two widgets on one page may show two stops.
 
 Each line shows the line number, the destination, the minutes until departure (a clock time from one hour on; `time`: `auto` (default), `minutes` or `clock`) and the delay as `+N`. Cancelled trips are struck through with „Ausfall“. `header: true` adds the stop name. The text variant fits 20 × 4 displays (`examples/pages/abfahrten.lcd2004.yaml`).
 
@@ -38,6 +55,11 @@ The arg `locality` decides whether a destination shows its town at all:
 
 `locality_order: none` suppresses the town in every destination, whatever `locality` says. Image and text variants follow the same rules, and `directions` still matches the full name including the town. On image displays all destinations of a widget share one font size: the smallest size any of them needs to fit, but not below 0.8 of the base text. Destinations still too long at that size end with an ellipsis; line, delay and time keep their size.
 
-The plugin reports a change when a departure, a delay or a cancellation changes.
+The plugin reports a change when a departure, a delay or a cancellation changes
+at any stop.
+
+A direction is EFA's `transportation.destination.name`, the headsign of the
+trip; the API has no separate direction field. `directions` therefore filters
+on the destination.
 
 The Westfalenfahrplan publishes no terms of use for this interface. Keep the refresh moderate and check the terms of any other installation you point it at.
