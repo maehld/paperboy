@@ -95,3 +95,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0098](0098-the-device-shows-the-lockup-and-its-version.md) | The device shows the lockup and its firmware version | Accepted, implemented |
 | [0099](0099-glucose-readings-from-the-dexcom-share-service.md) | Glucose readings from the Dexcom Share service | Accepted, implemented |
 | [0100](0100-one-stop-per-departures-widget.md) | One stop per departures widget | Accepted, implemented; replaces the single `stop` of ADR-0053 |
+| [0101](0101-a-hint-about-a-newer-paperboy.md) | A hint about a newer Paperboy | Accepted, implemented; amends the release check of ADR-0060 and ADR-0062 (it names a release, it installs nothing) |

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -32,6 +33,18 @@ type downloadStatus struct {
 	lastError string
 	plugins   map[string]string // plugin -> installed version
 	firmware  map[string]string // hardware -> installed version
+	update    paperboyUpdate    // what the last check learned about Paperboy itself (ADR 0101)
+	notified  string            // version the journal already named, so a check does not repeat it
+}
+
+// paperboyUpdate is the result of looking at Paperboy's own release train: the
+// newer version, or the reason why there is nothing to name (ADR 0101).
+type paperboyUpdate struct {
+	Checked  bool   // a check reached the hint
+	Compared bool   // the running version could be compared with the releases
+	Found    bool   // the source carries a release of Paperboy's train in the channel
+	Version  string // a newer version than the running one, without the leading v
+	URL      string // the release page, empty when the source has none
 }
 
 func newDownloadStatus() *downloadStatus {
@@ -39,7 +52,7 @@ func newDownloadStatus() *downloadStatus {
 }
 
 // view returns a copy for the dashboard.
-func (d *downloadStatus) view() (running bool, lastCheck, lastOK time.Time, lastError string, plugins, firmware map[string]string) {
+func (d *downloadStatus) view() (running bool, lastCheck, lastOK time.Time, lastError string, plugins, firmware map[string]string, update paperboyUpdate) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	plugins = make(map[string]string, len(d.plugins))
@@ -50,7 +63,7 @@ func (d *downloadStatus) view() (running bool, lastCheck, lastOK time.Time, last
 	for k, v := range d.firmware {
 		firmware[k] = v
 	}
-	return d.running, d.lastCheck, d.lastOK, d.lastError, plugins, firmware
+	return d.running, d.lastCheck, d.lastOK, d.lastError, plugins, firmware, d.update
 }
 
 // begin marks a check as running; false when one is already running, so a
@@ -97,6 +110,20 @@ func (d *downloadStatus) pluginVersion(name string) (string, bool) {
 	return version, ok
 }
 
+// notice records what a check learned about Paperboy's own train and answers
+// whether the journal should name the version: one line per release, not one
+// per check (ADR 0101).
+func (d *downloadStatus) notice(u paperboyUpdate) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.update = u
+	if u.Version == "" || u.Version == d.notified {
+		return false
+	}
+	d.notified = u.Version
+	return true
+}
+
 // downloadLoop checks the release at startup and then when the configured
 // interval has passed. It wakes every minute so that a configuration change is
 // picked up quickly; the check itself only runs when one is due (ADR 0062).
@@ -122,7 +149,7 @@ func (s *Server) checkDownloads(ctx context.Context) {
 	if cfg.Download == nil {
 		return
 	}
-	_, last, _, _, _, _ := s.download.view()
+	_, last, _, _, _, _, _ := s.download.view()
 	if !last.IsZero() && s.now().Sub(last) < cfg.Download.Interval {
 		return
 	}
@@ -167,7 +194,91 @@ func (s *Server) downloadOnce(ctx context.Context, cfg *Config) error {
 	if err := s.downloadFirmware(ctx, cfg); err != nil {
 		errs = append(errs, err)
 	}
+	// The hint about Paperboy itself only reads the release list and installs
+	// nothing, so it runs after both halves and never fails the check (ADR 0101).
+	s.checkPaperboyRelease(ctx, cfg)
 	return errors.Join(errs...)
+}
+
+// checkPaperboyRelease names the newest release of Paperboy's own train when it
+// is newer than the running binary. The channel follows the running version: a
+// final version hears about the final releases, a prerelease about the
+// prereleases too, so a stable instance is never pointed at an rc (ADR 0101).
+// Nothing is downloaded, installed or restarted, and a source without Paperboy
+// releases answers no hint instead of an error.
+func (s *Server) checkPaperboyRelease(ctx context.Context, cfg *Config) {
+	running, ok := runningVersion()
+	if !ok {
+		// A local build carries no release version to compare with (ADR 0101).
+		s.download.notice(paperboyUpdate{Checked: true})
+		return
+	}
+	channel := channelStable
+	if running.Prerelease() {
+		channel = channelLatest
+	}
+	releases, err := s.downloadClient(cfg, "paperboy").List(ctx)
+	if err != nil {
+		slog.Warn("paperboy release list unavailable", "train", "paperboy", "error", err)
+		return
+	}
+	update := paperboyUpdate{Checked: true, Compared: true}
+	if rel, ok := paperboyTrainRelease(releases, channel); ok {
+		update.Found = true
+		if newest, ok := semver.Parse(rel.Version); ok && semver.Compare(newest, running) > 0 {
+			update.Version = rel.Version
+			update.URL = releasePage(cfg.Download.Source, rel.Tag)
+		}
+	}
+	if s.download.notice(update) {
+		slog.Info("paperboy update available", "running", build.Version, "available", "v"+update.Version,
+			"url", update.URL)
+	}
+}
+
+// runningVersion parses the stamped version of this binary. A local build has
+// none: its version is empty, "(devel)" or a pseudo-version derived from the
+// commit, none of which names a release (ADR 0056, 0101).
+func runningVersion() (semver.Version, bool) {
+	if build.Version == "" || isPseudoVersion(build.Version) {
+		return semver.Version{}, false
+	}
+	return semver.Parse(strings.TrimPrefix(build.Version, "v"))
+}
+
+// paperboyTrainRelease returns the newest release of Paperboy's own train: the
+// tag of the form vX.Y.Z that no other train uses (ADR 0056), filtered by the
+// channel (ADR 0101).
+func paperboyTrainRelease(releases []download.Release, channel string) (download.Release, bool) {
+	for _, rel := range releases {
+		if !strings.HasPrefix(rel.Tag, "v") || !channelAllows(channel, rel.Prerelease) {
+			continue
+		}
+		if !channelAllowsVersion(channel, rel.Version) {
+			continue
+		}
+		if _, ok := semver.Parse(rel.Version); !ok {
+			continue
+		}
+		return rel, true
+	}
+	return download.Release{}, false
+}
+
+// releasePage is the browsable page of a release tag, derived from the
+// configured source so that a fork is linked as it is. Only the public GitHub
+// source has such a page; an API endpoint or another host answers "" and the
+// version stays plain text (ADR 0101).
+func releasePage(source, tag string) string {
+	source = strings.TrimSuffix(strings.TrimSpace(source), "/")
+	if source == "" {
+		source = download.OfficialSource
+	}
+	u, err := url.Parse(strings.TrimSuffix(source, "/releases"))
+	if err != nil || (u.Host != "github.com" && u.Host != "www.github.com") {
+		return ""
+	}
+	return "https://" + u.Host + "/" + strings.Trim(u.Path, "/") + "/releases/tag/" + url.PathEscape(tag)
 }
 
 // channelAllows reports whether a delivery fits the channel: stable follows the

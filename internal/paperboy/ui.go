@@ -98,8 +98,10 @@ type dashboardPage struct {
 // dashboardDownloads is the hint above the device grid: the details live on the
 // downloads page, so a running check no longer reloads every card.
 type dashboardDownloads struct {
-	Running bool   // a check is running right now
-	Error   string // last error, empty when the check succeeded
+	Running   bool   // a check is running right now
+	Error     string // last error, empty when the check succeeded
+	Available string // a newer Paperboy release, "2.14.0 is available" (ADR 0101)
+	URL       string // its release page, empty when the source has none
 }
 
 // handleRoot sends the bare root to the dashboard so that the instance needs
@@ -184,8 +186,12 @@ func (s *Server) downloadHint(cfg *Config) *dashboardDownloads {
 	if cfg.Download == nil {
 		return nil
 	}
-	running, _, _, lastErr, _, _ := s.download.view()
-	return &dashboardDownloads{Running: running, Error: lastErr}
+	running, _, _, lastErr, _, _, update := s.download.view()
+	hint := &dashboardDownloads{Running: running, Error: lastErr}
+	if update.Version != "" {
+		hint.Available, hint.URL = paperboyUpdateText(update)
+	}
+	return hint
 }
 
 // downloadTime prints a time of the day, with the date when it is not today.
