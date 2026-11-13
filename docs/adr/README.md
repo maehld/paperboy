@@ -98,3 +98,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0101](0101-a-hint-about-a-newer-paperboy.md) | A hint about a newer Paperboy | Accepted, implemented; amends the release check of ADR-0060 and ADR-0062 (it names a release, it installs nothing) |
 | [0102](0102-rotate-pages-onto-the-panel.md) | Rotate pages onto the panel | Accepted, implemented (firmware not yet flashed); amends the display types of ADR-0071, the device files of ADR-0070 and the sync answer of ADR-0042 |
 | [0103](0103-plugin-conditions-in-plans.md) | Show a page while a plugin condition is active | Accepted, implemented; replaces the unimplemented `when.data` of ADR-0025 with conditions from plugins |
+| [0104](0104-runtime-stats-in-the-web-ui.md) | Runtime stats in the web UI | Accepted, implemented |

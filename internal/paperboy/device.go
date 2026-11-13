@@ -257,13 +257,15 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	if !decodeDeviceJSON(w, r, &req) {
 		return
 	}
+	configDone := s.stats.Start("sync.config")
 	cfg := s.config()
+	configDone()
 	// The firmware directory is read before taking the state lock.
 	var img *firmwareImage
 	if req.Hardware != "" {
 		img, _ = s.firmware.latest(req.Hardware, cfg.Firmware.Version)
 	}
-	s.mu.Lock()
+	s.lock("sync.lock")
 	d, st := s.deviceByKeyLocked(r, cfg)
 	if d == nil {
 		s.mu.Unlock()
@@ -291,7 +293,9 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Unlock()
+	conditionsDone := s.stats.Start("sync.conditions")
 	conds := s.planConditions(r.Context(), cfg, d.Plan)
+	conditionsDone()
 	resp := s.serveSync(cfg, d, st, &req, now, syncOptions{
 		firmware:    img,
 		pageTimeout: time.Duration(cfg.PageTimeout),
@@ -339,7 +343,13 @@ func chargerState(st deviceState) string {
 // holds no lock; page selection happens under the state lock, rendering and
 // plugin calls do not.
 func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncRequest, now time.Time, opt syncOptions) syncResponse {
-	s.mu.Lock()
+	defer s.stats.Start("sync.total")()
+	if !opt.virtual {
+		// Virtual displays have no device file; their syncs would muddy the
+		// numbers of the real devices (ADR 0091, 0104).
+		defer s.stats.Start("sync.device:" + d.ID)()
+	}
+	s.lock("sync.lock")
 	// The journal gets one line when the power source or the charger state
 	// changes instead of repeating it on every sync (issue #200).
 	prevPower, prevCharger := st.ReportedPower, chargerState(*st)
@@ -489,7 +499,9 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	case critical: // the warning replaces all pages; buttons only show it again
 		st.Page = 0
 	case d.Plan != "":
+		planDone := s.stats.Start("sync.plan")
 		choice = s.choosePlanPage(cfg, d, st, now, opt.conditions, firstContact, pageButtons, pageTimeout, menuSync, false)
+		planDone()
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
 	}
@@ -500,7 +512,9 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		stateData = s.stateSnapshotLocked(st)
 	}
 	s.mu.Unlock()
+	writeDone := s.stats.Start("sync.state_write")
 	s.saveState(d.stateKey(), stateData)
+	writeDone()
 	s.logDevice(d.ID, req.Log)
 	for _, e := range req.Events {
 		// Touches and long presses carry no meaning yet; they are only recorded.
@@ -527,12 +541,14 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 			slog.Info("virtual display: action not run", "device", d.ID, "action", invoke.Action)
 		} else {
 			run := s.startAction(cfg, d, *invoke, now)
+			actionDone := s.stats.Start("sync.action")
 			select {
 			case <-run.done:
 			case <-time.After(actionBudget):
 				slog.Info("action still running", "device", d.ID, "action", invoke.Action)
 			}
-			s.mu.Lock()
+			actionDone()
+			s.lock("sync.lock")
 			if st := s.state[d.stateKey()]; st != nil {
 				menu = st.Menu
 			}
@@ -550,7 +566,9 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		}
 		served.refresh = d.refresh()
 	case d.Plan != "":
+		renderDone := s.stats.Start("sync.render")
 		served = s.renderPlan(cfg, d, choice, now, false)
+		renderDone()
 	default:
 		served = s.hint(cfg, d.Profile, choice.title, choice.text)
 	}
@@ -575,7 +593,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	case served.err != nil:
 		errText = shortError(served.err)
 	}
-	s.mu.Lock()
+	s.lock("sync.lock")
 	var pageData []byte
 	if !opt.virtual {
 		// A background action may have finished and replaced the menu while
@@ -594,7 +612,9 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		}
 	}
 	s.mu.Unlock()
+	writeDone = s.stats.Start("sync.state_write")
 	s.saveState(d.stateKey(), pageData)
+	writeDone()
 	if powerChanged {
 		attrs := []any{"device", d.ID, "power", power}
 		if charger := chargerState(logged); charger != "" {
@@ -719,15 +739,17 @@ func fitWakeToListen(listen time.Duration, wake *syncWake) (time.Duration, *sync
 // lines of the page the cursor points to, without advancing it or writing the
 // state file.
 func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
+	defer s.stats.Start("poll.total")()
 	now := s.now()
 	cfg := s.config()
-	s.mu.Lock()
+	s.lock("poll.lock")
 	d, st := s.deviceByKeyLocked(r, cfg)
 	if d == nil {
 		s.mu.Unlock()
 		http.Error(w, "unknown key", http.StatusUnauthorized)
 		return
 	}
+	defer s.stats.Start("poll.device:" + d.ID)()
 	if d.Problem != "" {
 		s.mu.Unlock()
 		http.Error(w, d.Problem, http.StatusServiceUnavailable)
@@ -744,7 +766,7 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 	planName := d.Plan
 	s.mu.Unlock()
 	conds := s.planConditions(r.Context(), cfg, planName)
-	s.mu.Lock()
+	s.lock("poll.lock")
 	d, st = s.deviceByKeyLocked(r, cfg)
 	if d == nil {
 		s.mu.Unlock()
@@ -781,7 +803,7 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 	}
 	// The dashboard and /api/devices show what the display shows now. Kept in
 	// memory only; the next sync writes the device's state file (ADR 0080).
-	s.mu.Lock()
+	s.lock("poll.lock")
 	if st := s.state[d.stateKey()]; st != nil && st.LastPageHash != served.hash {
 		st.LastText, st.LastPageHash, st.LastPageTime = served.lines, served.hash, now
 		st.LastPage, st.LastPageKind = served.name, "page"

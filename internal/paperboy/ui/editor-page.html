@@ -101,7 +101,7 @@ input[type=search] { margin-bottom: .4rem; }
 <body class="editor">
 <header>
   <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
-  <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a{{if .WidgetsPage}} class="active"{{end}} href="/ui/plugins">Widgets</a> · <a{{if not .WidgetsPage}} class="active"{{end}} href="/ui/editor">Editor</a></nav>
+  <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a{{if .WidgetsPage}} class="active"{{end}} href="/ui/plugins">Widgets</a> · <a{{if not .WidgetsPage}} class="active"{{end}} href="/ui/editor">Editor</a> · <a href="/ui/stats">Stats</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
 </header>
 {{if .Error}}

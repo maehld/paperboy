@@ -19,7 +19,8 @@ func titleBarNav(active string) string {
 		return "<a" + class + ` href="` + href + `">` + label + "</a>"
 	}
 	return "<nav>" + link("/ui", "Devices") + " · " + link("/ui/downloads", "Downloads") +
-		" · " + link("/ui/plugins", "Widgets") + " · " + link("/ui/editor", "Editor") + "</nav>"
+		" · " + link("/ui/plugins", "Widgets") + " · " + link("/ui/editor", "Editor") +
+		" · " + link("/ui/stats", "Stats") + "</nav>"
 }
 
 // TestOperatorPagesShareTheTitleBar keeps the brand, the tabs and the version
@@ -41,6 +42,7 @@ func TestOperatorPagesShareTheTitleBar(t *testing.T) {
 		{"/ui/editor/device?id=test", "Editor"},
 		{"/ui/editor/display?name=small", "Editor"},
 		{"/ui/plan?device=test", "Devices"},
+		{"/ui/stats", "Stats"},
 	} {
 		rec := htmlRequest(t, s, page.path)
 		if rec.Code != http.StatusOK {
@@ -75,6 +77,7 @@ func TestOperatorPagesLinkTheSharedStylesheet(t *testing.T) {
 		"/ui", "/ui/downloads", "/ui/plugins", "/ui/plugins",
 		"/ui/editor", "/ui/editor/page?name=eins&display=small", "/ui/editor/plan?name=zimmer",
 		"/ui/editor/device?id=test", "/ui/editor/display?name=small", "/ui/plan?device=test",
+		"/ui/stats",
 	} {
 		body := htmlRequest(t, s, path).Body.String()
 		if !strings.Contains(body, `<link rel="stylesheet" href="/ui/ui.css">`) {
@@ -100,6 +103,7 @@ func TestOperatorPagesCarryTheLogo(t *testing.T) {
 		"/ui", "/ui/downloads", "/ui/plugins",
 		"/ui/editor", "/ui/editor/page?name=eins&display=small", "/ui/editor/plan?name=zimmer",
 		"/ui/editor/device?id=test", "/ui/editor/display?name=small", "/ui/plan?device=test",
+		"/ui/stats",
 	}
 	for _, path := range pages {
 		body := htmlRequest(t, s, path).Body.String()

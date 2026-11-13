@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/maehld/paperboy/internal/page"
+	"github.com/maehld/paperboy/internal/stats"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
@@ -101,6 +102,15 @@ type Host struct {
 	conds    map[string]condition   // plugin -> last condition answer (ADR 0103)
 	builtMu  sync.Mutex
 	builtCfg map[string]bool
+
+	// What the runtime page reports (ADR 0104): the request timings per plugin
+	// and how its requests went.
+	reg      *stats.Registry
+	requests map[string]int64
+	failures map[string]int64
+	lastErr  map[string]string
+	starts   map[string]int
+	evicted  int64
 }
 
 // condition is the cached answer to a conditions request.
@@ -115,6 +125,7 @@ type entry struct {
 	img      image.Image
 	lines    []string
 	stale    bool
+	created  time.Time // when the plugin drew it; the runtime page ages the cache by it (ADR 0104)
 	expires  time.Time
 	lastUsed time.Time
 }
@@ -293,9 +304,7 @@ func (e *entry) result(stale bool) page.Result {
 // results and returns them in order. err is set when the request failed as
 // a whole.
 func (h *Host) run(ctx context.Context, spec Spec, env Env, jobs []job) ([]page.Result, error) {
-	lock := h.pluginLock(spec.Name)
-	lock.Lock()
-	defer lock.Unlock()
+	defer h.slot(spec.Name)()
 
 	h.mu.Lock()
 	blocked := h.now().Before(h.failing[spec.Name])
@@ -353,7 +362,7 @@ func (h *Host) run(ctx context.Context, spec Spec, env Env, jobs []job) ([]page.
 				continue
 			}
 			out[i] = r
-			h.store(j, env, &entry{job: j, img: r.Image, lines: r.Lines, expires: expires, lastUsed: now})
+			h.store(j, env, &entry{job: j, img: r.Image, lines: r.Lines, created: now, expires: expires, lastUsed: now})
 		}
 		if failed != nil {
 			slog.Warn("plugin widget failed", "plugin", spec.Name, "error", failed)
@@ -449,9 +458,7 @@ func (h *Host) Describe(ctx context.Context, name string) (*plugin.Description, 
 	if !ok {
 		return nil, fmt.Errorf("plugin %q is not configured", name)
 	}
-	lock := h.pluginLock(name)
-	lock.Lock()
-	defer lock.Unlock()
+	defer h.slot(name)()
 	msg, err := h.call(ctx, spec, plugin.Request{Version: plugin.Version, Action: plugin.ActionDescribe, Now: h.now()})
 	if err != nil {
 		return nil, err
@@ -539,9 +546,7 @@ func (h *Host) Actions(ctx context.Context, name string, req plugin.Request) ([]
 	if err != nil {
 		return nil, err
 	}
-	lock := h.pluginLock(name)
-	lock.Lock()
-	defer lock.Unlock()
+	defer h.slot(name)()
 	req.Version = plugin.Version
 	if req.Now.IsZero() {
 		req.Now = h.now()
@@ -595,9 +600,7 @@ func (h *Host) Conditions(ctx context.Context, name string) (map[string]bool, er
 	if err != nil {
 		return nil, err
 	}
-	lock := h.pluginLock(name)
-	lock.Lock()
-	defer lock.Unlock()
+	defer h.slot(name)()
 	ctx, cancel := context.WithTimeout(ctx, conditionTimeout)
 	defer cancel()
 	msg, err := h.call(ctx, spec, req)
@@ -642,9 +645,7 @@ func (h *Host) Invoke(ctx context.Context, name string, req plugin.Request) (plu
 	if err != nil {
 		return plugin.ActionOutcome{}, err
 	}
-	lock := h.pluginLock(name)
-	lock.Lock()
-	defer lock.Unlock()
+	defer h.slot(name)()
 	req.Version = plugin.Version
 	if req.Now.IsZero() {
 		req.Now = h.now()
@@ -727,6 +728,7 @@ func (h *Host) evict() {
 	for _, a := range list[:len(list)-maxEntries] {
 		delete(h.cache, a.key)
 	}
+	h.evicted += int64(len(list) - maxEntries)
 }
 
 func (h *Host) store(j job, env Env, e *entry) {

@@ -21,6 +21,7 @@ import (
 
 	"github.com/maehld/paperboy/internal/builtin"
 	"github.com/maehld/paperboy/internal/page"
+	"github.com/maehld/paperboy/internal/stats"
 	"github.com/maehld/paperboy/internal/widget"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
@@ -56,6 +57,16 @@ type Server struct {
 	pageKeyNotes map[string]string        // page path → last logged reason for refusing it (ADR 0097)
 	widgets      *widget.Host             // plugins and their widget cache (ADR 0049; own lock)
 	download     *downloadStatus          // release checks (ADR 0060; own lock)
+
+	// Runtime numbers of the operator page (ADR 0104): the named timings of
+	// the device handlers, when the server started, and the CPU gauges that
+	// turn the processes' cumulative CPU time into a rate between two page
+	// views.
+	started   time.Time
+	stats     *stats.Registry
+	cpuMu     sync.Mutex
+	cpu       stats.Gauge
+	pluginCPU map[int]*stats.Gauge
 }
 
 // config returns the current configuration, reloading it from paperboy.yaml
@@ -109,7 +120,8 @@ func New(cfg *Config) (*Server, error) {
 		widgets:    &widget.Host{Builtin: map[string]plugin.Handler{builtin.Name: builtin.Plugin{}}},
 		devicesDir: devicesDir, now: time.Now, state: state, virtual: map[string]*deviceState{},
 		plans: newPlanLoader(), actionRuns: map[string]*actionRun{}, rendered: map[string]*renderedPage{}, hints: map[string]hintPage{},
-		logs: newLogSeen(), fwNotes: map[string]string{}, pages: newPageLoader(), skipNotes: map[string]string{}}
+		logs: newLogSeen(), fwNotes: map[string]string{}, pages: newPageLoader(), skipNotes: map[string]string{},
+		started: time.Now(), stats: stats.NewRegistry(), pluginCPU: map[int]*stats.Gauge{}}
 	s.firmware = newFirmwareStore(cfg.FirmwareDir)
 	s.download = newDownloadStatus()
 	// A plan named in the configuration is reported when it is missing or broken
@@ -170,6 +182,7 @@ func (s *Server) uiRoutes() []route {
 		{"GET /{$}", s.handleRoot},
 		{"GET /ui", s.handleDashboard},
 		{"GET /ui/downloads", s.handleDownloads},
+		{"GET /ui/stats", s.handleStats},
 		{"GET /ui/plugins", s.handleWidgetsPage},
 		{"GET /ui/plan", s.handlePlanView},
 		{"GET /ui/virtual", s.handleVirtual},
@@ -471,6 +484,15 @@ func (s *Server) stateSnapshotLocked(st *deviceState) []byte {
 		return nil
 	}
 	return data
+}
+
+// lock takes the state lock and records how long the request had to wait for
+// it; on the runtime page that is the time one request spends behind another
+// (ADR 0104).
+func (s *Server) lock(name string) {
+	start := time.Now()
+	s.mu.Lock()
+	s.stats.Observe(name, time.Since(start))
 }
 
 // saveState persists the state of one device; call it without the lock.
