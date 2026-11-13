@@ -69,6 +69,18 @@ func (l *pageLoader) get(dir, name, display string) (*page.Template, error) {
 	return nil, fmt.Errorf("%w: %s.%s.yaml or %s.yaml in %s", page.ErrNotFound, name, display, name, dir)
 }
 
+// stats reports what the loader keeps: the number of cached page files and
+// their size on disk (ADR 0104).
+func (l *pageLoader) stats() (files int, bytes int64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, e := range l.entries {
+		files++
+		bytes += e.size
+	}
+	return files, bytes
+}
+
 // fits reports why a page cannot be shown on a display type: it is missing
 // for that type, or it is a page of the other kind or with a grid that is not
 // the text display's. A broken page fits, so that its error is shown as a

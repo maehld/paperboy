@@ -36,6 +36,7 @@ type process struct {
 	pending map[string]chan plugin.Message
 	done    chan struct{} // closed when the process has exited
 	stderr  *tailBuffer
+	started time.Time // for the runtime page (ADR 0104)
 
 	versionLogged bool // the protocol mismatch was already logged
 }
@@ -54,13 +55,18 @@ func sameSpec(a, b Spec) bool { return reflect.DeepEqual(a, b) }
 
 // call sends one request to the plugin, starting it if needed, and waits for
 // the answer. A timeout kills the process, because a plugin that does not
-// answer would block every later request.
+// answer would block every later request. The answer time and the outcome are
+// what the runtime page reports (ADR 0104).
 func (h *Host) call(ctx context.Context, spec Spec, req plugin.Request) (plugin.Message, error) {
 	p, err := h.process(spec)
 	if err != nil {
+		h.note(spec.Name, err)
 		return plugin.Message{}, err
 	}
+	start := time.Now()
 	m, err := p.request(ctx, req)
+	h.registry().Observe("plugin."+spec.Name+".answer", time.Since(start))
+	h.note(spec.Name, err)
 	if err != nil && (p.exited() || errors.Is(err, errTimeout) || errors.Is(err, errWrite)) {
 		h.drop(p)
 	}
@@ -171,6 +177,11 @@ func (h *Host) process(spec Spec) (*process, error) {
 		h.procs = map[string]*process{}
 	}
 	h.procs[spec.Name] = p
+	p.started = h.now()
+	if h.starts == nil {
+		h.starts = map[string]int{}
+	}
+	h.starts[spec.Name]++
 	return p, nil
 }
 

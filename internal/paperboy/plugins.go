@@ -17,9 +17,12 @@ func (s *Server) configurePlugins(cfg *Config) {
 	s.widgets.Configure(cfg.pluginSpecs(), widget.Env{Language: cfg.Language, Timezone: cfg.timezoneName()})
 }
 
-// widgetSource lets a page ask the plugins for its widgets.
+// widgetSource lets a page ask the plugins for its widgets. The time spent
+// here is the part of a page render that waits for plugins (ADR 0104).
 func (s *Server) widgetSource() page.WidgetSource {
 	return func(b page.Batch) []page.Result {
+		done := s.stats.Start("render.widgets")
+		defer done()
 		return s.widgets.Fetch(context.Background(), b)
 	}
 }

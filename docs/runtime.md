@@ -14,6 +14,18 @@ The *Last charge* line comes from the fuel gauge current, with the threshold of 
 
 The *Runtime* estimate learns the discharge rate from the device instead of a model of the cell: Paperboy keeps one battery sample per day (at most a week) in the state file and divides the charge of the last sample by the drop between the first and the last one. It needs two samples over more than a day, says nothing while the series rises and nothing beyond a year. A charge clears the samples, so it does not look like a slow discharge; hardware without a fuel gauge uses the voltage down to an empty cell at 3.0 V.
 
+### Stats
+
+`/ui/stats` (ADR 0104) shows what Paperboy costs while it runs. It is server-rendered, refreshes itself every ten seconds and writes nothing.
+
+The first block is Paperboy itself: start time and uptime, goroutines, `GOMAXPROCS`, heap in use against the memory the runtime reserved, the live heap with its object count, the stack, the garbage collector (cycles, next target, last pause), the resident memory and the CPU time with the share of one core used since the previous view. CPU percentages compare with the previous view of the page, because a process only exposes its cumulative CPU time; the first view names the total and shows no percentage.
+
+The plugin table has one row per plugin — the built-in one included. It names the state (running since, failing with the retry time, not running, built-in), program and version, PID, resident memory and CPU, the requests it answered with the failed ones and the last error, and two timings: *Answer* is how long the plugin took, *Wait* is how long a request waited for another request of the same plugin. The last columns are the widgets it keeps in the cache with their bytes. Memory and CPU come from the operating system and stay empty for the in-process plugin and on platforms that do not report them.
+
+The widget cache follows: entries, images, bytes, stale entries, entries past their expiry, evictions and the age of the oldest entry, then one row per age range (under a minute, five minutes, an hour, a day, older) with entries, images and bytes. Below it Paperboy counts its own caches: rendered pages and notice pages with count, bytes and age, and the parsed page and plan files.
+
+*Timings* lists named operations with count, last, average, p50, p95 and maximum: the sync as a whole, the configuration snapshot, the wait for the state lock, the plugin conditions, plan selection, the page render split into waiting for plugins and PNG encoding, running a menu action, writing the state file, every page render and the text poll. Percentiles come from the last 256 samples of an operation. *Syncs and polls* finally has one row per device: its syncs with last, average, p95 and maximum duration, and the text polls separately, because a text display asks every second and would otherwise dominate the numbers.
+
 ### Plan preview
 
 The **Plan preview** button at the foot of a device card opens `/ui/plan?device=<id>` (ADR 0054), a read-only view of the plan of the device. It shows every rule with its time window, `rotate` and `refresh`, the fallback, the rule that applies now (or at the time picked with `&at=YYYY-MM-DDTHH:MM`) and the next rule change. Each page is previewed for the display type of the device; pages the device would skip show the reason, broken pages their error. The view does not change the page cursor or the state of the device.

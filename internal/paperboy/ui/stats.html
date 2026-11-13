@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="10">
+<title>Paperboy · Stats</title>
+<link rel="stylesheet" href="/ui/ui.css">
+<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
+<style>
+.card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
+.card h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; align-items: baseline; gap: .5rem; }
+.card h2 .muted { font-weight: 400; }
+dl { display: grid; grid-template-columns: 11rem minmax(0, 1fr); align-content: start; gap: .15rem .7rem; margin: 0; font-size: .9rem; }
+dt { color: #666; }
+dd { margin: 0; min-width: 0; word-break: break-word; font-variant-numeric: tabular-nums; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid #eee; vertical-align: baseline; white-space: nowrap; }
+tr:first-child th { border-top: 0; }
+th { font-weight: 600; color: #666; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.name { font-weight: 600; }
+td.program { font-family: ui-monospace, Consolas, monospace; font-size: .82rem; white-space: normal; word-break: break-all; }
+tr.error td { border-top: 0; padding-top: 0; color: #b00; font-size: .82rem; white-space: normal; word-break: break-word; }
+.empty { margin: 0; padding: 1.2rem 1rem; text-align: center; color: #888; border: 1px dashed #ccc; border-radius: 6px; }
+.hint { margin: .6rem 0 0; font-size: .8rem; color: #666; }
+</style>
+</head>
+<body>
+<header>
+  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
+  <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/plugins">Widgets</a> · <a href="/ui/editor">Editor</a> · <a class="active" href="/ui/stats">Stats</a></nav>
+  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
+</header>
+
+<section class="card">
+  <h2>Paperboy <span class="muted">{{.Platform}}</span></h2>
+  <dl>
+    {{range .Paperboy}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}
+  </dl>
+  <p class="hint">CPU percentages compare with the previous view of this page, so they say what the process used since then.</p>
+</section>
+
+<section class="card">
+  <h2>Plugins <span class="muted">{{len .Plugins}}</span></h2>
+  {{if .Plugins}}
+  <table>
+    <tr>
+      <th>Plugin</th><th>State</th><th>Program</th><th class="num">PID</th>
+      <th class="num">Memory</th><th class="num">CPU</th><th class="num">Requests</th>
+      <th class="num">Answer</th><th class="num">Wait</th><th class="num">Cache</th>
+    </tr>
+    {{range .Plugins}}
+    <tr>
+      <td class="name">{{.Name}}</td>
+      <td>{{.State}}</td>
+      <td class="program">{{.Program}}</td>
+      <td class="num">{{if .PID}}{{.PID}}{{else}}<span class="muted">–</span>{{end}}</td>
+      <td class="num">{{.Memory}}</td>
+      <td class="num">{{.CPU}}</td>
+      <td class="num">{{.Requests}}</td>
+      <td class="num">{{.Answer}}</td>
+      <td class="num">{{.Wait}}</td>
+      <td class="num">{{.Cache}}</td>
+    </tr>
+    {{if .LastError}}<tr class="error"><td></td><td colspan="9">{{.LastError}}</td></tr>{{end}}
+    {{end}}
+  </table>
+  {{else}}
+  <p class="empty">No plugins configured.</p>
+  {{end}}
+  <p class="hint">Answer is how long the plugin took, wait is how long a request waited for another request of the same plugin. Memory and CPU come from the operating system; they stay empty where it does not report them.</p>
+</section>
+
+<section class="card">
+  <h2>Widget cache</h2>
+  <dl>
+    {{range .Cache}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}
+  </dl>
+  <table style="margin-top:.7rem">
+    <tr><th>Age</th><th class="num">Entries</th><th class="num">Images</th><th class="num">Bytes</th></tr>
+    {{range .Ages}}<tr><td>{{.Range}}</td><td class="num">{{.Entries}}</td><td class="num">{{.Images}}</td><td class="num">{{.Bytes}}</td></tr>{{end}}
+  </table>
+</section>
+
+<section class="card">
+  <h2>Paperboy caches</h2>
+  <dl>
+    {{range .PageCache}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}
+  </dl>
+</section>
+
+<section class="card">
+  <h2>Timings</h2>
+  {{if .Timings}}
+  <table>
+    <tr><th>Operation</th><th class="num">Count</th><th class="num">Last</th><th class="num">Average</th><th class="num">p50</th><th class="num">p95</th><th class="num">Max</th></tr>
+    {{range .Timings}}<tr><td>{{.Operation}}</td><td class="num">{{.Count}}</td><td class="num">{{.Last}}</td><td class="num">{{.Avg}}</td><td class="num">{{.P50}}</td><td class="num">{{.P95}}</td><td class="num">{{.Max}}</td></tr>{{end}}
+  </table>
+  {{else}}
+  <p class="empty">Nothing measured yet.</p>
+  {{end}}
+  <p class="hint">Percentiles come from the last 256 samples of an operation, so old outliers fade out.</p>
+</section>
+
+<section class="card">
+  <h2>Syncs and polls</h2>
+  {{if .Syncs}}
+  <table>
+    <tr><th>Device</th><th class="num">Syncs</th><th class="num">Last</th><th class="num">Average</th><th class="num">p95</th><th class="num">Max</th><th class="num">Polls</th><th class="num">Poll average</th></tr>
+    {{range .Syncs}}<tr><td class="name">{{.Device}}</td><td class="num">{{.Syncs}}</td><td class="num">{{.Last}}</td><td class="num">{{.Avg}}</td><td class="num">{{.P95}}</td><td class="num">{{.Max}}</td><td class="num">{{.Polls}}</td><td class="num">{{.PollAvg}}</td></tr>{{end}}
+  </table>
+  {{else}}
+  <p class="empty">No device has synced since the start.</p>
+  {{end}}
+  <p class="hint">A sync is one wake of a device, a poll is the text display asking for its lines every second.</p>
+</section>
+</body>
+</html>

@@ -41,6 +41,7 @@ type renderedPage struct {
 	hash string
 	pix  []byte          // composed palette indexes; an identical composition reuses data and hash
 	rect image.Rectangle // bounds of pix
+	at   time.Time       // when the image was encoded; the runtime page ages the cache by it (ADR 0104)
 }
 
 func hashBytes(data []byte) string {
@@ -62,6 +63,7 @@ type pagePosition struct {
 // the configuration snapshot of the request; the render path never reloads the
 // configuration itself, so a device sees one configuration from start to end.
 func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, pos pagePosition, banners ...string) (rp *renderedPage, err error) {
+	defer s.stats.Start("render.page")()
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("page rendering panicked", "profile", profile, "page", name, "panic", r, "stack", string(debug.Stack()))
@@ -94,8 +96,10 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	if prev != nil && prev.rect == img.Rect && bytes.Equal(prev.pix, img.Pix) {
 		return prev, nil
 	}
+	encodeDone := s.stats.Start("render.encode")
 	data := encodePNG(img)
-	return &renderedPage{data: data, hash: hashBytes(data), pix: img.Pix, rect: img.Rect}, nil
+	encodeDone()
+	return &renderedPage{data: data, hash: hashBytes(data), pix: img.Pix, rect: img.Rect, at: time.Now()}, nil
 }
 
 // display describes a display type for the page package.
@@ -153,6 +157,7 @@ func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, po
 type hintPage struct {
 	data    []byte
 	profile string
+	at      time.Time // when the notice was drawn (ADR 0104)
 }
 
 // notice registers a generated page and returns where it is served. Only the
@@ -161,7 +166,7 @@ func (s *Server) notice(profile string, img *image.Paletted) servedPage {
 	data := encodePNG(img)
 	key := hashBytes(data)
 	s.mu.Lock()
-	s.hints[key] = hintPage{data: data, profile: profile}
+	s.hints[key] = hintPage{data: data, profile: profile, at: time.Now()}
 	s.mu.Unlock()
 	return servedPage{path: "/hints/" + key + ".png", hash: key}
 }
@@ -255,6 +260,18 @@ func (l *planLoader) get(dir, name string, loc *time.Location) (*plan.Plan, erro
 	}
 	l.entries[name] = entry
 	return entry.p, entry.err
+}
+
+// stats reports what the plan loader keeps: the number of cached plan files
+// and their size on disk (ADR 0104).
+func (l *planLoader) stats() (files int, bytes int64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, e := range l.entries {
+		files++
+		bytes += e.size
+	}
+	return files, bytes
 }
 
 // planChoice is the page a plan picked for one device request, resolved without
