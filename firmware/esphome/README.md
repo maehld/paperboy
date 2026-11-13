@@ -91,6 +91,23 @@ Wi-Fi connection is kept in RTC memory and reported in the next sync's `log`.
 After power-on the device stays awake 3 minutes so its web UI can be used; a
 limit of 120 s after the last input forces deep sleep otherwise.
 
+## Rotation
+
+A page is composed in the display type's orientation, while the ePaper buffers
+are landscape and the firmware is built for one mounting. The sync carries
+`rotation` (0, 90, 180 or 270 degrees, omitted when 0, ADR 0102): the relative
+turn on top of the compiled orientation. The display lambda calls
+`pb_rotate_display` with the compiled value (`180` for the Sticky, `0` for the
+E1001) before every paint, because the display component starts from the
+compiled rotation after each wake and the firmware deep-sleeps.
+
+The touch transform is measured in the compiled orientation, so `pb_touch`
+turns a tap by the same relative rotation into page coordinates before it
+queues the event; the Sticky passes the panel's native dimensions to it. The
+splash and setup screens appear before the first sync and stay in the compiled
+orientation. A QOI whose dimensions do not match the rotated display is refused
+with a note (`pb_qoi_fits`) instead of being clipped over the previous picture.
+
 ## Settings on the device
 
 | Setting | Source | Kept in |

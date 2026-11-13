@@ -5,7 +5,10 @@
 
 substitutions:
   hardware: sticky
-  fw_version: "2.6.0"
+  fw_version: "2.7.0"
+  # The mounting this image is built for; a device adds its quarter turn to it
+  # at runtime (ADR 0102).
+  compiled_rotation: 180
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
 
@@ -164,9 +167,13 @@ display:
     id: epaper_display
     model: Seeed-reTerminal-Sticky-gray4
     # Upright with the buttons at the top left.
-    rotation: 180
+    rotation: ${compiled_rotation}
     update_interval: never
     lambda: |-
+      // The device adds its quarter turn to the compiled orientation (ADR
+      // 0102). Re-applied here because every wake starts the component from
+      // the compiled rotation.
+      pb_rotate_display(it, ${compiled_rotation});
       if (pb_splash) {
         pb_draw_splash(it, id(wordmark_large), id(version_large), "v${fw_version}");
       } else if (id(setup_mode)) {
@@ -177,6 +184,11 @@ display:
         // keep the old picture instead of painting half a page.
         pb_note_for_next_wake("page not paintable: " + id(image_path));
         ESP_LOGE("paperboy", "page is not a complete QOI image");
+      } else if (!pb_qoi_fits(pb_page_qoi, it.get_width(), it.get_height())) {
+        // A page of the wrong orientation would be clipped below the panel:
+        // refuse it and let the server's rotation be fixed (ADR 0102).
+        pb_note_for_next_wake("page does not fit the rotated display; check rotation");
+        ESP_LOGE("paperboy", "page size does not fit the rotated display");
       } else if (pb_paint_qoi_gray4(it, pb_page_qoi)) {
         pb_paint_pending = true;
       }
@@ -189,7 +201,9 @@ touchscreen:
     interrupt_pin: GPIO21
     reset_pin: GPIO41
     # Measured: the panel reports image x as y and image y as x, and the
-    # display rotation is not applied to touches.
+    # display rotation is not applied to touches. The transform maps into the
+    # compiled orientation; pb_touch turns the event into page coordinates
+    # (ADR 0102).
     transform:
       swap_xy: true
       mirror_x: true
@@ -203,6 +217,30 @@ touchscreen:
       - lambda: "pb_touch_release();"
 
 script:
+  # A tap becomes a touch event in page coordinates (ADR 0102). The touch
+  # transform is measured in the compiled orientation, so pb_touch turns it by
+  # the device's relative rotation; the display is painted the same way.
+  - id: touched
+    mode: queued
+    parameters:
+      x: int
+      y: int
+    then:
+      - if:
+          condition:
+            lambda: "return !id(setup_mode) && !id(api_key).state.empty();"
+          then:
+            - lambda: |-
+                pb_touch(x, y, id(epaper_display)->get_native_width(),
+                         id(epaper_display)->get_native_height());
+                if (id(wake_reason) != "button") id(wake_reason) = "touch";
+            - script.execute: awake_limit
+            - if:
+                condition:
+                  lambda: "return !id(busy);"
+                then:
+                  - script.execute: sync_and_show
+
   # The panel paints asynchronously, so after_paint waits until it is idle
   # before it stores the shown hash.
   - id: wait_paint
