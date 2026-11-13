@@ -51,7 +51,7 @@ Devices are configured with `protocol: paperboy` and their `mac`; `trmnl` is no 
     { "type": "touch", "x": 412, "y": 233 }
   ],
   "shown": "1092f2e91bf8",
-  "battery": { "volts": 3.70, "percent": 60, "mah": 449, "ma": -68 },
+  "battery": { "volts": 3.70, "percent": 60, "mah": 449, "ma": -68, "charging": false },
   "rssi": -63,
   "log": [ { "level": "warn", "message": "image download failed" } ]
 }
@@ -60,7 +60,7 @@ Devices are configured with `protocol: paperboy` and their `mac`; `trmnl` is no 
 - `reason`: `timer`, `button`, `touch` or `powercycle`.
 - `events`: everything since the last sync, in order. Buttons are reported by **role**, not by pin: `next`, `previous`, `home`, optionally with `hold_ms`. The firmware maps physical buttons to roles per hardware type (Sticky and E1001: down = `next`, up = `previous`, ok = `home`). Presses made while the panel is still painting are sent together in the next sync, so Paperboy renders only the final page.
 - `shown`: hash of the image on the panel.
-- `battery`: `volts` is required and feeds the battery warning (ADR 0020); `percent`, `mah` and `ma` are optional (fuel gauge).
+- `battery`: `volts` is required and feeds the battery warning (ADR 0020); `percent`, `mah` and `ma` are optional (fuel gauge), where `ma` is the current into the cell and positive while charging. `charging` is the charger's own state (the Sticky reads the BQ25616's `STAT` pin) and cross-checks the gauge current.
 - `log`: firmware log entries, written like today's device log lines.
 
 Response `200`:

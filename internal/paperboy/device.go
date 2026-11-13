@@ -306,12 +306,35 @@ type syncOptions struct {
 	clientIP    string // source address of the contact, empty for a virtual display
 }
 
+// chargerState names what the charger does for the journal: the hardware's own
+// state when it reports one (the Sticky reads the BQ25616's STAT pin), else the
+// direction of the fuel gauge current. An idle gauge and a missing reading both
+// answer "".
+func chargerState(st deviceState) string {
+	if st.BatteryCharging != nil {
+		if *st.BatteryCharging {
+			return "charging"
+		}
+		return "idle"
+	}
+	switch {
+	case st.BatteryMA != nil && *st.BatteryMA > idleMA:
+		return "charging"
+	case st.BatteryMA != nil && *st.BatteryMA < -idleMA:
+		return "discharging"
+	}
+	return ""
+}
+
 // serveSync applies one wake to the state of a device and answers what to show
 // and when to come back (ADR 0042). The caller has resolved the device and
 // holds no lock; page selection happens under the state lock, rendering and
 // plugin calls do not.
 func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncRequest, now time.Time, opt syncOptions) syncResponse {
 	s.mu.Lock()
+	// The journal gets one line when the power source or the charger state
+	// changes instead of repeating it on every sync (issue #200).
+	prevPower, prevCharger := st.ReportedPower, chargerState(*st)
 	firstContact := st.LastSeen.IsZero()
 	st.LastSeen = now
 	st.ClientIP = opt.clientIP
@@ -463,6 +486,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		choice.title, choice.text = cfg.texts().noPlan()
 	}
 	logged := *st
+	powerChanged := prevPower != logged.ReportedPower || prevCharger != chargerState(logged)
 	var stateData []byte
 	if !opt.virtual {
 		stateData = s.stateSnapshotLocked(st)
@@ -563,6 +587,19 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	}
 	s.mu.Unlock()
 	s.saveState(d.stateKey(), pageData)
+	if powerChanged {
+		attrs := []any{"device", d.ID, "power", power}
+		if charger := chargerState(logged); charger != "" {
+			attrs = append(attrs, "charger", charger)
+		}
+		if logged.BatteryVoltage != "" {
+			attrs = append(attrs, "battery", logged.BatteryVoltage)
+		}
+		if logged.BatteryMA != nil {
+			attrs = append(attrs, "battery_ma", fmt.Sprintf("%+.0f", *logged.BatteryMA))
+		}
+		slog.Info("power changed", attrs...)
+	}
 	if logged.BatteryLevel != prevLevel {
 		level := logged.BatteryLevel
 		if level == batteryOK {

@@ -69,6 +69,53 @@ func TestSyncLogShowsBatteryCurrent(t *testing.T) {
 	}
 }
 
+// TestSyncLogsPowerChange checks that a change of the power source or of the
+// charger state gets one journal line instead of repeating it on every sync
+// (issue #200).
+func TestSyncLogsPowerChange(t *testing.T) {
+	logs := captureLog(t)
+	s, _ := planServer(t, testPlan)
+	dev := planDevice(t, s)
+	ma, percent := 0.0, 50.0
+	dev.req.Power = powerMains
+	dev.req.Battery = &syncBattery{Volts: 3.8, Percent: &percent, MA: &ma}
+	displayPage(t, s, dev)
+	lines := logLines(logs(), "power changed")
+	if len(lines) != 1 || !strings.Contains(lines[0], "power=mains") {
+		t.Fatalf("the first reading must be logged once: %v", lines)
+	}
+
+	// The same reading on the next sync adds nothing.
+	displayPage(t, s, dev)
+	if lines = logLines(logs(), "power changed"); len(lines) != 1 {
+		t.Fatalf("an unchanged reading must not log again: %v", lines)
+	}
+
+	// The gauge starts pushing current: the charger state changed.
+	ma = 568
+	displayPage(t, s, dev)
+	lines = logLines(logs(), "power changed")
+	if len(lines) != 2 || !strings.Contains(lines[1], "charger=charging") || !strings.Contains(lines[1], "battery_ma=+568") {
+		t.Fatalf("a charging start must be logged: %v", lines)
+	}
+
+	// It stops again.
+	ma = 0
+	displayPage(t, s, dev)
+	lines = logLines(logs(), "power changed")
+	if len(lines) != 3 {
+		t.Fatalf("the charger stopping must be logged: %v", lines)
+	}
+
+	// Unplugged: the power source changes, the rest stays.
+	dev.req.Power = powerBattery
+	displayPage(t, s, dev)
+	lines = logLines(logs(), "power changed")
+	if len(lines) != 4 || !strings.Contains(lines[3], "power=battery") {
+		t.Fatalf("the power source change must be logged: %v", lines)
+	}
+}
+
 // TestSyncLogMarksNoticePages makes sure a notice is not disguised as a
 // regular page.
 func TestSyncLogMarksNoticePages(t *testing.T) {
