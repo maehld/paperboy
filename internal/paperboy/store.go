@@ -39,6 +39,10 @@ type deviceState struct {
 	Charge     *chargeEpisode `json:"charge,omitempty"`
 	LastCharge *chargeEpisode `json:"last_charge,omitempty"`
 
+	// One battery sample per day for the runtime estimate (issue #207); a
+	// charge starts a new series.
+	BatteryHistory []batterySample `json:"battery_history,omitempty"`
+
 	ReportedPower string `json:"reported_power,omitempty"` // power source the hardware last reported (ADR 0051)
 	TouchReported bool   `json:"reported_touch,omitempty"` // the firmware reports a digitiser (ADR 0080)
 
