@@ -329,7 +329,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	}
 	if b := req.Battery; b != nil {
 		st.BatteryVoltage = strconv.FormatFloat(b.Volts, 'f', 2, 64)
-		st.BatteryPercent, st.BatteryMAH = b.Percent, b.MAH
+		st.BatteryPercent, st.BatteryMAH, st.BatteryMA = b.Percent, b.MAH, b.MA
 	}
 	prevLevel := st.BatteryLevel
 	st.BatteryLevel = nextBatteryLevel(cfg.battery(d), prevLevel, st.BatteryVoltage)
@@ -596,6 +596,11 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	}
 	attrs = append(attrs, "changed", req.Shown != served.hash, "battery", logged.BatteryVoltage,
 		"rssi", logged.RSSI, "refresh", refresh, "power", power)
+	// The fuel gauge current shows whether the battery is charging (positive)
+	// or discharging (negative); only devices with a gauge send it.
+	if logged.BatteryMA != nil {
+		attrs = append(attrs, "battery_ma", fmt.Sprintf("%+.0f", *logged.BatteryMA))
+	}
 	slog.Info("display sync", attrs...)
 	resp := syncResponse{
 		RefreshS: int(refresh.Seconds()),

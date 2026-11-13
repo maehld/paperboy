@@ -110,6 +110,7 @@ func TestDeviceFlow(t *testing.T) {
 		t.Fatalf("devices API: %v", info)
 	}
 	if info["battery_voltage"] != "3.91" || info["battery_percent"] != float64(61) || info["battery_mah"] != float64(449) ||
+		info["battery_ma"] != float64(-68) ||
 		info["rssi"] != "-63" || info["firmware"] != "0.4.1" || info["hardware"] != "sticky" || info["wake_reason"] != "powercycle" {
 		t.Fatalf("reported values: %v", info)
 	}

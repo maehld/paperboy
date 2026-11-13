@@ -8,7 +8,7 @@ Paperboy serves its operator pages on the same address as the device API. They n
 
 ### Dashboard
 
-`GET /` redirects to `/ui`, a read-only overview of all devices (ADR 0040). Each card shows the status, the plan and its active rule. It also shows a preview of the last served page (the lines for text displays), refresh, last contact, battery and the last render or plan error. The page is a server-rendered Go template without JavaScript, refreshes itself every 30 seconds and needs no token. Rendered PNGs live in memory only, so after a restart a card omits `last_page_url` and uses the page preview or a placeholder. The header shows the running build: version (or `dev`), short commit with `+dirty` for local changes, and commit date from the VCS stamp; the Go toolchain is in the tooltip. Every page links the editor.
+`GET /` redirects to `/ui`, a read-only overview of all devices (ADR 0040). Each card shows the status, the plan and its active rule. It also shows a preview of the last served page (the lines for text displays), refresh, last contact, the battery reading (voltage, charge and current from a fuel gauge) and the last render or plan error. The page is a server-rendered Go template without JavaScript, refreshes itself every 30 seconds and needs no token. Rendered PNGs live in memory only, so after a restart a card omits `last_page_url` and uses the page preview or a placeholder. The header shows the running build: version (or `dev`), short commit with `+dirty` for local changes, and commit date from the VCS stamp; the Go toolchain is in the tooltip. Every page links the editor.
 
 ### Plan preview
 
@@ -67,7 +67,7 @@ The `ppi` field has a helper. It converts the diagonal of the panel in inches or
 - `reason`: `timer`, `button`, `touch`, `powercycle`, `menu` or `result`.
 - `events`: buttons by role `next`, `previous`, `home`, optionally with `hold_ms`; touches with `x`/`y`. Each event has a monotonically increasing `id`, and Paperboy ignores a repeated ID.
 - `shown`: the hash on the panel.
-- `battery`: `volts` is required, `percent`, `mah` and `ma` are optional.
+- `battery`: `volts` is required, `percent`, `mah` and `ma` are optional. `ma` is the current from the fuel gauge, positive while charging.
 - `rssi`, `power` and `log` entries.
 
 The answer names the image (`image.path` relative to the Paperboy URL, `image.hash`) and the deep-sleep time `refresh_s`. It also names `listen_s` (0 after a timer wake, 20 s after input) and `sleep` (`false` for mains devices, ADR 0051). It names the server `time` in Unix seconds and `firmware` (an update offer, otherwise `null`). `wake` (`{reason, after_s}`) is a one-shot wake for the menu deadline or an action result; otherwise it is absent. An unknown key gets `401`, and the device registers again. An invalid body gets `400`.
@@ -110,7 +110,7 @@ The sync carries firmware log entries (`level`, `message`, optional `source`, `t
 
 ### Device list
 
-`GET /api/devices` shows every configured device without keys: registration, hardware, firmware, battery voltage (and `battery_percent`/`battery_mah` from a fuel gauge), signal strength, wake reason and last sync. It also shows what the device is showing (ADR 0039). The fields are `last_page`, `last_page_kind` (`page`, `notice` or `battery`), `last_page_hash`, `last_page_url` and `last_refresh` (text displays: `last_text` instead of `last_page_url`). The last render or plan error is in `last_error`, and a derived `status` is `ok`, `late`, `never` or `unregistered`. `late` means the last sync is more than twice the reported refresh old; devices deep-sleep, so an idle device is not an offline one.
+`GET /api/devices` shows every configured device without keys: registration, hardware, firmware, battery voltage (and `battery_percent`, `battery_mah` and `battery_ma` from a fuel gauge; `battery_ma` is positive while charging), signal strength, wake reason and last sync. It also shows what the device is showing (ADR 0039). The fields are `last_page`, `last_page_kind` (`page`, `notice` or `battery`), `last_page_hash`, `last_page_url` and `last_refresh` (text displays: `last_text` instead of `last_page_url`). The last render or plan error is in `last_error`, and a derived `status` is `ok`, `late`, `never` or `unregistered`. `late` means the last sync is more than twice the reported refresh old; devices deep-sleep, so an idle device is not an offline one.
 
 ## Security
 
