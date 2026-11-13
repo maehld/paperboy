@@ -129,9 +129,27 @@ func (p *calendarPlugin) shortDate(day time.Time) string {
 	return fmt.Sprintf("%s %d", day.Month().String()[:3], day.Day())
 }
 
+// weekTimedFit counts the timed events of one column that fit into avail
+// lines: costOf tells how many lines an event needs. It keeps a line free for
+// the "+N more" summary when more is set and events remain, and returns the
+// lines the shown events use.
+func weekTimedFit(count, hidden, avail int, costOf func(int) int, more bool) (shown, used int) {
+	for i := range count {
+		cost := costOf(i)
+		left := count - i - 1
+		if used+cost > avail || (more && left+hidden > 0 && used+cost+1 > avail) {
+			break
+		}
+		used += cost
+		shown++
+	}
+	return shown, used
+}
+
 // week draws one column per day: weekday and date as heading (today
 // inverted), bars for all-day and multi-day events, then the timed events
-// with start time and ellipsized title and "+N weitere" for the rest.
+// with start time and ellipsized title; the "+N weitere" summary names the
+// rest unless the more argument is off.
 func (p *calendarPlugin) week(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	area := img.Rect.Inset(w.Style.Padding)
 	n := weekDays(w.Arg(), 7)
@@ -198,24 +216,22 @@ func (p *calendarPlugin) week(req *plugin.Request, w plugin.WidgetRequest, img *
 	bottom := area.Max.Y
 
 	// Timed events: a start time and the title, on two lines in narrow columns.
+	more := w.Arg().Bool("more", true)
 	for i := range n {
 		colX := x0 + i*colW
 		textW := colW - 2*pad
 		oneLine := textW >= render.Measure("00:00 Wwwwwwww", size, false)
 		avail := (bottom - top) / lineH
-		used := 0
-		shown := 0
-		for _, e := range timed[i] {
-			cost := 2
+		costOf := func(int) int {
 			if oneLine {
-				cost = 1
+				return 1
 			}
-			// Keep a line for "+N weitere" when events remain.
-			left := len(timed[i]) - shown - 1
-			if used+cost > avail || (left+hidden[i] > 0 && used+cost+1 > avail) {
-				break
-			}
-			base := top + (used+1)*lineH - int(size*0.25)
+			return 2
+		}
+		shown, used := weekTimedFit(len(timed[i]), hidden[i], avail, costOf, more)
+		for j := range shown {
+			e := timed[i][j]
+			base := top + (j*costOf(j)+1)*lineH - int(size*0.25)
 			clock := e.start.In(p.loc).Format("15:04")
 			title := strings.TrimSpace(e.title)
 			if oneLine {
@@ -226,12 +242,10 @@ func (p *calendarPlugin) week(req *plugin.Request, w plugin.WidgetRequest, img *
 				render.TextAt(img, clock, colX+pad, base, size, true, color.Black, render.Left)
 				render.TextAt(img, render.Ellipsize(title, size, false, textW), colX+pad, base+lineH, size, false, color.Black, render.Left)
 			}
-			used += cost
-			shown++
 		}
-		if more := len(timed[i]) - shown + hidden[i]; more > 0 {
+		if rest := len(timed[i]) - shown + hidden[i]; more && rest > 0 {
 			base := top + (used+1)*lineH - int(size*0.25)
-			render.Text(img, fmt.Sprintf(p.text("+%d weitere", "+%d more"), more), colX+pad, base, render.Style{Size: size, Bold: true, Shrink: true}, textW, color.Black, render.Left)
+			render.Text(img, p.moreText(rest), colX+pad, base, render.Style{Size: size, Bold: true, Shrink: true}, textW, color.Black, render.Left)
 		}
 	}
 	return nil

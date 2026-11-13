@@ -121,6 +121,32 @@ func TestAgendaTruncationKeepsEvents(t *testing.T) {
 	}
 }
 
+// The "+N more" summary can be turned off: the lines then carry events only,
+// and nothing names the ones that are left out.
+func TestAgendaMoreOff(t *testing.T) {
+	p := agendaPlugin(t, ics(
+		vevent("UID:a", "DTSTART;TZID=Europe/Berlin:20261103T150000", "DTEND;TZID=Europe/Berlin:20261103T160000", "SUMMARY:Zahnarzt"),
+		vevent("UID:b", "DTSTART;TZID=Europe/Berlin:20261103T160000", "DTEND;TZID=Europe/Berlin:20261103T170000", "SUMMARY:Abholen"),
+		vevent("UID:c", "DTSTART;TZID=Europe/Berlin:20261103T170000", "DTEND;TZID=Europe/Berlin:20261103T180000", "SUMMARY:Abendessen"),
+		vevent("UID:d", "DTSTART;TZID=Europe/Berlin:20261103T190000", "DTEND;TZID=Europe/Berlin:20261103T200000", "SUMMARY:Kino"),
+	))
+	args := map[string]any{"days": 1, "more": false}
+	// One line, wide enough for the summary with the argument on.
+	lines, more := agendaCell(t, p, args, 1, 772, 92)
+	if more != "" || len(lines) != 1 || !lines[0].event || lines[0].text != "Zahnarzt" {
+		t.Errorf("one line = %+v, summary %q", lines, more)
+	}
+	// The line that the summary would take carries another event instead.
+	lines, more = agendaCell(t, p, args, 3, 240, 228)
+	if more != "" || len(lines) != 3 || !lines[1].event || !lines[2].event {
+		t.Errorf("three lines = %+v, summary %q", lines, more)
+	}
+	// The text display fills its lines too.
+	if got, want := agendaText(t, p, map[string]any{"days": 1, "headings": true, "more": false}, 3), []string{"Heute:", "15:00 Zahnarzt", "16:00 Abholen"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("text = %q, want %q", got, want)
+	}
+}
+
 func TestAgendaDays(t *testing.T) {
 	data := ics(
 		vevent("UID:a", "DTSTART;TZID=Europe/Berlin:20261103T093000", "DTEND;TZID=Europe/Berlin:20261103T103000", "SUMMARY:Standup"),
@@ -338,6 +364,21 @@ func TestTooSmallCell(t *testing.T) {
 		err := p.Render(req, w, render.NewCanvas(10, 10, 2))
 		if !errors.Is(err, plugin.ErrTooSmall) {
 			t.Errorf("%s in a 10x10 cell: error = %v, want ErrTooSmall", name, err)
+		}
+	}
+}
+
+// The widgets with a summary declare the argument, so the editors show a
+// switch for it.
+func TestMoreArgumentDeclared(t *testing.T) {
+	p := &calendarPlugin{}
+	for _, w := range p.Describe().Widgets {
+		if w.Widget == "month" {
+			continue
+		}
+		arg, ok := w.Args["more"]
+		if !ok || arg.Type != "bool" || arg.Default != true {
+			t.Errorf("%s: more = %+v, declared %v", w.Widget, arg, ok)
 		}
 	}
 }

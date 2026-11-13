@@ -149,6 +149,27 @@ func TestPackBars(t *testing.T) {
 	}
 }
 
+func TestWeekTimedFit(t *testing.T) {
+	oneLine := func(int) int { return 1 }
+	twoLines := func(int) int { return 2 }
+	// Four events in three lines: the summary takes the last line.
+	if shown, used := weekTimedFit(4, 0, 3, oneLine, true); shown != 2 || used != 2 {
+		t.Errorf("summary on: shown %d, used %d", shown, used)
+	}
+	// Without it the column fills up with events.
+	if shown, used := weekTimedFit(4, 0, 3, oneLine, false); shown != 3 || used != 3 {
+		t.Errorf("summary off: shown %d, used %d", shown, used)
+	}
+	// Bars that did not fit count as hidden, so a line stays free for the
+	// summary even when the remaining lines are too few for another event.
+	if shown, used := weekTimedFit(3, 2, 4, twoLines, true); shown != 1 || used != 2 {
+		t.Errorf("bars: shown %d, used %d", shown, used)
+	}
+	if shown, used := weekTimedFit(3, 2, 4, twoLines, false); shown != 2 || used != 4 {
+		t.Errorf("bars, summary off: shown %d, used %d", shown, used)
+	}
+}
+
 func TestWeekLines(t *testing.T) {
 	data := ics(
 		vevent("UID:a", "DTSTART;VALUE=DATE:20261104", "DTEND;VALUE=DATE:20261106", "SUMMARY:Trip"),
