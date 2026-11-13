@@ -326,6 +326,7 @@ func (m *myskoda) Describe() plugin.Description {
 		Title:   "MyŠkoda",
 		Version: version(),
 		Config:  configKeys,
+		Blobs:   []string{blobRender},
 		Actions: []plugin.ActionSpec{
 			{Name: "charging", Title: "Charging", Args: chargingActionArgs, Confirm: &plugin.Confirm{Required: true}},
 			{Name: "climate", Title: "Air conditioning", Args: climateActionArgs, Confirm: &plugin.Confirm{Required: true}},

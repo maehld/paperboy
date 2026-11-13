@@ -472,6 +472,18 @@ func TestProtocol(t *testing.T) {
 	}
 }
 
+// The blob the plugin keeps must be declared, otherwise Paperboy logs the file
+// it stored itself as stale on every start (ADR 0081).
+func TestDescribeDeclaresTheRenderBlob(t *testing.T) {
+	desc := (&myskoda{}).Describe()
+	for _, name := range desc.Blobs {
+		if name == blobRender {
+			return
+		}
+	}
+	t.Fatalf("describe does not declare %q: %v", blobRender, desc.Blobs)
+}
+
 func TestProtocolWithoutData(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
