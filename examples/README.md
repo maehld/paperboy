@@ -2,7 +2,7 @@
 
 The pages under `pages/` are grids of widgets from the shipped plugins
 (ADR 0049): `weather`, `calendar`, `evcc`, `departures`, `pokedex`, `xkcd`,
-`myskoda`, `countdown`, `rss` and the built-in `paperboy` plugin. Copy the
+`myskoda`, `countdown`, `rss`, `dexcom` and the built-in `paperboy` plugin. Copy the
 files you need into the `pages/` directory of your instance and adapt the
 grid, the spans and the arguments.
 
@@ -22,6 +22,8 @@ grid, the spans and the arguments.
 - `werte.yaml` - evcc values: meter readings and charging statistics as a
   list, without a graph.
 - `abfahrten.yaml` - real-time departures; `abfahrten.lcd2004.yaml` on 20×4.
+- `glukose.yaml` - the glucose reading next to the day with the numbers of the
+  day below; `glukose.lcd2004.yaml` puts the reading and three values on 20×4.
 - `nachrichten.yaml` - two RSS feeds: headlines with summaries and a mixed
   list of all sources.
 - `unterwegs.yaml` - current weather with clothing advice and the next

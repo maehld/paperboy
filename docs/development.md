@@ -28,6 +28,7 @@ cmd/xkcd/                xkcd plugin: comic with optional title and alt text
 cmd/countdown/           Countdown plugin: days to a date with a progress bar
 cmd/departures/          Departures plugin: EFA real-time departures (ADR 0053)
 cmd/myskoda/             MyŠkoda plugin: vehicle state and commands
+cmd/dexcom/              Dexcom plugin: glucose readings from the Share service
 cmd/pokedex/             Pokédex plugin: a Pokémon card from PokéAPI
 cmd/rss/                 RSS and Atom plugin: feed list and headline
 cmd/odtest/              Test program for OpenDisplay devices (TCP and Bluetooth)

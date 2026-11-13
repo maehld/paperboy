@@ -1,0 +1,8 @@
+# The glucose reading with the numbers of the day on a 20x4 character display.
+# Requires the dexcom plugin (docs/plugins/dexcom.md).
+title: Glukose
+kind: text
+grid: [20, 4]
+cells:
+  - { at: [0, 0], span: [20, 1], widget: dexcom/glucose }
+  - { at: [0, 1], span: [20, 3], widget: dexcom/values, args: { values: [avg, in_band, max] } }

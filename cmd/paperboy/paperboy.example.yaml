@@ -28,6 +28,12 @@ plugins:
   xkcd:
     config: { comic: latest }
   countdown: {}   # dates, labels and bars are widget args (docs/plugins/countdown.md)
+  dexcom:
+    config:
+      account_name: ${DEXCOM_ACCOUNT}   # or account_id: <GUID>
+      password: ${DEXCOM_PASSWORD}
+      app_id: 00000000-0000-0000-0000-000000000000   # of the app that created the share
+      region: eu                        # eu or us; the account may live on another host
   departures:
     config: { stop: "City, Stop name", walk_minutes: 4 }   # Westfalenfahrplan by default, see docs/plugins/departures.md
   myskoda:
