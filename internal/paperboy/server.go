@@ -137,67 +137,129 @@ func (s *Server) Start(ctx context.Context) {
 	go s.downloadLoop(ctx)
 }
 
-func (s *Server) Handler() http.Handler {
+// route is one entry of a handler table: the method and path pattern of an
+// http.ServeMux together with its handler.
+type route struct {
+	pattern string
+	handle  http.HandlerFunc
+}
+
+// deviceRoutes are what a display touches: the device API (ADR 0042) and the
+// images, notice pages and firmware it downloads. They stay reachable without
+// the UI password, so nothing else belongs here; TestDeviceRoutesStayOpen pins
+// their prefixes.
+func (s *Server) deviceRoutes() []route {
+	return []route{
+		{"POST /api/device/register", s.handleRegister},
+		{"POST /api/device/sync", s.handleSync},
+		{"GET /api/device/text", s.handleText},
+		{"GET /pages/{profile}/{page}/{file}", s.handleRenderedImage},
+		{"GET /hints/{file}", s.handleHint},
+		{"GET /firmware/{file}", s.handleFirmware},
+	}
+}
+
+// uiRoutes are the operator UI, the API behind its editors and the widget and
+// preview endpoints they use (ADR 0066, 0070, 0071, 0076). Every entry sits
+// behind the password from ui.password (ADR 0096), because the pages carry the
+// instance's content: calendars, departures, the home's energy.
+func (s *Server) uiRoutes() []route {
+	return []route{
+		{"GET /{$}", s.handleRoot},
+		{"GET /ui", s.handleDashboard},
+		{"GET /ui/downloads", s.handleDownloads},
+		{"GET /ui/plugins", s.handleWidgetsPage},
+		{"GET /ui/plan", s.handlePlanView},
+		{"GET /ui/virtual", s.handleVirtual},
+		{"GET /ui/virtual.js", s.handleVirtualJS},
+		{"POST /ui/virtual/sync", s.handleVirtualSync},
+		{"POST /ui/virtual/reset", s.handleVirtualReset},
+		{"GET /ui/editor", s.handleEditor},
+		{"GET /ui/editor/page", s.handleEditorPage},
+		{"GET /ui/editor/plan", s.handlePlanEditor},
+		{"GET /ui/editor/device", s.handleDeviceEditor},
+		{"GET /ui/editor/display", s.handleDisplayEditor},
+		{"GET /ui/editor.js", s.handleEditorJS},
+		{"GET /ui/ui.css", s.handleUICSS},
+		{"GET /ui/logo.svg", s.handleUILogo},
+		{"GET /ui/favicon.svg", s.handleUIFavicon},
+		{"GET /ui/editor/plan.js", s.handlePlanEditorJS},
+		{"GET /ui/editor/device.js", s.handleDeviceEditorJS},
+		{"GET /ui/editor/display.js", s.handleDisplayEditorJS},
+		{"POST /ui/download", s.handleDownloadCheck},
+		{"POST /ui/downloads/prune", s.handlePrune},
+		{"GET /api/profiles", s.handleProfiles},
+		{"GET /api/plugins", s.handlePlugins},
+		{"GET /api/devices", s.handleDevices},
+		{"DELETE /api/state/devices/{mac}", s.handleForgetDeviceState},
+		{"GET /api/preview/{display}/{page}", s.handlePreview},
+		{"GET /api/widget/{plugin}/{widget}", s.handleWidget},
+		// Page and plan editing (ADR 0066, ADR 0073).
+		{"GET /api/pages", s.handlePages},
+		{"GET /api/pages/{name}", s.handlePage},
+		{"PUT /api/pages/{name}", s.handleSavePage},
+		{"DELETE /api/pages/{name}", s.handleDeletePage},
+		{"POST /api/pages/{name}/rename", s.handleRenamePage},
+		{"GET /api/plans", s.handlePlans},
+		{"GET /api/plans/{name}", s.handlePlan},
+		{"PUT /api/plans/{name}", s.handleSavePlan},
+		{"DELETE /api/plans/{name}", s.handleDeletePlan},
+		{"POST /api/plans/{name}/rename", s.handleRenamePlan},
+		// Device files (ADR 0070).
+		{"GET /api/devices/{id}", s.handleDevice},
+		{"PUT /api/devices/{id}", s.handleSaveDevice},
+		{"DELETE /api/devices/{id}", s.handleDeleteDevice},
+		{"POST /api/devices/{id}/rename", s.handleRenameDevice},
+		// Display type files (ADR 0071).
+		{"GET /api/displays", s.handleDisplays},
+		{"GET /api/displays/{name}", s.handleDisplay},
+		{"PUT /api/displays/{name}", s.handleSaveDisplay},
+		{"DELETE /api/displays/{name}", s.handleDeleteDisplay},
+		{"POST /api/displays/{name}/rename", s.handleRenameDisplay},
+		{"POST /api/preview/{display}", s.handleDraftPreview},
+	}
+}
+
+func newMux(routes []route) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/profiles", s.handleProfiles)
-	mux.HandleFunc("GET /api/plugins", s.handlePlugins)
-	mux.HandleFunc("GET /api/devices", s.handleDevices)
-	mux.HandleFunc("DELETE /api/state/devices/{mac}", s.handleForgetDeviceState)
-	mux.HandleFunc("GET /api/preview/{display}/{page}", s.handlePreview)
-	mux.HandleFunc("GET /pages/{profile}/{page}/{file}", s.handleRenderedImage)
-	mux.HandleFunc("GET /hints/{file}", s.handleHint)
-	mux.HandleFunc("GET /firmware/{file}", s.handleFirmware)
-	mux.HandleFunc("POST /api/device/register", s.handleRegister)
-	mux.HandleFunc("POST /api/device/sync", s.handleSync)
-	mux.HandleFunc("GET /api/device/text", s.handleText)
-	mux.HandleFunc("GET /{$}", s.handleRoot)
-	mux.HandleFunc("GET /ui", s.handleDashboard)
-	mux.HandleFunc("GET /ui/downloads", s.handleDownloads)
-	mux.HandleFunc("GET /ui/plugins", s.handleWidgetsPage)
-	mux.HandleFunc("GET /ui/plan", s.handlePlanView)
-	mux.HandleFunc("GET /ui/virtual", s.handleVirtual)
-	mux.HandleFunc("GET /ui/virtual.js", s.handleVirtualJS)
-	mux.HandleFunc("POST /ui/virtual/sync", s.handleVirtualSync)
-	mux.HandleFunc("POST /ui/virtual/reset", s.handleVirtualReset)
-	mux.HandleFunc("GET /ui/editor", s.handleEditor)
-	mux.HandleFunc("GET /ui/editor/page", s.handleEditorPage)
-	mux.HandleFunc("GET /ui/editor/plan", s.handlePlanEditor)
-	mux.HandleFunc("GET /ui/editor/device", s.handleDeviceEditor)
-	mux.HandleFunc("GET /ui/editor/display", s.handleDisplayEditor)
-	mux.HandleFunc("GET /ui/editor.js", s.handleEditorJS)
-	mux.HandleFunc("GET /ui/ui.css", s.handleUICSS)
-	mux.HandleFunc("GET /ui/logo.svg", s.handleUILogo)
-	mux.HandleFunc("GET /ui/favicon.svg", s.handleUIFavicon)
-	mux.HandleFunc("GET /ui/editor/plan.js", s.handlePlanEditorJS)
-	mux.HandleFunc("GET /ui/editor/device.js", s.handleDeviceEditorJS)
-	mux.HandleFunc("GET /ui/editor/display.js", s.handleDisplayEditorJS)
-	mux.HandleFunc("POST /ui/download", s.handleDownloadCheck)
-	mux.HandleFunc("POST /ui/downloads/prune", s.handlePrune)
-	mux.HandleFunc("GET /api/widget/{plugin}/{widget}", s.handleWidget)
-	// Page and plan editing (ADR 0066, ADR 0073).
-	mux.HandleFunc("GET /api/pages", s.handlePages)
-	mux.HandleFunc("GET /api/pages/{name}", s.handlePage)
-	mux.HandleFunc("PUT /api/pages/{name}", s.handleSavePage)
-	mux.HandleFunc("DELETE /api/pages/{name}", s.handleDeletePage)
-	mux.HandleFunc("POST /api/pages/{name}/rename", s.handleRenamePage)
-	mux.HandleFunc("GET /api/plans", s.handlePlans)
-	mux.HandleFunc("GET /api/plans/{name}", s.handlePlan)
-	mux.HandleFunc("PUT /api/plans/{name}", s.handleSavePlan)
-	mux.HandleFunc("DELETE /api/plans/{name}", s.handleDeletePlan)
-	mux.HandleFunc("POST /api/plans/{name}/rename", s.handleRenamePlan)
-	// Device files (ADR 0070).
-	mux.HandleFunc("GET /api/devices/{id}", s.handleDevice)
-	mux.HandleFunc("PUT /api/devices/{id}", s.handleSaveDevice)
-	mux.HandleFunc("DELETE /api/devices/{id}", s.handleDeleteDevice)
-	mux.HandleFunc("POST /api/devices/{id}/rename", s.handleRenameDevice)
-	// Display type files (ADR 0071).
-	mux.HandleFunc("GET /api/displays", s.handleDisplays)
-	mux.HandleFunc("GET /api/displays/{name}", s.handleDisplay)
-	mux.HandleFunc("PUT /api/displays/{name}", s.handleSaveDisplay)
-	mux.HandleFunc("DELETE /api/displays/{name}", s.handleDeleteDisplay)
-	mux.HandleFunc("POST /api/displays/{name}/rename", s.handleRenameDisplay)
-	mux.HandleFunc("POST /api/preview/{display}", s.handleDraftPreview)
+	for _, r := range routes {
+		mux.HandleFunc(r.pattern, r.handle)
+	}
 	return mux
+}
+
+// Handler serves the device API and the operator UI under one origin. The route
+// tables keep the two apart (ADR 0096): the UI mux decides which side a request
+// belongs to, and only the UI side is wrapped in the password check. A new UI
+// route is therefore protected by construction, and a route can only be open
+// when it is listed in deviceRoutes.
+func (s *Server) Handler() http.Handler {
+	uiMux := newMux(s.uiRoutes())
+	ui := s.requireUI(uiMux)
+	devices := newMux(s.deviceRoutes())
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if uiRequest(uiMux, r) {
+			ui.ServeHTTP(w, r)
+			return
+		}
+		devices.ServeHTTP(w, r)
+	})
+}
+
+// uiRequest reports whether the UI table owns r. A request whose method no UI
+// route accepts still belongs to the UI (it answers 405 once the password is
+// right) instead of falling through to the device API's 404.
+func uiRequest(ui *http.ServeMux, r *http.Request) bool {
+	if _, pattern := ui.Handler(r); pattern != "" {
+		return true
+	}
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		return false
+	}
+	probe := *r
+	probe.Method = http.MethodGet
+	_, pattern := ui.Handler(&probe)
+	return pattern != ""
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -373,6 +435,9 @@ func newAPIKey() string {
 // handlePreview composes a page as PNG (or text for text displays), so a
 // layout can be checked without a device.
 func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
+	// The preview shows a page of the instance (ADR 0096): no shared cache may
+	// keep it.
+	w.Header().Set("Cache-Control", "no-store")
 	display, name := r.PathValue("display"), r.PathValue("page")
 	cfg := s.config()
 	p, ok := cfg.Profiles[display]

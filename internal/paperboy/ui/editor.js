@@ -36,6 +36,7 @@
     dirty: false,
     previewURL: '',
     previewTimer: 0,
+    signedOut: false, // the UI password changed: stop previews until the page reloads (ADR 0096)
     previewKind: '', // '' none, 'image' or 'text'
     previewLines: [], // the text lines of a text display, one char per cell
   };
@@ -1123,9 +1124,19 @@
   }
 
   function schedulePreview() {
+    if (state.signedOut) return;
     clearTimeout(state.previewTimer);
     setRendering(true);
     state.previewTimer = setTimeout(preview, 350);
+  }
+
+  // signedOut reports a stale UI password (ADR 0096): the credentials the
+  // browser cached no longer match, so every preview would fail the same way.
+  // The page has to be reloaded, which asks for the new password.
+  function signedOut() {
+    state.signedOut = true;
+    setRendering(false);
+    return 'signed out — the UI password changed, reload the page to sign in again';
   }
 
   // showPanelResult puts the widgets page's answer into the preview panel: an
@@ -1135,6 +1146,12 @@
     const pre = el('preview-text');
     const error = el('preview-error');
     setRendering(false);
+    if (res.status === 401) {
+      img.hidden = pre.hidden = true;
+      error.hidden = false;
+      error.textContent = signedOut();
+      return;
+    }
     if (!res.ok) {
       let message = (await res.text()).trim();
       try {
@@ -1180,6 +1197,14 @@
   async function showBoardResult(res) {
     const error = el('preview-error');
     setRendering(false);
+    if (res.status === 401) {
+      clearBoardPreview();
+      if (error) {
+        error.hidden = false;
+        error.textContent = signedOut();
+      }
+      return;
+    }
     if (!res.ok) {
       let message = (await res.text()).trim();
       try {
@@ -1317,6 +1342,10 @@
     // The open file is named exactly: empty is the shared page, else the
     // display type of its variant (ADR 0093).
     const res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '?display=' + encodeURIComponent(state.file), { cache: 'no-store' });
+    if (res.status === 401) {
+      setStatus(signedOut(), 'error');
+      return;
+    }
     if (res.status === 404) {
       state.template = blank();
       state.fileDisplay = state.file;
@@ -1394,6 +1423,10 @@
       });
     } catch (e) {
       setStatus('save failed: ' + e, 'error');
+      return;
+    }
+    if (res.status === 401) {
+      setStatus(signedOut(), 'error');
       return;
     }
     let doc = {};

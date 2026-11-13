@@ -90,3 +90,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0093](0093-every-page-file-is-addressable.md) | Every page file is addressable | Accepted, implemented; amends the Delete rule of ADR-0084 and the overview of ADR-0068; the chip links and the Delete in the list superseded by ADR-0094 |
 | [0094](0094-the-pages-list-is-a-list.md) | The pages list is a list | Accepted, implemented |
 | [0095](0095-the-logo-on-pages-and-devices.md) | The Paperboy logo on pages and on the device | Accepted, implemented |
+| [0096](0096-a-password-for-the-operator-ui.md) | A password for the operator UI | Accepted, implemented; supersedes the "no token" decision of ADR-0040 and ADR-0049 for the operator UI; the device API keeps its key (ADR-0042) |

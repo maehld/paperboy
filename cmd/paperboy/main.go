@@ -57,6 +57,13 @@ func run() error {
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.Serve(listener) }()
 	slog.Info("Paperboy started", "listen", listener.Addr().String(), "display_types", len(cfg.Profiles), "devices", len(cfg.Devices))
+	// The operator UI edits pages and plans and shows the instance's content
+	// (ADR 0096). Without a password it is open to everyone who reaches this
+	// address, which is fine on loopback and worth a warning anywhere else.
+	if cfg.UI.Password == "" && !isLoopback(listener.Addr()) {
+		slog.Warn("the operator UI has no password: every page, plan and device is open to anyone who can reach this address; set ui.password in paperboy.yaml",
+			"listen", listener.Addr().String())
+	}
 	select {
 	case err := <-serveErr:
 		if !errors.Is(err, http.ErrServerClosed) {
@@ -68,4 +75,11 @@ func run() error {
 		return server.Shutdown(shutdownCtx)
 	}
 	return nil
+}
+
+// isLoopback reports whether the listener is reachable from this machine only,
+// where the unlocked UI is nobody else's business (ADR 0096).
+func isLoopback(addr net.Addr) bool {
+	tcp, ok := addr.(*net.TCPAddr)
+	return ok && tcp.IP.IsLoopback()
 }

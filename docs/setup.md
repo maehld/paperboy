@@ -56,6 +56,8 @@ download:              # optional: fetch plugins and firmware from the releases 
   interval: 24h        # optional: between checks, at least 1h (ADR 0062)
   plugin_channel: stable    # optional: stable (default) or latest (ADR 0089)
   firmware_channel: stable  # optional: stable or latest
+ui:                    # optional: the password of the operator UI (ADR 0096)
+  password: ${PAPERBOY_UI_PASSWORD}
 # Display types are files under displays/ (ADR 0071); devices are files under devices/ (ADR 0070).
 ```
 
@@ -63,6 +65,24 @@ download:              # optional: fetch plugins and firmware from the releases 
 - `language` (`de` or `en`) selects the language of the built-in image texts, the number format and the language plugins draw in. Without it, Paperboy uses the system language (Windows UI language, otherwise `LANG`/`LC_ALL`/`LC_MESSAGES`) and falls back to English. `timezone` (IANA name) applies to plans and built-in dates; without it, Paperboy uses the system timezone.
 - `-config` names the instance directory (default `.`). Paperboy reads `<dir>/paperboy.yaml` and finds all other directories there. Paperboy rejects a file argument with an explanation and does not read a `.json` configuration.
 - Paperboy reloads the configuration on change without a restart (ADR 0047). Handlers pick up a modified `paperboy.yaml` or a changed file under `displays/` or `devices/` on the next request. Plugins whose section changed are restarted, and their cached widgets are dropped. A broken file keeps the last valid configuration. If `paperboy.yaml` is not usable at startup in an existing instance directory, the server still starts in degraded mode. It serves no display types and no devices, and applies the file as soon as it loads, also when its mod time did not change. A wrong `-config` stays fatal.
+
+## Operator UI
+
+The dashboard, the editors and their API are operator business: they show the instance's content (calendars, departures, energy, the displays' MAC addresses) and they write pages, plans, devices and display types (ADR 0096). `ui.password` protects all of it:
+
+```yaml
+ui:
+  password: ${PAPERBOY_UI_PASSWORD}
+```
+
+- The password goes into `paperboy.yaml` through the environment, like every other secret; without `${…}` it would sit in the file in plain text.
+- The browser shows its own login prompt, the user name is ignored. `curl -u :password http://…/api/devices` works for scripts. Requests without credentials answer `401` with a hint that names `ui.password`.
+- Without the `ui` section the UI stays open, as it was before this option existed. Paperboy warns at startup when the listener is not loopback and no password is set. A password added or changed later applies to the next request, without a restart.
+- A changed password ends the sessions of open tabs: their next request answers `401` and the browser asks again. There is no logout, because the browser keeps Basic credentials until it is closed; use a private window on a shared machine.
+- Only the UI is protected. A display keeps registering and syncing with its own key (ADR 0042) and downloads its pages and firmware without credentials, so nothing breaks on the panels. Requests from another site cannot write: they are refused with `403` even when the browser would send the password along.
+- **Expose beyond the LAN:** Paperboy does not terminate TLS, and both the password and the page images of the displays travel in clear text through the LAN. Put a reverse proxy in front that terminates HTTPS and forwards to Paperboy's `-listen` address, and keep the device URL (`http://<host>:<port>`) as it is, because the firmware keeps that address. The proxy's address is what the dashboard shows as the device's last contact (ADR 0083).
+
+## Display types
 
 ## Display types
 

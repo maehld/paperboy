@@ -787,6 +787,9 @@ func (s *Server) deleteFile(w http.ResponseWriter, cfg *Config, kind, label, pat
 // handleDraftPreview renders a page that is not saved yet, so an editor can
 // show a draft without writing a file (ADR 0066).
 func (s *Server) handleDraftPreview(w http.ResponseWriter, r *http.Request) {
+	// A draft is composed from plugins and belongs to the instance (ADR 0096):
+	// no shared cache may keep it.
+	w.Header().Set("Cache-Control", "no-store")
 	cfg := s.config()
 	display := r.PathValue("display")
 	if _, ok := cfg.Profiles[display]; !ok {
