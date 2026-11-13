@@ -89,3 +89,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0092](0092-scrolling-text-lines.md) | Scrolling lines on text displays | Accepted, implemented |
 | [0093](0093-every-page-file-is-addressable.md) | Every page file is addressable | Accepted, implemented; amends the Delete rule of ADR-0084 and the overview of ADR-0068; the chip links and the Delete in the list superseded by ADR-0094 |
 | [0094](0094-the-pages-list-is-a-list.md) | The pages list is a list | Accepted, implemented |
+| [0095](0095-the-logo-on-pages-and-devices.md) | The Paperboy logo on pages and on the device | Accepted, implemented |

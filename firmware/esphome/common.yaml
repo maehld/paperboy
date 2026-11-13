@@ -37,6 +37,15 @@ esphome:
         - lambda: "pb_init_rtc();"
         - lambda: "pb_time(\"boot\");"
         - lambda: "id(mac) = get_mac_address_pretty();"
+        # A cold boot shows the mark for 5 s (ADR 0095). A timer or button wake
+        # goes straight to its page, so a page change stays as fast as it is.
+        # Wi-Fi connects meanwhile, so the splash rarely costs anything.
+        - if:
+            condition:
+              lambda: 'return id(wake_reason) == "powercycle";'
+            then:
+              - script.execute: boot_splash
+              - script.wait: boot_splash
         - if:
             condition:
               lambda: "return !wifi::global_wifi_component->has_sta();"
@@ -203,6 +212,24 @@ http_request:
 
 script:
   # ---------------------------------------------------------------- cycle
+
+  # The splash of a power-on (ADR 0095): the mark in the middle of the panel for
+  # 5 s. The page hash is dropped first, because the panel shows the splash, not
+  # the page - after a firmware update the RTC memory survives the reboot, so an
+  # "unchanged" answer must not leave the splash on the panel.
+  - id: boot_splash
+    mode: single
+    then:
+      - lambda: |-
+          pb_splash = true;
+          pb_shown_hash[0] = 0;
+      - component.update: epaper_display
+      - delay: 100ms
+      - script.execute: wait_paint
+      - script.wait: wait_paint
+      - lambda: 'pb_time("splash");'
+      - delay: 5s
+      - lambda: "pb_splash = false;"
 
   - id: run_cycle
     mode: restart
