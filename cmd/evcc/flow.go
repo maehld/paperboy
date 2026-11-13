@@ -140,11 +140,11 @@ type flowNode struct {
 // grid import and battery discharge, out of it for the home, the loadpoints,
 // export and charging). Solid vs dashed, the direction and the labels carry
 // the information, so it reads in two gray levels.
-func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
+func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) error {
 	s := e.cur
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Dx() < 40 || b.Dy() < 40 {
-		return
+		return plugin.TooSmall(w)
 	}
 	base := e.req.TextPx(w)
 	rule := max(w.Style.Rule, 1)
@@ -411,6 +411,7 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) {
 		render.Text(img, label, tcx, lb, render.Style{Size: lsz, Shrink: true}, inner, ink, render.Center)
 		render.Text(img, n.value, tcx, vb, render.Style{Size: vsz, Bold: true, Shrink: true}, inner, ink, render.Center)
 	}
+	return nil
 }
 
 // dashedPath draws a dashed polyline.

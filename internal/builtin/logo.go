@@ -81,10 +81,10 @@ func drawMark(img *image.Paletted, r image.Rectangle) {
 
 // logo draws the mark into the cell, centered and as large as the cell allows;
 // the arg wordmark adds the wordmark of the lockup.
-func (Plugin) logo(w plugin.WidgetRequest, img *image.Paletted) {
+func (Plugin) logo(w plugin.WidgetRequest, img *image.Paletted) error {
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Empty() {
-		return
+		return plugin.TooSmall(w)
 	}
 	wordmark := w.Arg().Bool("wordmark", false)
 	ratio := markWidth / markHeight
@@ -98,7 +98,7 @@ func (Plugin) logo(w plugin.WidgetRequest, img *image.Paletted) {
 		h = int(math.Round(float64(width) / ratio))
 	}
 	if h < 1 || width < 1 {
-		return
+		return plugin.TooSmall(w)
 	}
 	x0 := b.Min.X + (b.Dx()-width)/2
 	y0 := b.Min.Y + (b.Dy()-h)/2
@@ -116,4 +116,5 @@ func (Plugin) logo(w plugin.WidgetRequest, img *image.Paletted) {
 		render.MonoText(img, "paperboy", x0+markW+gap, y0+int(math.Round(float64(h)*0.80)), size,
 			render.Black, render.Left)
 	}
+	return nil
 }

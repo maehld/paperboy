@@ -47,7 +47,7 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 	}
 	rows := (b.Max.Y - pad - top) / rowH
 	if rows < 1 {
-		return fmt.Errorf("cell too small for a departure (%d px high)", b.Dy())
+		return plugin.TooSmall(w)
 	}
 	deps := v.list
 	if len(deps) > rows {

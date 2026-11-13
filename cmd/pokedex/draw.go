@@ -40,8 +40,7 @@ func (p *pokedex) Render(req *plugin.Request, w plugin.WidgetRequest, img *image
 	if err != nil {
 		return err
 	}
-	drawCard(m, req, req.Lang(), w, img)
-	return nil
+	return drawCard(m, req, req.Lang(), w, img)
 }
 
 func num(v float64, decimals int, lang string) string {
@@ -77,7 +76,7 @@ func (m *mon) number() string { return fmt.Sprintf("#%04d", m.id) }
 // drawCard draws the card. All sizes derive from the request's base text
 // height, stroke width and padding (physical since ADR 0050), the gaps from
 // millimetres.
-func drawCard(m *mon, req *plugin.Request, lang string, w plugin.WidgetRequest, img *image.Paletted) {
+func drawCard(m *mon, req *plugin.Request, lang string, w plugin.WidgetRequest, img *image.Paletted) error {
 	pad := w.Style.Padding
 	rule := max(w.Style.Rule, 1)
 	base := req.TextPx(w)
@@ -85,7 +84,7 @@ func drawCard(m *mon, req *plugin.Request, lang string, w plugin.WidgetRequest, 
 	b := img.Rect
 	inner := image.Rect(b.Min.X+pad, b.Min.Y+pad, b.Max.X-pad, b.Max.Y-pad)
 	if inner.Dx() < 20 || inner.Dy() < 20 {
-		return
+		return plugin.TooSmall(w)
 	}
 
 	// Artwork left of the text on wide cells, above it on tall ones.
@@ -104,7 +103,7 @@ func drawCard(m *mon, req *plugin.Request, lang string, w plugin.WidgetRequest, 
 	}
 	bottom, s := drawText(img, col, m, lang, base, gap, rule)
 	if s < base*0.99 {
-		return // squeezed: no flavor text
+		return nil // squeezed: no flavor text
 	}
 	// The flavor text goes below the artwork when there is room for two
 	// lines, else below the stats.
@@ -114,6 +113,7 @@ func drawCard(m *mon, req *plugin.Request, lang string, w plugin.WidgetRequest, 
 		rect = below
 	}
 	drawFlavor(img, rect, m.flavorText(lang), fs)
+	return nil
 }
 
 // drawFlavor wraps text into r and cuts it with an ellipsis where the height

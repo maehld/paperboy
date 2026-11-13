@@ -16,27 +16,25 @@ import (
 func (e *evcc) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	switch w.Widget {
 	case "site":
-		e.site(w, img)
+		return e.site(w, img)
 	case "loadpoint":
 		lp, err := e.loadpoint(w)
 		if err != nil {
 			return err
 		}
-		e.drawLoadpoint(w, lp, img)
+		return e.drawLoadpoint(w, lp, img)
 	case "flow":
-		e.flow(w, img)
+		return e.flow(w, img)
 	case "forecast":
-		e.forecast(w, img)
+		return e.forecast(w, img)
 	case "history":
 		return e.historyWidget(w, img)
 	case "chart":
 		return e.chartWidget(w, img)
 	case "values":
 		return e.valuesWidget(w, img)
-	default:
-		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 	}
-	return nil
+	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 }
 
 func (e *evcc) t(de, en string) string { return e.req.T(de, en) }
@@ -130,13 +128,17 @@ func (e *evcc) siteTiles() []tile {
 	return tiles
 }
 
-func (e *evcc) site(w plugin.WidgetRequest, img *image.Paletted) {
+func (e *evcc) site(w plugin.WidgetRequest, img *image.Paletted) error {
+	if img.Rect.Inset(w.Style.Padding).Empty() {
+		return plugin.TooSmall(w)
+	}
 	tiles := e.siteTiles()
 	cols := 2
 	if w.Arg().Int("columns", 2) == 4 {
 		cols = 4
 	}
 	drawTiles(img, tiles, cols, w.Style.Padding, w.Style.Rule, e.req.TextPx(w))
+	return nil
 }
 
 // drawTiles lays tiles out in a grid with thin separators, like the tiles of
@@ -192,10 +194,10 @@ func (e *evcc) status(lp *loadpoint) string {
 
 // drawLoadpoint shows the vehicle with a state-of-charge bar and a limit
 // marker, the mode and status, and charge power and session energy.
-func (e *evcc) drawLoadpoint(w plugin.WidgetRequest, lp *loadpoint, img *image.Paletted) {
+func (e *evcc) drawLoadpoint(w plugin.WidgetRequest, lp *loadpoint, img *image.Paletted) error {
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Empty() {
-		return
+		return plugin.TooSmall(w)
 	}
 	base := e.req.TextPx(w)
 	h := float64(b.Dy())
@@ -262,12 +264,16 @@ func (e *evcc) drawLoadpoint(w plugin.WidgetRequest, lp *loadpoint, img *image.P
 			render.Text(img, session, b.Min.X, y, render.Style{Size: text, Shrink: true}, b.Dx(), color.Black, render.Left)
 		}
 	}
+	return nil
 }
 
 // forecast draws the solar forecast as an area and the grid price as steps,
 // from now to the configured number of hours ahead.
-func (e *evcc) forecast(w plugin.WidgetRequest, img *image.Paletted) {
+func (e *evcc) forecast(w plugin.WidgetRequest, img *image.Paletted) error {
 	b := img.Rect.Inset(w.Style.Padding)
+	if b.Empty() {
+		return plugin.TooSmall(w)
+	}
 	hours := min(max(w.Arg().Int("hours", 24), 6), 48)
 	loc := e.req.Location()
 	now := e.req.Now.In(loc)
@@ -312,7 +318,7 @@ func (e *evcc) forecast(w plugin.WidgetRequest, img *image.Paletted) {
 	left, right := b.Min.X+solarW, b.Max.X-priceW
 	top, bottom := b.Min.Y+int(label*1.8), b.Max.Y-int(label*1.5)
 	if right-left < 40 || bottom-top < 20 {
-		return
+		return plugin.TooSmall(w)
 	}
 	span := end.Sub(start).Seconds()
 	x := func(ts float64) int {
@@ -363,6 +369,7 @@ func (e *evcc) forecast(w plugin.WidgetRequest, img *image.Paletted) {
 		render.VLine(img, xt, bottom, bottom+3, 1)
 		render.Text(img, t.In(loc).Format("15:04"), xt, b.Max.Y, render.Style{Size: label}, 60, color.Black, render.Center)
 	}
+	return nil
 }
 
 // Text fills the widgets of a character display.

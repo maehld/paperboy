@@ -197,15 +197,13 @@ func (w *weather) temp(v float64) string { return w.num(math.Round(v)+0, 0) + "�
 func (w *weather) Render(req *plugin.Request, wr plugin.WidgetRequest, img *image.Paletted) error {
 	switch wr.Widget {
 	case "current":
-		w.current(wr, img)
+		return w.current(wr, img)
 	case "days":
-		w.days(wr, img)
+		return w.days(wr, img)
 	case "hours":
-		w.hours(wr, img)
-	default:
-		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, wr.Widget)
+		return w.hours(wr, img)
 	}
-	return nil
+	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, wr.Widget)
 }
 
 // clothing advises a pullover below 15 °C apparent temperature or above wind
@@ -217,11 +215,11 @@ func clothing(c current) string {
 	return "tshirt"
 }
 
-func (w *weather) current(wr plugin.WidgetRequest, img *image.Paletted) {
+func (w *weather) current(wr plugin.WidgetRequest, img *image.Paletted) error {
 	c := w.cur.Current
 	b := img.Rect.Inset(wr.Style.Padding)
 	if b.Empty() {
-		return
+		return plugin.TooSmall(wr)
 	}
 	iconW := min(b.Dy(), b.Dx()/3)
 	icon(c.Symbol).Draw(img, image.Rect(b.Min.X, b.Min.Y, b.Min.X+iconW, b.Max.Y), iconW*85/100, render.Center)
@@ -243,6 +241,7 @@ func (w *weather) current(wr plugin.WidgetRequest, img *image.Paletted) {
 	detail := fmt.Sprintf("%s %s · %s %d · %s %s/%s", w.t("gefühlt", "feels"), w.temp(c.Apparent),
 		w.t("Wind", "wind"), c.Beaufort, w.t("heute", "today"), w.temp(w.cur.Today.Max), w.temp(w.cur.Today.Min))
 	render.Text(img, detail, x, top+int(big+small*2.5), render.Style{Size: small * 0.85, Shrink: true}, width, color.Black, render.Left)
+	return nil
 }
 
 func (w *weather) dayList(n int) []day {
@@ -253,12 +252,15 @@ func (w *weather) dayList(n int) []day {
 	return w.cur.Days[:n]
 }
 
-func (w *weather) days(wr plugin.WidgetRequest, img *image.Paletted) {
+func (w *weather) days(wr plugin.WidgetRequest, img *image.Paletted) error {
+	b := img.Rect.Inset(wr.Style.Padding)
+	if b.Empty() {
+		return plugin.TooSmall(wr)
+	}
 	list := w.dayList(wr.Arg().Int("days", 5))
 	if len(list) == 0 {
-		return
+		return nil
 	}
-	b := img.Rect.Inset(wr.Style.Padding)
 	cw := b.Dx() / len(list)
 	h := b.Dy()
 	text := min(float64(h)*0.17, w.req.TextPx(wr)*0.9)
@@ -277,23 +279,27 @@ func (w *weather) days(wr plugin.WidgetRequest, img *image.Paletted) {
 			render.VLine(img, col.Min.X, col.Min.Y+h/10, col.Max.Y-h/10, wr.Style.Rule)
 		}
 	}
+	return nil
 }
 
 // hours draws today's temperature as a line over a time axis with the
 // precipitation probability as shaded bars.
-func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) {
+func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) error {
+	b := img.Rect.Inset(wr.Style.Padding)
+	if b.Empty() {
+		return plugin.TooSmall(wr)
+	}
 	pts := w.cur.Hours
 	if len(pts) < 2 {
-		return
+		return nil
 	}
-	b := img.Rect.Inset(wr.Style.Padding)
 	label := max(min(w.req.TextPx(wr)*0.6, float64(b.Dy())*0.15), w.req.PtPx(5.8), render.MinSize)
 	left := b.Min.X + render.Measure("-10°", label, false) + 6
 	right := b.Max.X - render.Measure("00", label, false)/2
 	top := b.Min.Y + int(label*1.4)
 	bottom := b.Max.Y - int(label*1.4)
 	if right-left < 20 || bottom-top < 20 {
-		return
+		return plugin.TooSmall(wr)
 	}
 	render.Text(img, w.t("Temperatur heute", "Temperature today"), b.Min.X, b.Min.Y+int(label), render.Style{Size: label, Bold: true, Shrink: true}, b.Dx(), color.Black, render.Left)
 	lo, hi := 1e9, -1e9
@@ -313,7 +319,7 @@ func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) {
 		ss = append(ss, sample{t.In(w.loc), v, p.Values["precip_prob"]})
 	}
 	if len(ss) < 2 {
-		return
+		return nil
 	}
 	lo, hi = float64(int(lo)-1), float64(int(hi)+1)
 	day := time.Date(ss[0].t.Year(), ss[0].t.Month(), ss[0].t.Day(), 0, 0, 0, 0, w.loc)
@@ -342,6 +348,7 @@ func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) {
 	if now := w.req.Now.In(w.loc); now.After(day) && now.Before(day.Add(24*time.Hour)) {
 		render.Segment(img, x(now), top, x(now), bottom, 1, true)
 	}
+	return nil
 }
 
 // Text fills the widgets of a character display.

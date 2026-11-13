@@ -1,11 +1,13 @@
 package builtin
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/maehld/paperboy/pkg/plugin"
+	"github.com/maehld/paperboy/pkg/render"
 )
 
 func TestHeaderDateFitsWidth(t *testing.T) {
@@ -57,5 +59,20 @@ func TestTextScrollKeepsLongLine(t *testing.T) {
 	w := plugin.WidgetRequest{Widget: "text", Width: 20, Scroll: true, Args: map[string]any{"text": "kurz"}}
 	if lines, _ := (Plugin{}).Text(req, w); lines[0] != "kurz" {
 		t.Errorf("short line: %q", lines[0])
+	}
+}
+
+// A cell the padding eats up is reported for every widget, so Paperboy draws
+// its notice instead of an empty cell.
+func TestTooSmallCell(t *testing.T) {
+	req := &plugin.Request{Language: "de"}
+	w := plugin.WidgetRequest{Width: 10, Height: 10, Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 16},
+		Args: map[string]any{"text": "x"}}
+	for _, name := range []string{"text", "clock", "logo"} {
+		w.Widget = name
+		err := (Plugin{}).Render(req, w, render.NewCanvas(10, 10, 2))
+		if !errors.Is(err, plugin.ErrTooSmall) {
+			t.Errorf("%s in a 10x10 cell: error = %v, want ErrTooSmall", name, err)
+		}
 	}
 }

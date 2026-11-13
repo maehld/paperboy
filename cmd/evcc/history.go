@@ -391,7 +391,7 @@ func (e *evcc) historyWidget(w plugin.WidgetRequest, img *image.Paletted) error 
 	}
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Empty() {
-		return nil
+		return plugin.TooSmall(w)
 	}
 	base := e.req.TextPx(w)
 	rule := max(w.Style.Rule, 1)

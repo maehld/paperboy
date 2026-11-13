@@ -75,16 +75,15 @@ func (p Plugin) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.P
 	switch w.Widget {
 	case "header":
 		p.header(req, w, img)
+		return nil
 	case "text":
-		p.text(w, img)
+		return p.text(w, img)
 	case "clock":
-		p.clock(req, w, img)
+		return p.clock(req, w, img)
 	case "logo":
-		p.logo(w, img)
-	default:
-		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
+		return p.logo(w, img)
 	}
-	return nil
+	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 }
 
 func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) {
@@ -132,13 +131,13 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 	render.HLine(img, b.Min.X, b.Max.Y-rule, b.Max.X, rule)
 }
 
-func (Plugin) text(w plugin.WidgetRequest, img *image.Paletted) {
+func (Plugin) text(w plugin.WidgetRequest, img *image.Paletted) error {
 	a := w.Arg()
 	lines := strings.Split(a.String("text", ""), "\n")
 	pad := w.Style.Padding
 	b := img.Rect.Inset(pad)
 	if b.Empty() {
-		return
+		return plugin.TooSmall(w)
 	}
 	lineH := b.Dy() / len(lines)
 	al := align(a.String("align", "center"), render.Center)
@@ -154,6 +153,7 @@ func (Plugin) text(w plugin.WidgetRequest, img *image.Paletted) {
 		render.Text(img, l, x, base, render.Style{Size: float64(lineH) * a.Float("size", 0.5), Bold: a.Bool("bold", false), Shrink: true},
 			b.Dx(), color.Black, al)
 	}
+	return nil
 }
 
 var (
@@ -221,15 +221,16 @@ func clockText(req *plugin.Request, format string) string {
 	return now.Format("15:04")
 }
 
-func (Plugin) clock(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) {
+func (Plugin) clock(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	s := clockText(req, w.Arg().String("format", "time"))
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Empty() {
-		return
+		return plugin.TooSmall(w)
 	}
 	size := float64(b.Dy()) * 0.7
 	render.Text(img, s, b.Min.X+b.Dx()/2, b.Min.Y+b.Dy()/2+int(size*0.36), render.Style{Size: size, Bold: true, Shrink: true},
 		b.Dx(), color.Black, render.Center)
+	return nil
 }
 
 // Text fills the widgets of a text display.

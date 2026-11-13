@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"image"
 	"reflect"
 	"strings"
@@ -324,5 +325,19 @@ func TestBirthdaysDefaultWindow(t *testing.T) {
 	// An explicit window below the default still applies.
 	if got := birthdayText(t, p, map[string]any{"days": 20}, 4); !reflect.DeepEqual(got, []string{"Keine Geburtstage"}) {
 		t.Errorf("days 20 = %q", got)
+	}
+}
+
+// A cell without room is reported for every widget, before any data is read.
+func TestTooSmallCell(t *testing.T) {
+	p := &calendarPlugin{}
+	req := &plugin.Request{Language: "de", Timezone: "Europe/Berlin"}
+	w := plugin.WidgetRequest{Width: 10, Height: 10, Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 16}}
+	for _, name := range []string{"agenda", "birthdays", "month", "week"} {
+		w.Widget = name
+		err := p.Render(req, w, render.NewCanvas(10, 10, 2))
+		if !errors.Is(err, plugin.ErrTooSmall) {
+			t.Errorf("%s in a 10x10 cell: error = %v, want ErrTooSmall", name, err)
+		}
 	}
 }

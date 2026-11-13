@@ -14,11 +14,11 @@ import (
 // percentage on top, the value or the passed tick in the middle, the bar and
 // the target date below. Rows are dropped in that order when the cell is too
 // small; the value stays.
-func draw(a *args, req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) {
+func draw(a *args, req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	st := a.evaluate()
 	inner := img.Rect.Inset(w.Style.Padding)
 	if inner.Empty() {
-		return
+		return plugin.TooSmall(w)
 	}
 	base := req.TextPx(w)
 	rule := max(w.Style.Rule, 1)
@@ -87,7 +87,7 @@ func draw(a *args, req *plugin.Request, w plugin.WidgetRequest, img *image.Palet
 	// value fit side by side.
 	if droppedHeader && !barOn && !dateOn && a.label != "" {
 		drawInline(img, inner, a.label, value, base, gap)
-		return
+		return nil
 	}
 
 	dateTop := inner.Max.Y
@@ -133,6 +133,7 @@ func draw(a *args, req *plugin.Request, w plugin.WidgetRequest, img *image.Palet
 		render.Text(img, date, inner.Max.X, baseline,
 			render.Style{Size: size, Shrink: true}, inner.Dx(), color.Black, render.Right)
 	}
+	return nil
 }
 
 // drawInline puts the label on the left and the value on the right of a cell

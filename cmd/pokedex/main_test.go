@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -372,5 +373,19 @@ func TestStartLoadsAhead(t *testing.T) {
 	}
 	if calls.Load() != 4 {
 		t.Fatalf("start did not preload: %d requests", calls.Load())
+	}
+}
+
+// A cell the padding eats up is reported, so Paperboy draws its notice instead
+// of an empty cell.
+func TestTooSmallCell(t *testing.T) {
+	p, _ := configured(t, map[string]any{"pokemon": "25"})
+	req, w := request("en", 12, 8, 125)
+	req.Levels, req.Widgets = 2, []plugin.WidgetRequest{w}
+	if err := p.Prepare(req); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Render(req, w, render.NewCanvas(12, 8, 2)); !errors.Is(err, plugin.ErrTooSmall) {
+		t.Errorf("card in a 12x8 cell: error = %v, want ErrTooSmall", err)
 	}
 }

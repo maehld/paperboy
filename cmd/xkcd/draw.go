@@ -19,7 +19,7 @@ func (x *xkcd) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Pa
 	levels := render.Levels(img.Palette)
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Empty() {
-		return nil
+		return plugin.TooSmall(w)
 	}
 	base := req.TextPx(w)
 	gap := max(int(req.PtPx(2)), 2)
@@ -48,7 +48,7 @@ func (x *xkcd) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Pa
 		b.Max.Y = top - gap
 	}
 	if b.Dx() < 4 || b.Dy() < 4 {
-		return nil
+		return plugin.TooSmall(w)
 	}
 	fit := fitImage(x.cur.img, b.Dx(), b.Dy())
 	r := image.Rectangle{Max: fit.Bounds().Size()}.Add(image.Pt(b.Min.X+(b.Dx()-fit.Bounds().Dx())/2, b.Min.Y+(b.Dy()-fit.Bounds().Dy())/2))

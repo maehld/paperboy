@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"image"
 	"image/png"
 	"net/http"
@@ -266,8 +267,8 @@ func TestRender(t *testing.T) {
 		}
 	}
 	if err := p.Render(req, plugin.WidgetRequest{Widget: "departures", Width: 100, Height: 8, Style: plugin.Style{TextPx: 16}},
-		render.NewCanvas(100, 8, 2)); err == nil {
-		t.Error("tiny cell accepted")
+		render.NewCanvas(100, 8, 2)); !errors.Is(err, plugin.ErrTooSmall) {
+		t.Errorf("tiny cell: error = %v, want ErrTooSmall", err)
 	}
 	if err := p.Render(req, plugin.WidgetRequest{Widget: "departures", Width: 100, Height: 100, Args: map[string]any{"time": "x"}},
 		render.NewCanvas(100, 100, 2)); err == nil {

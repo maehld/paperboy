@@ -34,7 +34,7 @@ func (p *rss) renderFeed(req *plugin.Request, w plugin.WidgetRequest, img *image
 	}
 	inner := img.Rect.Inset(w.Style.Padding)
 	if inner.Empty() {
-		return nil
+		return plugin.TooSmall(w)
 	}
 	base := max(req.TextPx(w), render.MinSize)
 	rule := max(w.Style.Rule, 1)
@@ -54,7 +54,7 @@ func (p *rss) renderFeed(req *plugin.Request, w plugin.WidgetRequest, img *image
 		inner.Min.Y += rule + max(int(base*0.2), 2)
 	}
 	if inner.Empty() {
-		return nil
+		return plugin.TooSmall(w)
 	}
 
 	metaSize := max(base*0.45, 9)
@@ -139,7 +139,7 @@ func (p *rss) renderHeadline(req *plugin.Request, w plugin.WidgetRequest, img *i
 	}
 	inner := img.Rect.Inset(w.Style.Padding)
 	if inner.Empty() {
-		return nil
+		return plugin.TooSmall(w)
 	}
 	if len(list) == 0 {
 		base := max(req.TextPx(w), render.MinSize)

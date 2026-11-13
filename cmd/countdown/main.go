@@ -223,8 +223,7 @@ func (countdown) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.
 	if err != nil {
 		return err
 	}
-	draw(a, req, w, img)
-	return nil
+	return draw(a, req, w, img)
 }
 
 // Text fills the widget on a text display: the value, the bar and the target

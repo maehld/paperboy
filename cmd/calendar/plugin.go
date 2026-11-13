@@ -407,7 +407,7 @@ func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img
 	lines := max(a.Int("lines", area.Dy()*10/max(int(req.TextPx(w)*10), 1)), 1)
 	lineH := area.Dy() / lines
 	if area.Empty() || lineH < 1 {
-		return nil
+		return plugin.TooSmall(w)
 	}
 	size := 0.6 * float64(lineH)
 	baseline := func(i int) int { return area.Min.Y + i*lineH + lineH/2 + int(size*0.36) }
@@ -788,7 +788,7 @@ func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img 
 	pad := w.Style.Padding
 	area := img.Rect.Inset(pad)
 	if area.Dx() < 70 || area.Dy() < 60 {
-		return nil
+		return plugin.TooSmall(w)
 	}
 	now := p.now.In(p.loc)
 	today := midnight(now)

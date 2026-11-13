@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"image"
 	"image/color"
 	"strings"
@@ -158,10 +159,15 @@ func TestTextUnknownWidget(t *testing.T) {
 	}
 }
 
-func TestTinyCellsDoNotPanic(t *testing.T) {
+func TestTinyCellsReportTooSmall(t *testing.T) {
 	m := testPlugin(t, "enyaq.json")
 	for _, name := range []string{"battery", "charging", "profiles", "location", "climate", "card", "car"} {
-		img := renderWidget(t, m, name, 12, 8, 2, nil)
+		img := render.NewCanvas(12, 8, 2)
+		w := plugin.WidgetRequest{Widget: name, Width: 12, Height: 8, Style: plugin.Style{Padding: 5, Rule: 2, TextPx: 16}}
+		err := m.Render(m.req, w, img)
+		if !errors.Is(err, plugin.ErrTooSmall) {
+			t.Errorf("%s in a tiny cell: error = %v, want ErrTooSmall", name, err)
+		}
 		if got := ink(img); got != 0 {
 			t.Errorf("%s: tiny cell drew something", name)
 		}

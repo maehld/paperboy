@@ -18,23 +18,21 @@ import (
 func (m *myskoda) Render(_ *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	switch w.Widget {
 	case "battery":
-		m.drawBattery(w, img)
+		return m.drawBattery(w, img)
 	case "charging":
-		m.drawCharging(w, img)
+		return m.drawCharging(w, img)
 	case "profiles":
-		m.drawProfiles(w, img)
+		return m.drawProfiles(w, img)
 	case "location":
-		m.drawLocation(w, img)
+		return m.drawLocation(w, img)
 	case "climate":
-		m.drawClimate(w, img)
+		return m.drawClimate(w, img)
 	case "card":
-		m.drawCard(w, img)
+		return m.drawCard(w, img)
 	case "car":
-		m.drawCar(w, img)
-	default:
-		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
+		return m.drawCar(w, img)
 	}
-	return nil
+	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 }
 
 // fact is one line of a widget: the text and how it is drawn.
@@ -71,10 +69,10 @@ func drawFacts(img *image.Paletted, r image.Rectangle, facts []fact, gap int) in
 }
 
 // drawBattery draws the state of charge with a bar and the facts around it.
-func (m *myskoda) drawBattery(w plugin.WidgetRequest, img *image.Paletted) {
+func (m *myskoda) drawBattery(w plugin.WidgetRequest, img *image.Paletted) error {
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Dx() < 40 || b.Dy() < 30 {
-		return
+		return plugin.TooSmall(w)
 	}
 	base := m.req.TextPx(w)
 	rule := max(w.Style.Rule, 1)
@@ -106,7 +104,7 @@ func (m *myskoda) drawBattery(w plugin.WidgetRequest, img *image.Paletted) {
 		}
 		right := image.Rect(b.Min.X+meterW+gap*2, b.Min.Y+(b.Dy()-factsH)/2, b.Max.X, b.Max.Y)
 		drawFacts(img, right, facts, gap)
-		return
+		return nil
 	}
 
 	// Tall cell: meter above the facts.
@@ -122,6 +120,7 @@ func (m *myskoda) drawBattery(w plugin.WidgetRequest, img *image.Paletted) {
 	}
 	top += barH + gap
 	drawFacts(img, image.Rect(b.Min.X, top, b.Max.X, b.Max.Y), facts, gap)
+	return nil
 }
 
 // factsHeight is the height of the facts stack drawFacts needs.
@@ -163,10 +162,10 @@ func (m *myskoda) batteryFacts(w plugin.WidgetRequest, base float64) []fact {
 }
 
 // drawCharging draws the charging state with power, target, plug and profile.
-func (m *myskoda) drawCharging(w plugin.WidgetRequest, img *image.Paletted) {
+func (m *myskoda) drawCharging(w plugin.WidgetRequest, img *image.Paletted) error {
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Dx() < 40 || b.Dy() < 24 {
-		return
+		return plugin.TooSmall(w)
 	}
 	base := m.req.TextPx(w)
 	gap := max(int(m.req.MMPx(0.8)+0.5), 2)
@@ -199,19 +198,20 @@ func (m *myskoda) drawCharging(w plugin.WidgetRequest, img *image.Paletted) {
 		}
 	}
 	drawFacts(img, b, facts, gap)
+	return nil
 }
 
 // drawProfiles lists the saved charging profiles with their target and times.
-func (m *myskoda) drawProfiles(w plugin.WidgetRequest, img *image.Paletted) {
+func (m *myskoda) drawProfiles(w plugin.WidgetRequest, img *image.Paletted) error {
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Dx() < 40 || b.Dy() < 20 {
-		return
+		return plugin.TooSmall(w)
 	}
 	list := m.profileList(w.Arg().Int("max", 2))
 	if len(list) == 0 {
 		render.Text(img, m.t("Keine Ladepläne", "No charging plans"), b.Min.X, b.Min.Y+int(m.req.TextPx(w)),
 			render.Style{Size: m.req.TextPx(w), Shrink: true}, b.Dx(), color.Black, render.Left)
-		return
+		return nil
 	}
 	base := m.req.TextPx(w)
 	gap := max(int(m.req.MMPx(0.4)), 1)
@@ -249,6 +249,7 @@ func (m *myskoda) drawProfiles(w plugin.WidgetRequest, img *image.Paletted) {
 			render.HLine(img, b.Min.X, y-gap/2-rule/2, b.Max.X, rule)
 		}
 	}
+	return nil
 }
 
 // profileList returns at most n profiles.
@@ -312,10 +313,10 @@ func dayShort(days []string, lang string) string {
 }
 
 // drawLocation draws the parking position with its address.
-func (m *myskoda) drawLocation(w plugin.WidgetRequest, img *image.Paletted) {
+func (m *myskoda) drawLocation(w plugin.WidgetRequest, img *image.Paletted) error {
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Dx() < 40 || b.Dy() < 20 {
-		return
+		return plugin.TooSmall(w)
 	}
 	base := m.req.TextPx(w)
 	gap := max(int(m.req.MMPx(0.6)+0.5), 2)
@@ -323,7 +324,7 @@ func (m *myskoda) drawLocation(w plugin.WidgetRequest, img *image.Paletted) {
 	if p == nil {
 		render.Text(img, m.t("Keine Position", "No position"), b.Min.X, b.Min.Y+int(base),
 			render.Style{Size: base, Shrink: true}, b.Dx(), color.Black, render.Left)
-		return
+		return nil
 	}
 	y := b.Min.Y
 	if p.State == "IN_MOTION" {
@@ -362,20 +363,21 @@ func (m *myskoda) drawLocation(w plugin.WidgetRequest, img *image.Paletted) {
 		render.Text(img, age, b.Min.X, y+int(base*0.7), render.Style{Size: base * 0.65, Shrink: true},
 			b.Dx(), color.Black, render.Left)
 	}
+	return nil
 }
 
 // drawClimate draws the air conditioning with its target and auxiliary states.
-func (m *myskoda) drawClimate(w plugin.WidgetRequest, img *image.Paletted) {
+func (m *myskoda) drawClimate(w plugin.WidgetRequest, img *image.Paletted) error {
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Dx() < 40 || b.Dy() < 20 {
-		return
+		return plugin.TooSmall(w)
 	}
 	base := m.req.TextPx(w)
 	gap := max(int(m.req.MMPx(0.8)+0.5), 2)
 	if m.cur.AirConditioning == nil {
 		render.Text(img, m.t("Keine Klimadaten", "No climate data"), b.Min.X, b.Min.Y+int(base),
 			render.Style{Size: base, Shrink: true}, b.Dx(), color.Black, render.Left)
-		return
+		return nil
 	}
 	c := m.cur.AirConditioning
 	line := m.climateState()
@@ -399,6 +401,7 @@ func (m *myskoda) drawClimate(w plugin.WidgetRequest, img *image.Paletted) {
 		facts = append(facts, fact{text: age, size: base * 0.65})
 	}
 	drawFacts(img, b, facts, gap)
+	return nil
 }
 
 // windowHeating names the window heating that is on.
@@ -448,10 +451,10 @@ func (m *myskoda) climateToken(s string) string {
 }
 
 // drawCard draws the vehicle render image with its name and state.
-func (m *myskoda) drawCard(w plugin.WidgetRequest, img *image.Paletted) {
+func (m *myskoda) drawCard(w plugin.WidgetRequest, img *image.Paletted) error {
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Dx() < 40 || b.Dy() < 30 {
-		return
+		return plugin.TooSmall(w)
 	}
 	base := m.req.TextPx(w)
 	gap := max(int(m.req.MMPx(0.8)+0.5), 2)
@@ -490,13 +493,14 @@ func (m *myskoda) drawCard(w plugin.WidgetRequest, img *image.Paletted) {
 	if len(lines) > 0 {
 		drawFacts(img, image.Rect(b.Min.X, bottom, b.Max.X, b.Max.Y), lines, gap)
 	}
+	return nil
 }
 
 // drawCar draws a compact overview for small cells.
-func (m *myskoda) drawCar(w plugin.WidgetRequest, img *image.Paletted) {
+func (m *myskoda) drawCar(w plugin.WidgetRequest, img *image.Paletted) error {
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Dx() < 40 || b.Dy() < 20 {
-		return
+		return plugin.TooSmall(w)
 	}
 	base := m.req.TextPx(w)
 	gap := max(int(m.req.MMPx(0.6)+0.5), 2)
@@ -533,6 +537,7 @@ func (m *myskoda) drawCar(w plugin.WidgetRequest, img *image.Paletted) {
 		}
 	}
 	drawFacts(img, area, facts, gap)
+	return nil
 }
 
 // drawMeter draws an outlined bar filled to frac.

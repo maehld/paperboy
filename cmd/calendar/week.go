@@ -136,7 +136,7 @@ func (p *calendarPlugin) week(req *plugin.Request, w plugin.WidgetRequest, img *
 	area := img.Rect.Inset(w.Style.Padding)
 	n := weekDays(w.Arg(), 7)
 	if area.Dx() < n*24 || area.Dy() < 60 {
-		return nil
+		return plugin.TooSmall(w)
 	}
 	size := max(req.TextPx(w)*0.6, req.PtPx(6.3), render.MinSize)
 	lineH := int(size*1.25 + 0.5)

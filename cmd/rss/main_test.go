@@ -461,3 +461,18 @@ func TestTimeModeRejectsUnknown(t *testing.T) {
 		t.Fatal("want an error")
 	}
 }
+
+// A cell the padding eats up is reported for both widgets, so Paperboy draws
+// its notice instead of an empty cell.
+func TestTooSmallCell(t *testing.T) {
+	p := testPlugin(t)
+	req := &plugin.Request{Version: plugin.Version, Now: time.Now(), Language: "de", Levels: 2}
+	style := plugin.Style{Padding: 8, Rule: 1, TextPx: 20}
+	for _, name := range []string{"feed", "headline"} {
+		err := p.Render(req, plugin.WidgetRequest{Widget: name, Width: 10, Height: 10, Style: style},
+			render.NewCanvas(10, 10, 2))
+		if !errors.Is(err, plugin.ErrTooSmall) {
+			t.Errorf("%s in a 10x10 cell: error = %v, want ErrTooSmall", name, err)
+		}
+	}
+}

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -239,11 +240,16 @@ func TestRender(t *testing.T) {
 				for _, size := range [][2]int{{800, 480}, {400, 240}, {120, 60}, {20, 20}} {
 					req.Levels = levels
 					img := render.NewCanvas(size[0], size[1], levels)
-					if err := x.Render(req, widget(size[0], size[1], args), img); err != nil {
+					err := x.Render(req, widget(size[0], size[1], args), img)
+					if err != nil && !errors.Is(err, plugin.ErrTooSmall) {
 						t.Fatalf("comic %d %v: %v", n, args, err)
 					}
 				}
 			}
+		}
+		// A cell the padding already eats up is reported, not drawn blank.
+		if err := x.Render(req, widget(10, 10, nil), render.NewCanvas(10, 10, 4)); !errors.Is(err, plugin.ErrTooSmall) {
+			t.Fatalf("comic %d in a 10x10 cell: error = %v, want ErrTooSmall", n, err)
 		}
 		img := render.NewCanvas(800, 480, 4)
 		x.Render(req, widget(800, 480, nil), img)

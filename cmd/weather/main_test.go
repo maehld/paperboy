@@ -3,11 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maehld/paperboy/pkg/plugin"
+	"github.com/maehld/paperboy/pkg/render"
 )
 
 // testPayload builds an Open-Meteo response for 2026-10-22 09:00 UTC at UTC+2,
@@ -216,6 +220,21 @@ func TestSymbol(t *testing.T) {
 	for _, tt := range tests {
 		if got := symbol(tt.code); got != tt.want {
 			t.Fatalf("symbol(%d) = %q, want %q", tt.code, got, tt.want)
+		}
+	}
+}
+
+// A cell the padding eats up is reported, so Paperboy draws its notice instead
+// of an empty cell.
+func TestTooSmallCell(t *testing.T) {
+	req := &plugin.Request{}
+	w := plugin.WidgetRequest{Width: 10, Height: 10, Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 16}}
+	p := &weather{cur: &branch{}, req: req}
+	for _, name := range []string{"current", "days", "hours"} {
+		w.Widget = name
+		err := p.Render(req, w, render.NewCanvas(10, 10, 2))
+		if !errors.Is(err, plugin.ErrTooSmall) {
+			t.Errorf("%s in a 10x10 cell: error = %v, want ErrTooSmall", name, err)
 		}
 	}
 }

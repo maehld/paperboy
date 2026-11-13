@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"image/png"
 	"math"
 	"strings"
@@ -29,12 +30,12 @@ func request(t *testing.T, now time.Time, args map[string]any) (*plugin.Request,
 	t.Helper()
 	loc := berlin(t)
 	return &plugin.Request{
-		Language: "de", Timezone: "Europe/Berlin", Now: now.In(loc),
-		Page: plugin.PageInfo{PPI: 125, Width: 800, Height: 480},
-	}, plugin.WidgetRequest{
-		Widget: "countdown", Width: 400, Height: 120, Args: args,
-		Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 28},
-	}
+			Language: "de", Timezone: "Europe/Berlin", Now: now.In(loc),
+			Page: plugin.PageInfo{PPI: 125, Width: 800, Height: 480},
+		}, plugin.WidgetRequest{
+			Widget: "countdown", Width: 400, Height: 120, Args: args,
+			Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 28},
+		}
 }
 
 func TestParseDate(t *testing.T) {
@@ -313,5 +314,15 @@ func TestRenderSizes(t *testing.T) {
 				t.Fatalf("%v levels %d: %v", size, levels, err)
 			}
 		}
+	}
+}
+
+// A cell without room is reported, so Paperboy draws its notice instead of an
+// empty cell.
+func TestTooSmallCell(t *testing.T) {
+	req, w := request(t, at(2026, 11, 20, 12, 0, berlin(t)), map[string]any{"date": "2026-12-24"})
+	req.Levels, w.Width, w.Height = 2, 10, 10
+	if err := (countdown{}).Render(req, w, render.NewCanvas(10, 10, 2)); !errors.Is(err, plugin.ErrTooSmall) {
+		t.Errorf("countdown in a 10x10 cell: error = %v, want ErrTooSmall", err)
 	}
 }

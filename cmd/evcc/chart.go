@@ -157,7 +157,7 @@ func (e *evcc) chartWidget(w plugin.WidgetRequest, img *image.Paletted) error {
 	}
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Empty() {
-		return nil
+		return plugin.TooSmall(w)
 	}
 	base := e.req.TextPx(w)
 	head := min(base*0.9, float64(b.Dy())*0.17)

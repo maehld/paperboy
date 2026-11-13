@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"image"
 	"net/http"
 	"net/http/httptest"
@@ -106,4 +107,17 @@ func hasInk(img *image.Paletted) bool {
 		}
 	}
 	return false
+}
+
+// A cell without room is reported, so Paperboy draws its notice.
+func TestTooSmallCell(t *testing.T) {
+	e, req := newTestPlugin(t)
+	style := plugin.Style{Padding: 8, Rule: 1, TextPx: 28.8}
+	for _, name := range []string{"site", "flow", "loadpoint", "forecast", "history", "chart", "values"} {
+		img := render.NewCanvas(10, 10, 2)
+		err := e.Render(req, plugin.WidgetRequest{Widget: name, Width: 10, Height: 10, Style: style}, img)
+		if !errors.Is(err, plugin.ErrTooSmall) {
+			t.Errorf("%s in a 10x10 cell: error = %v, want ErrTooSmall", name, err)
+		}
+	}
 }
