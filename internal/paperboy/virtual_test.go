@@ -194,6 +194,81 @@ func TestVirtualDisplayShowsMenuButDoesNotRunActions(t *testing.T) {
 	}
 }
 
+// TestVirtualDisplayLoadsItsImage checks that the browser fetches the picture
+// through the UI side of the server (ADR 0091, 0097): a virtual display has no
+// device key, and the device routes answer no page without one.
+func TestVirtualDisplayLoadsItsImage(t *testing.T) {
+	s, _, _ := virtualServer(t, "rules:\n  - name: immer\n    pages: [eins, zwei]\n", "")
+	out := virtualSync(t, s, "plan=zimmer&display=small", syncRequest{Reason: "timer"})
+	path := pagePath(out)
+	if !strings.HasPrefix(path, "/ui/virtual/pages/small/eins/") {
+		t.Fatalf("image path %q is not on the UI side", path)
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("virtual image: %d %s", rec.Code, rec.Body)
+	}
+	// The same picture stays closed on the device route, which needs a key.
+	rec = httptest.NewRecorder()
+	device := "/pages/" + strings.TrimPrefix(path, "/ui/virtual/pages/")
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, device, nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("device route without a key: %d", rec.Code)
+	}
+}
+
+// TestVirtualDisplayImageBehindThePassword keeps the picture behind ui.password
+// like the rest of the UI (ADR 0096): the browser that opened the page has the
+// credentials cached, everyone else does not.
+func TestVirtualDisplayImageBehindThePassword(t *testing.T) {
+	s, _, _ := virtualServer(t, "rules:\n  - name: immer\n    pages: [eins]\n", "")
+	s.config().UI.Password = "geheim"
+	data, err := json.Marshal(syncRequest{Reason: "timer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/ui/virtual/sync?plan=zimmer&display=small", strings.NewReader(string(data)))
+	req.SetBasicAuth("paperboy", "geheim")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sync with the password: %d %s", rec.Code, rec.Body)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	path := pagePath(out)
+	req = httptest.NewRequest(http.MethodGet, path, nil)
+	req.SetBasicAuth("paperboy", "geheim")
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("image with the password: %d %s", rec.Code, rec.Body)
+	}
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("image without credentials: %d", rec.Code)
+	}
+}
+
+// TestVirtualDisplayFetchesItsNotice checks that a notice page is fetched on
+// the UI side as well.
+func TestVirtualDisplayFetchesItsNotice(t *testing.T) {
+	s, _, _ := virtualServer(t, "rules:\n  - name: immer\n    pages: [eins]\n", "")
+	path := pagePath(virtualSync(t, s, "plan=fehlt&display=small", syncRequest{Reason: "timer"}))
+	if !strings.HasPrefix(path, "/ui/virtual/hints/") {
+		t.Fatalf("notice path %q is not on the UI side", path)
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("virtual notice: %d %s", rec.Code, rec.Body)
+	}
+}
+
 // TestVirtualDisplayOptionsRejected checks that a bad URL is answered with the
 // status that names the problem instead of being guessed.
 func TestVirtualDisplayOptionsRejected(t *testing.T) {
@@ -283,7 +358,7 @@ func TestVirtualDisplayResetDropsTheSession(t *testing.T) {
 func TestVirtualDisplayMissingPlanGetsNotice(t *testing.T) {
 	s, _, _ := virtualServer(t, "rules:\n  - name: immer\n    pages: [eins]\n", "")
 	out := virtualSync(t, s, "plan=fehlt&display=small", syncRequest{Reason: "timer"})
-	if path := imageOf(out)["path"].(string); !strings.HasPrefix(path, "/hints/") {
+	if path := imageOf(out)["path"].(string); !strings.HasPrefix(path, "/ui/virtual/hints/") {
 		t.Fatalf("notice page: %s", path)
 	}
 	if got := debugOf(out)["page_kind"]; got != "notice" {
