@@ -195,6 +195,11 @@ func (s *Server) handleVirtualSync(w http.ResponseWriter, r *http.Request) {
 		pageTimeout: opt.pageTimeout,
 		virtual:     true,
 	})
+	if resp.Image != nil {
+		// The browser has no device key, so the page fetches its picture
+		// through the UI side of the server (ADR 0097).
+		resp.Image.Path = virtualImagePath(resp.Image.Path)
+	}
 	s.mu.Lock()
 	debug := virtualDebug{Rule: st.Rule, Page: st.Page, Pages: st.LastPages, PageName: st.LastPage,
 		PageKind: st.LastPageKind, Error: st.LastError}
@@ -245,6 +250,19 @@ func (s *Server) handleVirtualReset(w http.ResponseWriter, r *http.Request) {
 // virtualKey names a session: the plan and the display type are the identity,
 // so every browser with the same URL operates the same display.
 func virtualKey(o virtualOptions) string { return o.plan + "/" + o.profile }
+
+// virtualImagePath moves a served page to the UI side of the server. A virtual
+// display has no device file and therefore no key, while /pages and /hints only
+// answer a device that fetches with one (ADR 0097); the UI routes behind the
+// password serve the same picture (ADR 0091).
+func virtualImagePath(path string) string {
+	switch {
+	case strings.HasPrefix(path, "/pages/"), strings.HasPrefix(path, "/hints/"):
+		return "/ui/virtual" + path
+	default:
+		return path
+	}
+}
 
 // virtualURL links a plan and a display type to the virtual display, so the
 // plan view and the dashboard need no query building of their own (ADR 0091).

@@ -174,6 +174,10 @@ func (s *Server) uiRoutes() []route {
 		{"GET /ui/plan", s.handlePlanView},
 		{"GET /ui/virtual", s.handleVirtual},
 		{"GET /ui/virtual.js", s.handleVirtualJS},
+		// The virtual display has no device key, so it loads its picture
+		// through these two routes (ADR 0091, 0097).
+		{"GET /ui/virtual/pages/{profile}/{page}/{file}", s.handleRenderedImage},
+		{"GET /ui/virtual/hints/{file}", s.handleHint},
 		{"POST /ui/virtual/sync", s.handleVirtualSync},
 		{"POST /ui/virtual/reset", s.handleVirtualReset},
 		{"GET /ui/editor", s.handleEditor},
