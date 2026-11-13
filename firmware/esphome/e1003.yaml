@@ -1,0 +1,341 @@
+# Paperboy firmware for the Seeed reTerminal E1003 (issue #192). The shared
+# cycle and the device API live in common.yaml; this file holds the hardware.
+#
+# The 10.3" panel (E Ink ED103TC2) is driven by an IT8951 controller through
+# ESPHome's it8951 component (2026.7.0 or newer): 1872x1404 pixels at 227 ppi
+# with 16 gray levels, full GC16 refreshes of about 3 s and a 4 bpp framebuffer
+# in PSRAM. The component's model preset already carries the pins (CS GPIO10,
+# reset GPIO12, busy GPIO13, panel rails GPIO11/GPIO21), VCOM 1.40 V, the VCOM
+# selector this panel accepts and the mirrored X axis of the panel batch, so
+# only the SPI bus and the model are configured here.
+#
+# Paperboy currently composes pages for 2 or 4 gray levels, so the first image
+# uses those; pb_paint_qoi_gray16 maps any luminance in a page onto the panel's
+# 16 levels, and the full QOI buffer plus a 16-level palette can follow in
+# Paperboy (issue #192).
+#
+# Buttons: green GPIO3 = home, right white GPIO4 = next, left white GPIO5 =
+# previous. Battery: voltage divider on GPIO1, enabled by GPIO40; no fuel
+# gauge. Touch: GT911 (I2C GPIO19/20, interrupt GPIO2, reset GPIO48).
+#
+# This is the first image for the hardware and has not run on a real device
+# yet. Open questions are listed in README.md ("E1003"): deep sleep current,
+# the touch transform, and the refresh temperature.
+
+substitutions:
+  hardware: e1003
+  fw_version: "0.1.0"
+  # The mounting this image is built for; a device adds its quarter turn to it
+  # at runtime (ADR 0102). Touch currently assumes this orientation.
+  compiled_rotation: 0
+  # Optional default for the Paperboy URL entered in the web UI.
+  default_paperboy_url: ""
+  # A 2.6 MP page can reach about 2.6 MB as QOI (ADR 0088), so the response
+  # buffer is raised from the shared 512 KiB. The board has 8 MB PSRAM; the
+  # framebuffer takes 1.31 MB of it.
+  qoi_buffer: "3145728"
+
+packages:
+  paperboy: !include common.yaml
+
+esphome:
+  on_boot:
+    - priority: 900
+      then:
+        # Release the GPIO holds of the previous deep sleep before any
+        # component sets up its pins.
+        - lambda: |-
+            gpio_hold_dis(GPIO_NUM_11);
+            gpio_hold_dis(GPIO_NUM_21);
+            gpio_hold_dis(GPIO_NUM_16);
+            gpio_hold_dis(GPIO_NUM_38);
+            gpio_hold_dis(GPIO_NUM_39);
+            gpio_hold_dis(GPIO_NUM_40);
+            gpio_hold_dis(GPIO_NUM_45);
+            gpio_hold_dis(GPIO_NUM_48);
+    - priority: 600
+      then:
+        - output.turn_on: battery_enable
+        - lambda: |-
+            auto cause = esp_sleep_get_wakeup_cause();
+            if (cause == ESP_SLEEP_WAKEUP_EXT1) {
+              uint64_t pins = esp_sleep_get_ext1_wakeup_status();
+              id(wake_reason) = "button";
+              if (pins & (1ULL << 5)) {
+                id(wake_role) = "previous";
+                id(wake_gpio) = 5;
+              } else if (pins & (1ULL << 4)) {
+                id(wake_role) = "next";
+                id(wake_gpio) = 4;
+              } else {
+                id(wake_role) = "home";
+                id(wake_gpio) = 3;
+              }
+            } else if (cause == ESP_SLEEP_WAKEUP_TIMER) {
+              id(wake_reason) = "timer";
+            } else {
+              id(wake_reason) = "powercycle";
+            }
+            ESP_LOGI("paperboy", "wake reason: %s", id(wake_reason).c_str());
+        - if:
+            condition:
+              lambda: "return !id(wake_role).empty();"
+            then:
+              - script.execute:
+                  id: button_pressed
+                  role: !lambda "return id(wake_role);"
+                  gpio: !lambda "return id(wake_gpio);"
+                  start: !lambda "return (int) esphome::millis();"
+              - lambda: 'id(wake_role) = "";'
+  on_shutdown:
+    - priority: 200
+      then:
+        # The battery divider stays off while the device sleeps.
+        - output.turn_off: battery_enable
+    - priority: 50
+      then:
+        # Deep sleep current: the GT911 and the SD card controller keep drawing
+        # power unless their pins are driven low and held, and the I2C pins
+        # leak through the pull-ups (reported for the E1003 in 2026). The
+        # display rails are cut as well: sleep_when_done is false, so the
+        # controller would otherwise keep them high.
+        - lambda: |-
+            gpio_set_direction(GPIO_NUM_19, GPIO_MODE_DISABLE);
+            gpio_set_direction(GPIO_NUM_20, GPIO_MODE_DISABLE);
+
+            // RTC-capable pins: held through the RTC domain.
+            gpio_set_direction(GPIO_NUM_11, GPIO_MODE_OUTPUT); gpio_set_level(GPIO_NUM_11, 0); gpio_hold_en(GPIO_NUM_11);
+            gpio_set_direction(GPIO_NUM_21, GPIO_MODE_OUTPUT); gpio_set_level(GPIO_NUM_21, 0); gpio_hold_en(GPIO_NUM_21);
+
+            // Pins above GPIO21 need the digital hold domain.
+            gpio_set_direction(GPIO_NUM_38, GPIO_MODE_OUTPUT); gpio_set_level(GPIO_NUM_38, 0); gpio_hold_en(GPIO_NUM_38);
+            gpio_set_direction(GPIO_NUM_39, GPIO_MODE_OUTPUT); gpio_set_level(GPIO_NUM_39, 0); gpio_hold_en(GPIO_NUM_39);
+            gpio_set_direction(GPIO_NUM_40, GPIO_MODE_OUTPUT); gpio_set_level(GPIO_NUM_40, 0); gpio_hold_en(GPIO_NUM_40);
+            gpio_set_direction(GPIO_NUM_45, GPIO_MODE_OUTPUT); gpio_set_level(GPIO_NUM_45, 0); gpio_hold_en(GPIO_NUM_45);
+            gpio_set_direction(GPIO_NUM_48, GPIO_MODE_OUTPUT); gpio_set_level(GPIO_NUM_48, 0); gpio_hold_en(GPIO_NUM_48);
+            gpio_deep_sleep_hold_en();
+
+            // The buttons wake the chip through EXT1, which needs the RTC
+            // peripherals powered.
+            esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: ESP32S3
+  flash_size: 32MB
+  framework:
+    type: esp-idf
+    advanced:
+      enable_idf_experimental_features: true
+
+psram:
+  mode: octal
+
+logger:
+  # The CH340K console sits on UART0. The default USB-Serial/JTAG PHY uses
+  # GPIO19/20, which are the I2C pins of this board.
+  hardware_uart: UART0
+
+spi:
+  clk_pin: GPIO7
+  mosi_pin: GPIO9
+  # The IT8951 reads DevInfo, VCOM and the LUT state back over MISO.
+  miso_pin: GPIO8
+
+i2c:
+  scl: GPIO20
+  sda: GPIO19
+  frequency: 100kHz
+
+output:
+  # Battery voltage divider enable (E1001 uses GPIO21, the E1003 GPIO40).
+  - platform: gpio
+    pin: GPIO40
+    id: battery_enable
+
+sensor:
+  # Battery voltage through a 1:2 divider; needs battery_enable on.
+  - platform: adc
+    pin: GPIO1
+    id: battery_voltage
+    attenuation: 12db
+    update_interval: never
+    filters:
+      - multiply: 2.0
+
+display:
+  - platform: it8951
+    id: epaper_display
+    model: Seeed-reTerminal-E1003
+    update_interval: never
+    # Full 16-level refresh on every page. The driver's reduced grayscale
+    # modes render incorrectly on the supported panels, so GC16 is the only
+    # waveform Paperboy may use.
+    update_mode: GC16
+    full_update_every: 1
+    # Seeed's own driver forces 16 °C before every update; the preset's 25 °C
+    # leaves visibly worse grays and more ghosting (esphome/esphome#22307).
+    force_temperature: 16
+    # The model preset mirrors the X axis for this panel batch; no transform
+    # is added here.
+    lambda: |-
+      // A device adds its quarter turn to the compiled orientation (ADR 0102);
+      // re-applied here because each wake starts from the compiled rotation.
+      pb_rotate_display(it, ${compiled_rotation});
+      if (pb_splash) {
+        pb_draw_splash(it, id(wordmark_large), id(version_large), "v${fw_version}");
+      } else if (id(setup_mode)) {
+        pb_draw_setup(it, id(setup_font), id(wordmark_small), id(version_small), "v${fw_version}",
+                      id(setup_text));
+      } else if (!pb_qoi_valid(pb_page_qoi)) {
+        // Truncated answer (page larger than the response buffer) or not QOI:
+        // keep the old picture instead of painting half a page.
+        pb_note_for_next_wake("page not paintable: " + id(image_path));
+        ESP_LOGE("paperboy", "page is not a complete QOI image");
+      } else if (!pb_qoi_fits(pb_page_qoi, it.get_width(), it.get_height())) {
+        // A page of the wrong orientation would be clipped below the panel:
+        // refuse it and let the server's rotation be fixed (ADR 0102).
+        pb_note_for_next_wake("page does not fit the rotated display; check rotation");
+        ESP_LOGE("paperboy", "page size does not fit the rotated display");
+      } else {
+        // Fill first: the IT8951 keeps its framebuffer between updates, and an
+        // explicit fill also makes the whole page the dirty region, so the
+        // panel always gets a complete GC16 refresh instead of a partial one.
+        it.fill(Color::WHITE);
+        if (pb_paint_qoi_gray16(it, pb_page_qoi)) {
+          pb_paint_pending = true;
+        }
+      }
+
+touchscreen:
+  - platform: gt911
+    id: e1003_touch
+    display: epaper_display
+    interrupt_pin: GPIO2
+    reset_pin: GPIO48
+    # The panel is mirrored like the display preset; this is the transform
+    # Seeed's E1003 example uses. It still has to be verified on the device,
+    # and it assumes the compiled orientation (rotation 0).
+    transform:
+      mirror_x: true
+    # The panel reports a position continuously while a finger rests on it.
+    # pb_touch takes the first report of a contact and drops the rest until
+    # on_release, so one tap is one event and a second tap is not swallowed.
+    on_touch:
+      - script.execute: { id: touched, x: !lambda "return touch.x;", y: !lambda "return touch.y;" }
+    on_release:
+      - lambda: "pb_touch_release();"
+
+binary_sensor:
+  # Presses while awake are queued and sent with the next sync.
+  - platform: gpio
+    id: button_previous
+    pin: { number: GPIO5, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true }
+    on_press:
+      - script.execute:
+          id: button_pressed
+          role: "previous"
+          gpio: 5
+          start: !lambda "return (int) esphome::millis();"
+  - platform: gpio
+    id: button_next
+    pin: { number: GPIO4, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true }
+    on_press:
+      - script.execute:
+          id: button_pressed
+          role: "next"
+          gpio: 4
+          start: !lambda "return (int) esphome::millis();"
+  - platform: gpio
+    id: button_home
+    pin: { number: GPIO3, mode: INPUT_PULLUP, inverted: true, allow_other_uses: true, ignore_strapping_warning: true }
+    on_press:
+      - script.execute:
+          id: button_pressed
+          role: "home"
+          gpio: 3
+          start: !lambda "return (int) esphome::millis();"
+
+script:
+  # A tap becomes a touch event in page coordinates (ADR 0102). The GT911
+  # transform is measured in the compiled orientation, so pb_touch turns it by
+  # the device's relative rotation; the display is painted the same way. The
+  # native dimensions are passed because the panel is landscape (1872x1404)
+  # and the compiled orientation is 0.
+  - id: touched
+    mode: queued
+    parameters:
+      x: int
+      y: int
+    then:
+      - if:
+          condition:
+            lambda: "return !id(setup_mode) && !id(api_key).state.empty();"
+          then:
+            - lambda: |-
+                pb_touch(x, y, 1872, 1404);
+                if (id(wake_reason) != "button") id(wake_reason) = "touch";
+            - script.execute: awake_limit
+            - if:
+                condition:
+                  lambda: "return !id(busy);"
+                then:
+                  - script.execute: sync_and_show
+
+  # The IT8951 driver transfers and refreshes asynchronously and exposes no
+  # completion state, so after_paint waits a fixed time that covers the row
+  # transfer of a full page (about 1.3 MB at 20 MHz) and the 3 s GC16 refresh.
+  - id: wait_paint
+    then:
+      - delay: 5s
+
+  # No fuel gauge: the voltage, mapped to a percentage with Seeed's E10xx
+  # discharge curve (3.27 V = 0 %, 4.15 V = 100 %).
+  - id: read_battery
+    then:
+      - component.update: battery_voltage
+      - lambda: |-
+          float v = id(battery_voltage).state;
+          pb_bat_volts = std::isfinite(v) && v > 0 ? v : NAN;
+          static const float curve[][2] = {
+              {3.27f, 0.f},   {3.30f, 5.f},   {3.41f, 10.f}, {3.49f, 20.f},
+              {3.58f, 30.f},  {3.68f, 40.f},  {3.75f, 50.f}, {3.80f, 60.f},
+              {3.85f, 70.f},  {3.91f, 80.f},  {3.96f, 90.f}, {4.15f, 100.f},
+          };
+          if (std::isfinite(pb_bat_volts)) {
+            const int n = sizeof(curve) / sizeof(curve[0]);
+            if (pb_bat_volts >= curve[n - 1][0]) {
+              pb_bat_percent = curve[n - 1][1];
+            } else if (pb_bat_volts <= curve[0][0]) {
+              pb_bat_percent = curve[0][1];
+            } else {
+              for (int i = 1; i < n; i++) {
+                if (pb_bat_volts <= curve[i][0]) {
+                  const float v0 = curve[i - 1][0];
+                  const float p0 = curve[i - 1][1];
+                  pb_bat_percent = p0 + (curve[i][1] - p0) * (pb_bat_volts - v0) / (curve[i][0] - v0);
+                  break;
+                }
+              }
+            }
+          }
+          // No pin reports USB power in this image (the SY6974B charger would
+          // have to be read over I2C); an E1003 on a charger needs
+          // power: mains in paperboy.yaml, like the E1001 (ADR 0051).
+          pb_power = "battery";
+
+deep_sleep:
+  id: sleeper
+  esp32_ext1_wakeup:
+    pins:
+      - number: GPIO3
+        mode: INPUT_PULLUP
+        allow_other_uses: true
+        ignore_strapping_warning: true
+      - number: GPIO4
+        mode: INPUT_PULLUP
+        allow_other_uses: true
+      - number: GPIO5
+        mode: INPUT_PULLUP
+        allow_other_uses: true
+    mode: ANY_LOW

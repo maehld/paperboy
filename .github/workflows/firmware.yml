@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        hardware: [sticky, e1001, lcd2004]
+        hardware: [sticky, e1001, e1003, lcd2004]
     steps:
       - name: Checkout
         uses: actions/checkout@v7

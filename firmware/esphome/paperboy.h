@@ -618,6 +618,20 @@ template<typename D> inline bool pb_paint_qoi_gray4(D &it, const std::string &da
   });
 }
 
+// 16-level panel, used by the E1003's IT8951 controller (issue #192). The
+// driver turns the luma of a pixel into one of 16 nibbles, so a page with the
+// four levels Paperboy composes today draws at 0, 85, 170 and 255, and a page
+// with more levels keeps them. White is left alone: the caller starts from a
+// white buffer.
+template<typename D> inline bool pb_paint_qoi_gray16(D &it, const std::string &data) {
+  return pb_qoi_each(data, [&it](int x, int y, uint8_t r, uint8_t g, uint8_t b) {
+    const uint8_t luma = static_cast<uint8_t>((r * 77 + g * 150 + b * 29) >> 8);
+    if (luma != 255) {
+      it.draw_pixel_at(x, y, esphome::Color(luma, luma, luma));
+    }
+  });
+}
+
 // Black-and-white panel: dark gray as 3 of 4 pixels black, light gray as 1 of
 // 4, in a fixed 2x2 pattern so repeated paints stay identical. No shipped image
 // display uses this since fw 2.4.0 (the E1001 draws real gray levels, ADR 0086);

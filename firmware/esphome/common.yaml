@@ -20,6 +20,11 @@
 # sleep: they stay awake and sync again after refresh_s. The hardware file
 # sets pb_power so Paperboy learns the power source.
 
+substitutions:
+  # Response buffer for the QOI page (ADR 0088). A hardware type overrides it
+  # when its pages are larger, e.g. the E1003's 2.6 MP panel.
+  qoi_buffer: "524288"
+
 esphome:
   # Network name paperboy-<last three MAC bytes>; the build directory is per
   # hardware type.
@@ -619,7 +624,7 @@ script:
       - http_request.get:
           url: !lambda "return pb_base(id(paperboy_url).state) + id(image_path) + \"?format=qoi\";"
           capture_response: true
-          max_response_buffer_size: 524288
+          max_response_buffer_size: ${qoi_buffer}
           request_headers:
             Authorization: !lambda "return id(auth_header).c_str();"
           on_response:
