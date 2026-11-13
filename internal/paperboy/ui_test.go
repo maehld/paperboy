@@ -49,6 +49,17 @@ func TestDashboardShowsDevices(t *testing.T) {
 			t.Fatalf("dashboard misses %q: %s", want, body)
 		}
 	}
+	// The power row names the state and the charge; the raw reading, the type
+	// and the other static facts sit in the collapsed details, without the old
+	// origin hint.
+	for _, want := range []string{"Discharging · 61 %", `<details class="more">`, "<summary>Details</summary>"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("dashboard misses %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "reported by firmware") {
+		t.Fatalf("the power origin must not be shown: %s", body)
+	}
 	// The plan view and the virtual display are actions at the foot of the card
 	// rather than links inside the plan row (ADR 0054, ADR 0091).
 	for _, want := range []string{
@@ -107,26 +118,33 @@ func TestDashboardAfterRestart(t *testing.T) {
 }
 
 func TestDashboardPower(t *testing.T) {
-	cfg := &Config{Profiles: map[string]Profile{"auto": {}, "fixed": {Power: powerMains}}}
-	volts := deviceState{BatteryVoltage: "4.12"}
-	percent, discharging := 61.0, -68.0
-	gauged := deviceState{BatteryVoltage: "3.91", BatteryPercent: &percent, BatteryMA: &discharging}
+	percent, lowPercent, charging, idle, discharging := 50.0, 12.0, 568.0, 0.0, -57.0
 	for _, c := range []struct {
-		dev      Device
-		reported string
-		st       deviceState
-		want     string
-		origin   string
+		name    string
+		power   string
+		st      deviceState
+		want    string
+		details string
 	}{
-		{Device{Profile: "auto", Power: powerMains}, "", deviceState{}, "Mains", "set on device"},
-		{Device{Profile: "fixed"}, "", volts, "Mains · 4.12 V", "set on display type"},
-		{Device{Profile: "auto"}, powerMains, deviceState{}, "Mains", "reported by firmware"},
-		{Device{Profile: "auto"}, "", volts, "Battery · 4.12 V", "fallback"},
-		{Device{Profile: "auto"}, powerBattery, gauged, "Battery · 3.91 V · 61 % · -68 mA", "reported by firmware"},
+		{"charging", powerMains, deviceState{BatteryVoltage: "3.83", BatteryPercent: &percent, BatteryMA: &charging},
+			"Charging · 50 %", "3.83 V · 50 % · +568 mA"},
+		{"connected without gauge", powerMains, deviceState{}, "Connected", ""},
+		{"idle on mains", powerMains, deviceState{BatteryVoltage: "3.85", BatteryPercent: &percent, BatteryMA: &idle},
+			"Connected · 50 %", "3.85 V · 50 % · 0 mA"},
+		{"on battery", powerBattery, deviceState{BatteryVoltage: "3.63", BatteryPercent: &percent, BatteryMA: &discharging},
+			"Discharging · 50 %", "3.63 V · 50 % · -57 mA"},
+		{"voltage without a gauge", powerBattery, deviceState{BatteryVoltage: "4.03"},
+			"Discharging · 4.03 V", "4.03 V"},
+		{"draining on mains", powerMains, deviceState{BatteryVoltage: "3.62", BatteryPercent: &percent, BatteryMA: &discharging},
+			"Discharging · 50 %", "3.62 V · 50 % · -57 mA"},
+		{"low battery", powerBattery, deviceState{BatteryVoltage: "3.40", BatteryPercent: &lowPercent, BatteryLevel: batteryWarn},
+			"Discharging · 12 % · low", "3.40 V · 12 %"},
 	} {
-		got := powerSource(cfg.power(&c.dev, c.reported), c.st)
-		if origin := powerOrigin(cfg, &c.dev, c.reported); got != c.want || origin != c.origin {
-			t.Errorf("%+v %q: got %q (%s), want %q (%s)", c.dev, c.reported, got, origin, c.want, c.origin)
+		if got := powerText(c.power, c.st); got != c.want {
+			t.Errorf("%s: power %q, want %q", c.name, got, c.want)
+		}
+		if got := batteryText(c.st); got != c.details {
+			t.Errorf("%s: details %q, want %q", c.name, got, c.details)
 		}
 	}
 }

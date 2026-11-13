@@ -60,30 +60,30 @@ func serveSVG(w http.ResponseWriter, data []byte) {
 // dashboardDevice is one card of the overview. It carries display-ready texts
 // so the template holds no formatting logic.
 type dashboardDevice struct {
-	ID          string
-	Status      string // ok, late, never or unregistered
-	Type        string // display type: the operator's label for the page layout
-	Hardware    string // hardware the device reports; empty until it registered
-	Plan        string // plan name, "no plan" when empty
-	Rule        string // active plan rule, empty when unknown
-	Content     string // page name, "notice", "battery warning" or empty
-	ImageURL    string // last served image, else the current page's preview; empty for a placeholder
-	Waiting     string // placeholder text when there is neither an image nor text
-	Power       string // effective power source with the battery reading (ADR 0051)
-	PowerOrigin string // configured, reported or fallback
-	Width       int
-	Height      int
-	Text        []string // text displays: the last served lines
-	Refresh     string   // "every 10 min", empty when unknown
-	SeenAgo     string   // last contact, "never" when unknown
-	Address     string   // source address of the last contact, empty when unknown (ADR 0083)
-	ServedAgo   string   // age of the last served page
-	Firmware    string   // running version, available version and update status
-	Menu        string   // open menu phase and selected action (ADR 0057)
-	Actions     string   // "denied", empty when the device may use actions
-	Problem     string   // why the device cannot sync, empty when it can (ADR 0079)
-	Error       string   // last render or plan error
-	VirtualURL  string   // the plan as a virtual display, empty without a plan (ADR 0091)
+	ID         string
+	Status     string // ok, late, never or unregistered
+	Type       string // display type: the operator's label for the page layout
+	Hardware   string // hardware the device reports; empty until it registered
+	Plan       string // plan name, "no plan" when empty
+	Rule       string // active plan rule, empty when unknown
+	Content    string // page name, "notice", "battery warning" or empty
+	ImageURL   string // last served image, else the current page's preview; empty for a placeholder
+	Waiting    string // placeholder text when there is neither an image nor text
+	Power      string // charge state with the charge or voltage, e.g. "Charging · 50 %" (ADR 0051)
+	Battery    string // raw fuel gauge reading for the details, e.g. "3.83 V · 50 % · +568 mA"
+	Width      int
+	Height     int
+	Text       []string // text displays: the last served lines
+	Refresh    string   // "every 10 min", empty when unknown
+	SeenAgo    string   // last contact, "never" when unknown
+	Address    string   // source address of the last contact, empty when unknown (ADR 0083)
+	ServedAgo  string   // age of the last served page
+	Firmware   string   // running version, available version and update status
+	Menu       string   // open menu phase and selected action (ADR 0057)
+	Actions    string   // "denied", empty when the device may use actions
+	Problem    string   // why the device cannot sync, empty when it can (ADR 0079)
+	Error      string   // last render or plan error
+	VirtualURL string   // the plan as a virtual display, empty without a plan (ADR 0091)
 }
 
 type dashboardPage struct {
@@ -118,30 +118,30 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	for _, d := range s.deviceInfos() {
 		image, waiting := imageText(d, profiles[d.Profile].text())
 		cards = append(cards, dashboardDevice{
-			ID:          d.ID,
-			Status:      d.Status,
-			Type:        d.Profile,
-			Hardware:    d.Hardware,
-			Plan:        planText(d.Plan),
-			Rule:        d.Rule,
-			Content:     contentText(d.deviceState),
-			ImageURL:    image,
-			Waiting:     waiting,
-			Power:       powerSource(d.Power, d.deviceState),
-			PowerOrigin: powerOrigin(cfg, devices[d.ID], d.ReportedPower),
-			Width:       profiles[d.Profile].Width,
-			Height:      profiles[d.Profile].Height,
-			Text:        d.LastText,
-			Refresh:     refreshText(d.LastRefresh),
-			SeenAgo:     agoText(d.LastSeen, now),
-			Address:     d.ClientIP,
-			ServedAgo:   agoText(d.LastPageTime, now),
-			Firmware:    firmwareText(d),
-			Menu:        menuText(d.deviceState),
-			Actions:     actionsText(devices[d.ID]),
-			Problem:     d.Problem,
-			Error:       d.LastError,
-			VirtualURL:  virtualURL(d.Plan, d.Profile),
+			ID:         d.ID,
+			Status:     d.Status,
+			Type:       d.Profile,
+			Hardware:   d.Hardware,
+			Plan:       planText(d.Plan),
+			Rule:       d.Rule,
+			Content:    contentText(d.deviceState),
+			ImageURL:   image,
+			Waiting:    waiting,
+			Power:      powerText(d.Power, d.deviceState),
+			Battery:    batteryText(d.deviceState),
+			Width:      profiles[d.Profile].Width,
+			Height:     profiles[d.Profile].Height,
+			Text:       d.LastText,
+			Refresh:    refreshText(d.LastRefresh),
+			SeenAgo:    agoText(d.LastSeen, now),
+			Address:    d.ClientIP,
+			ServedAgo:  agoText(d.LastPageTime, now),
+			Firmware:   firmwareText(d),
+			Menu:       menuText(d.deviceState),
+			Actions:    actionsText(devices[d.ID]),
+			Problem:    d.Problem,
+			Error:      d.LastError,
+			VirtualURL: virtualURL(d.Plan, d.Profile),
 		})
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -213,36 +213,56 @@ func imageText(d deviceInfo, text bool) (image, waiting string) {
 	return "", "Nothing served yet"
 }
 
-// powerOrigin names where the effective power source comes from (ADR 0051): set
-// on the device, set on the display type, reported by the firmware or the
-// battery fallback of auto.
-func powerOrigin(cfg *Config, d *Device, reported string) string {
-	if d == nil {
-		return ""
+// idleMA is the current below which the fuel gauge counts as idle: it reports
+// in 10 mA steps, so a few milliamps are noise, not charging.
+const idleMA = 20
+
+// powerState names what the device does with its battery (ADR 0051). The fuel
+// gauge current is the only reading that tells charging from connected, and it
+// also catches a device that drains although it reports mains; without a gauge
+// the reported power source decides.
+func powerState(power string, st deviceState) string {
+	if st.BatteryMA != nil {
+		switch {
+		case *st.BatteryMA > idleMA:
+			return "Charging"
+		case *st.BatteryMA < -idleMA:
+			return "Discharging"
+		}
 	}
-	fixed := func(v string) bool { return v == powerBattery || v == powerMains }
-	switch {
-	case fixed(d.Power):
-		return "set on device"
-	case d.Power == "" && fixed(cfg.Profiles[d.Profile].Power):
-		return "set on display type"
-	case reported != "":
-		return "reported by firmware"
+	if power == powerMains {
+		return "Connected"
 	}
-	return "fallback"
+	return "Discharging"
 }
 
-// powerSource joins the effective power source with the battery reading, e.g.
-// "Battery · 3.79 V · 71 %" or just "Mains".
-func powerSource(power string, st deviceState) string {
-	text := "Battery"
-	if power == powerMains {
-		text = "Mains"
+// powerText is the card's power row: the state and either the charge or, when
+// the hardware has no percentage, the voltage. The raw reading sits in the
+// card's details so the row stays quiet.
+func powerText(power string, st deviceState) string {
+	text := powerState(power, st)
+	switch {
+	case st.BatteryPercent != nil:
+		text += fmt.Sprintf(" · %.0f %%", *st.BatteryPercent)
+	case st.BatteryVoltage != "":
+		text += " · " + st.BatteryVoltage + " V"
 	}
-	if b := batteryText(st); b != "" {
-		text += " · " + b
+	switch st.BatteryLevel {
+	case batteryWarn:
+		text += " · low"
+	case batteryCritical:
+		text += " · critical"
 	}
 	return text
+}
+
+// currentText prints a gauge current with its sign; an idle gauge reads 0 mA
+// rather than +0.
+func currentText(ma float64) string {
+	if ma > -0.5 && ma < 0.5 {
+		return "0 mA"
+	}
+	return fmt.Sprintf("%+.0f mA", ma)
 }
 
 func planText(plan string) string {
@@ -335,8 +355,8 @@ func firmwareText(d deviceInfo) string {
 	return running + " → " + d.FirmwareAvailable + " · " + d.FirmwareStatus
 }
 
-// batteryText shows the voltage, the fuel gauge charge and current if known
-// and, when a threshold was crossed, its level.
+// batteryText is the raw fuel gauge reading for the card's details: voltage,
+// charge and current.
 func batteryText(st deviceState) string {
 	if st.BatteryVoltage == "" {
 		return ""
@@ -346,13 +366,7 @@ func batteryText(st deviceState) string {
 		text += fmt.Sprintf(" · %.0f %%", *st.BatteryPercent)
 	}
 	if st.BatteryMA != nil {
-		text += fmt.Sprintf(" · %+.0f mA", *st.BatteryMA)
-	}
-	switch st.BatteryLevel {
-	case batteryWarn:
-		return text + " · low"
-	case batteryCritical:
-		return text + " · critical"
+		text += " · " + currentText(*st.BatteryMA)
 	}
 	return text
 }
