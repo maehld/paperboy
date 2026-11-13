@@ -91,12 +91,16 @@ type syncText struct {
 }
 
 type syncResponse struct {
-	Image    *syncImage     `json:"image"`          // null for text displays
-	Text     *syncText      `json:"text,omitempty"` // text displays only
-	RefreshS int            `json:"refresh_s"`
-	ListenS  int            `json:"listen_s"`
-	Sleep    bool           `json:"sleep"` // false: stay awake and sync again after refresh_s (ADR 0051)
-	Time     int64          `json:"time"`
+	Image    *syncImage `json:"image"`          // null for text displays
+	Text     *syncText  `json:"text,omitempty"` // text displays only
+	RefreshS int        `json:"refresh_s"`
+	ListenS  int        `json:"listen_s"`
+	Sleep    bool       `json:"sleep"` // false: stay awake and sync again after refresh_s (ADR 0051)
+	Time     int64      `json:"time"`
+	// Rotation is the quarter turn the firmware applies to composed pages
+	// before painting, in degrees clockwise relative to its built-in mounting
+	// (ADR 0102). 0 leaves it as built; old firmware ignores the field.
+	Rotation int            `json:"rotation,omitempty"`
 	Firmware *firmwareOffer `json:"firmware"` // update offer (ADR 0043); null when none
 	// Wake names the reason of the next wake and how long to sleep until then
 	// (ADR 0064). It overrides refresh_s for exactly one sleep, so the menu can
@@ -656,6 +660,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		ListenS:  int(listen.Seconds()),
 		Sleep:    power == powerBattery,
 		Time:     now.Unix(),
+		Rotation: cfg.rotation(d),
 		Firmware: offer,
 		Wake:     wake,
 	}

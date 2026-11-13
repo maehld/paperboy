@@ -38,6 +38,7 @@ type deviceFile struct {
 	Actions     string   `yaml:"actions,omitempty" json:"actions,omitempty"`
 	MenuShow    Duration `yaml:"menu_show_duration" json:"menu_show_duration,omitempty"`
 	Touch       *bool    `yaml:"touch,omitempty" json:"touch,omitempty"`
+	Rotation    *int     `yaml:"rotation,omitempty" json:"rotation,omitempty"` // overrides the display type, ADR 0102
 	Battery     *Battery `yaml:"battery,omitempty" json:"battery,omitempty"`
 	Firmware    string   `yaml:"firmware,omitempty" json:"firmware,omitempty"`
 }
@@ -89,6 +90,7 @@ func (f deviceFile) device(id string, defaults *Battery) Device {
 		Actions:          f.Actions,
 		MenuShowDuration: f.MenuShow,
 		Touch:            f.Touch,
+		Rotation:         f.Rotation,
 	}
 }
 
@@ -197,6 +199,9 @@ func encodeDeviceFile(f *deviceFile) ([]byte, error) {
 	}
 	if f.Touch != nil {
 		set("touch", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: strconv.FormatBool(*f.Touch)})
+	}
+	if f.Rotation != nil {
+		set("rotation", intScalar(*f.Rotation))
 	}
 	if b := f.Battery; b != nil && (b.WarnVolts > 0 || b.CriticalVolts > 0 || b.HysteresisVolts > 0) {
 		node := mapping()

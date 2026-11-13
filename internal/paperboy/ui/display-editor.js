@@ -23,8 +23,8 @@
 
   function empty(kind) {
     return kind === 'text'
-      ? { kind: 'text', size: [20, 4], gray_levels: 0, ppi: 0, charset: 'utf8', min_refresh: '', power: '' }
-      : { kind: 'image', size: [800, 480], gray_levels: 4, ppi: 125, charset: '', min_refresh: '', power: '' };
+      ? { kind: 'text', size: [20, 4], gray_levels: 0, ppi: 0, charset: 'utf8', min_refresh: '', power: '', rotation: 0 }
+      : { kind: 'image', size: [800, 480], gray_levels: 4, ppi: 125, charset: '', min_refresh: '', power: '', rotation: 0 };
   }
 
   // ---- status ----
@@ -80,6 +80,19 @@
       o.textContent = label;
       power.appendChild(o);
     }
+
+    const rotation = el('rotation');
+    for (const [value, label] of [
+      ['0', '0° (as the firmware is built)'],
+      ['90', '90° clockwise'],
+      ['180', '180°'],
+      ['270', '270° clockwise'],
+    ]) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = label;
+      rotation.appendChild(o);
+    }
   }
 
   // show fills the form from the model; it is called once per load or save.
@@ -93,6 +106,7 @@
     el('charset').value = d.charset || 'utf8';
     el('min_refresh').value = d.min_refresh || '';
     el('power').value = d.power || '';
+    el('rotation').value = String(d.rotation || 0);
     el('yaml').textContent = state.yaml || '(no file yet)';
     el('delete').hidden = state.isNew;
     el('rename').hidden = state.isNew || !state.rename;
@@ -111,7 +125,7 @@
     el('height').max = text ? 24 : 4096;
     el('size-note').textContent = text
       ? 'A text display grid of at most 80 columns × 24 rows.'
-      : 'Pixels of the panel, in its natural orientation.';
+      : 'The page in pixels, as Paperboy composes it; rotation maps it onto the panel.';
     updatePPI();
   }
 
@@ -211,6 +225,7 @@
     } else {
       if (d.gray_levels) out.gray_levels = Number(d.gray_levels);
       if (d.ppi) out.ppi = Number(d.ppi);
+      if (d.rotation) out.rotation = Number(d.rotation);
     }
     if (d.min_refresh) out.min_refresh = d.min_refresh;
     if (d.power) out.power = d.power;
@@ -227,6 +242,7 @@
     d.charset = d.charset || '';
     d.min_refresh = d.min_refresh || '';
     d.power = d.power || '';
+    d.rotation = Number(d.rotation) || 0;
     return d;
   }
 
@@ -484,6 +500,11 @@
   el('power').addEventListener('change', () => {
     if (state.readOnly) return;
     state.display.power = el('power').value;
+    changed();
+  });
+  el('rotation').addEventListener('change', () => {
+    if (state.readOnly) return;
+    state.display.rotation = Number(el('rotation').value) || 0;
     changed();
   });
   onSize();

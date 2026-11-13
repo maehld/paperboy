@@ -33,6 +33,7 @@ gray_levels: 4
 ppi: 125
 min_refresh: 1m
 power: mains
+rotation: 90
 `
 	f, err := parseDisplayFile([]byte(src))
 	if err != nil {
@@ -42,7 +43,8 @@ power: mains
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "min_refresh: 1m\n") || !strings.Contains(string(data), "size: [800, 480]\n") {
+	if !strings.Contains(string(data), "min_refresh: 1m\n") || !strings.Contains(string(data), "size: [800, 480]\n") ||
+		!strings.Contains(string(data), "rotation: 90\n") {
 		t.Fatalf("layout:\n%s", data)
 	}
 	again, err := parseDisplayFile(data)
@@ -107,6 +109,8 @@ func TestDisplayFileValidation(t *testing.T) {
 		{"gray levels", displayFile{Size: [2]int{800, 480}, PPI: 125, GrayLevels: 2}, "gray_levels must be 1 or 4"},
 		{"min refresh", displayFile{Size: [2]int{800, 480}, PPI: 125, MinRefresh: Duration(500 * time.Millisecond)}, "at least 1s"},
 		{"power", displayFile{Size: [2]int{800, 480}, PPI: 125, Power: "solar"}, "expected auto, battery or mains"},
+		{"rotation", displayFile{Size: [2]int{480, 800}, PPI: 125, Rotation: 45}, "rotation must be 0, 90, 180 or 270"},
+		{"rotation on text", displayFile{Kind: kindText, Size: [2]int{20, 4}, Rotation: 90}, "rotation does not apply to text displays"},
 	} {
 		name := "e1001"
 		if tc.name == "name" {

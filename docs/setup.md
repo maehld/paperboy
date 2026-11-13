@@ -95,10 +95,13 @@ gray_levels: 4     # 1 or 4
 ppi: 125           # pixels per inch, required for image displays (800 px / 163 mm)
 min_refresh: 60s   # never report a shorter interval
 power: auto        # auto (default), battery or mains (ADR 0051)
+rotation: 0        # optional: page → panel, 0, 90, 180 or 270 (ADR 0102)
 ```
 
 - A display type with `kind: text` is a text display (ADR 0044). `size: [columns, rows]` is in characters and at most 80 × 24. `charset: utf8|ascii|hd44780` defaults to `utf8`. Paperboy rejects `gray_levels` and `ppi` for a text display.
 - An image display type needs `ppi`, its pixel density (pixels per inch, 20–1000; ADR 0050). The density does not depend on the orientation: compute it from either side, `ppi = pixels × 25.4 / millimetres` of the active area. Page styles are in points and are converted with it, so a widget has the same physical size on a small dense panel and a large coarse one.
+- `size` is the page Paperboy composes, not necessarily the panel's native orientation. A portrait page on the STICKY or the E1001 is a display type with `size: [480, 800]` at the same `ppi`, plus `rotation: 90` or `270` (ADR 0102). The rotation is the default for devices of the type; a device overrides it for its mounting. Text displays have no rotation.
+- `rotation` turns the composed page clockwise before the firmware paints it: `0` keeps the orientation the firmware was built for, `90` and `270` suit a portrait page on a landscape panel, `180` turns a landscape page upside down. The value belongs to the physical mounting, so a device may override it in its own file.
 - Create, edit and rename display types at `/ui/editor?tab=displays` (ADR 0071, 0079). The files stay the source of truth, so Paperboy picks up a hand edit on the next request. A rename moves `displays/<name>.yaml` and nothing else. The confirmation names the page variants and devices that keep the old name. Those stay editable. A device whose display type is missing answers with 503 until its file is fixed. An orphaned page variant opens through a configured type of the same kind and can be saved as that type's variant. Delete works in the editor (ADR 0073). The confirmation names the page variants and devices that keep pointing at the missing type, and a copy stays under `state/editor/`.
 - Paperboy needs at least one display type. Without one it rejects the configuration (see [Configuration](#configuration)). Several devices can share a display type. No device has to use a type. A page variant of a type that is not configured is listed with its error instead of disappearing.
 
@@ -113,6 +116,7 @@ mac: "AA:BB:CC:DD:EE:01"
 plan: standard          # plans/standard.yaml; without one a notice page
 refresh: 10m            # optional, else defaults.refresh
 power: mains            # optional, overrides the display type (E1001 on USB, ADR 0051)
+rotation: 0             # optional, overrides the display type (ADR 0102)
 battery: { warn_volts: 3.5 }   # optional; empty values inherit defaults.battery
 firmware: hold          # optional: keep the device on its firmware (ADR 0043)
 actions: allow          # optional: allow (default) or deny the device menu (ADR 0057)
@@ -126,3 +130,4 @@ touch: false            # optional: draw the menu's tap controls (ADR 0082)
 - Paperboy keeps the source address of the last register, sync or text poll in the state file of the device (`client_ip`, ADR 0083). It shows the address on the dashboard, in the devices tab and in `GET /api/devices`. The address comes from the connection, never from a header, so a reverse proxy in front of Paperboy would show its own address.
 - Pages and notice pages go only to a device that identifies itself with its key (ADR 0097); the firmware sends it with the image download. A key only reaches pages of its own display type. The dashboard shows the last served image through the UI route `/api/devices/<id>/image`, which needs `ui.password` like the rest of the operator UI.
 - `touch: true` makes the device menu draw its tap controls. A device without touch keeps the button-only menu (ADR 0082). If the key is absent, Paperboy uses what the firmware reported.
+- `rotation: 0|90|180|270` overrides the rotation of the display type for one mounting (ADR 0102): the same `sticky-portrait` type serves a panel that hangs the other way up with `rotation: 270` on its device file. Absent inherits the display type's value; text displays reject a rotation. The firmware applies it while painting and maps touches into the same page, so the menu hits the row it draws.
