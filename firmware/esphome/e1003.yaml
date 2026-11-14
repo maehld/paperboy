@@ -24,21 +24,20 @@
 
 substitutions:
   hardware: e1003
-  fw_version: "0.1.3"
+  fw_version: "0.2.0"
   # The mounting this image is built for; a device adds its quarter turn to it
   # at runtime (ADR 0102). Touch currently assumes this orientation.
   compiled_rotation: 0
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
-  # ESPHome allocates the whole response buffer before it reads a single byte
-  # (http_request.h: allocator.allocate(max_length)) and copies the page into a
-  # second string afterwards, so the buffer is paid on every download, not only
-  # for the page it holds. 512 KiB covers every realistic page of this panel
-  # (a four-level 1872x1404 page measured 188 KB, the worst case 2.6 MB) and
-  # leaves the 1.31 MB framebuffer and the two strings room in the 8 MB PSRAM.
-  # A page above it is truncated by the request and refused by pb_qoi_valid, so
-  # the panel keeps its picture instead of showing half a page.
-  qoi_buffer: "524288"
+  # The response buffer: ESPHome allocates the whole size before it reads a
+  # byte (http_request.h: allocator.allocate(max_length)) and copies the page
+  # into a second string, so both live in PSRAM. With SPIRAM_USE_MALLOC set
+  # below, 1 MiB is paid per download next to the 1.31 MB framebuffer and still
+  # leaves room in the 8 MB PSRAM. A realistic 16-level page of this panel is
+  # 190-205 KB; a dithered photograph is ~1.5 MB and is simplified by the
+  # server's qoiLimit to fit.
+  qoi_buffer: "1048576"
 
 packages:
   paperboy: !include common.yaml
@@ -158,6 +157,7 @@ spi:
   miso_pin: GPIO8
 
 i2c:
+  id: i2c0
   scl: GPIO20
   sda: GPIO19
   frequency: 100kHz
@@ -169,12 +169,15 @@ output:
     id: battery_enable
 
 sensor:
-  # Battery voltage through a 1:2 divider; needs battery_enable on.
+  # Battery voltage through a 1:2 divider; needs battery_enable on. Several
+  # samples per read: the ADC sits next to the panel's switching supply and a
+  # single sample drifts by ~30 mV.
   - platform: adc
     pin: GPIO1
     id: battery_voltage
     attenuation: 12db
     update_interval: never
+    samples: 5
     filters:
       - multiply: 2.0
 
@@ -289,6 +292,8 @@ script:
             lambda: "return !id(setup_mode) && !id(api_key).state.empty();"
           then:
             - lambda: |-
+                ESP_LOGI("paperboy", "touch %d,%d (display %dx%d, rotation %d)", x, y,
+                         id(epaper_display)->get_width(), id(epaper_display)->get_height(), pb_rotation);
                 pb_touch(x, y, 1872, 1404);
                 if (id(wake_reason) != "button") id(wake_reason) = "touch";
             - script.execute: awake_limit
@@ -299,11 +304,12 @@ script:
                   - script.execute: sync_and_show
 
   # The IT8951 driver transfers and refreshes asynchronously and exposes no
-  # completion state, so after_paint waits a fixed time that covers the row
-  # transfer of a full page (about 1.3 MB at 20 MHz) and the 3 s GC16 refresh.
+  # completion state, so after_paint waits a fixed time. Measured on the device:
+  # 1.9-2.7 s from the paint start to the finished GC16 (1.3 MB at 20 MHz plus
+  # the 3 s refresh); 4 s keeps a margin for a slower panel.
   - id: wait_paint
     then:
-      - delay: 5s
+      - delay: 4s
 
   # No fuel gauge: the voltage, mapped to a percentage with Seeed's E10xx
   # discharge curve (3.27 V = 0 %, 4.15 V = 100 %).
@@ -313,6 +319,10 @@ script:
       - lambda: |-
           float v = id(battery_voltage).state;
           pb_bat_volts = std::isfinite(v) && v > 0 ? v : NAN;
+          // No fuel gauge: Seeed's discharge curve for the E10xx, linearly
+          // interpolated and clamped to 0..100. The ADC measures under the
+          // device's own load, so the value reads a little low while it is
+          // awake.
           static const float curve[][2] = {
               {3.27f, 0.f},   {3.30f, 5.f},   {3.41f, 10.f}, {3.49f, 20.f},
               {3.58f, 30.f},  {3.68f, 40.f},  {3.75f, 50.f}, {3.80f, 60.f},
@@ -335,10 +345,25 @@ script:
               }
             }
           }
-          // No pin reports USB power in this image (the SY6974B charger would
-          // have to be read over I2C); an E1003 on a charger needs
-          // power: mains in paperboy.yaml, like the E1001 (ADR 0051).
-          pb_power = "battery";
+          ESP_LOGD("paperboy", "battery: %.2f V, %.0f %%", pb_bat_volts, pb_bat_percent);
+
+          // The SY6974B charger on I2C 0x6B reports the cable and the charge
+          // state in REG0A: bit 7 = VBUS good (cable attached), bits 4:3 = 00
+          // not charging, 01 precharge, 10 fast charge, 11 done. Paperboy uses
+          // the cable for the power source (ADR 0051) and the state for the
+          // charge indicator; a failed read keeps the battery default.
+          uint8_t reg = 0x0A, val = 0;
+          if (id(i2c0).write(0x6B, &reg, 1, true) == i2c::ERROR_OK &&
+              id(i2c0).read(0x6B, &val, 1) == i2c::ERROR_OK) {
+            const int state = (val >> 3) & 0x03;
+            pb_charging = (state == 1 || state == 2) ? 1 : 0;
+            pb_power = (val & 0x80) ? "mains" : "battery";
+            ESP_LOGD("paperboy", "charger: 0x%02X (cable %d, state %d)", val, (val & 0x80) ? 1 : 0, state);
+          } else {
+            pb_charging = -1;
+            pb_power = "battery";
+            ESP_LOGW("paperboy", "charger not readable, reporting battery");
+          }
 
 deep_sleep:
   id: sleeper

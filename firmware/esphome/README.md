@@ -54,10 +54,11 @@ change is now: Wi-Fi 1.2 s, sync 0.1 s, image 0.07–0.11 s, paint 2.0 s — 3.7
 from a battery wake instead of 9.5 s, and the panel refresh is 90 % of it. The
 page travels as QOI, 22–50 KB for a four-level 800×480 page.
 
-The buffer is a compile-time constant, 512 KiB for every hardware type
-(`qoi_buffer` in the hardware file), since the firmware reads the answer into it
-before painting. ESPHome allocates the whole size before it reads a byte, so a
-larger buffer costs memory on every download, not only for a large page. A page of
+The buffer is a compile-time constant, 512 KiB for the 800×480 panels and 1 MiB
+for the E1003 (`qoi_buffer` in the hardware file), since the firmware reads the
+answer into it before painting. ESPHome allocates the whole size before it reads
+a byte, so a larger buffer costs memory on every download, not only for a large
+page; on the E1003 both the buffer and the copy live in PSRAM. A page of
 Paperboy's palette costs at most one QOI byte per pixel, so even an 800×480 page
 of alternating black and white (the worst case, measured 384 KB) fits; Paperboy
 keeps its own `qoiLimit` in step and only has to simplify a page for a display
@@ -287,8 +288,8 @@ follows a community measurement of the E1003's deep-sleep current and still has
 to be verified on the device.
 
 The first image uses `it8951` with `force_temperature: 16`, paints QOI pages
-with `pb_paint_qoi_gray16` and reads 512 KiB per download like every other
-hardware type. Paperboy supports 16-level display types since ADR 0105:
+with `pb_paint_qoi_gray16` and reads 1 MiB per download. Paperboy supports
+16-level display types since ADR 0105:
 
 ```yaml
 kind: image
@@ -297,9 +298,9 @@ ppi: 227
 gray_levels: 16
 ```
 
-A 16-level page of this size is composed at 16 tones but sent within the
-512 KiB QOI limit (ADR 0105), so a very detailed page is simplified. A display
-type with `gray_levels: 4` still works and uses four of the panel's 16 levels.
+A 16-level page of this size is composed at 16 tones and sent within the 1 MiB
+QOI limit (ADR 0105); a dithered photograph is simplified. A display type with
+`gray_levels: 4` still works and uses four of the panel's 16 levels.
 
 **A page aborts without `SPIRAM_USE_MALLOC`.** ESPHome's `psram` component
 selects `CONFIG_SPIRAM_USE_CAPS_ALLOC`, so `malloc` and `operator new` never
@@ -316,10 +317,20 @@ also lets a larger `qoi_buffer` work later.
 
 Measured on the device (0.1.2, 2026-11-14): sync 0.7 s, image 0.4-0.9 s for a
 75-204 KB page, and paint 1.9-2.7 s from `paint start` to a finished GC16 —
-all nine example pages cycled without a reset. Open: the GT911 transform, the
-waveform temperature (the image forces 16 °C, the preset 25 °C, Seeed's driver
-16 °C), the deep-sleep current, and `wait_paint`, which waits 5 s because the
-driver exposes no completion state. If a paint times out in the log, try
+all nine example pages cycled without a reset. `wait_paint` waits 4 s, which
+covers that with a margin because the driver exposes no completion state.
+
+Battery and charger: the voltage divider is on ADC GPIO1 (enable GPIO40,
+1:2, five samples) with Seeed's E10xx curve, and the SY6974B charger on I2C
+0x6B answers REG0A: bit 7 = cable attached, bits 4:3 = 00 not charging,
+01 precharge, 10 fast charge, 11 done. The firmware reports `mains` while the
+cable is attached and `charging` from the state, so a device on USB stays awake
+(ADR 0051) and the dashboard shows the charge. A failed read logs a warning and
+falls back to `battery`.
+
+Touch: GT911 with `mirror_x`, the transform of Seeed's example. Every tap is
+logged as `touch x,y (display 1872x1404, rotation 0)`, so a wrong transform is
+visible by tapping the four corners. Open on the hardware: the transform. If a paint times out in the log, try
 `use_legacy_dpy_area: true` on the display: some E1003 batches ignore
 `DPY_BUF_AREA` (0x0037).
 
