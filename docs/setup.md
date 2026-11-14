@@ -80,9 +80,7 @@ ui:
 - Without the `ui` section the UI stays open, as it was before this option existed. Paperboy warns at startup when the listener is not loopback and no password is set. A password added or changed later applies to the next request, without a restart.
 - A changed password ends the sessions of open tabs: their next request answers `401` and the browser asks again. There is no logout, because the browser keeps Basic credentials until it is closed; use a private window on a shared machine.
 - The UI password is not the device key. A display keeps registering, syncing and downloading its pages with its own key (ADR 0042, ADR 0097); the firmware images on `/firmware/` stay open, because they are public release artifacts. Requests from another site cannot write: they are refused with `403` even when the browser would send the password along.
-- **Expose beyond the LAN:** Paperboy does not terminate TLS, and both the password and the page images of the displays travel in clear text through the LAN. Put a reverse proxy in front that terminates HTTPS and forwards to Paperboy's `-listen` address, and keep the device URL (`http://<host>:<port>`) as it is, because the firmware keeps that address. The proxy's address is what the dashboard shows as the device's last contact (ADR 0083).
-
-## Display types
+- **Expose beyond the LAN:** Paperboy does not terminate TLS, and both the password and the page images of the displays travel in clear text through the LAN. Put a reverse proxy in front that terminates HTTPS and forwards to Paperboy's `-listen` address. A display in another network needs that public address as its Paperboy URL (`https://…`). The firmware speaks HTTPS but does not verify the certificate, so it accepts any; a browser that opens the UI does verify it, so use a certificate for the public name. A display in the trusted LAN can keep `http://<host>:<port>`. The proxy's address is what the dashboard shows as the device's last contact (ADR 0083).
 
 ## Display types
 

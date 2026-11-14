@@ -32,8 +32,14 @@ func TestDashboardShowsDevices(t *testing.T) {
 	if !strings.Contains(body, "test") || !strings.Contains(body, "zimmer") {
 		t.Fatalf("device card missing: %s", body)
 	}
-	if !strings.Contains(body, `http-equiv="refresh" content="30"`) {
-		t.Fatal("dashboard must refresh itself")
+	if !strings.Contains(body, `hx-trigger="every 30s`) || strings.Contains(body, `http-equiv="refresh"`) {
+		t.Fatal("the dashboard must poll itself instead of reloading the document (ADR 0106)")
+	}
+	if !strings.Contains(body, `id="live"`) || !strings.Contains(body, `id="device-test"`) {
+		t.Fatal("the polled region and the device card need stable ids for the morph")
+	}
+	if !strings.Contains(body, `src="/ui/htmx.js"`) {
+		t.Fatal("the dashboard must load the vendored script")
 	}
 
 	dev := planDevice(t, s)
@@ -44,6 +50,11 @@ func TestDashboardShowsDevices(t *testing.T) {
 	if want := lastImagePath("test"); !strings.Contains(body, want) {
 		t.Fatalf("dashboard must show the served page through %q: %s", want, body)
 	}
+	// The picture keeps its URL while its pixels stay: naming the hash lets the
+	// browser cache it, so a tick of the self-updating page fetches no image.
+	if !strings.Contains(body, lastImagePath("test")+"?h=") {
+		t.Fatalf("the served image must name its hash: %s", body)
+	}
 	for _, want := range []string{"zimmer", "eins", "every 10 min", "3.74 V · 61 %", "small <span class=\"muted\">(sticky)</span>"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("dashboard misses %q: %s", want, body)
@@ -52,7 +63,7 @@ func TestDashboardShowsDevices(t *testing.T) {
 	// The power row names the state and the charge; the raw reading, the type
 	// and the other static facts sit in the collapsed details, without the old
 	// origin hint.
-	for _, want := range []string{"Discharging · 61 %", `<details class="more">`, "<summary>Details</summary>"} {
+	for _, want := range []string{"Discharging · 61 %", `<details class="more" id="details-test">`, "<summary>Details</summary>"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("dashboard misses %q: %s", want, body)
 		}
@@ -146,5 +157,37 @@ func TestDashboardPower(t *testing.T) {
 		if got := batteryText(c.st); got != c.details {
 			t.Errorf("%s: details %q, want %q", c.name, got, c.details)
 		}
+	}
+}
+
+// TestUIServesHTMX checks the one piece of foreign code the operator UI ships
+// (ADR 0106): the binary embeds it, serves it as JavaScript behind the password
+// and revalidates it, so an upgrade cannot be served from the browser cache.
+func TestUIServesHTMX(t *testing.T) {
+	s, _ := planServer(t, testPlan)
+	rec := htmlRequest(t, s, "/ui/htmx.js")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("htmx: %d", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/javascript") {
+		t.Fatalf("content type %q", got)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("cache control %q", got)
+	}
+	body := rec.Body.String()
+	if len(body) < 20000 || !strings.Contains(body, "htmx") {
+		t.Fatalf("script looks wrong: %d bytes", len(body))
+	}
+
+	// A password-protected instance serves it to the page's own requests: the
+	// browser sends the credentials it signed in with for a subresource.
+	locked := testServerWithPassword(t, "geheim")
+	req := httptest.NewRequest(http.MethodGet, "/ui/htmx.js", nil)
+	req.SetBasicAuth("", "geheim")
+	rec = httptest.NewRecorder()
+	locked.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("htmx behind the password: %d", rec.Code)
 	}
 }

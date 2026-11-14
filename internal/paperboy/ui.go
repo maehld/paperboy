@@ -11,7 +11,8 @@ import (
 )
 
 // dashboardTemplate is the operator overview. It is read-only and rendered on
-// the server, so the page needs no JavaScript and no build step (ADR 0040).
+// the server; the script it links only re-fetches the page and morphs the
+// region that changed (ADR 0040, 0106).
 //
 //go:embed ui/index.html
 var dashboardTemplate string
@@ -29,6 +30,22 @@ func (s *Server) handleUICSS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(uiCSS)
+}
+
+// uiHtmx is the only third-party code the operator UI ships (ADR 0106). The
+// pages that update themselves poll their own URL and let htmx morph only the
+// region that changed, so an opened details block, the focus and the loaded
+// previews survive a tick. Version, source and licence sit next to the file in
+// ui/vendor/.
+//
+//go:embed ui/vendor/htmx-4.0.1.min.js
+var uiHtmx []byte
+
+// handleUIHtmx serves the vendored script the self-updating pages link.
+func (s *Server) handleUIHtmx(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(uiHtmx)
 }
 
 // The logo the pages carry: the lockup in the header and the small cut as the
@@ -219,13 +236,24 @@ func imageText(d deviceInfo, text bool) (image, waiting string) {
 	case text && len(d.LastText) > 0:
 		return "", ""
 	case d.LastPageURL != "":
-		return d.LastPageURL, ""
+		return pageImageURL(d.LastPageURL, d.LastPageHash), ""
 	case !text && d.LastPageKind == "page" && d.LastPage != "":
 		return "/api/preview/" + url.PathEscape(d.Profile) + "/" + url.PathEscape(d.LastPage), ""
 	case d.LastPageHash != "" || d.LastPageKind != "":
 		return "", "No image yet – waiting for the next sync"
 	}
 	return "", "Nothing served yet"
+}
+
+// pageImageURL names the served image together with the hash of its pixels. The
+// dashboard polls itself, and a browser caches what keeps its URL: only a new
+// page changes the hash, so a tick does not download the picture again (ADR
+// 0106). Without a hash the route stays as it is.
+func pageImageURL(imageURL, hash string) string {
+	if imageURL == "" || hash == "" {
+		return imageURL
+	}
+	return imageURL + "?h=" + hash
 }
 
 // powerState names what the device does with its battery (ADR 0051). The fuel

@@ -204,6 +204,29 @@ func TestDownloadInstallsPluginsAndFirmware(t *testing.T) {
 	if strings.Contains(dash, "Check now") || !strings.Contains(dash, "href=\"/ui/downloads\"") {
 		t.Fatalf("dashboard still carries the download card: %s", dash)
 	}
+	// The page polls itself and keeps its own URI, so a notice it was opened
+	// with stays (ADR 0106).
+	if !strings.Contains(body, `hx-get="/ui/downloads"`) || !strings.Contains(body, `hx-trigger="every 5s`) {
+		t.Fatalf("downloads page does not poll itself: %s", body)
+	}
+	for _, want := range []string{`hx-swap="innerMorph"`, `hx-select="#live > *"`, `id="live"`, `src="/ui/htmx.js"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("downloads page misses %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, `http-equiv="refresh"`) {
+		t.Fatalf("downloads page still reloads the document: %s", body)
+	}
+	notice := htmlRequest(t, s, "/ui/downloads?pruned=1").Body.String()
+	if !strings.Contains(notice, `hx-get="/ui/downloads?pruned=1"`) {
+		t.Fatalf("a poll must keep the query string: %s", notice)
+	}
+	// The cleanup preview keeps its list of files still: no poll may change
+	// what the button next to it would delete.
+	preview := htmlRequest(t, s, "/ui/downloads?prune=1").Body.String()
+	if strings.Contains(preview, "hx-get=") || strings.Contains(preview, "hx-trigger=") {
+		t.Fatalf("the cleanup preview must not poll: %s", preview)
+	}
 }
 
 func TestDownloadHonoursPins(t *testing.T) {

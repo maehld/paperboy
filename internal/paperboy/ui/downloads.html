@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="{{if .Running}}3{{else}}60{{end}}">
+<meta name="htmx-config" content='{"morphIgnore":["data-htmx-powered","open"]}'>
 <title>Paperboy · Downloads</title>
 <link rel="stylesheet" href="/ui/ui.css">
 <link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
+<script src="/ui/htmx.js" defer></script>
 <style>
 a { color: #134e9c; }
 .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
@@ -39,6 +40,14 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   <nav><a href="/ui">Devices</a> · <a class="active" href="/ui/downloads">Downloads</a> · <a href="/ui/plugins">Widgets</a> · <a href="/ui/editor">Editor</a> · <a href="/ui/stats">Stats</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
 </header>
+{{/* The page polls itself and morphs only the region below, so nothing jumps
+     while a check runs (ADR 0106). The cleanup preview keeps its list still and
+     does not poll at all. */}}
+<div id="live"{{if not .Preview}}
+     hx-get="{{.Self}}"
+     hx-select="#live > *"
+     hx-swap="innerMorph"
+     hx-trigger="every 5s [document.visibilityState == 'visible'], visibilitychange from:document [document.visibilityState == 'visible']"{{end}}>
 {{if .Configured}}
 <section class="card">
   <h2>Release checks</h2>
@@ -114,5 +123,6 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   {{end}}
 </section>
 {{if .Issues}}<p class="error">Ignored firmware files (expected &lt;hardware&gt;-v&lt;version&gt;.bin): {{range $i, $f := .Issues}}{{if $i}}, {{end}}{{$f}}{{end}}</p>{{end}}
+</div>
 </body>
 </html>

@@ -36,6 +36,7 @@ type downloadsView struct {
 	PluginChannel   string // stable or latest (ADR 0089)
 	FirmwareChannel string // stable or latest (ADR 0089)
 	Running         bool   // a check is running right now
+	Self            string // this page's URI, so a poll keeps its query string (ADR 0106)
 	LastCheck       string // time of the last check, "never" before the first one
 	LastOK          string // time of the last successful check, empty when unknown
 	Error           string // last error, empty when the check succeeded
@@ -82,7 +83,8 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 		loc = time.UTC
 	}
 	version, goVersion := editorVersion(cfg)
-	v := downloadsView{Version: version, GoVersion: goVersion, Issues: s.firmware.invalidNames()}
+	v := downloadsView{Version: version, GoVersion: goVersion, Issues: s.firmware.invalidNames(),
+		Self: r.URL.RequestURI()}
 	if cfg.Download != nil {
 		v.Configured = true
 		v.Source = cfg.Download.Source

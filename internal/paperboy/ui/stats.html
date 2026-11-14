@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="10">
+<meta name="htmx-config" content='{"morphIgnore":["data-htmx-powered","open"]}'>
 <title>Paperboy · Stats</title>
 <link rel="stylesheet" href="/ui/ui.css">
 <link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
+<script src="/ui/htmx.js" defer></script>
 <style>
 .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
 .card h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; align-items: baseline; gap: .5rem; }
@@ -32,6 +33,13 @@ tr.error td { border-top: 0; padding-top: 0; color: #b00; font-size: .82rem; whi
   <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/plugins">Widgets</a> · <a href="/ui/editor">Editor</a> · <a class="active" href="/ui/stats">Stats</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
 </header>
+{{/* The page polls itself every ten seconds and morphs only the region below,
+     so the tables keep their scroll position and nothing flashes (ADR 0106). */}}
+<div id="live"
+     hx-get="/ui/stats"
+     hx-select="#live > *"
+     hx-swap="innerMorph"
+     hx-trigger="every 10s [document.visibilityState == 'visible'], visibilitychange from:document [document.visibilityState == 'visible']">
 
 <section class="card">
   <h2>Paperboy <span class="muted">{{.Platform}}</span></h2>
@@ -115,5 +123,6 @@ tr.error td { border-top: 0; padding-top: 0; color: #b00; font-size: .82rem; whi
   {{end}}
   <p class="hint">A sync is one wake of a device, a poll is the text display asking for its lines every second.</p>
 </section>
+</div>
 </body>
 </html>

@@ -200,6 +200,7 @@ func (s *Server) uiRoutes() []route {
 		{"GET /ui/editor/display", s.handleDisplayEditor},
 		{"GET /ui/editor.js", s.handleEditorJS},
 		{"GET /ui/ui.css", s.handleUICSS},
+		{"GET /ui/htmx.js", s.handleUIHtmx},
 		{"GET /ui/logo.svg", s.handleUILogo},
 		{"GET /ui/favicon.svg", s.handleUIFavicon},
 		{"GET /ui/editor/plan.js", s.handlePlanEditorJS},
@@ -370,7 +371,14 @@ func (s *Server) handleDeviceImage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Cache-Control", "no-store")
+	// The dashboard names the hash in the URL, and the picture behind a hash
+	// never changes: the browser keeps it, so a tick of the self-updating page
+	// fetches nothing (ADR 0106). Any other request stays uncached, as before.
+	if h := r.URL.Query().Get("h"); h != "" && h == hash {
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	writePNG(w, data)
 }
 

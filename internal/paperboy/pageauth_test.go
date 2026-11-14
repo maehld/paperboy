@@ -146,6 +146,25 @@ func TestDeviceImageServesTheLastPage(t *testing.T) {
 	if rec.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("cache header: %q", rec.Header().Get("Cache-Control"))
 	}
+	// The dashboard names the pixel hash, and only that URL may be cached: the
+	// page keeps its picture instead of fetching it on every tick (ADR 0106).
+	for _, c := range []struct{ query, want string }{
+		{"?h=" + rp.hash, "private, max-age=31536000, immutable"},
+		{"?h=fremd", "no-store"},
+		{"", "no-store"},
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/api/devices/test/image"+c.query, nil)
+		req.SetBasicAuth("", "geheim")
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("%q: %d", c.query, rec.Code)
+			continue
+		}
+		if got := rec.Header().Get("Cache-Control"); got != c.want {
+			t.Errorf("%q: cache header %q, want %q", c.query, got, c.want)
+		}
+	}
 	// An unknown device and a device without a served image are 404.
 	for _, path := range []string{"/api/devices/unbekannt/image", "/api/devices/zwei/image"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
