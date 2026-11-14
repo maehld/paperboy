@@ -36,7 +36,8 @@ func TestStatsPage(t *testing.T) {
 		"Sync, whole request",
 		"Syncs and polls",
 		`<td class="name">test</td>`,
-		`<meta http-equiv="refresh" content="10">`,
+		`hx-trigger="every 10s`,
+		`id="live"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("stats page misses %q:\n%s", want, body)
