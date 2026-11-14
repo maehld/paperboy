@@ -270,12 +270,14 @@ func TestWidgets(t *testing.T) {
 		image.Rect(0, 0, 266, 120),
 		image.Rect(0, 0, 130, 90),
 	}
-	for _, size := range sizes {
-		for _, widget := range []string{"glucose", "graph", "values"} {
-			img := render.NewCanvas(size.Dx(), size.Dy(), 4)
-			w := plugin.WidgetRequest{Widget: widget, Width: size.Dx(), Height: size.Dy(), Style: style()}
-			if err := d.Render(req, w, img); err != nil {
-				t.Fatalf("%s at %v: %v", widget, size, err)
+	for _, levels := range []int{2, 4, 16} {
+		for _, size := range sizes {
+			for _, widget := range []string{"glucose", "graph", "values"} {
+				img := render.NewCanvas(size.Dx(), size.Dy(), levels)
+				w := plugin.WidgetRequest{Widget: widget, Width: size.Dx(), Height: size.Dy(), Style: style()}
+				if err := d.Render(req, w, img); err != nil {
+					t.Fatalf("%s at %v with %d levels: %v", widget, size, levels, err)
+				}
 			}
 		}
 	}

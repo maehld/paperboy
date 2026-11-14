@@ -4,8 +4,12 @@
 # the plugin zip names the program <plugin>-v<version> and a download only
 # installs a higher one.
 #
-# Shared code under pkg/ changes every plugin binary, so it only warns: whether
-# each affected plugin needs a new version is a decision for the maintainer.
+# pkg/plugin and pkg/render are linked into every plugin, so a change there
+# changes every program and every version has to rise: a release with unchanged
+# version names keeps the old programs and no installation receives the new
+# build (ADR 0107). Other shared code under pkg/, go.mod and go.sum only warn:
+# whether each affected plugin needs a new version is a decision for the
+# maintainer.
 #
 #   ./scripts/check-plugin-versions.sh origin/main
 set -eu
@@ -24,22 +28,35 @@ changed() {
     ! git diff --quiet "$base"...HEAD -- "$1"
 }
 
+shared=0
+if changed pkg/plugin || changed pkg/render; then
+    shared=1
+fi
+
 for dir in cmd/*/; do
     plugin=${dir#cmd/}
     plugin=${plugin%/}
     [ -f "$dir/VERSION" ] || continue
-    changed "cmd/$plugin" || continue
+    own=0
+    if changed "cmd/$plugin"; then
+        own=1
+    fi
+    [ "$own" -eq 1 ] || [ "$shared" -eq 1 ] || continue
     old=$(git show "$base:cmd/$plugin/VERSION" 2>/dev/null | tr -d '[:space:]' || true)
     new=$(tr -d '[:space:]' < "$dir/VERSION")
     if [ "$new" = "$old" ]; then
-        echo "::error file=cmd/$plugin/VERSION::$plugin changed, but its version is still $new; raise cmd/$plugin/VERSION (ADR 0075)"
+        if [ "$own" -eq 1 ]; then
+            echo "::error file=cmd/$plugin/VERSION::$plugin changed, but its version is still $new; raise cmd/$plugin/VERSION (ADR 0075)"
+        else
+            echo "::error file=cmd/$plugin/VERSION::$plugin is unchanged, but pkg/plugin or pkg/render changed, which alters every plugin binary; raise cmd/$plugin/VERSION (ADR 0107)"
+        fi
         status=1
     else
         echo "$plugin: $old -> $new"
     fi
 done
 
-if changed pkg || changed go.mod || changed go.sum; then
+if [ "$shared" -eq 0 ] && { changed pkg || changed go.mod || changed go.sum; }; then
     echo "::warning::shared code changed (pkg/, go.mod or go.sum): check whether the affected plugins need a new VERSION (ADR 0075)"
 fi
 

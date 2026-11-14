@@ -254,7 +254,7 @@ func TestRender(t *testing.T) {
 		ppi    float64
 		levels int
 		w, h   int
-	}{{125, 4, 400, 300}, {236, 2, 400, 300}, {125, 2, 200, 120}} {
+	}{{125, 4, 400, 300}, {236, 2, 400, 300}, {125, 2, 200, 120}, {227, 16, 936, 351}} {
 		req.Page.PPI = c.ppi
 		style := plugin.Style{Padding: int(4.5 * c.ppi / 72), Rule: 1, TextPx: 16 * c.ppi / 72}
 		img := render.NewCanvas(c.w, c.h, c.levels)
