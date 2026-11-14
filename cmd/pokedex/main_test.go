@@ -325,7 +325,7 @@ func TestRenderCard(t *testing.T) {
 	}{
 		{"e1001 2", 125, 800, 480, 2}, {"e1001 4", 125, 400, 240, 4},
 		{"sticky 2", 236, 400, 240, 2}, {"sticky 4", 236, 800, 480, 4},
-		{"narrow", 125, 200, 300, 4},
+		{"narrow", 125, 200, 300, 4}, {"e1003 16", 227, 936, 351, 16},
 	} {
 		req, w := request("en", tc.w, tc.h, tc.ppi)
 		req.Levels = tc.l

@@ -68,13 +68,15 @@ func newTestPlugin(t *testing.T) (*evcc, *plugin.Request) {
 func TestWidgets(t *testing.T) {
 	e, req := newTestPlugin(t)
 	style := plugin.Style{Padding: 8, Rule: 1, TextPx: 28.8}
-	for _, name := range []string{"site", "loadpoint", "forecast", "values"} {
-		img := render.NewCanvas(400, 200, 4)
-		if err := e.Render(req, plugin.WidgetRequest{Widget: name, Width: 400, Height: 200, Style: style}, img); err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		if !hasInk(img) {
-			t.Errorf("%s: empty widget", name)
+	for _, levels := range []int{4, 16} {
+		for _, name := range []string{"site", "loadpoint", "forecast", "values"} {
+			img := render.NewCanvas(400, 200, levels)
+			if err := e.Render(req, plugin.WidgetRequest{Widget: name, Width: 400, Height: 200, Style: style}, img); err != nil {
+				t.Fatalf("%s with %d levels: %v", name, levels, err)
+			}
+			if !hasInk(img) {
+				t.Errorf("%s with %d levels: empty widget", name, levels)
+			}
 		}
 	}
 	if err := e.Render(req, plugin.WidgetRequest{Widget: "loadpoint", Width: 10, Height: 10, Args: map[string]any{"index": 3.0}},

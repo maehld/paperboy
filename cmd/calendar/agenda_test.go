@@ -214,11 +214,13 @@ func TestAgendaDaysClamped(t *testing.T) {
 func TestAgendaImageDays(t *testing.T) {
 	p := agendaPlugin(t, ics())
 	p.lang = "en"
-	img := render.NewCanvas(300, 200, 2)
 	w := plugin.WidgetRequest{Widget: "agenda", Width: 300, Height: 200, Args: map[string]any{"days": 2, "lines": 6}}
 	w.Style.Padding = 4
-	if err := p.Render(&plugin.Request{}, w, img); err != nil {
-		t.Fatal(err)
+	for _, levels := range []int{2, 16} {
+		img := render.NewCanvas(300, 200, levels)
+		if err := p.Render(&plugin.Request{}, w, img); err != nil {
+			t.Fatalf("%d levels: %v", levels, err)
+		}
 	}
 	lines, _ := p.agendaLines(6, p.agendaArgs(w.Arg(), true))
 	if len(lines) != 4 {

@@ -39,7 +39,7 @@ func TestRenderWidgets(t *testing.T) {
 		m := testPlugin(t, fixture)
 		for _, name := range []string{"battery", "charging", "profiles", "location", "climate", "car"} {
 			for _, size := range []image.Point{{X: 400, Y: 300}, {X: 200, Y: 120}, {X: 260, Y: 200}} {
-				for _, levels := range []int{2, 4} {
+				for _, levels := range []int{2, 4, 16} {
 					img := renderWidget(t, m, name, size.X, size.Y, levels, nil)
 					if got := ink(img); got < 0.001 {
 						t.Errorf("%s %s %v %d levels: nothing drawn", fixture, name, size, levels)

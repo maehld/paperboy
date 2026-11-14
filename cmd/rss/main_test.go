@@ -290,14 +290,14 @@ func testPlugin(t *testing.T) *rss {
 	}
 }
 
-func renderWidget(t *testing.T, p *rss, w plugin.WidgetRequest, width, height int) *image.Paletted {
+func renderWidget(t *testing.T, p *rss, w plugin.WidgetRequest, width, height, levels int) *image.Paletted {
 	t.Helper()
 	req := &plugin.Request{
 		Version: plugin.Version, Action: plugin.ActionRender,
 		Now: time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC), Language: "de", Timezone: "Europe/Berlin",
-		Levels: 4,
+		Levels: levels,
 	}
-	img := render.NewCanvas(width, height, 4)
+	img := render.NewCanvas(width, height, levels)
 	if err := p.Render(req, w, img); err != nil {
 		t.Fatal(err)
 	}
@@ -317,13 +317,15 @@ func ink(img *image.Paletted) int {
 
 func TestRenderFeed(t *testing.T) {
 	p := testPlugin(t)
-	img := renderWidget(t, p, plugin.WidgetRequest{
-		Widget: "feed", Width: 800, Height: 240,
-		Args:  map[string]any{"feed": "all", "summary": true},
-		Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 20},
-	}, 800, 240)
-	if ink(img) == 0 {
-		t.Fatal("drew nothing")
+	for _, levels := range []int{4, 16} {
+		img := renderWidget(t, p, plugin.WidgetRequest{
+			Widget: "feed", Width: 800, Height: 240,
+			Args:  map[string]any{"feed": "all", "summary": true},
+			Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 20},
+		}, 800, 240, levels)
+		if ink(img) == 0 {
+			t.Fatalf("%d levels: drew nothing", levels)
+		}
 	}
 
 	// A two-level canvas must not lose its secondary text.
@@ -360,7 +362,7 @@ func TestRenderHeadline(t *testing.T) {
 		Widget: "headline", Width: 800, Height: 320,
 		Args:  map[string]any{"feed": "A"},
 		Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 20},
-	}, 800, 320)
+	}, 800, 320, 4)
 	if ink(img) == 0 {
 		t.Fatal("drew nothing")
 	}
@@ -369,7 +371,7 @@ func TestRenderHeadline(t *testing.T) {
 	small := renderWidget(t, p, plugin.WidgetRequest{
 		Widget: "headline", Width: 200, Height: 60,
 		Style: plugin.Style{Padding: 4, TextPx: 16},
-	}, 200, 60)
+	}, 200, 60, 4)
 	if ink(small) == 0 {
 		t.Fatal("small headline drew nothing")
 	}

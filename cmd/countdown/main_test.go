@@ -30,12 +30,12 @@ func request(t *testing.T, now time.Time, args map[string]any) (*plugin.Request,
 	t.Helper()
 	loc := berlin(t)
 	return &plugin.Request{
-		Language: "de", Timezone: "Europe/Berlin", Now: now.In(loc),
-		Page: plugin.PageInfo{PPI: 125, Width: 800, Height: 480},
-	}, plugin.WidgetRequest{
-		Widget: "countdown", Width: 400, Height: 120, Args: args,
-		Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 28},
-	}
+			Language: "de", Timezone: "Europe/Berlin", Now: now.In(loc),
+			Page: plugin.PageInfo{PPI: 125, Width: 800, Height: 480},
+		}, plugin.WidgetRequest{
+			Widget: "countdown", Width: 400, Height: 120, Args: args,
+			Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 28},
+		}
 }
 
 func TestParseDate(t *testing.T) {
@@ -306,7 +306,7 @@ func TestRenderFails(t *testing.T) {
 func TestRenderSizes(t *testing.T) {
 	loc := berlin(t)
 	sizes := [][2]int{{800, 60}, {400, 120}, {400, 240}, {120, 40}, {20, 20}}
-	for _, levels := range []int{2, 4} {
+	for _, levels := range []int{2, 4, 16} {
 		for _, size := range sizes {
 			req, w := request(t, at(2026, 11, 20, 12, 0, loc), map[string]any{"label": "Weihnachten", "date": "12-24", "since": "01-01"})
 			req.Levels, w.Width, w.Height = levels, size[0], size[1]

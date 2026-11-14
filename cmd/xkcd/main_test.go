@@ -235,7 +235,7 @@ func TestRender(t *testing.T) {
 			cfg["comic"] = n
 		}
 		x, req := start(t, cfg, func(...string) {})
-		for _, levels := range []int{2, 4} {
+		for _, levels := range []int{2, 4, 16} {
 			for _, args := range []map[string]any{nil, {"title": true}, {"alt": true}, {"title": true, "alt": true}} {
 				for _, size := range [][2]int{{800, 480}, {400, 240}, {120, 60}, {20, 20}} {
 					req.Levels = levels

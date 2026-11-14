@@ -224,6 +224,37 @@ func TestSymbol(t *testing.T) {
 	}
 }
 
+// A widget draws on every palette the protocol knows; a 16-level display
+// (ADR 0105) must not need anything but the levels the plugin already gets.
+func TestRenderWidgets(t *testing.T) {
+	base := serve(t, testPayload(t), http.StatusOK)
+	f, err := fetch(context.Background(), http.DefaultClient, base, 52.52, 13.4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := branchOf(f, "de")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, size := range [][3]int{{800, 480, 125}, {936, 351, 227}, {400, 200, 125}} {
+		w, h, ppi := size[0], size[1], size[2]
+		req := &plugin.Request{Language: "de", Timezone: "Europe/Berlin",
+			Now:  time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC),
+			Page: plugin.PageInfo{Width: w, Height: h, PPI: float64(ppi)}}
+		p := &weather{cur: &b, req: req, loc: req.Location(), lang: "de"}
+		style := plugin.Style{Padding: 8, Rule: 1, TextPx: 16 * float64(ppi) / 72}
+		for _, levels := range []int{2, 4, 16} {
+			for _, name := range []string{"current", "days", "hours"} {
+				img := render.NewCanvas(w, h, levels)
+				wr := plugin.WidgetRequest{Widget: name, Width: w, Height: h, Style: style}
+				if err := p.Render(req, wr, img); err != nil {
+					t.Fatalf("%s at %dx%d with %d levels: %v", name, w, h, levels, err)
+				}
+			}
+		}
+	}
+}
+
 // A cell the padding eats up is reported, so Paperboy draws its notice instead
 // of an empty cell.
 func TestTooSmallCell(t *testing.T) {
