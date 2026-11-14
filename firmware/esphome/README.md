@@ -301,10 +301,23 @@ A 16-level page of this size is composed at 16 tones but sent within the
 512 KiB QOI limit (ADR 0105), so a very detailed page is simplified. A display
 type with `gray_levels: 4` still works and uses four of the panel's 16 levels.
 
-Open on the hardware: the measured deep-sleep current, the GT911 transform, the
-waveform temperature (the image forces 16 °C, the preset 25 °C, Seeed's driver
-16 °C), and the `wait_paint` of this first image, which waits 5 s because the
-driver exposes no completion state. If a paint times out in the log, try
+**A page aborts without `SPIRAM_USE_MALLOC`.** ESPHome's `psram` component
+selects `CONFIG_SPIRAM_USE_CAPS_ALLOC`, so `malloc` and `operator new` never
+return PSRAM. `http_request` reads a captured response into a buffer from
+`heap_caps_malloc(MALLOC_CAP_SPIRAM)` and then copies it into a `std::string`
+through `operator new` (`http_request.h`: `response_body.reserve(read_index)`),
+so the page has to fit the internal RAM. A 204 KB page does not: the device
+aborts in `__cxa_allocate_exception` with `reset reason: panic` (PC in
+`__wrap___cxa_allocate_exception`, caller `operator new` →
+`basic_string::reserve` → `HttpRequestSendAction::play`). `e1003.yaml` therefore
+sets `CONFIG_SPIRAM_USE_MALLOC`, drops `CONFIG_SPIRAM_USE_CAPS_ALLOC` and keeps
+`CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL` at 32 KiB for DMA-able memory. That
+also lets a larger `qoi_buffer` work later.
+
+Open on the hardware: the GT911 transform, the waveform temperature (the image
+forces 16 °C, the preset 25 °C, Seeed's driver 16 °C), the deep-sleep current,
+and the `wait_paint` of this first image, which waits 5 s because the driver
+exposes no completion state. If a paint times out in the log, try
 `use_legacy_dpy_area: true` on the display: some E1003 batches ignore
 `DPY_BUF_AREA` (0x0037).
 
