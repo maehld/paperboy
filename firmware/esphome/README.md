@@ -11,7 +11,7 @@ installation, nothing installation-specific is compiled in.
 | `paperboy.h` | C++ helpers: sync body, event and log queue, RTC state, gray-level mapping, dithering (mono fallback), text lines and HD44780 character mapping |
 | `sticky.yaml` | reTerminal Sticky: pins, gray4 panel, touch, BQ27220 fuel gauge |
 | `e1001.yaml` | reTerminal E1001: pins, four-level UC8179 panel via `uc8179_gray4`, ADC battery |
-| `e1003.yaml` | reTerminal E1003: pins, 16-level IT8951 panel, GT911 touch, ADC battery, deep-sleep pin holds (first image, not yet run on hardware) |
+| `e1003.yaml` | reTerminal E1003: pins, 16-level IT8951 panel, GT911 touch, ADC battery, deep-sleep pin holds |
 | `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep; a row whose cell set `scroll: true` moves one character per 300 ms (ADR 0092) |
 | `lcd2004.yaml` | ESP32 dev board with a 20×4 HD44780 LCD behind a PCF8574 (I²C 0x27, SDA GPIO21, SCL GPIO22); prints every row through `pb_row`, so a scrolling line shows its window |
 | `fonts/` | Go Mono Bold as a subset, the face of the logo's wordmark and the firmware version (ADR 0098), with its licence |
@@ -263,7 +263,7 @@ Buttons left to right GPIO5 (`previous`),
 GPIO4 (`next`), GPIO3 (green, `home`). Battery voltage on ADC GPIO1 through a 1:2 divider,
 enabled by GPIO21; no fuel gauge.
 
-**E1003** (first image, issue #192): ESP32-S3, 8 MB PSRAM, 32 MB flash; panel
+**E1003** (runs on hardware since 0.1.2, issue #192): ESP32-S3, 8 MB PSRAM, 32 MB flash; panel
 ED103TC2 1872×1404 at 227 ppi with 16 gray levels, driven by an IT8951
 controller through ESPHome's `it8951` component (2026.7.0 or newer). The
 framebuffer is 4 bpp and takes 1.31 MB of PSRAM; a GC16 full refresh takes about
@@ -314,10 +314,12 @@ sets `CONFIG_SPIRAM_USE_MALLOC`, drops `CONFIG_SPIRAM_USE_CAPS_ALLOC` and keeps
 `CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL` at 32 KiB for DMA-able memory. That
 also lets a larger `qoi_buffer` work later.
 
-Open on the hardware: the GT911 transform, the waveform temperature (the image
-forces 16 °C, the preset 25 °C, Seeed's driver 16 °C), the deep-sleep current,
-and the `wait_paint` of this first image, which waits 5 s because the driver
-exposes no completion state. If a paint times out in the log, try
+Measured on the device (0.1.2, 2026-11-14): sync 0.7 s, image 0.4-0.9 s for a
+75-204 KB page, and paint 1.9-2.7 s from `paint start` to a finished GC16 —
+all nine example pages cycled without a reset. Open: the GT911 transform, the
+waveform temperature (the image forces 16 °C, the preset 25 °C, Seeed's driver
+16 °C), the deep-sleep current, and `wait_paint`, which waits 5 s because the
+driver exposes no completion state. If a paint times out in the log, try
 `use_legacy_dpy_area: true` on the display: some E1003 batches ignore
 `DPY_BUF_AREA` (0x0037).
 

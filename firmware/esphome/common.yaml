@@ -346,6 +346,13 @@ script:
                 pb_time("button");
                 id(wake_reason) = "button";
             - script.execute: awake_limit
+            # A button wake runs before on_boot's cycle reaches the radio: the
+            # first request then fails as "Not connected to network" and leaves
+            # a "sync request failed" note for the next sync. Wait for Wi-Fi
+            # like run_cycle does.
+            - wait_until:
+                condition: wifi.connected
+                timeout: 15s
             - if:
                 condition:
                   lambda: "return !id(busy);"

@@ -24,7 +24,7 @@
 
 substitutions:
   hardware: e1003
-  fw_version: "0.1.2"
+  fw_version: "0.1.3"
   # The mounting this image is built for; a device adds its quarter turn to it
   # at runtime (ADR 0102). Touch currently assumes this orientation.
   compiled_rotation: 0
