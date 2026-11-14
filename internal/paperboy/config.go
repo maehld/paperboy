@@ -87,7 +87,7 @@ type Profile struct {
 	Charset    string   `json:"charset,omitempty"` // text displays: utf8, ascii or hd44780
 	Width      int      `json:"width"`
 	Height     int      `json:"height"`
-	Gray       bool     `json:"gray"`                  // four gray levels instead of black/white
+	Levels     int      `json:"levels"`                // gray tones of an image display: 2, 4 or 16
 	PPI        float64  `json:"ppi,omitempty"`         // image displays: pixels per inch (ADR 0050)
 	MinRefresh Duration `json:"min_refresh,omitempty"` // configured floor; 0 = default of the power source (ADR 0051)
 	Power      string   `json:"power"`                 // auto, battery or mains (ADR 0051)
@@ -730,13 +730,20 @@ func validateProfile(name string, p *Profile) error {
 		if p.Charset == "" {
 			p.Charset = page.CharsetUTF8
 		}
-		if p.PPI != 0 || p.Gray {
+		if p.PPI != 0 || p.Levels > 2 {
 			return fmt.Errorf("display type %s: gray_levels and ppi do not apply to kind text", name)
 		}
 	} else if p.Charset != "" {
 		return fmt.Errorf("display type %s: charset only applies to kind text", name)
 	} else if p.PPI < 20 || p.PPI > 1000 {
 		return fmt.Errorf("display type %s: ppi is required for image displays: pixels per inch between 20 and 1000, e.g. 125 (ADR 0050)", name)
+	} else {
+		if p.Levels == 0 {
+			p.Levels = 2
+		}
+		if p.Levels != 2 && p.Levels != 4 && p.Levels != 16 {
+			return fmt.Errorf("display type %s: gray_levels must be 1, 4 or 16", name)
+		}
 	}
 	if !validRotation(p.Rotation) {
 		return fmt.Errorf("display type %s: rotation must be 0, 90, 180 or 270", name)

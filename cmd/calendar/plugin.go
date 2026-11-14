@@ -839,7 +839,7 @@ func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img 
 		day := gridStart.AddDate(0, 0, i)
 		c, r := i%7, i/7
 		cell := image.Rect(x0+c*cellW, gridTop+r*cellH, x0+(c+1)*cellW, gridTop+(r+1)*cellH)
-		if c >= 5 && levels == 4 {
+		if c >= 5 && levels > 2 {
 			render.Fill(img, cell.Inset(1), "shade")
 		}
 		inMonth := day.Month() == now.Month()
@@ -851,10 +851,10 @@ func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img 
 			box := image.Rect(cell.Min.X+1, cell.Min.Y+1, cell.Min.X+render.Measure(num, numSize, true)+8, cell.Min.Y+int(numSize)+7)
 			render.FillSolid(img, box)
 			ink = color.White
-		} else if !inMonth && levels == 4 {
+		} else if !inMonth && levels > 2 {
 			ink = render.DarkGray
 		}
-		if inMonth || levels == 4 || day.Equal(today) {
+		if inMonth || levels > 2 || day.Equal(today) {
 			render.TextAt(img, num, numX, numBase, numSize, day.Equal(today) || inMonth, ink, render.Left)
 		}
 		evs := byDay[i]

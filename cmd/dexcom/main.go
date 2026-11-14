@@ -329,6 +329,11 @@ func (d *dexcom) wait(ctx context.Context, dur time.Duration) bool {
 }
 
 // update reads the readings, logging in first when there is no session.
+// clock is what the plugin takes for the current time. Tests replace it to run
+// on a fixed date: a reading older than a day is dropped, so a fixture with its
+// own date would otherwise lose every reading once the wall clock moved past it.
+var clock = time.Now
+
 func (d *dexcom) update(ctx context.Context) error {
 	for attempt := 0; ; attempt++ {
 		session, err := d.sessionID()
@@ -347,7 +352,7 @@ func (d *dexcom) update(ctx context.Context) error {
 			}
 			return err
 		}
-		now := time.Now()
+		now := clock()
 		d.mu.Lock()
 		d.readings = merge(d.readings, fresh, now)
 		d.fetched, d.loadErr = now, nil
@@ -369,7 +374,7 @@ func (d *dexcom) window() (minutes, count int) {
 	if newest.IsZero() {
 		return dayWindow, maxReadings
 	}
-	gap := time.Since(newest)
+	gap := clock().Sub(newest)
 	if gap < 0 {
 		gap = 0
 	}
@@ -519,7 +524,7 @@ func (d *dexcom) State() json.RawMessage {
 }
 
 func toStored(rs []reading) []storedReading {
-	cut := time.Now().Add(-24 * time.Hour)
+	cut := clock().Add(-24 * time.Hour)
 	out := make([]storedReading, 0, len(rs))
 	for _, r := range rs {
 		if r.at.Before(cut) {

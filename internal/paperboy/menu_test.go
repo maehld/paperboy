@@ -80,7 +80,7 @@ func menuServerRules(t *testing.T, rules, actions string, tweak func(*Device)) (
 		tweak(&d)
 	}
 	cfg := &Config{Dir: dir, Language: "de", Timezone: time.UTC,
-		Profiles: map[string]Profile{"small": {Width: 400, Height: 300, PPI: 125, Gray: true}},
+		Profiles: map[string]Profile{"small": {Width: 400, Height: 300, PPI: 125, Levels: 4}},
 		Devices:  []Device{d}}
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)
@@ -138,6 +138,15 @@ func TestMenuOpensOnHomeWithoutRunning(t *testing.T) {
 	out := press(t, s, dev, buttonHome)
 	if pagePath(out) == base {
 		t.Fatal("the menu must change the image")
+	}
+	// The overlay is a notice page: it has to be registered for the device's
+	// display type, or the page-key check refuses the download (ADR 0097).
+	hint := strings.TrimSuffix(strings.TrimPrefix(pagePath(out), "/hints/"), ".png")
+	s.mu.Lock()
+	hp := s.hints[hint]
+	s.mu.Unlock()
+	if hp.profile != "small" {
+		t.Fatalf("menu overlay registered for %q, want the display type", hp.profile)
 	}
 	if len(p.runs) != 0 {
 		t.Fatalf("opening the menu ran %v", p.runs)

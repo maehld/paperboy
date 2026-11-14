@@ -1,7 +1,7 @@
 # Paperboy firmware on ESPHome
 
-Firmware for the Seeed reTerminal **Sticky** and **E1001** (ADR 0041) and for
-HD44780 **text displays** (`lcd2004`, ADR 0044). It speaks
+Firmware for the Seeed reTerminal **Sticky**, **E1001** and **E1003** (ADR
+0041) and for HD44780 **text displays** (`lcd2004`, ADR 0044). It speaks
 Paperboy's device API (ADR 0042); one image per hardware type serves every
 installation, nothing installation-specific is compiled in.
 
@@ -11,6 +11,7 @@ installation, nothing installation-specific is compiled in.
 | `paperboy.h` | C++ helpers: sync body, event and log queue, RTC state, gray-level mapping, dithering (mono fallback), text lines and HD44780 character mapping |
 | `sticky.yaml` | reTerminal Sticky: pins, gray4 panel, touch, BQ27220 fuel gauge |
 | `e1001.yaml` | reTerminal E1001: pins, four-level UC8179 panel via `uc8179_gray4`, ADC battery |
+| `e1003.yaml` | reTerminal E1003: pins, 16-level IT8951 panel, GT911 touch, ADC battery, deep-sleep pin holds |
 | `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep; a row whose cell set `scroll: true` moves one character per 300 ms (ADR 0092) |
 | `lcd2004.yaml` | ESP32 dev board with a 20×4 HD44780 LCD behind a PCF8574 (I²C 0x27, SDA GPIO21, SCL GPIO22); prints every row through `pb_row`, so a scrolling line shows its window |
 | `fonts/` | Go Mono Bold as a subset, the face of the logo's wordmark and the firmware version (ADR 0098), with its licence |
@@ -45,7 +46,7 @@ image dominated. A plain GET of the same page took 34–61 ms while the same byt
 through `online_image` took 2.6 s whatever their size, and QOI through it still
 took 2.26 s: the per-pixel work of ESPHome's decoders was the cost, not the
 transfer or the format (the frame is always 800×480). The firmware therefore
-fetches the page itself (`http_request.get` into a 512 KiB buffer in PSRAM) and
+fetches the page itself (`http_request.get` into its QOI buffer in PSRAM) and
 decodes it into the panel buffer with `pb_paint_qoi_gray4`/`pb_paint_qoi_dithered`
 (ADR 0072, 0088); `online_image` and its 384 KB image buffer are gone. Together with
 `fast_connect` (saves BSSID and channel, no scan before every wake) a page
@@ -53,12 +54,17 @@ change is now: Wi-Fi 1.2 s, sync 0.1 s, image 0.07–0.11 s, paint 2.0 s — 3.7
 from a battery wake instead of 9.5 s, and the panel refresh is 90 % of it. The
 page travels as QOI, 22–50 KB for a four-level 800×480 page.
 
-The buffer is a compile-time constant and 512 KiB big, since the boards have
-8 MB PSRAM and the firmware reads the answer into it before painting. A page of
+The buffer is a compile-time constant, 512 KiB for the 800×480 panels and 1 MiB
+for the E1003 (`qoi_buffer` in the hardware file), since the firmware reads the
+answer into it before painting. ESPHome allocates the whole size before it reads
+a byte, so a larger buffer costs memory on every download, not only for a large
+page; on the E1003 both the buffer and the copy live in PSRAM. A page of
 Paperboy's palette costs at most one QOI byte per pixel, so even an 800×480 page
 of alternating black and white (the worst case, measured 384 KB) fits; Paperboy
 keeps its own `qoiLimit` in step and only has to simplify a page for a display
-with many more pixels (ADR 0088). The response is moved into `pb_page_qoi`
+with many more pixels (ADR 0088). The E1003's 1872×1404 page can reach about
+2.6 MB, which exceeds the buffer; the server simplifies such a page instead of
+sending one the device would truncate (ADR 0088, 0104). The response is moved into `pb_page_qoi`
 (`std::move(body)`), which keeps the peak at twice the buffer: the raw read
 buffer plus the string.
 
@@ -72,10 +78,14 @@ The firmware reports its power source in every sync (ADR 0051). The Sticky
 measures USB power on GPIO9 (`PWR_IN_VOLT`, 5.1k/5.1k divider: about 2.5 V
 with USB) and reports `mains` above 1.5 V at the pin; the E1001 has no pin that
 sees USB power and always reports `battery`, so an E1001 on a charger needs
-`power: mains` in `paperboy.yaml`; text displays report `mains`.
+`power: mains` in `paperboy.yaml`. The first E1003 image does the same: its
+SY6974B charger could report the cable over I2C, but the firmware does not read
+it yet, so an E1003 on a charger also needs `power: mains`. Text displays report
+`mains`.
 
 Buttons are sent by role. Sticky: **down = `next`, up = `previous`, ok =
 `home`**. E1001 from left to right: **`previous`, `next`, `home` (green)**.
+E1003: **left white = `previous`, right white = `next`, green = `home`**.
 Every event carries a monotonically increasing `id` and stays in an RTC queue
 until Paperboy confirms the sync (ADR 0064), so a retry is applied exactly
 once. The queue is appended to while a request is in flight, and only the
@@ -98,14 +108,15 @@ are landscape and the firmware is built for one mounting. The sync carries
 `rotation` (0, 90, 180 or 270 degrees, omitted when 0, ADR 0102): the relative
 turn on top of the compiled orientation. The display lambda calls
 `pb_rotate_display` with the compiled value (`180` for the Sticky, `0` for the
-E1001) before every paint, because the display component starts from the
-compiled rotation after each wake and the firmware deep-sleeps.
+E1001 and E1003) before every paint, because the display component starts from
+the compiled rotation after each wake and the firmware deep-sleeps.
 
 The touch transform is measured in the compiled orientation, so `pb_touch`
 turns a tap by the same relative rotation into page coordinates before it
 queues the event; the Sticky passes the panel's native dimensions to it. The
-splash and setup screens appear before the first sync and stay in the compiled
-orientation. A QOI whose dimensions do not match the rotated display is refused
+E1003's GT911 uses `mirror_x` (the display preset mirrors the panel too) and
+currently assumes rotation 0. The splash and setup screens appear before the
+first sync and stay in the compiled orientation. A QOI whose dimensions do not match the rotated display is refused
 with a note (`pb_qoi_fits`) instead of being clipped over the previous picture.
 
 ## Settings on the device
@@ -162,7 +173,7 @@ ESPHome is pinned to **2026.10.1** and runs through `uvx`, outside Paperboy.
 
 ```powershell
 cd firmware/esphome
-.\build.ps1 -Hardware sticky                      # or e1001; image in .esphome/build/<hardware>/build/
+.\build.ps1 -Hardware sticky                      # or e1001/e1003; image in .esphome/build/<hardware>/build/
 uvx esphome==2026.10.1 run sticky.yaml            # first flash over USB-C
 .\build.ps1 -Hardware sticky -Instance <dir>      # publish to <dir>/firmware/sticky-v<version>.bin (ADR 0043, 0060)
 ```
@@ -177,7 +188,7 @@ build needs network access once; ESPHome keeps the checkout under
 `~/.cache/esphome` and reuses it for a day (`refresh`). The component is pinned
 to a commit, and the *Firmware* workflow fetches it the same way.
 
-The *Firmware* workflow compiles all three hardware types with the same pinned
+The *Firmware* workflow compiles all four hardware types with the same pinned
 version whenever `firmware/esphome/` changes, so a broken configuration fails on
 a pull request. A release tag attaches the images as one bundle,
 `paperboy-firmware.zip`: unpacked in the instance directory it creates
@@ -202,7 +213,7 @@ Raise `fw_version` in `<hardware>.yaml` for every release and publish it with
 `-Instance`; Paperboy offers it in the sync once `firmware.update: auto` is set
 (ADR 0043). ESPHome keeps the previous image and `safe_mode` rolls back one
 that does not boot; that was tested with a deliberately broken image. Restoring the original firmware: Seeed's playground (Sticky) or the SenseCraft/TRMNL flasher
-(E1001).
+(E1001, E1003).
 
 ## Hardware facts
 
@@ -252,6 +263,88 @@ are not queued, and it has no partial-update mode.
 Buttons left to right GPIO5 (`previous`),
 GPIO4 (`next`), GPIO3 (green, `home`). Battery voltage on ADC GPIO1 through a 1:2 divider,
 enabled by GPIO21; no fuel gauge.
+
+**E1003** (runs on hardware since 0.1.2, issue #192): ESP32-S3, 8 MB PSRAM, 32 MB flash; panel
+ED103TC2 1872×1404 at 227 ppi with 16 gray levels, driven by an IT8951
+controller through ESPHome's `it8951` component (2026.7.0 or newer). The
+framebuffer is 4 bpp and takes 1.31 MB of PSRAM; a GC16 full refresh takes about
+3 s, black-and-white area updates are faster. The model preset supplies CS
+GPIO10, reset GPIO12, busy GPIO13, the panel rails GPIO11/GPIO21, VCOM 1.40 V
+with selector `0x0002`, and the mirrored X axis of this panel batch. SPI: clock
+GPIO7, MOSI GPIO9, MISO GPIO8. Buttons: left white GPIO5 = `previous`, right
+white GPIO4 = `next`, green GPIO3 = `home`.
+
+Battery voltage on ADC GPIO1 through a 1:2 divider, enabled by GPIO40; no fuel
+gauge, so `e1003.yaml` uses the same E10xx curve as the E1001. No pin reports
+USB power in this image; the SY6974B charger could answer it over I2C at 0x6B
+(register 0x0A, bit 7), but that is not read yet, so an E1003 on a charger
+needs `power: mains`. Touch: GT911 on I2C GPIO19/20, interrupt GPIO2, reset
+GPIO48, with `mirror_x` like Seeed's example; it assumes rotation 0.
+
+Deep sleep keeps the GT911, the SD card controller and the display rails from
+drawing power: shutdown drives GPIO11/21/38/39/40/45/48 low and holds them,
+disables the I2C pins GPIO19/20, and switches the battery divider off. That
+follows a community measurement of the E1003's deep-sleep current and still has
+to be verified on the device.
+
+The first image uses `it8951` with `force_temperature: 16`, paints QOI pages
+with `pb_paint_qoi_gray16` and reads 1 MiB per download. Paperboy supports
+16-level display types since ADR 0105:
+
+```yaml
+kind: image
+size: [1872, 1404]
+ppi: 227
+gray_levels: 16
+```
+
+A 16-level page of this size is composed at 16 tones and sent within the 1 MiB
+QOI limit (ADR 0105); a dithered photograph is simplified. A display type with
+`gray_levels: 4` still works and uses four of the panel's 16 levels.
+
+**A page aborts without `SPIRAM_USE_MALLOC`.** ESPHome's `psram` component
+selects `CONFIG_SPIRAM_USE_CAPS_ALLOC`, so `malloc` and `operator new` never
+return PSRAM. `http_request` reads a captured response into a buffer from
+`heap_caps_malloc(MALLOC_CAP_SPIRAM)` and then copies it into a `std::string`
+through `operator new` (`http_request.h`: `response_body.reserve(read_index)`),
+so the page has to fit the internal RAM. A 204 KB page does not: the device
+aborts in `__cxa_allocate_exception` with `reset reason: panic` (PC in
+`__wrap___cxa_allocate_exception`, caller `operator new` →
+`basic_string::reserve` → `HttpRequestSendAction::play`). `e1003.yaml` therefore
+sets `CONFIG_SPIRAM_USE_MALLOC`, drops `CONFIG_SPIRAM_USE_CAPS_ALLOC` and keeps
+`CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL` at 32 KiB for DMA-able memory. That
+also lets a larger `qoi_buffer` work later.
+
+Measured on the device (0.1.2, 2026-11-14): sync 0.7 s, image 0.4-0.9 s for a
+75-204 KB page, and paint 1.9-2.7 s from `paint start` to a finished GC16 —
+all nine example pages cycled without a reset. `wait_paint` waits 4 s, which
+covers that with a margin because the driver exposes no completion state.
+
+Battery and charger: the voltage divider is on ADC GPIO1 (enable GPIO40,
+1:2, five samples) with Seeed's E10xx curve, and the SY6974B charger on I2C
+0x6B answers REG0A: bit 7 = cable attached, bits 4:3 = 00 not charging,
+01 precharge, 10 fast charge, 11 done. The firmware reports `mains` while the
+cable is attached and `charging` from the state, so a device on USB stays awake
+(ADR 0051) and the dashboard shows the charge; with a full cell (4.06 V) the
+cable set `power=mains` while `charging` stayed false (state 0/3), which is
+right. A failed read logs a warning and falls back to `battery`.
+
+Touch: GT911 without a transform. Seeed's example uses `mirror_x`, but the
+it8951 preset already mirrors the panel and the digitizer reports in the
+unmirrored logical space: four taps at the corners (2026-11-14) gave x=1820 for
+the top-left with `mirror_x` and x=27 without it, the four taps read
+27/1784 x and 75-141/1329-1363 y. Every tap is logged as
+`touch x,y (display 1872x1404, rotation 0)`, so a wrong transform stays visible
+by tapping the four corners. Assumes rotation 0.
+
+A page the firmware cannot show becomes a full-screen notice in the layout of
+the setup screen (lockup, version, reason) instead of a silent stale picture:
+`Page not shown` with the QOI size in bytes when the answer was truncated or is
+not QOI, the page and display dimensions when the size does not fit, and
+`download failed` when the request failed. The text goes to the sync log as
+well (`page not paintable`, `page does not fit the rotated display`). If a paint times out in the log, try
+`use_legacy_dpy_area: true` on the display: some E1003 batches ignore
+`DPY_BUF_AREA` (0x0037).
 
 Measured on the experiment: paint 2.7 s, PNG decode about 1.8 s for 5 KB,
 timer wakes reliable over 10 h on the Sticky.

@@ -76,7 +76,13 @@ func (f *fakeShare) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(`{"Code":"SessionIdNotFound","Message":"Failed to find session object."}`))
 			return
 		}
-		cut := time.Now().Add(-time.Duration(minutes) * time.Minute)
+		// The window ends at the newest reading, not at the wall clock: the
+		// tests below run on a fixed date, so a window relative to time.Now()
+		// would hide every reading a day after that date.
+		var cut time.Time
+		if n := len(f.values); n > 0 {
+			cut = f.values[n-1].at.Add(-time.Duration(minutes) * time.Minute)
+		}
 		var out []string
 		for i := len(f.values) - 1; i >= 0 && len(out) < count; i-- {
 			v := f.values[i]
@@ -131,6 +137,10 @@ func newTestDexcom(t *testing.T, now time.Time) (*dexcom, *fakeShare, *plugin.Re
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Run the plugin on the test's date, so pruning a day back and the window
+	// of a poll follow the readings instead of the wall clock.
+	clock = func() time.Time { return now }
+	t.Cleanup(func() { clock = time.Now })
 	// Point the client at the test server instead of the real host.
 	d.mu.Lock()
 	d.api = &shareClient{base: srv.URL, appID: testAppID, http: srv.Client()}

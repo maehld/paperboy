@@ -9,6 +9,9 @@
 #include <string>
 #include <vector>
 
+#include <esp_heap_caps.h>
+#include <esp_system.h>
+
 // Kept in RTC memory: survives deep sleep, cleared on power-on, and costs no
 // flash writes per wake (unlike globals with restore_value).
 RTC_DATA_ATTR static char pb_shown_hash[32];  // hash of the image on the panel
@@ -355,9 +358,54 @@ inline void pb_remember(const std::string &hash) {
   pb_shown_hash[sizeof(pb_shown_hash) - 1] = 0;
 }
 
+// The reset reason of this boot. An abnormal reset (panic, watchdog, brownout)
+// reaches the cycle as "powercycle", draws the splash and shows no error, so
+// this is the only trace of it: the reason and the free memory go into the next
+// sync's log, where Paperboy writes them to the device journal.
+inline const char *pb_reset_reason() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON:
+      return "power on";
+    case ESP_RST_EXT:
+      return "external reset";
+    case ESP_RST_SW:
+      return "software restart";
+    case ESP_RST_PANIC:
+      return "panic";
+    case ESP_RST_INT_WDT:
+      return "interrupt watchdog";
+    case ESP_RST_TASK_WDT:
+      return "task watchdog";
+    case ESP_RST_WDT:
+      return "watchdog";
+    case ESP_RST_DEEPSLEEP:
+      return "deep sleep wake";
+    case ESP_RST_BROWNOUT:
+      return "brownout";
+    case ESP_RST_SDIO:
+      return "sdio";
+    default:
+      return "unknown";
+  }
+}
+
+// pb_note_boot records why this boot happened and how much memory is left, so a
+// device that keeps rebooting says so in the next sync instead of only showing
+// the splash again.
+inline void pb_note_boot() {
+  std::string reason = pb_reset_reason();
+  ESP_LOGI("paperboy", "reset reason: %s", reason.c_str());
+  if (reason != "deep sleep wake" && reason != "power on") {
+    pb_log("warn", "reset: " + reason);
+  }
+  size_t internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+  size_t psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  ESP_LOGI("paperboy", "free memory: %u KiB internal, %u KiB PSRAM", (unsigned) (internal / 1024),
+           (unsigned) (psram / 1024));
+}
+
 // Base URL as entered by the operator, without trailing slashes.
-inline std::string pb_base(const std::string &url) {
-  std::string s = url;
+inline std::string pb_base(const std::string &url) {  std::string s = url;
   while (!s.empty() && (s.back() == '/' || s.back() == ' ')) {
     s.pop_back();
   }
@@ -584,22 +632,70 @@ inline bool pb_qoi_valid(const std::string &data) {
   return pb_qoi_each(data, [](int, int, uint8_t, uint8_t, uint8_t) {});
 }
 
+// pb_qoi_size reads the dimensions of a QOI header; false when the stream does
+// not start with one.
+inline bool pb_qoi_size(const std::string &data, int &width, int &height) {
+  const uint8_t *p = reinterpret_cast<const uint8_t *>(data.data());
+  if (data.size() < 14 || std::memcmp(p, "qoif", 4) != 0) {
+    return false;
+  }
+  width = static_cast<int>((static_cast<uint32_t>(p[4]) << 24) |
+                           (static_cast<uint32_t>(p[5]) << 16) |
+                           (static_cast<uint32_t>(p[6]) << 8) | p[7]);
+  height = static_cast<int>((static_cast<uint32_t>(p[8]) << 24) |
+                            (static_cast<uint32_t>(p[9]) << 16) |
+                            (static_cast<uint32_t>(p[10]) << 8) | p[11]);
+  return true;
+}
+
 // pb_qoi_fits reports whether the stream names exactly the size the rotated
 // display expects. draw_pixel_at() clips silently, so a page of the wrong
 // orientation would leave the rest of the previous picture on the panel; the
 // caller notes it instead of painting half a page (issue #117).
 inline bool pb_qoi_fits(const std::string &data, int width, int height) {
-  const uint8_t *p = reinterpret_cast<const uint8_t *>(data.data());
-  if (data.size() < 14 || std::memcmp(p, "qoif", 4) != 0) {
-    return false;
+  int w = 0, h = 0;
+  return pb_qoi_size(data, w, h) && w == width && h == height;
+}
+
+// A page the firmware cannot show becomes a full-screen notice in the layout of
+// the setup screen, so the device says what is wrong instead of keeping a stale
+// picture. The text is set by the display lambda or by a failed download.
+static std::string pb_panel_notice;
+
+inline void pb_set_panel_notice(const std::string &text) {
+  pb_panel_notice = text;
+  ESP_LOGE("paperboy", "panel notice: %s", text.c_str());
+}
+
+// Draws the notice page: the lockup at the top, the version in its corner and
+// the text centered below it, one line per '\n'.
+template<typename D, typename F, typename W, typename V>
+void pb_draw_notice_page(D &it, F *font, W *wordmark, V *version_font, const std::string &version,
+                         const std::string &text) {
+  it.fill(esphome::Color::WHITE);
+  pb_draw_lockup(it, it.get_width() / 2, 48, 84, 56, wordmark);
+  it.print(it.get_width() - 48, 48 + 56, version_font, esphome::Color::BLACK,
+           esphome::display::TextAlign::BASELINE_RIGHT, version.c_str(), esphome::Color::WHITE);
+  int lines = 1;
+  for (char c : text) {
+    if (c == '\n') {
+      lines++;
+    }
   }
-  const int w = static_cast<int>((static_cast<uint32_t>(p[4]) << 24) |
-                                 (static_cast<uint32_t>(p[5]) << 16) |
-                                 (static_cast<uint32_t>(p[6]) << 8) | p[7]);
-  const int h = static_cast<int>((static_cast<uint32_t>(p[8]) << 24) |
-                                 (static_cast<uint32_t>(p[9]) << 16) |
-                                 (static_cast<uint32_t>(p[10]) << 8) | p[11]);
-  return w == width && h == height;
+  const int spacing = 72;
+  int y = it.get_height() / 2 - (lines - 1) * spacing / 2;
+  size_t start = 0;
+  while (start <= text.size()) {
+    size_t end = text.find('\n', start);
+    std::string line = text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+    it.print(96, y, font, esphome::Color::BLACK, esphome::display::TextAlign::TOP_LEFT, line.c_str(),
+             esphome::Color::WHITE);
+    y += spacing;
+    if (end == std::string::npos) {
+      break;
+    }
+    start = end + 1;
+  }
 }
 
 // Four-level panel, used by both hardware types that draw pages: the Sticky's
@@ -614,6 +710,20 @@ template<typename D> inline bool pb_paint_qoi_gray4(D &it, const std::string &da
     const int l = pb_qoi_level(r, g, b);
     if (l != 3) {
       it.draw_pixel_at(x, y, esphome::Color(band[l], band[l], band[l]));
+    }
+  });
+}
+
+// 16-level panel, used by the E1003's IT8951 controller (issue #192). The
+// driver turns the luma of a pixel into one of 16 nibbles, so a page with the
+// four levels Paperboy composes today draws at 0, 85, 170 and 255, and a page
+// with more levels keeps them. White is left alone: the caller starts from a
+// white buffer.
+template<typename D> inline bool pb_paint_qoi_gray16(D &it, const std::string &data) {
+  return pb_qoi_each(data, [&it](int x, int y, uint8_t r, uint8_t g, uint8_t b) {
+    const uint8_t luma = static_cast<uint8_t>((r * 77 + g * 150 + b * 29) >> 8);
+    if (luma != 255) {
+      it.draw_pixel_at(x, y, esphome::Color(luma, luma, luma));
     }
   });
 }

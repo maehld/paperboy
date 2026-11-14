@@ -111,7 +111,7 @@ type Request struct {
 	Timezone string          `json:"timezone,omitempty"` // IANA name
 	Now      time.Time       `json:"now"`
 	Config   map[string]any  `json:"config,omitempty"` // configure only
-	Levels   int             `json:"levels,omitempty"` // render: gray levels, 2 or 4
+	Levels   int             `json:"levels,omitempty"` // render: gray levels, 2, 4 or 16
 	Page     PageInfo        `json:"page"`
 	Widgets  []WidgetRequest `json:"widgets,omitempty"`
 	// Actions are the concrete actions of an actions or action request, in
@@ -561,8 +561,8 @@ func (m Message) CheckVersion() error {
 }
 
 func handleWidgets(h Handler, req *Request) ([]Result, error) {
-	if req.Action == ActionRender && req.Levels != 2 && req.Levels != 4 {
-		return nil, fmt.Errorf("levels %d: expected 2 or 4", req.Levels)
+	if req.Action == ActionRender && req.Levels != 2 && req.Levels != 4 && req.Levels != 16 {
+		return nil, fmt.Errorf("levels %d: expected 2, 4 or 16", req.Levels)
 	}
 	t, isTexter := h.(Texter)
 	if req.Action == ActionText && !isTexter {

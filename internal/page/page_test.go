@@ -66,6 +66,37 @@ func gray(img image.Image, x, y int) uint8 {
 	return color.GrayModel.Convert(img.At(x, y)).(color.Gray).Y
 }
 
+func TestRenderImageSixteenLevels(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader(gridPage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := func(b Batch) []Result {
+		out := make([]Result, len(b.Widgets))
+		for i, w := range b.Widgets {
+			img := image.NewGray(image.Rect(0, 0, w.Width, w.Height))
+			if w.Widget == "chart" {
+				for p := range img.Pix {
+					img.Pix[p] = 100 // rounds to 102 on 16 levels
+				}
+			}
+			out[i] = Result{Image: img}
+		}
+		return out
+	}
+	img, err := tmpl.RenderImage(Display{Width: 400, Height: 200, Levels: 16, PPI: 72},
+		Context{Now: time.Now(), Page: 1, Pages: 1, Widgets: src})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(img.Palette) != 16 {
+		t.Fatalf("page has %d tones, want 16", len(img.Palette))
+	}
+	if got := gray(img, 250, 130); got != 102 {
+		t.Errorf("chart quantized to %d, want 102", got)
+	}
+}
+
 func TestRenderImageComposesCells(t *testing.T) {
 	tmpl, err := Parse(strings.NewReader(gridPage))
 	if err != nil {
@@ -91,7 +122,7 @@ func TestRenderImageComposesCells(t *testing.T) {
 		}
 		return out
 	}
-	img, err := tmpl.RenderImage(Display{Width: 400, Height: 200, Gray: true, PPI: 72}, Context{Now: time.Now(), Page: 2, Pages: 3, Widgets: src})
+	img, err := tmpl.RenderImage(Display{Width: 400, Height: 200, Levels: 4, PPI: 72}, Context{Now: time.Now(), Page: 2, Pages: 3, Widgets: src})
 	if err != nil {
 		t.Fatal(err)
 	}

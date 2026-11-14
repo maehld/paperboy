@@ -32,7 +32,7 @@ Every request carries:
 | `widgets` | For `render` and `text`: the widgets to draw |
 | `actions` | For `actions` and `action`: the concrete actions |
 | `device` | For `actions` and `action`: `id`, `name`, `hardware` |
-| `levels` | For `render`: 2 or 4 gray levels |
+| `levels` | For `render`: 2, 4 or 16 gray levels |
 | `config` | For `configure`: the plugin's section of `paperboy.yaml` |
 | `state` | For `state`: the JSON object the plugin stored last time; missing when there is none (ADR 0081) |
 | `blobs` | For `state`: the stored blobs by name, base64 in JSON (ADR 0081) |

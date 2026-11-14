@@ -167,10 +167,15 @@ func noisyPage(w, h int) *image.Paletted {
 // every pixel changes between black and white, so QOI spends one index byte on
 // each of them and nothing can be a run.
 func alternatingPage(w, h int) *image.Paletted {
-	img := render.NewCanvas(w, h, 4)
+	return alternatingPageAt(w, h, 4)
+}
+
+func alternatingPageAt(w, h, levels int) *image.Paletted {
+	img := render.NewCanvas(w, h, levels)
+	last := uint8(len(img.Palette) - 1)
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
-			img.Pix[y*img.Stride+x] = uint8((x + y) % 2 * 3)
+			img.Pix[y*img.Stride+x] = uint8((x+y)%2) * last
 		}
 	}
 	return img
@@ -179,7 +184,13 @@ func alternatingPage(w, h int) *image.Paletted {
 // ditheredPage is an 800x480 page with a photo-like field dithered to four
 // levels, the largest kind of page Paperboy draws (measured 233 KB as QOI).
 func ditheredPage(w, h int) *image.Paletted {
-	img := render.NewCanvas(w, h, 4)
+	return ditheredPageAt(w, h, 4)
+}
+
+// ditheredPageAt is the same field at any number of gray levels: the dither of
+// a photograph is what makes a page large.
+func ditheredPageAt(w, h, levels int) *image.Paletted {
+	img := render.NewCanvas(w, h, levels)
 	vals := make([]float64, w*h)
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
@@ -188,11 +199,11 @@ func ditheredPage(w, h int) *image.Paletted {
 			vals[y*w+x] = max(0, min(255, v))
 		}
 	}
-	const step = 255.0 / 3
+	step := 255.0 / float64(levels-1)
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			old := vals[y*w+x]
-			idx := max(0, min(int(math.Round(old/step)), 3))
+			idx := max(0, min(int(math.Round(old/step)), levels-1))
 			img.Pix[y*img.Stride+x] = uint8(idx)
 			err := old - float64(idx)*step
 			if x+1 < w {
@@ -233,9 +244,9 @@ func TestFillPatternsStaySmall(t *testing.T) {
 	}
 }
 
-// TestWorstPageFitsBuffer is the reason the firmware buffer is 512 KiB: with a
-// page palette every pixel costs at most one QOI byte, so 800x480 stays below
-// 384 KB (ADR 0088).
+// TestWorstPageFitsBuffer holds the 800x480 worst case below the 384 KB a
+// paletted page can reach; the 512 KiB firmware buffer of these panels is
+// larger still (ADR 0088).
 func TestWorstPageFitsBuffer(t *testing.T) {
 	for _, img := range []struct {
 		name string
@@ -250,6 +261,38 @@ func TestWorstPageFitsBuffer(t *testing.T) {
 		if size > qoiLimit {
 			t.Errorf("%s does not fit the %d byte buffer with %d bytes", img.name, qoiLimit, size)
 		}
+	}
+}
+
+// TestE1003DitheredPageIsSimplified covers the page an E1003 actually shows: a
+// 1872x1404 photograph dithered to 16 levels is far above the 512 KiB buffer,
+// and the median filter flattens its noise until it fits (ADR 0088, 0104).
+func TestE1003DitheredPageIsSimplified(t *testing.T) {
+	img := ditheredPageAt(1872, 1404, 16)
+	size := len(encodeQOI(img))
+	t.Logf("1872x1404 dithered 16-level page: %d bytes", size)
+	if size <= qoiLimit {
+		t.Fatalf("the test page is only %d bytes, it has to exceed %d", size, qoiLimit)
+	}
+	got := qoiWithin(img, qoiLimit)
+	if !got.fits || len(got.data) > qoiLimit || got.note != "without dither" {
+		t.Fatalf("the dithered page was not simplified: fits=%v note=%q size=%d", got.fits, got.note, len(got.data))
+	}
+	if b := decodeQOI(t, got.data).Bounds(); b != img.Bounds() {
+		t.Fatalf("decoded bounds %v, want %v", b, img.Bounds())
+	}
+}
+
+// TestE1003WorstCaseIsRefused documents the one page Paperboy cannot bring
+// below the buffer: alternating black and white at 1872x1404 costs about 2.6 MB,
+// the median of a checkerboard is a checkerboard, and the device keeps its old
+// picture instead of showing a truncated page (ADR 0088).
+func TestE1003WorstCaseIsRefused(t *testing.T) {
+	img := alternatingPageAt(1872, 1404, 16)
+	size := len(encodeQOI(img))
+	t.Logf("1872x1404 alternating 16-level page: %d bytes", size)
+	if got := qoiWithin(img, qoiLimit); got.fits {
+		t.Fatalf("the worst case reported as fitting %d bytes", qoiLimit)
 	}
 }
 
@@ -303,7 +346,7 @@ func TestNoticePageStaysSmall(t *testing.T) {
 			tmpl.Cells = append(tmpl.Cells, page.Cell{At: [2]int{col, row}, Widget: "weather/current"})
 		}
 	}
-	img, err := tmpl.RenderImage(page.Display{Width: 800, Height: 480, Gray: true, PPI: 125}, page.Context{
+	img, err := tmpl.RenderImage(page.Display{Width: 800, Height: 480, Levels: 4, PPI: 125}, page.Context{
 		Now: time.Now(), Page: 1, Pages: 1,
 		Widgets: func(b page.Batch) []page.Result {
 			out := make([]page.Result, len(b.Widgets))

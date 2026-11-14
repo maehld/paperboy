@@ -20,6 +20,11 @@
 # sleep: they stay awake and sync again after refresh_s. The hardware file
 # sets pb_power so Paperboy learns the power source.
 
+substitutions:
+  # Response buffer for the QOI page (ADR 0088). A hardware type overrides it
+  # when its pages are larger, e.g. the E1003's 2.6 MP panel.
+  qoi_buffer: "524288"
+
 esphome:
   # Network name paperboy-<last three MAC bytes>; the build directory is per
   # hardware type.
@@ -35,6 +40,7 @@ esphome:
     - priority: -100
       then:
         - lambda: "pb_init_rtc();"
+        - lambda: "pb_note_boot();"
         - lambda: "pb_time(\"boot\");"
         - lambda: "id(mac) = get_mac_address_pretty();"
         # A cold boot shows the mark for 5 s (ADR 0095). A timer or button wake
@@ -340,6 +346,13 @@ script:
                 pb_time("button");
                 id(wake_reason) = "button";
             - script.execute: awake_limit
+            # A button wake runs before on_boot's cycle reaches the radio: the
+            # first request then fails as "Not connected to network" and leaves
+            # a "sync request failed" note for the next sync. Wait for Wi-Fi
+            # like run_cycle does.
+            - wait_until:
+                condition: wifi.connected
+                timeout: 15s
             - if:
                 condition:
                   lambda: "return !id(busy);"
@@ -608,18 +621,19 @@ script:
 
   # Fetches the page as QOI (ADR 0072) and repaints the panel with it. The
   # display lambda decodes it straight into the panel buffer, which is what
-  # makes a page change short. The buffer is 512 KiB in PSRAM (the chips have
-  # 8 MB): a four-level 800x480 page costs at most one QOI byte per pixel, so
-  # every page fits with room to spare, and Paperboy keeps its own limit in
-  # step (ADR 0088). The response is moved into pb_page_qoi instead of copied,
-  # which keeps the peak at twice the buffer.
+  # makes a page change short. The buffer is 512 KiB in PSRAM for the 800x480
+  # panels (the chips have 8 MB; a hardware type may override qoi_buffer): a
+  # four-level 800x480 page costs at most one QOI byte per pixel, so every page
+  # fits with room to spare, and Paperboy keeps its own limit in step (ADR
+  # 0088). The response is moved into pb_page_qoi instead of copied, which
+  # keeps the peak at twice the buffer.
   - id: fetch_page
     mode: single
     then:
       - http_request.get:
           url: !lambda "return pb_base(id(paperboy_url).state) + id(image_path) + \"?format=qoi\";"
           capture_response: true
-          max_response_buffer_size: 524288
+          max_response_buffer_size: ${qoi_buffer}
           request_headers:
             Authorization: !lambda "return id(auth_header).c_str();"
           on_response:
@@ -634,8 +648,15 @@ script:
               - script.execute: after_paint
           on_error:
             then:
-              - lambda: 'pb_note_for_next_wake("image download failed: " + id(image_path));'
+              - lambda: |-
+                  pb_note_for_next_wake("image download failed: " + id(image_path));
+                  // A hardware type with a notice page (e1003) shows it; the
+                  // others repaint the page they have.
+                  pb_set_panel_notice("Page not shown\ndownload failed\n" + id(image_path));
               - logger.log: "image download failed"
+              - component.update: epaper_display
+              - script.execute: wait_paint
+              - script.wait: wait_paint
               - script.execute: go_sleep
 
   # ---------------------------------------------------------------- sleep

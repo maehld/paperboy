@@ -1069,7 +1069,7 @@ func (s *Server) menuOverlay(page servedPage, profile string, p Profile, v menuV
 		return page, fmt.Errorf("page is %dx%d, display is %dx%d", pal.Rect.Dx(), pal.Rect.Dy(), p.Width, p.Height)
 	}
 	drawMenu(pal, p, v, t)
-	out := s.notice(p.Kind, pal)
+	out := s.notice(profile, pal)
 	out.name, out.page, out.pages, out.refresh = page.name, page.page, page.pages, page.refresh
 	return out, nil
 }

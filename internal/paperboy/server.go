@@ -600,14 +600,14 @@ func (s *Server) handleHint(w http.ResponseWriter, r *http.Request) {
 	s.writePageImage(w, r, hp.data)
 }
 
-// qoiLimit is the response buffer the firmware allocates for a page: a
-// compile-time constant there (max_response_buffer_size in common.yaml, 512 KiB
-// in PSRAM), and a larger answer is truncated, which makes the device keep its
-// old picture. A four-level 800x480 page cannot exceed one QOI byte per pixel
-// (384 KB), so the buffer holds every page of the shipped panels; Paperboy
-// keeps its own limit in step and only has to simplify a page above it
-// (ADR 0088).
-const qoiLimit = 512 * 1024
+// qoiLimit is the largest page a firmware reads, and it has to agree with the
+// buffer the firmware allocates: a larger answer is truncated, which makes the
+// device keep its old picture. The 800x480 panels read 512 KiB and cannot
+// exceed 384 KB because a paletted page costs at most one QOI byte per pixel;
+// the E1003 reads 1 MiB (its pages are 190-205 KB, a dithered photograph about
+// 1.5 MB and therefore simplified). A page above the limit is simplified here
+// (ADR 0088, 0105).
+const qoiLimit = 1024 * 1024
 
 // writePageImage serves a rendered page as PNG (browsers, the dashboard) or, on
 // ?format=qoi, as QOI for the firmware, which decodes that far faster
