@@ -24,12 +24,16 @@
 
 substitutions:
   hardware: e1003
-  fw_version: "1.0.0"
+  fw_version: "1.1.0"
   # The mounting this image is built for; a device adds its quarter turn to it
   # at runtime (ADR 0102). Touch currently assumes this orientation.
   compiled_rotation: 0
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
+  # NTP server for the clock that the certificate check of an https Paperboy
+  # URL needs (ADR 0108). A network that blocks the pool points this at its
+  # router.
+  ntp_server: "pool.ntp.org"
   # The response buffer: ESPHome allocates the whole size before it reads a
   # byte (http_request.h: allocator.allocate(max_length)) and copies the page
   # into a second string, so both live in PSRAM. With SPIRAM_USE_MALLOC set

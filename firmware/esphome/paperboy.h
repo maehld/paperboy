@@ -10,7 +10,9 @@
 #include <vector>
 
 #include <esp_heap_caps.h>
+#include <esp_sntp.h>
 #include <esp_system.h>
+#include <sys/time.h>
 
 // Kept in RTC memory: survives deep sleep, cleared on power-on, and costs no
 // flash writes per wake (unlike globals with restore_value).
@@ -48,6 +50,48 @@ inline void pb_init_rtc() {
   pb_note[0] = 0;
   // The panel shows an image of the previous firmware: repaint it.
   pb_shown_hash[0] = 0;
+}
+
+// The clock that TLS needs (ADR 0108). A handshake compares the certificate's
+// validity dates with the system time, and the device has no RTC battery: after
+// a power-on it waits for SNTP, a wake still has the RTC time of the deep
+// sleep, and every sync answer corrects it. Anything before 2024 counts as
+// unset, so a device that boots without a network reports "no time" instead of
+// 1970.
+constexpr time_t PB_CLOCK_MIN = 1704067200;  // 2024-01-01T00:00:00Z
+
+inline bool pb_clock_valid() {
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  return tv.tv_sec >= PB_CLOCK_MIN;
+}
+
+// Takes Paperboy's time (the sync answer names it in seconds).
+inline void pb_set_clock(int64_t epoch) {
+  if (epoch < PB_CLOCK_MIN) {
+    return;
+  }
+  struct timeval tv;
+  tv.tv_sec = static_cast<time_t>(epoch);
+  tv.tv_usec = 0;
+  settimeofday(&tv, nullptr);
+}
+
+// Only an https Paperboy URL needs the clock before its first request; an
+// instance in the LAN keeps using http and never waits for SNTP.
+inline bool pb_needs_clock(const std::string &base) { return base.rfind("https://", 0) == 0; }
+
+inline bool pb_clock_ready(const std::string &base) {
+  return !pb_needs_clock(base) || pb_clock_valid();
+}
+
+// Deep sleep keeps the time, so a wake does not need SNTP. Stopping the poll
+// that the time component started during boot saves one name lookup and one
+// UDP exchange per wake; the sync answer corrects the drift.
+inline void pb_stop_sntp_if_clocked() {
+  if (pb_clock_valid() && esp_sntp_enabled()) {
+    esp_sntp_stop();
+  }
 }
 
 // Cycle timing. millis() counts from the last boot, and a button press wakes

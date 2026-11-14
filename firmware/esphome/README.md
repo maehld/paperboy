@@ -119,6 +119,32 @@ currently assumes rotation 0. The splash and setup screens appear before the
 first sync and stay in the compiled orientation. A QOI whose dimensions do not match the rotated display is refused
 with a note (`pb_qoi_fits`) instead of being clipped over the previous picture.
 
+## TLS and the clock
+
+An `https://` Paperboy URL is verified against the ESP-IDF CA bundle, the
+Mozilla roots that include the Let's Encrypt ones (ADR 0108); `http://` in the
+LAN is unaffected, because `verify_ssl` only applies to `https://` requests.
+The bundle comes with ESP-IDF, so no certificate file sits in the repository.
+
+Verification compares the certificate's validity with the system clock, and the
+device has none after a power-on:
+
+- `time:` with the SNTP platform asks `pool.ntp.org` (substitution `ntp_server`,
+  e.g. the router of a network that blocks the pool) and
+  `time.cloudflare.com`. `wait_for_clock` waits up to 10 s for a plausible time
+  before the first request, but only for an `https://` URL.
+- Deep sleep keeps the RTC time, so a wake is already clocked.
+  `pb_stop_sntp_if_clocked()` stops the poll ESPHome started during boot, which
+  saves a name lookup and one NTP exchange per wake.
+- The `time` of the sync answer sets the clock on every sync (ADR 0042), so
+  drift between cycles never accumulates.
+- Without a clock the image firmware shows the setup screen with the reason,
+  a text display prints `No clock for https / check NTP or use http`.
+
+The page download and the firmware image use the same client, so both are
+verified: the device key and the OTA image are authentic on a public proxy
+(ADR 0097, 0043).
+
 ## Settings on the device
 
 | Setting | Source | Kept in |
@@ -126,6 +152,7 @@ with a note (`pb_qoi_fits`) instead of being clipped over the previous picture.
 | Wi-Fi | captive portal on the hotspot `paperboy-<id>`, or Improv over USB | flash (ESPHome) |
 | Paperboy URL | device web UI `http://<device>/`, field "Paperboy URL" (`default_paperboy_url` can preset it); saving it starts the cycle at once | flash |
 | Device key | `POST /api/device/register` by MAC | flash |
+| NTP server | build substitution `ntp_server`, default `pool.ntp.org`; only used for an `https://` URL after a power-on | image |
 
 While Wi-Fi or the Paperboy URL is missing, or Paperboy does not know the MAC,
 the display shows instructions with the device's address and MAC, the lockup of

@@ -8,11 +8,15 @@
 
 substitutions:
   hardware: lcd2004
-  fw_version: "2.2.0"
+  fw_version: "2.3.0"
   # Characters per row; text-common.yaml scrolls a row in this width.
   text_columns: "20"
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
+  # NTP server for the clock that the certificate check of an https Paperboy
+  # URL needs (ADR 0108). A network that blocks the pool points this at its
+  # router.
+  ntp_server: "pool.ntp.org"
 
 packages:
   paperboy: !include text-common.yaml
