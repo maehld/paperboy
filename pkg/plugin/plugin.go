@@ -111,7 +111,7 @@ type Request struct {
 	Timezone string          `json:"timezone,omitempty"` // IANA name
 	Now      time.Time       `json:"now"`
 	Config   map[string]any  `json:"config,omitempty"` // configure only
-	Levels   int             `json:"levels,omitempty"` // render: gray levels, 2, 4 or 16
+	Levels   int             `json:"levels,omitempty"` // render: gray levels of the display; the canvas falls back to 2, 4 or 16
 	Page     PageInfo        `json:"page"`
 	Widgets  []WidgetRequest `json:"widgets,omitempty"`
 	// Actions are the concrete actions of an actions or action request, in
@@ -561,8 +561,11 @@ func (m Message) CheckVersion() error {
 }
 
 func handleWidgets(h Handler, req *Request) ([]Result, error) {
-	if req.Action == ActionRender && req.Levels != 2 && req.Levels != 4 && req.Levels != 16 {
-		return nil, fmt.Errorf("levels %d: expected 2, 4 or 16", req.Levels)
+	// Any tone count is accepted: render.NewCanvas falls back to the next
+	// supported palette, so a display type with another count cannot fail a
+	// plugin that was built before it (ADR 0107).
+	if req.Action == ActionRender && (req.Levels < 1 || req.Levels > 256) {
+		return nil, fmt.Errorf("levels %d: expected 1 to 256", req.Levels)
 	}
 	t, isTexter := h.(Texter)
 	if req.Action == ActionText && !isTexter {

@@ -97,14 +97,16 @@ func (enumHandler) Describe() Description {
 
 func TestRenderLevels(t *testing.T) {
 	h := &testHandler{}
-	for _, levels := range []int{2, 4, 16} {
+	for _, levels := range []int{1, 2, 3, 4, 16, 256} {
 		m := Handle(h, &Request{Action: ActionRender, Levels: levels, Widgets: []WidgetRequest{{Widget: "ok", Width: 3, Height: 2}}})
 		if m.Error != "" || len(m.Widgets) != 1 || len(m.Widgets[0].PNG) == 0 {
 			t.Errorf("%d levels: %+v", levels, m)
 		}
 	}
-	if m := Handle(h, &Request{Action: ActionRender, Levels: 3, Widgets: []WidgetRequest{{Widget: "ok", Width: 3, Height: 2}}}); m.Error == "" {
-		t.Error("3 levels were accepted")
+	for _, levels := range []int{0, -1, 257} {
+		if m := Handle(h, &Request{Action: ActionRender, Levels: levels, Widgets: []WidgetRequest{{Widget: "ok", Width: 3, Height: 2}}}); m.Error == "" {
+			t.Errorf("%d levels were accepted", levels)
+		}
 	}
 }
 

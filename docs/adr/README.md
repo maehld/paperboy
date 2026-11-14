@@ -101,3 +101,4 @@ Wichtige Entscheidungen werden hier als kurze ADRs festgehalten (Format nach Mic
 | [0104](0104-runtime-stats-in-the-web-ui.md) | Runtime stats in the web UI | Accepted, implemented |
 | [0105](0105-sixteen-gray-levels.md) | Sixteen gray levels on the panel | Accepted, implemented; replaces the `gray` bool of display types with `levels`, accepts `levels` 16 in the plugin protocol and keeps the 512 KiB QOI limit of ADR-0088, which follows the firmware buffer |
 | [0106](0106-self-updating-pages-with-htmx.md) | Self-updating operator pages with htmx | Accepted, implemented; replaces the `<meta http-equiv="refresh">` of ADR-0040 for the dashboard, the stats page and the downloads page |
+| [0107](0107-plugin-builds-reach-installations.md) | Plugin builds reach installations | Accepted, implemented; amends the version rule of ADR-0075 (shared `pkg/plugin` and `pkg/render` raise every plugin version) and makes the `levels` value of ADR-0105 tolerant |
