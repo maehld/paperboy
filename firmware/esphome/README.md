@@ -27,7 +27,7 @@ installation, nothing installation-specific is compiled in.
 | No key | `POST /api/device/register` is retried three times as well | without a key and with an unreachable server the device shows the setup screen with its address and the URL it has, instead of sleeping silently |
 | Unchanged content | `image.hash` equals the hash on the panel | no download, no paint |
 | Firmware offer | `firmware` in the sync answer (ADR 0043) | flash `<Paperboy URL><path>` with its MD5 and reboot; a failure is reported in the next sync's `log` |
-| Changed content | `GET <Paperboy URL><image.path>` | PNG, painted with the panel's gray mapping |
+| Changed content | `GET <Paperboy URL><image.path>?format=qoi` with the device key (ADR 0097) | QOI, decoded into the panel buffer and painted with the panel's gray mapping (ADR 0072) |
 | After painting | the shown hash is stored only now, and input that arrived meanwhile is sent in one more sync | a confirmation screen can only be confirmed after the panel really shows it |
 | Settle | presses that arrived during a paint wait 150 ms before that follow-up sync | a burst of presses becomes one sync instead of two cycles (issue #136) |
 | Sleep | stay awake `listen_s`, then deep sleep for `refresh_s` or a one-shot `wake` | wake on any button (EXT1) |
