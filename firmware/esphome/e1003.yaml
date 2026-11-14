@@ -24,7 +24,7 @@
 
 substitutions:
   hardware: e1003
-  fw_version: "0.2.0"
+  fw_version: "0.3.0"
   # The mounting this image is built for; a device adds its quarter turn to it
   # at runtime (ADR 0102). Touch currently assumes this orientation.
   compiled_rotation: 0
@@ -168,6 +168,12 @@ output:
     pin: GPIO40
     id: battery_enable
 
+font:
+  # The notice bar for a page the firmware cannot show.
+  - file: "gfonts://Inter@500"
+    id: notice_font
+    size: 48
+
 sensor:
   # Battery voltage through a 1:2 divider; needs battery_enable on. Several
   # samples per read: the ADC sits next to the panel's switching supply and a
@@ -201,24 +207,42 @@ display:
       // re-applied here because each wake starts from the compiled rotation.
       pb_rotate_display(it, ${compiled_rotation});
       if (pb_splash) {
+        pb_panel_notice.clear();
+        it.fill(Color::WHITE);
         pb_draw_splash(it, id(wordmark_large), id(version_large), "v${fw_version}");
       } else if (id(setup_mode)) {
+        pb_panel_notice.clear();
+        it.fill(Color::WHITE);
         pb_draw_setup(it, id(setup_font), id(wordmark_small), id(version_small), "v${fw_version}",
                       id(setup_text));
+      } else if (!pb_panel_notice.empty()) {
+        // A download failed: say so instead of repainting the old page.
+        pb_draw_notice_page(it, id(notice_font), id(wordmark_large), id(version_large), "v${fw_version}",
+                            pb_panel_notice);
       } else if (!pb_qoi_valid(pb_page_qoi)) {
         // Truncated answer (page larger than the response buffer) or not QOI:
-        // keep the old picture instead of painting half a page.
+        // show the reason instead of painting half a page.
         pb_note_for_next_wake("page not paintable: " + id(image_path));
-        ESP_LOGE("paperboy", "page is not a complete QOI image");
+        pb_set_panel_notice(esphome::str_sprintf(
+            "Page not shown\nincomplete or too large (%u bytes)\n%s", (unsigned) pb_page_qoi.size(),
+            id(image_path).c_str()));
+        pb_draw_notice_page(it, id(notice_font), id(wordmark_large), id(version_large), "v${fw_version}",
+                            pb_panel_notice);
       } else if (!pb_qoi_fits(pb_page_qoi, it.get_width(), it.get_height())) {
         // A page of the wrong orientation would be clipped below the panel:
         // refuse it and let the server's rotation be fixed (ADR 0102).
+        int qw = 0, qh = 0;
+        pb_qoi_size(pb_page_qoi, qw, qh);
         pb_note_for_next_wake("page does not fit the rotated display; check rotation");
-        ESP_LOGE("paperboy", "page size does not fit the rotated display");
+        pb_set_panel_notice(esphome::str_sprintf("Page not shown\n%d x %d on %d x %d\n%s", qw, qh,
+                                                 it.get_width(), it.get_height(), id(image_path).c_str()));
+        pb_draw_notice_page(it, id(notice_font), id(wordmark_large), id(version_large), "v${fw_version}",
+                            pb_panel_notice);
       } else {
         // Fill first: the IT8951 keeps its framebuffer between updates, and an
         // explicit fill also makes the whole page the dirty region, so the
         // panel always gets a complete GC16 refresh instead of a partial one.
+        pb_panel_notice.clear();
         it.fill(Color::WHITE);
         pb_time("paint start");
         if (pb_paint_qoi_gray16(it, pb_page_qoi)) {

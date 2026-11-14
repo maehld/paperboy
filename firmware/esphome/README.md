@@ -330,7 +330,14 @@ falls back to `battery`.
 
 Touch: GT911 with `mirror_x`, the transform of Seeed's example. Every tap is
 logged as `touch x,y (display 1872x1404, rotation 0)`, so a wrong transform is
-visible by tapping the four corners. Open on the hardware: the transform. If a paint times out in the log, try
+visible by tapping the four corners. Open on the hardware: the transform.
+
+A page the firmware cannot show becomes a full-screen notice in the layout of
+the setup screen (lockup, version, reason) instead of a silent stale picture:
+`Page not shown` with the QOI size in bytes when the answer was truncated or is
+not QOI, the page and display dimensions when the size does not fit, and
+`download failed` when the request failed. The text goes to the sync log as
+well (`page not paintable`, `page does not fit the rotated display`). If a paint times out in the log, try
 `use_legacy_dpy_area: true` on the display: some E1003 batches ignore
 `DPY_BUF_AREA` (0x0037).
 

@@ -632,22 +632,70 @@ inline bool pb_qoi_valid(const std::string &data) {
   return pb_qoi_each(data, [](int, int, uint8_t, uint8_t, uint8_t) {});
 }
 
+// pb_qoi_size reads the dimensions of a QOI header; false when the stream does
+// not start with one.
+inline bool pb_qoi_size(const std::string &data, int &width, int &height) {
+  const uint8_t *p = reinterpret_cast<const uint8_t *>(data.data());
+  if (data.size() < 14 || std::memcmp(p, "qoif", 4) != 0) {
+    return false;
+  }
+  width = static_cast<int>((static_cast<uint32_t>(p[4]) << 24) |
+                           (static_cast<uint32_t>(p[5]) << 16) |
+                           (static_cast<uint32_t>(p[6]) << 8) | p[7]);
+  height = static_cast<int>((static_cast<uint32_t>(p[8]) << 24) |
+                            (static_cast<uint32_t>(p[9]) << 16) |
+                            (static_cast<uint32_t>(p[10]) << 8) | p[11]);
+  return true;
+}
+
 // pb_qoi_fits reports whether the stream names exactly the size the rotated
 // display expects. draw_pixel_at() clips silently, so a page of the wrong
 // orientation would leave the rest of the previous picture on the panel; the
 // caller notes it instead of painting half a page (issue #117).
 inline bool pb_qoi_fits(const std::string &data, int width, int height) {
-  const uint8_t *p = reinterpret_cast<const uint8_t *>(data.data());
-  if (data.size() < 14 || std::memcmp(p, "qoif", 4) != 0) {
-    return false;
+  int w = 0, h = 0;
+  return pb_qoi_size(data, w, h) && w == width && h == height;
+}
+
+// A page the firmware cannot show becomes a full-screen notice in the layout of
+// the setup screen, so the device says what is wrong instead of keeping a stale
+// picture. The text is set by the display lambda or by a failed download.
+static std::string pb_panel_notice;
+
+inline void pb_set_panel_notice(const std::string &text) {
+  pb_panel_notice = text;
+  ESP_LOGE("paperboy", "panel notice: %s", text.c_str());
+}
+
+// Draws the notice page: the lockup at the top, the version in its corner and
+// the text centered below it, one line per '\n'.
+template<typename D, typename F, typename W, typename V>
+void pb_draw_notice_page(D &it, F *font, W *wordmark, V *version_font, const std::string &version,
+                         const std::string &text) {
+  it.fill(esphome::Color::WHITE);
+  pb_draw_lockup(it, it.get_width() / 2, 48, 84, 56, wordmark);
+  it.print(it.get_width() - 48, 48 + 56, version_font, esphome::Color::BLACK,
+           esphome::display::TextAlign::BASELINE_RIGHT, version.c_str(), esphome::Color::WHITE);
+  int lines = 1;
+  for (char c : text) {
+    if (c == '\n') {
+      lines++;
+    }
   }
-  const int w = static_cast<int>((static_cast<uint32_t>(p[4]) << 24) |
-                                 (static_cast<uint32_t>(p[5]) << 16) |
-                                 (static_cast<uint32_t>(p[6]) << 8) | p[7]);
-  const int h = static_cast<int>((static_cast<uint32_t>(p[8]) << 24) |
-                                 (static_cast<uint32_t>(p[9]) << 16) |
-                                 (static_cast<uint32_t>(p[10]) << 8) | p[11]);
-  return w == width && h == height;
+  const int spacing = 72;
+  int y = it.get_height() / 2 - (lines - 1) * spacing / 2;
+  size_t start = 0;
+  while (start <= text.size()) {
+    size_t end = text.find('\n', start);
+    std::string line = text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+    it.print(96, y, font, esphome::Color::BLACK, esphome::display::TextAlign::TOP_LEFT, line.c_str(),
+             esphome::Color::WHITE);
+    y += spacing;
+    if (end == std::string::npos) {
+      break;
+    }
+    start = end + 1;
+  }
 }
 
 // Four-level panel, used by both hardware types that draw pages: the Sticky's

@@ -648,8 +648,15 @@ script:
               - script.execute: after_paint
           on_error:
             then:
-              - lambda: 'pb_note_for_next_wake("image download failed: " + id(image_path));'
+              - lambda: |-
+                  pb_note_for_next_wake("image download failed: " + id(image_path));
+                  // A hardware type with a notice page (e1003) shows it; the
+                  // others repaint the page they have.
+                  pb_set_panel_notice("Page not shown\ndownload failed\n" + id(image_path));
               - logger.log: "image download failed"
+              - component.update: epaper_display
+              - script.execute: wait_paint
+              - script.wait: wait_paint
               - script.execute: go_sleep
 
   # ---------------------------------------------------------------- sleep
