@@ -325,14 +325,15 @@ Battery and charger: the voltage divider is on ADC GPIO1 (enable GPIO40,
 0x6B answers REG0A: bit 7 = cable attached, bits 4:3 = 00 not charging,
 01 precharge, 10 fast charge, 11 done. The firmware reports `mains` while the
 cable is attached and `charging` from the state, so a device on USB stays awake
-(ADR 0051) and the dashboard shows the charge. A failed read logs a warning and
-falls back to `battery`.
+(ADR 0051) and the dashboard shows the charge; with a full cell (4.06 V) the
+cable set `power=mains` while `charging` stayed false (state 0/3), which is
+right. A failed read logs a warning and falls back to `battery`.
 
 Touch: GT911 without a transform. Seeed's example uses `mirror_x`, but the
 it8951 preset already mirrors the panel and the digitizer reports in the
 unmirrored logical space: four taps at the corners (2026-11-14) gave x=1820 for
-the top-left with `mirror_x` and x=53 without it, while y was correct either
-way. The ~50 px border is the inset of the touch area. Every tap is logged as
+the top-left with `mirror_x` and x=27 without it, the four taps read
+27/1784 x and 75-141/1329-1363 y. Every tap is logged as
 `touch x,y (display 1872x1404, rotation 0)`, so a wrong transform stays visible
 by tapping the four corners. Assumes rotation 0.
 
