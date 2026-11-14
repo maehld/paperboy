@@ -485,8 +485,8 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 				row.Density = strconv.FormatFloat(d.PPI, 'f', -1, 64) + " ppi"
 			}
 			row.Gray = "1"
-			if d.Gray == 4 {
-				row.Gray = "4"
+			if d.Gray > 1 {
+				row.Gray = strconv.Itoa(d.Gray)
 			}
 		}
 		if row.Power == "" {

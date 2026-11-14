@@ -80,7 +80,7 @@ func menuServerRules(t *testing.T, rules, actions string, tweak func(*Device)) (
 		tweak(&d)
 	}
 	cfg := &Config{Dir: dir, Language: "de", Timezone: time.UTC,
-		Profiles: map[string]Profile{"small": {Width: 400, Height: 300, PPI: 125, Gray: true}},
+		Profiles: map[string]Profile{"small": {Width: 400, Height: 300, PPI: 125, Levels: 4}},
 		Devices:  []Device{d}}
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)

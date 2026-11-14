@@ -123,9 +123,9 @@ func (s *Server) parseWidgetQuery(cfg *Config, pluginName, widgetName string, q 
 // fetchWidget asks the plugin for one widget, like a page with one cell.
 func (s *Server) fetchWidget(ctx context.Context, cfg *Config, wq widgetQuery) page.Result {
 	d := s.display(cfg, wq.p)
-	levels := 2
-	if d.Gray {
-		levels = 4
+	levels := d.Levels
+	if levels < 2 {
+		levels = 2
 	}
 	b := page.Batch{Text: d.Text, Levels: levels, Charset: d.Charset, Widgets: []page.WidgetRequest{wq.req},
 		Page: plugin.PageInfo{Title: wq.req.Plugin + "/" + wq.req.Widget, Number: 1, Count: 1, Width: d.Width, Height: d.Height}}
@@ -159,9 +159,9 @@ func (s *Server) handleWidget(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(strings.Join(page.TextCell(res, wq.p.Charset, wq.req.Width, wq.req.Height), "\n") + "\n"))
 		return
 	}
-	levels := 2
-	if wq.p.Gray {
-		levels = 4
+	levels := wq.p.Levels
+	if levels < 2 {
+		levels = 2
 	}
 	writePNG(w, encodePNG(page.WidgetImage(res, wq.req.Width, wq.req.Height, levels, label)))
 }

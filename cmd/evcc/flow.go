@@ -346,7 +346,7 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) error {
 	}
 
 	// Boxes, drawn over the lines.
-	gray := render.Levels(img.Palette) == 4
+	gray := render.Levels(img.Palette) > 2
 	frame := max(rule, int(math.Round(e.req.PtPx(0.8))))
 	dash := max(int(e.req.MMPx(1.2)), 3)
 	render.FillColor(img, hub.rect, color.White)

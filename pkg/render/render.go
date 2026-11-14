@@ -28,7 +28,20 @@ import (
 var (
 	MonoPalette = color.Palette{color.Gray{0}, color.Gray{255}}
 	GrayPalette = color.Palette{color.Gray{0}, color.Gray{85}, color.Gray{170}, color.Gray{255}}
+	// Gray16Palette holds 16 evenly spaced tones from black to white. 85 and
+	// 170 are part of it, so a four-level page keeps its exact grays on a
+	// 16-level panel (issue #192).
+	Gray16Palette = grayPalette(16)
 )
+
+// grayPalette builds n evenly spaced gray tones from 0 to 255.
+func grayPalette(n int) color.Palette {
+	p := make(color.Palette, n)
+	for i := range p {
+		p[i] = color.Gray{uint8(i * 255 / (n - 1))}
+	}
+	return p
+}
 
 // Gray tones of the four-level palette.
 var (
@@ -200,19 +213,19 @@ func Ellipsize(s string, size float64, bold bool, maxWidth int) string {
 	return "…"
 }
 
-// Levels returns the number of gray levels of a palette: 2 or 4.
+// Levels returns the number of gray tones of a palette: 2, 4 or 16.
 func Levels(p color.Palette) int {
-	if len(p) >= 4 {
-		return 4
-	}
-	return 2
+	return len(p)
 }
 
-// NewCanvas returns a white paletted image with 2 (black and white) or 4 gray
-// levels.
+// NewCanvas returns a white paletted image with 2 (black and white), 4 or 16
+// gray levels. Other values fall back to the next supported count.
 func NewCanvas(w, h, levels int) *image.Paletted {
 	p := MonoPalette
-	if levels == 4 {
+	switch {
+	case levels > 4:
+		p = Gray16Palette
+	case levels > 2:
 		p = GrayPalette
 	}
 	img := image.NewPaletted(image.Rect(0, 0, w, h), p)
@@ -300,7 +313,7 @@ func Fill(img *image.Paletted, r image.Rectangle, style string) {
 	}
 }
 
-// Quantize maps any image onto the palette with 2 or 4 gray levels: every
+// Quantize maps any image onto the palette with 2, 4 or 16 gray levels: every
 // pixel takes the nearest gray by luminance, without dithering, so text and
 // lines stay crisp. Transparent pixels count as white.
 func Quantize(src image.Image, levels int) *image.Paletted {

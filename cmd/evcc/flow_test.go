@@ -50,7 +50,7 @@ func TestFlowText(t *testing.T) {
 
 func TestFlowImage(t *testing.T) {
 	for _, name := range []string{"flow_export", "flow_import", "flow_battery_charging", "flow_battery_discharging", "flow_no_battery", "flow_no_loadpoint", "flow_two_loadpoints", "flow_discharge_export"} {
-		for _, levels := range []int{2, 4} {
+		for _, levels := range []int{2, 4, 16} {
 			for _, size := range [][3]int{{400, 300, 20}, {700, 500, 20}, {792, 232, 28}, {260, 230, 16}} {
 				e := flowFixture(t, name)
 				img := render.NewCanvas(size[0], size[1], levels)
