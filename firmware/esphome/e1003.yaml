@@ -24,7 +24,7 @@
 
 substitutions:
   hardware: e1003
-  fw_version: "0.3.0"
+  fw_version: "0.3.1"
   # The mounting this image is built for; a device adds its quarter turn to it
   # at runtime (ADR 0102). Touch currently assumes this orientation.
   compiled_rotation: 0
@@ -256,11 +256,11 @@ touchscreen:
     display: epaper_display
     interrupt_pin: GPIO2
     reset_pin: GPIO48
-    # The panel is mirrored like the display preset; this is the transform
-    # Seeed's E1003 example uses. It still has to be verified on the device,
-    # and it assumes the compiled orientation (rotation 0).
-    transform:
-      mirror_x: true
+    # No transform: the it8951 preset mirrors the panel, and the digitizer
+    # already reports in the unmirrored logical space. Measured with four taps
+    # at the corners (2026-11-14): with mirror_x the top-left tap came back as
+    # x=1820, without it as x=53; y was correct either way. Assumes the
+    # compiled orientation (rotation 0).
     # The panel reports a position continuously while a finger rests on it.
     # pb_touch takes the first report of a contact and drops the rest until
     # on_release, so one tap is one event and a second tap is not swallowed.

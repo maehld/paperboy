@@ -328,9 +328,13 @@ cable is attached and `charging` from the state, so a device on USB stays awake
 (ADR 0051) and the dashboard shows the charge. A failed read logs a warning and
 falls back to `battery`.
 
-Touch: GT911 with `mirror_x`, the transform of Seeed's example. Every tap is
-logged as `touch x,y (display 1872x1404, rotation 0)`, so a wrong transform is
-visible by tapping the four corners. Open on the hardware: the transform.
+Touch: GT911 without a transform. Seeed's example uses `mirror_x`, but the
+it8951 preset already mirrors the panel and the digitizer reports in the
+unmirrored logical space: four taps at the corners (2026-11-14) gave x=1820 for
+the top-left with `mirror_x` and x=53 without it, while y was correct either
+way. The ~50 px border is the inset of the touch area. Every tap is logged as
+`touch x,y (display 1872x1404, rotation 0)`, so a wrong transform stays visible
+by tapping the four corners. Assumes rotation 0.
 
 A page the firmware cannot show becomes a full-screen notice in the layout of
 the setup screen (lockup, version, reason) instead of a silent stale picture:
