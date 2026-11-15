@@ -16,4 +16,4 @@ go run ./cmd/odtest -scan
 go run ./cmd/odtest -ble ODE46FD8 [-send] [-buttons]
 ```
 
-Bluetooth (ADR 0016) exists only in the test program. On a reTerminal Sticky under Windows a full image (48 KB) takes about 30 s, via Wi-Fi a few seconds. After disconnecting, the display takes a few seconds until it is found again (if necessary `-scan-time 20s`).
+Bluetooth ([ADR 0016](adr/0016-opendisplay-bluetooth.md)) exists only in the test program. On a reTerminal Sticky under Windows a full image (48 KB) takes about 30 s, via Wi-Fi a few seconds. After disconnecting, the display takes a few seconds until it is found again (if necessary `-scan-time 20s`).

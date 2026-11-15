@@ -1,6 +1,6 @@
 # calendar plugin
 
-Calendars from CalDAV and iCalendar, plus contact birthdays from CardDAV (ADR 0048). The plugin reads the sources in the background and reports changes.
+Calendars from CalDAV and iCalendar, plus contact birthdays from CardDAV ([ADR 0048](../adr/0048-calendar-provider-and-agenda.md)). The plugin reads the sources in the background and reports changes.
 
 ## Configuration
 

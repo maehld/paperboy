@@ -1,12 +1,12 @@
 # Plugin protocol
 
 Paperboy and its plugins talk over standard input and standard output, one
-JSON object per line (ADR 0049). This document is the reference for the wire
+JSON object per line ([ADR 0049](../adr/0049-plugin-widgets.md)). This document is the reference for the wire
 format; the Go types live in [`pkg/plugin`](../../pkg/plugin/plugin.go).
 
-- Current version: **6** (ADR 0050 added version 3, ADR 0057 added
-  actions, ADR 0081 added plugin state and blobs and made 5 the minimum,
-  ADR 0103 added conditions). From version 5 on the protocol only grows
+- Current version: **6** ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md) added version 3, [ADR 0057](../adr/0057-plugin-actions-from-the-plan.md) added
+  actions, [ADR 0081](../adr/0081-plugin-state-over-the-protocol.md) added plugin state and blobs and made 5 the minimum,
+  [ADR 0103](../adr/0103-plugin-conditions-in-plans.md) added conditions). From version 5 on the protocol only grows
   additively.
 - Paperboy starts a plugin on first use and keeps it running.
 - Paperboy writes one request line; the plugin writes exactly one answer line
@@ -34,8 +34,8 @@ Every request carries:
 | `device` | For `actions` and `action`: `id`, `name`, `hardware` |
 | `levels` | For `render`: gray levels of the display, 1–256; the canvas falls back to 2, 4 or 16 tones |
 | `config` | For `configure`: the plugin's section of `paperboy.yaml` |
-| `state` | For `state`: the JSON object the plugin stored last time; missing when there is none (ADR 0081) |
-| `blobs` | For `state`: the stored blobs by name, base64 in JSON (ADR 0081) |
+| `state` | For `state`: the JSON object the plugin stored last time; missing when there is none ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)) |
+| `blobs` | For `state`: the stored blobs by name, base64 in JSON ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)) |
 
 ### `configure`
 
@@ -99,7 +99,7 @@ the plan's action validation.
 ```
 
 - `widgets[].kinds` is `image`, `text` or both.
-- `version` is the plugin's own version, matching the `-v<version>` of its program name (ADR 0075). It is optional; Paperboy compares it with the file name and logs one warning when they differ.
+- `version` is the plugin's own version, matching the `-v<version>` of its program name ([ADR 0075](../adr/0075-plugin-versions.md)). It is optional; Paperboy compares it with the file name and logs one warning when they differ.
 - `widgets[].sizes` are spans of the 6 × 8 reference grid, hints for an editor.
 - `args` use the same [argument schema](#arguments) as configuration keys.
 - `actions[].name` is the action name without the plugin prefix. A plan
@@ -108,10 +108,10 @@ the plan's action validation.
   the action; `text` overrides Paperboy's generic confirmation text.
 - A plugin without actions omits `actions` or sends an empty list.
 - `conditions[].name` is the condition name without the plugin prefix. A plan
-  depends on it as `plugin/name` (ADR 0103). The plugin decides what makes the
+  depends on it as `plugin/name` ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)). The plugin decides what makes the
   condition active; thresholds and units stay in its configuration.
 - `blobs` names the files the plugin keeps besides its state, such as a
-  downloaded image (ADR 0081). Paperboy logs files below `blobs/` that the
+  downloaded image ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)). Paperboy logs files below `blobs/` that the
   plugin does not declare.
 
 ### `conditions`
@@ -149,12 +149,12 @@ arguments in `args` and the page's look in `style`:
 | `text_px` | Base text height in pixels |
 
 Paperboy converts the page's points to pixels with the display's `ppi`
-(ADR 0050). Text displays get no `style` and no `ppi`; a widget sizes its text
+([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md)). Text displays get no `style` and no `ppi`; a widget sizes its text
 from `lines`/`columns` instead.
 
 A text widget in a cell with `scroll: true` gets `scroll: true` and may then
 answer lines longer than `width`: Paperboy shows the first `width` columns and
-the display scrolls the rest (ADR 0092). Without the field a line is cut at
+the display scrolls the rest ([ADR 0092](../adr/0092-scrolling-text-lines.md)). Without the field a line is cut at
 `width`, which is what every widget did before; a plugin that ignores the flag
 simply keeps its lines that fit.
 
@@ -226,7 +226,7 @@ or `max_age`.
 `Handle` fills `version` with the protocol version the plugin was built
 against, in every answer and in the `changed` event. Paperboy calls
 `Message.CheckVersion` on every answer and refuses the plugin when the version
-is missing or older than 5 (ADR 0058, ADR 0081); newer versions are accepted,
+is missing or older than 5 ([ADR 0058](../adr/0058-plugin-protocol-version-check.md), [ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)); newer versions are accepted,
 because the protocol only grows additively. The cells show the error
 and the plugin is dropped with one log line. Plugins written by hand in another
 language must print the field themselves.
@@ -257,7 +257,7 @@ stores it without touching the widget cache.
 | `default` | Default value |
 | `required` | The key must be set |
 | `description` | Help text for an editor |
-| `enum` | Allowed values, or allowed elements of a list (ADR 0055) |
+| `enum` | Allowed values, or allowed elements of a list ([ADR 0055](../adr/0055-allowed-arg-values-and-gallery-form.md)) |
 | `enum_labels` | Display text per enum value, keyed by `fmt.Sprint` of the value; the stored value stays the key |
 
 `Values.Check(known)` rejects unknown keys, missing required keys and values
@@ -275,7 +275,7 @@ configuration changes; Paperboy itself restarts on every deployment. Everything
 a plugin keeps in memory is lost then, and Paperboy's widget cache is no help
 because it holds drawn results, not data.
 
-State is part of the protocol (ADR 0081). Paperboy keeps it, a protocol 5
+State is part of the protocol ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)). Paperboy keeps it, a protocol 5
 plugin never writes a file:
 
 - **`state`** is a JSON object of at most 256 KiB. The `state` request carries
@@ -293,7 +293,7 @@ plugin no longer declares stays until the operator removes it; deleting the
 directory resets the plugin.
 
 A plugin never writes these files; `PAPERBOY_STATE_DIR` and
-`pkg/plugin.StateDir()` are gone (ADR 0081).
+`pkg/plugin.StateDir()` are gone ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)).
 
 Keep no secrets in the state (a fingerprint of a key is enough), version the
 object so a later plugin can discard a format it does not know, and treat the
@@ -330,12 +330,12 @@ widgets use the same fonts, gray levels and scalings as Paperboy's own.
 
 | Version | Change |
 |---|---|
-| 3 | `page.ppi` and `style.text_px` in pixels; `style.text_size` removed (ADR 0050) |
-| 4 | Actions: `describe.actions`, `actions`, `action`, `actions`/`result` answers, `device` (ADR 0057) |
-| 5 | Plugin state and blobs: the `state` request, `answer.state`/`answer.blobs`, `describe.blobs`; `PAPERBOY_STATE_DIR` removed (ADR 0081) |
-| 6 | Conditions: `describe.conditions`, the `conditions` request and `answer.conditions` (ADR 0103) |
+| 3 | `page.ppi` and `style.text_px` in pixels; `style.text_size` removed ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md)) |
+| 4 | Actions: `describe.actions`, `actions`, `action`, `actions`/`result` answers, `device` ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md)) |
+| 5 | Plugin state and blobs: the `state` request, `answer.state`/`answer.blobs`, `describe.blobs`; `PAPERBOY_STATE_DIR` removed ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)) |
+| 6 | Conditions: `describe.conditions`, the `conditions` request and `answer.conditions` ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)) |
 
-A plugin is used as a whole or not at all (ADR 0058). The check is a floor,
+A plugin is used as a whole or not at all ([ADR 0058](../adr/0058-plugin-protocol-version-check.md)). The check is a floor,
 not equality: Paperboy requires at least version 5 and accepts newer ones,
 because the protocol only grows additively – unknown fields are ignored,
 existing fields keep their meaning, and Paperboy gates an optional feature on

@@ -1,10 +1,10 @@
 # Vendored UI code
 
 The operator pages are server-rendered Go templates with hand-written
-JavaScript and no build step (ADR 0068). One third-party file is the exception,
+JavaScript and no build step ([ADR 0068](../../../../docs/adr/0068-page-editor-ui.md)). One third-party file is the exception,
 because the pages that used to refresh with `<meta http-equiv="refresh">` must
 keep their scroll position, an opened *Details* block and their loaded images
-while they update (ADR 0106).
+while they update ([ADR 0106](../../../../docs/adr/0106-self-updating-pages-with-htmx.md)).
 
 | File | What it is |
 |---|---|

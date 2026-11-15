@@ -2,8 +2,8 @@
 
 - Branch: `spike/plugin-fragments` (not for `main` as is)
 - Date: 2026-11-06
-- Revisits: ADR 0032 (image fragments rejected as the default model)
-- Outcome: adopted as Paperboy v2 in ADR 0049. Names changed since: images
+- Revisits: [ADR 0032](../adr/0032-data-providers-and-regions.md) (image fragments rejected as the default model)
+- Outcome: adopted as Paperboy v2 in [ADR 0049](../adr/0049-plugin-widgets.md). Names changed since: images
   are *widgets*, the `plugin` block became grid `cells`, `internal/fragment`
   became `internal/widget`, and the protocol gained `configure` and `text`.
   The text below describes the spike as it was.
@@ -11,7 +11,7 @@
 ## Question
 
 Can plugins render image fragments for regions of a page instead of providers
-pushing data that page templates turn into pixels? ADR 0032 rejected that
+pushing data that page templates turn into pixels? [ADR 0032](../adr/0032-data-providers-and-regions.md) rejected that
 because fragments were rendered once for one display type and scaled for the
 others, which broke strokes and text.
 
@@ -72,7 +72,7 @@ others, which broke strokes and text.
 1. **Image quality is solved.** Rendered in the exact cell size and palette,
    a fragment is indistinguishable from a block: the plugin agenda and the
    `agenda` block produce the same glyphs (compare
-   `plugin-kalender.e1001.png` with `kalender.e1001.png`). The ADR 0032
+   `plugin-kalender.e1001.png` with `kalender.e1001.png`). The [ADR 0032](../adr/0032-data-providers-and-regions.md)
    problem was scaling, and on-demand rendering removes it. 1-bit panels
    get the same checkerboard and hatch fills as blocks
    (`plugin-solar.mono.png`); a 400×300 panel gets its own layout, e.g. bars
@@ -106,7 +106,7 @@ Possible, but not a good default for ePaper:
   external tool (`resvg`, a browser).
 - Text in SVG is laid out by the rasterizer with its own font and without
   hinting; at 10–14 px on a 1-bit panel that is exactly the blurry,
-  thresholded text the ADR 0032 spike saw.
+  thresholded text the [ADR 0032](../adr/0032-data-providers-and-regions.md) spike saw.
 - Anti-aliased edges must be thresholded to 2 or 4 levels; thin lines
   vanish or thicken.
 - Benefit: a size-independent fragment, so one render per image instead of
@@ -149,6 +149,6 @@ spans plugins declare. That is a separate decision.
 ## Verdict
 
 Feasible. On-demand fragments in exact size fix the quality issue that led
-to ADR 0032, and the shared `pkg/render` keeps them consistent with blocks.
+to [ADR 0032](../adr/0032-data-providers-and-regions.md), and the shared `pkg/render` keeps them consistent with blocks.
 Next steps: a grid page model, background refresh, and an ADR that
-supersedes ADR 0032 point 3.
+supersedes [ADR 0032](../adr/0032-data-providers-and-regions.md) point 3.
