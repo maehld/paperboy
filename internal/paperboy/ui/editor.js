@@ -1580,6 +1580,87 @@
     return { at: [0, 0], span: span, widget: first ? first.plugin + '/' + first.widget : 'paperboy/header', args: {}, style: {} };
   }
 
+  // variantURL is one action on the open variant file: a new label or another
+  // page (ADR 0110).
+  function variantURL(action) {
+    return '/api/pages/' + encodeURIComponent(state.name) + '/variant/' + action +
+      '?from=' + encodeURIComponent(state.file);
+  }
+
+  // showDialogError puts the answer of a refused action into its dialog, so the
+  // operator reads it where the form is.
+  function showDialogError(form, message) {
+    const box = form.querySelector('[data-error]');
+    if (!box) return;
+    box.textContent = message || '';
+    box.hidden = !message;
+  }
+
+  // postAction sends one variant action and answers its JSON body, or the reason
+  // the server named.
+  async function postAction(url, body) {
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      return { error: 'request failed: ' + e };
+    }
+    if (res.status === 401) return { error: signedOut() };
+    let doc = {};
+    const text = await res.text();
+    try {
+      doc = JSON.parse(text);
+    } catch (e) {
+      doc = { error: text.trim() };
+    }
+    if (!res.ok) return { error: doc.error || '(' + res.status + ')' };
+    return { doc: doc };
+  }
+
+  // openMovedFile follows a variant action: the answer names the editor link of
+  // the file at its new place, with a display type it renders (ADR 0110).
+  function openMovedFile(doc, name, label) {
+    state.dirty = false;
+    if (doc && doc.url) {
+      location.href = doc.url;
+      return;
+    }
+    const params = new URLSearchParams({ name: name, display: state.display, file: label });
+    location.href = '/ui/editor/page?' + params.toString();
+  }
+
+  // renameVariant gives the open variant a new label; the page rewrites every
+  // entry that names the old one (ADR 0110).
+  async function renameVariant(form, label) {
+    if (!label || !state.file) return;
+    setStatus('renaming the variant…', '');
+    const res = await postAction(variantURL('rename'), { name: label, hash: state.pageHash });
+    if (res.error) {
+      setStatus('rename failed: ' + res.error, 'error');
+      showDialogError(form, res.error);
+      return;
+    }
+    openMovedFile(res.doc, res.doc.name || state.name, res.doc.file || label);
+  }
+
+  // reassignVariant moves the open variant to another page and takes its entries
+  // with it (ADR 0110).
+  async function reassignVariant(form, page) {
+    if (!page || !state.file) return;
+    setStatus('moving the variant…', '');
+    const res = await postAction(variantURL('move'), { page: page, hash: state.pageHash });
+    if (res.error) {
+      setStatus('reassign failed: ' + res.error, 'error');
+      showDialogError(form, res.error);
+      return;
+    }
+    openMovedFile(res.doc, res.doc.name || page, res.doc.file || state.file);
+  }
+
   // rename moves the page file only; the variants keep the old name and the
   // plans that name the page keep it too, so the confirmation names them
   // (ADR 0079, 0110).
@@ -1702,12 +1783,33 @@
       createVariant(display, file);
     });
   }
+  // A variant renames its label or moves to another page; both rewrite the
+  // page's variants map and move the file (ADR 0110).
+  const renameVariantForm = document.querySelector('form[data-rename-variant]');
+  if (renameVariantForm) {
+    renameVariantForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      renameVariant(renameVariantForm, renameVariantForm.querySelector('input[name=label]').value.trim());
+    });
+  }
+  const reassignForm = document.querySelector('form[data-reassign]');
+  if (reassignForm) {
+    reassignForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const page = reassignForm.querySelector('select[name=page]');
+      if (page) reassignVariant(reassignForm, page.value);
+    });
+  }
   // The Create variant button opens its dialog; a click beside the form closes
   // it again.
   for (const b of document.querySelectorAll('button[data-dialog]')) {
     b.addEventListener('click', () => {
       const d = document.getElementById(b.dataset.dialog);
       if (!d || b.disabled) return;
+      for (const box of d.querySelectorAll('[data-error]')) {
+        box.textContent = '';
+        box.hidden = true;
+      }
       d.showModal();
       const first = d.querySelector('select[name], input[name]');
       if (first) first.focus();

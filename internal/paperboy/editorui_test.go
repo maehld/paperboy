@@ -305,6 +305,72 @@ func TestEditorUnusedEntry(t *testing.T) {
 	}
 }
 
+// TestEditorVariantActions offers both actions of a variant in its block: a new
+// label and another page. The page rename stays with the page file, so a view
+// carries one Rename (ADR 0079, 0110).
+func TestEditorVariantActions(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "solar", "", pageWithVariant)
+	writePage(t, s, "solar", "hochkant", variantPage)
+	writePage(t, s, "ziel", "", "title: Ziel\nkind: image\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 2], widget: paperboy/header }\n")
+
+	body := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&file=hochkant", nil, nil).Body.String()
+	for _, want := range []string{
+		`<button type="button" data-dialog="rename-variant">Rename…</button>`,
+		`<button type="button" data-dialog="reassign">Reassign…</button>`,
+		`<dialog id="rename-variant">`,
+		`<form data-rename-variant>`,
+		`<h3>Rename variant</h3>`,
+		`<input name="label" required pattern="[a-z0-9-]{1,40}" maxlength="40" size="16" value="hochkant"`,
+		`<dialog id="reassign">`,
+		`<form data-reassign>`,
+		`<select name="page"><option value="ziel">ziel · Ziel</option></select>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the variant lacks %q:\n%s", want, body)
+		}
+	}
+	// The bar keeps no page rename on a variant: its own action renames the
+	// label, and the page is renamed from its page file.
+	if strings.Contains(body, `"rename":`) {
+		t.Fatalf("the variant offers a page rename:\n%s", body)
+	}
+	// The page file offers no variant action of its own.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil).Body.String()
+	for _, unwanted := range []string{`data-dialog="rename-variant"`, `<dialog id="rename-variant">`, `data-dialog="reassign"`, `form data-reassign`} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("the page file carries %q:\n%s", unwanted, body)
+		}
+	}
+	if !strings.Contains(body, `"rename":{"url":"/api/pages/solar/rename"`) {
+		t.Fatalf("the page file lost its rename:\n%s", body)
+	}
+
+	// Only a page without a page file stays read-only: its variant offers no
+	// action at all (ADR 0112).
+	writePage(t, s, "lost", "klein", variantPage)
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=lost&display=small&file=klein", nil, nil).Body.String()
+	for _, unwanted := range []string{`data-dialog="rename-variant"`, `data-dialog="reassign"`, `<dialog id="reassign">`} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("an orphan variant carries %q:\n%s", unwanted, body)
+		}
+	}
+
+	// Without another page file the Reassign button waits for one.
+	only := editorServer(t)
+	writePage(t, only, "clock", "", "title: Clock\nkind: image\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 2], widget: paperboy/header }\n")
+	writePage(t, only, "clock", "klein", variantPage)
+	body = request(t, only, http.MethodGet, "/ui/editor/page?name=clock&display=small&file=klein", nil, nil).Body.String()
+	for _, want := range []string{
+		`data-dialog="reassign" disabled title="No other page has a page file yet"`,
+		"No other page has a page file yet; create one with New page first.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the only variant of the instance lacks %q:\n%s", want, body)
+		}
+	}
+}
+
 // TestEditorCreateVariantDialog offers the new variant in one dialog: every
 // configured display type and a file label (ADR 0110).
 func TestEditorCreateVariantDialog(t *testing.T) {

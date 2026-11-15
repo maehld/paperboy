@@ -84,6 +84,9 @@ input[type=search] { margin-bottom: .4rem; }
 .panel.serves td.pick select.none { color: #888; background: #f4f4f4; }
 .types-label { margin: .55rem 0 .15rem; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: #666; font-weight: 600; }
 ul.variant-types { margin: 0; padding-left: 1.1rem; font-size: .85rem; }
+/* The two actions of a variant sit side by side under its display types. */
+.variant-actions { display: flex; gap: .5rem; margin-top: .8rem; }
+.variant-actions button { flex: 1 1 0; }
 /* An action that belongs to a panel spans the card, with the same gap above it
    as the panel padding leaves below it. */
 .panel > button { display: block; width: 100%; margin: .8rem 0 0; }
@@ -174,6 +177,10 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
       <p class="hint">This is a variant for {{if .ParentURL}}<a href="{{.ParentURL}}">{{.PageTitle}}</a>{{else}}{{.PageTitle}}{{end}}</p>
       <p class="types-label">Assigned display types</p>
       {{if .VariantTypes}}<ul class="variant-types">{{range .VariantTypes}}<li>{{.}}</li>{{end}}</ul>{{else}}<p class="hint">none</p>{{end}}
+      {{if not .Orphan}}<div class="variant-actions">
+        <button type="button" data-dialog="rename-variant">Rename…</button>
+        <button type="button" data-dialog="reassign"{{if not .ReassignPages}} disabled title="No other page has a page file yet"{{end}}>Reassign…</button>
+      </div>{{end}}
     </section>{{else}}<section class="panel serves">
       <h3>Variants</h3>
       {{if .NoPage}}<p class="hint">{{if .Orphan}}This page has no page file yet. Assign one in the pages list.{{else}}This page has no file yet; the first save writes it.{{end}}</p>{{else}}<table>
@@ -230,6 +237,26 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <label>File <input name="label" required pattern="[a-z0-9-]{1,40}" maxlength="40" size="16" value="{{.CreateLabel}}" title="lower case letters, digits and -"></label>
     <p class="hint">{{if .CreateOK}}The variant starts from the display type: its kind and character grid come from it, never from the open file. The page names the new file and sends the type to it.{{else}}Create the page file first; the page owns its variants.{{end}}</p>
     <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit"{{if not .CreateOK}} disabled{{end}}>Create</button></div>
+  </form>
+</dialog>{{end}}
+{{if and .IsVariant (not .Orphan)}}<dialog id="rename-variant">
+  <form data-rename-variant>
+    <h3>Rename variant</h3>
+    <label>New label <input name="label" required pattern="[a-z0-9-]{1,40}" maxlength="40" size="16" value="{{.File}}" title="lower case letters, digits and -"></label>
+    <p class="hint">The file moves and the page rewrites every entry that names <code>{{.File}}</code>. Its display types stay the same.</p>
+    <p class="error" data-error hidden></p>
+    <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Rename</button></div>
+  </form>
+</dialog>
+<dialog id="reassign">
+  <form data-reassign>
+    <h3>Reassign variant</h3>
+    {{if .ReassignPages}}<label>Page <select name="page">{{range .ReassignPages}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></label>
+    <p class="hint">The file moves to that page and its entries go with it. Display types it serves leave this page.</p>
+    <p class="error" data-error hidden></p>
+    <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Reassign</button></div>
+    {{else}}<p class="hint">No other page has a page file yet; create one with New page first.</p>
+    <div class="dialog-actions"><button type="button" data-close>Close</button></div>{{end}}
   </form>
 </dialog>{{end}}
 <script id="editor-data" type="application/json">{{.Data}}</script>

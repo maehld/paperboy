@@ -364,3 +364,13 @@ func pageRenameAction(cfg *Config, name string, usedBy []string) *renameAction {
 	}
 	return &renameAction{URL: "/api/pages/" + url.PathEscape(name) + "/rename", Warn: pageRenameWarning(name, usedBy)}
 }
+
+// renameForPage is the action bar's rename of the file the editor shows: only
+// the page file has one. A variant renames its label in the Variant block, so a
+// view shows one Rename (ADR 0079, 0110).
+func renameForPage(cfg *Config, name string, usedBy []string, label string) *renameAction {
+	if label != "" {
+		return nil
+	}
+	return pageRenameAction(cfg, name, usedBy)
+}
