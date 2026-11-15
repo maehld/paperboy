@@ -1,11 +1,14 @@
 // Package page parses page templates and composes them from widgets
-// (ADR 0049).
+// (ADR 0049) and plugin values (ADR 0111).
 //
-// A page is a grid of cells. Every cell shows one widget of a plugin, e.g.
-// "calendar/agenda". On an image display the grid divides the pixels; on a
-// text display the grid is the character grid of the display, e.g. 20x4.
-// Paperboy asks the plugins for every widget in exactly the size of its cell
-// and pastes the results; it never scales them.
+// An image page is a grid of cells. Every cell shows one widget of a plugin,
+// e.g. "calendar/agenda". The grid divides the pixels; Paperboy asks the
+// plugins for every widget in exactly the size of its cell and pastes the
+// results; it never scales them.
+//
+// A text page is a layout of rows of values. Every cell names a value a plugin
+// declares, and Paperboy formats it, aligns it and maps it to the character
+// set of the display.
 package page
 
 import (
@@ -60,9 +63,6 @@ type Cell struct {
 	Widget string         `yaml:"widget" json:"widget"`         // plugin/widget
 	Args   map[string]any `yaml:"args" json:"args,omitempty"`   // widget arguments
 	Style  *Style         `yaml:"style" json:"style,omitempty"` // overrides the page style for this widget
-	// Scroll lets a text widget return lines wider than the cell and shows
-	// them as a marquee (ADR 0092); the cell has to span the display's width.
-	Scroll bool `yaml:"scroll" json:"scroll,omitempty"`
 }
 
 // Plugin and widget name of the cell.
@@ -292,9 +292,6 @@ func (t *Template) validateGrid() error {
 				return fmt.Errorf("%s: style: %w", where, err)
 			}
 		}
-		if c.Scroll {
-			return fmt.Errorf("%s: scroll is only for text pages (kind: text)", where)
-		}
 		for y := c.At[1]; y < c.At[1]+c.Span[1]; y++ {
 			for x := c.At[0]; x < c.At[0]+c.Span[0]; x++ {
 				if other := taken[y*cols+x]; other != 0 {
@@ -375,12 +372,6 @@ func (t *Template) Fits(d Display) error {
 			if width > d.Width {
 				return fmt.Errorf("row %d is %d characters wide, the text display has %d columns", y+1, width, d.Width)
 			}
-		}
-	}
-	for i, c := range t.Cells {
-		if c.Scroll && c.Span[0] != d.Width {
-			return fmt.Errorf("cell %d (%s): scroll needs the full display width of %d columns, got %d",
-				i+1, c.Widget, d.Width, c.Span[0])
 		}
 	}
 	return nil
