@@ -226,7 +226,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 {{if not .WidgetsPage}}<dialog id="create-variant">
   <form data-create-variant>
     <h3>Create variant</h3>
-    <label>Display type <select name="display">{{range .CreateTypes}}<option value="{{.Name}}" data-label="{{.Label}}"{{if .Served}} title="served by {{.Served}}"{{end}}>{{.Name}}</option>{{end}}</select></label>
+    <label>Display type <select name="display">{{range .CreateTypes}}<option value="{{.Name}}" data-label="{{.Label}}"{{if .Served}} title="served by {{.Served}}"{{end}}{{if .Selected}} selected{{end}}>{{.Name}}</option>{{end}}</select></label>
     <label>File <input name="label" required pattern="[a-z0-9-]{1,40}" maxlength="40" size="16" value="{{.CreateLabel}}" title="lower case letters, digits and -"></label>
     <p class="hint">{{if .CreateOK}}The variant starts from the display type: its kind and character grid come from it, never from the open file. The page names the new file and sends the type to it.{{else}}Create the page file first; the page owns its variants.{{end}}</p>
     <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit"{{if not .CreateOK}} disabled{{end}}>Create</button></div>

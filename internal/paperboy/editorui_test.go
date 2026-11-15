@@ -275,7 +275,7 @@ func TestEditorCreateVariantDialog(t *testing.T) {
 		`<button type="button" data-dialog="create-variant">Create variant…</button>`,
 		`<dialog id="create-variant">`,
 		`<select name="display">`,
-		`<option value="lcd" data-label="lcd">lcd</option>`,
+		`<option value="lcd" data-label="lcd" selected>lcd</option>`,
 		`<option value="small" data-label="small" title="served by pages/solar.hochkant.yaml">small</option>`,
 		`<input name="label" required pattern="[a-z0-9-]{1,40}" maxlength="40" size="16" value="lcd"`,
 	} {

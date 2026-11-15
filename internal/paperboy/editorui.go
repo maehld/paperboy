@@ -170,9 +170,10 @@ type servesRow struct {
 // dialog. A type that a file already serves is disabled, because the select in
 // Variants is the place to change it (ADR 0110).
 type variantType struct {
-	Name   string // display type
-	Label  string // default label of the new file
-	Served string // path of the serving file; empty when a variant can be created
+	Name     string // display type
+	Label    string // default label of the new file
+	Served   string // path of the serving file; empty when a variant can be created
+	Selected bool   // the dialog starts with this type
 }
 
 // uiTab is one sub-tab of a view: the editor's object types.
@@ -551,6 +552,17 @@ func createVariantTypes(name string, coverage []pageCoverageEntry) []variantType
 		}
 		types = append(types, t)
 	}
+	// The dialog starts with the first type that no file serves, else with the
+	// first one (ADR 0110).
+	for i := range types {
+		if types[i].Served == "" {
+			types[i].Selected = true
+			return types
+		}
+	}
+	if len(types) > 0 {
+		types[0].Selected = true
+	}
 	return types
 }
 
@@ -915,8 +927,10 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 		// Every configured type is a candidate: the dialog creates the file and
 		// sends the type to it (ADR 0110).
 		v.CreateOK = pageExists && len(v.CreateTypes) > 0
-		if len(v.CreateTypes) > 0 {
-			v.CreateLabel = v.CreateTypes[0].Label
+		for _, t := range v.CreateTypes {
+			if t.Selected {
+				v.CreateLabel = t.Label
+			}
 		}
 	}
 	named := false
