@@ -39,11 +39,10 @@ type planEditorDevice struct {
 // planEditorPage is one page file the plan may name, with the reason it does
 // not fit a display type of one of the plan's devices.
 type planEditorPage struct {
-	Name  string            `json:"name"`
-	Kind  string            `json:"kind,omitempty"`
-	Grid  [2]int            `json:"grid,omitempty"`
-	Error string            `json:"error,omitempty"` // the file does not parse
-	Fits  map[string]string `json:"fits,omitempty"`  // display type → reason it is skipped
+	Name   string            `json:"name"`
+	Serves []string          `json:"serves,omitempty"` // display types the page resolves to
+	Error  string            `json:"error,omitempty"`  // the file does not parse
+	Fits   map[string]string `json:"fits,omitempty"`   // display type → reason it is skipped
 }
 
 // planEditorState is the data the script needs beyond the plan model: which
@@ -93,7 +92,15 @@ func (s *Server) planEditorData(cfg *Config, name string) planEditorState {
 			continue
 		}
 		listed[f.Name] = true
-		p := planEditorPage{Name: f.Name, Kind: f.Kind, Grid: f.Grid, Error: f.Error}
+		p := planEditorPage{Name: f.Name, Error: f.Error}
+		// The plan serves devices of several display types, so the picker names
+		// the types the page resolves to, not its kind (ADR 0110).
+		coverage, _ := s.pageCoverage(cfg, f.Name)
+		for _, c := range coverage {
+			if !c.Missing && c.Error == "" {
+				p.Serves = append(p.Serves, c.Display)
+			}
+		}
 		if len(st.Displays) > 0 {
 			p.Fits = map[string]string{}
 			for _, display := range st.Displays {

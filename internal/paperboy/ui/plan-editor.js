@@ -330,7 +330,7 @@
     for (const p of free) {
       const option = document.createElement('option');
       option.value = p.name;
-      option.textContent = p.name + (p.kind ? ' · ' + p.kind : '');
+      option.textContent = p.name + (p.serves && p.serves.length ? ' · ' + p.serves.join(' · ') : '');
       select.appendChild(option);
     }
     const addButton = document.createElement('button');
@@ -363,7 +363,7 @@
     const meta = document.createElement('span');
     meta.className = 'muted';
     meta.textContent = info
-      ? [info.kind, info.grid ? info.grid[0] + '×' + info.grid[1] : ''].filter(Boolean).join(' ')
+      ? info.serves && info.serves.length ? info.serves.join(' · ') : 'no display type'
       : 'no file';
     row.append(
       label,
