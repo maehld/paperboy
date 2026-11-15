@@ -1,6 +1,6 @@
 # 0064: Device protocol v4 – event identities and explicit wake reasons
 
-- Status: Proposed
+- Status: Accepted, implemented
 - Date: 2026-11-07
 - Builds on: ADR 0041 (firmware), ADR 0042 (device API), ADR 0051 (power source), ADR 0057 (action menu)
 - Answers: issue #55

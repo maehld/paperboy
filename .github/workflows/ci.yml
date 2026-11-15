@@ -38,6 +38,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Check the documentation style
+        run: ./scripts/check-docs.sh
+
       - name: Test
         run: go test ./...
 

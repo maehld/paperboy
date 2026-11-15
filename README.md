@@ -46,12 +46,15 @@ The README gives the overview and the quick start. The details are in these page
 | [Plugins](docs/plugins/README.md) | the plugin host and protocol, and the shipped plugins |
 | [Releases and downloads](docs/releases.md) | release tags and assets, downloads, channels and cleanup |
 | [OpenDisplay](docs/opendisplay.md) | the OpenDisplay protocol and its test program |
+| [Design](docs/design/README.md) | how the system works today, one document per area |
 | [Development](docs/development.md) | build, versioning, workflows and the repository layout |
+| [Glossary](docs/glossary.md) | the terms that all documents use |
 
 ## Licence
 
 Paperboy is published under the [MIT licence](LICENSE). Third-party material keeps its own licence:
 
 - The OpenMoji pictograms in `cmd/weather/icons/` and `cmd/evcc/icons/` are [CC BY-SA 4.0](cmd/weather/icons/README.md); the licence travels with the plugin zip.
+- The operator UI vendors htmx 4.0.1 in `internal/paperboy/ui/vendor/` (0BSD, ADR 0106). It is the only foreign JavaScript in the service.
 - The firmware in `firmware/esphome/` is a Paperboy configuration for [ESPHome](https://esphome.io). The images built from it contain the ESPHome runtime, whose C++ parts are GPLv3; the sources are in this repository. The bundled Go fonts (`pkg/render`) come with their own BSD-style licence.
 - The examples and the plugin test fixtures are fictional; xkcd comics are CC BY-NC 2.5 and are fetched at runtime, never shipped.

@@ -1,0 +1,45 @@
+[← Paperboy](../README.md)
+
+# Glossary
+
+One term per thing. If a document needs a second word for the same thing, the word is wrong.
+
+| Term | Meaning | Not called |
+|---|---|---|
+| **Paperboy** | The service: one binary, one instance directory, one listener | display service, displayd, server |
+| **instance** | The directory that `-config` selects, with `paperboy.yaml`, the content and the state | data directory, config directory |
+| **plugin** | A long-running program that draws widgets and answers actions | provider, backend, service |
+| **widget** | One drawing unit of a plugin, identified as `<plugin>/<widget>` | module, fragment, block |
+| **cell** | One box of a page grid, which shows exactly one widget | tile, slot |
+| **page** | A grid of cells with a size from its display type | screen, template, view |
+| **page file** | `pages/<page>.<display type>.yaml` for one display type, or `pages/<page>.yaml` shared by all | page, variant (for the shared file) |
+| **variant** | The page file of one display type | profile, page |
+| **display type** | The kind of panel that pages fit: kind, size, gray levels, ppi or charset, power, rotation | display, panel, profile, device type |
+| **device** | One panel with Paperboy's firmware, identified by MAC and one file under `devices/` | display, node, client, target |
+| **plan** | The rules that select the pages of one device over time | playlist, schedule |
+| **rule** | One entry of a plan: time window, days, conditions, pages, rotation, refresh | plan, entry |
+| **fallback** | The pages of a device whose no rule matches | default, base |
+| **condition** | A named state of a plugin, written `plugin/condition`, that a rule needs | predicate, expression, data blocker |
+| **action** | Something a plugin can do on request, offered in the device menu | command, task, operation |
+| **menu** | The action overlay on a device, opened with `home` | overlay, dialog |
+| **notice page** | A full-screen page that tells the device why it got no page | hint, error page, message page |
+| **stale** | A widget result that is older than its `max_age` and therefore carries the warning bar | expired, outdated |
+| **levels** | The number of gray levels a display type draws: 1, 4 or 16 | gray, grayscale, bpp |
+| **device key** | The secret a device gets at registration and sends as bearer token | token, password |
+| **operator UI** | The web pages for the operator, behind `ui.password` | dashboard (only `GET /ui`), admin UI, frontend |
+| **plugin host** | The part of Paperboy that starts plugins, caches their widgets and asks their conditions | widget host, plugin manager |
+| **release train** | One of `v<version>`, `plugins-v<version>`, `firmware-v<version>` | release channel |
+| **channel** | `stable` or `latest`: which releases an instance installs | train |
+| **bundle** | `paperboy-firmware.zip`, the archive with the image of every hardware type | package |
+| **inventory** | The programs in `plugins/` and the images in `firmware/` | cache, store |
+
+## Where the code differs
+
+The code keeps two older names. A document uses the term of the table and names the old one where it matters:
+
+- `{profile}` in `/pages/{profile}/{page}/{file}` and `GET /api/profiles` means the display type. The paths stay, because firmware in the field uses them.
+- `hint` in `/hints/{file}`, `hintPage` and `hints` means the notice page.
+
+## Language
+
+English documents use the rules of ASD-STE100 as the house style. That means short sentences, active voice, imperative for steps and present tense. One term stands for one concept, and a noun cluster has at most three words. [`development.md`](development.md) lists the rules that a script checks.

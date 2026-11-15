@@ -1,6 +1,6 @@
 # 0082: The menu's tap controls are their own strip
 
-- Status: Proposed
+- Status: Accepted, implemented
 - Date: 2026-11-11
 - Builds on: ADR 0057 (action menu), ADR 0067 (buttons and the menu), ADR 0078
   (the menu stays open while it is used)
