@@ -101,6 +101,7 @@ The hardware side: what a panel can do and how the firmware talks to it. See [`0
 | [0086](0086-four-gray-levels-on-the-e1001.md) | Four gray levels on the E1001 | Accepted, implemented; supersedes the dithered grays of ADR-0041 for that hardware; the panel settings moved to the device in ADR-0087 |
 | [0087](0087-panel-settings-live-on-the-device.md) | Panel settings live on the device | Accepted, implemented; amends the substitution decision of ADR-0086 |
 | [0105](0105-sixteen-gray-levels.md) | Sixteen gray levels on the panel | Accepted, implemented; replaces the `gray` bool of display types with `levels`, accepts `levels` 16 in the plugin protocol and keeps the 512 KiB QOI limit of ADR-0088, which follows the firmware buffer |
+| [0108](0108-verify-the-tls-certificate.md) | Verify the TLS certificate in the firmware | Accepted, implemented (firmware not yet flashed); builds on the page key of ADR-0097 |
 
 ## Operator UI and editors
 

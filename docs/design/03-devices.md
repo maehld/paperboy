@@ -125,6 +125,8 @@ The firmware lives in `firmware/esphome/` and is built on ESPHome (ADR 0041).
 
 A cycle runs one at a time; a second trigger is dropped, so it cannot move the page cursor behind a running download. The firmware connects to the saved BSSID and channel without a scan. It decodes QOI itself into the panel buffer, because ESPHome's decoders spend 2.2–2.6 seconds on 384k pixels. Input during sync or paint is queued for one follow-up sync with a 150 ms settle, so a burst of presses becomes one sync. Failures are noted in RTC memory and reported in the next sync's `log`.
 
+An `https://` Paperboy URL is verified against the ESP-IDF CA bundle, which contains the Let's Encrypt roots (ADR 0108). `http://` in the LAN stays unencrypted. The check needs a clock. SNTP provides it after a power-on, the RTC keeps it across deep sleep, and the sync answer sets it from `time`. A device without a clock shows the setup screen with the reason.
+
 The only update path is `ota: http_request` with the offer from Paperboy. There is no native ESPHome OTA and no upload in the web UI; a rescue needs USB.
 
 ## Hardware findings

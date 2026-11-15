@@ -17,12 +17,16 @@
 
 substitutions:
   hardware: e1001
-  fw_version: "2.8.0"
+  fw_version: "2.9.0"
   # The mounting this image is built for; a device adds its quarter turn to it
   # at runtime (ADR 0102).
   compiled_rotation: 0
   # Optional default for the Paperboy URL entered in the web UI.
   default_paperboy_url: ""
+  # NTP server for the clock that the certificate check of an https Paperboy
+  # URL needs (ADR 0108). A network that blocks the pool points this at its
+  # router.
+  ntp_server: "pool.ntp.org"
   # Initial option of the LUT mode select; the device remembers a change.
   lut_mode: otp
 

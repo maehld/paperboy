@@ -40,6 +40,7 @@ esphome:
     - priority: -100
       then:
         - lambda: "pb_init_rtc();"
+        - lambda: "pb_stop_sntp_if_clocked();"
         - lambda: "pb_note_boot();"
         - lambda: "pb_time(\"boot\");"
         - lambda: "id(mac) = get_mac_address_pretty();"
@@ -216,15 +217,34 @@ globals:
   - id: wake_gpio
     type: int
     initial_value: "0"
+  # Start of the wait for a clock that an https Paperboy URL needs (ADR 0108).
+  - id: clock_start
+    type: uint32_t
+    initial_value: "0"
 
 http_request:
   useragent: paperboy-esphome
   timeout: 15s
-  verify_ssl: false
+  # The certificate of an https Paperboy URL is verified against the ESP-IDF CA
+  # bundle (ADR 0108). Plain http in the LAN is unaffected: the setting only
+  # applies to https.
   # The image download reads one client buffer per loop iteration, and every
   # read waits for the radio: 512 bytes took as long as 2048 for a page, so
   # this only keeps the number of reads down (measured 2026-11-08).
   buffer_size_rx: 2048
+
+# The clock the certificate check needs. A power-on has no time until SNTP
+# answered, so the cycle waits for it before the first request (wait_for_clock);
+# a wake keeps the RTC time and Paperboy's sync answer corrects it.
+time:
+  - platform: sntp
+    timezone: UTC
+    servers:
+      - ${ntp_server}
+      - time.cloudflare.com
+    # A wake is already clocked; the poll only keeps a device that stays awake
+    # honest. A network that blocks NTP points ntp_server at its router.
+    update_interval: 24h
 
 # No online_image: its decoders spend about 2.2-2.6 s on the 384k pixels of a
 # page (measured 2026-11-08), whatever the format and file size. The firmware
@@ -251,6 +271,20 @@ script:
       - lambda: 'pb_time("splash");'
       - delay: 5s
       - lambda: "pb_splash = false;"
+
+  # A TLS handshake compares the certificate's validity dates, so an https
+  # Paperboy URL needs a plausible clock before the first request (ADR 0108).
+  # After a power-on SNTP provides it; the wait is bounded, because an
+  # unreachable NTP server must not turn into a device that never syncs.
+  - id: wait_for_clock
+    mode: single
+    then:
+      - lambda: "id(clock_start) = millis();"
+      - while:
+          condition:
+            lambda: "return !pb_clock_valid() && millis() - id(clock_start) < 10000;"
+          then:
+            - delay: 200ms
 
   - id: run_cycle
     mode: restart
@@ -283,37 +317,53 @@ script:
           condition:
             lambda: "return wifi::global_wifi_component->is_connected();"
           then:
+            # An https Paperboy URL needs the clock for the certificate check
+            # (ADR 0108); http in the LAN does not wait at all.
             - if:
                 condition:
-                  lambda: "return id(api_key).state.empty();"
+                  lambda: "return pb_needs_clock(pb_base(id(paperboy_url).state));"
                 then:
-                  - script.execute: do_register
-                  - script.wait: do_register
+                  - script.execute: wait_for_clock
+                  - script.wait: wait_for_clock
             - if:
                 condition:
-                  lambda: "return !id(api_key).state.empty();"
+                  lambda: "return pb_clock_ready(pb_base(id(paperboy_url).state));"
                 then:
-                  # One cycle at a time. A second sync while the first answer is
-                  # still downloading does move Paperboy's cursor (with `rotate`
-                  # in the plan) while the panel keeps the old page, so the
-                  # second page would never be seen: drop the extra cycle and
-                  # leave the running one to deliver its page.
                   - if:
                       condition:
-                        lambda: "return id(busy);"
+                        lambda: "return id(api_key).state.empty();"
                       then:
-                        - logger.log: "a cycle is already running, keeping its page"
+                        - script.execute: do_register
+                        - script.wait: do_register
+                  - if:
+                      condition:
+                        lambda: "return !id(api_key).state.empty();"
+                      then:
+                        # One cycle at a time. A second sync while the first answer is
+                        # still downloading does move Paperboy's cursor (with `rotate`
+                        # in the plan) while the panel keeps the old page, so the
+                        # second page would never be seen: drop the extra cycle and
+                        # leave the running one to deliver its page.
+                        - if:
+                            condition:
+                              lambda: "return id(busy);"
+                            then:
+                              - logger.log: "a cycle is already running, keeping its page"
+                            else:
+                              - script.execute: sync_and_show
                       else:
-                        - script.execute: sync_and_show
+                        - if:
+                            condition:
+                              lambda: "return !id(setup_mode);"
+                            then:
+                              # No key and no server: show the setup screen with the
+                              # address instead of sleeping, so a wrong Paperboy URL
+                              # can be corrected right away.
+                              - script.execute: { id: enter_setup, reason: "url" }
                 else:
-                  - if:
-                      condition:
-                        lambda: "return !id(setup_mode);"
-                      then:
-                        # No key and no server: show the setup screen with the
-                        # address instead of sleeping, so a wrong Paperboy URL
-                        # can be corrected right away.
-                        - script.execute: { id: enter_setup, reason: "url" }
+                  # No clock after the wait: every handshake would fail. Name it
+                  # instead, so the operator looks at NTP and not at the URL.
+                  - script.execute: { id: enter_setup, reason: "clock" }
           else:
             - lambda: 'pb_note_for_next_wake("no Wi-Fi connection");'
             - logger.log: "no Wi-Fi, sleeping"
@@ -389,6 +439,10 @@ script:
             if (!current.empty()) {
               t += "Now: " + current + "\n";
             }
+          } else if (reason == "clock") {
+            t += "No clock for the certificate\n";
+            t += "of an https Paperboy URL.\n";
+            t += "Check NTP or use http://\n";
           } else {
             t += "Paperboy does not know this display.\n";
             t += "Add its MAC to paperboy.yaml.\n";
@@ -466,6 +520,14 @@ script:
   - id: do_sync
     mode: single
     then:
+      - if:
+          condition:
+            lambda: "return pb_needs_clock(pb_base(id(paperboy_url).state));"
+          then:
+            # A button wake syncs before run_cycle decides anything; the RTC
+            # clock is valid by then, so this only waits after a power-on.
+            - script.execute: wait_for_clock
+            - script.wait: wait_for_clock
       - lambda: "id(sync_attempts) = 0;"
       - while:
           condition:
@@ -524,6 +586,9 @@ script:
                     // The page rotation for this mounting (ADR 0102). Older
                     // servers omit it, which keeps the compiled orientation.
                     pb_set_rotation(root["rotation"] | 0);
+                    // The server's time keeps the clock of the deep sleep
+                    // accurate enough for the certificate check (ADR 0108).
+                    pb_set_clock(root["time"] | 0);
                     id(fw_offered) = root["firmware"]["version"] | "";
                     id(fw_path) = root["firmware"]["path"] | "";
                     id(fw_md5) = root["firmware"]["md5"] | "";

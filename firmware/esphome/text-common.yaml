@@ -30,6 +30,7 @@ esphome:
       then:
         - lambda: |-
             pb_init_rtc();
+            pb_stop_sntp_if_clocked();
             id(mac) = get_mac_address_pretty();
             pb_power = "mains";  // text displays have no battery (ADR 0051)
             pb_show_message("Paperboy\nstarting ...");
@@ -119,7 +120,19 @@ globals:
 http_request:
   useragent: paperboy-esphome
   timeout: 5s
-  verify_ssl: false
+  # The certificate of an https Paperboy URL is verified against the ESP-IDF CA
+  # bundle (ADR 0108). Plain http in the LAN is unaffected.
+
+# The clock the certificate check needs. A boot has no time until SNTP answered,
+# so register, sync and poll only run once there is one; a device that stays up
+# keeps it and Paperboy's sync answer corrects it.
+time:
+  - platform: sntp
+    timezone: UTC
+    servers:
+      - ${ntp_server}
+      - time.cloudflare.com
+    update_interval: 24h
 
 interval:
   # One tick per second only decides what is due: setup instructions (local),
@@ -145,13 +158,21 @@ interval:
                       then:
                         - if:
                             condition:
-                              lambda: "return millis() >= id(next_register) && !id(do_register).is_running();"
+                              lambda: "return millis() >= id(next_register) && !id(do_register).is_running() && pb_clock_ready(pb_base(id(paperboy_url).state));"
                             then:
                               - script.execute: do_register
+                            else:
+                              # An https Paperboy URL cannot be verified without a
+                              # clock; SNTP is still on its way (ADR 0108).
+                              - if:
+                                  condition:
+                                    lambda: "return !pb_clock_ready(pb_base(id(paperboy_url).state));"
+                                  then:
+                                    - script.execute: { id: show_setup, reason: "clock" }
                       else:
                         - if:
                             condition:
-                              lambda: "return millis() >= id(next_sync);"
+                              lambda: "return millis() >= id(next_sync) && pb_clock_ready(pb_base(id(paperboy_url).state));"
                             then:
                               - if:
                                   condition:
@@ -164,7 +185,8 @@ interval:
                                   condition:
                                     lambda: |-
                                       return millis() >= id(next_poll) && !id(do_sync).is_running() &&
-                                             !id(do_poll).is_running();
+                                             !id(do_poll).is_running() &&
+                                             pb_clock_ready(pb_base(id(paperboy_url).state));
                                   then:
                                     - script.execute: do_poll
 
@@ -196,6 +218,8 @@ script:
               ips[0].str_to(ip);
             }
             t = "Setup: open\nhttp://" + std::string(ip) + "/\nenter Paperboy URL";
+          } else if (reason == "clock") {
+            t = "No clock for https\ncheck NTP or use http";
           } else {
             t = "Unknown display\nAdd MAC to Paperboy:\n" + id(mac);
           }
@@ -292,6 +316,9 @@ script:
                     id(next_poll) = millis() + id(poll_ms);
                     id(next_sync) = millis() + (uint32_t) std::max(refresh, 60) * 1000;
                     changed = pb_take_text(root["text"]);
+                    // The server's time keeps the clock for the certificate
+                    // check of an https URL accurate (ADR 0108).
+                    pb_set_clock(root["time"] | 0);
                     id(fw_offered) = root["firmware"]["version"] | "";
                     id(fw_path) = root["firmware"]["path"] | "";
                     id(fw_md5) = root["firmware"]["md5"] | "";
