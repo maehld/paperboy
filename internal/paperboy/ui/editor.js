@@ -1661,9 +1661,9 @@
     openMovedFile(res.doc, res.doc.name || page, res.doc.file || state.file);
   }
 
-  // rename moves the page file only; the variants keep the old name and the
-  // plans that name the page keep it too, so the confirmation names them
-  // (ADR 0079, 0110).
+  // rename moves the page file and its variants, so the open page keeps its
+  // files under the new name; the plans that name the page keep the old name,
+  // so the confirmation names them (ADR 0079, 0113).
   async function rename() {
     if (!state.rename) return;
     const warn = state.rename.warn +

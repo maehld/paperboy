@@ -15,12 +15,13 @@ func fileExists(t *testing.T, path string) bool {
 	return err == nil
 }
 
-// TestRenamePage moves the page file only; its variants keep the old name and
-// become orphans; the page file is created and painted by hand (ADR 0110, 0112).
+// TestRenamePage moves the page file and every variant file, mapped or not, in
+// one step; the labels and the variants map stay as they are (ADR 0113).
 func TestRenamePage(t *testing.T) {
 	s := editorServer(t)
 	writePage(t, s, "solar", "", pageWithVariant)
 	writePage(t, s, "solar", "hochkant", variantPage)
+	writePage(t, s, "solar", "quer", variantPage)
 	writePage(t, s, "other", "", previewTemplate)
 
 	var page editorPage
@@ -40,54 +41,73 @@ func TestRenamePage(t *testing.T) {
 		t.Fatal("a refused rename moved a file")
 	}
 
-	// A name that is already taken is refused.
+	// A page name that is already taken is refused.
 	rec = request(t, s, http.MethodPost, "/api/pages/solar/rename?hash="+page.Hash, map[string]string{"name": "other"}, nil)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("collision: %d %s", rec.Code, rec.Body)
 	}
 
+	// One taken variant target refuses the whole set, before anything moves.
+	writePage(t, s, "sun", "quer", variantPage)
+	rec = request(t, s, http.MethodPost, "/api/pages/solar/rename?hash="+page.Hash, map[string]string{"name": "sun"}, nil)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "pages/sun.quer.yaml already exists") {
+		t.Fatalf("taken variant target: %d %s", rec.Code, rec.Body)
+	}
+	for _, name := range []string{"solar.yaml", "solar.hochkant.yaml", "solar.quer.yaml"} {
+		if !fileExists(t, filepath.Join(s.config().Pages, name)) {
+			t.Fatalf("a refused rename moved %s", name)
+		}
+	}
+	if fileExists(t, filepath.Join(s.config().Pages, "sun.yaml")) {
+		t.Fatal("a refused rename moved the page file")
+	}
+	if err := os.Remove(filepath.Join(s.config().Pages, "sun.quer.yaml")); err != nil {
+		t.Fatal(err)
+	}
+
+	// The page file and both variants move as one set; the answer names each
+	// file at its new place.
 	var out struct {
-		Name    string
-		Files   []string
-		Orphans []string
+		Name  string
+		Files []string
 	}
 	rec = request(t, s, http.MethodPost, "/api/pages/solar/rename", map[string]string{"name": "sun"}, &out)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
-	if out.Name != "sun" || len(out.Files) != 1 || out.Files[0] != "pages/sun.yaml" {
+	want := []string{"pages/sun.yaml", "pages/sun.hochkant.yaml", "pages/sun.quer.yaml"}
+	if out.Name != "sun" || len(out.Files) != len(want) {
 		t.Fatalf("answer: %+v", out)
 	}
-	if len(out.Orphans) != 1 || out.Orphans[0] != "pages/solar.hochkant.yaml" {
-		t.Fatalf("orphans: %+v", out)
-	}
-	if fileExists(t, filepath.Join(s.config().Pages, "solar.yaml")) || !fileExists(t, filepath.Join(s.config().Pages, "sun.yaml")) {
-		t.Fatal("the page file did not move")
-	}
-	if !fileExists(t, filepath.Join(s.config().Pages, "solar.hochkant.yaml")) {
-		t.Fatal("the variant moved with the page")
-	}
-	// The variant is an orphan now, and the page sun has no page file naming it.
-	var list struct{ Pages []editorPageFile }
-	request(t, s, http.MethodGet, "/api/pages", nil, &list)
-	for _, f := range list.Pages {
-		if f.Name == "solar" && f.Label == "hochkant" && !f.Orphan {
-			t.Fatalf("variant is not an orphan: %+v", f)
+	for i := range want {
+		if out.Files[i] != want[i] {
+			t.Fatalf("answer files: %+v", out.Files)
 		}
 	}
-
-	// The variant stays under the old name: the operator creates the page file
-	// by hand and picks the file in its Variants table (ADR 0110, 0112).
-	if !fileExists(t, filepath.Join(s.config().Pages, "solar.hochkant.yaml")) {
-		t.Fatal("the variant moved with the page")
+	pages := s.config().Pages
+	for _, name := range []string{"sun.yaml", "sun.hochkant.yaml", "sun.quer.yaml"} {
+		if !fileExists(t, filepath.Join(pages, name)) {
+			t.Fatalf("%s did not move", name)
+		}
+	}
+	for _, name := range []string{"solar.yaml", "solar.hochkant.yaml", "solar.quer.yaml"} {
+		if fileExists(t, filepath.Join(pages, name)) {
+			t.Fatalf("%s stayed under the old name", name)
+		}
+	}
+	// The variants map is not rewritten: small still names hochkant.
+	var moved editorPage
+	request(t, s, http.MethodGet, "/api/pages/sun", nil, &moved)
+	if moved.Variants["small"] != "hochkant" {
+		t.Fatalf("the variants map changed: %+v", moved.Variants)
 	}
 
 	// The same name is not a rename.
 	if rec := request(t, s, http.MethodPost, "/api/pages/sun/rename", map[string]string{"name": "sun"}, nil); rec.Code != http.StatusBadRequest {
 		t.Fatalf("same name: %d %s", rec.Code, rec.Body)
 	}
-	// A page that does not exist is a 404; so is a page that exists only as a
-	// variant, because only the page file moves (ADR 0110).
+	// A page that does not exist is a 404; so is the old page, whose files all
+	// moved.
 	for _, name := range []string{"nope", "solar"} {
 		if rec := request(t, s, http.MethodPost, "/api/pages/"+name+"/rename", map[string]string{"name": "x"}, nil); rec.Code != http.StatusNotFound {
 			t.Fatalf("missing page %q: %d %s", name, rec.Code, rec.Body)
@@ -96,6 +116,58 @@ func TestRenamePage(t *testing.T) {
 	// An invalid new name is a 400.
 	if rec := request(t, s, http.MethodPost, "/api/pages/sun/rename", map[string]string{"name": "Not Valid"}, nil); rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid name: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// TestMoveFilesPreflight checks that every move is preflighted: an impossible
+// move fails and leaves the whole set where it is (ADR 0113).
+func TestMoveFilesPreflight(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "a.yaml")
+	if err := os.WriteFile(source, []byte("page"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// A target directory that does not exist refuses the move.
+	to := filepath.Join(dir, "missing", "b.yaml")
+	err := moveFiles([]fileMove{{from: source, to: to}})
+	if err == nil || !strings.Contains(err.Error(), to) {
+		t.Fatalf("missing directory: %v", err)
+	}
+	if !fileExists(t, source) || fileExists(t, to) {
+		t.Fatal("a failed preflight moved the file")
+	}
+
+	// One impossible move in a set stops the set before the first rename.
+	second := filepath.Join(dir, "c.yaml")
+	if err := os.WriteFile(second, []byte("variant"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	taken := filepath.Join(dir, "taken.yaml")
+	if err := os.WriteFile(taken, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	moved := filepath.Join(dir, "moved.yaml")
+	err = moveFiles([]fileMove{
+		{from: source, to: moved},
+		{from: second, to: taken},
+	})
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("taken target: %v", err)
+	}
+	if !fileExists(t, source) || !fileExists(t, second) || fileExists(t, moved) {
+		t.Fatal("a failed preflight moved a file of the set")
+	}
+	if data, err := os.ReadFile(taken); err != nil || string(data) != "keep" {
+		t.Fatalf("a failed preflight overwrote the target: %s %v", data, err)
+	}
+
+	// A move that passes every check happens.
+	if err := moveFiles([]fileMove{{from: source, to: moved}}); err != nil {
+		t.Fatal(err)
+	}
+	if fileExists(t, source) || !fileExists(t, moved) {
+		t.Fatal("a valid move did not happen")
 	}
 }
 
