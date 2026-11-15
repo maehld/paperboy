@@ -16,7 +16,7 @@ func fileExists(t *testing.T, path string) bool {
 }
 
 // TestRenamePage moves the page file only; its variants keep the old name and
-// become orphans, which the assign action repairs (ADR 0110).
+// become orphans; the page file is created and painted by hand (ADR 0110, 0112).
 func TestRenamePage(t *testing.T) {
 	s := editorServer(t)
 	writePage(t, s, "solar", "", pageWithVariant)
@@ -76,18 +76,10 @@ func TestRenamePage(t *testing.T) {
 		}
 	}
 
-	// The assign action makes the orphan a variant of the renamed page.
-	rec = request(t, s, http.MethodPost, "/api/pages/sun/assign?from=solar&file=hochkant&display=small", nil, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("assign: %d %s", rec.Code, rec.Body)
-	}
-	var sun editorPage
-	request(t, s, http.MethodGet, "/api/pages/sun", nil, &sun)
-	if sun.Variants["small"] != "hochkant" {
-		t.Fatalf("variants after the assign: %+v", sun.Variants)
-	}
-	if !fileExists(t, filepath.Join(s.config().Pages, "sun.hochkant.yaml")) {
-		t.Fatal("the variant did not move to the new page")
+	// The variant stays under the old name: the operator creates the page file
+	// by hand and picks the file in its Variants table (ADR 0110, 0112).
+	if !fileExists(t, filepath.Join(s.config().Pages, "solar.hochkant.yaml")) {
+		t.Fatal("the variant moved with the page")
 	}
 
 	// The same name is not a rename.

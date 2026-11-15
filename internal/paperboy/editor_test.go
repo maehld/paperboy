@@ -390,59 +390,6 @@ func TestCreateVariant(t *testing.T) {
 	}
 }
 
-// TestAssignPage moves a file without a page onto a page: it becomes the page
-// file, or the layout of a display type of an existing page (ADR 0110).
-func TestAssignPage(t *testing.T) {
-	s := editorServer(t)
-	// An orphan variant that becomes the page file of a new page.
-	writePage(t, s, "alt", "klein", variantPage)
-	var out struct{ File string }
-	rec := request(t, s, http.MethodPost, "/api/pages/neu/assign?from=alt&file=klein", nil, &out)
-	if rec.Code != http.StatusOK || out.File != "pages/neu.yaml" {
-		t.Fatalf("assign as page file: %d %s", rec.Code, rec.Body)
-	}
-	if _, err := os.Stat(filepath.Join(s.config().Pages, "alt.klein.yaml")); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("the source stayed: %v", err)
-	}
-	if data, err := os.ReadFile(filepath.Join(s.config().Pages, "neu.yaml")); err != nil || !strings.Contains(string(data), "hochkant") {
-		t.Fatalf("page file: %s %v", data, err)
-	}
-	// A target page that already has a page file is refused.
-	writePage(t, s, "solar", "", previewTemplate)
-	if rec := request(t, s, http.MethodPost, "/api/pages/solar/assign?from=neu", nil, nil); rec.Code != http.StatusConflict {
-		t.Fatalf("existing page: %d %s", rec.Code, rec.Body)
-	}
-
-	// A variant of an existing page: the file moves and the page names it.
-	writePage(t, s, "alt", "gross", variantPage)
-	var assign struct{ File string }
-	rec = request(t, s, http.MethodPost, "/api/pages/solar/assign?from=alt&file=gross&display=small", nil, &assign)
-	if rec.Code != http.StatusOK || assign.File != "pages/solar.gross.yaml" {
-		t.Fatalf("assign as variant: %d %s", rec.Code, rec.Body)
-	}
-	var read editorPage
-	request(t, s, http.MethodGet, "/api/pages/solar", nil, &read)
-	if read.Variants["small"] != "gross" {
-		t.Fatalf("variants after the assign: %+v", read.Variants)
-	}
-	if _, err := os.Stat(filepath.Join(s.config().Pages, "alt.gross.yaml")); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("the source stayed: %v", err)
-	}
-	// A source that does not fit the display type is refused: a text file never
-	// becomes the layout of an image display.
-	writePage(t, s, "alt", "text", "kind: text\ngrid: [20, 4]\ncells: [{ at: [0, 0], span: [20, 1], widget: paperboy/text }]\n")
-	if rec := request(t, s, http.MethodPost, "/api/pages/solar/assign?from=alt&file=text&display=small", nil, nil); rec.Code != http.StatusBadRequest {
-		t.Fatalf("wrong kind: %d %s", rec.Code, rec.Body)
-	}
-	// A missing source is a 404, a missing target page a 404 as well.
-	if rec := request(t, s, http.MethodPost, "/api/pages/solar/assign?from=alt&file=nope", nil, nil); rec.Code != http.StatusNotFound {
-		t.Fatalf("missing source: %d %s", rec.Code, rec.Body)
-	}
-	if rec := request(t, s, http.MethodPost, "/api/pages/nope/assign?from=alt&file=text&display=lcd", nil, nil); rec.Code != http.StatusNotFound {
-		t.Fatalf("missing page: %d %s", rec.Code, rec.Body)
-	}
-}
-
 // TestSavePageCreatesAndBacksUp verifies that a new page needs no hash and
 // that only the newest backups survive.
 func TestSavePageCreatesAndBacksUp(t *testing.T) {

@@ -143,7 +143,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   <button class="primary" id="save" type="button">Save</button>
 </div>
 {{if .Notice}}<p class="hint" id="file-notice">{{.Notice}}</p>{{end}}
-{{if .Orphan}}<p class="warn">This file belongs to no page. <a href="/ui/editor?tab=pages">Assign it in the pages list.</a></p>{{end}}{{end}}
+{{if .Orphan}}<p class="warn">This file belongs to no page. Create <code>pages/{{.Name}}.yaml</code> with New page in the pages list to use it.</p>{{end}}{{end}}
 {{if .Displays}}<div class="switch" id="display-switch">
   <span class="muted">Display type:</span>
   {{range .Displays}}<a href="{{.URL}}" data-display="{{.Name}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
@@ -217,9 +217,9 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 {{if not .WidgetsPage}}<dialog id="create-variant">
   <form data-create-variant>
     <h3>Create variant</h3>
-    <label>Display type <select name="display">{{range .CreateTypes}}<option value="{{.Name}}" data-label="{{.Label}}"{{if .Served}} disabled title="served by {{.Served}}"{{end}}>{{.Name}}</option>{{end}}</select></label>
+    <label>Display type <select name="display">{{range .CreateTypes}}<option value="{{.Name}}" data-label="{{.Label}}"{{if .Served}} title="served by {{.Served}}"{{end}}>{{.Name}}</option>{{end}}</select></label>
     <label>File <input name="label" required pattern="[a-z0-9-]{1,40}" maxlength="40" size="16" value="{{.CreateLabel}}" title="lower case letters, digits and -"></label>
-    <p class="hint">{{if .CreateOK}}The variant starts from the display type: its kind and character grid come from it, never from the open file. The page names the new file.{{else}}Every display type is served by a file. Change it in the Variants select instead.{{end}}</p>
+    <p class="hint">{{if .CreateOK}}The variant starts from the display type: its kind and character grid come from it, never from the open file. The page names the new file and sends the type to it.{{else}}Create the page file first; the page owns its variants.{{end}}</p>
     <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit"{{if not .CreateOK}} disabled{{end}}>Create</button></div>
   </form>
 </dialog>{{end}}

@@ -222,7 +222,6 @@ func (s *Server) uiRoutes() []route {
 		{"DELETE /api/pages/{name}", s.handleDeletePage},
 		{"POST /api/pages/{name}/variant", s.handleCreateVariant},
 		{"POST /api/pages/{name}/serves", s.handleSetServes},
-		{"POST /api/pages/{name}/assign", s.handleAssignPage},
 		{"POST /api/pages/{name}/rename", s.handleRenamePage},
 		{"GET /api/plans", s.handlePlans},
 		{"GET /api/plans/{name}", s.handlePlan},

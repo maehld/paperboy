@@ -24,6 +24,7 @@ tr.rowlink:hover td { background: #f6f9fe; }
 td.open { text-align: right; white-space: nowrap; }
 td.page { line-height: 1.25; }
 td.page strong { font-weight: 600; }
+td.page strong.missing { color: #b00; }
 td.variants { white-space: nowrap; color: #444; }
 td.variants span[title] { cursor: help; }
 td.variants .broken { color: #b00; }
@@ -31,7 +32,6 @@ td.variants .orphan { color: #a60; }
 td.variants .unused { font-style: italic; }
 td.variants .chip a { color: #134e9c; text-decoration: none; }
 td.variants .chip a:hover { text-decoration: underline; }
-button.assign { border: 0; background: none; color: #134e9c; font-size: .8rem; padding: 0; margin-left: .4rem; cursor: pointer; text-decoration: underline; }
 td.num { font-variant-numeric: tabular-nums; }
 .error { margin: .4rem 0 0; padding: .4rem .6rem; background: #fff2f2; border-left: 3px solid #c22; font-size: .85rem; word-break: break-word; }
 input, select, button { font: inherit; padding: .2rem .35rem; }
@@ -75,8 +75,8 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <tbody>
       {{range .Groups}}
       <tr{{if .PageURL}} class="rowlink" data-href="{{.PageURL}}"{{end}}>
-        <td class="page">{{if .PageURL}}<a href="{{.PageURL}}"><strong>{{.Name}}</strong></a>{{else}}<strong>{{.Name}}</strong>{{end}}</td>
-        <td class="variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}<span class="chip{{if $v.Class}} {{$v.Class}}{{end}}" title="{{$v.Title}}">{{if $v.URL}}<a href="{{$v.URL}}">{{$v.Label}}</a>{{else}}{{$v.Label}}{{end}}</span>{{end}}{{if .Assign}} <button class="assign" type="button" data-dialog="{{.Assign.ID}}">Assign</button>{{end}}</td>
+        <td class="page">{{if .PageURL}}<a href="{{.PageURL}}"><strong>{{.Name}}</strong></a>{{else}}<strong{{if .Missing}} class="missing" title="No page file. Create it with New page."{{end}}>{{.Name}}</strong>{{end}}</td>
+        <td class="variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}<span class="chip{{if $v.Class}} {{$v.Class}}{{end}}" title="{{$v.Title}}">{{if $v.URL}}<a href="{{$v.URL}}">{{$v.Label}}</a>{{else}}{{$v.Label}}{{end}}</span>{{end}}</td>
         <td>{{.Kind}}</td>
         <td class="num">{{.Grid}}</td>
         <td>{{.Title}}</td>
@@ -86,17 +86,6 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
       {{end}}
     </tbody>
   </table>
-  {{range .Groups}}{{with .Assign}}
-  <dialog id="{{.ID}}">
-    <form data-assign data-source="{{.Source}}">
-      <h3>Assign a page file</h3>
-      <label>File <select name="file">{{range .Files}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></label>
-      <label>Page name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" value="{{.Source}}" title="lower case letters, digits and -"></label>
-      <label>Display type <select name="display"><option value="">make it the page file</option>{{range .Types}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></label>
-      <p class="hint">The file moves to the chosen page. With a display type it becomes that type's layout and the page names it. Nothing else is written.</p>
-      <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Assign</button></div>
-    </form>
-  </dialog>{{end}}{{end}}
   {{else}}
   <p class="empty">No pages yet. A page is <code>pages/&lt;name&gt;.yaml</code>.</p>
   {{end}}
@@ -318,36 +307,6 @@ for (const d of document.querySelectorAll('dialog')) {
     kind.addEventListener('change', toggle);
     toggle();
   }
-}
-
-// Assigning moves one page file onto a page that has none, or makes it the
-// layout of a display type; the server refuses a name that is taken (ADR 0110).
-for (const form of document.querySelectorAll('form[data-assign]')) {
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const name = form.querySelector('input[name=name]').value.trim();
-    const file = form.querySelector('select[name=file]').value;
-    const display = form.querySelector('select[name=display]').value;
-    if (!name) return;
-    const query = new URLSearchParams({ from: form.dataset.source, file: file });
-    if (display) query.set('display', display);
-    let res;
-    try {
-      res = await fetch('/api/pages/' + encodeURIComponent(name) + '/assign?' + query.toString(), { method: 'POST' });
-    } catch (err) {
-      alert('Assign failed: ' + err);
-      return;
-    }
-    if (res.ok) {
-      location.reload();
-      return;
-    }
-    let msg = '(' + res.status + ')';
-    try {
-      msg = (await res.json()).error || msg;
-    } catch (err) { /* not JSON */ }
-    alert('Assign failed: ' + msg);
-  });
 }
 
 // A row opens its object; links and buttons inside a row keep their own

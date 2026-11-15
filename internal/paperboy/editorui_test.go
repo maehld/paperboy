@@ -58,53 +58,50 @@ func TestEditorOverview(t *testing.T) {
 	writePage(t, s, "broken", "klein", "kind: image\nnope: 1\n")
 	body = request(t, s, http.MethodGet, "/ui/editor", nil, nil).Body.String()
 	for _, want := range []string{
-		`<strong>broken</strong>`,
+		`<strong class="missing" title="No page file. Create it with New page.">broken</strong>`,
 		`class="chip orphan" title="pages/broken.klein.yaml — no display type names it — yaml: unmarshal errors`,
-		"Assign",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, body)
 		}
 	}
 
-	// A file whose display type is gone still opens through a configured type
-	// of its kind, so it stays editable.
+	// A variant without a page file is not editable: the operator creates the
+	// page file first (ADR 0112).
 	writePage(t, s, "clock", "old", variantPage)
 	body = request(t, s, http.MethodGet, "/ui/editor", nil, nil).Body.String()
 	for _, want := range []string{
 		`title="pages/clock.old.yaml — no display type names it"`,
-		`href="/ui/editor/page?display=small&amp;file=old&amp;name=clock"`,
+		`<strong class="missing" title="No page file. Create it with New page.">clock</strong>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, body)
 		}
 	}
+	if strings.Contains(body, `href="/ui/editor/page?display=small&amp;file=old&amp;name=clock"`) {
+		t.Fatalf("a variant without a page file is linked:\n%s", body)
+	}
 }
 
-// TestEditorAssignDialog lists a file without a page as an orphan and offers the
-// assign dialog (ADR 0110).
-func TestEditorAssignDialog(t *testing.T) {
+// TestEditorMissingPageFile shows a page without a page file in red, without an
+// assign action and without links to its variants (ADR 0112).
+func TestEditorMissingPageFile(t *testing.T) {
 	s := editorServer(t)
 	writePage(t, s, "alt", "klein", variantPage)
 
 	body := request(t, s, http.MethodGet, "/ui/editor", nil, nil).Body.String()
 	for _, want := range []string{
-		`<strong>alt</strong>`,
-		"No page file. Assign a variant to become it.",
+		`<strong class="missing" title="No page file. Create it with New page.">alt</strong>`,
 		`class="chip orphan" title="pages/alt.klein.yaml`,
-		`data-dialog="assign-alt"`,
-		`<dialog id="assign-alt">`,
-		`data-assign data-source="alt"`,
-		`<option value="klein">pages/alt.klein.yaml</option>`,
-		`<option value="">make it the page file</option>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, body)
 		}
 	}
-	// The page itself is not offered: it has no page file to open.
-	if strings.Contains(body, `data-href="/ui/editor/page?display=small&amp;file=klein&amp;name=alt"`) {
-		t.Fatalf("the row is not a link to the variant:\n%s", body)
+	for _, unwanted := range []string{"Assign", "No page file. Assign a variant", `data-dialog="assign-alt"`, `<a href="/ui/editor/page?display=small&amp;file=klein&amp;name=alt">`} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("the row carries %q:\n%s", unwanted, body)
+		}
 	}
 }
 
@@ -169,10 +166,10 @@ func TestEditorPageRows(t *testing.T) {
 	if strings.Contains(body, "data-delete=") {
 		t.Fatalf("the pages tab still acts on files:\n%s", body)
 	}
-	// The page has a page file: no assign dialog, because the file is already
-	// under the page and the Variants select is the way to use it.
+	// The page has a page file: the Variants select is the way to use the unused
+	// variant, and no dialog competes with it (ADR 0112).
 	if strings.Contains(body, `data-dialog="assign-solar"`) {
-		t.Fatalf("an unused variant of an existing page offers to assign:\n%s", body)
+		t.Fatalf("the pages list still offers a dialog:\n%s", body)
 	}
 
 	// The display type in the link no longer changes the list.
@@ -243,8 +240,8 @@ func TestEditorVariantsPanel(t *testing.T) {
 	}
 }
 
-// TestEditorCreateVariantDialog offers the new variant in one dialog: display
-// type and file label, with a type that a file already serves disabled (ADR 0110).
+// TestEditorCreateVariantDialog offers the new variant in one dialog: every
+// configured display type and a file label (ADR 0110).
 func TestEditorCreateVariantDialog(t *testing.T) {
 	s := editorServer(t)
 	writePage(t, s, "solar", "", pageWithVariant)
@@ -256,7 +253,7 @@ func TestEditorCreateVariantDialog(t *testing.T) {
 		`<dialog id="create-variant">`,
 		`<select name="display">`,
 		`<option value="lcd" data-label="lcd">lcd</option>`,
-		`<option value="small" data-label="small" disabled title="served by pages/solar.hochkant.yaml">small</option>`,
+		`<option value="small" data-label="small" title="served by pages/solar.hochkant.yaml">small</option>`,
 		`<input name="label" required pattern="[a-z0-9-]{1,40}" maxlength="40" size="16" value="lcd"`,
 	} {
 		if !strings.Contains(body, want) {

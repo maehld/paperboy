@@ -55,19 +55,10 @@ type editorPageGroup struct {
 	Kind     string
 	Grid     string
 	Error    string // the shown file does not parse; the text names the file
-	Note     string // the page has no file, or the row cannot be opened
+	Note     string // the row cannot be opened
+	Missing  bool   // the page has no page file; its variants cannot be edited
 	PageURL  string // the page file in the editor; empty when it is missing
 	Variants []editorVariant
-	Assign   *assignDialog // present when a file of the page is not reachable
-}
-
-// assignDialog moves one file that no page uses onto a page, or makes it a
-// variant of a page that exists (ADR 0110).
-type assignDialog struct {
-	ID     string     // the dialog element
-	Source string     // the page name the files belong to
-	Files  []uiOption // the files of this page, by label
-	Types  []uiOption // display types; empty value: the file becomes the page file
 }
 
 type editorListPage struct {
@@ -353,21 +344,20 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile) e
 			// by select; the style says that nothing uses it yet (ADR 0110).
 			v.Class = "unused"
 		}
-		v.URL, _ = pageEditURL(f, variants, displays, false)
+		// A variant without a page file stays read-only: it cannot be used until
+		// the operator creates the page file (ADR 0112).
+		if page != nil {
+			v.URL, _ = pageEditURL(f, variants, displays, false)
+		}
 		g.Variants = append(g.Variants, v)
 	}
 	switch {
 	case page == nil:
-		g.Note = "No page file. Assign a variant to become it."
+		g.Missing = true
 	case shown.Error != "":
 		g.Error = pageFileName(name, shown.Label) + ": " + shown.Error
 	case g.PageURL == "":
 		g.Note = "No configured display type can render this file."
-	}
-	// Only a page without a page file needs the dialog; a variant that no
-	// display type names is chosen in the Variants select of the page.
-	if page == nil {
-		g.Assign = assignDialogFor(name, files, displays)
 	}
 	return g
 }
@@ -382,21 +372,6 @@ func servesTypes(variants map[string]string, label string) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-// assignDialogFor offers the files of a page in the assign dialog: each can
-// become the page file or the layout of a display type (ADR 0110).
-func assignDialogFor(name string, files []editorPageFile, displays map[string]Profile) *assignDialog {
-	d := &assignDialog{ID: "assign-" + name, Source: name}
-	for _, f := range files {
-		if f.Label != "" {
-			d.Files = append(d.Files, uiOption{Value: f.Label, Label: pageFileName(name, f.Label)})
-		}
-	}
-	for _, n := range sortedDisplays(displays) {
-		d.Types = append(d.Types, uiOption{Value: n, Label: n})
-	}
-	return d
 }
 
 // fileFits reports whether a page file can render a display type: the same kind
@@ -557,15 +532,17 @@ func servesTable(cfg *Config, name, label, preview string, files []editorPageFil
 }
 
 // createVariantTypes lists the display types the Create variant dialog offers.
-// A type that a file already serves is disabled: the select in Variants is the
-// place to change it, and a missing file keeps its label (ADR 0110).
+// Every configured type is a candidate: a variant is the exception for a type,
+// also when the page file serves it today. The entry names the file that serves
+// the type, so a new variant is a deliberate choice (ADR 0110).
 func createVariantTypes(name string, coverage []pageCoverageEntry) []variantType {
 	types := []variantType{}
 	for _, c := range coverage {
 		t := variantType{Name: c.Display, Label: c.Display}
-		if !c.Missing && c.Error == "" {
-			t.Served = pageFileName(name, c.File) // the path, never empty when served
-		} else if c.File != "" {
+		switch {
+		case !c.Missing && c.Error == "":
+			t.Served = pageFileName(name, c.File)
+		case c.File != "":
 			t.Label = c.File // a missing file is repaired under its own label
 		}
 		types = append(types, t)
@@ -926,14 +903,11 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	} else {
 		v.Serves = servesTable(cfg, name, label, display, files, coverage, pageExists)
 		v.CreateTypes = createVariantTypes(name, coverage)
-		for _, t := range v.CreateTypes {
-			if t.Served != "" {
-				continue
-			}
-			v.CreateOK = pageExists
-			if v.CreateLabel == "" {
-				v.CreateLabel = t.Label
-			}
+		// Every configured type is a candidate: the dialog creates the file and
+		// sends the type to it (ADR 0110).
+		v.CreateOK = pageExists && len(v.CreateTypes) > 0
+		if len(v.CreateTypes) > 0 {
+			v.CreateLabel = v.CreateTypes[0].Label
 		}
 	}
 	if q.Get("display") != "" && !missing {

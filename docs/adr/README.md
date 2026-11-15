@@ -63,6 +63,7 @@ The content model: what a page is, what draws in it and when it is shown. See [`
 | [0103](0103-plugin-conditions-in-plans.md) | Show a page while a plugin condition is active | Accepted, implemented; replaces the unimplemented `when.data` of [ADR-0025](0025-plaene-je-display.md) with conditions from plugins |
 | [0110](0110-pages-serve-their-kind-and-name-variants.md) | Pages serve their kind and name their variants | Accepted, implemented; replaces the implicit variant/shared precedence of [ADR-0049](0049-plugin-widgets.md) and the file handling of [ADR-0068](0068-page-editor-ui.md), [ADR-0073](0073-edit-creates-and-deletes.md), [ADR-0079](0079-rename-config-items.md) (page part), [ADR-0093](0093-every-page-file-is-addressable.md) and [ADR-0094](0094-the-pages-list-is-a-list.md) with an explicit variant list |
 | [0111](0111-text-pages-from-plugin-values.md) | Text pages from plugin values | Accepted, not implemented; builds on [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md), replaces the text widget of [ADR-0049](0049-plugin-widgets.md) in stages |
+| [0112](0112-a-missing-page-file.md) | A missing page file is created by hand | Accepted, implemented; removes the assign dialog and `POST /api/pages/{name}/assign` of [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md); a variant without a page file is read-only |
 
 ## Devices and the device protocol
 
