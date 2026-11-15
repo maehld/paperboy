@@ -106,6 +106,7 @@ func TestDashboardAfterRestart(t *testing.T) {
 
 	s.mu.Lock()
 	s.rendered = map[string]*renderedPage{}
+	s.renderedHash = map[string]*renderedPage{}
 	s.hints = map[string]hintPage{}
 	s.mu.Unlock()
 	for _, d := range s.deviceInfos() {

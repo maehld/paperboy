@@ -1,6 +1,7 @@
 // Package builtin is Paperboy's own plugin "paperboy" (ADR 0049). It runs in
 // the Paperboy process and offers the widgets that need no data source: a
-// page header, free text, a clock and the Paperboy logo.
+// page header, free text, a clock, the Paperboy logo and the device status of
+// ADR 0115.
 package builtin
 
 import (
@@ -37,6 +38,20 @@ func (Plugin) Describe() plugin.Description {
 					"date":           {Type: "bool", Default: false, Description: "weekday and date on the right, long or short depending on the space"},
 					"page_indicator": {Type: "bool", Default: true, Description: "page number when the plan rule has several pages"},
 					"align":          {Type: "string", Default: "left", Description: "left, center or right", Enum: []any{"left", "center", "right"}},
+					"battery":        {Type: "bool", Default: false, Description: "battery charge of this device at the right"},
+				}},
+			{Widget: "battery", Title: "Battery", Kinds: both, Sizes: []plugin.Span{{Columns: 1, Rows: 1}, {Columns: 2, Rows: 1}, {Columns: 3, Rows: 1}},
+				Args: map[string]plugin.Arg{
+					"device": {Type: "string", Description: "device id; default the device that shows the page"},
+					"label":  {Type: "string", Default: "auto", Description: "auto, percent, volts or none", Enum: []any{"auto", "percent", "volts", "none"}},
+					"align":  {Type: "string", Default: "center", Description: "left, center or right", Enum: []any{"left", "center", "right"}},
+				}},
+			{Widget: "device-status", Title: "Device status", Kinds: both, Sizes: []plugin.Span{{Columns: 2, Rows: 2}, {Columns: 3, Rows: 2}, {Columns: 6, Rows: 1}, {Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}},
+				Args: map[string]plugin.Arg{
+					"devices": {Type: "list", Description: "device ids; default the device that shows the page"},
+					"battery": {Type: "bool", Default: true, Description: "battery charge"},
+					"runtime": {Type: "bool", Default: true, Description: "estimated battery runtime"},
+					"seen":    {Type: "bool", Default: true, Description: "time since the last contact"},
 				}},
 			{Widget: "text", Title: "Text", Kinds: both, Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 6, Rows: 1}},
 				Args: map[string]plugin.Arg{
@@ -82,6 +97,10 @@ func (p Plugin) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.P
 		return p.clock(req, w, img)
 	case "logo":
 		return p.logo(w, img)
+	case "battery":
+		return p.battery(req, w, img)
+	case "device-status":
+		return p.deviceStatus(req, w, img)
 	}
 	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 }
@@ -99,10 +118,33 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 	base := req.TextPx(w)
 	titleSize := min(float64(h)*0.5, base*1.4)
 	statusSize := min(float64(h)*0.45, base*1.1)
-	status := headerStatus(req, a, func(s string) bool {
+	status := headerStatus(req, a, "", func(s string) bool {
 		return render.Measure(s, statusSize, false) <= b.Dx()/2-2*pad
 	})
 	right := b.Max.X - pad
+	// The battery sits right of the date and clock, with a small icon and the
+	// charge; it is left out when the cell or the device has no room for it.
+	var battery string
+	var batteryDev *plugin.DeviceStatus
+	var batteryIcon image.Rectangle
+	if a.Bool("battery", false) {
+		if dev := statusDevice(req, ""); dev != nil && dev.Battery != nil {
+			batteryDev = dev
+			battery = batteryText(req, dev, "auto")
+			iconH := min(float64(h)*0.35, statusSize*0.9)
+			iconW := int(iconH * 2)
+			gap := max(2, pad/2)
+			width := iconW + gap + render.Measure(battery, statusSize, false)
+			if width > 0 && b.Max.X-pad-width > b.Min.X+pad {
+				x := b.Max.X - pad - width
+				batteryIcon = image.Rect(x, b.Min.Y+h/2-int(iconH/2), x+iconW, b.Min.Y+h/2+int(iconH/2))
+				right -= width + 2*pad
+			} else {
+				battery = ""
+			}
+		}
+	}
+	statusRight := right
 	if status != "" {
 		right -= render.Measure(status, statusSize, false) + 2*pad
 	}
@@ -126,7 +168,12 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 		render.Text(img, sub, x, bottom, render.Style{Size: min(float64(h)*0.22, base*0.7), Shrink: true}, right-left, color.Black, al)
 	}
 	if status != "" {
-		render.Text(img, status, b.Max.X-pad, baseline, render.Style{Size: statusSize, Shrink: true}, b.Dx()/2, color.Black, render.Right)
+		render.Text(img, status, statusRight, baseline, render.Style{Size: statusSize, Shrink: true}, b.Dx()/2, color.Black, render.Right)
+	}
+	if battery != "" {
+		drawBattery(img, batteryIcon, batteryDev.Battery)
+		render.Text(img, battery, b.Max.X-pad, baseline, render.Style{Size: statusSize, Shrink: true},
+			b.Dx()/2, color.Black, render.Right)
 	}
 	render.HLine(img, b.Min.X, b.Max.Y-rule, b.Max.X, rule)
 }
@@ -182,14 +229,29 @@ func dateForms(req *plugin.Request) []string {
 }
 
 // headerStatus builds the right side of the header: the date (arg date,
-// in the longest form that fits) followed by the time (arg clock). When even
-// the shortest date does not fit, the date is left out.
-func headerStatus(req *plugin.Request, a plugin.Values, fits func(string) bool) string {
+// in the longest form that fits), the time (arg clock) and the battery text.
+// When even the shortest date does not fit, the date is left out; the battery
+// follows the clock when there is room for it.
+func headerStatus(req *plugin.Request, a plugin.Values, battery string, fits func(string) bool) string {
 	clock := ""
 	if a.Bool("clock", true) {
 		clock = req.Now.In(req.Location()).Format("15:04")
 	}
+	withBattery := func(s string) string {
+		if battery == "" {
+			return s
+		}
+		if s == "" {
+			return battery
+		}
+		return s + "  " + battery
+	}
 	if !a.Bool("date", false) {
+		if battery != "" {
+			if s := withBattery(clock); fits(s) {
+				return s
+			}
+		}
 		return clock
 	}
 	for _, d := range dateForms(req) {
@@ -197,7 +259,12 @@ func headerStatus(req *plugin.Request, a plugin.Values, fits func(string) bool) 
 		if clock != "" {
 			s += "  " + clock
 		}
-		if fits(s) {
+		if fits(withBattery(s)) {
+			return withBattery(s)
+		}
+	}
+	if clock != "" && battery != "" {
+		if s := withBattery(clock); fits(s) {
 			return s
 		}
 	}
@@ -243,7 +310,13 @@ func (Plugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error
 			title += fmt.Sprintf(" %d/%d", req.Page.Number, req.Page.Count)
 		}
 		room := w.Width - len([]rune(title)) - 1
-		status := headerStatus(req, a, func(s string) bool { return len([]rune(s)) <= room })
+		battery := ""
+		if a.Bool("battery", false) {
+			if dev := statusDevice(req, ""); dev != nil && dev.Battery != nil {
+				battery = batteryText(req, dev, "auto")
+			}
+		}
+		status := headerStatus(req, a, battery, func(s string) bool { return len([]rune(s)) <= room })
 		if status == "" {
 			return []string{title}, nil
 		}
@@ -263,6 +336,10 @@ func (Plugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error
 		return out, nil
 	case "clock":
 		return []string{plugin.Align(clockText(req, a.String("format", "time")), w.Width, "center")}, nil
+	case "battery":
+		return []string{plugin.Align(batteryText(req, statusDevice(req, a.String("device", "")), a.String("label", "auto")), w.Width, "center")}, nil
+	case "device-status":
+		return statusLines(req, w.Arg(), w.Width), nil
 	}
 	return nil, fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 }

@@ -240,7 +240,10 @@ func (h *Host) Fetch(ctx context.Context, b page.Batch) []page.Result {
 	for _, name := range names {
 		idx := byPlugin[name]
 		if handler, ok := h.Builtin[name]; ok {
-			h.builtin(name, handler, jobs, idx, env, out)
+			// Only the built-in plugin gets Paperboy's device status: its
+			// widgets are not cached, while a plugin process would keep stale
+			// rows until its max_age runs out (ADR 0115).
+			h.builtin(name, handler, jobs, idx, env, b.ServerStatus, out)
 			continue
 		}
 		spec, ok := specs[name]
@@ -404,7 +407,7 @@ func decode(j job, r plugin.Result) (page.Result, error) {
 }
 
 // builtin answers widgets of an in-process plugin directly.
-func (h *Host) builtin(name string, handler plugin.Handler, jobs []job, idx []int, env Env, out []page.Result) {
+func (h *Host) builtin(name string, handler plugin.Handler, jobs []job, idx []int, env Env, status *plugin.ServerStatus, out []page.Result) {
 	h.builtMu.Lock()
 	defer h.builtMu.Unlock()
 	if h.builtCfg == nil {
@@ -427,7 +430,7 @@ func (h *Host) builtin(name string, handler plugin.Handler, jobs []job, idx []in
 		ids := groups[g]
 		first := jobs[ids[0]]
 		req := plugin.Request{Version: plugin.Version, Action: first.action, Language: env.Language,
-			Timezone: env.Timezone, Now: h.now(), Levels: first.levels, Page: first.page}
+			Timezone: env.Timezone, Now: h.now(), Levels: first.levels, Page: first.page, ServerStatus: status}
 		for _, i := range ids {
 			req.Widgets = append(req.Widgets, jobs[i].widget)
 		}

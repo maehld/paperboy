@@ -1,0 +1,8 @@
+# The status rows on a 20x4 character display (ADR 0109): one device per line,
+# first this device, then the one named in the second cell.
+kind: text
+grid: [20, 4]
+cells:
+  - { at: [0, 0], span: [20, 1], widget: paperboy/header, args: { battery: true, clock: false, date: false } }
+  - { at: [0, 1], span: [20, 2], widget: paperboy/device-status }
+  - { at: [0, 3], span: [20, 1], widget: paperboy/device-status, args: { devices: [wohnzimmer] } }

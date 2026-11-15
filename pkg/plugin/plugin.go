@@ -118,6 +118,11 @@ type Request struct {
 	// the plan's order. Device is set for both requests.
 	Actions []ActionCall `json:"actions,omitempty"`
 	Device  *DeviceInfo  `json:"device,omitempty"`
+	// ServerStatus is Paperboy's own view of the devices: the device the
+	// request is for and the devices the page names. It is a privileged
+	// object, separate from the page data, and only the built-in plugin
+	// receives it for now (ADR 0115).
+	ServerStatus *ServerStatus `json:"server_status,omitempty"`
 	// State is the JSON object the plugin stored last time; missing when it
 	// has none. It arrives with the state request, once after configure
 	// (ADR 0081).
@@ -132,6 +137,54 @@ type DeviceInfo struct {
 	ID       string `json:"id"`
 	Name     string `json:"name,omitempty"`
 	Hardware string `json:"hardware,omitempty"` // firmware target, e.g. sticky
+}
+
+// ServerStatus is Paperboy's privileged view of the devices. It reaches only
+// the built-in plugin for now, so a plugin process with a cached widget
+// cannot show stale rows (ADR 0115). It carries no key, MAC or address.
+type ServerStatus struct {
+	// CurrentDeviceStatus is the device the request is for; nil in a preview
+	// without one.
+	CurrentDeviceStatus *DeviceStatus `json:"current_device_status,omitempty"`
+	// SelectedDevicesStatus holds only the devices a page names in its widget
+	// arguments, keyed by id. It does not list every configured device.
+	SelectedDevicesStatus map[string]DeviceStatus `json:"selected_devices_status,omitempty"`
+}
+
+// DeviceStatus is one device in a ServerStatus, from the dashboard's point of
+// view.
+type DeviceStatus struct {
+	ID       string `json:"id"`
+	Display  string `json:"display,omitempty"`  // display type name
+	Plan     string `json:"plan,omitempty"`     // plan file
+	Hardware string `json:"hardware,omitempty"` // firmware target, e.g. sticky
+	Firmware string `json:"firmware,omitempty"`
+	// Status is ok, late, never, unregistered or unknown. "unknown" names an
+	// id a widget asked for that no device file has.
+	Status   string         `json:"status"`
+	LastSeen time.Time      `json:"last_seen,omitempty"`
+	SeenS    int64          `json:"seen_s,omitempty"` // seconds since the last contact; -1 when unknown
+	Power    string         `json:"power,omitempty"`  // battery or mains
+	RSSI     string         `json:"rssi,omitempty"`
+	Battery  *BatteryStatus `json:"battery,omitempty"`
+	// RuntimeS is the estimated battery runtime in seconds, 0 while there is
+	// no estimate or the device runs on mains.
+	RuntimeS int64 `json:"runtime_s,omitempty"`
+	// RuntimeSpanS is the data behind the estimate, in seconds.
+	RuntimeSpanS int64  `json:"runtime_span_s,omitempty"`
+	Page         string `json:"page,omitempty"`      // last page or notice
+	PageKind     string `json:"page_kind,omitempty"` // page, notice or battery
+	Error        string `json:"error,omitempty"`     // last render or plan error
+}
+
+// BatteryStatus is the last battery reading of a device.
+type BatteryStatus struct {
+	Volts    float64  `json:"volts,omitempty"`
+	Percent  *float64 `json:"percent,omitempty"`
+	MAH      *float64 `json:"mah,omitempty"`
+	MA       *float64 `json:"ma,omitempty"`
+	Charging bool     `json:"charging,omitempty"`
+	Level    string   `json:"level,omitempty"` // "", warn or critical
 }
 
 // Style carries the page's look so widgets match each other. Paperboy

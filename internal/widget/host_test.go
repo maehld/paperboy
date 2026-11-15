@@ -527,6 +527,30 @@ func (builtinPlugin) Render(_ *plugin.Request, _ plugin.WidgetRequest, _ *image.
 	return nil
 }
 
+type statusPlugin struct {
+	got *plugin.ServerStatus
+}
+
+func (statusPlugin) Describe() plugin.Description                   { return plugin.Description{Title: "s"} }
+func (statusPlugin) Configure(plugin.Values, *plugin.Request) error { return nil }
+func (p *statusPlugin) Render(req *plugin.Request, _ plugin.WidgetRequest, _ *image.Paletted) error {
+	p.got = req.ServerStatus
+	return nil
+}
+
+func TestHostBuiltinGetsServerStatus(t *testing.T) {
+	p := &statusPlugin{}
+	h := &Host{Builtin: map[string]plugin.Handler{"b": p}}
+	b := batch(w("b", "x", 3, 2))
+	b.ServerStatus = &plugin.ServerStatus{CurrentDeviceStatus: &plugin.DeviceStatus{ID: "kueche"}}
+	if out := h.Fetch(context.Background(), b); out[0].Err != nil {
+		t.Fatal(out[0].Err)
+	}
+	if p.got == nil || p.got.CurrentDeviceStatus == nil || p.got.CurrentDeviceStatus.ID != "kueche" {
+		t.Fatalf("built-in got %+v", p.got)
+	}
+}
+
 func TestHostBuiltin(t *testing.T) {
 	h := &Host{Builtin: map[string]plugin.Handler{"b": builtinPlugin{}}}
 	out := h.Fetch(context.Background(), batch(w("b", "x", 3, 2)))

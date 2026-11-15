@@ -128,7 +128,8 @@ func (s *Server) fetchWidget(ctx context.Context, cfg *Config, wq widgetQuery) p
 		levels = 2
 	}
 	b := page.Batch{Text: d.Text, Levels: levels, Charset: d.Charset, Widgets: []page.WidgetRequest{wq.req},
-		Page: plugin.PageInfo{Title: wq.req.Plugin + "/" + wq.req.Widget, Number: 1, Count: 1, Width: d.Width, Height: d.Height}}
+		Page:         plugin.PageInfo{Title: wq.req.Plugin + "/" + wq.req.Widget, Number: 1, Count: 1, Width: d.Width, Height: d.Height},
+		ServerStatus: s.statusSnapshot(cfg, "", selectedDeviceIDsFor(wq.req.Plugin, wq.req.Widget, wq.req.Args), s.now())}
 	if !d.Text {
 		b.Page.PPI = d.PPI
 	}

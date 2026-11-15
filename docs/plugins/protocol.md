@@ -7,7 +7,7 @@ format; the Go types live in [`pkg/plugin`](../../pkg/plugin/plugin.go).
 - Current version: **6** ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md) added version 3, [ADR 0057](../adr/0057-plugin-actions-from-the-plan.md) added
   actions, [ADR 0081](../adr/0081-plugin-state-over-the-protocol.md) added plugin state and blobs and made 5 the minimum,
   [ADR 0103](../adr/0103-plugin-conditions-in-plans.md) added conditions). From version 5 on the protocol only grows
-  additively.
+  additively. `server_status` is additive and keeps version 6 ([ADR 0115](../adr/0115-device-status-in-a-widget.md)).
 - Paperboy starts a plugin on first use and keeps it running.
 - Paperboy writes one request line; the plugin writes exactly one answer line
   with the same `id`. Between answers the plugin may write events without an
@@ -32,6 +32,7 @@ Every request carries:
 | `widgets` | For `render` and `text`: the widgets to draw |
 | `actions` | For `actions` and `action`: the concrete actions |
 | `device` | For `actions` and `action`: `id`, `name`, `hardware` |
+| `server_status` | For `render` and `text`, built-in plugin only: `current_device_status` and `selected_devices_status` (ADR 0115) |
 | `levels` | For `render`: gray levels of the display, 1–256; the canvas falls back to 2, 4 or 16 tones |
 | `config` | For `configure`: the plugin's section of `paperboy.yaml` |
 | `state` | For `state`: the JSON object the plugin stored last time; missing when there is none ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)) |
@@ -173,6 +174,45 @@ draw in instead of leaving it blank: `plugin.TooSmall(w)` wraps
 `plugin.ErrTooSmall` with the cell's pixel size and reads
 `cell too small: 800x180`. `max_age` (seconds) tells Paperboy how long it may
 reuse the results; `0` means its default of five minutes.
+
+### `server_status`
+
+`server_status` is Paperboy's privileged view of its devices (ADR 0115). Only
+the built-in plugin receives it; every other plugin gets no field, because its
+cached widgets would show stale rows. The object carries no key, no MAC and no
+address.
+
+```json
+{
+  "server_status": {
+    "current_device_status": {
+      "id": "kueche",
+      "display": "sticky",
+      "plan": "standard",
+      "status": "ok",
+      "last_seen": "2026-11-15T09:04:30+01:00",
+      "seen_s": 30,
+      "power": "battery",
+      "battery": {"volts": 3.75, "percent": 84, "charging": false},
+      "runtime_s": 1036800,
+      "runtime_span_s": 172800
+    },
+    "selected_devices_status": {
+      "wohnzimmer": {"id": "wohnzimmer", "status": "late", "seen_s": 7440}
+    }
+  }
+}
+```
+
+- `current_device_status` is the device the page is rendered for; it is
+  missing in a preview without a device.
+- `selected_devices_status` is a map from id to status. It holds only the
+  devices a page names in its widget arguments, not every configured device.
+  An id that no device file has appears with `status: "unknown"`.
+- `status` is `ok`, `late`, `never`, `unregistered` or `unknown`.
+- `battery` carries `volts`, `percent`, `mah`, `ma`, `charging` and `level`
+  (`warn` or `critical`). `runtime_s` is the estimated battery runtime; `0`
+  means no estimate or a mains device.
 
 ### `actions`
 

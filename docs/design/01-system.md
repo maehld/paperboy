@@ -112,7 +112,7 @@ The whole configuration reloads on change ([ADR 0047](../adr/0047-config-reload.
 | `internal/page/` | Page parsing and composition from widgets |
 | `internal/plan/` | Time rules that select pages |
 | `internal/widget/` | Plugin processes, widget cache, background refresh, conditions |
-| `internal/builtin/` | Built-in plugin `paperboy`: header, text, clock, logo |
+| `internal/builtin/` | Built-in plugin `paperboy`: header, text, clock, logo, battery, device status |
 | `internal/download/` | Release lists, archives and verification |
 | `internal/semver/` | Version grammar of programs and images |
 | `internal/stats/` | Timers, gauges and process numbers for the stats page |

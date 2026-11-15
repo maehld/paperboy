@@ -46,7 +46,8 @@ type Server struct {
 	// actionRuns holds the actions that outlive their sync (ADR 0064).
 	actionRuns map[string]*actionRun
 
-	rendered     map[string]*renderedPage // "<profile>/<page>" → last render
+	rendered     map[string]*renderedPage // "<profile>/<page>[/<device>]" → last render
+	renderedHash map[string]*renderedPage // content hash → render, for the page download
 	hints        map[string]hintPage      // content hash → notice page (ADR 0097 keeps its display type)
 	logs         *logSeen                 // delivered device log entries (own lock)
 	firmware     *firmwareStore           // OTA images (ADR 0043; own lock)
@@ -119,7 +120,8 @@ func New(cfg *Config) (*Server, error) {
 	s := &Server{cfg: newConfigLoader(cfg.Dir, cfg), ctx: context.Background(),
 		widgets:    &widget.Host{Builtin: map[string]plugin.Handler{builtin.Name: builtin.Plugin{}}},
 		devicesDir: devicesDir, now: time.Now, state: state, virtual: map[string]*deviceState{},
-		plans: newPlanLoader(), actionRuns: map[string]*actionRun{}, rendered: map[string]*renderedPage{}, hints: map[string]hintPage{},
+		plans: newPlanLoader(), actionRuns: map[string]*actionRun{}, rendered: map[string]*renderedPage{},
+		renderedHash: map[string]*renderedPage{}, hints: map[string]hintPage{},
 		logs: newLogSeen(), fwNotes: map[string]string{}, pages: newPageLoader(), skipNotes: map[string]string{},
 		started: time.Now(), stats: stats.NewRegistry(), pluginCPU: map[int]*stats.Gauge{}}
 	s.firmware = newFirmwareStore(cfg.FirmwareDir)
@@ -363,7 +365,7 @@ func (s *Server) handleDeviceImage(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case kind == "page" && page != "":
-		if rp := s.rendered[device.Profile+"/"+page]; rp != nil && rp.hash == hash {
+		if rp := s.renderedPageLocked(device.Profile, page, hash); rp != nil {
 			data = rp.data
 		}
 	default:
@@ -426,7 +428,7 @@ func (s *Server) deviceInfos() []deviceInfo {
 		// UI's own route for the last served image (ADR 0040).
 		if info.LastPageHash != "" && !cfg.Profiles[d.Profile].text() {
 			if info.LastPageKind == "page" && info.LastPage != "" {
-				if rp := s.rendered[d.Profile+"/"+info.LastPage]; rp != nil && rp.hash == info.LastPageHash {
+				if rp := s.renderedPageLocked(d.Profile, info.LastPage, info.LastPageHash); rp != nil {
 					info.LastPageURL = lastImagePath(d.ID)
 				}
 			} else if hp, ok := s.hints[info.LastPageHash]; ok && hp.profile == d.Profile {
@@ -551,7 +553,7 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		now = t
 	}
 	if p.text() {
-		text, err := s.renderText(cfg, display, name, now, pagePosition{index: 0, count: 1})
+		text, err := s.renderText(cfg, display, name, now, pagePosition{index: 0, count: 1}, "")
 		if errors.Is(err, page.ErrNotFound) {
 			http.NotFound(w, r)
 			return
@@ -565,7 +567,7 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(strings.Join(text.Lines, "\n") + "\n"))
 		return
 	}
-	rp, err := s.renderPage(cfg, display, name, now, pagePosition{index: 0, count: 1})
+	rp, err := s.renderPage(cfg, display, name, now, pagePosition{index: 0, count: 1}, "")
 	if errors.Is(err, page.ErrNotFound) {
 		http.NotFound(w, r)
 		return
@@ -578,16 +580,18 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 	writePNG(w, rp.data)
 }
 
-// handleRenderedImage serves a page rendered from a template. An outdated hash
-// still returns the newest render, so a device that missed a change catches up.
+// handleRenderedImage serves a page rendered from a template. The hash names
+// the bytes, so a device-scoped page keeps its own render (ADR 0115); an
+// outdated hash falls back to the newest render of the page.
 func (s *Server) handleRenderedImage(w http.ResponseWriter, r *http.Request) {
-	if _, ok := strings.CutSuffix(r.PathValue("file"), ".png"); !ok {
+	hash, ok := strings.CutSuffix(r.PathValue("file"), ".png")
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}
-	key := r.PathValue("profile") + "/" + r.PathValue("page")
+	profile, page := r.PathValue("profile"), r.PathValue("page")
 	s.mu.Lock()
-	rp := s.rendered[key]
+	rp := s.renderedPageLocked(profile, page, hash)
 	s.mu.Unlock()
 	if rp == nil {
 		http.NotFound(w, r)

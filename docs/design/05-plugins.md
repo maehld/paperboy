@@ -33,6 +33,8 @@ Paperboy and the plugin exchange one JSON object per line: a request on stdin, a
 
 Every request carries `language`, `timezone`, `now` and `levels`, the tone count of the display. `levels` is 1 to 256; a canvas falls back to 2, 4 or 16 tones when it cannot draw the value ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)). The request also carries the `page` with title, number, count and display size, and `ppi` for image displays. A widget also gets `style` with `padding`, `rule` and `text_px` in pixels, and `scroll` on a text display.
 
+`server_status` is Paperboy's own view of the devices (ADR 0115). It holds `current_device_status`, the device the page is rendered for, and `selected_devices_status`, a map of only the devices the page names in its widget arguments. A status names the id, display type, plan, hardware and firmware. It also names the contact state, last contact, power source, signal and battery reading. The estimated runtime and the last page or error follow. It carries no key, MAC or address. Only the built-in plugin receives the object; a plugin process would cache stale rows.
+
 A plugin answers with `version`, optionally `state`, `blobs`, `widgets`, `actions`, `result`, `conditions`, `max_age`, `description`, or a `changed` event.
 
 ## What a plugin declares
@@ -78,7 +80,7 @@ Every plugin has its own version in `cmd/<plugin>/VERSION`, embedded in the prog
 
 ## The built-in plugin
 
-`internal/builtin` provides the plugin `paperboy`: `header`, `text`, `clock` and `logo`, for image and text displays ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md)). It draws from `pkg/render` and needs no data, so it is always available and never cached.
+`internal/builtin` provides the plugin `paperboy`: `header`, `text`, `clock`, `logo`, `battery` and `device-status`, for image and text displays ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md), [0115](../adr/0115-device-status-in-a-widget.md)). It draws from `pkg/render` and needs no data source, so it is always available and never cached. It is the only plugin that receives `server_status`; a page that shows its own device is cached per device.
 
 ## The shipped plugins
 

@@ -39,6 +39,7 @@ type servedPage struct {
 type renderedPage struct {
 	data []byte
 	hash string
+	key  string          // render cache key, per device on device-scoped pages (ADR 0115)
 	pix  []byte          // composed palette indexes; an identical composition reuses data and hash
 	rect image.Rectangle // bounds of pix
 	at   time.Time       // when the image was encoded; the runtime page ages the cache by it (ADR 0104)
@@ -62,7 +63,7 @@ type pagePosition struct {
 // tearing down the request, so the device can be served a notice page. cfg is
 // the configuration snapshot of the request; the render path never reloads the
 // configuration itself, so a device sees one configuration from start to end.
-func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, pos pagePosition, banners ...string) (rp *renderedPage, err error) {
+func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, pos pagePosition, self string, banners ...string) (rp *renderedPage, err error) {
 	defer s.stats.Start("render.page")()
 	defer func() {
 		if r := recover(); r != nil {
@@ -79,8 +80,9 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	if err != nil {
 		return nil, err
 	}
+	status := s.statusSnapshot(cfg, self, selectedDeviceIDs(tmpl), now)
 	img, err := tmpl.RenderImage(s.display(cfg, p), page.Context{Now: now, Page: pos.index + 1, Pages: pos.count,
-		Banners: banners, Widgets: s.widgetSource()})
+		Banners: banners, Widgets: s.widgetSource(), ServerStatus: status})
 	if err != nil {
 		return nil, err
 	}
@@ -90,8 +92,9 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	// Short intervals compose the same page again and again (ADR 0051): when
 	// the pixels match the last render, its PNG and hash are reused instead of
 	// encoding again, so the device sees an unchanged hash and does not redraw.
+	key := statusKey(profile, name, tmpl, status)
 	s.mu.Lock()
-	prev := s.rendered[profile+"/"+name]
+	prev := s.rendered[key]
 	s.mu.Unlock()
 	if prev != nil && prev.rect == img.Rect && bytes.Equal(prev.pix, img.Pix) {
 		return prev, nil
@@ -99,7 +102,7 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	encodeDone := s.stats.Start("render.encode")
 	data := encodePNG(img)
 	encodeDone()
-	return &renderedPage{data: data, hash: hashBytes(data), pix: img.Pix, rect: img.Rect, at: time.Now()}, nil
+	return &renderedPage{data: data, hash: hashBytes(data), key: key, pix: img.Pix, rect: img.Rect, at: time.Now()}, nil
 }
 
 // display describes a display type for the page package.
@@ -132,7 +135,7 @@ func scrollRows(scroll []string) []string {
 
 // renderText renders pages/<name>.<profile>.yaml for a text display type
 // (ADR 0044). Like renderPage it turns a panic into an error.
-func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, pos pagePosition) (text page.Text, err error) {
+func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, pos pagePosition, self string) (text page.Text, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("text page rendering panicked", "profile", profile, "page", name, "panic", r, "stack", string(debug.Stack()))
@@ -147,8 +150,9 @@ func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, po
 	if err != nil {
 		return page.Text{}, err
 	}
+	status := s.statusSnapshot(cfg, self, selectedDeviceIDs(tmpl), now)
 	return tmpl.RenderText(s.display(cfg, p), page.Context{Now: now, Page: pos.index + 1, Pages: pos.count,
-		Widgets: s.widgetSource()})
+		Widgets: s.widgetSource(), ServerStatus: status})
 }
 
 // hintPage is a generated notice page and the display type it was drawn for:
@@ -191,10 +195,41 @@ func (s *Server) hint(cfg *Config, profile, title, text string) servedPage {
 // storePage caches a rendered page for /pages/{profile}/{page}/{file} and
 // returns where the device can fetch it.
 func (s *Server) storePage(profile, name string, rp *renderedPage) servedPage {
+	key := rp.key
+	if key == "" {
+		key = profile + "/" + name
+	}
 	s.mu.Lock()
-	s.rendered[profile+"/"+name] = rp
+	if prev := s.rendered[key]; prev != nil && prev.hash != rp.hash {
+		s.forgetRenderedLocked(key, prev.hash)
+	}
+	s.rendered[key] = rp
+	s.renderedHash[rp.hash] = rp
 	s.mu.Unlock()
 	return servedPage{path: fmt.Sprintf("/pages/%s/%s/%s.png", profile, name, rp.hash), hash: rp.hash}
+}
+
+// forgetRenderedLocked drops an old hash unless another cache key still names
+// it; callers hold s.mu.
+func (s *Server) forgetRenderedLocked(key, hash string) {
+	for k, rp := range s.rendered {
+		if k != key && rp.hash == hash {
+			return
+		}
+	}
+	delete(s.renderedHash, hash)
+}
+
+// renderedPageLocked finds the render behind a content hash and falls back to
+// the last render of the page; callers hold s.mu.
+func (s *Server) renderedPageLocked(profile, page, hash string) *renderedPage {
+	if rp := s.renderedHash[hash]; rp != nil {
+		return rp
+	}
+	if rp := s.rendered[profile+"/"+page]; rp != nil && rp.hash == hash {
+		return rp
+	}
+	return nil
 }
 
 // planEntry caches one plan file; mod and size detect changes on disk. The
@@ -382,14 +417,14 @@ func (s *Server) renderPlan(cfg *Config, d *Device, c planChoice, now time.Time,
 		return sp
 	}
 	if cfg.Profiles[d.Profile].text() {
-		text, err := s.renderText(cfg, d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages})
+		text, err := s.renderText(cfg, d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages}, d.ID)
 		if err != nil {
 			return s.pageFailed(cfg, d, c, err, quiet)
 		}
 		return servedPage{lines: text.Lines, scroll: text.Scroll, hash: hashText(text.Lines, text.Scroll),
 			name: c.name, page: c.page, pages: c.pages, refresh: c.refresh}
 	}
-	rp, err := s.renderPage(cfg, d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages}, c.banners...)
+	rp, err := s.renderPage(cfg, d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages}, d.ID, c.banners...)
 	if err != nil {
 		return s.pageFailed(cfg, d, c, err, quiet)
 	}
