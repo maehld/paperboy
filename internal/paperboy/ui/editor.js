@@ -1476,10 +1476,10 @@
     renderAll();
   }
 
-  // createVariant writes the layout of a display type in one action (ADR 0110).
+  // createLayout writes the layout of a display type in one action (ADR 0110).
   // The layout starts from the display type: kind and grid come from the type,
   // never from the open file, which is the defect of issue #238.
-  async function createVariant(display) {
+  async function createLayout(display, label) {
     const info = state.displays.find((d) => d.name === display) || {};
     const kind = info.kind === 'text' ? 'text' : 'image';
     const grid = kind === 'text' ? [info.width, info.height] : state.reference.slice();
@@ -1487,7 +1487,8 @@
     setStatus('creating the layout for ' + display + '…', '');
     let res;
     try {
-      res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '/variant?display=' + encodeURIComponent(display), {
+      res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '/variant?display=' + encodeURIComponent(display) +
+        '&file=' + encodeURIComponent(label), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hash: state.pageHash, template: template }),
@@ -1519,6 +1520,55 @@
     const params = new URLSearchParams({ name: state.name, display: display });
     if (doc.file) params.set('file', doc.file);
     location.href = '/ui/editor/page?' + params.toString();
+  }
+
+  // changeServes writes the file that serves one display type (ADR 0110). The
+  // empty label is the page file; the server refuses a file that does not fit
+  // the type and a page that changed since it was read.
+  async function changeServes(select) {
+    const before = select.dataset.value || '';
+    const display = select.dataset.serves;
+    const file = select.value;
+    setStatus('changing the file for ' + display + '…', '');
+    let res;
+    try {
+      res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '/serves?display=' + encodeURIComponent(display), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hash: state.pageHash, file: file }),
+      });
+    } catch (e) {
+      select.value = before;
+      setStatus('changing the file failed: ' + e, 'error');
+      return;
+    }
+    if (res.status === 401) {
+      select.value = before;
+      setStatus(signedOut(), 'error');
+      return;
+    }
+    let doc = {};
+    const body = await res.text();
+    try {
+      doc = JSON.parse(body);
+    } catch (e) {
+      doc.error = body.trim();
+    }
+    if (!res.ok) {
+      select.value = before;
+      setStatus(doc.error || 'changing the file failed (' + res.status + ')', 'error');
+      return;
+    }
+    select.dataset.value = file;
+    if (doc.hash) state.pageHash = doc.hash;
+    // The preview stays on a type the open file still serves; otherwise the
+    // next view starts from the first served type.
+    const params = new URLSearchParams(location.search);
+    const covered = (doc.coverage || []).find((c) => c.display === display);
+    const mine = covered && !covered.missing && !covered.error && (covered.file || '') === (state.file || '');
+    if (display === state.display && !mine) params.delete('display');
+    const query = params.toString();
+    location.href = location.pathname + (query ? '?' + query : '');
   }
 
   // blankCell starts a variant with the first widget the palette offers for the
@@ -1632,10 +1682,47 @@
   on('reload', 'click', () => location.reload());
   on('delete', 'click', remove);
   on('rename', 'click', rename);
-  // The coverage panel creates the layout of a display type in one action, so a
-  // variant starts from the type and never from the open file (ADR 0110).
-  for (const b of document.querySelectorAll('button[data-variant]')) {
-    b.addEventListener('click', () => createVariant(b.dataset.variant));
+  // The Served by table writes the page's variants map: the select names the
+  // file of one display type (ADR 0110).
+  for (const select of document.querySelectorAll('select[data-serves]')) {
+    select.addEventListener('change', () => changeServes(select));
+  }
+  // Create layout asks for a display type and a file label, then writes an empty
+  // layout that starts from the type (ADR 0110, issue #238).
+  const layoutForm = document.querySelector('form[data-create-layout]');
+  if (layoutForm) {
+    const types = layoutForm.querySelector('select[name=display]');
+    const label = layoutForm.querySelector('input[name=label]');
+    types.addEventListener('change', () => {
+      const option = types.options[types.selectedIndex];
+      if (option) label.value = option.dataset.label || option.value;
+    });
+    layoutForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const display = types.value;
+      const file = label.value.trim();
+      if (!display || !file) return;
+      createLayout(display, file);
+    });
+  }
+  // The Create layout button opens its dialog; a click beside the form closes
+  // it again.
+  for (const b of document.querySelectorAll('button[data-dialog]')) {
+    b.addEventListener('click', () => {
+      const d = document.getElementById(b.dataset.dialog);
+      if (!d || b.disabled) return;
+      d.showModal();
+      const first = d.querySelector('select[name], input[name]');
+      if (first) first.focus();
+    });
+  }
+  for (const d of document.querySelectorAll('dialog')) {
+    for (const b of d.querySelectorAll('button[data-close]')) {
+      b.addEventListener('click', () => d.close());
+    }
+    d.addEventListener('click', (e) => {
+      if (e.target === d) d.close();
+    });
   }
   on('palette-filter', 'input', () => {
     state.filter = el('palette-filter').value;
