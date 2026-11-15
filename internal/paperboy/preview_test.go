@@ -107,7 +107,7 @@ func TestPluginsListsBuiltin(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(out.Plugins) != 1 || out.Plugins[0].Name != "paperboy" || out.Plugins[0].Description == nil ||
-		len(out.Plugins[0].Description.Widgets) != 4 {
+		len(out.Plugins[0].Description.Widgets) != 6 {
 		t.Fatalf("plugins: %s", rec.Body)
 	}
 	// The logo is an image widget: a text display cannot show the mark.

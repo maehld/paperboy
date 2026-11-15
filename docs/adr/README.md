@@ -65,6 +65,7 @@ The content model: what a page is, what draws in it and when it is shown. See [`
 | [0111](0111-text-pages-from-plugin-values.md) | Text pages from plugin values | Accepted, not implemented; builds on [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md), replaces the text widget of [ADR-0049](0049-plugin-widgets.md) in stages |
 | [0112](0112-a-missing-page-file.md) | A missing page file is created by hand | Accepted, implemented; removes the assign dialog and `POST /api/pages/{name}/assign` of [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md); a variant without a page file is read-only; a page rename moves its variants ([ADR-0113](0113-a-page-rename-moves-its-variants.md)) |
 | [0113](0113-a-page-rename-moves-its-variants.md) | A page rename moves its variants | Accepted, implemented; amends the rename part of [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md) and the orphan case of [ADR-0112](0112-a-missing-page-file.md) |
+| [0115](0115-device-status-in-a-widget.md) | Device status in a widget | Accepted, implemented; adds `server_status` to the built-in plugin request and the widgets `battery` and `device-status` |
 
 ## Devices and the device protocol
 

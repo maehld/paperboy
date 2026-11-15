@@ -61,7 +61,7 @@ For each cell, in this order:
 3. The image is pasted one to one. There is no scaling at this point: a widget that returns the wrong size gets a hatched notice with the reason.
 4. A result that is older than its `max_age` adds the bar `Veraltet: …` at the bottom of the cell.
 
-The built-in plugin draws text, lines and fills, so a page that is only text needs no image file.
+The built-in plugin draws text, lines and fills, so a page that is only text needs no image file. A page that shows its own device is cached per device; a page that only names other devices stays shared (ADR 0115).
 
 ## Text pages
 
@@ -145,7 +145,9 @@ The built-in plugin `paperboy` needs no data and is never cached ([ADR 0049](../
 
 | Widget | Draws |
 |---|---|
-| `header` | Title or page title, page indicator, clock, date, subtitle, alignment; the date takes the longest of four forms that fits half the cell, or the free text columns, and is dropped when none fits |
+| `header` | Title or page title, page indicator, clock, date, subtitle, alignment; the date takes the longest of four forms that fits half the cell, or the free text columns, and is dropped when none fits; `battery: true` adds the charge of this device at the right |
+| `battery` | The battery of one device as an icon with percentage or voltage; without `device` it shows the device that renders the page |
+| `device-status` | One row per device with battery, estimated runtime and the time since the last contact; `devices` selects ids, otherwise it shows the device that renders the page; the stalest row comes first |
 | `text` | Free text, on text displays an overlong line untrimmed when the cell scrolls |
 | `clock` | Time, date or both |
 | `logo` | The Paperboy mark from its geometry; `wordmark` adds the lockup in Go Mono Bold, image displays only |

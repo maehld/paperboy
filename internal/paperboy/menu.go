@@ -1049,7 +1049,7 @@ func (s *Server) menuOverlay(page servedPage, profile string, p Profile, v menuV
 	s.mu.Lock()
 	data := s.hints[page.hash].data
 	if len(data) == 0 {
-		if rp := s.rendered[profile+"/"+page.name]; rp != nil && rp.hash == page.hash {
+		if rp := s.renderedPageLocked(profile, page.name, page.hash); rp != nil {
 			data = rp.data
 		}
 	}

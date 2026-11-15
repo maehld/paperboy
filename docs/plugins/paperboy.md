@@ -4,16 +4,23 @@ The built-in plugin `paperboy` runs inside Paperboy and needs no configuration. 
 
 ## Widgets
 
-- `header`: page header. Args: `title` (default the page title), `subtitle`, `clock`, `date` (weekday and date before the clock, in the longest of four forms that fits, e.g. „Samstag, 7. November 2026“, „Sa, 7.11.2026“, „Sa, 7.11.“, „7.11.“; left out when none fits), `page_indicator`, `align` (`left`, `center` or `right`, default `left`).
+- `header`: page header. Args: `title` (default the page title), `subtitle`, `clock`, `date` (weekday and date before the clock, in the longest of four forms that fits, e.g. „Samstag, 7. November 2026“, „Sa, 7.11.2026“, „Sa, 7.11.“, „7.11.“; left out when none fits), `page_indicator`, `align` (`left`, `center` or `right`, default `left`) and `battery` (default `false`: an icon and the charge of this device at the right).
+- `battery`: the battery of one device as an icon with a label. Args: `device` (id; default the device that shows the page), `label` (`auto`, `percent`, `volts` or `none`, default `auto`: the percentage, otherwise the voltage) and `align` (`left`, `center` or `right`, default `center`). Without a reading the widget shows an empty outline and `-`. On text displays the widget shows the percentage or voltage without an icon.
+- `device-status`: one row per device with battery, estimated runtime and the time since the last contact. Args: `devices` (ids; default the device that shows the page), `battery`, `runtime` and `seen` (each `bool`, default `true`). A device that is overdue carries `!`; a device that never contacted Paperboy or has no device file carries `?`. The stalest device comes first. On text displays one device is one line.
 - `text`: fixed text. Args: `text` (with `\n` for line breaks), `align` (`left`, `center` or `right`, default `center`), `size`, `bold`.
 - `clock`: the current time. Args: `format` (`time`, `date` or `datetime`, default `time`).
 - `logo`: the Paperboy mark — the page of four by three cells with one cell drawn and the top-right corner turned down ([docs/logo](../logo/README.md)) — centered in the cell and as large as the cell allows. Arg `wordmark` (default `false`) adds the wordmark in Go Mono Bold, so the cell shows the lockup. Image displays only.
 
 ```yaml
 - { at: [0, 0], span: [4, 3], widget: paperboy/logo, args: { wordmark: true } }
+- { at: [0, 0], span: [6, 1], widget: paperboy/header, args: { battery: true } }
+- { at: [0, 1], span: [6, 2], widget: paperboy/device-status }
+- { at: [0, 3], span: [6, 2], widget: paperboy/device-status, args: { devices: [wohnzimmer, flur] } }
 ```
 
 Arguments with a fixed set of values reject anything else ([ADR 0055](../adr/0055-allowed-arg-values-and-gallery-form.md)); the Playground offers them as choices.
+
+The battery, `device-status` and the header's battery read `server_status` from the request (ADR 0115). Only the built-in plugin gets this object; Paperboy keeps no key, MAC or address in it. The page that shows its own device is rendered once per device, so two displays of the same type keep their own status.
 
 On a text display, a full-width cell with `scroll: true` lets a line run: the
 `text` widget returns a line that is wider than the cell untrimmed and the

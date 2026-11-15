@@ -71,15 +71,19 @@ type Context struct {
 	Pages   int // number of pages in the plan rule
 	Banners []string
 	Widgets WidgetSource
+	// ServerStatus is Paperboy's own device status for the built-in plugin;
+	// nil in previews that belong to no device (ADR 0115).
+	ServerStatus *plugin.ServerStatus
 }
 
 // Batch asks for all widgets of one page.
 type Batch struct {
-	Text    bool // text display: lines instead of images
-	Levels  int  // gray levels of an image display
-	Charset string
-	Page    plugin.PageInfo
-	Widgets []WidgetRequest
+	Text         bool // text display: lines instead of images
+	Levels       int  // gray levels of an image display
+	Charset      string
+	Page         plugin.PageInfo
+	Widgets      []WidgetRequest
+	ServerStatus *plugin.ServerStatus // built-in plugin only (ADR 0115)
 }
 
 // WidgetRequest is one cell of the page.
@@ -166,7 +170,7 @@ func (t *Template) RenderImage(d Display, c Context) (*image.Paletted, error) {
 		return nil, err
 	}
 	rects := t.cellRects(d.Width, d.Height)
-	batch := Batch{Levels: d.levels(), Page: t.pageInfo(d, c)}
+	batch := Batch{Levels: d.levels(), Page: t.pageInfo(d, c), ServerStatus: c.ServerStatus}
 	for i, cell := range t.Cells {
 		batch.Widgets = append(batch.Widgets, WidgetRequest{Plugin: cell.Plugin(), Widget: cell.Name(), Args: cell.Args,
 			Width: rects[i].Dx(), Height: rects[i].Dy(), Style: t.pluginStyle(cell, d)})
@@ -326,7 +330,7 @@ func (t *Template) RenderText(d Display, c Context) (Text, error) {
 	if err := t.Fits(d); err != nil {
 		return Text{}, err
 	}
-	batch := Batch{Text: true, Charset: d.Charset, Page: t.pageInfo(d, c)}
+	batch := Batch{Text: true, Charset: d.Charset, Page: t.pageInfo(d, c), ServerStatus: c.ServerStatus}
 	for _, cell := range t.Cells {
 		batch.Widgets = append(batch.Widgets, WidgetRequest{Plugin: cell.Plugin(), Widget: cell.Name(), Args: cell.Args,
 			Width: cell.Span[0], Height: cell.Span[1], Scroll: cell.Scroll})

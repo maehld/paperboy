@@ -8,6 +8,9 @@ grid, the spans and the arguments.
 
 - `uebersicht.yaml` - weather, energy flow from evcc, agenda and a three-day
   forecast.
+- `status.yaml` - the battery of this device in the header, the status of this
+  device and of two devices from the device files, and the battery as a large
+  widget; `status.lcd2004.yaml` shows the rows on 20×4.
 - `kalender.yaml` - agenda next to a month grid.
 - `woche.yaml` - the next seven days as calendar columns.
 - `wetter.yaml` - current weather with clothing advice, five days and today's
