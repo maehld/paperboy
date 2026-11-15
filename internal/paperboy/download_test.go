@@ -132,7 +132,7 @@ plugins:
 func testDownloadServer(t *testing.T, config string) *Server {
 	t.Helper()
 	dir := t.TempDir()
-	writePageFile(t, filepath.Join(dir, "pages", "eins.e1001.yaml"), textPage("eins"))
+	writePageFile(t, filepath.Join(dir, "pages", "eins.yaml"), textPage("eins"))
 	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), "rules: [{name: immer, pages: [eins]}]\n")
 	writeConfig(t, dir, config)
 	writeDisplayFile(t, dir, "e1001", timezoneDisplay)

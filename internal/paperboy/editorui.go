@@ -674,11 +674,9 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	if missing && !shared && stateFile == "" {
 		stateFile = display
 	}
-	// The editor names the open file behind the page name (ADR 0094).
-	v.File = "shared"
-	if stateFile != "" {
-		v.File = stateFile
-	}
+	// The editor names the open file behind the page name: nothing for the
+	// page file, the label for a variant (ADR 0110).
+	v.File = stateFile
 	v.Data = editorStateData(name, display, stateFile, p, missing, variantExists, plansByPage(plans)[name], pageRenameAction(cfg, name, plansByPage(plans)[name]), orphan)
 	for _, n := range displayNames(cfg) {
 		params := url.Values{"name": {name}, "display": {n}}

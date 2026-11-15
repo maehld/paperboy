@@ -41,6 +41,7 @@ func TestStyleRuleAtLeastOnePixel(t *testing.T) {
 
 func TestStyleInPointsFromPage(t *testing.T) {
 	tmpl, err := Parse(strings.NewReader(`
+kind: image
 grid: [1, 2]
 style: { padding: 9, rule: 1.5, text_size: 12 }
 cells:
@@ -62,12 +63,12 @@ cells:
 
 func TestParseRejectsFractionalTextSize(t *testing.T) {
 	for _, style := range []string{"{ text_size: 0.06 }", "{ text_size: 200 }", "{ padding: -1 }"} {
-		_, err := Parse(strings.NewReader("grid: [1, 1]\nstyle: " + style + "\ncells: [{widget: a/b}]\n"))
+		_, err := Parse(strings.NewReader("kind: image\ngrid: [1, 1]\nstyle: " + style + "\ncells: [{widget: a/b}]\n"))
 		if err == nil {
 			t.Errorf("%s accepted", style)
 		}
 	}
-	_, err := Parse(strings.NewReader("grid: [1, 1]\ncells: [{widget: a/b, style: { text_size: 0.06 }}]\n"))
+	_, err := Parse(strings.NewReader("kind: image\ngrid: [1, 1]\ncells: [{widget: a/b, style: { text_size: 0.06 }}]\n"))
 	if err == nil || !strings.Contains(err.Error(), "points") {
 		t.Fatalf("fraction in a cell: %v", err)
 	}

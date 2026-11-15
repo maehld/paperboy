@@ -1,6 +1,7 @@
 # Overview for image displays of any size: one file serves every display type
 # without its own variant (ADR 0049). The grid has 6 columns and 8 rows.
 title: Übersicht
+kind: image
 grid: [6, 8]
 style: { padding: 4.5, divider: 0.6 }
 cells:

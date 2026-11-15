@@ -81,14 +81,14 @@ rules:
   - name: alles
     pages: [eins, fehlt, kaputt]
 `)
-	if err := os.WriteFile(filepath.Join(s.config().Pages, "kaputt.small.yaml"), []byte("grid: [1, 1]\nnope: 1\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(s.config().Pages, "kaputt.yaml"), []byte("kind: image\ngrid: [1, 1]\nnope: 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	body := htmlRequest(t, s, "/ui/plan?device=test").Body.String()
 	for _, want := range []string{
 		"Skipped: no page for this display type",
 		`<p class="error">`,
-		"kaputt.small.yaml",
+		"kaputt.yaml",
 		"/api/preview/small/eins",
 	} {
 		if !strings.Contains(body, want) {

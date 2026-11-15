@@ -1,6 +1,7 @@
 # Countdowns: the days to a date. The two at the top repeat every year, the
 # lower ones are fixed dates, the last with a time and a progress bar.
 title: Countdown
+kind: image
 grid: [6, 8]
 style: { padding: 4.5 }
 cells:

@@ -24,7 +24,7 @@ func planServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 	dir := t.TempDir()
 	pages := filepath.Join(dir, "pages")
 	for _, name := range []string{"eins", "zwei", "drei", "vier"} {
-		writePageFile(t, filepath.Join(pages, name+".small.yaml"), textPage(name))
+		writePageFile(t, filepath.Join(pages, name+".yaml"), textPage(name))
 	}
 	plans := filepath.Join(dir, "plans")
 	writePageFile(t, filepath.Join(plans, "zimmer.yaml"), planYAML)
@@ -47,7 +47,7 @@ func planServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 
 // textPage is a one-cell page with a text of the built-in plugin.
 func textPage(text string) string {
-	return "grid: [1, 1]\nstyle: {padding: 0}\ncells:\n  - {widget: paperboy/text, args: {text: \"" + text + "\"}}\n"
+	return "kind: image\ngrid: [1, 1]\nstyle: {padding: 0}\ncells:\n  - {widget: paperboy/text, args: {text: \"" + text + "\"}}\n"
 }
 
 func writePageFile(t *testing.T, path, content string) {
@@ -338,7 +338,7 @@ rules:
 `)
 	black := false
 	s.widgets.Builtin["fill"] = fillPlugin{black: &black}
-	writePageFile(t, filepath.Join(s.config().Pages, "widget.small.yaml"), "grid: [1, 1]\ncells: [{widget: fill/area}]\n")
+	writePageFile(t, filepath.Join(s.config().Pages, "widget.yaml"), "kind: image\ngrid: [1, 1]\ncells: [{widget: fill/area}]\n")
 	dev := planDevice(t, s)
 	first := pagePath(displayPage(t, s, dev))
 	black = true

@@ -26,12 +26,16 @@ var ErrNotFound = errors.New("page not found")
 // Template is one page. The JSON tags carry the same model to the editor API
 // (ADR 0066).
 type Template struct {
-	Title   string `yaml:"title" json:"title"`
-	Kind    string `yaml:"kind" json:"kind,omitempty"`       // image (default) or text: the displays the page is for
-	Grid    [2]int `yaml:"grid" json:"grid"`                 // columns, rows
-	Style   Style  `yaml:"style" json:"style"`               // look passed to every widget
-	Notices string `yaml:"notices" json:"notices,omitempty"` // show (default) or none: stale widgets
-	Cells   []Cell `yaml:"cells" json:"cells"`
+	Title string `yaml:"title" json:"title"`
+	Kind  string `yaml:"kind" json:"kind"` // image or text: the displays the page serves
+	// Variants maps a display type to the label of the file that serves it:
+	// "sticky: hochkant" means pages/<name>.hochkant.yaml (ADR 0110). Only a
+	// page file carries variants; a variant carries the layout.
+	Variants map[string]string `yaml:"variants" json:"variants,omitempty"`
+	Grid     [2]int            `yaml:"grid" json:"grid"`                 // columns, rows
+	Style    Style             `yaml:"style" json:"style"`               // look passed to every widget
+	Notices  string            `yaml:"notices" json:"notices,omitempty"` // show (default) or none: stale widgets
+	Cells    []Cell            `yaml:"cells" json:"cells"`
 	// Actions belong to the plan, not to a page. The field only exists to
 	// reject the key with a hint instead of "field not found".
 	Actions []any `yaml:"actions" json:"-"`
@@ -66,8 +70,14 @@ func (c Cell) Name() string { _, w, _ := strings.Cut(c.Widget, "/"); return w }
 
 const maxGrid = 80
 
-// Parse reads a template and validates it.
-func Parse(r io.Reader) (*Template, error) {
+// Parse reads a page file and validates it.
+func Parse(r io.Reader) (*Template, error) { return parse(r, false) }
+
+// ParseVariant reads the file of a variant and validates it. A variant carries
+// the layout, not the title and not the variants of its page (ADR 0110).
+func ParseVariant(r io.Reader) (*Template, error) { return parse(r, true) }
+
+func parse(r io.Reader, variant bool) (*Template, error) {
 	raw, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
@@ -84,6 +94,14 @@ func Parse(r io.Reader) (*Template, error) {
 	if err := t.validate(); err != nil {
 		return nil, err
 	}
+	if variant {
+		if t.Title != "" {
+			return nil, fmt.Errorf("title belongs to the page, not to its variant")
+		}
+		if len(t.Variants) > 0 {
+			return nil, fmt.Errorf("a variant cannot carry variants")
+		}
+	}
 	return &t, nil
 }
 
@@ -93,38 +111,74 @@ const (
 	KindText  = "text"
 )
 
-// Paths lists the files a page may come from for a display type, the variant
-// first: pages/<name>.<display>.yaml, then pages/<name>.yaml.
-func Paths(dir, name, display string) ([]string, error) {
-	if !ValidName(name) || !ValidName(display) {
-		return nil, fmt.Errorf("%w: invalid page %q for display %q", ErrNotFound, name, display)
+// PagePath is the file of a page: pages/<name>.yaml (ADR 0110).
+func PagePath(dir, name string) (string, error) {
+	if !ValidName(name) {
+		return "", fmt.Errorf("%w: invalid page name %q", ErrNotFound, name)
 	}
-	return []string{filepath.Join(dir, name+"."+display+".yaml"), filepath.Join(dir, name+".yaml")}, nil
+	return filepath.Join(dir, name+".yaml"), nil
 }
 
-// Load reads pages/<name>.<display>.yaml, or pages/<name>.yaml when the page
-// has no variant for the display type. A missing page is ErrNotFound.
-func Load(dir, name, display string) (*Template, error) {
-	paths, err := Paths(dir, name, display)
+// VariantPath is the file of a variant: pages/<name>.<label>.yaml.
+func VariantPath(dir, name, label string) (string, error) {
+	if !ValidName(name) || !ValidName(label) {
+		return "", fmt.Errorf("%w: invalid variant %q of page %q", ErrNotFound, label, name)
+	}
+	return filepath.Join(dir, name+"."+label+".yaml"), nil
+}
+
+// LoadFor reads the file that serves a display type: the variant that the page
+// names, else the page file itself. A page without a file for the type is
+// ErrNotFound, and the message names the reason (ADR 0110).
+func LoadFor(dir, name, display string) (*Template, error) {
+	p, err := PagePath(dir, name)
 	if err != nil {
 		return nil, err
 	}
-	for _, path := range paths {
-		f, err := os.Open(path)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		t, err := Parse(f)
-		f.Close()
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
-		}
+	t, err := readTemplate(p, false)
+	if err != nil {
+		return nil, err
+	}
+	label, ok := t.Variants[display]
+	if !ok {
 		return t, nil
 	}
-	return nil, fmt.Errorf("%w: %s.%s.yaml or %s.yaml in %s", ErrNotFound, name, display, name, dir)
+	vp, err := VariantPath(dir, name, label)
+	if err != nil {
+		return nil, err
+	}
+	v, err := readTemplate(vp, true)
+	if errors.Is(err, ErrNotFound) {
+		return nil, fmt.Errorf("%w: page %s names the variant %q for display type %q, but %s is missing",
+			ErrNotFound, name, label, display, filepath.Base(vp))
+	}
+	if err != nil {
+		return nil, err
+	}
+	v.Title = t.Title
+	return v, nil
+}
+
+// readTemplate opens one page file and parses it as a page or as a variant.
+func readTemplate(path string, variant bool) (*Template, error) {
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, path)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var t *Template
+	if variant {
+		t, err = ParseVariant(f)
+	} else {
+		t, err = Parse(f)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return t, nil
 }
 
 // ValidName reports whether s can be used as a page, display, plugin or
@@ -151,10 +205,18 @@ func (t *Template) validate() error {
 	}
 	switch t.Kind {
 	case "":
-		t.Kind = KindImage
+		return fmt.Errorf("kind is required: image or text")
 	case KindImage, KindText:
 	default:
 		return fmt.Errorf("kind %q: expected image or text", t.Kind)
+	}
+	for display, label := range t.Variants {
+		if !ValidName(display) {
+			return fmt.Errorf("variants: display type %q: only a-z, 0-9 and -", display)
+		}
+		if !ValidName(label) {
+			return fmt.Errorf("variants: %s: label %q: only a-z, 0-9 and -", display, label)
+		}
 	}
 	switch t.Notices {
 	case "":

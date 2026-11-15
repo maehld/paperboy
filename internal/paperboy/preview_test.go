@@ -15,6 +15,7 @@ import (
 
 const previewTemplate = `
 title: Solar
+kind: image
 grid: [2, 2]
 cells:
   - { at: [0, 0], span: [2, 1], widget: paperboy/header }
@@ -45,7 +46,7 @@ func preview(t *testing.T, s *Server, path string) *httptest.ResponseRecorder {
 
 func TestPreviewRendersPNG(t *testing.T) {
 	s, _ := testServer(t)
-	writePage(t, s, "solar", "small", previewTemplate)
+	writePage(t, s, "solar", "", previewTemplate)
 	rec := preview(t, s, "/api/preview/small/solar")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("preview: %d %s", rec.Code, rec.Body)
@@ -62,19 +63,19 @@ func TestPreviewRendersPNG(t *testing.T) {
 	}
 }
 
-// TestPreviewFallsBackToSharedPage verifies that pages/<name>.yaml serves
-// every display type without its own variant (ADR 0049).
-func TestPreviewFallsBackToSharedPage(t *testing.T) {
+// TestPreviewServesTheKind verifies that a page file serves every display type
+// of its kind (ADR 0110).
+func TestPreviewServesTheKind(t *testing.T) {
 	s, _ := testServer(t)
 	writePage(t, s, "solar", "", previewTemplate)
 	if rec := preview(t, s, "/api/preview/small/solar"); rec.Code != http.StatusOK {
-		t.Fatalf("shared page: %d %s", rec.Code, rec.Body)
+		t.Fatalf("page: %d %s", rec.Code, rec.Body)
 	}
 }
 
 func TestPreviewNotFound(t *testing.T) {
 	s, _ := testServer(t)
-	writePage(t, s, "solar", "small", previewTemplate)
+	writePage(t, s, "solar", "", previewTemplate)
 	for _, path := range []string{
 		"/api/preview/e1001/solar",   // unknown display
 		"/api/preview/small/unknown", // unknown page
@@ -88,7 +89,7 @@ func TestPreviewNotFound(t *testing.T) {
 
 func TestPreviewBrokenTemplate(t *testing.T) {
 	s, _ := testServer(t)
-	writePage(t, s, "broken", "small", "grid: [1, 1]\ncells:\n  - widget: paperboy/text\n    unknown: 1\n")
+	writePage(t, s, "broken", "", "kind: image\ngrid: [1, 1]\ncells:\n  - widget: paperboy/text\n    unknown: 1\n")
 	if rec := preview(t, s, "/api/preview/small/broken"); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("broken template: %d", rec.Code)
 	}

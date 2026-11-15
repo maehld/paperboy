@@ -22,10 +22,11 @@ func virtualServer(t *testing.T, planYAML, actions string) (*Server, *time.Time,
 	t.Helper()
 	dir := t.TempDir()
 	pages := filepath.Join(dir, "pages")
-	writePageFile(t, filepath.Join(pages, "eins.small.yaml"), textPage("eins"))
-	writePageFile(t, filepath.Join(pages, "zwei.small.yaml"), textPage("zwei"))
-	writePageFile(t, filepath.Join(pages, "eins.lcd.yaml"), lcdPage("eins"))
-	writePageFile(t, filepath.Join(pages, "zwei.lcd.yaml"), lcdPage("zwei"))
+	for _, name := range []string{"eins", "zwei"} {
+		writePageFile(t, filepath.Join(pages, name+".yaml"),
+			strings.Replace(textPage(name), "kind: image", "kind: image\nvariants: {lcd: lcd}", 1))
+		writePageFile(t, filepath.Join(pages, name+".lcd.yaml"), lcdPage(name))
+	}
 	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), planYAML+actions)
 	cfg := &Config{Dir: dir, Language: "en", Timezone: time.UTC,
 		Profiles: map[string]Profile{

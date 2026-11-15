@@ -20,22 +20,22 @@ func textServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 	t.Helper()
 	dir := t.TempDir()
 	pages := filepath.Join(dir, "pages")
-	writePageFile(t, filepath.Join(pages, "eins.lcd.yaml"), `
+	writePageFile(t, filepath.Join(pages, "eins.yaml"), `
 kind: text
 grid: [8, 2]
 cells:
   - { at: [0, 0], span: [8, 1], widget: value/pv }
   - { at: [0, 1], span: [8, 1], widget: paperboy/text, args: { text: Größe } }
 `)
-	writePageFile(t, filepath.Join(pages, "zwei.lcd.yaml"), "kind: text\ngrid: [8, 2]\ncells: [{span: [8, 1], widget: paperboy/text, args: {text: zwei}}]\n")
-	writePageFile(t, filepath.Join(pages, "scroll.lcd.yaml"), `
+	writePageFile(t, filepath.Join(pages, "zwei.yaml"), "kind: text\ngrid: [8, 2]\ncells: [{span: [8, 1], widget: paperboy/text, args: {text: zwei}}]\n")
+	writePageFile(t, filepath.Join(pages, "scroll.yaml"), `
 kind: text
 grid: [8, 2]
 cells:
   - { at: [0, 0], span: [8, 1], widget: paperboy/text, scroll: true, args: { text: "Lange Zeile hier" } }
   - { at: [0, 1], span: [8, 1], widget: paperboy/text, args: { text: zwei } }
 `)
-	writePageFile(t, filepath.Join(pages, "kaputt.lcd.yaml"), "kind: text\ngrid: [8, 2]\ncells: [{widget: paperboy/text, args: {text: x}, colour: red}]\n")
+	writePageFile(t, filepath.Join(pages, "kaputt.yaml"), "kind: text\ngrid: [8, 2]\ncells: [{widget: paperboy/text, args: {text: x}, colour: red}]\n")
 	if planYAML != "" {
 		writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), planYAML)
 	}
@@ -230,8 +230,8 @@ func TestTextDeviceFirmwareOffer(t *testing.T) {
 // page without a text variant and a text page with the wrong grid.
 func TestPlanSkipsPagesForOtherDisplays(t *testing.T) {
 	s, _ := textServer(t, "rules: [{name: immer, pages: [bild, schmal, zwei]}]\n")
-	writePageFile(t, filepath.Join(s.config().Pages, "bild.yaml"), "grid: [8, 2]\ncells: [{widget: paperboy/text, args: {text: bild}}]\n")
-	writePageFile(t, filepath.Join(s.config().Pages, "schmal.lcd.yaml"), "kind: text\ngrid: [4, 2]\ncells: [{widget: paperboy/text, args: {text: x}}]\n")
+	writePageFile(t, filepath.Join(s.config().Pages, "bild.yaml"), "kind: image\ngrid: [8, 2]\ncells: [{widget: paperboy/text, args: {text: bild}}]\n")
+	writePageFile(t, filepath.Join(s.config().Pages, "schmal.yaml"), "kind: text\ngrid: [4, 2]\ncells: [{widget: paperboy/text, args: {text: x}}]\n")
 	dev := planDevice(t, s)
 	out := displayPage(t, s, dev)
 	if lines := anyStrings(out["text"].(map[string]any)["lines"]); lines[0] != "zwei    " {

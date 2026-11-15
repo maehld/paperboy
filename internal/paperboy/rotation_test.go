@@ -30,7 +30,7 @@ func TestRotationInheritance(t *testing.T) {
 // rotation of the device file for the firmware to apply (ADR 0102).
 func TestSyncAnswersRotation(t *testing.T) {
 	dir := t.TempDir()
-	writePageFile(t, filepath.Join(dir, pagesDirName, "eins.small.yaml"), textPage("eins"))
+	writePageFile(t, filepath.Join(dir, pagesDirName, "eins.yaml"), textPage("eins"))
 	writePageFile(t, filepath.Join(dir, plansDirName, "zimmer.yaml"), "fallback: eins\n")
 	override := 270
 	cfg := &Config{Dir: dir, Timezone: time.UTC,
