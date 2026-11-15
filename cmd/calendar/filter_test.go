@@ -59,8 +59,7 @@ func TestAgendaCalendarFilter(t *testing.T) {
 
 func TestCalendarFilterUnknown(t *testing.T) {
 	p := filterPlugin(t)
-	_, err := p.Text(&plugin.Request{}, plugin.WidgetRequest{Widget: "agenda", Width: 30, Height: 10,
-		Args: map[string]any{"calendars": []any{"Gibt es nicht"}}})
+	_, err := p.agendaValue(plugin.WidgetRequest{Widget: "agenda", Args: map[string]any{"calendars": []any{"Gibt es nicht"}}})
 	if err == nil || !strings.Contains(err.Error(), `calendar "Gibt es nicht" not found`) ||
 		!strings.Contains(err.Error(), "available: Familie, Privat, Arbeit") {
 		t.Fatalf("agenda error = %v", err)
@@ -90,37 +89,10 @@ func TestBirthdaysCalendarFilter(t *testing.T) {
 	}
 }
 
-func TestMonthAndWeekCalendarFilter(t *testing.T) {
+func TestWeekCalendarFilter(t *testing.T) {
 	p := filterPlugin(t)
 
-	// The month text variant lists the titles of the next days.
-	month := func(names ...string) ([]string, error) {
-		args := map[string]any{}
-		if len(names) > 0 {
-			list := make([]any, len(names))
-			for i, name := range names {
-				list[i] = name
-			}
-			args["calendars"] = list
-		}
-		return p.Text(&plugin.Request{}, plugin.WidgetRequest{Widget: "month", Width: 30, Height: 2, Args: args})
-	}
-	got, err := month("Arbeit")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []string{"Di  3", "Mi  4 Standup"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("month = %q, want %q", got, want)
-	}
-	got, err = month("Familie")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []string{"Di  3 Familienessen", "Mi  4"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("month family = %q, want %q", got, want)
-	}
-
-	// The week text variant starts at today and lists one line per day.
+	// The week value starts at today and lists one line per day.
 	week := func(names ...string) ([]string, error) {
 		args := map[string]any{"days": 2, "start": "today"}
 		if len(names) > 0 {
@@ -130,9 +102,9 @@ func TestMonthAndWeekCalendarFilter(t *testing.T) {
 			}
 			args["calendars"] = list
 		}
-		return p.Text(&plugin.Request{}, plugin.WidgetRequest{Widget: "week", Width: 30, Height: 2, Args: args})
+		return p.weekValue(plugin.WidgetRequest{Widget: "week", Width: 30, Height: 2, Args: args})
 	}
-	got, err = week("Familie")
+	got, err := week("Familie")
 	if err != nil {
 		t.Fatal(err)
 	}
