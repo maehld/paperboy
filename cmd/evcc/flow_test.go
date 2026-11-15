@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,25 +26,28 @@ func flowFixture(t *testing.T, name string) *evcc {
 	return &evcc{cur: s, req: req, lang: "en"}
 }
 
-func TestFlowText(t *testing.T) {
-	want := map[string]string{
-		"flow_export":              "PV 6.2 kW|Home 400 W|Car 3.7 kW|Grid -2.1 kW|Batt 100% 0 W",
-		"flow_import":              "PV 0 W|Home 1.5 kW|Car 3.7 kW|Grid +5.2 kW|Batt 8% 0 W",
-		"flow_battery_charging":    "PV 3.7 kW|Home 700 W|Grid 0 W|Batt 55% -3.0 kW",
-		"flow_battery_discharging": "PV 0 W|Home 1.2 kW|Grid 0 W|Batt 72% +1.2 kW",
-		"flow_no_battery":          "PV 4.6 kW|Home 800 W|Car 3.7 kW|Grid -100 W",
-		"flow_no_loadpoint":        "PV 2.0 kW|Home 900 W|Grid -1.1 kW|Batt 50% 0 W",
-		"flow_two_loadpoints":      "PV 5.0 kW|Home 600 W|Car 3.7 kW|Car 2.0 kW|Car 0 W|Grid +500 W|Batt 40% +800 W",
-		"flow_discharge_export":    "PV 0 W|Home 800 W|Grid -2.2 kW|Batt 90% +3.0 kW",
+func TestFlowValues(t *testing.T) {
+	want := map[string][3]float64{
+		"flow_export":              {6.2, 0.4, -2.1},
+		"flow_import":              {0, 1.5, 5.2},
+		"flow_battery_charging":    {3.7, 0.7, 0},
+		"flow_battery_discharging": {0, 1.2, 0},
+		"flow_no_battery":          {4.6, 0.8, -0.1},
+		"flow_no_loadpoint":        {2.0, 0.9, -1.1},
+		"flow_two_loadpoints":      {5.0, 0.6, 0.5},
+		"flow_discharge_export":    {0, 0.8, -2.2},
 	}
 	for name, exp := range want {
 		e := flowFixture(t, name)
-		lines := e.flowText(plugin.WidgetRequest{Widget: "flow", Width: 24, Height: 6})
-		for i, l := range lines {
-			lines[i] = strings.Join(strings.Fields(l), " ")
+		values, err := e.Values(&plugin.Request{Values: []string{"pv", "home", "grid", "battery_power", "loadpoint_power"}})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
 		}
-		if got := strings.Join(lines, "|"); got != exp {
-			t.Errorf("%s: got %q want %q", name, got, exp)
+		for i, key := range []string{"pv", "home", "grid"} {
+			v := values[key]
+			if v.Number == nil || math.Abs(*v.Number-exp[i]) > 0.001 {
+				t.Errorf("%s/%s = %+v, want %v", name, key, v, exp[i])
+			}
 		}
 	}
 }

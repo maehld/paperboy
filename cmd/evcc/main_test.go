@@ -6,7 +6,6 @@ import (
 	"image"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -83,13 +82,25 @@ func TestWidgets(t *testing.T) {
 		render.NewCanvas(10, 10, 2)); err == nil {
 		t.Error("unknown loadpoint accepted")
 	}
-	lines, err := e.Text(req, plugin.WidgetRequest{Widget: "loadpoint", Width: 20, Height: 3})
-	if err != nil || strings.Join(lines, "|") != "Octavia          64%|PV            3,7 kW|Sitzung      5,4 kWh" {
-		t.Fatalf("text: %q %v", lines, err)
+	values, err := e.Values(&plugin.Request{Values: []string{"loadpoint", "loadpoint_soc", "loadpoint_power",
+		"session_energy", "session_solar", "loadpoint_mode", "grid", "pv", "battery", "battery_power", "remaining"}})
+	if err != nil {
+		t.Fatal(err)
 	}
-	site, _ := e.Text(req, plugin.WidgetRequest{Widget: "site", Width: 20, Height: 4})
-	if len(site) != 4 || site[2] != "Netz          2,1 kW" {
-		t.Fatalf("site text: %q", site)
+	if v := values["loadpoint"]; v.Text == nil || *v.Text != "Octavia" {
+		t.Errorf("loadpoint = %+v", v)
+	}
+	for key, want := range map[string]float64{"loadpoint_soc": 64, "loadpoint_power": 3.7,
+		"session_energy": 5.4, "session_solar": 90, "grid": -2.1, "pv": 4.2, "battery": 81, "battery_power": -1.3} {
+		if v := values[key]; v.Number == nil || *v.Number != want {
+			t.Errorf("%s = %+v, want %v", key, v, want)
+		}
+	}
+	if v := values["loadpoint_mode"]; v.Text == nil || *v.Text != "PV" {
+		t.Errorf("loadpoint_mode = %+v", v)
+	}
+	if v := values["remaining"]; v.Duration == nil || *v.Duration != 2400 {
+		t.Errorf("remaining = %+v", v)
 	}
 }
 

@@ -424,21 +424,3 @@ func (e *evcc) historyWidget(w plugin.WidgetRequest, img *image.Paletted) error 
 	}
 	return nil
 }
-
-// historyText puts one period per line, with shorter labels so that a 20
-// column display keeps both label and value.
-func (e *evcc) historyText(w plugin.WidgetRequest) ([]string, error) {
-	metric, heading, list, err := e.historyValues(w, false)
-	if err != nil {
-		return nil, err
-	}
-	var lines []string
-	if w.Height >= 5 {
-		lines = append(lines, heading)
-	}
-	rows := e.historyRows()
-	for i := 0; i < len(rows) && len(lines) < w.Height; i++ {
-		lines = append(lines, plugin.Columns(rows[i].short, e.kwh(e.historySum(list, rows[i], metric)), w.Width))
-	}
-	return lines, nil
-}

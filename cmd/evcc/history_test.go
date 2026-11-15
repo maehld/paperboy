@@ -129,50 +129,33 @@ func newHistoryPlugin(t *testing.T) (*evcc, *plugin.Request) {
 	return e, req
 }
 
-func historyText(t *testing.T, e *evcc, req *plugin.Request, height int, args map[string]any) []string {
+func historyValues(t *testing.T, e *evcc, args map[string]any) (string, string, []energyPoint) {
 	t.Helper()
-	lines, err := e.Text(req, plugin.WidgetRequest{Widget: "history", Width: 20, Height: height, Args: args})
+	metric, heading, list, err := e.historyValues(plugin.WidgetRequest{Widget: "history", Args: args}, false)
 	if err != nil {
 		t.Fatalf("%v: %v", args, err)
 	}
-	return lines
+	return metric, heading, list
 }
 
-func line(label, value string) string { return plugin.Columns(label, value, 20) }
-
-func TestHistoryText(t *testing.T) {
-	e, req := newHistoryPlugin(t)
-	// Four rows fit without a heading: today, yesterday, this week and last
-	// week (12 November 2026 is a Thursday, the week starts on Monday).
-	want := []string{
-		line("Heute", "5,0 kWh"),
-		line("Gestern", "4,0 kWh"),
-		line("Woche", "10,0 kWh"),
-		line("Vorwoche", "9,0 kWh"),
+func TestHistoryValues(t *testing.T) {
+	e, _ := newHistoryPlugin(t)
+	// 12 November 2026 is a Thursday, the week starts on Monday.
+	metric, heading, list := historyValues(t, e, nil)
+	if heading != "PV-Ertrag" {
+		t.Errorf("heading = %q", heading)
 	}
-	if got := historyText(t, e, req, 4, nil); strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Errorf("4 rows:\n%q\nwant\n%q", got, want)
-	}
-
-	// A taller display gets the heading and all seven periods.
-	got := historyText(t, e, req, 8, nil)
-	want = []string{
-		"PV-Ertrag",
-		line("Heute", "5,0 kWh"),
-		line("Gestern", "4,0 kWh"),
-		line("Woche", "10,0 kWh"),
-		line("Vorwoche", "9,0 kWh"),
-		line("Monat", "21,0 kWh"),
-		line("Vormonat", "7,0 kWh"),
-		line("Jahr", "37,0 kWh"),
-	}
-	if strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Errorf("8 rows:\n%q\nwant\n%q", got, want)
+	rows := e.historyRows()
+	want := []float64{5.0, 4.0, 10.0, 9.0, 21.0, 7.0, 37.0}
+	for i, row := range rows {
+		if got := e.historySum(list, row, metric); got != want[i] {
+			t.Errorf("%s: %v, want %v", row.short, got, want[i])
+		}
 	}
 }
 
 func TestHistorySources(t *testing.T) {
-	e, req := newHistoryPlugin(t)
+	e, _ := newHistoryPlugin(t)
 	cases := []struct {
 		args  map[string]any
 		head  string
@@ -186,15 +169,18 @@ func TestHistorySources(t *testing.T) {
 		{map[string]any{"source": "loadpoint"}, "Garage", "1,5 kWh"},
 	}
 	for _, c := range cases {
-		got := historyText(t, e, req, 5, c.args)
-		if len(got) != 5 || got[0] != c.head || got[1] != line("Heute", c.today) {
-			t.Errorf("%v: %q", c.args, got)
+		metric, heading, list := historyValues(t, e, c.args)
+		if heading != c.head {
+			t.Errorf("%v: heading %q, want %q", c.args, heading, c.head)
+		}
+		if got := e.kwh(e.historySum(list, e.historyRows()[0], metric)); got != c.today {
+			t.Errorf("%v: today %q, want %q", c.args, got, c.today)
 		}
 	}
 }
 
 func TestHistoryErrors(t *testing.T) {
-	e, req := newHistoryPlugin(t)
+	e, _ := newHistoryPlugin(t)
 	for _, c := range []struct {
 		args map[string]any
 		want string
@@ -203,7 +189,7 @@ func TestHistoryErrors(t *testing.T) {
 		{map[string]any{"source": "nonsense"}, "unknown widget"},
 		{map[string]any{"source": "loadpoint", "index": 3}, "loadpoint 3"},
 	} {
-		_, err := e.Text(req, plugin.WidgetRequest{Widget: "history", Width: 20, Height: 4, Args: c.args})
+		_, _, _, err := e.historyValues(plugin.WidgetRequest{Widget: "history", Args: c.args}, false)
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%v: %v, want %q", c.args, err, c.want)
 		}
@@ -237,9 +223,9 @@ func TestHistoryWithoutEndpoint(t *testing.T) {
 		Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 28.8}}, img); err != nil || !hasInk(img) {
 		t.Fatalf("site: %v", err)
 	}
-	_, err := e.Text(req, plugin.WidgetRequest{Widget: "history", Width: 20, Height: 4})
-	if err == nil || !strings.Contains(err.Error(), "evcc history: HTTP 404") {
-		t.Fatalf("history: %v", err)
+	if img := render.NewCanvas(400, 240, 4); e.Render(req, plugin.WidgetRequest{Widget: "history", Width: 400, Height: 240,
+		Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 28.8}}, img) == nil {
+		t.Fatal("history without endpoint drew a widget")
 	}
 }
 
