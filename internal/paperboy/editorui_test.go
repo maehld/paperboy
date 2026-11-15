@@ -228,7 +228,7 @@ func TestEditorVariantsPanel(t *testing.T) {
 		`"page_title":"Solar"`,
 		`<h3>Variant</h3>`,
 		`This is a variant for <a href="/ui/editor/page?display=small&amp;name=solar">Solar</a>`,
-		`<p class="types-label">Display types</p>`,
+		`<p class="types-label">Assigned display types</p>`,
 		`<ul class="variant-types"><li>small</li></ul>`,
 	} {
 		if !strings.Contains(body, want) {
