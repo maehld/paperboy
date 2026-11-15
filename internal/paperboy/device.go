@@ -196,19 +196,21 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	d := s.config().device(req.MAC)
+	cfg := s.config()
+	device := cfg.device(req.MAC)
+	now := s.now()
 	s.mu.Lock()
 	st := s.stateLocked(key)
 	if st.FirstSeen.IsZero() {
-		st.FirstSeen = s.now()
+		st.FirstSeen = now
 	}
 	st.Hardware, st.Firmware = req.Hardware, req.Firmware
 	st.ClientIP = clientIP(r)
 	if req.Power != "" {
 		st.ReportedPower = req.Power
 	}
-	if d == nil {
-		st.LastSeen = s.now()
+	if device == nil {
+		st.LastSeen = now
 		stateData := s.stateSnapshotLocked(st)
 		s.mu.Unlock()
 		s.saveState(key, stateData)
@@ -217,8 +219,25 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "device not configured", http.StatusForbidden)
 		return
 	}
+	// The operator has to confirm this display before it takes a key; until
+	// then it shows a code (ADR 0109).
+	if code, challenge := s.pairChallengeLocked(st, now); challenge {
+		stateData := s.stateSnapshotLocked(st)
+		s.mu.Unlock()
+		s.saveState(key, stateData)
+		slog.Info("registration waits for pairing", "device", device.ID, "mac", device.MAC)
+		writeJSON(w, http.StatusForbidden, pairChallenge{
+			Error:     "pairing required: enter the code the display shows in the device editor",
+			Code:      code,
+			ExpiresIn: int(pairTTL.Seconds()),
+		})
+		return
+	}
 	if st.APIKey == "" {
 		st.APIKey = newAPIKey()
+	}
+	if st.PairAuthorized {
+		usePairingLocked(st, now)
 	}
 	if req.Touch != nil {
 		st.TouchReported = *req.Touch
@@ -227,8 +246,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	stateData := s.stateSnapshotLocked(st)
 	s.mu.Unlock()
 	s.saveState(key, stateData)
-	slog.Info("display registered", "device", d.ID, "mac", d.MAC, "hardware", req.Hardware, "firmware", req.Firmware)
-	writeJSON(w, http.StatusOK, map[string]string{"key": apiKey, "device": d.ID})
+	slog.Info("display registered", "device", device.ID, "mac", device.MAC, "hardware", req.Hardware, "firmware", req.Firmware)
+	writeJSON(w, http.StatusOK, map[string]string{"key": apiKey, "device": device.ID})
 }
 
 // deviceByKeyLocked finds the device that owns the bearer key. cfg is the

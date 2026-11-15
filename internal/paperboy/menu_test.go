@@ -98,6 +98,7 @@ func menuServerRules(t *testing.T, rules, actions string, tweak func(*Device)) (
 
 func menuDevice(t *testing.T, s *Server) *testDevice {
 	t.Helper()
+	pair(t, s, menuDeviceMAC)
 	rec := register(t, s, `{"mac":"`+menuDeviceMAC+`","hardware":"sticky","firmware":"0.5.0"}`)
 	var out struct{ Key, Device string }
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); rec.Code != http.StatusOK || err != nil || out.Key == "" {

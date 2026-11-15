@@ -93,6 +93,7 @@ func register(t *testing.T, s *Server, body string) *httptest.ResponseRecorder {
 
 func planDevice(t *testing.T, s *Server) *testDevice {
 	t.Helper()
+	pair(t, s, planDeviceMAC)
 	rec := register(t, s, `{"mac":"`+planDeviceMAC+`","hardware":"sticky","firmware":"0.4.0"}`)
 	var out struct{ Key, Device string }
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); rec.Code != http.StatusOK || err != nil || out.Key == "" {

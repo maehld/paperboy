@@ -110,7 +110,9 @@ defaults:
 #   charset: hd44780  # utf8 (default), ascii or hd44780
 # Devices are files under devices/<id>.yaml (ADR 0070), one per display; the
 # file name is the stable device ID. A leftover devices: section here aborts the
-# start. Create and edit them in the editor at /ui/editor, or by hand, e.g.
+# start. A display that registers shows a six-character pairing code; enter it
+# with "Pair" in the device editor, and the next register takes its key
+# (ADR 0109). Create and edit them in the editor at /ui/editor, or by hand, e.g.
 # devices/wohnzimmer.yaml:
 #
 #   display_type: e1001

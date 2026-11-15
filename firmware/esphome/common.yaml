@@ -221,6 +221,14 @@ globals:
   - id: clock_start
     type: uint32_t
     initial_value: "0"
+  # Pairing (ADR 0109): the code the server asks for, and whether the setup
+  # screen still has to show it. An unchanged code does not repaint the panel.
+  - id: pair_code
+    type: std::string
+    initial_value: '""'
+  - id: pair_new
+    type: bool
+    initial_value: "false"
 
 http_request:
   useragent: paperboy-esphome
@@ -443,6 +451,10 @@ script:
             t += "No clock for the certificate\n";
             t += "of an https Paperboy URL.\n";
             t += "Check NTP or use http://\n";
+          } else if (reason == "pair") {
+            t += "Pairing code\n";
+            t += id(pair_code) + "\n";
+            t += "Enter it in the device editor.\n";
           } else {
             t += "Paperboy does not know this display.\n";
             t += "Add its MAC to paperboy.yaml.\n";
@@ -501,13 +513,37 @@ script:
                   }
                   if (!key.empty()) {
                     id(api_key).make_call().set_value(key).perform();
+                    id(pair_code) = "";
                     ESP_LOGI("paperboy", "registered with Paperboy");
                   } else {
                     ESP_LOGW("paperboy", "registration refused: HTTP %d", response->status_code);
                   }
+                  // A register without the operator's confirmation answers
+                  // with the code the panel shows (ADR 0109).
+                  std::string code;
+                  if (response->status_code == 403) {
+                    json::parse_json(body, [&](JsonObject root) -> bool {
+                      code = root["code"] | "";
+                      return true;
+                    });
+                  }
+                  if (!code.empty()) {
+                    if (code != id(pair_code) || !id(setup_mode)) {
+                      id(pair_code) = code;
+                      id(pair_new) = true;
+                    }
+                  } else {
+                    id(pair_code) = "";
+                  }
               - if:
                   condition:
-                    lambda: "return response->status_code == 403;"
+                    lambda: "return id(pair_new);"
+                  then:
+                    - lambda: "id(pair_new) = false;"
+                    - script.execute: { id: enter_setup, reason: "pair" }
+              - if:
+                  condition:
+                    lambda: "return response->status_code == 403 && id(pair_code).empty();"
                   then:
                     - script.execute: { id: enter_setup, reason: "unknown" }
           on_error:

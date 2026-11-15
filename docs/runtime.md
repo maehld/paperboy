@@ -78,7 +78,7 @@ The `ppi` field has a helper. It converts the diagonal of the panel in inches or
 
 ## Device API
 
-`POST /api/device/register` with `{"mac", "hardware", "firmware"}` (optionally `power` and `touch`) returns `{"key", "device"}` for a configured MAC (an existing key is kept) and `403` otherwise (ADR 0042, ADR 0064). Every wake sends one `POST /api/device/sync` with `Authorization: Bearer <key>`:
+`POST /api/device/register` with `{"mac", "hardware", "firmware"}` (optionally `power` and `touch`) returns `{"key", "device"}` for a configured MAC (an existing key is kept) and `403` otherwise (ADR 0042, ADR 0064). The `403` carries `code` and `expires_in` until the operator entered the code the panel shows. The *Pair* button in the device editor posts the code to `POST /api/state/devices/{mac}/pair`, a UI route. The next register then takes the key (ADR 0109). Every wake sends one `POST /api/device/sync` with `Authorization: Bearer <key>`:
 
 - `reason`: `timer`, `button`, `touch`, `powercycle`, `menu` or `result`.
 - `events`: buttons by role `next`, `previous`, `home`, optionally with `hold_ms`; touches with `x`/`y`. Each event has a monotonically increasing `id`, and Paperboy ignores a repeated ID.

@@ -67,6 +67,7 @@ func TestConfigReloadChangesDeviceList(t *testing.T) {
 	writeDeviceFile(t, dir, "flur", reloadDevice)
 	s := configServer(t, dir)
 
+	pair(t, s, "AA:BB:CC:DD:EE:01")
 	if rec := register(t, s, `{"mac":"AA:BB:CC:DD:EE:01","hardware":"sticky"}`); rec.Code != http.StatusOK {
 		t.Fatalf("registered device refused: %d %s", rec.Code, rec.Body)
 	}
@@ -81,6 +82,7 @@ func TestConfigReloadChangesDeviceList(t *testing.T) {
 
 	// A second device file registers without a restart.
 	writeDeviceFile(t, dir, "kueche", strings.Replace(reloadDevice, "AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:02", 1))
+	pair(t, s, "AA:BB:CC:DD:EE:02")
 	if rec := register(t, s, `{"mac":"AA:BB:CC:DD:EE:02","hardware":"sticky"}`); rec.Code != http.StatusOK {
 		t.Fatalf("added device does not register: %d %s", rec.Code, rec.Body)
 	}
@@ -140,6 +142,7 @@ func TestConfigReloadKeepsLastValidOnBrokenDevice(t *testing.T) {
 	s := configServer(t, dir)
 
 	writeDeviceFile(t, dir, "flur", "display_type: [\n") // truncated, invalid YAML
+	pair(t, s, "AA:BB:CC:DD:EE:01")
 	if rec := register(t, s, `{"mac":"AA:BB:CC:DD:EE:01","hardware":"sticky"}`); rec.Code != http.StatusOK {
 		t.Fatalf("broken device file must keep the last valid configuration: %d %s", rec.Code, rec.Body)
 	}
@@ -189,6 +192,7 @@ func TestDegradedStartAppliesConfig(t *testing.T) {
 	if resp := call(t, s, "/api/profiles", nil); len(resp["profiles"].([]any)) != 1 {
 		t.Fatalf("configuration not applied after a reload: %#v", resp)
 	}
+	pair(t, s, "AA:BB:CC:DD:EE:01")
 	if rec := register(t, s, `{"mac":"AA:BB:CC:DD:EE:01","hardware":"sticky"}`); rec.Code != http.StatusOK {
 		t.Fatalf("device cannot register after reload: %d %s", rec.Code, rec.Body)
 	}
