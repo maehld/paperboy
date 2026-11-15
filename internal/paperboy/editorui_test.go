@@ -224,13 +224,36 @@ func TestEditorVariantsPanel(t *testing.T) {
 
 	// A variant is a child page: it names its page file and shows no table.
 	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&file=hochkant", nil, nil).Body.String()
-	if !strings.Contains(body, `This variant belongs to <a href="/ui/editor/page?display=small&amp;name=solar">pages/solar.yaml</a>.`) {
-		t.Fatalf("the variant misses its page link:\n%s", body)
+	for _, want := range []string{
+		`Parent: <a href="/ui/editor/page?display=small&amp;name=solar">solar</a>`,
+		`<h3>Variant</h3>`,
+		`This is a variant for`,
+		`<dt>Display type</dt>`,
+		`<dd>small</dd>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the variant misses %q:\n%s", want, body)
+		}
 	}
 	for _, unwanted := range []string{`<h3>Variants</h3>`, `data-serves=`, `data-dialog="create-variant"`} {
 		if strings.Contains(body, unwanted) {
 			t.Fatalf("the variant carries %q:\n%s", unwanted, body)
 		}
+	}
+
+	// A variant that no display type names warns that no device shows it; the
+	// notice about a preview type is for pages, not for it.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=lcd&file=lcd", nil, nil).Body.String()
+	for _, want := range []string{
+		`class="warn" id="file-notice">This variant is unused. It is not shown on any device.`,
+		`<dd>none</dd>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("unused variant lacks %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "is served by") {
+		t.Fatalf("the unused variant carries the page notice:\n%s", body)
 	}
 
 	// A broken file opens read-only instead of being unlinked.
@@ -497,7 +520,7 @@ func TestEditorPage(t *testing.T) {
 		// The panels list the files of the page and the file of every display
 		// type; one dialog creates a layout (ADR 0110).
 		`<h3>Variants</h3>`, `pages/solar.hochkant.yaml is missing`,
-		`pages/solar.hochkant.yaml is missing`, `data-dialog="create-variant"`, `title-note`,
+		`pages/solar.hochkant.yaml is missing`, `data-dialog="create-variant"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("editor page lacks %q:\n%s", want, body)

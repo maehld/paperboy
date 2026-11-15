@@ -133,9 +133,11 @@ type editorPageView struct {
 	File        string        // the label of the open file; empty: the page file
 	FilePath    string        // pages/<name>[.<label>].yaml
 	Notice      string        // the preview type is not the file the editor shows
+	NoticeWarn  bool          // the notice is a warning, not a hint
 	Orphan      bool          // the open variant has no page file
 	NoPage      bool          // the page has no page file
 	IsVariant   bool          // a variant is open; the page file owns the map
+	VariantFor  string        // display types that name the open variant, read-only
 	ParentURL   string        // the page file of an open variant
 	ParentTitle string        // its path, for the link
 	WidgetsPage bool          // the widgets page without a page (ADR 0055)
@@ -896,6 +898,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	// belongs to the widgets page only.
 	v.IsVariant = label != ""
 	if v.IsVariant {
+		v.VariantFor = strings.Join(servesTypes(variants, label), ", ")
 		if pageFile != nil {
 			v.ParentTitle = pageFileName(name, "")
 			v.ParentURL, _ = pageEditURL(*pageFile, variants, cfg.Profiles, false)
@@ -910,7 +913,20 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 			v.CreateLabel = v.CreateTypes[0].Label
 		}
 	}
-	if q.Get("display") != "" && !missing {
+	named := false
+	for _, l := range variants {
+		if label != "" && l == label {
+			named = true
+		}
+	}
+	// A variant that no display type names never reaches a device. That is a
+	// warning of its own, not the notice about a preview type (ADR 0110).
+	unused := label != "" && pageExists && !named
+	switch {
+	case unused:
+		v.Notice = "This variant is unused. It is not shown on any device."
+		v.NoticeWarn = true
+	case q.Get("display") != "" && !missing:
 		v.Notice = previewNotice(cfg, name, label, display, coverage, context)
 	}
 	plans, err := planFiles(cfg.Plans, cfg.Timezone)
@@ -921,12 +937,6 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	pageHash := ""
 	if pageExists {
 		pageHash = pageFile.Hash
-	}
-	named := false
-	for _, l := range variants {
-		if label != "" && l == label {
-			named = true
-		}
 	}
 	v.Data = editorStateData(editorState{
 		Name: name, Display: display, File: label, Kind: kind,

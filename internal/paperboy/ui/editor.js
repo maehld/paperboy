@@ -195,9 +195,6 @@
     el('title').disabled = off || state.file !== '';
     el('cols').disabled = off || text();
     el('rows').disabled = off || text();
-    el('title-note').textContent = state.file
-      ? 'The title belongs to the page file; a variant carries only the layout.'
-      : '';
     el('grid-note').textContent = text()
       ? 'The grid is the character grid of the display and cannot be changed.'
       : 'Cells of the page; plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid.';

@@ -82,6 +82,10 @@ input[type=search] { margin-bottom: .4rem; }
 .panel.serves td.pick { white-space: nowrap; }
 .panel.serves td.pick select { width: 100%; min-width: 0; font-size: .78rem; padding: .05rem .1rem; }
 .panel.serves td.pick select.none { color: #888; background: #f4f4f4; }
+.panel.variant-types, dl.variant-types { margin: 0; }
+dl.variant-types { display: grid; grid-template-columns: 5.5rem 1fr; gap: .2rem .5rem; font-size: .85rem; }
+dl.variant-types dt { color: #555; }
+dl.variant-types dd { margin: 0; }
 /* An action that belongs to a panel spans the card, with the same gap above it
    as the panel padding leaves below it. */
 .panel > button { display: block; width: 100%; margin: .8rem 0 0; }
@@ -145,7 +149,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   <button id="reload" type="button">Reload</button>
   <button class="primary" id="save" type="button">Save</button>
 </div>
-{{if .Notice}}<p class="hint" id="file-notice">{{.Notice}}</p>{{end}}
+{{if .Notice}}{{if .NoticeWarn}}<p class="warn" id="file-notice">{{.Notice}}</p>{{else}}<p class="hint" id="file-notice">{{.Notice}}</p>{{end}}{{end}}
 {{if .Orphan}}<p class="warn">This file belongs to no page. Create <code>pages/{{.Name}}.yaml</code> with New page in the pages list to use it.</p>{{end}}{{end}}
 {{if .Displays}}<div class="switch" id="display-switch">
   <span class="muted">Display type:</span>
@@ -157,7 +161,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     {{if not .WidgetsPage}}<section class="panel">
       <h3>Page</h3>
       <label class="field"><span>Title</span><input id="title" autocomplete="off"></label>
-      <p class="hint" id="title-note"></p>
+      {{if .IsVariant}}{{if .ParentURL}}<p class="hint" id="parent">Parent: <a href="{{.ParentURL}}">{{.Name}}</a></p>{{end}}{{end}}
       <label class="field"><span>Grid</span><span class="grid2"><input id="cols" type="number" min="1" max="80" title="columns"><input id="rows" type="number" min="1" max="80" title="rows"></span></label>
       <p class="hint" id="grid-note"></p>
       <h4>Style (pt)</h4>
@@ -168,7 +172,14 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
       <h4>Stale widgets</h4>
       <select id="notices"><option value="show">show a bar</option><option value="none">do not show</option></select>
     </section>
-    {{if .IsVariant}}{{if .ParentURL}}<p class="hint" id="parent">This variant belongs to <a href="{{.ParentURL}}">{{.ParentTitle}}</a>.</p>{{end}}{{else}}<section class="panel serves">
+    {{if .IsVariant}}<section class="panel">
+      <h3>Variant</h3>
+      <p class="hint">This is a variant for</p>
+      <dl class="variant-types">
+        <dt>Display type</dt>
+        <dd>{{if .VariantFor}}{{.VariantFor}}{{else}}none{{end}}</dd>
+      </dl>
+    </section>{{else}}<section class="panel serves">
       <h3>Variants</h3>
       {{if .NoPage}}<p class="hint">{{if .Orphan}}This page has no page file yet. Assign one in the pages list.{{else}}This page has no file yet; the first save writes it.{{end}}</p>{{else}}<table>
         <thead><tr><th>Type</th><th>Kind</th><th>File</th></tr></thead>
