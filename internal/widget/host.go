@@ -252,10 +252,7 @@ func (h *Host) Fetch(ctx context.Context, b page.Batch) []page.Result {
 	}
 	out := make([]page.Result, len(b.Widgets))
 	byPlugin := map[string][]int{}
-	jobs := make([]job, len(b.Widgets))
 	for i, w := range b.Widgets {
-		jobs[i] = job{plugin: w.Plugin, action: action, levels: levels, page: b.Page,
-			widget: plugin.WidgetRequest{Widget: w.Widget, Width: w.Width, Height: w.Height, Scroll: w.Scroll, Args: w.Args, Style: w.Style}}
 		byPlugin[w.Plugin] = append(byPlugin[w.Plugin], i)
 	}
 	names := make([]string, 0, len(byPlugin))
@@ -265,6 +262,12 @@ func (h *Host) Fetch(ctx context.Context, b page.Batch) []page.Result {
 	sort.Strings(names)
 	for _, name := range names {
 		idx := byPlugin[name]
+		jobs := make([]job, 0, len(idx))
+		for _, i := range idx {
+			w := b.Widgets[i]
+			jobs = append(jobs, job{plugin: w.Plugin, action: action, levels: levels, page: b.Page,
+				widget: plugin.WidgetRequest{Widget: w.Widget, Width: w.Width, Height: w.Height, Scroll: w.Scroll, Args: w.Args, Style: w.Style}})
+		}
 		if handler, ok := h.Builtin[name]; ok {
 			// Only the built-in plugin gets Paperboy's device status: its
 			// widgets are not cached, while a plugin process would keep stale
@@ -372,23 +375,29 @@ func (h *Host) description(ctx context.Context, name string) (*plugin.Descriptio
 	return d, nil
 }
 
+// fetchPlugin answers the jobs of one plugin; jobs[n] belongs to the batch
+// index idx[n], which is where its result goes.
 func (h *Host) fetchPlugin(ctx context.Context, spec Spec, env Env, jobs []job, idx []int, out []page.Result) {
 	now := h.now()
 	var missing []job
 	var missingIdx []int
-	h.mu.Lock()
-	for _, i := range idx {
-		if e, ok := h.cache[jobs[i].key(env)]; ok {
-			e.lastUsed = now
-			if now.Before(e.expires) {
-				out[i] = e.result(false)
-				continue
+	// A panic must not leave the lock behind: a recovered render still ends
+	// in this process.
+	func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		for n, i := range idx {
+			if e, ok := h.cache[jobs[n].key(env)]; ok {
+				e.lastUsed = now
+				if now.Before(e.expires) {
+					out[i] = e.result(false)
+					continue
+				}
 			}
+			missing = append(missing, jobs[n])
+			missingIdx = append(missingIdx, i)
 		}
-		missing = append(missing, jobs[i])
-		missingIdx = append(missingIdx, i)
-	}
-	h.mu.Unlock()
+	}()
 	if len(missing) == 0 {
 		return
 	}
@@ -560,12 +569,12 @@ func (h *Host) builtin(name string, handler plugin.Handler, jobs []job, idx []in
 	}
 	groups := map[string][]int{}
 	var order []string
-	for pos := range idx {
-		g := jobs[pos].group()
+	for n := range jobs {
+		g := jobs[n].group()
 		if _, ok := groups[g]; !ok {
 			order = append(order, g)
 		}
-		groups[g] = append(groups[g], pos)
+		groups[g] = append(groups[g], n)
 	}
 	for _, g := range order {
 		pos := groups[g]

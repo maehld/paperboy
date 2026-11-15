@@ -319,6 +319,64 @@ func TestHostValuesGroupByArguments(t *testing.T) {
 	}
 }
 
+func TestHostValuesNotFirst(t *testing.T) {
+	f := newFake(t)
+	h := newHost(t, f.spec("values"))
+	// The fake's values surround one of a plugin that is not configured, so
+	// its batch indices are not its positions in jobs (issue #268).
+	out := h.FetchValues(context.Background(), page.ValueBatch{Values: []page.ValueRequest{
+		{Plugin: "fake", Name: "a"},
+		{Plugin: "nope", Name: "x"},
+		{Plugin: "fake", Name: "b"},
+	}})
+	if len(out) != 3 {
+		t.Fatalf("results: %+v", out)
+	}
+	if out[0].Err != nil || out[0].Value == nil || out[0].Value.Number == nil || *out[0].Value.Number != 12.5 {
+		t.Errorf("first value: %+v", out[0])
+	}
+	if out[1].Err == nil || !strings.Contains(out[1].Err.Error(), "not configured") {
+		t.Errorf("middle value: %+v", out[1])
+	}
+	if out[2].Err != nil || out[2].Value == nil || out[2].Value.Text == nil || *out[2].Value.Text != "text" {
+		t.Errorf("last value: %+v", out[2])
+	}
+	// The host is still usable, so no panic left the lock behind.
+	again := h.FetchValues(context.Background(), page.ValueBatch{Values: []page.ValueRequest{
+		{Plugin: "fake", Name: "b"}}})
+	if len(again) != 1 || again[0].Err != nil {
+		t.Fatalf("the host did not answer after the values: %+v", again)
+	}
+}
+
+type builtinStub struct{}
+
+func (builtinStub) Describe() plugin.Description { return plugin.Description{Title: "stub"} }
+
+func (builtinStub) Configure(plugin.Values, *plugin.Request) error { return nil }
+
+func (builtinStub) Render(*plugin.Request, plugin.WidgetRequest, *image.Paletted) error { return nil }
+
+func (builtinStub) Text(_ *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
+	return []string{"builtin " + w.Widget}, nil
+}
+
+func TestHostBuiltinAfterPlugin(t *testing.T) {
+	f := newFake(t)
+	h := newHost(t, f.spec("ok"))
+	h.Builtin = map[string]plugin.Handler{"paperboy": builtinStub{}}
+	out := h.Fetch(context.Background(), page.Batch{Text: true, Widgets: []page.WidgetRequest{
+		{Plugin: "fake", Widget: "a", Width: 10, Height: 1},
+		{Plugin: "paperboy", Widget: "header", Width: 10, Height: 1},
+	}})
+	if len(out) != 2 || out[0].Err != nil || len(out[0].Lines) != 1 || out[0].Lines[0] != "a" {
+		t.Fatalf("fake widget: %+v", out[0])
+	}
+	if out[1].Err != nil || len(out[1].Lines) != 1 || out[1].Lines[0] != "builtin header" {
+		t.Fatalf("builtin widget: %+v", out[1])
+	}
+}
+
 func TestHostText(t *testing.T) {
 	f := newFake(t)
 	h := newHost(t, f.spec("ok"))
