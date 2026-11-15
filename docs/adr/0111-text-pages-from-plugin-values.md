@@ -1,6 +1,6 @@
 # 0111: Text pages from plugin values
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-15
 - Related: ADR 0033 (language and timezone), ADR 0044 (text displays), ADR 0045 (poll interval), ADR 0049 (plugin widgets), ADR 0051 (power source), ADR 0066 (page API), ADR 0068 (page editor), ADR 0092 (scrolling lines), ADR 0110 (pages name their display types)
 

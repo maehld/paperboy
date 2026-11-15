@@ -1,6 +1,6 @@
 # 0110: Pages serve their kind and name their variants
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-15
 - Related: ADR 0044 (text displays), ADR 0049 (pages from plugin widgets), ADR 0050 (physical sizes), ADR 0068 (page editor), ADR 0073 (edit creates and deletes), ADR 0079 (renames), ADR 0093 (every page file is addressable), ADR 0094 (the pages list), ADR 0102 (rotation)
 
@@ -25,12 +25,13 @@ Issue #238 shows the cost. The page editor writes the image grid of a shared pag
 2. **`variants` names the exceptions.** The key is a map from display type to a file label: `sticky: hochkant` means that `pages/<name>.hochkant.yaml` serves the sticky. Several types may name one file. A type appears once, and the parser rejects a duplicate key.
 3. **A variant holds the layout, not the page.** It carries `kind`, grid or rows, style, notices and cells. It inherits the title and its display types from the page. `title` and `variants` on a variant are rejected with a hint, and so is a variant of a variant.
 4. **One form per display type.** The page file serves a type unless a variant names it. There is no precedence and no fallback order: the map decides, and it has one entry per type.
-5. **A broken entry costs one display type, not the page.** An entry for a type that no longer exists is unused. The file stays, the editor shows an info and Paperboy writes no log line. An entry that names a missing file or a file of another kind leaves its display type without a page. The editor shows it and Paperboy logs it. The page keeps serving its other types.
+5. **A broken entry costs one display type, not the page.** An entry for a type that no longer exists is unused. The file stays, the editor shows an info and Paperboy writes no log line. An entry that names a missing file or a file of another kind leaves its display type without a page. The editor shows it and Paperboy logs it. The page keeps serving its other types. A variant file that no entry names is unused too: an info, no log.
 6. **A display type without a page does not fit.** A rule skips it and logs the reason once per display type and page, as today. The reason is no file, another kind or another character grid.
-7. **The editor shows the coverage.** For the open page it lists the variant files. For every configured display type it shows whether the page serves it and through which file. A variant starts from the display type: kind and character grid come from the type, never from the open file. That is the defect of issue #238.
+7. **The editor shows the coverage.** For the open page it lists the variant files. For every configured display type it shows whether the page serves it and through which file. It offers to assign a variant file that belongs to no page. A variant starts from the display type: kind and character grid come from the type, never from the open file. That is the defect of issue #238.
 8. **The preview renders the open file.** Its choice lists the display types of the open file's kind. For text it lists only the types with its character grid. When the chosen type is served by another file of the page, the editor warns and offers to open that file. It never renders another file in place of the open one.
 9. **Plans stay display-type agnostic.** A rule names one page per screen and keeps its conditions. The device resolves the page file or its variant.
-10. **Migration needs no code.** The old shared page becomes the page file, and every old variant gets one entry in `variants`. The operator removes `title` from the variants. A page that exists only as variants needs a page file.
+10. **A rename and a delete touch one file.** The variants stay under the old name. A file with a dot and no page file is an orphan. The editor lists it and offers to assign it. It can become the page file of a new page, or a variant of an existing page with the entry in `variants`. The same dialog migrates a page that exists only as variants.
+11. **Migration needs no code.** The old shared page becomes the page file, and every old variant gets one entry in `variants`. The operator removes `title` from the variants. A page that exists only as variants goes through the assign dialog.
 
 ```yaml
 # pages/uebersicht.yaml
@@ -63,6 +64,7 @@ cells:
 - **A target list in the variant file.** Paperboy would read two files for one answer, and the page could not show its coverage. It brings back the enumeration the page avoids.
 - **Nest variants.** No use case, and every extra level needs its own resolution.
 - **Let an unused variant break the page.** A leftover file would stop a working page.
+- **Move the variants on a rename.** The page would own files that it does not name. The move needs a rollback, and a partial failure leaves exactly the orphans the dialog repairs.
 - **Guard the editor only.** It repairs issue #238 for one path. The implicit precedence stays, and the next path can drift again.
 
 ## Consequences
@@ -70,7 +72,7 @@ cells:
 - The common page stays one file. A variant is one entry plus one file, and the page owns both.
 - The pages list shows one row per page with its variants and the display types they serve. The `shared` label and the file toggle go away.
 - The loader reads the page file and then the file the map names, so a variant costs one file more than today. No directory scan is needed: the map lists the files.
-- A rename moves the page and the files the map names. A file that the map does not name stays and shows as an info.
+- A rename and a delete touch one file. The multi-file rename with its rollback goes away. A variant without a page is an info and one dialog, not a bug.
 - `Fits` keeps its kind and grid checks, now against the resolved file.
 - The log keeps its meaning for a page that cannot serve a display type. It stays rare, because a page serves its kind by default.
 - Risk: a page serves a new display type of its kind automatically. The coverage list in the editor shows it, and the plan decides per device.
