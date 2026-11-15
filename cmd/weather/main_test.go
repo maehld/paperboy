@@ -47,7 +47,7 @@ func testPayload(t *testing.T) map[string]any {
 			"wind_speed_10m": 14.2, "is_day": 1,
 		},
 		"hourly": map[string]any{
-			"time": hours, "temperature_2m": temps, "precipitation-probability": probs,
+			"time": hours, "temperature_2m": temps, "precipitation_probability": probs,
 		},
 		"daily": map[string]any{
 			"time":                          days,
