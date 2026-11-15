@@ -1,6 +1,6 @@
 # 0057: Plugin actions from the plan and the action menu
 
-- Status: Proposed
+- Status: Accepted, implemented
 - Date: 2026-11-07
 - Builds on: ADR 0025 (plans), ADR 0031 (English), ADR 0042 (device protocol), ADR 0049 (plugins), ADR 0050 (plugin protocol version 3), ADR 0051 (power source), ADR 0056 (release trains), ADR 0058 (protocol version check)
 - Answers: issue #30
