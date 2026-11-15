@@ -330,7 +330,7 @@
     for (const p of free) {
       const option = document.createElement('option');
       option.value = p.name;
-      option.textContent = p.name + (p.serves && p.serves.length ? ' · ' + p.serves.join(' · ') : '');
+      option.textContent = p.name;
       select.appendChild(option);
     }
     const addButton = document.createElement('button');
