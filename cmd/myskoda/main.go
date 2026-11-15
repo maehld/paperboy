@@ -323,6 +323,13 @@ type myskoda struct {
 
 func (m *myskoda) Describe() plugin.Description {
 	image := []string{plugin.KindImage}
+	// The car reports its temperatures in °C or °F; the declaration follows the
+	// target that is currently known.
+	temperature := "°C"
+	if m.cur != nil && m.cur.AirConditioning != nil && m.cur.AirConditioning.Target.Unit != nil &&
+		*m.cur.AirConditioning.Target.Unit == "FAHRENHEIT" {
+		temperature = "°F"
+	}
 	return plugin.Description{
 		Title:   "MyŠkoda",
 		Version: version(),
@@ -347,7 +354,7 @@ func (m *myskoda) Describe() plugin.Description {
 			{Name: "latitude", Title: "Latitude", Type: plugin.ValueNumber, Unit: "°", Precision: 5},
 			{Name: "longitude", Title: "Longitude", Type: plugin.ValueNumber, Unit: "°", Precision: 5},
 			{Name: "climate-state", Title: "Air conditioning", Type: plugin.ValueText},
-			{Name: "climate-temperature", Title: "Target temperature", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
+			{Name: "climate-temperature", Title: "Target temperature", Type: plugin.ValueNumber, Unit: temperature, Precision: 1},
 			{Name: "climate-reach", Title: "Target temperature reached at", Type: plugin.ValueTimestamp},
 			{Name: "profiles", Title: "Charging profiles", Type: plugin.ValueText},
 			{Name: "captured", Title: "Data from", Type: plugin.ValueTimestamp},
