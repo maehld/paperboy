@@ -377,54 +377,40 @@ func TestRenderHeadline(t *testing.T) {
 	}
 }
 
-func TestTextFeed(t *testing.T) {
+func TestValues(t *testing.T) {
 	p := testPlugin(t)
-	req := &plugin.Request{
-		Version: plugin.Version, Now: time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC), Language: "de",
-	}
-	lines, err := p.Text(req, plugin.WidgetRequest{
-		Widget: "feed", Width: 20, Height: 4,
-		Args: map[string]any{"feed": "all"},
-	})
+	req := &plugin.Request{Now: time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC), Language: "de",
+		Values: []string{"headline", "source", "summary", "published", "entries"}}
+	p.req = req
+	values, err := p.Values(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lines) != 3 {
-		t.Fatalf("got %d lines, want 3", len(lines))
+	if v := values["headline"]; v.Text == nil || *v.Text != "Bundestag beschließt Reform des Klimageldes" {
+		t.Fatalf("headline = %+v", v)
 	}
-	for _, line := range lines {
-		if len([]rune(line)) > 20 {
-			t.Errorf("line longer than 20: %q", line)
+	if v := values["source"]; v.Text == nil || *v.Text != "A" {
+		t.Fatalf("source = %+v", v)
+	}
+	if v := values["summary"]; v.Text == nil || *v.Text != "Die Entlastung soll ab Januar ausgezahlt werden." {
+		t.Fatalf("summary = %+v", v)
+	}
+	if v := values["published"]; v.Timestamp == nil || *v.Timestamp != "2026-11-11T11:48:00Z" {
+		t.Fatalf("published = %+v", v)
+	}
+	if v := values["entries"]; v.Text == nil {
+		t.Fatalf("entries = %+v", v)
+	} else {
+		lines := strings.Split(*v.Text, "\n")
+		if len(lines) != 3 {
+			t.Fatalf("entries lines = %q", lines)
+		}
+		if !strings.HasPrefix(lines[0], "12m A: Bundestag") || !strings.Contains(lines[2], "B: Linux") {
+			t.Fatalf("entries lines = %q", lines)
 		}
 	}
-	if !strings.HasPrefix(lines[0], "12m A:") {
-		t.Errorf("first line: %q", lines[0])
-	}
-	if !strings.Contains(lines[1], "3h") {
-		t.Errorf("second line: %q", lines[1])
-	}
-	if !strings.Contains(lines[2], "B:") {
-		t.Errorf("mixed list should name the source: %q", lines[2])
-	}
-}
-
-func TestTextHeadline(t *testing.T) {
-	p := testPlugin(t)
-	req := &plugin.Request{
-		Version: plugin.Version, Now: time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC), Language: "en",
-	}
-	lines, err := p.Text(req, plugin.WidgetRequest{
-		Widget: "headline", Width: 20, Height: 4,
-		Args: map[string]any{"feed": "B"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(lines) == 0 || !strings.HasPrefix(lines[0], "B ") {
-		t.Fatalf("first line: %v", lines)
-	}
-	if len(lines) > 4 {
-		t.Fatalf("too many lines: %v", lines)
+	if _, err := p.Values(&plugin.Request{Values: []string{"nope"}}); !errors.Is(err, plugin.ErrUnknownValue) {
+		t.Fatalf("unknown value: %v", err)
 	}
 }
 
