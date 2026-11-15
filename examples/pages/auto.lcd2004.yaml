@@ -1,5 +1,4 @@
 # The car on a 20x4 character display: overview and climate.
-title: Auto
 kind: text
 grid: [20, 4]
 cells:

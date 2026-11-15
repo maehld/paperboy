@@ -1,5 +1,4 @@
 # Departures on a 20x4 character display.
-title: Abfahrten
 kind: text
 grid: [20, 4]
 cells:

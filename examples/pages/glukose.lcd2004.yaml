@@ -1,6 +1,5 @@
 # The glucose reading with the numbers of the day on a 20x4 character display.
 # Requires the dexcom plugin (docs/plugins/dexcom.md).
-title: Glukose
 kind: text
 grid: [20, 4]
 cells:
