@@ -1524,6 +1524,13 @@
   // the type and a page that changed since it was read.
   async function changeServes(select) {
     const before = select.dataset.value || '';
+    // The map is written right away and the view reloads, which would drop an
+    // unsaved layout. Ask for a save first (ADR 0110).
+    if (state.dirty) {
+      select.value = before;
+      setStatus('save the layout first; changing a variant reloads the page', 'error');
+      return;
+    }
     const display = select.dataset.serves;
     const file = select.value === '__none__' ? '' : select.value;
     setStatus('changing the file for ' + display + '…', '');
