@@ -66,7 +66,7 @@ input[type=search] { margin-bottom: .4rem; }
    value stays visible, the box is the click and drag target (ADR 0111). */
 .cell.text { background: transparent; border: 1px dashed rgba(216, 245, 160, .35); color: inherit; cursor: grab; padding: 0; z-index: 1; }
 .cell.text.selected { background: rgba(255, 211, 92, .08); outline: 2px solid #ffd35c; outline-offset: -2px; z-index: 3; }
-.cell.text.dragging { opacity: .45; }
+.cell.text.dragging { opacity: .7; box-shadow: 0 4px 10px rgba(0, 0, 0, .35); }
 .cell.text .handle-x { background: rgba(255, 211, 92, .45); }
 .drop-marker { border-left: 2px solid #ffd35c; box-shadow: -1px 0 6px rgba(255, 211, 92, .7); pointer-events: none; z-index: 4; }
 #board.text .slot { cursor: pointer; }

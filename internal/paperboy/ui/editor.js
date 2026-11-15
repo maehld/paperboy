@@ -32,7 +32,6 @@
     textSelected: { row: -1, cell: -1 }, // selected value cell of a text page
     drag: null, // {kind, i, axis, grab, at, span, start, moved} while a box moves or resizes
     dragText: '', // dataTransfer text of a value or a cell that is being dragged
-    resizing: false, // a text cell width follows the pointer
     placing: null, // {plugin, widget} or {plugin, name, value: true} waiting for a cell
     filter: '', // text of the palette filter
     collapsed: new Set(), // plugins whose widgets the palette hides
@@ -538,6 +537,49 @@
     }
   }
 
+  // startTextCellDrag moves a box with the pointer and marks the row and slot
+  // where it will land.
+  function startTextCellDrag(e, box, rowIndex, cellIndex) {
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let active = false;
+    let pos = null;
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!active && Math.abs(dx) + Math.abs(dy) < 4) return;
+      if (!active) {
+        active = true;
+        box.classList.add('dragging');
+        box.style.zIndex = '5';
+        box.style.pointerEvents = 'none';
+      }
+      box.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      pos = cellAt(ev);
+      if (pos) showDropMarker(pos.y, pos.x);
+      else clearDropMarker();
+    };
+    const finish = (ev, moveIt) => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', cancel);
+      box.style.transform = '';
+      box.style.zIndex = '';
+      box.style.pointerEvents = '';
+      box.classList.remove('dragging');
+      clearDropMarker();
+      if (moveIt && active) {
+        const at = cellAt(ev);
+        if (at) moveTextCell(rowIndex, cellIndex, at.y, at.x);
+      }
+    };
+    const up = (ev) => finish(ev, true);
+    const cancel = (ev) => finish(ev, false);
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', cancel);
+  }
+
   // startTextResize changes one cell width by the slots the pointer crosses.
   function startTextResize(e, rowIndex, cellIndex) {
     const t = state.template;
@@ -553,7 +595,6 @@
     const prefix = textCellStart(row, cellIndex);
     const suffix = textRowWidth(row) - prefix - c.width;
     const maxWidth = Math.max(1, state.width - prefix - suffix);
-    state.resizing = true;
     const move = (ev) => {
       const delta = Math.round((ev.clientX - startX) / slotWidth);
       c.width = Math.max(1, Math.min(maxWidth, startWidth + delta));
@@ -564,7 +605,6 @@
       document.removeEventListener('pointermove', move);
       document.removeEventListener('pointerup', up);
       document.removeEventListener('pointercancel', up);
-      state.resizing = false;
       changed();
     };
     document.addEventListener('pointermove', move);
@@ -701,6 +741,7 @@
         b.addEventListener('dragend', () => {
           state.dragText = '';
           clearDropMarker();
+          renderPalette();
         });
         section.appendChild(b);
       }
@@ -1104,7 +1145,6 @@
         box.dataset.cell = String(i);
         box.style.gridArea = (y + 1) + ' / ' + (start + 1) + ' / span 1 / span ' + width;
         box.title = (c.value || 'no value') + ' · ' + width + ' chars · ' + (c.align || 'left');
-        box.draggable = !state.resizing;
         box.addEventListener('pointerdown', (e) => {
           e.stopPropagation();
           if (state.placing && state.placing.value) {
@@ -1115,23 +1155,12 @@
               return;
             }
           }
+          if (e.button !== undefined && e.button !== 0) return;
+          e.preventDefault();
           selectTextCell(y, i);
+          startTextCellDrag(e, box, y, i);
         });
         box.addEventListener('click', (e) => e.stopPropagation());
-        box.addEventListener('dragstart', (e) => {
-          state.dragText = 'cell:' + y + ':' + i;
-          state.placing = null;
-          if (e.dataTransfer) {
-            e.dataTransfer.setData('text/plain', state.dragText);
-            e.dataTransfer.effectAllowed = 'move';
-          }
-          box.classList.add('dragging');
-        });
-        box.addEventListener('dragend', () => {
-          box.classList.remove('dragging');
-          state.dragText = '';
-          clearDropMarker();
-        });
         const handle = document.createElement('span');
         handle.className = 'handle handle-x';
         handle.title = 'Drag to change the width';

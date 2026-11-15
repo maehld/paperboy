@@ -172,7 +172,7 @@ func TestEditorTextRows(t *testing.T) {
 	}
 	for _, want := range []string{"renderRowsEditor", "renderValuePalette", "textCellEditor", "addTextRow",
 		"renderTextBoxes", "pickValue", "insertValueAt", "moveTextCell", "startTextResize", "textBoardDrop",
-		"showDropMarker", "drop-marker", "b.draggable = true", "box.draggable"} {
+		"showDropMarker", "drop-marker", "b.draggable = true", "startTextCellDrag"} {
 		if !strings.Contains(string(editorJS), want) {
 			t.Fatalf("the editor script lacks %q", want)
 		}
