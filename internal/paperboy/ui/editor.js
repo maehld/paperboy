@@ -195,9 +195,6 @@
     el('title').disabled = off || state.file !== '';
     el('cols').disabled = off || text();
     el('rows').disabled = off || text();
-    el('title-note').textContent = state.file
-      ? 'The title belongs to the page file; a variant carries only the layout.'
-      : '';
     el('grid-note').textContent = text()
       ? 'The grid is the character grid of the display and cannot be changed.'
       : 'Cells of the page; plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid.';
@@ -206,7 +203,7 @@
       return;
     }
     const s = t.style || {};
-    el('title').value = t.title || '';
+    el('title').value = t.title || state.page_title || '';
     el('cols').value = t.grid[0];
     el('rows').value = t.grid[1];
     el('padding').value = s.padding === undefined || s.padding === null ? '' : s.padding;
@@ -1477,23 +1474,24 @@
   }
 
   // createVariant writes the layout of a display type in one action (ADR 0110).
-  // The layout starts from the display type: kind and grid come from the type,
+  // The variant starts from the display type: kind and grid come from the type,
   // never from the open file, which is the defect of issue #238.
-  async function createVariant(display) {
+  async function createVariant(display, label) {
     const info = state.displays.find((d) => d.name === display) || {};
     const kind = info.kind === 'text' ? 'text' : 'image';
     const grid = kind === 'text' ? [info.width, info.height] : state.reference.slice();
     const template = { kind: kind, grid: grid, style: {}, cells: [blankCell(kind, grid)] };
-    setStatus('creating the layout for ' + display + '…', '');
+    setStatus('creating the variant for ' + display + '…', '');
     let res;
     try {
-      res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '/variant?display=' + encodeURIComponent(display), {
+      res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '/variant?display=' + encodeURIComponent(display) +
+        '&file=' + encodeURIComponent(label), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hash: state.pageHash, template: template }),
       });
     } catch (e) {
-      setStatus('creating the layout failed: ' + e, 'error');
+      setStatus('creating the variant failed: ' + e, 'error');
       return;
     }
     if (res.status === 401) {
@@ -1512,13 +1510,69 @@
       return;
     }
     if (!res.ok) {
-      setStatus(doc.error || 'creating the layout failed (' + res.status + ')', 'error');
+      setStatus(doc.error || 'creating the variant failed (' + res.status + ')', 'error');
       return;
     }
     state.dirty = false;
     const params = new URLSearchParams({ name: state.name, display: display });
     if (doc.file) params.set('file', doc.file);
     location.href = '/ui/editor/page?' + params.toString();
+  }
+
+  // changeServes writes the file that serves one display type (ADR 0110). The
+  // empty label is the page file; the server refuses a file that does not fit
+  // the type and a page that changed since it was read.
+  async function changeServes(select) {
+    const before = select.dataset.value || '';
+    // The map is written right away and the view reloads, which would drop an
+    // unsaved layout. Ask for a save first (ADR 0110).
+    if (state.dirty) {
+      select.value = before;
+      setStatus('save the layout first; changing a variant reloads the page', 'error');
+      return;
+    }
+    const display = select.dataset.serves;
+    const file = select.value === '__none__' ? '' : select.value;
+    setStatus('changing the file for ' + display + '…', '');
+    let res;
+    try {
+      res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '/serves?display=' + encodeURIComponent(display), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hash: state.pageHash, file: file }),
+      });
+    } catch (e) {
+      select.value = before;
+      setStatus('changing the file failed: ' + e, 'error');
+      return;
+    }
+    if (res.status === 401) {
+      select.value = before;
+      setStatus(signedOut(), 'error');
+      return;
+    }
+    let doc = {};
+    const body = await res.text();
+    try {
+      doc = JSON.parse(body);
+    } catch (e) {
+      doc.error = body.trim();
+    }
+    if (!res.ok) {
+      select.value = before;
+      setStatus(doc.error || 'changing the file failed (' + res.status + ')', 'error');
+      return;
+    }
+    select.dataset.value = file;
+    if (doc.hash) state.pageHash = doc.hash;
+    // The preview stays on a type the open file still serves; otherwise the
+    // next view starts from the first served type.
+    const params = new URLSearchParams(location.search);
+    const covered = (doc.coverage || []).find((c) => c.display === display);
+    const mine = covered && !covered.missing && !covered.error && (covered.file || '') === (state.file || '');
+    if (display === state.display && !mine) params.delete('display');
+    const query = params.toString();
+    location.href = location.pathname + (query ? '?' + query : '');
   }
 
   // blankCell starts a variant with the first widget the palette offers for the
@@ -1533,16 +1587,94 @@
     return { at: [0, 0], span: span, widget: first ? first.plugin + '/' + first.widget : 'paperboy/header', args: {}, style: {} };
   }
 
-  // rename moves the page file only; the variants keep the old name and the
-  // plans that name the page keep it too, so the confirmation names them
-  // (ADR 0079, 0110).
+  // variantURL is one action on the open variant file: a new label or another
+  // page (ADR 0110).
+  function variantURL(action) {
+    return '/api/pages/' + encodeURIComponent(state.name) + '/variant/' + action +
+      '?from=' + encodeURIComponent(state.file);
+  }
+
+  // showDialogError puts the answer of a refused action into its dialog, so the
+  // operator reads it where the form is.
+  function showDialogError(form, message) {
+    const box = form.querySelector('[data-error]');
+    if (!box) return;
+    box.textContent = message || '';
+    box.hidden = !message;
+  }
+
+  // postAction sends one variant action and answers its JSON body, or the reason
+  // the server named.
+  async function postAction(url, body) {
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      return { error: 'request failed: ' + e };
+    }
+    if (res.status === 401) return { error: signedOut() };
+    let doc = {};
+    const text = await res.text();
+    try {
+      doc = JSON.parse(text);
+    } catch (e) {
+      doc = { error: text.trim() };
+    }
+    if (!res.ok) return { error: doc.error || '(' + res.status + ')' };
+    return { doc: doc };
+  }
+
+  // openMovedFile follows a variant action: the answer names the editor link of
+  // the file at its new place, with a display type it renders (ADR 0110).
+  function openMovedFile(doc, name, label) {
+    state.dirty = false;
+    if (doc && doc.url) {
+      location.href = doc.url;
+      return;
+    }
+    const params = new URLSearchParams({ name: name, display: state.display, file: label });
+    location.href = '/ui/editor/page?' + params.toString();
+  }
+
+  // renameVariant gives the open variant a new label; the page rewrites every
+  // entry that names the old one (ADR 0110).
+  async function renameVariant(form, label) {
+    if (!label || !state.file) return;
+    setStatus('renaming the variant…', '');
+    const res = await postAction(variantURL('rename'), { name: label, hash: state.pageHash });
+    if (res.error) {
+      setStatus('rename failed: ' + res.error, 'error');
+      showDialogError(form, res.error);
+      return;
+    }
+    openMovedFile(res.doc, res.doc.name || state.name, res.doc.file || label);
+  }
+
+  // reassignVariant moves the open variant to another page and takes its entries
+  // with it (ADR 0110).
+  async function reassignVariant(form, page) {
+    if (!page || !state.file) return;
+    setStatus('moving the variant…', '');
+    const res = await postAction(variantURL('move'), { page: page, hash: state.pageHash });
+    if (res.error) {
+      setStatus('reassign failed: ' + res.error, 'error');
+      showDialogError(form, res.error);
+      return;
+    }
+    openMovedFile(res.doc, res.doc.name || page, res.doc.file || state.file);
+  }
+
+  // rename moves the page file and its variants, so the open page keeps its
+  // files under the new name; the plans that name the page keep the old name,
+  // so the confirmation names them (ADR 0079, 0113).
   async function rename() {
     if (!state.rename) return;
-    const warn = state.rename.warn +
-      (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
-      '\n\nThe new name is yours to propagate: nothing is rewritten.';
-    if (!confirm(warn)) return;
-    const name = (prompt('New name for ' + state.name + ': (lower case letters, digits and -)', '') || '').trim();
+    if (state.dirty && !confirm('Discard unsaved changes?')) return;
+    const name = (prompt('New name for ' + state.name + ':', '') || '').trim();
     if (!name || name === state.name) return;
     setStatus('renaming…', '');
     let res;
@@ -1632,10 +1764,68 @@
   on('reload', 'click', () => location.reload());
   on('delete', 'click', remove);
   on('rename', 'click', rename);
-  // The coverage panel creates the layout of a display type in one action, so a
-  // variant starts from the type and never from the open file (ADR 0110).
-  for (const b of document.querySelectorAll('button[data-variant]')) {
-    b.addEventListener('click', () => createVariant(b.dataset.variant));
+  // The Variants table writes the page's variants map: the select names the
+  // file of one display type (ADR 0110).
+  for (const select of document.querySelectorAll('select[data-serves]')) {
+    select.addEventListener('change', () => changeServes(select));
+  }
+  // Create variant asks for a display type and a file label, then writes an
+  // empty layout that starts from the type (ADR 0110, issue #238).
+  const variantForm = document.querySelector('form[data-create-variant]');
+  if (variantForm) {
+    const types = variantForm.querySelector('select[name=display]');
+    const label = variantForm.querySelector('input[name=label]');
+    types.addEventListener('change', () => {
+      const option = types.options[types.selectedIndex];
+      if (option) label.value = option.dataset.label || option.value;
+    });
+    variantForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const display = types.value;
+      const file = label.value.trim();
+      if (!display || !file) return;
+      createVariant(display, file);
+    });
+  }
+  // A variant renames its label or moves to another page; both rewrite the
+  // page's variants map and move the file (ADR 0110).
+  const renameVariantForm = document.querySelector('form[data-rename-variant]');
+  if (renameVariantForm) {
+    renameVariantForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      renameVariant(renameVariantForm, renameVariantForm.querySelector('input[name=label]').value.trim());
+    });
+  }
+  const reassignForm = document.querySelector('form[data-reassign]');
+  if (reassignForm) {
+    reassignForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const page = reassignForm.querySelector('select[name=page]');
+      if (page) reassignVariant(reassignForm, page.value);
+    });
+  }
+  // The Create variant button opens its dialog; a click beside the form closes
+  // it again.
+  for (const b of document.querySelectorAll('button[data-dialog]')) {
+    b.addEventListener('click', () => {
+      const d = document.getElementById(b.dataset.dialog);
+      if (!d || b.disabled) return;
+      for (const box of d.querySelectorAll('[data-error]')) {
+        box.textContent = '';
+        box.hidden = true;
+      }
+      d.showModal();
+      const first = d.querySelector('select[name], input[name]');
+      if (first) first.focus();
+    });
+  }
+  for (const d of document.querySelectorAll('dialog')) {
+    for (const b of d.querySelectorAll('button[data-close]')) {
+      b.addEventListener('click', () => d.close());
+    }
+    d.addEventListener('click', (e) => {
+      if (e.target === d) d.close();
+    });
   }
   on('palette-filter', 'input', () => {
     state.filter = el('palette-filter').value;

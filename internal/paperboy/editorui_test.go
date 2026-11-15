@@ -2,8 +2,12 @@ package paperboy
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/maehld/paperboy/internal/page"
 )
 
 // TestEditorOverview lists one row per page with its variant files as chips
@@ -26,6 +30,9 @@ func TestEditorOverview(t *testing.T) {
 		`<a href="/ui/editor/page?display=small&amp;file=hochkant&amp;name=solar">hochkant</a>`,
 		"New page",
 		`data-dialog="new-page"`, `id="new-page"`, `action="/ui/editor/page"`,
+		`<select name="kind" id="new-kind">`, `<option value="text">text</option>`,
+		`<label id="new-grid-label">Character grid <select name="display" id="new-grid">`,
+		`20×4 (lcd)`,
 		`href="/ui/editor?tab=pages" class="active">Pages<span class="count">1</span>`,
 		`href="/ui/editor?tab=plans">Plans<span class="count">`,
 		"<a href=\"/ui/downloads\">Downloads</a> · <a href=\"/ui/plugins\">Widgets</a> · <a class=\"active\" href=\"/ui/editor\">Editor",
@@ -51,53 +58,50 @@ func TestEditorOverview(t *testing.T) {
 	writePage(t, s, "broken", "klein", "kind: image\nnope: 1\n")
 	body = request(t, s, http.MethodGet, "/ui/editor", nil, nil).Body.String()
 	for _, want := range []string{
-		`<strong>broken</strong>`,
+		`<strong class="missing" title="No page file. Create it with New page.">broken</strong>`,
 		`class="chip orphan" title="pages/broken.klein.yaml — no display type names it — yaml: unmarshal errors`,
-		"Assign",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, body)
 		}
 	}
 
-	// A file whose display type is gone still opens through a configured type
-	// of its kind, so it stays editable.
+	// A variant without a page file is not editable: the operator creates the
+	// page file first (ADR 0112).
 	writePage(t, s, "clock", "old", variantPage)
 	body = request(t, s, http.MethodGet, "/ui/editor", nil, nil).Body.String()
 	for _, want := range []string{
 		`title="pages/clock.old.yaml — no display type names it"`,
-		`href="/ui/editor/page?display=small&amp;file=old&amp;name=clock"`,
+		`<strong class="missing" title="No page file. Create it with New page.">clock</strong>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, body)
 		}
 	}
+	if strings.Contains(body, `href="/ui/editor/page?display=small&amp;file=old&amp;name=clock"`) {
+		t.Fatalf("a variant without a page file is linked:\n%s", body)
+	}
 }
 
-// TestEditorAssignDialog lists a file without a page as an orphan and offers the
-// assign dialog (ADR 0110).
-func TestEditorAssignDialog(t *testing.T) {
+// TestEditorMissingPageFile shows a page without a page file in red, without an
+// assign action and without links to its variants (ADR 0112).
+func TestEditorMissingPageFile(t *testing.T) {
 	s := editorServer(t)
 	writePage(t, s, "alt", "klein", variantPage)
 
 	body := request(t, s, http.MethodGet, "/ui/editor", nil, nil).Body.String()
 	for _, want := range []string{
-		`<strong>alt</strong>`,
-		"No page file. Assign a variant to become it.",
+		`<strong class="missing" title="No page file. Create it with New page.">alt</strong>`,
 		`class="chip orphan" title="pages/alt.klein.yaml`,
-		`data-dialog="assign-alt"`,
-		`<dialog id="assign-alt">`,
-		`data-assign data-source="alt"`,
-		`<option value="klein">pages/alt.klein.yaml</option>`,
-		`<option value="">make it the page file</option>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, body)
 		}
 	}
-	// The page itself is not offered: it has no page file to open.
-	if strings.Contains(body, `data-href="/ui/editor/page?display=small&amp;file=klein&amp;name=alt"`) {
-		t.Fatalf("the row is not a link to the variant:\n%s", body)
+	for _, unwanted := range []string{"Assign", "No page file. Assign a variant", `data-dialog="assign-alt"`, `<a href="/ui/editor/page?display=small&amp;file=klein&amp;name=alt">`} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("the row carries %q:\n%s", unwanted, body)
+		}
 	}
 }
 
@@ -149,6 +153,9 @@ func TestEditorPageRows(t *testing.T) {
 		`class="rowlink" data-href="/ui/editor/page?display=small&amp;name=solar"`,
 		`title="pages/solar.hochkant.yaml — serves small"`,
 		`title="pages/solar.lcd.yaml — no display type names it"`,
+		// A variant no display type names stays a candidate in the Variants
+		// select, so it is only styled and offers no dialog of its own.
+		`class="chip unused" title="pages/solar.lcd.yaml — no display type names it"`,
 		// A page file of the text kind opens for the text type.
 		`class="rowlink" data-href="/ui/editor/page?display=lcd&amp;name=clock"`,
 	} {
@@ -159,6 +166,11 @@ func TestEditorPageRows(t *testing.T) {
 	if strings.Contains(body, "data-delete=") {
 		t.Fatalf("the pages tab still acts on files:\n%s", body)
 	}
+	// The page has a page file: the Variants select is the way to use the unused
+	// variant, and no dialog competes with it (ADR 0112).
+	if strings.Contains(body, `data-dialog="assign-solar"`) {
+		t.Fatalf("the pages list still offers a dialog:\n%s", body)
+	}
 
 	// The display type in the link no longer changes the list.
 	if other := request(t, s, http.MethodGet, "/ui/editor?display=lcd", nil, nil).Body.String(); other != body {
@@ -166,52 +178,363 @@ func TestEditorPageRows(t *testing.T) {
 	}
 }
 
-// TestEditorServedByAnotherFile warns when the preview type is served by
-// another file of the page, and offers to open that file. The editor never
-// renders another file in place of the open one (ADR 0110).
-func TestEditorServedByAnotherFile(t *testing.T) {
+// TestEditorServesTable lists every configured display type with the files of
+// the page that fit it (ADR 0110). Only the file the editor shows gets a preview
+// TestEditorVariantsPanel lists every display type of the page file with the
+// file that serves it; a variant shows its page instead (ADR 0110).
+func TestEditorVariantsPanel(t *testing.T) {
 	s := editorServer(t)
 	writePage(t, s, "solar", "", pageWithVariant)
 	writePage(t, s, "solar", "hochkant", variantPage)
+	writePage(t, s, "solar", "lcd", textVariant)
 
-	// The page file is open while small is served by the variant.
+	// The page file owns the table: small is served by the variant, so the type
+	// links to that file, the select names the variant and the preview belongs
+	// to the file that serves the type. Nothing serves the LCD: the fitting
+	// file is an option and the reason sits in the tooltip, not in a red block.
 	body := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil).Body.String()
 	for _, want := range []string{
-		`"file":""`,
-		`Display type &#34;small&#34; is served by pages/solar.hochkant.yaml; this file is not used for it`,
-		`<a href="/ui/editor/page?display=small&amp;file=hochkant&amp;name=solar">Open pages/solar.hochkant.yaml</a>`,
+		`<h3>Variants</h3>`,
+		`<a href="/ui/editor/page?display=small&amp;file=hochkant&amp;name=solar" title="Edit pages/solar.hochkant.yaml for small">small</a>`,
+		`<select data-serves="small" data-value="hochkant" title="pages/solar.hochkant.yaml" aria-label="File that serves small"><option value="">page file</option><option value="hochkant" selected>hochkant</option></select>`,
+		`<option value="lcd">lcd</option><option value="__none__" selected>— none —</option>`,
+		`<select class="none" data-serves="lcd" data-value="__none__" title="page is for image displays (kind: image)"`,
+		// One dialog creates a variant; no table row carries its own button.
+		`data-dialog="create-variant"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("page file lacks %q:\n%s", want, body)
 		}
 	}
-	// The variant is the serving file: no warning.
-	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&file=hochkant", nil, nil).Body.String()
-	if strings.Contains(body, `id="file-warning"`) {
-		t.Fatalf("the serving file warns:\n%s", body)
+	if strings.Contains(body, `aria-current="true">small</a>`) {
+		t.Fatalf("the page file is not the layout for small:\n%s", body)
 	}
-	// A preview type the file cannot render names the reason, and the variant
-	// previews the page for the text type it does not serve.
-	writePage(t, s, "solar", "lcd", textVariant)
-	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&file=lcd", nil, nil).Body.String()
+
+	// A type the open file serves is its preview link, marked as current.
+	writePage(t, s, "clock", "", "title: Clock\nkind: text\ngrid: [20, 4]\ncells:\n  - { at: [0, 0], span: [20, 1], widget: paperboy/clock }\n")
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=clock&display=lcd", nil, nil).Body.String()
 	for _, want := range []string{
-		`This file cannot render display type &#34;small&#34;`,
-		`Open pages/solar.hochkant.yaml`,
-		// The selector lists the types the open file can render.
-		`data-display="lcd"`,
+		`<a href="/ui/editor/page?display=lcd&amp;name=clock" aria-current="true" title="Preview lcd with this file">lcd</a>`,
+		`<option value="" selected>page file</option>`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("text variant lacks %q:\n%s", want, body)
+			t.Fatalf("text page lacks %q:\n%s", want, body)
 		}
 	}
-	if strings.Contains(body, `data-display="small"`) {
-		t.Fatalf("the selector offers a type the text variant cannot render:\n%s", body)
+
+	// A variant is a child page: it names its page file and shows no table.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&file=hochkant", nil, nil).Body.String()
+	for _, want := range []string{
+		`"page_title":"Solar"`,
+		`<h3>Variant</h3>`,
+		`This is a variant for <a href="/ui/editor/page?display=small&amp;name=solar">Solar</a>`,
+		`<p class="types-label">Assigned display types</p>`,
+		`<ul class="variant-types"><li>small</li></ul>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the variant misses %q:\n%s", want, body)
+		}
+	}
+	for _, unwanted := range []string{`<h3>Variants</h3>`, `data-serves=`, `data-dialog="create-variant"`} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("the variant carries %q:\n%s", unwanted, body)
+		}
+	}
+
+	// A variant that no display type names warns that no device shows it; the
+	// notice about a preview type is for pages, not for it.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=lcd&file=lcd", nil, nil).Body.String()
+	for _, want := range []string{
+		`class="warn" id="file-notice">This variant is unused. It is not shown on any device.`,
+		`<p class="hint">none</p>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("unused variant lacks %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "is served by") {
+		t.Fatalf("the unused variant carries the page notice:\n%s", body)
 	}
 
 	// A broken file opens read-only instead of being unlinked.
 	writePage(t, s, "broken", "klein", "nope: 1\n")
 	if rec := request(t, s, http.MethodGet, "/ui/editor/page?name=broken&display=small&file=klein", nil, nil); rec.Code != http.StatusOK {
 		t.Fatalf("broken file does not open read-only: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// TestEditorUnusedEntry keeps the row of an entry whose display type is gone,
+// so the select can drop it (ADR 0110).
+func TestEditorUnusedEntry(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "solar", "", "title: Solar\nkind: image\ngrid: [2, 2]\nvariants:\n  gone: alt\ncells:\n  - { at: [0, 0], span: [2, 2], widget: paperboy/text }\n")
+	writePage(t, s, "solar", "alt", variantPage)
+
+	body := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil).Body.String()
+	for _, want := range []string{
+		// The row names the type and the kind of the file that is still there.
+		`<td class="type">gone</td>`,
+		`<span class="kind">image</span>`,
+		`<select class="none" data-serves="gone" data-value="alt" title="pages/solar.alt.yaml"`,
+		`<option value="alt" selected>alt</option><option value="__none__">— none —</option>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("editor lacks %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "Unused entries") {
+		t.Fatalf("the editor carries a second list:\n%s", body)
+	}
+
+	var read editorPage
+	request(t, s, http.MethodGet, "/api/pages/solar", nil, &read)
+	// A file cannot be assigned to a type that is not configured.
+	if rec := request(t, s, http.MethodPost, "/api/pages/solar/serves?display=gone",
+		servesSave{Hash: read.Hash, File: "alt"}, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("assign to an unknown type: %d %s", rec.Code, rec.Body)
+	}
+	// Its entry can be removed.
+	if rec := request(t, s, http.MethodPost, "/api/pages/solar/serves?display=gone",
+		servesSave{Hash: read.Hash}, nil); rec.Code != http.StatusOK {
+		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
+	}
+	var after editorPage
+	request(t, s, http.MethodGet, "/api/pages/solar", nil, &after)
+	if _, ok := after.Variants["gone"]; ok {
+		t.Fatalf("the entry survived: %+v", after.Variants)
+	}
+}
+
+// TestEditorVariantActions offers both actions of a variant in its block: a new
+// label and another page. The page rename stays with the page file, so a view
+// carries one Rename (ADR 0079, 0110).
+func TestEditorVariantActions(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "solar", "", pageWithVariant)
+	writePage(t, s, "solar", "hochkant", variantPage)
+	writePage(t, s, "ziel", "", "title: Ziel\nkind: image\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 2], widget: paperboy/header }\n")
+
+	body := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&file=hochkant", nil, nil).Body.String()
+	for _, want := range []string{
+		`<button type="button" data-dialog="rename-variant">Rename…</button>`,
+		`<button type="button" data-dialog="reassign">Reassign…</button>`,
+		`<dialog id="rename-variant">`,
+		`<form data-rename-variant>`,
+		`<h3>Rename variant</h3>`,
+		`<input name="label" required pattern="[a-z0-9-]{1,40}" maxlength="40" size="16" value="hochkant"`,
+		`<dialog id="reassign">`,
+		`<form data-reassign>`,
+		`<select name="page"><option value="ziel">ziel · Ziel</option></select>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the variant lacks %q:\n%s", want, body)
+		}
+	}
+	// The bar keeps no page rename on a variant: its own action renames the
+	// label, and the page is renamed from its page file.
+	if strings.Contains(body, `"rename":`) {
+		t.Fatalf("the variant offers a page rename:\n%s", body)
+	}
+	// The page file offers no variant action of its own.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil).Body.String()
+	for _, unwanted := range []string{`data-dialog="rename-variant"`, `<dialog id="rename-variant">`, `data-dialog="reassign"`, `form data-reassign`} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("the page file carries %q:\n%s", unwanted, body)
+		}
+	}
+	if !strings.Contains(body, `"rename":{"url":"/api/pages/solar/rename"`) {
+		t.Fatalf("the page file lost its rename:\n%s", body)
+	}
+
+	// Only a page without a page file stays read-only: its variant offers no
+	// action at all (ADR 0112).
+	writePage(t, s, "lost", "klein", variantPage)
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=lost&display=small&file=klein", nil, nil).Body.String()
+	for _, unwanted := range []string{`data-dialog="rename-variant"`, `data-dialog="reassign"`, `<dialog id="reassign">`} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("an orphan variant carries %q:\n%s", unwanted, body)
+		}
+	}
+
+	// Without another page file the Reassign button waits for one.
+	only := editorServer(t)
+	writePage(t, only, "clock", "", "title: Clock\nkind: image\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 2], widget: paperboy/header }\n")
+	writePage(t, only, "clock", "klein", variantPage)
+	body = request(t, only, http.MethodGet, "/ui/editor/page?name=clock&display=small&file=klein", nil, nil).Body.String()
+	for _, want := range []string{
+		`data-dialog="reassign" disabled title="No other page has a page file yet"`,
+		"No other page has a page file yet; create one with New page first.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the only variant of the instance lacks %q:\n%s", want, body)
+		}
+	}
+}
+
+// TestEditorCreateVariantDialog offers the new variant in one dialog: every
+// configured display type and a file label (ADR 0110).
+func TestEditorCreateVariantDialog(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "solar", "", pageWithVariant)
+	writePage(t, s, "solar", "hochkant", variantPage)
+
+	body := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil).Body.String()
+	for _, want := range []string{
+		`<button type="button" data-dialog="create-variant">Create variant…</button>`,
+		`<dialog id="create-variant">`,
+		`<select name="display">`,
+		`<option value="lcd" data-label="lcd" selected>lcd</option>`,
+		`<option value="small" data-label="small" title="served by pages/solar.hochkant.yaml">small</option>`,
+		`<input name="label" required pattern="[a-z0-9-]{1,40}" maxlength="40" size="16" value="lcd"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("create dialog lacks %q:\n%s", want, body)
+		}
+	}
+
+	// A type whose file is missing keeps the label of the entry, so the repaired
+	// file is the one the page names again.
+	writePage(t, s, "clock", "", `
+title: Clock
+kind: image
+grid: [2, 2]
+variants:
+  small: quer
+cells:
+  - { at: [0, 0], span: [2, 2], widget: paperboy/header }
+`)
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=clock&display=small", nil, nil).Body.String()
+	for _, want := range []string{
+		`<option value="small" data-label="quer">small</option>`,
+		`title="pages/clock.quer.yaml is missing"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing variant lacks %q:\n%s", want, body)
+		}
+	}
+}
+
+// TestEditorPreviewDefaultsToServedType opens a page without a display type on
+// the first one the page file serves (ADR 0110).
+func TestEditorPreviewDefaultsToServedType(t *testing.T) {
+	cfg := &Config{Dir: t.TempDir(), Profiles: map[string]Profile{
+		"bild":  {Width: 40, Height: 20, PPI: 125},
+		"klein": {Width: 40, Height: 20, PPI: 125},
+		"lcd":   {Kind: kindText, Charset: "ascii", Width: 20, Height: 4},
+	}}
+	if err := cfg.validate(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writePage(t, s, "solar", "", `
+title: Solar
+kind: image
+grid: [2, 2]
+cells:
+  - { at: [0, 0], span: [2, 2], widget: paperboy/header }
+`)
+	body := request(t, s, http.MethodGet, "/ui/editor/page?name=solar", nil, nil).Body.String()
+	if !strings.Contains(body, `"display":"bild"`) {
+		t.Fatalf("the default preview is not the first served type:\n%s", body)
+	}
+	// Both image types are preview links of the open page file; the first one is
+	// the current one.
+	for _, want := range []string{
+		`<a href="/ui/editor/page?display=bild&amp;name=solar" aria-current="true" title="Preview bild with this file">bild</a>`,
+		`<a href="/ui/editor/page?display=klein&amp;name=solar" title="Preview klein with this file">klein</a>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("served types lack %q:\n%s", want, body)
+		}
+	}
+}
+
+// TestPageServesAPI changes the file of one display type (ADR 0110): a label
+// points the type at its variant, an empty label removes the entry, and the
+// page hash guards the write.
+func TestPageServesAPI(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "solar", "", pageWithVariant)
+	writePage(t, s, "solar", "hochkant", variantPage)
+	writePage(t, s, "solar", "lcd", textVariant)
+
+	var read editorPage
+	if rec := request(t, s, http.MethodGet, "/api/pages/solar", nil, &read); rec.Code != http.StatusOK {
+		t.Fatalf("read: %d %s", rec.Code, rec.Body)
+	}
+
+	// Point the text type at its own layout.
+	var doc editorPage
+	rec := request(t, s, http.MethodPost, "/api/pages/solar/serves?display=lcd", servesSave{Hash: read.Hash, File: "lcd"}, &doc)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set lcd: %d %s", rec.Code, rec.Body)
+	}
+	if doc.Variants["lcd"] != "lcd" {
+		t.Fatalf("variants after the set: %+v", doc.Variants)
+	}
+	if c := coverageOf(t, doc, "lcd"); c.File != "lcd" || c.Missing || c.Error != "" {
+		t.Fatalf("coverage of lcd: %+v", c)
+	}
+
+	// An empty label removes the entry: the page file serves the type again.
+	var removed editorPage
+	rec = request(t, s, http.MethodPost, "/api/pages/solar/serves?display=small", servesSave{Hash: doc.Hash}, &removed)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("remove small: %d %s", rec.Code, rec.Body)
+	}
+	if _, named := removed.Variants["small"]; named {
+		t.Fatalf("the entry of small is still there: %+v", removed.Variants)
+	}
+	if c := coverageOf(t, removed, "small"); c.File != "" || c.Missing || c.Error != "" {
+		t.Fatalf("the page file does not serve small: %+v", c)
+	}
+
+	for _, tc := range []struct {
+		name, path string
+		body       servesSave
+		status     int
+		want       string
+	}{
+		{"unknown label", "/api/pages/solar/serves?display=small", servesSave{Hash: removed.Hash, File: "nope"}, http.StatusBadRequest, "is missing"},
+		{"wrong kind", "/api/pages/solar/serves?display=small", servesSave{Hash: removed.Hash, File: "lcd"}, http.StatusBadRequest, "text displays"},
+		{"unknown display type", "/api/pages/solar/serves?display=nope", servesSave{Hash: removed.Hash, File: "lcd"}, http.StatusBadRequest, "unknown display type"},
+		{"stale hash", "/api/pages/solar/serves?display=small", servesSave{Hash: "stale"}, http.StatusConflict, "changed on disk"},
+	} {
+		rec := request(t, s, http.MethodPost, tc.path, tc.body, nil)
+		if rec.Code != tc.status || !strings.Contains(rec.Body.String(), tc.want) {
+			t.Fatalf("%s: %d %s", tc.name, rec.Code, rec.Body)
+		}
+	}
+}
+
+// TestCreateVariantLabel writes a new layout under the label the dialog asked
+// for and adds its entry (ADR 0110).
+func TestCreateVariantLabel(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "solar", "", pageWithVariant)
+
+	tmpl, err := page.ParseVariant(strings.NewReader(variantPage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc editorPage
+	rec := request(t, s, http.MethodPost, "/api/pages/solar/variant?display=small&file=quer", pageSave{Template: tmpl}, &doc)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body)
+	}
+	if doc.File != "quer" || doc.Variants["small"] != "quer" {
+		t.Fatalf("created file: %+v", doc)
+	}
+	if _, err := os.Stat(filepath.Join(s.config().Pages, "solar.quer.yaml")); err != nil {
+		t.Fatalf("the layout file is missing: %v", err)
+	}
+	// A type that a file already serves is changed in the editor, not created
+	// again.
+	if rec := request(t, s, http.MethodPost, "/api/pages/solar/variant?display=small", pageSave{Template: tmpl}, nil); rec.Code != http.StatusConflict {
+		t.Fatalf("second layout for small: %d %s", rec.Code, rec.Body)
 	}
 }
 
@@ -297,23 +620,23 @@ func TestEditorPage(t *testing.T) {
 		`"name":"solar","display":"small","file":"","kind":"image","width":40,"height":20,"new":false,"grid":[2,2],"reference":[6,8],"page_hash":`,
 		`"page_exists":true`,
 		`"displays":[{"name":"lcd","kind":"text","width":20,"height":4},{"name":"small","kind":"image","width":40,"height":20}]`,
-		// The preview selector offers the types the image file can render.
-		`data-display="small"`,
-		`"rename":{"url":"/api/pages/solar/rename","warn":"Rename page solar?`,
+		// The preview type is the served one; the file is not a link there.
+		`data-serves="small"`,
+		`"rename":{"url":"/api/pages/solar/rename"}`,
 		`<script src="/ui/editor.js"></script>`, `id="board"`, `id="palette"`, `id="palette-filter"`, `id="inspector"`,
 		`id="show-cells" checked`, `id="render-hint"`, `id="preview-error"`,
-		// The coverage names the file that serves every configured type, and it
-		// offers a layout for a type that no file serves (ADR 0110).
-		`<h3>Coverage</h3>`, `pages/solar.yaml`, `pages/solar.hochkant.yaml`,
-		`pages/solar.hochkant.yaml is missing`, `data-variant="small"`, `title-note`,
+		// The panels list the files of the page and the file of every display
+		// type; one dialog creates a layout (ADR 0110).
+		`<h3>Variants</h3>`, `pages/solar.hochkant.yaml is missing`,
+		`pages/solar.hochkant.yaml is missing`, `data-dialog="create-variant"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("editor page lacks %q:\n%s", want, body)
 		}
 	}
-	// The page editor shows the preview type, not a display type switch, and it
-	// has no file toggle or "Save as variant" any more (ADR 0110).
-	for _, unwanted := range []string{"Display type:", `id="file-toggle"`, `id="specialize"`, "Save as "} {
+	// The page editor has no display type switch and no coverage table with an
+	// action per row (ADR 0110).
+	for _, unwanted := range []string{"id=\"display-switch\"", "Display type:", `id="file-toggle"`, `id="specialize"`, "Save as ", "data-variant="} {
 		if strings.Contains(body, unwanted) {
 			t.Fatalf("the page editor still carries %q:\n%s", unwanted, body)
 		}
@@ -358,22 +681,37 @@ func TestEditorPage(t *testing.T) {
 }
 
 // TestEditorNewPageCreatesFromType starts a new page as exactly the page file
-// with the kind and grid of the display type; other files of the page never
-// open in its place (ADR 0110, issue #238).
+// with the kind the dialog asks for; a text page takes its character grid from
+// a text display type (ADR 0110, issue #238).
 func TestEditorNewPageCreatesFromType(t *testing.T) {
 	s := editorServer(t)
 	writePage(t, s, "wetter", "hochkant", variantPage)
 
 	// A new text page next to a variant of another kind starts with the
-	// character grid of the text display.
-	body := request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&display=lcd&new=1", nil, nil).Body.String()
+	// character grid of the chosen text display type.
+	body := request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&kind=text&display=lcd&new=1", nil, nil).Body.String()
 	if !strings.Contains(body, `"file":"","kind":"text","width":20,"height":4,"new":true,"grid":[20,4]`) {
 		t.Fatalf("new text page next to a variant:\n%s", body)
 	}
-	// A new image page is its own file as well.
-	body = request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&display=small&new=1", nil, nil).Body.String()
+	// Without a chosen grid it takes the first configured text type.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&kind=text&new=1", nil, nil).Body.String()
+	if !strings.Contains(body, `"kind":"text"`) || !strings.Contains(body, `"grid":[20,4]`) {
+		t.Fatalf("new text page without a chosen grid:\n%s", body)
+	}
+	// A new image page is its own file as well, whatever display type a stale
+	// link names.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&kind=image&display=lcd&new=1", nil, nil).Body.String()
 	if !strings.Contains(body, `"file":"","kind":"image","width":40,"height":20,"new":true`) {
 		t.Fatalf("new image page next to a variant:\n%s", body)
+	}
+	// An unknown kind is refused.
+	if rec := request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&kind=led&new=1", nil, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown kind: %d %s", rec.Code, rec.Body)
+	}
+	// The old link without a kind still derives it from the display type.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&display=lcd&new=1", nil, nil).Body.String()
+	if !strings.Contains(body, `"kind":"text"`) {
+		t.Fatalf("new page from a display type:\n%s", body)
 	}
 	// A page file that exists opens as it is, &new=1 or not.
 	writePage(t, s, "solar", "", pageWithVariant)

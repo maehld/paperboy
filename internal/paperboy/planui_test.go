@@ -72,7 +72,7 @@ func TestPlanEditor(t *testing.T) {
 		}
 	}
 	// The image page fits the image display, the text page does not.
-	if !strings.Contains(body, `"name":"solar","kind":"image","grid":[2,2]`) {
+	if !strings.Contains(body, `"name":"solar","serves":["small"]`) {
 		t.Fatalf("page data missing:\n%s", body)
 	}
 	if !strings.Contains(body, `"fits":{"small":"page is for text displays (kind: text)"}`) {

@@ -2,12 +2,13 @@ package paperboy
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
+	"path/filepath"
 )
 
 // Renaming moves files (ADR 0079). References are not rewritten: a plan keeps
@@ -25,9 +26,41 @@ type fileMove struct {
 	from, to string
 }
 
-// moveFiles renames the files in order and undoes the ones already moved when
-// one fails, so a page never ends up half renamed.
+// checkMove preflights one file move (ADR 0113): the source must exist and be
+// readable, the target must not exist and its directory must be writable. The
+// writability probe creates and removes a temporary file, so it needs no
+// platform-specific permission check.
+func checkMove(m fileMove) error {
+	src, err := os.Open(m.from)
+	if err != nil {
+		return fmt.Errorf("cannot read %s: %w", m.from, err)
+	}
+	src.Close()
+	if _, err := os.Stat(m.to); err == nil {
+		return fmt.Errorf("%s already exists", m.to)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	probe, err := os.CreateTemp(filepath.Dir(m.to), ".move-*")
+	if err != nil {
+		return fmt.Errorf("cannot write %s: %w", m.to, err)
+	}
+	probe.Close()
+	if err := os.Remove(probe.Name()); err != nil {
+		return fmt.Errorf("cannot write %s: %w", m.to, err)
+	}
+	return nil
+}
+
+// moveFiles checks every move before the first rename and then renames the
+// files in order. It undoes the ones already moved when a rename fails late, so
+// a page never ends up half renamed (ADR 0113).
 func moveFiles(moves []fileMove) error {
+	for _, m := range moves {
+		if err := checkMove(m); err != nil {
+			return err
+		}
+	}
 	done := make([]fileMove, 0, len(moves))
 	for _, m := range moves {
 		if err := os.Rename(m.from, m.to); err != nil {
@@ -79,9 +112,10 @@ func targetExists(w http.ResponseWriter, cfg *Config, path string) bool {
 	}
 }
 
-// handleRenamePage moves the page file pages/<name>.yaml only (ADR 0110). The
-// variant files stay under the old name and become orphans, which the editor
-// offers to assign. The optional hash guards that one file.
+// handleRenamePage moves every file of the page: the page file pages/<name>.yaml
+// and its variant files pages/<name>.<label>.yaml (ADR 0113). The labels and the
+// variants map stay unchanged, so no page file is rewritten. The optional hash
+// guards the page file.
 func (s *Server) handleRenamePage(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	old := r.PathValue("name")
@@ -116,34 +150,40 @@ func (s *Server) handleRenamePage(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "%v", err)
 		return
 	}
-	if targetExists(w, cfg, to) {
-		return
-	}
-	// The variant files keep the old name. Name them, so the operator knows
-	// what waits for an assignment.
 	files, err := pageFiles(cfg.Pages)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
-	orphans := []string{}
+	moves := []fileMove{{from: from, to: to}}
 	for _, f := range files {
 		if f.Name != old || f.Label == "" {
 			continue
 		}
-		if p, err := pageFilePath(cfg.Pages, old, f.Label); err == nil {
-			orphans = append(orphans, relativePath(cfg, p))
+		fromVariant, err := pageFilePath(cfg.Pages, old, f.Label)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "%v", err)
+			return
+		}
+		toVariant, err := pageFilePath(cfg.Pages, name, f.Label)
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, "%v", err)
+			return
+		}
+		moves = append(moves, fileMove{from: fromVariant, to: toVariant})
+	}
+	// One target of the set is enough to refuse the whole rename, so a typo
+	// never overwrites a file of the new name (ADR 0113).
+	for _, m := range moves {
+		if targetExists(w, cfg, m.to) {
+			return
 		}
 	}
-	if err := moveFiles([]fileMove{{from: from, to: to}}); err != nil {
+	if err := moveFiles(moves); err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"name":    name,
-		"files":   []string{relativePath(cfg, to)},
-		"orphans": orphans,
-	})
+	writeJSON(w, http.StatusOK, renameAnswer(cfg, name, moves))
 }
 
 // handleRenamePlan moves one plan file. Devices that name the plan keep the old
@@ -293,68 +333,16 @@ func (s *Server) handleRenameDisplay(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, renameAnswer(cfg, name, moves))
 }
 
-// renameAction is what an editor needs to rename its object: the endpoint and
-// the confirmation that names what keeps the old name (ADR 0079). The editor
-// adds the hash it read, so a save in between does not make the rename stale.
+// renameAction is what an editor needs to rename its object: the endpoint
+// (ADR 0079). The editor adds the hash it read, so a save in between does not
+// make the rename stale.
 type renameAction struct {
-	URL  string `json:"url"`
-	Warn string `json:"warn"`
+	URL string `json:"url"`
 }
 
-// pageRenameWarning is the confirmation of a page rename: the one file that
-// moves, the variants that stay behind and the plans that keep the old name
+// pageRenameAction is the page's rename: only a page with a page file has one
 // (ADR 0110).
-func pageRenameWarning(name string, plans []string) string {
-	msg := "Rename page " + name + "?" +
-		"\n\nOnly pages/" + name + ".yaml moves. Its variants keep the old name and become orphans; assign them in the editor."
-	if len(plans) == 0 {
-		return msg + "\n\nNo plan names this page."
-	}
-	return msg + "\n\nPlans that name it are not rewritten and show a notice until updated: " + strings.Join(plans, ", ") + "."
-}
-
-// planRenameWarning is the confirmation of a plan rename: the devices that keep
-// the old name.
-func planRenameWarning(name string, devices []string) string {
-	msg := "Rename plan " + name + "?"
-	if len(devices) == 0 {
-		return msg + "\n\nNo device uses this plan."
-	}
-	return msg + "\n\nDevices that use it are not rewritten and show a notice page until updated: " + strings.Join(devices, ", ") + "."
-}
-
-// deviceRenameWarning is the confirmation of a device rename: the state moves
-// with the file.
-func deviceRenameWarning(id string) string {
-	return "Rename device " + id + "?" +
-		"\n\nIts state (page cursor, battery reading, menu) moves to the new ID. The firmware registers by MAC, so the display does not notice."
-}
-
-// displayRenameWarning is the confirmation of a display type rename: only the
-// file moves, so the pages that name a variant for it and the devices that use
-// the name keep it (ADR 0079, 0110).
-func displayRenameWarning(name string, pages, devices []displayReference) string {
-	msg := "Rename display type " + name + "?"
-	var refs []string
-	if len(pages) > 0 {
-		refs = append(refs, "pages: "+referenceLabels(pages))
-	}
-	if len(devices) > 0 {
-		refs = append(refs, "devices: "+referenceLabels(devices))
-	}
-	if len(refs) == 0 {
-		return msg + "\n\nNo page names a variant for this display type and no device uses it."
-	}
-	msg += "\n\nOnly the file moves; nothing is rewritten. Keeps the old name → " + strings.Join(refs, "; ") + "."
-	if len(devices) > 0 {
-		msg += " Those devices answer with 503 until their display_type is updated."
-	}
-	return msg
-}
-
-// pageRenameAction builds the rename for a page file; nil when the page has no
-// page file, because a rename moves exactly that file (ADR 0110).
-func pageRenameAction(cfg *Config, name string, usedBy []string) *renameAction {
+func pageRenameAction(cfg *Config, name string) *renameAction {
 	path, err := pageFilePath(cfg.Pages, name, "")
 	if err != nil {
 		return nil
@@ -362,5 +350,15 @@ func pageRenameAction(cfg *Config, name string, usedBy []string) *renameAction {
 	if _, err := os.Stat(path); err != nil {
 		return nil
 	}
-	return &renameAction{URL: "/api/pages/" + url.PathEscape(name) + "/rename", Warn: pageRenameWarning(name, usedBy)}
+	return &renameAction{URL: "/api/pages/" + url.PathEscape(name) + "/rename"}
+}
+
+// renameForPage is the action bar's rename of the file the editor shows: only
+// the page file has one. A variant renames its label in the Variant block, so a
+// view shows one Rename (ADR 0079, 0110).
+func renameForPage(cfg *Config, name string, label string) *renameAction {
+	if label != "" {
+		return nil
+	}
+	return pageRenameAction(cfg, name)
 }

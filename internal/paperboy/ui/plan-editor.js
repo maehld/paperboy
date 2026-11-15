@@ -330,7 +330,7 @@
     for (const p of free) {
       const option = document.createElement('option');
       option.value = p.name;
-      option.textContent = p.name + (p.kind ? ' · ' + p.kind : '');
+      option.textContent = p.name;
       select.appendChild(option);
     }
     const addButton = document.createElement('button');
@@ -363,7 +363,7 @@
     const meta = document.createElement('span');
     meta.className = 'muted';
     meta.textContent = info
-      ? [info.kind, info.grid ? info.grid[0] + '×' + info.grid[1] : ''].filter(Boolean).join(' ')
+      ? info.serves && info.serves.length ? info.serves.join(' · ') : 'no display type'
       : 'no file';
     row.append(
       label,
@@ -925,11 +925,8 @@
   // the confirmation names them (ADR 0079).
   async function rename() {
     if (state.isNew || !state.plan || !state.rename) return;
-    const warn = state.rename.warn +
-      (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
-      '\n\nThe new name is yours to propagate: nothing is rewritten.';
-    if (!confirm(warn)) return;
-    const name = (prompt('New name for ' + state.name + ': (lower case letters, digits and -)', '') || '').trim();
+    if (state.dirty && !confirm('Discard unsaved changes?')) return;
+    const name = (prompt('New name for ' + state.name + ':', '') || '').trim();
     if (!name || name === state.name) return;
     setStatus('renaming…', '');
     let res;

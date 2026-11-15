@@ -58,8 +58,8 @@ All content lives in one directory, selected with `-config <dir>`; the default i
 paperboy.yaml                       configuration
 displays/<name>.yaml                display types
 devices/<id>.yaml                   devices
-pages/<page>.<display type>.yaml    a page for one display type
-pages/<page>.yaml                   a page for every display type without its own file
+pages/<page>.yaml                   a page for its kind, with its variants map
+pages/<page>.<label>.yaml           a layout that the page names for a display type
 plans/<name>.yaml                   plans
 plugins/<plugin>-v<version>         plugin programs, optional
 firmware/<hardware>-v<version>.bin  firmware images

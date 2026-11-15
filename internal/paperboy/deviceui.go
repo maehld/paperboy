@@ -96,7 +96,7 @@ func (s *Server) handleDeviceEditor(w http.ResponseWriter, r *http.Request) {
 		st.MAC = formatMAC(q.Get("mac"))
 	}
 	if !missing {
-		st.Rename = &renameAction{URL: "/api/devices/" + url.PathEscape(id) + "/rename", Warn: deviceRenameWarning(id)}
+		st.Rename = &renameAction{URL: "/api/devices/" + url.PathEscape(id) + "/rename"}
 	}
 	plans, err := planFiles(cfg.Plans, cfg.Timezone)
 	if err != nil {

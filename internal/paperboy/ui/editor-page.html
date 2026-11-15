@@ -67,13 +67,29 @@ input[type=search] { margin-bottom: .4rem; }
 .hint { margin: .4rem 0 0; font-size: .8rem; color: #666; }
 .warn { margin: .5rem 0; padding: .5rem .6rem; background: #fff8e1; border-left: 3px solid #c90; font-size: .85rem; }
 .warn a { color: #134e9c; }
-.panel.coverage table { border-collapse: collapse; width: 100%; font-size: .8rem; }
-.panel.coverage th, .panel.coverage td { text-align: left; padding: .22rem .4rem .22rem 0; border-top: 1px solid #eee; vertical-align: top; }
-.panel.coverage th { border-top: 0; color: #666; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
-.panel.coverage td.act { text-align: right; white-space: nowrap; }
-.panel.coverage .why { display: block; color: #b00; font-size: .74rem; }
-.panel.coverage .served { word-break: break-all; }
-.panel.coverage button { font-size: .74rem; padding: .05rem .45rem; }
+.panel.serves table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: .78rem; }
+.panel.serves th { text-align: left; color: #666; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; padding: 0 .3rem .15rem 0; }
+.panel.serves th:first-child { padding-left: 0; }
+.panel.serves th:first-child, .panel.serves td.type { width: 42%; }
+.panel.serves th:nth-child(2) { width: 18%; }
+.panel.serves td { padding: .12rem .3rem .12rem 0; vertical-align: middle; border-top: 1px solid #f0f0f0; }
+.panel.serves td.type { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel.serves td.type a { color: #134e9c; text-decoration: none; }
+.panel.serves td.type a:hover { text-decoration: underline; }
+.panel.serves td.type a[aria-current="true"] { font-weight: 700; color: #111; }
+.panel.serves .open-link { font-size: .72rem; }
+.panel.serves .kind { display: inline-block; padding: 0 .22rem; border: 1px solid #dde3ec; border-radius: 3px; background: #f7f9fc; color: #445; font-size: .68rem; }
+.panel.serves td.pick { white-space: nowrap; }
+.panel.serves td.pick select { width: 100%; min-width: 0; font-size: .78rem; padding: .05rem .1rem; }
+.panel.serves td.pick select.none { color: #888; background: #f4f4f4; }
+.types-label { margin: .55rem 0 .15rem; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: #666; font-weight: 600; }
+ul.variant-types { margin: 0; padding-left: 1.1rem; font-size: .85rem; }
+/* The two actions of a variant sit side by side under its display types. */
+.variant-actions { display: flex; gap: .5rem; margin-top: .8rem; }
+.variant-actions button { flex: 1 1 0; }
+/* An action that belongs to a panel spans the card, with the same gap above it
+   as the panel padding leaves below it. */
+.panel > button { display: block; width: 100%; margin: .8rem 0 0; }
 .palette .plugin { border-top: 1px solid #eee; padding-top: .5rem; margin-top: .5rem; }
 .palette .plugin:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
 .palette .plugin-head { display: flex; align-items: center; gap: .3rem; margin: 0 0 .3rem; font-size: .85rem; color: #333; font-weight: 600; cursor: pointer; user-select: none; }
@@ -105,6 +121,13 @@ input[type=search] { margin-bottom: .4rem; }
 .inspector .muted { margin: 0 0 .4rem; }
 .panel-head .muted, .panel-head button { margin-left: auto; }
 .snippet { margin: 0; padding: .4rem .6rem; background: #f6f6f6; border: 1px solid #ddd; border-radius: 4px; font: .85rem ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-word; user-select: all; }
+dialog { border: 1px solid #ccc; border-radius: 8px; padding: 1rem 1.1rem; width: min(22rem, 92vw); box-shadow: 0 8px 30px rgba(0, 0, 0, .18); }
+dialog::backdrop { background: rgba(0, 0, 0, .25); }
+dialog h3 { margin: 0 0 .7rem; font-size: 1rem; }
+dialog label { display: block; margin-bottom: .6rem; font-size: .9rem; }
+dialog label input, dialog label select { display: block; width: 100%; margin-top: .2rem; }
+dialog .hint { margin: .2rem 0 0; }
+dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .9rem; }
 </style>
 </head>
 <body class="editor">
@@ -127,19 +150,18 @@ input[type=search] { margin-bottom: .4rem; }
   <button id="reload" type="button">Reload</button>
   <button class="primary" id="save" type="button">Save</button>
 </div>
-{{if .Warning}}<p class="warn" id="file-warning">{{.Warning}}{{if .WarnURL}} <a href="{{.WarnURL}}">{{.WarnLabel}}</a>{{end}}</p>{{end}}
-{{if .Orphan}}<p class="warn">This file belongs to no page. <a href="/ui/editor?tab=pages">Assign it in the pages list.</a></p>{{end}}{{end}}
-<div class="switch" id="display-switch">
-  <span class="muted">{{if .WidgetsPage}}Display type:{{else}}Preview:{{end}}</span>
+{{if .Notice}}{{if .NoticeWarn}}<p class="warn" id="file-notice">{{.Notice}}</p>{{else}}<p class="hint" id="file-notice">{{.Notice}}</p>{{end}}{{end}}
+{{if .Orphan}}<p class="warn">This file belongs to no page. Create <code>pages/{{.Name}}.yaml</code> with New page in the pages list to use it.</p>{{end}}{{end}}
+{{if .Displays}}<div class="switch" id="display-switch">
+  <span class="muted">Display type:</span>
   {{range .Displays}}<a href="{{.URL}}" data-display="{{.Name}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
   {{if .WidgetsPage}}<span class="status" id="status"></span>{{end}}
-</div>
+</div>{{end}}
 <main>
   <div class="col">
     {{if not .WidgetsPage}}<section class="panel">
       <h3>Page</h3>
       <label class="field"><span>Title</span><input id="title" autocomplete="off"></label>
-      <p class="hint" id="title-note"></p>
       <label class="field"><span>Grid</span><span class="grid2"><input id="cols" type="number" min="1" max="80" title="columns"><input id="rows" type="number" min="1" max="80" title="rows"></span></label>
       <p class="hint" id="grid-note"></p>
       <h4>Style (pt)</h4>
@@ -150,22 +172,31 @@ input[type=search] { margin-bottom: .4rem; }
       <h4>Stale widgets</h4>
       <select id="notices"><option value="show">show a bar</option><option value="none">do not show</option></select>
     </section>
-    <section class="panel coverage">
-      <h3>Coverage</h3>
-      <p class="hint">{{if .NoPage}}This page has no page file yet. Assign one in the pages list.{{else}}Which file serves each configured display type.{{end}}</p>
-      {{if .Coverage}}<table>
-        <thead><tr><th>Display type</th><th>Served by</th><th></th></tr></thead>
+    {{if .IsVariant}}<section class="panel">
+      <h3>Variant</h3>
+      <p class="hint">This is a variant for {{if .ParentURL}}<a href="{{.ParentURL}}">{{.PageTitle}}</a>{{else}}{{.PageTitle}}{{end}}</p>
+      <p class="types-label">Assigned display types</p>
+      {{if .VariantTypes}}<ul class="variant-types">{{range .VariantTypes}}<li>{{.}}</li>{{end}}</ul>{{else}}<p class="hint">none</p>{{end}}
+      {{if not .Orphan}}<div class="variant-actions">
+        <button type="button" data-dialog="rename-variant">Rename…</button>
+        <button type="button" data-dialog="reassign"{{if not .ReassignPages}} disabled title="No other page has a page file yet"{{end}}>Reassign…</button>
+      </div>{{end}}
+    </section>{{else}}<section class="panel serves">
+      <h3>Variants</h3>
+      {{if .NoPage}}<p class="hint">{{if .Orphan}}This page has no page file yet. Assign one in the pages list.{{else}}This page has no file yet; the first save writes it.{{end}}</p>{{else}}<table>
+        <thead><tr><th>Type</th><th>Kind</th><th>File</th></tr></thead>
         <tbody>
-          {{range .Coverage}}
+          {{range .Serves}}
           <tr>
-            <td>{{.Display}} <span class="why">{{.Kind}}</span></td>
-            <td class="served">{{if .Served}}{{.Served}}{{else}}&mdash;{{end}}{{if .Reason}}<span class="why">{{.Reason}}</span>{{end}}</td>
-            <td class="act">{{if .Open}}<a href="{{.Open}}">Open</a>{{end}}{{if .Create}}<button type="button" data-variant="{{.Display}}">Create layout</button>{{end}}</td>
+            <td class="type">{{if .URL}}<a href="{{.URL}}"{{if .Current}} aria-current="true"{{end}} title="{{.URLTitle}}">{{.Display}}</a>{{else}}{{.Display}}{{end}}</td>
+            <td><span class="kind">{{.Kind}}</span></td>
+            <td class="pick"><select{{if .Reason}} class="none"{{end}} data-serves="{{.Display}}" data-value="{{.Value}}" title="{{.Title}}" aria-label="File that serves {{.Display}}">{{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}{{if .Disabled}} disabled{{end}}>{{.Label}}</option>{{end}}</select></td>
           </tr>
           {{end}}
         </tbody>
-      </table>{{end}}
-    </section>{{end}}
+      </table>
+      <button type="button" data-dialog="create-variant">Create variant…</button>{{end}}
+    </section>{{end}}{{end}}
     <section class="panel palette">
       <h3>Widgets</h3>
       <input id="palette-filter" type="search" placeholder="Filter widgets…" autocomplete="off" aria-label="Filter widgets">
@@ -199,6 +230,35 @@ input[type=search] { margin-bottom: .4rem; }
     </section>{{end}}
   </div>
 </main>
+{{if not .WidgetsPage}}<dialog id="create-variant">
+  <form data-create-variant>
+    <h3>Create variant</h3>
+    <label>Display type <select name="display">{{range .CreateTypes}}<option value="{{.Name}}" data-label="{{.Label}}"{{if .Served}} title="served by {{.Served}}"{{end}}{{if .Selected}} selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+    <label>File <input name="label" required pattern="[a-z0-9-]{1,40}" maxlength="40" size="16" value="{{.CreateLabel}}" title="lower case letters, digits and -"></label>
+    <p class="hint">{{if .CreateOK}}The variant starts from the display type: its kind and character grid come from it, never from the open file. The page names the new file and sends the type to it.{{else}}Create the page file first; the page owns its variants.{{end}}</p>
+    <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit"{{if not .CreateOK}} disabled{{end}}>Create</button></div>
+  </form>
+</dialog>{{end}}
+{{if and .IsVariant (not .Orphan)}}<dialog id="rename-variant">
+  <form data-rename-variant>
+    <h3>Rename variant</h3>
+    <label>New label <input name="label" required pattern="[a-z0-9-]{1,40}" maxlength="40" size="16" value="{{.File}}" title="lower case letters, digits and -"></label>
+    <p class="hint">The file moves and the page rewrites every entry that names <code>{{.File}}</code>. Its display types stay the same.</p>
+    <p class="error" data-error hidden></p>
+    <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Rename</button></div>
+  </form>
+</dialog>
+<dialog id="reassign">
+  <form data-reassign>
+    <h3>Reassign variant</h3>
+    {{if .ReassignPages}}<label>Page <select name="page">{{range .ReassignPages}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></label>
+    <p class="hint">The file moves to that page and its entries go with it. Display types it serves leave this page.</p>
+    <p class="error" data-error hidden></p>
+    <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Reassign</button></div>
+    {{else}}<p class="hint">No other page has a page file yet; create one with New page first.</p>
+    <div class="dialog-actions"><button type="button" data-close>Close</button></div>{{end}}
+  </form>
+</dialog>{{end}}
 <script id="editor-data" type="application/json">{{.Data}}</script>
 <script src="/ui/editor.js"></script>
 {{end}}
