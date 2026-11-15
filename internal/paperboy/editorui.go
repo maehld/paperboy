@@ -337,26 +337,31 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile) e
 	if page != nil {
 		g.PageURL, _ = pageEditURL(*page, variants, displays, false)
 	}
-	unnamed := false
 	for _, f := range files {
 		if f.Label == "" {
 			continue // the page file is the row, not a chip
 		}
 		v := editorVariant{Label: f.Label, Title: pageFileName(name, f.Label)}
 		serves := servesTypes(variants, f.Label)
+		unnamedFile := len(serves) == 0
 		switch {
 		case len(serves) > 0:
 			v.Title += " — serves " + strings.Join(serves, ", ")
 		default:
 			v.Title += " — no display type names it"
-			unnamed = true
 		}
 		if f.Error != "" {
-			v.Class = "broken"
 			v.Title += " — " + f.Error
 		}
-		if f.Orphan {
+		switch {
+		case f.Orphan:
 			v.Class = "orphan"
+		case f.Error != "":
+			v.Class = "broken"
+		case unnamedFile:
+			// A file the page does not name is still a candidate in the Served
+			// by select; the style says that nothing uses it yet (ADR 0110).
+			v.Class = "unused"
 		}
 		v.URL, _ = pageEditURL(f, variants, displays, false)
 		g.Variants = append(g.Variants, v)
@@ -369,7 +374,9 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile) e
 	case g.PageURL == "":
 		g.Note = "No configured display type can render this file."
 	}
-	if page == nil || unnamed {
+	// Only a page without a page file needs the dialog; a variant that no
+	// display type names is chosen in the Served by select of the page.
+	if page == nil {
 		g.Assign = assignDialogFor(name, files, displays)
 	}
 	return g

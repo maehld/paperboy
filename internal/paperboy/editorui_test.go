@@ -156,6 +156,9 @@ func TestEditorPageRows(t *testing.T) {
 		`class="rowlink" data-href="/ui/editor/page?display=small&amp;name=solar"`,
 		`title="pages/solar.hochkant.yaml — serves small"`,
 		`title="pages/solar.lcd.yaml — no display type names it"`,
+		// A variant no display type names stays a candidate in the Served by
+		// select, so it is only styled and offers no dialog of its own.
+		`class="chip unused" title="pages/solar.lcd.yaml — no display type names it"`,
 		// A page file of the text kind opens for the text type.
 		`class="rowlink" data-href="/ui/editor/page?display=lcd&amp;name=clock"`,
 	} {
@@ -165,6 +168,11 @@ func TestEditorPageRows(t *testing.T) {
 	}
 	if strings.Contains(body, "data-delete=") {
 		t.Fatalf("the pages tab still acts on files:\n%s", body)
+	}
+	// The page has a page file: no assign dialog, because the file is already
+	// under the page and the Served by select is the way to use it.
+	if strings.Contains(body, `data-dialog="assign-solar"`) {
+		t.Fatalf("an unused variant of an existing page offers to assign:\n%s", body)
 	}
 
 	// The display type in the link no longer changes the list.
