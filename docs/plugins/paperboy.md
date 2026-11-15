@@ -13,7 +13,7 @@ The built-in plugin `paperboy` runs inside Paperboy and needs no configuration. 
 - { at: [0, 0], span: [4, 3], widget: paperboy/logo, args: { wordmark: true } }
 ```
 
-Arguments with a fixed set of values reject anything else ([ADR 0055](../adr/0055-allowed-arg-values-and-gallery-form.md)); the widgets page offers them as choices.
+Arguments with a fixed set of values reject anything else ([ADR 0055](../adr/0055-allowed-arg-values-and-gallery-form.md)); the Playground offers them as choices.
 
 On a text display, a full-width cell with `scroll: true` lets a line run: the
 `text` widget returns a line that is wider than the cell untrimmed and the

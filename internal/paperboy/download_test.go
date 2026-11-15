@@ -460,7 +460,7 @@ func TestDownloadCheckEndpoint(t *testing.T) {
 func TestDownloadsPageWithoutDownloadSection(t *testing.T) {
 	s, _ := testServer(t)
 	body := htmlRequest(t, s, "/ui/downloads").Body.String()
-	for _, want := range []string{"Downloads", "No download section", "Plugins", "Firmware images", "Devices"} {
+	for _, want := range []string{"Downloads", "No download section", "Plugins", "Firmware images", "Dashboard"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("downloads page lacks %q: %s", want, body)
 		}

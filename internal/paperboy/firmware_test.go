@@ -111,7 +111,7 @@ func TestFirmwareOfferAndDownload(t *testing.T) {
 	if body := htmlRequest(t, s, "/ui/downloads").Body.String(); !strings.Contains(body, "notes.txt") {
 		t.Fatalf("downloads page: %s", body)
 	}
-	if body := htmlRequest(t, s, "/ui").Body.String(); !strings.Contains(body, "0.4.0 → 0.10.0 · offered") {
+	if body := htmlRequest(t, s, "/ui").Body.String(); !strings.Contains(body, "0.4.0 → 0.10.0 · installing update…") {
 		t.Fatalf("dashboard: %s", body)
 	}
 	if !strings.Contains(logs(), "firmware file ignored") {

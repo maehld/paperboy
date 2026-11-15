@@ -18,8 +18,8 @@ func titleBarNav(active string) string {
 		}
 		return "<a" + class + ` href="` + href + `">` + label + "</a>"
 	}
-	return "<nav>" + link("/ui", "Devices") + " · " + link("/ui/downloads", "Downloads") +
-		" · " + link("/ui/plugins", "Widgets") + " · " + link("/ui/editor", "Editor") +
+	return "<nav>" + link("/ui", "Dashboard") + " · " + link("/ui/plugins", "Playground") +
+		" · " + link("/ui/editor", "Configuration") + " · " + link("/ui/downloads", "Downloads") +
 		" · " + link("/ui/stats", "Stats") + "</nav>"
 }
 
@@ -33,15 +33,15 @@ func TestOperatorPagesShareTheTitleBar(t *testing.T) {
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
 	for _, page := range []struct{ path, active string }{
-		{"/ui", "Devices"},
+		{"/ui", "Dashboard"},
 		{"/ui/downloads", "Downloads"},
-		{"/ui/plugins", "Widgets"},
-		{"/ui/editor", "Editor"},
-		{"/ui/editor/page?name=eins&display=small", "Editor"},
-		{"/ui/editor/plan?name=zimmer", "Editor"},
-		{"/ui/editor/device?id=test", "Editor"},
-		{"/ui/editor/display?name=small", "Editor"},
-		{"/ui/plan?device=test", "Devices"},
+		{"/ui/plugins", "Playground"},
+		{"/ui/editor", "Configuration"},
+		{"/ui/editor/page?name=eins&display=small", "Configuration"},
+		{"/ui/editor/plan?name=zimmer", "Configuration"},
+		{"/ui/editor/device?id=test", "Configuration"},
+		{"/ui/editor/display?name=small", "Configuration"},
+		{"/ui/plan?device=test", "Dashboard"},
 		{"/ui/stats", "Stats"},
 	} {
 		rec := htmlRequest(t, s, page.path)

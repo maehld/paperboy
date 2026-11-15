@@ -390,6 +390,10 @@ func firmwareText(d deviceInfo) string {
 		return running + " · current"
 	case fwFailed:
 		return fmt.Sprintf("%s → %s · failed %d times", running, d.FirmwareAvailable, d.FirmwareFailures)
+	case fwOffered:
+		// The device has the offer and installs it before its next sync; the
+		// card says so, because the device stays quiet until it is back.
+		return running + " → " + d.FirmwareAvailable + " · installing update…"
 	}
 	return running + " → " + d.FirmwareAvailable + " · " + d.FirmwareStatus
 }

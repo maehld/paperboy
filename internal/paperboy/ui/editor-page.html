@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{if .WidgetsPage}}Widgets{{else}}{{.Name}} · Editor{{end}} · Paperboy</title>
+<title>{{if .WidgetsPage}}Playground{{else}}{{.Name}} · Configuration{{end}} · Paperboy</title>
 <link rel="stylesheet" href="/ui/ui.css">
 <link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <style>
@@ -133,12 +133,12 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 <body class="editor">
 <header>
   <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
-  <nav><a href="/ui">Devices</a> · <a href="/ui/downloads">Downloads</a> · <a{{if .WidgetsPage}} class="active"{{end}} href="/ui/plugins">Widgets</a> · <a{{if not .WidgetsPage}} class="active"{{end}} href="/ui/editor">Editor</a> · <a href="/ui/stats">Stats</a></nav>
+  <nav><a href="/ui">Dashboard</a> · <a{{if .WidgetsPage}} class="active"{{end}} href="/ui/plugins">Playground</a> · <a{{if not .WidgetsPage}} class="active"{{end}} href="/ui/editor">Configuration</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/stats">Stats</a></nav>
   <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
 </header>
 {{if .Error}}
 <p class="error">{{.Error}}</p>
-<p><a href="{{if .WidgetsPage}}/ui/plugins{{else}}/ui/editor?tab=pages{{end}}">← {{if .WidgetsPage}}Widgets{{else}}Pages{{end}}</a></p>
+<p><a href="{{if .WidgetsPage}}/ui/plugins{{else}}/ui/editor?tab=pages{{end}}">← {{if .WidgetsPage}}Playground{{else}}Pages{{end}}</a></p>
 {{else}}
 {{if not .WidgetsPage}}<div class="bar">
   <a href="/ui/editor?tab=pages">← Pages</a>

@@ -2,7 +2,7 @@
 
 # Operator UI
 
-The operator UI runs on the same listener as the device API. It shows what the instance does, and it edits the files that describe it.
+The operator UI runs on the same listener as the device API. It shows what the instance does, and it edits the files that describe it. The header links the pages: Dashboard, Playground, Configuration, Downloads and Stats.
 
 ## Which route needs what
 
@@ -20,7 +20,7 @@ An empty password keeps the UI open and logs a warning at startup when the liste
 - the last page as an image, taken from `GET /api/devices/{id}/image` ([ADR 0097](../adr/0097-page-downloads-take-the-device-key.md))
 - a *Power* row with the charge state (charging, connected, discharging), the charge or the voltage
 - a *Details* block with the display type, the raw battery reading, the last charge and the runtime estimate
-- refresh, address and firmware
+- refresh, address and firmware; while an update runs, the firmware row says *installing update…*
 - a line for a newer Paperboy release, with the version as its link ([ADR 0101](../adr/0101-a-hint-about-a-newer-paperboy.md)), or a warning when the last release check failed
 
 A device without a file appears as unclaimed hardware with *Claim* and *Forget* ([ADR 0080](../adr/0080-device-state-per-mac.md)). A denied device shows as denied.
@@ -68,13 +68,13 @@ The dashboard, the stats page and the downloads page poll themselves ([ADR 0106]
 - The answer adds a `debug` object with rule, page, error and menu for the line below the display.
 - The images come from `/ui/virtual/pages/…` and `/ui/virtual/hints/…`, which serve what the device routes serve, because a browser has no device key ([ADR 0097](../adr/0097-page-downloads-take-the-device-key.md)).
 
-## Widgets page
+## Playground
 
 `GET /ui/plugins` is the page editor without a page ([ADR 0055](../adr/0055-allowed-arg-values-and-gallery-form.md), [0077](../adr/0077-the-widgets-page-has-no-gallery.md)). The link carries the widget, its span and its args. The page shows the palette and one widget rendered in its cell size from `/api/widget`. The inspector holds its size, args and style, and the snippet panel holds the cell. The display type switch keeps the widget, its span and its args. Without a widget in the link it starts with the first fitting widget of the palette. An old `?tab=gallery` link still opens the page.
 
 `GET /api/widget/{plugin}/{widget}` renders a single widget: `display`, `span` or `width`/`height`, and `arg.<name>` per argument. The answer is a PNG or text lines, and a failure is the cell notice with an `X-Widget-Error` header.
 
-## Editors
+## Configuration
 
 `GET /ui/editor` is one overview with a sub-tab per object type: `?tab=pages` (default), `plans`, `devices`, `displays`. Each tab has one card with its count, a filter field and its new-object button in the header. The button asks for a name in a dialog and opens the editor of the new object. The pages tab also asks for the kind, and for a text page its character grid. A row opens its object: the name is a link and a click on the row follows it. *Rename* and *Delete* live in the editor and name the references ([ADR 0073](../adr/0073-edit-creates-and-deletes.md), [0079](../adr/0079-rename-config-items.md), [0084](../adr/0084-the-overview-links.md)).
 

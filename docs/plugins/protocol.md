@@ -63,7 +63,7 @@ enough.
 
 ### `describe`
 
-Answers with `description`. It feeds `GET /api/plugins`, the widgets page and
+Answers with `description`. It feeds `GET /api/plugins`, the Playground and
 the plan's action validation.
 
 ```json

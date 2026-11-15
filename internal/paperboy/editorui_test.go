@@ -35,7 +35,7 @@ func TestEditorOverview(t *testing.T) {
 		`20×4 (lcd)`,
 		`href="/ui/editor?tab=pages" class="active">Pages<span class="count">1</span>`,
 		`href="/ui/editor?tab=plans">Plans<span class="count">`,
-		"<a href=\"/ui/downloads\">Downloads</a> · <a href=\"/ui/plugins\">Widgets</a> · <a class=\"active\" href=\"/ui/editor\">Editor",
+		"<a href=\"/ui/plugins\">Playground</a> · <a class=\"active\" href=\"/ui/editor\">Configuration</a> · <a href=\"/ui/downloads\">Downloads</a>",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, body)
