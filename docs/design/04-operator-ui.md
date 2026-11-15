@@ -27,9 +27,20 @@ A device without a file appears as unclaimed hardware with *Claim* and *Forget* 
 
 Rendered pages live in memory only. After a restart the card falls back to the page preview or a placeholder.
 
+## Self-updating pages
+
+The dashboard, the stats page and the downloads page poll themselves (ADR 0106). Each page wraps its changing part in a region `id="live"` and asks for itself again. htmx morphs the answer into the existing DOM, so a node with the same id keeps its focus, its selection and its place.
+
+- The dashboard polls every 30 seconds, the stats page every 10 seconds, the downloads page every 5 seconds. A hidden tab does not poll, and it refreshes once when it becomes visible again.
+- The device cards, their *Details* block and their preview carry stable ids, so an opened *Details* block survives a tick.
+- A served picture names its pixel hash: `GET /api/devices/{id}/image?h=<hash>` answers `Cache-Control: private, max-age=31536000, immutable` for the current hash and `no-store` otherwise. A tick therefore downloads no image.
+- The downloads poll keeps the query string of the page. The cleanup preview does not poll at all, so its list cannot change under the button next to it.
+- Without JavaScript the pages stop updating. They stay readable, and every link works.
+- htmx 4.0.1 is vendored in `internal/paperboy/ui/vendor/` and served as `GET /ui/htmx.js` behind the password. It is the only foreign JavaScript in the service; `ui/vendor/` is the only place for it, and a new file there needs an ADR.
+
 ## Runtime stats
 
-`GET /ui/stats` is read-only (ADR 0104). It shows Paperboy's heap, goroutines, GC, resident memory and CPU. One row per plugin carries state, program, PID, memory, CPU, requests, errors and timings. The widget cache shows entries, images, bytes and age buckets; the rendered pages and the notice pages follow. Named timings carry count, average, p50, p95 and maximum. Per device it shows the syncs with their duration, and the text polls separately. CPU shares compare with the previous view of the page, because they come from a difference of two readings.
+`GET /ui/stats` is read-only and polls itself (ADR 0104, 0106). It shows Paperboy's heap, goroutines, GC, resident memory and CPU. One row per plugin carries state, program, PID, memory, CPU, requests, errors and timings. The widget cache shows entries, images, bytes and age buckets; the rendered pages and the notice pages follow. Named timings carry count, average, p50, p95 and maximum. Per device it shows the syncs with their duration, and the text polls separately. CPU shares compare with the previous view of the page, because they come from a difference of two readings.
 
 ## Downloads
 
@@ -102,4 +113,4 @@ Two rules guard every write. A write carries the hash of the file it read and is
 
 ## Decisions
 
-ADR 0040 (dashboard) · 0054 (plan preview) · 0055 (argument values) · 0066 (page and plan API) · 0068 (page editor) · 0069 (plan editor) · 0070, 0071 (device and display type files) · 0073 (create and delete) · 0074 (the board) · 0076 (one stylesheet, one navigation) · 0077 (no gallery) · 0079 (renaming) · 0080 (unclaimed hardware) · 0084 (overview links) · 0085 (moving and resizing) · 0091 (virtual display) · 0094 (the pages list) · 0096 (password) · 0097 (images behind the UI) · 0101 (newer Paperboy) · 0104 (stats)
+ADR 0040 (dashboard) · 0054 (plan preview) · 0055 (argument values) · 0066 (page and plan API) · 0068 (page editor) · 0069 (plan editor) · 0070, 0071 (device and display type files) · 0073 (create and delete) · 0074 (the board) · 0076 (one stylesheet, one navigation) · 0077 (no gallery) · 0079 (renaming) · 0080 (unclaimed hardware) · 0084 (overview links) · 0085 (moving and resizing) · 0091 (virtual display) · 0094 (the pages list) · 0096 (password) · 0097 (images behind the UI) · 0101 (newer Paperboy) · 0104 (stats) · 0106 (self-updating pages)

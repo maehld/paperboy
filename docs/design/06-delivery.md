@@ -28,7 +28,7 @@ Only `release.yml` creates a GitHub release. The other workflows build for chang
 | Workflow | Job |
 |---|---|
 | *CI* | `gofmt`, `go vet`, tests and a cross-build on every change |
-| *Plugins* | Builds both plugin zips; fails a pull request that changed `cmd/<plugin>` without raising its `VERSION` |
+| *Plugins* | Builds both plugin zips; fails a pull request that changed `cmd/<plugin>` without raising its `VERSION`, and one that changed `pkg/plugin` or `pkg/render` without raising every plugin's version (ADR 0107) |
 | *Firmware* | Compiles `sticky`, `e1001`, `e1003` and `lcd2004` with the pinned ESPHome, only for changes under `firmware/esphome/`, and bundles them into one image archive |
 | *Docker* | Builds the container image, which holds the Paperboy binary only |
 | *Release* | Builds the binaries, calls *Plugins* and *Firmware* as reusable workflows, attaches everything with `SHA256SUMS` and writes notes against the last stable release of the same train |
@@ -91,4 +91,4 @@ The downloads page lists what *Preview cleanup* would delete, and the button del
 
 ## Decisions
 
-ADR 0056 (release trains) · 0059, 0061, 0063 (the firmware bundle) · 0060, 0062 (downloads and intervals) · 0075 (a version per plugin) · 0089 (channels and prereleases) · 0090 (cache and inventory) · 0101 (a hint about a newer Paperboy)
+ADR 0056 (release trains) · 0059, 0061, 0063 (the firmware bundle) · 0060, 0062 (downloads and intervals) · 0075, 0107 (a version per plugin) · 0089 (channels and prereleases) · 0090 (cache and inventory) · 0101 (a hint about a newer Paperboy)

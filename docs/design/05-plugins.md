@@ -31,7 +31,7 @@ Paperboy and the plugin exchange one JSON object per line: a request on stdin, a
 | `action` | One action with its args, the device | `result` with `ok`, `message`, `changed` |
 | `conditions` | – | A map of the declared conditions, true while active |
 
-Every request carries `language`, `timezone`, `now` and `levels` (2, 4 or 16). It also carries the `page` with title, number, count and display size, and `ppi` for image displays. A widget also gets `style` with `padding`, `rule` and `text_px` in pixels, and `scroll` on a text display.
+Every request carries `language`, `timezone`, `now` and `levels`, the tone count of the display. `levels` is 1 to 256; a canvas falls back to 2, 4 or 16 tones when it cannot draw the value (ADR 0107). The request also carries the `page` with title, number, count and display size, and `ppi` for image displays. A widget also gets `style` with `padding`, `rule` and `text_px` in pixels, and `scroll` on a text display.
 
 A plugin answers with `version`, optionally `state`, `blobs`, `widgets`, `actions`, `result`, `conditions`, `max_age`, `description`, or a `changed` event.
 
@@ -70,7 +70,9 @@ The Dexcom plugin keeps its session and the readings of the last day this way. T
 
 ## Versions
 
-Every plugin has its own version in `cmd/<plugin>/VERSION`, embedded in the program (ADR 0075). The plugin zip names the programs `<plugin>-v<version>`. A change to a plugin raises the version in the same commit. The *Plugins* workflow fails a pull request that changes `cmd/<plugin>` without raising it. A change to shared `pkg/` code only warns.
+Every plugin has its own version in `cmd/<plugin>/VERSION`, embedded in the program (ADR 0075). The plugin zip names the programs `<plugin>-v<version>`. A change to a plugin raises the version in the same commit. The *Plugins* workflow fails a pull request that changes `cmd/<plugin>` without raising it.
+
+`pkg/plugin` and `pkg/render` are part of every plugin binary, so a change there raises the version of every plugin (ADR 0107). Other shared `pkg/` code, `go.mod` and `go.sum` only warn.
 
 `describe` reports the plugin's own version. When it differs from the version in the program's file name, Paperboy logs one warning per plugin.
 
@@ -97,4 +99,4 @@ Most of them have text variants. The [plugin pages](../plugins/README.md) descri
 
 ## Decisions
 
-ADR 0048 (calendar) · 0049 (plugin widgets) · 0053, 0100 (departures) · 0055 (argument values) · 0057 (actions) · 0058 (protocol version check) · 0065 → 0081 (state) · 0075 (a version per plugin) · 0099 (Dexcom) · 0103 (conditions)
+ADR 0048 (calendar) · 0049 (plugin widgets) · 0053, 0100 (departures) · 0055 (argument values) · 0057 (actions) · 0058 (protocol version check) · 0065 → 0081 (state) · 0075, 0107 (a version per plugin) · 0099 (Dexcom) · 0103 (conditions)
