@@ -47,7 +47,7 @@ cells:
 
 ## Actions
 
-The plugin offers one action, `mode`, which sets an evcc charge mode from the device menu (ADR 0057). A mode change affects the car, so Paperboy asks for a confirmation before the action runs.
+The plugin offers one action, `mode`, which sets an evcc charge mode from the device menu ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md)). A mode change affects the car, so Paperboy asks for a confirmation before the action runs.
 
 | Argument | Description |
 |---|---|

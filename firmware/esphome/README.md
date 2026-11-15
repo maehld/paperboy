@@ -1,8 +1,8 @@
 # Paperboy firmware on ESPHome
 
-Firmware for the Seeed reTerminal **Sticky**, **E1001** and **E1003** (ADR
-0041) and for HD44780 **text displays** (`lcd2004`, ADR 0044). It speaks
-Paperboy's device API (ADR 0042); one image per hardware type serves every
+Firmware for the Seeed reTerminal **Sticky**, **E1001** and **E1003**
+([ADR 0041](../../docs/adr/0041-esphome-firmware.md)) and for HD44780 **text displays** (`lcd2004`, [ADR 0044](../../docs/adr/0044-text-displays-on-the-device-api.md)). It speaks
+Paperboy's device API ([ADR 0042](../../docs/adr/0042-device-protocol.md)); one image per hardware type serves every
 installation, nothing installation-specific is compiled in.
 
 | File | Content |
@@ -12,27 +12,27 @@ installation, nothing installation-specific is compiled in.
 | `sticky.yaml` | reTerminal Sticky: pins, gray4 panel, touch, BQ27220 fuel gauge |
 | `e1001.yaml` | reTerminal E1001: pins, four-level UC8179 panel via `uc8179_gray4`, ADC battery |
 | `e1003.yaml` | reTerminal E1003: pins, 16-level IT8951 panel, GT911 touch, ADC battery, deep-sleep pin holds |
-| `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep; a row whose cell set `scroll: true` moves one character per 300 ms (ADR 0092) |
+| `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep; a row whose cell set `scroll: true` moves one character per 300 ms ([ADR 0092](../../docs/adr/0092-scrolling-text-lines.md)) |
 | `lcd2004.yaml` | ESP32 dev board with a 20×4 HD44780 LCD behind a PCF8574 (I²C 0x27, SDA GPIO21, SCL GPIO22); prints every row through `pb_row`, so a scrolling line shows its window |
-| `fonts/` | Go Mono Bold as a subset, the face of the logo's wordmark and the firmware version (ADR 0098), with its licence |
+| `fonts/` | Go Mono Bold as a subset, the face of the logo's wordmark and the firmware version ([ADR 0098](../../docs/adr/0098-the-device-shows-the-lockup-and-its-version.md)), with its licence |
 | `build.ps1` | Builds one hardware type with the pinned ESPHome version, optionally publishes it to an instance |
 
 ## Cycle
 
 | Step | Request | Notes |
 |---|---|---|
-| Power-on | none | the lockup of the logo and the firmware version in the middle of the panel for 5 s (ADR 0095, 0098); a timer or button wake gets no splash, so a page change stays as fast as it is |
+| Power-on | none | the lockup of the logo and the firmware version in the middle of the panel for 5 s ([ADR 0095](../../docs/adr/0095-the-logo-on-pages-and-devices.md), [0098](../../docs/adr/0098-the-device-shows-the-lockup-and-its-version.md)); a timer or button wake gets no splash, so a page change stays as fast as it is |
 | First contact | `POST /api/device/register` with `mac`, `hardware`, `firmware` | the key is kept in flash; `403` shows "Paperboy does not know this display" with the MAC |
-| Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `rssi`, `power`, `log` | `401` drops the key, registers again and repeats the sync; a failed request keeps the event queue and is retried up to three times (ADR 0064) |
+| Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `rssi`, `power`, `log` | `401` drops the key, registers again and repeats the sync; a failed request keeps the event queue and is retried up to three times ([ADR 0064](../../docs/adr/0064-device-protocol-v4.md)) |
 | No key | `POST /api/device/register` is retried three times as well | without a key and with an unreachable server the device shows the setup screen with its address and the URL it has, instead of sleeping silently |
-| Pairing needed | the register answers `403` with a `code` (ADR 0109) | the panel shows `Pairing code` and the code instead of the setup instructions; the operator enters it in the device editor, and the next register takes the key. A repeated identical code does not repaint |
+| Pairing needed | the register answers `403` with a `code` ([ADR 0109](../../docs/adr/0109-pair-a-display.md)) | the panel shows `Pairing code` and the code instead of the setup instructions; the operator enters it in the device editor, and the next register takes the key. A repeated identical code does not repaint |
 | Unchanged content | `image.hash` equals the hash on the panel | no download, no paint |
-| Firmware offer | `firmware` in the sync answer (ADR 0043) | flash `<Paperboy URL><path>` with its MD5 and reboot; a failure is reported in the next sync's `log` |
-| Changed content | `GET <Paperboy URL><image.path>?format=qoi` with the device key (ADR 0097) | QOI, decoded into the panel buffer and painted with the panel's gray mapping (ADR 0072) |
+| Firmware offer | `firmware` in the sync answer ([ADR 0043](../../docs/adr/0043-firmware-distribution.md)) | flash `<Paperboy URL><path>` with its MD5 and reboot; a failure is reported in the next sync's `log` |
+| Changed content | `GET <Paperboy URL><image.path>?format=qoi` with the device key ([ADR 0097](../../docs/adr/0097-page-downloads-take-the-device-key.md)) | QOI, decoded into the panel buffer and painted with the panel's gray mapping ([ADR 0072](../../docs/adr/0072-pages-as-qoi.md)) |
 | After painting | the shown hash is stored only now, and input that arrived meanwhile is sent in one more sync | a confirmation screen can only be confirmed after the panel really shows it |
 | Settle | presses that arrived during a paint wait 150 ms before that follow-up sync | a burst of presses becomes one sync instead of two cycles (issue #136) |
 | Sleep | stay awake `listen_s`, then deep sleep for `refresh_s` or a one-shot `wake` | wake on any button (EXT1) |
-| Mains power | the sync answers `sleep: false` (ADR 0051) | stay awake with Wi-Fi up, sync again after `refresh_s` as a `timer` wake; input syncs at once |
+| Mains power | the sync answers `sleep: false` ([ADR 0051](../../docs/adr/0051-power-source-refresh-policy.md)) | stay awake with Wi-Fi up, sync again after `refresh_s` as a `timer` wake; input syncs at once |
 
 Every step of a cycle is logged with its time:
 `timing boot: 412 ms (+0)`, then `wifi`, `sync`, `image` (download and decode)
@@ -49,7 +49,7 @@ took 2.26 s: the per-pixel work of ESPHome's decoders was the cost, not the
 transfer or the format (the frame is always 800×480). The firmware therefore
 fetches the page itself (`http_request.get` into its QOI buffer in PSRAM) and
 decodes it into the panel buffer with `pb_paint_qoi_gray4`/`pb_paint_qoi_dithered`
-(ADR 0072, 0088); `online_image` and its 384 KB image buffer are gone. Together with
+([ADR 0072](../../docs/adr/0072-pages-as-qoi.md), [0088](../../docs/adr/0088-pages-that-do-not-fit-the-buffer.md)); `online_image` and its 384 KB image buffer are gone. Together with
 `fast_connect` (saves BSSID and channel, no scan before every wake) a page
 change is now: Wi-Fi 1.2 s, sync 0.1 s, image 0.07–0.11 s, paint 2.0 s — 3.7 s
 from a battery wake instead of 9.5 s, and the panel refresh is 90 % of it. The
@@ -63,9 +63,9 @@ page; on the E1003 both the buffer and the copy live in PSRAM. A page of
 Paperboy's palette costs at most one QOI byte per pixel, so even an 800×480 page
 of alternating black and white (the worst case, measured 384 KB) fits; Paperboy
 keeps its own `qoiLimit` in step and only has to simplify a page for a display
-with many more pixels (ADR 0088). The E1003's 1872×1404 page can reach about
+with many more pixels ([ADR 0088](../../docs/adr/0088-pages-that-do-not-fit-the-buffer.md)). The E1003's 1872×1404 page can reach about
 2.6 MB, which exceeds the buffer; the server simplifies such a page instead of
-sending one the device would truncate (ADR 0088, 0104). The response is moved into `pb_page_qoi`
+sending one the device would truncate ([ADR 0088](../../docs/adr/0088-pages-that-do-not-fit-the-buffer.md), [0104](../../docs/adr/0104-runtime-stats-in-the-web-ui.md)). The response is moved into `pb_page_qoi`
 (`std::move(body)`), which keeps the peak at twice the buffer: the raw read
 buffer plus the string.
 
@@ -75,7 +75,7 @@ is dropped with `a cycle is already running, keeping its page`. Otherwise the
 second sync moves Paperboy's page cursor (with `rotate` in the plan) while the
 first image is still downloading, and the panel never shows that page.
 
-The firmware reports its power source in every sync (ADR 0051). The Sticky
+The firmware reports its power source in every sync ([ADR 0051](../../docs/adr/0051-power-source-refresh-policy.md)). The Sticky
 measures USB power on GPIO9 (`PWR_IN_VOLT`, 5.1k/5.1k divider: about 2.5 V
 with USB) and reports `mains` above 1.5 V at the pin; the E1001 has no pin that
 sees USB power and always reports `battery`, so an E1001 on a charger needs
@@ -88,16 +88,16 @@ Buttons are sent by role. Sticky: **down = `next`, up = `previous`, ok =
 `home`**. E1001 from left to right: **`previous`, `next`, `home` (green)**.
 E1003: **left white = `previous`, right white = `next`, green = `home`**.
 Every event carries a monotonically increasing `id` and stays in an RTC queue
-until Paperboy confirms the sync (ADR 0064), so a retry is applied exactly
+until Paperboy confirms the sync ([ADR 0064](../../docs/adr/0064-device-protocol-v4.md)), so a retry is applied exactly
 once. The queue is appended to while a request is in flight, and only the
 events that request carried are dropped from the answer — a press made during
 the sync is not swallowed (issue #136). A press is queued when the button is
 released or after 700 ms while it is held, with the measured `hold_ms`; what
-counts as a long press is decided by Paperboy (ADR 0067). The Sticky sends taps,
+counts as a long press is decided by Paperboy ([ADR 0067](../../docs/adr/0067-buttons-and-the-menu.md)). The Sticky sends taps,
 not the continuous touch stream: `pb_touch` takes the first report of a contact
 and drops the rest until `on_release`, so one tap is one event and a deliberate
 second tap is not swallowed; Paperboy maps the tap onto the device menu
-(ADR 0057, issue #54). A failed download, sync or
+([ADR 0057](../../docs/adr/0057-plugin-actions-from-the-plan.md), issue #54). A failed download, sync or
 Wi-Fi connection is kept in RTC memory and reported in the next sync's `log`.
 After power-on the device stays awake 3 minutes so its web UI can be used; a
 limit of 120 s after the last input forces deep sleep otherwise.
@@ -106,7 +106,7 @@ limit of 120 s after the last input forces deep sleep otherwise.
 
 A page is composed in the display type's orientation, while the ePaper buffers
 are landscape and the firmware is built for one mounting. The sync carries
-`rotation` (0, 90, 180 or 270 degrees, omitted when 0, ADR 0102): the relative
+`rotation` (0, 90, 180 or 270 degrees, omitted when 0, [ADR 0102](../../docs/adr/0102-rotate-pages-onto-the-panel.md)): the relative
 turn on top of the compiled orientation. The display lambda calls
 `pb_rotate_display` with the compiled value (`180` for the Sticky, `0` for the
 E1001 and E1003) before every paint, because the display component starts from
@@ -123,7 +123,7 @@ with a note (`pb_qoi_fits`) instead of being clipped over the previous picture.
 ## TLS and the clock
 
 An `https://` Paperboy URL is verified against the ESP-IDF CA bundle, the
-Mozilla roots that include the Let's Encrypt ones (ADR 0108); `http://` in the
+Mozilla roots that include the Let's Encrypt ones ([ADR 0108](../../docs/adr/0108-verify-the-tls-certificate.md)); `http://` in the
 LAN is unaffected, because `verify_ssl` only applies to `https://` requests.
 The bundle comes with ESP-IDF, so no certificate file sits in the repository.
 
@@ -137,14 +137,14 @@ device has none after a power-on:
 - Deep sleep keeps the RTC time, so a wake is already clocked.
   `pb_stop_sntp_if_clocked()` stops the poll ESPHome started during boot, which
   saves a name lookup and one NTP exchange per wake.
-- The `time` of the sync answer sets the clock on every sync (ADR 0042), so
+- The `time` of the sync answer sets the clock on every sync ([ADR 0042](../../docs/adr/0042-device-protocol.md)), so
   drift between cycles never accumulates.
 - Without a clock the image firmware shows the setup screen with the reason,
   a text display prints `No clock for https / check NTP or use http`.
 
 The page download and the firmware image use the same client, so both are
 verified: the device key and the OTA image are authentic on a public proxy
-(ADR 0097, 0043).
+([ADR 0097](../../docs/adr/0097-page-downloads-take-the-device-key.md), [0043](../../docs/adr/0043-firmware-distribution.md)).
 
 ## Settings on the device
 
@@ -162,7 +162,7 @@ Paperboy's logo and the firmware version above them, and stays awake for up to
 10 minutes before retrying in an hour. The same screen appears when the URL is
 set but no server answers there; it then also prints the URL the device has, so a
 typo is visible without a serial log. A power-on shows the lockup and the version
-alone for 5 s before the cycle starts (ADR 0095, 0098); the mark comes from
+alone for 5 s before the cycle starts ([ADR 0095](../../docs/adr/0095-the-logo-on-pages-and-devices.md), [0098](../../docs/adr/0098-the-device-shows-the-lockup-and-its-version.md)); the mark comes from
 `pb_logo_ink` in `paperboy.h`, the same geometry the `logo` widget of the
 built-in plugin draws, so no bitmap sits in flash. The wordmark and the version
 use Go Mono Bold from `fonts/` (a subset, see [`fonts/README.md`](fonts/README.md))
@@ -175,7 +175,7 @@ unchanged page must still repaint over the lockup.
 `lcd2004` runs on mains power and never sleeps. After registering it syncs at
 boot and every `refresh_s`, at most once a minute (paging, log, firmware
 offers), and polls `GET /api/device/text?shown=<hash>` every `refresh_s`, which
-the plan decides (ADR 0045; one minute until the first sync, registration is
+the plan decides ([ADR 0045](../../docs/adr/0045-text-poll-interval-from-the-plan.md); one minute until the first sync, registration is
 retried once a minute). Unchanged text is a `204` and leaves the LCD alone;
 ESPHome would log any non-2xx answer as a failure. Setup instructions (Wi-Fi hotspot, address for
 the Paperboy URL, unknown MAC, the pairing code) appear on the LCD itself. Paperboy converts the
@@ -183,7 +183,7 @@ text for `charset: hd44780` and keeps only `ä ö ü ß ° µ`, which the firmwa
 maps to the A00 character ROM (`pb_hd44780`); a display with the A02 ROM would
 show other glyphs for them.
 
-The display type as `displays/lcd2004.yaml` (ADR 0071):
+The display type as `displays/lcd2004.yaml` ([ADR 0071](../../docs/adr/0071-display-types-in-files-of-their-own.md)):
 
 ```yaml
 kind: text
@@ -208,11 +208,11 @@ uvx esphome==2026.10.1 run sticky.yaml            # first flash over USB-C
 ```
 
 The build needs no secrets. Over the network the firmware only installs images
-that Paperboy offers in the sync (ADR 0043); there is no native ESPHome OTA and
+that Paperboy offers in the sync ([ADR 0043](../../docs/adr/0043-firmware-distribution.md)); there is no native ESPHome OTA and
 no upload in the web UI, so nobody on the LAN can push an image. Everything
 else, including the rescue of a device that no longer syncs, goes over USB-C.
 
-`e1001.yaml` pulls the `uc8179_gray4` component from GitHub (ADR 0086), so its
+`e1001.yaml` pulls the `uc8179_gray4` component from GitHub ([ADR 0086](../../docs/adr/0086-four-gray-levels-on-the-e1001.md)), so its
 build needs network access once; ESPHome keeps the checkout under
 `~/.cache/esphome` and reuses it for a day (`refresh`). The component is pinned
 to a commit, and the *Firmware* workflow fetches it the same way.
@@ -221,7 +221,7 @@ The *Firmware* workflow compiles all four hardware types with the same pinned
 version whenever `firmware/esphome/` changes, so a broken configuration fails on
 a pull request. A release tag attaches the images as one bundle,
 `paperboy-firmware.zip`: unpacked in the instance directory it creates
-`firmware/<hardware>-v<version>.bin` for every hardware type (ADR 0043, 0059,
+`firmware/<hardware>-v<version>.bin` for every hardware type ([ADR 0043](../../docs/adr/0043-firmware-distribution.md), [0059](../../docs/adr/0059-firmware-bundle.md),
 0060, 0063). `fw_version` in `<hardware>.yaml` names the image inside the bundle,
 the release tag names the release.
 
@@ -240,7 +240,7 @@ open the address shown on the display and enter the Paperboy URL (for example
 
 Raise `fw_version` in `<hardware>.yaml` for every release and publish it with
 `-Instance`; Paperboy offers it in the sync once `firmware.update: auto` is set
-(ADR 0043). ESPHome keeps the previous image and `safe_mode` rolls back one
+([ADR 0043](../../docs/adr/0043-firmware-distribution.md)). ESPHome keeps the previous image and `safe_mode` rolls back one
 that does not boot; that was tested with a deliberately broken image. Restoring the original firmware: Seeed's playground (Sticky) or the SenseCraft/TRMNL flasher
 (E1001, E1003).
 
@@ -264,7 +264,7 @@ Paperboy can cross-check the fuel gauge current.
 **E1001**: ESP32-S3, octal PSRAM; panel GDEY075T7 (UC8179) 800×480 with four gray
 levels (2 bpp, LUTs, full refresh only, a few seconds). Seeed's ESPHome model
 `Seeed-reTerminal-E1001` drives it in black and white, so the firmware uses the
-external component `uc8179_gray4` instead (ADR 0086): it takes Paperboy's
+external component `uc8179_gray4` instead ([ADR 0086](../../docs/adr/0086-four-gray-levels-on-the-e1001.md)): it takes Paperboy's
 0/85/170/255 as black, dark gray, light gray and white, and the antialiased font
 edges of a page survive. That component is fetched at build time and pinned to a
 commit in `e1001.yaml`.
@@ -277,7 +277,7 @@ the device's own load, so the percentage reads a little low while it is awake;
 the voltage stays in the sync for the battery warning.
 
 Two properties differ between panel batches and belong to the device, not the
-image (ADR 0087); both are set in the device's web UI and survive a wake:
+image ([ADR 0087](../../docs/adr/0087-panel-settings-live-on-the-device.md)); both are set in the device's web UI and survive a wake:
 
 | Setting | When |
 |---|---|
@@ -318,7 +318,7 @@ to be verified on the device.
 
 The first image uses `it8951` with `force_temperature: 16`, paints QOI pages
 with `pb_paint_qoi_gray16` and reads 1 MiB per download. Paperboy supports
-16-level display types since ADR 0105:
+16-level display types since [ADR 0105](../../docs/adr/0105-sixteen-gray-levels.md):
 
 ```yaml
 kind: image
@@ -328,7 +328,7 @@ gray_levels: 16
 ```
 
 A 16-level page of this size is composed at 16 tones and sent within the 1 MiB
-QOI limit (ADR 0105); a dithered photograph is simplified. A display type with
+QOI limit ([ADR 0105](../../docs/adr/0105-sixteen-gray-levels.md)); a dithered photograph is simplified. A display type with
 `gray_levels: 4` still works and uses four of the panel's 16 levels.
 
 **A page aborts without `SPIRAM_USE_MALLOC`.** ESPHome's `psram` component
@@ -354,7 +354,7 @@ Battery and charger: the voltage divider is on ADC GPIO1 (enable GPIO40,
 0x6B answers REG0A: bit 7 = cable attached, bits 4:3 = 00 not charging,
 01 precharge, 10 fast charge, 11 done. The firmware reports `mains` while the
 cable is attached and `charging` from the state, so a device on USB stays awake
-(ADR 0051) and the dashboard shows the charge; with a full cell (4.06 V) the
+([ADR 0051](../../docs/adr/0051-power-source-refresh-policy.md)) and the dashboard shows the charge; with a full cell (4.06 V) the
 cable set `power=mains` while `charging` stayed false (state 0/3), which is
 right. A failed read logs a warning and falls back to `battery`.
 

@@ -2,7 +2,7 @@
 
 `Go-Mono-Bold.ttf` is Go Mono Bold, the face of the Paperboy wordmark
 (`docs/logo`). The firmware prints the wordmark and the firmware version with it
-(ADR 0098). Go Mono is not on Google Fonts, so the file ships with the firmware
+([ADR 0098](../../../docs/adr/0098-the-device-shows-the-lockup-and-its-version.md)). Go Mono is not on Google Fonts, so the file ships with the firmware
 instead of being downloaded at build time like Inter.
 
 It is a subset of `font/gofont/ttfs/Go-Mono-Bold.ttf` from

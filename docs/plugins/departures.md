@@ -1,6 +1,6 @@
 # departures plugin
 
-Real-time public transport departures from an EFA installation (ADR 0053). The default is the Westfalenfahrplan (Lippe Mobil, OWL), which needs no API key.
+Real-time public transport departures from an EFA installation ([ADR 0053](../adr/0053-departures-from-efa.md)). The default is the Westfalenfahrplan (Lippe Mobil, OWL), which needs no API key.
 
 ## Configuration
 

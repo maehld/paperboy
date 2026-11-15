@@ -15,7 +15,7 @@ The dashboard header shows version, commit and commit date. The commit and its d
 
 The version name cannot come from VCS stamping. Go stamps any working-tree build with a pseudo-version derived from the commit (`v0.0.0-…`), even when the exact commit is tagged. Release builds therefore pass the tag in: `-ldflags "-X github.com/maehld/paperboy/internal/paperboy.version=v2.0.0"`. `release.yml`, the container image (`--build-arg VERSION=…`) and `scripts/build.ps1 -Version` do this. A build without it reports `dev` plus the short commit. A build without a repository or with `-buildvcs=false` reports `dev`. `go version -m <binary>` shows what was stamped.
 
-The workflows build the three deliverables (ADR 0056). *CI* runs formatting, vet, tests and a cross-build on every change. *Plugins* and *Firmware* build their artifacts; the firmware only when `firmware/esphome/` changes. *Docker* publishes the image, and *Release* collects everything into one GitHub release on a tag.
+The workflows build the three deliverables ([ADR 0056](adr/0056-repository-layout-and-release-trains.md)). *CI* runs formatting, vet, tests and a cross-build on every change. *Plugins* and *Firmware* build their artifacts; the firmware only when `firmware/esphome/` changes. *Docker* publishes the image, and *Release* collects everything into one GitHub release on a tag.
 
 ## Repository layout
 

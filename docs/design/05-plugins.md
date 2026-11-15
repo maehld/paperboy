@@ -8,7 +8,7 @@ The reference of the protocol is [`../plugins/protocol.md`](../plugins/protocol.
 
 ## A plugin in the instance
 
-A program is found in `plugins/` first and on `PATH` second (ADR 0060, 0075). Within one directory:
+A program is found in `plugins/` first and on `PATH` second ([ADR 0060](../adr/0060-download-from-releases.md), [0075](../adr/0075-plugin-versions.md)). Within one directory:
 
 1. an unversioned `<plugin>` wins,
 2. then the pinned version,
@@ -18,7 +18,7 @@ The resolved path is part of the plugin's specification, so installing a new ver
 
 ## The protocol
 
-Paperboy and the plugin exchange one JSON object per line: a request on stdin, an answer on stdout with the same `id`. The protocol version is 6 (ADR 0103). Paperboy requires at least version 5 and accepts newer ones, because the protocol only grows additively. `Message.CheckVersion` runs on every answer; a wrong version fails that plugin with one clear log line instead of a broken page (ADR 0058, 0081).
+Paperboy and the plugin exchange one JSON object per line: a request on stdin, an answer on stdout with the same `id`. The protocol version is 6 ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)). Paperboy requires at least version 5 and accepts newer ones, because the protocol only grows additively. `Message.CheckVersion` runs on every answer; a wrong version fails that plugin with one clear log line instead of a broken page ([ADR 0058](../adr/0058-plugin-protocol-version-check.md), [0081](../adr/0081-plugin-state-over-the-protocol.md)).
 
 | Action | Request carries | Answer carries |
 |---|---|---|
@@ -31,7 +31,7 @@ Paperboy and the plugin exchange one JSON object per line: a request on stdin, a
 | `action` | One action with its args, the device | `result` with `ok`, `message`, `changed` |
 | `conditions` | – | A map of the declared conditions, true while active |
 
-Every request carries `language`, `timezone`, `now` and `levels`, the tone count of the display. `levels` is 1 to 256; a canvas falls back to 2, 4 or 16 tones when it cannot draw the value (ADR 0107). The request also carries the `page` with title, number, count and display size, and `ppi` for image displays. A widget also gets `style` with `padding`, `rule` and `text_px` in pixels, and `scroll` on a text display.
+Every request carries `language`, `timezone`, `now` and `levels`, the tone count of the display. `levels` is 1 to 256; a canvas falls back to 2, 4 or 16 tones when it cannot draw the value ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)). The request also carries the `page` with title, number, count and display size, and `ppi` for image displays. A widget also gets `style` with `padding`, `rule` and `text_px` in pixels, and `scroll` on a text display.
 
 A plugin answers with `version`, optionally `state`, `blobs`, `widgets`, `actions`, `result`, `conditions`, `max_age`, `description`, or a `changed` event.
 
@@ -41,16 +41,16 @@ A plugin answers with `version`, optionally `state`, `blobs`, `widgets`, `action
 
 - **Widgets** with their sizes as spans of the 6 × 8 reference grid, and the arguments of each widget.
 - **Actions** with name, title, arguments, whether they need a confirmation, and the conditions under which they are offered.
-- **Conditions** with name, title and description, for the rules of a plan (ADR 0103).
+- **Conditions** with name, title and description, for the rules of a plan ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)).
 - **Config keys**, the **blob names** that Paperboy stores for it, and its own **version**.
 
-An argument declares its type, default, whether it is required and its description. It can also declare an `enum` of allowed values with `enum_labels` for the display text (ADR 0055). The stored value is the key; an editor without a label shows the key. `plugin.Values.Check` rejects a value outside the declared set, so a typo in a page fails loudly instead of drawing something unexpected.
+An argument declares its type, default, whether it is required and its description. It can also declare an `enum` of allowed values with `enum_labels` for the display text ([ADR 0055](../adr/0055-allowed-arg-values-and-gallery-form.md)). The stored value is the key; an editor without a label shows the key. `plugin.Values.Check` rejects a value outside the declared set, so a typo in a page fails loudly instead of drawing something unexpected.
 
 A widget that cannot draw anything in its cell reports `ErrTooSmall` with the cell size instead of leaving the cell empty. Paperboy draws its hatched notice with that reason, and every shipped plugin does this.
 
 ## The plugin host
 
-`internal/widget` owns the processes (ADR 0049).
+`internal/widget` owns the processes ([ADR 0049](../adr/0049-plugin-widgets.md)).
 
 - A plugin starts on first use. After an exit, after its `timeout` (default 30 seconds, killed) and after a change of its specification it is started again. Removed plugins drop their cached results.
 - The cache is keyed by plugin, widget, arguments, size, gray levels or text, style, page, language and timezone. An entry lives until the plugin's `max_age` (default 5 minutes).
@@ -62,7 +62,7 @@ Conditions get their own cache of 10 seconds per plugin. A sync therefore never 
 
 ## State and blobs
 
-A plugin that needs to survive a restart sends its state with every answer (ADR 0081). Paperboy writes it to `state/plugins/<id>/state.json` and the blobs to `state/plugins/<id>/blobs/<name>`, atomically and readable by the owner only. After `configure`, every plugin gets them once in a `state` request, so it starts where it stopped.
+A plugin that needs to survive a restart sends its state with every answer ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)). Paperboy writes it to `state/plugins/<id>/state.json` and the blobs to `state/plugins/<id>/blobs/<name>`, atomically and readable by the owner only. After `configure`, every plugin gets them once in a `state` request, so it starts where it stopped.
 
 The limits are 256 KiB per state, 1 MiB per blob and four blobs. A missing `state` means "unchanged" and `null` means "forget". An invalid name or an oversized value is logged and ignored; nothing is deleted automatically.
 
@@ -70,15 +70,15 @@ The Dexcom plugin keeps its session and the readings of the last day this way. T
 
 ## Versions
 
-Every plugin has its own version in `cmd/<plugin>/VERSION`, embedded in the program (ADR 0075). The plugin zip names the programs `<plugin>-v<version>`. A change to a plugin raises the version in the same commit. The *Plugins* workflow fails a pull request that changes `cmd/<plugin>` without raising it.
+Every plugin has its own version in `cmd/<plugin>/VERSION`, embedded in the program ([ADR 0075](../adr/0075-plugin-versions.md)). The plugin zip names the programs `<plugin>-v<version>`. A change to a plugin raises the version in the same commit. The *Plugins* workflow fails a pull request that changes `cmd/<plugin>` without raising it.
 
-`pkg/plugin` and `pkg/render` are part of every plugin binary, so a change there raises the version of every plugin (ADR 0107). Other shared `pkg/` code, `go.mod` and `go.sum` only warn.
+`pkg/plugin` and `pkg/render` are part of every plugin binary, so a change there raises the version of every plugin ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)). Other shared `pkg/` code, `go.mod` and `go.sum` only warn.
 
 `describe` reports the plugin's own version. When it differs from the version in the program's file name, Paperboy logs one warning per plugin.
 
 ## The built-in plugin
 
-`internal/builtin` provides the plugin `paperboy`: `header`, `text`, `clock` and `logo`, for image and text displays (ADR 0049, 0095). It draws from `pkg/render` and needs no data, so it is always available and never cached.
+`internal/builtin` provides the plugin `paperboy`: `header`, `text`, `clock` and `logo`, for image and text displays ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md)). It draws from `pkg/render` and needs no data, so it is always available and never cached.
 
 ## The shipped plugins
 
@@ -99,4 +99,4 @@ Most of them have text variants. The [plugin pages](../plugins/README.md) descri
 
 ## Decisions
 
-ADR 0048 (calendar) · 0049 (plugin widgets) · 0053, 0100 (departures) · 0055 (argument values) · 0057 (actions) · 0058 (protocol version check) · 0065 → 0081 (state) · 0075, 0107 (a version per plugin) · 0099 (Dexcom) · 0103 (conditions)
+[ADR 0048](../adr/0048-calendar-provider-and-agenda.md) (calendar) · [0049](../adr/0049-plugin-widgets.md) (plugin widgets) · [0053](../adr/0053-departures-from-efa.md), [0100](../adr/0100-one-stop-per-departures-widget.md) (departures) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0058](../adr/0058-plugin-protocol-version-check.md) (protocol version check) · [0065](../adr/0065-plugin-state-directory.md) → [0081](../adr/0081-plugin-state-over-the-protocol.md) (state) · [0075](../adr/0075-plugin-versions.md), [0107](../adr/0107-plugin-builds-reach-installations.md) (a version per plugin) · [0099](../adr/0099-glucose-readings-from-the-dexcom-share-service.md) (Dexcom) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions)

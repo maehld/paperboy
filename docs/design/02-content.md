@@ -6,7 +6,7 @@ A page is a grid of cells. Every cell shows one widget from one plugin. A plan d
 
 ## Pages
 
-A page file is `pages/<page>.<display type>.yaml`, or `pages/<page>.yaml` when every display type without its own variant shares it (ADR 0049, 0094).
+A page file is `pages/<page>.<display type>.yaml`, or `pages/<page>.yaml` when every display type without its own variant shares it ([ADR 0049](../adr/0049-plugin-widgets.md), [0094](../adr/0094-the-pages-list-is-a-list.md)).
 
 ```yaml
 title: Morning
@@ -38,7 +38,7 @@ cells:
 | `notices` | `show` or `none`: whether a notice page may replace this page |
 | `cells` | `at` (column, row), `span` (columns, rows), `widget`, `args`, `style` (overrides the page style), `scroll` |
 
-Parsing is strict and cells must not overlap. Sizes are in points since ADR 0050. A fraction such as `0.06` is rejected with a hint: points are physical, and the display type's `ppi` converts them into pixels.
+Parsing is strict and cells must not overlap. Sizes are in points since [ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md). A fraction such as `0.06` is rejected with a hint: points are physical, and the display type's `ppi` converts them into pixels.
 
 A widget declares its sizes as spans of the 6 × 8 reference grid, so an author places cells without knowing the panel.
 
@@ -57,15 +57,15 @@ The built-in plugin draws text, lines and fills, so a page that is only text nee
 
 ## Text pages
 
-A text page has no pixels. Its grid must equal the character grid of the display type. The LCD2004 has 20 × 4, and any text type has at most 80 × 24 (ADR 0044).
+A text page has no pixels. Its grid must equal the character grid of the display type. The LCD2004 has 20 × 4, and any text type has at most 80 × 24 ([ADR 0044](../adr/0044-text-displays-on-the-device-api.md)).
 
 `RenderText` asks the same cells, but in characters. Each widget answers lines. Paperboy converts them to the charset of the display and then cuts or pads every line to its cell width. The charsets are `utf8`, `ascii` and `hd44780`; the last keeps ä ö ü ß ° µ and turns Ä Ö Ü into A O U. A widget that fails contributes wrapped `? …` lines instead of breaking the page. A stale result marks `!` in the last column of line 1.
 
-A full-width cell with `scroll: true` passes the flag to its widget. The widget may then answer a line wider than the cell (ADR 0092). Paperboy keeps the first window in `Lines` and the full text in `Scroll`, and hashes both, so a changed tail changes the page. The firmware moves such a row by one character every 300 ms.
+A full-width cell with `scroll: true` passes the flag to its widget. The widget may then answer a line wider than the cell ([ADR 0092](../adr/0092-scrolling-text-lines.md)). Paperboy keeps the first window in `Lines` and the full text in `Scroll`, and hashes both, so a changed tail changes the page. The firmware moves such a row by one character every 300 ms.
 
 ## Which page a device gets
 
-A plan is `plans/<name>.yaml` (ADR 0025, 0103):
+A plan is `plans/<name>.yaml` ([ADR 0025](../adr/0025-plaene-je-display.md), [0103](../adr/0103-plugin-conditions-in-plans.md)):
 
 ```yaml
 rules:
@@ -87,7 +87,7 @@ Rules are tried in order and the first match wins:
 - `from` is inclusive, `to` is exclusive. A window that crosses midnight belongs to its start day.
 - `days` accepts German and English day names.
 - `conditions` must all be active (AND). A condition is `plugin/condition`, an answer of the plugin's `conditions` action. A missing or inactive condition does not match, and a condition never creates a boundary: only time windows do.
-- `timezone` inside a plan is rejected; the global `timezone` applies (ADR 0033). `when.data` of version 1 is rejected with a hint that names `when.conditions`.
+- `timezone` inside a plan is rejected; the global `timezone` applies ([ADR 0033](../adr/0033-global-language-and-timezone.md)). `when.data` of version 1 is rejected with a hint that names `when.conditions`.
 
 A rule lists `pages`, `rotate` (seconds until the next page of the rule) and `refresh` (seconds until the next sync). `UntilNextBoundary` caps the refresh at the next rule change. `fallback` holds the pages of a device whose no rule matches.
 
@@ -97,7 +97,7 @@ Paperboy caches a parsed page by its modification time, so an edit applies with 
 
 ## Actions
 
-A plan lists the actions that the device menu offers (ADR 0057):
+A plan lists the actions that the device menu offers ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md)):
 
 | Key | Meaning |
 |---|---|
@@ -112,7 +112,7 @@ Every rule carries the same action list, so the menu offers the same actions at 
 
 ## The device menu
 
-Short `home` opens the menu when the device is not `actions: deny` and has a plan (ADR 0057, 0067, 0078, 0082). Paperboy draws it over the served page and registers the result as a notice page, so the cached page stays untouched.
+Short `home` opens the menu when the device is not `actions: deny` and has a plan ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md), [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md)). Paperboy draws it over the served page and registers the result as a notice page, so the cached page stays untouched.
 
 - An empty action list becomes a `Keine Aktionen` banner. A menu in which no action can run names the reason to run none. Both close after 10 seconds or on the next input.
 - Otherwise three actions appear in a row, stacked in portrait, over the top half of the display.
@@ -131,7 +131,7 @@ Without input, the menu expires after `menu_show_duration` (default 30 seconds, 
 
 ## Built-in widgets
 
-The built-in plugin `paperboy` needs no data and is never cached (ADR 0049, 0095):
+The built-in plugin `paperboy` needs no data and is never cached ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md)):
 
 | Widget | Draws |
 |---|---|
@@ -142,4 +142,4 @@ The built-in plugin `paperboy` needs no data and is never cached (ADR 0049, 0095
 
 ## Decisions
 
-ADR 0025 (plans) · 0033 (timezone) · 0044, 0045 (text displays) · 0049 (widgets on a grid) · 0050 (points and ppi) · 0055 (argument values) · 0057 (actions) · 0067, 0078, 0082 (the menu) · 0092 (scrolling lines) · 0095 (logo) · 0094 (shared and variant files) · 0103 (conditions)
+[ADR 0025](../adr/0025-plaene-je-display.md) (plans) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md) (the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0094](../adr/0094-the-pages-list-is-a-list.md) (shared and variant files) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions)

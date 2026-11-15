@@ -2,7 +2,7 @@
 
 # Delivery
 
-One repository ships three deliverables – Paperboy, the plugins and the firmware – each with its own release train (ADR 0056). A tag decides what a release contains.
+One repository ships three deliverables – Paperboy, the plugins and the firmware – each with its own release train ([ADR 0056](../adr/0056-repository-layout-and-release-trains.md)). A tag decides what a release contains.
 
 ## Release trains
 
@@ -12,13 +12,13 @@ One repository ships three deliverables – Paperboy, the plugins and the firmwa
 | `plugins-vX.Y.Z` | Only the plugin zips |
 | `firmware-vX.Y.Z` | Only the firmware bundle |
 
-A tag whose version carries a suffix (`v1.4.0-rc.1`) becomes a prerelease. Only the `latest` channel installs those; the `stable` channel skips them (ADR 0089).
+A tag whose version carries a suffix (`v1.4.0-rc.1`) becomes a prerelease. Only the `latest` channel installs those; the `stable` channel skips them ([ADR 0089](../adr/0089-release-channels.md)).
 
 | Asset | Content |
 |---|---|
 | `paperboy-<os>-<arch>[.exe]` | The binary for Linux and Windows, amd64 and arm64 |
 | `paperboy-plugins-<os>-<arch>.zip` | `plugins/<plugin>-v<version>` for the platform, plus the OpenMoji licences of the weather and evcc icons |
-| `paperboy-firmware.zip` | One flat bundle with the image of every hardware type, unpacks to `firmware/` (ADR 0059, 0060, 0063) |
+| `paperboy-firmware.zip` | One flat bundle with the image of every hardware type, unpacks to `firmware/` ([ADR 0059](../adr/0059-firmware-bundle.md), [0060](../adr/0060-download-from-releases.md), [0063](../adr/0063-constant-firmware-bundle-name.md)) |
 | `SHA256SUMS` | The checksums that an instance verifies before it installs anything |
 
 ## Workflows
@@ -28,7 +28,7 @@ Only `release.yml` creates a GitHub release. The other workflows build for chang
 | Workflow | Job |
 |---|---|
 | *CI* | `gofmt`, `go vet`, tests and a cross-build on every change |
-| *Plugins* | Builds both plugin zips; fails a pull request that changed `cmd/<plugin>` without raising its `VERSION`, and one that changed `pkg/plugin` or `pkg/render` without raising every plugin's version (ADR 0107) |
+| *Plugins* | Builds both plugin zips; fails a pull request that changed `cmd/<plugin>` without raising its `VERSION`, and one that changed `pkg/plugin` or `pkg/render` without raising every plugin's version ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)) |
 | *Firmware* | Compiles `sticky`, `e1001`, `e1003` and `lcd2004` with the pinned ESPHome, only for changes under `firmware/esphome/`, and bundles them into one image archive |
 | *Docker* | Builds the container image, which holds the Paperboy binary only |
 | *Release* | Builds the binaries, calls *Plugins* and *Firmware* as reusable workflows, attaches everything with `SHA256SUMS` and writes notes against the last stable release of the same train |
@@ -42,7 +42,7 @@ The container image gets its moving `X.Y` tag only for a final release; a prerel
 
 ## The download client
 
-A `download` section enables the release checks (ADR 0060, 0062):
+A `download` section enables the release checks ([ADR 0060](../adr/0060-download-from-releases.md), [0062](../adr/0062-plugin-updates-and-download-control.md)):
 
 ```yaml
 download:
@@ -57,17 +57,17 @@ download:
 
 One check builds one client per train – plugins, firmware and Paperboy – and then:
 
-1. Reads the release list of the train. The list is cached with its ETag in `state/download/<train>/cache.json`, so an unchanged answer costs no request and no rate limit (ADR 0090).
+1. Reads the release list of the train. The list is cached with its ETag in `state/download/<train>/cache.json`, so an unchanged answer costs no request and no rate limit ([ADR 0090](../adr/0090-download-cache-and-inventory.md)).
 2. Picks the newest release with a wanted asset. `latest` takes prereleases; `stable` skips them and also refuses a version with a suffix inside a release that is not flagged as a prerelease. A pin bypasses the channel.
 3. Installs the program of a configured plugin that has none as `plugins/<plugin>-v<version>`, and a newer version next to an older downloaded one. An unversioned program and a pin stay.
-4. Installs every image of the newest firmware bundle as `firmware/<hardware>-v<version>.bin` (ADR 0061). A `firmware.version` pin restricts this to one version.
+4. Installs every image of the newest firmware bundle as `firmware/<hardware>-v<version>.bin` ([ADR 0061](../adr/0061-install-every-bundle-image.md)). A `firmware.version` pin restricts this to one version.
 5. Verifies each archive against the release's `SHA256SUMS`. Unpacks it one level below `plugins/` or `firmware/`, with protection against `..`, absolute paths, links and oversized entries. An existing file is never overwritten.
 
 The inventory is never touched automatically. A check keeps one archive per asset: the previous one is dropped after the next one was installed.
 
 ## The Paperboy version
 
-`checkPaperboyRelease` names a newer Paperboy without installing it (ADR 0101). It reads the `vX.Y.Z` train and compares the newest release with the version that was stamped into the running binary.
+`checkPaperboyRelease` names a newer Paperboy without installing it ([ADR 0101](../adr/0101-a-hint-about-a-newer-paperboy.md)). It reads the `vX.Y.Z` train and compares the newest release with the version that was stamped into the running binary.
 
 - The channel follows the running version: a final version hears about finals, a prerelease also about prereleases.
 - A development build and a source without a Paperboy release stay silent.
@@ -81,7 +81,7 @@ The inventory is never touched automatically. A check keeps one archive per asse
 
 ## Pruning
 
-The downloads page lists what *Preview cleanup* would delete, and the button deletes exactly that (ADR 0090). `prune.go` keeps:
+The downloads page lists what *Preview cleanup* would delete, and the button deletes exactly that ([ADR 0090](../adr/0090-download-cache-and-inventory.md)). `prune.go` keeps:
 
 - the resolved program of every plugin,
 - every version that a pin names,
@@ -91,4 +91,4 @@ The downloads page lists what *Preview cleanup* would delete, and the button del
 
 ## Decisions
 
-ADR 0056 (release trains) · 0059, 0061, 0063 (the firmware bundle) · 0060, 0062 (downloads and intervals) · 0075, 0107 (a version per plugin) · 0089 (channels and prereleases) · 0090 (cache and inventory) · 0101 (a hint about a newer Paperboy)
+[ADR 0056](../adr/0056-repository-layout-and-release-trains.md) (release trains) · [0059](../adr/0059-firmware-bundle.md), [0061](../adr/0061-install-every-bundle-image.md), [0063](../adr/0063-constant-firmware-bundle-name.md) (the firmware bundle) · [0060](../adr/0060-download-from-releases.md), [0062](../adr/0062-plugin-updates-and-download-control.md) (downloads and intervals) · [0075](../adr/0075-plugin-versions.md), [0107](../adr/0107-plugin-builds-reach-installations.md) (a version per plugin) · [0089](../adr/0089-release-channels.md) (channels and prereleases) · [0090](../adr/0090-download-cache-and-inventory.md) (cache and inventory) · [0101](../adr/0101-a-hint-about-a-newer-paperboy.md) (a hint about a newer Paperboy)

@@ -1,7 +1,7 @@
 # Example pages, plans and devices
 
 The pages under `pages/` are grids of widgets from the shipped plugins
-(ADR 0049): `weather`, `calendar`, `evcc`, `departures`, `pokedex`, `xkcd`,
+([ADR 0049](../docs/adr/0049-plugin-widgets.md)): `weather`, `calendar`, `evcc`, `departures`, `pokedex`, `xkcd`,
 `myskoda`, `countdown`, `rss`, `dexcom` and the built-in `paperboy` plugin. Copy the
 files you need into the `pages/` directory of your instance and adapt the
 grid, the spans and the arguments.
@@ -39,7 +39,7 @@ grid, the spans and the arguments.
   grid is the character grid.
 - `hinweise.lcd2004.yaml` - a scrolling line on a 20×4 character display: a
   full-width cell with `scroll: true` shows a line that is too wide as a
-  marquee instead of cutting it (ADR 0092).
+  marquee instead of cutting it ([ADR 0092](../docs/adr/0092-scrolling-text-lines.md)).
 
 A page without a display type suffix serves every display type that has no own
 variant, so `uebersicht.yaml` works on 800×480 and on 400×300 panels alike: the
@@ -61,13 +61,13 @@ energy flow every 5 minutes, during the day all pages every 10 minutes, at
 night only the overview.
 
 `displays/e1001.yaml`, `displays/sticky.yaml`, `displays/e1003.yaml` and
-`displays/lcd2004.yaml` are four display types (ADR 0071): an 800 x 480 ePaper
+`displays/lcd2004.yaml` are four display types ([ADR 0071](../docs/adr/0071-display-types-in-files-of-their-own.md)): an 800 x 480 ePaper
 panel, the Sticky's denser panel, the E1003's 1872 x 1404 16-level panel and a
 20x4 text display. Copy them into the `displays/` directory of your instance;
 the file name is what pages and devices use, and the editor at
 `/ui/editor?tab=displays` creates more.
 
-`devices/wohnzimmer.yaml` and `devices/lcd.yaml` are two devices (ADR 0070):
+`devices/wohnzimmer.yaml` and `devices/lcd.yaml` are two devices ([ADR 0070](../docs/adr/0070-devices-in-their-own-files.md)):
 an ePaper display on the tour plan and a 20×4 text display on the standard plan.
 Copy one into the `devices/` directory of your instance, set the MAC address and
 the display type, or create the device in the editor at `/ui/editor`.

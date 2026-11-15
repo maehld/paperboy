@@ -31,7 +31,7 @@ function flush(   s, n, i, arr, count) {
 	s = para
 	para = ""
 	# The "Decisions" paragraph is a list of numbers, not a sentence.
-	if (s ~ /^ *ADR [0-9]/) return
+	if (s ~ /^ *\[?ADR [0-9]/) return
 	sub(/^ +/, "", s)
 	# A link keeps its text, inline code becomes one word, and a decimal point
 	# must not split a sentence.
