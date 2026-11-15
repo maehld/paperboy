@@ -839,7 +839,9 @@ func handleConditions(h Handler, req *Request, m *Message) {
 }
 
 // handleValues answers a values request (ADR 0111). A plugin without the
-// Valuer interface has none, and a request without names is an error.
+// Valuer interface has none, and a request without names is an error. Like a
+// widget request it prepares the plugin first, because a values answer reads
+// the same per-request snapshot a widget does.
 func handleValues(h Handler, req *Request, m *Message) {
 	v, ok := h.(Valuer)
 	if !ok {
@@ -849,6 +851,12 @@ func handleValues(h Handler, req *Request, m *Message) {
 	if len(req.Values) == 0 {
 		m.Error = "values: no names requested"
 		return
+	}
+	if p, ok := h.(Preparer); ok {
+		if err := p.Prepare(req); err != nil {
+			m.Error = err.Error()
+			return
+		}
 	}
 	values, err := v.Values(req)
 	if err != nil {
