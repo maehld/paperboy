@@ -198,7 +198,7 @@ func TestEditorVariantsPanel(t *testing.T) {
 		`<a href="/ui/editor/page?display=small&amp;file=hochkant&amp;name=solar" title="Edit pages/solar.hochkant.yaml for small">small</a>`,
 		`<select data-serves="small" data-value="hochkant" title="pages/solar.hochkant.yaml" aria-label="File that serves small"><option value="">page file</option><option value="hochkant" selected>hochkant</option></select>`,
 		`<option value="__none__" selected disabled>— none —</option><option value="lcd">lcd</option>`,
-		`title="page is for image displays (kind: image)"`,
+		`<select class="none" data-serves="lcd" data-value="__none__" title="page is for image displays (kind: image)"`,
 		// One dialog creates a variant; no table row carries its own button.
 		`data-dialog="create-variant"`,
 	} {

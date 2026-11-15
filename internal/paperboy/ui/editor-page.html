@@ -81,7 +81,7 @@ input[type=search] { margin-bottom: .4rem; }
 .panel.serves .kind { display: inline-block; padding: 0 .22rem; border: 1px solid #dde3ec; border-radius: 3px; background: #f7f9fc; color: #445; font-size: .68rem; }
 .panel.serves td.pick { white-space: nowrap; }
 .panel.serves td.pick select { width: 100%; min-width: 0; font-size: .78rem; padding: .05rem .1rem; }
-.panel.serves .mark { color: #b00; font-weight: 700; margin-right: .15rem; cursor: help; }
+.panel.serves td.pick select.none { color: #888; background: #f4f4f4; }
 .palette .plugin { border-top: 1px solid #eee; padding-top: .5rem; margin-top: .5rem; }
 .palette .plugin:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
 .palette .plugin-head { display: flex; align-items: center; gap: .3rem; margin: 0 0 .3rem; font-size: .85rem; color: #333; font-weight: 600; cursor: pointer; user-select: none; }
@@ -174,7 +174,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
           <tr>
             <td class="type">{{if .URL}}<a href="{{.URL}}"{{if .Current}} aria-current="true"{{end}} title="{{.URLTitle}}">{{.Display}}</a>{{else}}{{.Display}}{{end}}</td>
             <td><span class="kind">{{.Kind}}</span></td>
-            <td class="pick">{{if .Reason}}<span class="mark" title="{{.Title}}">!</span>{{end}}<select data-serves="{{.Display}}" data-value="{{.Value}}" title="{{.Title}}" aria-label="File that serves {{.Display}}">{{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}{{if .Disabled}} disabled{{end}}>{{.Label}}</option>{{end}}</select></td>
+            <td class="pick"><select{{if .Reason}} class="none"{{end}} data-serves="{{.Display}}" data-value="{{.Value}}" title="{{.Title}}" aria-label="File that serves {{.Display}}">{{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}{{if .Disabled}} disabled{{end}}>{{.Label}}</option>{{end}}</select></td>
           </tr>
           {{end}}
         </tbody>
