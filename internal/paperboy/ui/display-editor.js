@@ -339,11 +339,8 @@
   // use the name keep it, and the confirmation names them (ADR 0079).
   async function rename() {
     if (state.isNew || !state.rename) return;
-    const warn = state.rename.warn +
-      (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
-      '\n\nThe new name is yours to propagate: nothing is rewritten.';
-    if (!confirm(warn)) return;
-    const name = (prompt('New name for ' + state.name + ': (lower case letters, digits and -)', '') || '').trim();
+    if (state.dirty && !confirm('Discard unsaved changes?')) return;
+    const name = (prompt('New name for ' + state.name + ':', '') || '').trim();
     if (!name || name === state.name) return;
     setStatus('renaming…', '');
     let res;

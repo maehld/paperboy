@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // Renaming moves files (ADR 0079). References are not rewritten: a plan keeps
@@ -334,67 +333,16 @@ func (s *Server) handleRenameDisplay(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, renameAnswer(cfg, name, moves))
 }
 
-// renameAction is what an editor needs to rename its object: the endpoint and
-// the confirmation that names what keeps the old name (ADR 0079). The editor
-// adds the hash it read, so a save in between does not make the rename stale.
+// renameAction is what an editor needs to rename its object: the endpoint
+// (ADR 0079). The editor adds the hash it read, so a save in between does not
+// make the rename stale.
 type renameAction struct {
-	URL  string `json:"url"`
-	Warn string `json:"warn"`
+	URL string `json:"url"`
 }
 
-// pageRenameWarning is the confirmation of a page rename: the files that move
-// as one set and the plans that keep the old name (ADR 0113).
-func pageRenameWarning(name string, plans []string) string {
-	msg := "Rename page " + name + "?" +
-		"\n\nThe page file and its variants move to the new name. The variants map stays as it is."
-	if len(plans) == 0 {
-		return msg + "\n\nNo plan names this page."
-	}
-	return msg + "\n\nPlans that name it are not rewritten and show a notice until updated: " + strings.Join(plans, ", ") + "."
-}
-
-// planRenameWarning is the confirmation of a plan rename: the devices that keep
-// the old name.
-func planRenameWarning(name string, devices []string) string {
-	msg := "Rename plan " + name + "?"
-	if len(devices) == 0 {
-		return msg + "\n\nNo device uses this plan."
-	}
-	return msg + "\n\nDevices that use it are not rewritten and show a notice page until updated: " + strings.Join(devices, ", ") + "."
-}
-
-// deviceRenameWarning is the confirmation of a device rename: the state moves
-// with the file.
-func deviceRenameWarning(id string) string {
-	return "Rename device " + id + "?" +
-		"\n\nIts state (page cursor, battery reading, menu) moves to the new ID. The firmware registers by MAC, so the display does not notice."
-}
-
-// displayRenameWarning is the confirmation of a display type rename: only the
-// file moves, so the pages that name a variant for it and the devices that use
-// the name keep it (ADR 0079, 0110).
-func displayRenameWarning(name string, pages, devices []displayReference) string {
-	msg := "Rename display type " + name + "?"
-	var refs []string
-	if len(pages) > 0 {
-		refs = append(refs, "pages: "+referenceLabels(pages))
-	}
-	if len(devices) > 0 {
-		refs = append(refs, "devices: "+referenceLabels(devices))
-	}
-	if len(refs) == 0 {
-		return msg + "\n\nNo page names a variant for this display type and no device uses it."
-	}
-	msg += "\n\nOnly the file moves; nothing is rewritten. Keeps the old name → " + strings.Join(refs, "; ") + "."
-	if len(devices) > 0 {
-		msg += " Those devices answer with 503 until their display_type is updated."
-	}
-	return msg
-}
-
-// pageRenameAction builds the rename for the page file; nil when the page has no
-// page file, because a rename starts from that file (ADR 0110, 0113).
-func pageRenameAction(cfg *Config, name string, usedBy []string) *renameAction {
+// pageRenameAction is the page's rename: only a page with a page file has one
+// (ADR 0110).
+func pageRenameAction(cfg *Config, name string) *renameAction {
 	path, err := pageFilePath(cfg.Pages, name, "")
 	if err != nil {
 		return nil
@@ -402,15 +350,15 @@ func pageRenameAction(cfg *Config, name string, usedBy []string) *renameAction {
 	if _, err := os.Stat(path); err != nil {
 		return nil
 	}
-	return &renameAction{URL: "/api/pages/" + url.PathEscape(name) + "/rename", Warn: pageRenameWarning(name, usedBy)}
+	return &renameAction{URL: "/api/pages/" + url.PathEscape(name) + "/rename"}
 }
 
 // renameForPage is the action bar's rename of the file the editor shows: only
 // the page file has one. A variant renames its label in the Variant block, so a
 // view shows one Rename (ADR 0079, 0110).
-func renameForPage(cfg *Config, name string, usedBy []string, label string) *renameAction {
+func renameForPage(cfg *Config, name string, label string) *renameAction {
 	if label != "" {
 		return nil
 	}
-	return pageRenameAction(cfg, name, usedBy)
+	return pageRenameAction(cfg, name)
 }

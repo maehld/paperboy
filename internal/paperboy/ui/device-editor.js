@@ -303,10 +303,8 @@
   // (ADR 0079).
   async function rename() {
     if (state.isNew || !state.rename) return;
-    const warn = state.rename.warn +
-      (state.dirty ? '\n\nUnsaved changes are discarded.' : '');
-    if (!confirm(warn)) return;
-    const id = (prompt('New ID for ' + state.id + ': (lower case letters, digits and -)', '') || '').trim();
+    if (state.dirty && !confirm('Discard unsaved changes?')) return;
+    const id = (prompt('New ID for ' + state.id + ':', '') || '').trim();
     if (!id || id === state.id) return;
     setStatus('renaming…', '');
     let res;

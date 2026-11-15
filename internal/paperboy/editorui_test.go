@@ -622,7 +622,7 @@ func TestEditorPage(t *testing.T) {
 		`"displays":[{"name":"lcd","kind":"text","width":20,"height":4},{"name":"small","kind":"image","width":40,"height":20}]`,
 		// The preview type is the served one; the file is not a link there.
 		`data-serves="small"`,
-		`"rename":{"url":"/api/pages/solar/rename","warn":"Rename page solar?`,
+		`"rename":{"url":"/api/pages/solar/rename"}`,
 		`<script src="/ui/editor.js"></script>`, `id="board"`, `id="palette"`, `id="palette-filter"`, `id="inspector"`,
 		`id="show-cells" checked`, `id="render-hint"`, `id="preview-error"`,
 		// The panels list the files of the page and the file of every display

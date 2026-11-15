@@ -56,13 +56,13 @@ Click a widget and then a free cell, or drag it from the palette. A placed box i
 
 The board is the rendered draft with the cell boxes on top ([ADR 0074](adr/0074-editor-board-shows-the-preview.md)): an image as its background, the text lines one character per slot. A *Cells* switch hides the overlay (remembered per browser, forced on while placing), and a "rendering…" hint covers the debounce.
 
-Nothing is written before *Save*. A file that does not parse is listed with its error and opens read-only, because the API takes a model, not text. *Delete* removes the one file the editor shows after naming the plans that use the page ([ADR 0073](adr/0073-edit-creates-and-deletes.md)). *Rename* moves `pages/<page>.yaml` and every variant file as one set, keeps the `variants` map and names the plans that keep the old name ([ADR 0079](adr/0079-rename-config-items.md), [0113](adr/0113-a-page-rename-moves-its-variants.md)). A taken target file refuses the whole rename with `409`, and every move is preflighted before the first rename. A variant has no page rename in its bar; *Rename…* in its *Variant* block changes the label. A variant whose page file is missing stays read-only and is not linked from the pages list.
+Nothing is written before *Save*. A file that does not parse is listed with its error and opens read-only, because the API takes a model, not text. *Delete* removes the one file the editor shows after naming the plans that use the page ([ADR 0073](adr/0073-edit-creates-and-deletes.md)). *Rename* moves `pages/<page>.yaml` and every variant file as one set, keeps the `variants` map ([ADR 0079](adr/0079-rename-config-items.md), [0113](adr/0113-a-page-rename-moves-its-variants.md)). A taken target file refuses the whole rename with `409`, and every move is preflighted before the first rename. A variant has no page rename in its bar; *Rename…* in its *Variant* block changes the label. A variant whose page file is missing stays read-only and is not linked from the pages list.
 
 #### Plan editor
 
 `/ui/editor/plan?name=<plan>` edits a plan ([ADR 0069](adr/0069-plan-editor-ui.md)). A missing file opens as a new plan that the first save writes. The editor edits rules in their order: name, time window (`from`/`to` as times of day, days as checkboxes), pages in their order with `rotate` and `refresh`, and the fallback. It also edits the actions the device menu offers, built from the actions of the plugins with their arguments and confirmation.
 
-The editor marks rules that an earlier rule always overrides. It names pages that the own devices of the plan would skip, and links each device to its `/ui/plan` preview and to its device page. *Delete* removes the plan after naming the devices that use it. *Rename* moves the file and names the devices that keep the old name ([ADR 0079](adr/0079-rename-config-items.md)).
+The editor marks rules that an earlier rule always overrides. It names pages that the own devices of the plan would skip, and links each device to its `/ui/plan` preview and to its device page. *Delete* removes the plan after naming the devices that use it. *Rename* moves the file ([ADR 0079](adr/0079-rename-config-items.md)).
 
 #### Device editor
 
@@ -76,7 +76,7 @@ The devices tab lists the files under `devices/` with display type, MAC, address
 
 The displays tab lists the files under `displays/` with kind, size, `ppi` or `charset`, gray levels and power, and creates new types in a dialog. `/ui/editor/display?name=<name>` edits one ([ADR 0071](adr/0071-display-types-in-files-of-their-own.md)) with the fields of its kind, the rotation of an image display ([ADR 0102](adr/0102-rotate-pages-onto-the-panel.md)), the physical size computed from `ppi`, the pages that name a variant for it and the devices that reference it, and the current file text.
 
-The `ppi` field has a helper. It converts the diagonal of the panel in inches or one side of its active area in millimetres into `ppi` from the pixel size in the form. It says so when the two disagree, because an inch diagonal is usually rounded. *Rename* moves only the file and names the pages and devices that keep the old name ([ADR 0079](adr/0079-rename-config-items.md), [0110](adr/0110-pages-serve-their-kind-and-name-variants.md)). *Delete* removes the file after naming the pages and devices that reference it ([ADR 0073](adr/0073-edit-creates-and-deletes.md)).
+The `ppi` field has a helper. It converts the diagonal of the panel in inches or one side of its active area in millimetres into `ppi` from the pixel size in the form. It says so when the two disagree, because an inch diagonal is usually rounded. *Rename* moves only the file ([ADR 0079](adr/0079-rename-config-items.md), [0110](adr/0110-pages-serve-their-kind-and-name-variants.md)). *Delete* removes the file after naming the pages and devices that reference it ([ADR 0073](adr/0073-edit-creates-and-deletes.md)).
 
 ## Device API
 

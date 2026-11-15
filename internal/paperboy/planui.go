@@ -154,8 +154,7 @@ func (s *Server) handlePlanEditor(w http.ResponseWriter, r *http.Request) {
 		for _, d := range st.Devices {
 			ids = append(ids, d.ID)
 		}
-		st.Rename = &renameAction{URL: "/api/plans/" + url.PathEscape(name) + "/rename",
-			Warn: planRenameWarning(name, ids)}
+		st.Rename = &renameAction{URL: "/api/plans/" + url.PathEscape(name) + "/rename"}
 	}
 	data, err := json.Marshal(st)
 	if err != nil { // never expected: only strings and numbers

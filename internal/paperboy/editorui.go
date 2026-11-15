@@ -1044,7 +1044,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 		UsedBy:     usedBy,
 		// A variant carries no page rename: its own Rename changes the label,
 		// and the page is renamed from its page file (ADR 0110).
-		Rename: renameForPage(cfg, name, usedBy, label),
+		Rename: renameForPage(cfg, name, label),
 		Orphan: orphanLabel(v.Orphan, label),
 	})
 	renderEditorPage(w, v, http.StatusOK)
