@@ -694,7 +694,7 @@
     el('cols').disabled = off || text();
     el('rows').disabled = off || text();
     el('grid-note').textContent = rowsPage()
-      ? 'Text page: ' + state.width + '×' + state.height + ' characters, one slot per character. Edit the rows on the right.'
+      ? 'Text page: ' + state.width + '×' + state.height + ' characters, one slot per character. Edit the rows in the Rows panel.'
       : text()
         ? 'The grid is the character grid of the display and cannot be changed.'
         : 'Cells of the page; plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid.';
