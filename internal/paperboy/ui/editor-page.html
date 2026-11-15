@@ -62,6 +62,17 @@ input[type=search] { margin-bottom: .4rem; }
 .cell .handle-xy { right: 0; bottom: 0; width: 12px; height: 12px; cursor: nwse-resize; background: #134e9c; border-radius: 2px 0 0 0; }
 .cell .w { display: block; font-weight: 600; word-break: break-all; }
 .cell .pos { color: #456; }
+/* A text page's cells are transparent boxes over the character slots: the
+   value stays visible, the box is the click and drag target (ADR 0111). */
+.cell.text { background: transparent; border: 1px dashed rgba(216, 245, 160, .35); color: inherit; cursor: grab; padding: 0; z-index: 1; }
+.cell.text.selected { background: rgba(255, 211, 92, .08); outline: 2px solid #ffd35c; outline-offset: -2px; z-index: 3; }
+.cell.text.dragging { opacity: .45; }
+.cell.text .handle-x { background: rgba(255, 211, 92, .45); }
+.drop-marker { border-left: 2px solid #ffd35c; box-shadow: -1px 0 6px rgba(255, 211, 92, .7); pointer-events: none; z-index: 4; }
+#board.text .slot { cursor: pointer; }
+#board.text.placing .slot { background: var(--lcd-cell-bg); }
+#board.text.placing .slot:hover { background: #24501a; }
+#board.text .slot.drop { background: #2b531b; }
 #board.hide-cells .slot { border-color: transparent; }
 #board.hide-cells .cell { background: transparent; border-color: transparent; }
 #board.hide-cells .cell.selected { outline: 0; }
@@ -128,6 +139,7 @@ ul.variant-types { margin: 0; padding-left: 1.1rem; font-size: .85rem; }
 .row-head .spacer { margin-left: auto; }
 .row-head .over { color: #b00; font-weight: 700; }
 .text-cell { background: #fafbfd; border: 1px solid #e3e8ef; border-radius: 6px; margin: .4rem 0; padding: .45rem .55rem; }
+.text-cell.selected { border-color: #c90; box-shadow: inset 0 0 0 1px #e8c35a; background: #fffdf3; }
 .text-cell .desc { display: block; color: #888; font-size: .72rem; margin: -.15rem 0 .35rem; }
 .row-editor > button { margin-top: .35rem; }
 .noscript-rows .arg { border-top: 1px solid #f0f0f0; margin-top: .5rem; padding-top: .35rem; }
@@ -212,7 +224,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <section class="panel palette">
       <h3>Widgets</h3>
       <input id="palette-filter" type="search" placeholder="Filter widgets…" autocomplete="off" aria-label="Filter widgets">
-      <p class="hint">{{if .WidgetsPage}}Click a widget to show it on the right.{{else}}Click a widget, then a free cell, or drag it there. Drag a box by its body to move it and by an edge or corner to resize it.{{end}}</p>
+      <p class="hint">{{if .WidgetsPage}}Click a widget to show it on the right.{{else if .TextPage}}Click a value, then a slot, or drag it onto a row. Drag a cell to move it; drag its right edge to resize it.{{else}}Click a widget, then a free cell, or drag it there. Drag a box by its body to move it and by an edge or corner to resize it.{{end}}</p>
       <div id="palette"></div>
     </section>
   </div>

@@ -158,6 +158,9 @@ func TestEditorTextRows(t *testing.T) {
 		`<h3>Text rows</h3>`,
 		`value="paperboy/title" readonly`,
 		`value="20" readonly`,
+		`Click a value, then a slot, or drag it onto a row`,
+		`.cell.text`,
+		`.drop-marker`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("text page editor lacks %q:\n%s", want, body)
@@ -167,9 +170,12 @@ func TestEditorTextRows(t *testing.T) {
 	if !strings.Contains(list, `<td class="num">4 rows</td>`) {
 		t.Fatalf("the pages list does not count the rows:\n%s", list)
 	}
-	if js := string(editorJS); !strings.Contains(js, "renderRowsEditor") || !strings.Contains(js, "renderValuePalette") ||
-		!strings.Contains(js, "textCellEditor") || !strings.Contains(js, "addTextRow") {
-		t.Fatal("the editor script does not edit text rows")
+	for _, want := range []string{"renderRowsEditor", "renderValuePalette", "textCellEditor", "addTextRow",
+		"renderTextBoxes", "pickValue", "insertValueAt", "moveTextCell", "startTextResize", "textBoardDrop",
+		"showDropMarker", "drop-marker", "b.draggable = true", "box.draggable"} {
+		if !strings.Contains(string(editorJS), want) {
+			t.Fatalf("the editor script lacks %q", want)
+		}
 	}
 }
 
@@ -783,7 +789,7 @@ func TestEditorScript(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "PUT", "pointerdown", "handle-xy", "firstWidget", "renderRowsEditor", "renderValuePalette", "textCellEditor", "addTextRow"} {
+	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "PUT", "pointerdown", "handle-xy", "firstWidget", "renderRowsEditor", "renderValuePalette", "textCellEditor", "addTextRow", "renderTextBoxes", "textBoardDrop"} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("script lacks %q", want)
 		}
