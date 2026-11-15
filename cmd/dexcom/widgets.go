@@ -32,16 +32,6 @@ func (d *dexcom) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.
 	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 }
 
-func (d *dexcom) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
-	switch w.Widget {
-	case "glucose":
-		return d.glucoseText(req, w)
-	case "values":
-		return d.valuesText(req, w)
-	}
-	return nil, fmt.Errorf("%w %q on text displays", plugin.ErrUnknownWidget, w.Widget)
-}
-
 // ---- glucose ----
 
 // glucoseWidget draws the reading, the trend, how it moved, its age and a bar
@@ -148,42 +138,6 @@ func (d *dexcom) signed(req *plugin.Request, l limits, v float64) string {
 		return "+" + s
 	}
 	return s
-}
-
-func (d *dexcom) glucoseText(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
-	l, err := d.limits()
-	if err != nil {
-		return nil, err
-	}
-	rs, loadErr, _ := d.snapshot()
-	if loadErr != nil {
-		return nil, loadErr
-	}
-	last, ok := current(rs, req.Now)
-	if !ok {
-		return []string{req.T("keine Daten", "no data")}, nil
-	}
-	age := req.Now.Sub(last.at)
-	value := d.value(req, l, last.value) + " " + l.unit
-	detail := ""
-	switch lvl := level(last.value, l); {
-	case lvl == "urgent":
-		detail = req.T("Dringend!", "Urgent!")
-	case lvl == "low":
-		detail = req.T("niedrig", "low")
-	case lvl == "high":
-		detail = req.T("hoch", "high")
-	case age > staleAfter:
-		detail = ageLabel(req, age)
-	default:
-		if prev, ok := earlier(rs, 15); ok {
-			detail = d.signed(req, l, last.value-prev.value)
-		}
-	}
-	if w.Width < len([]rune(value))+len([]rune(detail))+2 {
-		value = d.value(req, l, last.value)
-	}
-	return []string{plugin.Columns(value, detail, w.Width)}, nil
 }
 
 // ---- graph ----
@@ -517,29 +471,6 @@ func (d *dexcom) valuesWidget(req *plugin.Request, w plugin.WidgetRequest, img *
 	return nil
 }
 
-func (d *dexcom) valuesText(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
-	l, err := d.limits()
-	if err != nil {
-		return nil, err
-	}
-	rs, loadErr, _ := d.snapshot()
-	if loadErr != nil {
-		return nil, loadErr
-	}
-	var lines []string
-	for _, key := range d.valueKeysFor(w) {
-		v, ok := valueByKey[key]
-		if !ok {
-			return nil, fmt.Errorf("unknown value %q", key)
-		}
-		if len(lines) == w.Height {
-			break
-		}
-		lines = append(lines, plugin.Columns(d.entryLabel(req, v), d.entryText(req, l, rs, key), w.Width))
-	}
-	return lines, nil
-}
-
 // trendGlyph draws the trend arrow of the newest reading at the right edge of a
 // row. It reports false when there is no reading or the sensor names no trend,
 // so the row falls back to the ASCII arrow.
@@ -564,6 +495,103 @@ func (d *dexcom) trendGlyph(req *plugin.Request, img *image.Paletted, rs []readi
 	cy := baseline - int(rowH*0.22)
 	drawTrend(img, cx, cy, size, angle, count, ink)
 	return true
+}
+
+// ---- values ----
+
+// trendDirection maps a Dexcom trend to a direction: 1 up, 0 flat, -1 down,
+// doubled for the double arrows (ADR 0111).
+func trendDirection(trend string) (int, bool) {
+	switch trend {
+	case "DoubleUp":
+		return 2, true
+	case "SingleUp", "FortyFiveUp":
+		return 1, true
+	case "Flat":
+		return 0, true
+	case "FortyFiveDown", "SingleDown":
+		return -1, true
+	case "DoubleDown":
+		return -2, true
+	}
+	return 0, false
+}
+
+// Values answers the declared values of a text page from the readings of the
+// day (ADR 0111). A value without data becomes a dash.
+func (d *dexcom) Values(req *plugin.Request) (map[string]plugin.Value, error) {
+	l, err := d.limits()
+	if err != nil {
+		return nil, err
+	}
+	rs, loadErr, _ := d.snapshot()
+	if loadErr != nil {
+		return nil, loadErr
+	}
+	last, has := current(rs, req.Now)
+	prev, hasPrev := earlier(rs, 15)
+	s := summarize(rs, l)
+	dash := plugin.TextValue("–")
+	out := make(map[string]plugin.Value, len(req.Values))
+	for _, name := range req.Values {
+		switch name {
+		case "glucose":
+			if !has {
+				out[name] = dash
+				continue
+			}
+			out[name] = plugin.NumberValue(last.value)
+		case "trend":
+			if dir, ok := trendDirection(last.trend); has && ok {
+				out[name] = plugin.DirectionValue(dir)
+				continue
+			}
+			out[name] = dash
+		case "delta":
+			if !has || !hasPrev {
+				out[name] = dash
+				continue
+			}
+			out[name] = plugin.NumberValue(last.value - prev.value)
+		case "age":
+			if !has {
+				out[name] = dash
+				continue
+			}
+			out[name] = plugin.DurationValue(max(req.Now.Sub(last.at), 0))
+		case "avg":
+			if s.count == 0 {
+				out[name] = dash
+				continue
+			}
+			out[name] = plugin.NumberValue(s.avg)
+		case "min":
+			if s.count == 0 {
+				out[name] = dash
+				continue
+			}
+			out[name] = plugin.NumberValue(s.min)
+		case "max":
+			if s.count == 0 {
+				out[name] = dash
+				continue
+			}
+			out[name] = plugin.NumberValue(s.max)
+		case "in_band":
+			if s.count == 0 {
+				out[name] = dash
+				continue
+			}
+			out[name] = plugin.NumberValue(s.inBand)
+		case "count":
+			out[name] = plugin.NumberValue(float64(s.count))
+		case "band":
+			out[name] = plugin.TextValue(fmt.Sprintf("%s–%s %s", d.num(req, l.low, l.decimals), d.num(req, l.high, l.decimals), l.unit))
+		default:
+			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
+		}
+	}
+	return out, nil
 }
 
 // ---- small helpers ----
