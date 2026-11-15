@@ -93,9 +93,9 @@ func TestRenderUnknownWidget(t *testing.T) {
 func TestValues(t *testing.T) {
 	for _, fixture := range []string{"enyaq.json", "partial.json", "motion.json"} {
 		m := testPlugin(t, fixture)
-		names := []string{"battery_soc", "battery_range", "charge_state", "charge_power", "charge_remaining",
-			"charge_target", "car_name", "license_plate", "lock_state", "odometer", "location",
-			"latitude", "longitude", "climate_state", "climate_temperature", "climate_reach", "profiles", "captured"}
+		names := []string{"battery-soc", "battery-range", "charge-state", "charge-power", "charge-remaining",
+			"charge-target", "car-name", "license-plate", "lock-state", "odometer", "location",
+			"latitude", "longitude", "climate-state", "climate-temperature", "climate-reach", "profiles", "captured"}
 		values, err := m.Values(&plugin.Request{Language: "de", Values: names})
 		if err != nil {
 			t.Fatalf("%s: %v", fixture, err)
@@ -107,18 +107,18 @@ func TestValues(t *testing.T) {
 		}
 	}
 	m := testPlugin(t, "enyaq.json")
-	values, err := m.Values(&plugin.Request{Language: "de", Values: []string{"battery_soc", "battery_range", "charge_power", "odometer"}})
+	values, err := m.Values(&plugin.Request{Language: "de", Values: []string{"battery-soc", "battery-range", "charge-power", "odometer"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v := values["battery_soc"]; v.Number == nil || *v.Number != 71 {
-		t.Errorf("battery_soc = %+v", v)
+	if v := values["battery-soc"]; v.Number == nil || *v.Number != 71 {
+		t.Errorf("battery-soc = %+v", v)
 	}
-	if v := values["battery_range"]; v.Number == nil || *v.Number != 249 {
-		t.Errorf("battery_range = %+v", v)
+	if v := values["battery-range"]; v.Number == nil || *v.Number != 249 {
+		t.Errorf("battery-range = %+v", v)
 	}
-	if v := values["charge_power"]; v.Number == nil || *v.Number != 20.2 {
-		t.Errorf("charge_power = %+v", v)
+	if v := values["charge-power"]; v.Number == nil || *v.Number != 20.2 {
+		t.Errorf("charge-power = %+v", v)
 	}
 	if _, err := m.Values(&plugin.Request{Values: []string{"nope"}}); !errors.Is(err, plugin.ErrUnknownValue) {
 		t.Errorf("unknown value: %v", err)
@@ -135,11 +135,11 @@ func TestChargingDoesNotRepeatTheCable(t *testing.T) {
 		m.cur.Charging.Status.State = &s
 		m.cur.Charging.Status.PlugState = &connected
 		m.cur.Charging.Status.PlugLock = &locked
-		values, err := m.Values(&plugin.Request{Values: []string{"charge_state"}})
+		values, err := m.Values(&plugin.Request{Values: []string{"charge-state"}})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if v := values["charge_state"]; v.Text == nil || strings.Contains(*v.Text, "Kabel") {
+		if v := values["charge-state"]; v.Text == nil || strings.Contains(*v.Text, "Kabel") {
 			t.Errorf("%s: charge state repeats the cable: %+v", state, v)
 		}
 	}

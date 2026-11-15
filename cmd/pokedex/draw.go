@@ -293,7 +293,7 @@ func (p *pokedex) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 		return nil, err
 	}
 	lang := req.Lang()
-	stats := [6]string{"hp", "attack", "defense", "special_attack", "special_defense", "speed"}
+	stats := [6]string{"hp", "attack", "defense", "special-attack", "special-defense", "speed"}
 	out := make(map[string]plugin.Value, len(req.Values))
 	for _, name := range req.Values {
 		switch name {

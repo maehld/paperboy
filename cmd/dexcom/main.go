@@ -127,7 +127,7 @@ func (d *dexcom) Describe() plugin.Description {
 			{Name: "avg", Title: "Average of the day", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
 			{Name: "min", Title: "Lowest of the day", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
 			{Name: "max", Title: "Highest of the day", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
-			{Name: "in_band", Title: "Share in the target band", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+			{Name: "in-band", Title: "Share in the target band", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
 			{Name: "count", Title: "Readings of the day", Type: plugin.ValueNumber},
 			{Name: "band", Title: "Target band", Type: plugin.ValueText},
 		},

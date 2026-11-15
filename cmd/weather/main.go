@@ -63,7 +63,7 @@ type openMeteo struct {
 	Hourly struct {
 		Time       []int64    `json:"time"`
 		Temp       []float64  `json:"temperature_2m"`
-		PrecipProb []*float64 `json:"precipitation_probability"`
+		PrecipProb []*float64 `json:"precipitation-probability"`
 	} `json:"hourly"`
 	Daily struct {
 		Time       []int64    `json:"time"`
@@ -87,7 +87,7 @@ func fetch(ctx context.Context, client *http.Client, base string, lat, lon float
 	q.Set("latitude", strconv.FormatFloat(lat, 'f', -1, 64))
 	q.Set("longitude", strconv.FormatFloat(lon, 'f', -1, 64))
 	q.Set("current", "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,is_day")
-	q.Set("hourly", "temperature_2m,precipitation_probability")
+	q.Set("hourly", "temperature_2m,precipitation-probability")
 	q.Set("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset")
 	q.Set("timezone", "auto")
 	q.Set("timeformat", "unixtime")

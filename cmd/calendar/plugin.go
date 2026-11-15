@@ -103,7 +103,7 @@ func (p *calendarPlugin) Describe() plugin.Description {
 			{Name: "birthdays", Title: "Next birthdays", Type: plugin.ValueText},
 			{Name: "week", Title: "The next seven days", Type: plugin.ValueText},
 			{Name: "next", Title: "Next event", Type: plugin.ValueText},
-			{Name: "next_at", Title: "Next event at", Type: plugin.ValueTimestamp},
+			{Name: "next-at", Title: "Next event at", Type: plugin.ValueTimestamp},
 		},
 		Widgets: []plugin.WidgetInfo{
 			{
@@ -278,7 +278,7 @@ func (p *calendarPlugin) weekValue(w plugin.WidgetRequest) ([]string, error) {
 }
 
 // Values answers the declared values of a text page (ADR 0111). agenda,
-// birthdays and week carry one line per record; next and next_at name the
+// birthdays and week carry one line per record; next and next-at name the
 // first event that has not ended.
 func (p *calendarPlugin) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 	out := make(map[string]plugin.Value, len(req.Values))
@@ -296,7 +296,7 @@ func (p *calendarPlugin) Values(req *plugin.Request) (map[string]plugin.Value, e
 				return nil, err
 			}
 			out[name] = plugin.TextValue(strings.Join(lines, "\n"))
-		case "next", "next_at":
+		case "next", "next-at":
 			e, ok := p.nextEvent()
 			if !ok {
 				out[name] = plugin.TextValue("–")

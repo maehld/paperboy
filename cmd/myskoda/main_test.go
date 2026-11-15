@@ -463,9 +463,9 @@ func TestProtocol(t *testing.T) {
 
 	req.Action = plugin.ActionValues
 	req.Widgets = nil
-	req.Values = []string{"battery_soc", "charge_state"}
+	req.Values = []string{"battery-soc", "charge-state"}
 	msg = plugin.Handle(m, req)
-	if msg.Error != "" || len(msg.Values) != 2 || msg.Values["battery_soc"].Number == nil {
+	if msg.Error != "" || len(msg.Values) != 2 || msg.Values["battery-soc"].Number == nil {
 		t.Fatalf("%+v", msg)
 	}
 	if err := msg.CheckVersion(); err != nil {

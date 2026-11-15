@@ -15,47 +15,47 @@ func (m *myskoda) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 	out := make(map[string]plugin.Value, len(req.Values))
 	for _, name := range req.Values {
 		switch name {
-		case "battery_soc":
+		case "battery-soc":
 			if v, ok := m.soc(); ok {
 				out[name] = plugin.NumberValue(float64(v))
 				continue
 			}
 			out[name] = dash
-		case "battery_range":
+		case "battery-range":
 			if v, ok := m.rangeKM(); ok {
 				out[name] = plugin.NumberValue(float64(v))
 				continue
 			}
 			out[name] = dash
-		case "charge_state":
+		case "charge-state":
 			out[name] = plugin.TextValue(m.chargeState())
-		case "charge_power":
+		case "charge-power":
 			if v, ok := m.power(); ok {
 				out[name] = plugin.NumberValue(v)
 				continue
 			}
 			out[name] = dash
-		case "charge_remaining":
+		case "charge-remaining":
 			if d, ok := m.remainingDuration(); ok {
 				out[name] = plugin.DurationValue(d)
 				continue
 			}
 			out[name] = dash
-		case "charge_target":
+		case "charge-target":
 			if v, ok := m.targetSoC(); ok {
 				out[name] = plugin.NumberValue(float64(v))
 				continue
 			}
 			out[name] = dash
-		case "car_name":
+		case "car-name":
 			out[name] = plugin.TextValue(m.carName())
-		case "license_plate":
+		case "license-plate":
 			if v := strings.TrimSpace(m.cur.LicensePlate); v != "" {
 				out[name] = plugin.TextValue(v)
 				continue
 			}
 			out[name] = dash
-		case "lock_state":
+		case "lock-state":
 			out[name] = plugin.TextValue(m.lockState())
 		case "odometer":
 			if o := m.cur.Odometer; o != nil && o.KM != nil {
@@ -76,20 +76,20 @@ func (m *myskoda) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 				v = p.GPS.Longitude
 			}
 			out[name] = plugin.NumberValue(v)
-		case "climate_state":
+		case "climate-state":
 			if m.cur.AirConditioning == nil {
 				out[name] = dash
 				continue
 			}
 			out[name] = plugin.TextValue(m.climateState())
-		case "climate_temperature":
+		case "climate-temperature":
 			c := m.cur.AirConditioning
 			if c == nil || c.Target.Value == nil {
 				out[name] = dash
 				continue
 			}
 			out[name] = plugin.NumberValue(*c.Target.Value)
-		case "climate_reach":
+		case "climate-reach":
 			c := m.cur.AirConditioning
 			if c == nil {
 				out[name] = dash

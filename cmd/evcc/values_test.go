@@ -14,12 +14,12 @@ func TestStateValues(t *testing.T) {
 		key  string
 		want float64
 	}{
-		{"pv", 4.2}, {"home", 0.8}, {"grid", -2.1}, {"battery", 81}, {"battery_power", -1.3},
-		{"grid_price", 27}, {"pv_energy", 26009.5}, {"grid_import", 9697.5}, {"grid_export", 11141.6},
-		{"battery_charge", 6013.7}, {"battery_discharge", 6362.4},
-		{"charge_total", 1234.5}, {"charge_total_solar", 54.8}, {"charge_total_price", 17.05},
-		{"charge_year", 145.3}, {"charge_year_solar", 55.1}, {"charge_year_price", 16.39},
-		{"solar_today", 12000}, {"solar_tomorrow", 8600},
+		{"pv", 4.2}, {"home", 0.8}, {"grid", -2.1}, {"battery", 81}, {"battery-power", -1.3},
+		{"grid-price", 27}, {"pv-energy", 26009.5}, {"grid-import", 9697.5}, {"grid-export", 11141.6},
+		{"battery-charge", 6013.7}, {"battery-discharge", 6362.4},
+		{"charge-total", 1234.5}, {"charge-total-solar", 54.8}, {"charge-total-price", 17.05},
+		{"charge-year", 145.3}, {"charge-year-solar", 55.1}, {"charge-year-price", 16.39},
+		{"solar-today", 12000}, {"solar-tomorrow", 8600},
 	}
 	names := make([]string, len(cases))
 	for i, c := range cases {
@@ -36,12 +36,12 @@ func TestStateValues(t *testing.T) {
 		}
 	}
 	// A value evcc does not report becomes a dash.
-	values, err = e.Values(&plugin.Request{Values: []string{"feedin_price"}})
+	values, err = e.Values(&plugin.Request{Values: []string{"feedin-price"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v := values["feedin_price"]; v.Text == nil || *v.Text != "–" {
-		t.Errorf("feedin_price = %+v", v)
+	if v := values["feedin-price"]; v.Text == nil || *v.Text != "–" {
+		t.Errorf("feedin-price = %+v", v)
 	}
 	if _, err := e.Values(&plugin.Request{Values: []string{"nope"}}); !errors.Is(err, plugin.ErrUnknownValue) {
 		t.Errorf("unknown value: %v", err)
