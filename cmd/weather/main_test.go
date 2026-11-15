@@ -47,7 +47,7 @@ func testPayload(t *testing.T) map[string]any {
 			"wind_speed_10m": 14.2, "is_day": 1,
 		},
 		"hourly": map[string]any{
-			"time": hours, "temperature_2m": temps, "precipitation_probability": probs,
+			"time": hours, "temperature_2m": temps, "precipitation-probability": probs,
 		},
 		"daily": map[string]any{
 			"time":                          days,
@@ -271,8 +271,8 @@ func TestValues(t *testing.T) {
 		Now:  time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC),
 		Page: plugin.PageInfo{Width: 20, Height: 4}}
 	p := &weather{cur: &b, req: req, loc: req.Location(), lang: "de"}
-	names := []string{"temperature", "apparent", "humidity", "precipitation", "precipitation_probability",
-		"wind", "beaufort", "condition", "min_today", "max_today", "sunrise", "sunset", "updated", "forecast"}
+	names := []string{"temperature", "apparent", "humidity", "precipitation", "precipitation-probability",
+		"wind", "beaufort", "condition", "min-today", "max-today", "sunrise", "sunset", "updated", "forecast"}
 	values, err := p.Values(&plugin.Request{Values: names})
 	if err != nil {
 		t.Fatal(err)

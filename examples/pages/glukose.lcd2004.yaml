@@ -1,35 +1,8 @@
 kind: text
 cells:
-- at:
-  - 0
-  - 0
-  span:
-  - 20
-  - 1
-  value: paperboy/title
-- at:
-  - 0
-  - 1
-  span:
-  - 20
-  - 1
-  value: paperboy/date
-  label: Datum
-- at:
-  - 0
-  - 2
-  span:
-  - 20
-  - 1
-  value: paperboy/time
-  label: Zeit
-  align: right
-- at:
-  - 0
-  - 3
-  span:
-  - 20
-  - 1
-  value: paperboy/now
-  label: Jetzt
-  align: decimal
+  - { at: [0, 0], span: [20, 1], value: paperboy/title }
+  - { at: [0, 1], span: [15, 1], value: dexcom/glucose }
+  - { at: [15, 1], span: [5, 1], value: dexcom/trend, align: right }
+  - { at: [0, 2], span: [10, 1], value: dexcom/delta, label: Änderung }
+  - { at: [10, 2], span: [10, 1], value: dexcom/age, align: right }
+  - { at: [0, 3], span: [20, 1], value: dexcom/band, label: Ziel }

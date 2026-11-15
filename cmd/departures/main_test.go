@@ -157,7 +157,7 @@ func TestMultipleStops(t *testing.T) {
 	}
 
 	// Values describe the first configured stop.
-	values, err := p.Values(&plugin.Request{Values: []string{"stop", "departures", "next", "next_at", "next_in"}})
+	values, err := p.Values(&plugin.Request{Values: []string{"stop", "departures", "next", "next-at", "next-in"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestResolveOnceAndValues(t *testing.T) {
 	if _, err := p.resolve(context.Background(), p.stops[0]); err != nil || atomic.LoadInt32(finds) != 1 {
 		t.Fatalf("stop finder asked %d times: %v", atomic.LoadInt32(finds), err)
 	}
-	values, err := p.Values(&plugin.Request{Values: []string{"stop", "departures", "next", "next_at", "next_in"}})
+	values, err := p.Values(&plugin.Request{Values: []string{"stop", "departures", "next", "next-at", "next-in"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,11 +198,11 @@ func TestResolveOnceAndValues(t *testing.T) {
 	if v := values["next"]; v.Text == nil || *v.Text != "355 Depot" {
 		t.Errorf("next = %+v", v)
 	}
-	if v := values["next_at"]; v.Timestamp == nil {
-		t.Errorf("next_at = %+v", v)
+	if v := values["next-at"]; v.Timestamp == nil {
+		t.Errorf("next-at = %+v", v)
 	}
-	if v := values["next_in"]; v.Duration == nil || *v.Duration <= 0 {
-		t.Errorf("next_in = %+v", v)
+	if v := values["next-in"]; v.Duration == nil || *v.Duration <= 0 {
+		t.Errorf("next-in = %+v", v)
 	}
 	if _, err := p.Values(&plugin.Request{Values: []string{"nope"}}); !errors.Is(err, plugin.ErrUnknownValue) {
 		t.Errorf("unknown value: %v", err)

@@ -64,8 +64,8 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 | `stop` | text | name of the stop as EFA writes it |
 | `departures` | text | one line per departure: line, destination, delay and minutes; `examples/pages/abfahrten.lcd2004.yaml` |
 | `next` | text | line and destination of the next departure |
-| `next_at` | timestamp | time of the next departure |
-| `next_in` | duration | seconds until the next departure |
+| `next-at` | timestamp | time of the next departure |
+| `next-in` | duration | seconds until the next departure |
 
 The plugin reports a change when a departure, a delay or a cancellation changes
 at any stop.

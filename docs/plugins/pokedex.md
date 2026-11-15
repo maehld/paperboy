@@ -46,7 +46,7 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 | `types` | text | | | types, separated by `/` |
 | `height` | number | m | 1 | height |
 | `weight` | number | kg | 1 | weight |
-| `hp`, `attack`, `defense`, `special_attack`, `special_defense`, `speed` | number | | 0 | base stats |
+| `hp`, `attack`, `defense`, `special-attack`, `special-defense`, `speed` | number | | 0 | base stats |
 | `flavor` | text | | | flavor text in the request language |
 
 Pokémon and their artwork belong to Nintendo, Game Freak and The Pokémon Company. The plugin only fetches them for private display.

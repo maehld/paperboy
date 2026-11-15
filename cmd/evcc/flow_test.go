@@ -39,7 +39,7 @@ func TestFlowValues(t *testing.T) {
 	}
 	for name, exp := range want {
 		e := flowFixture(t, name)
-		values, err := e.Values(&plugin.Request{Values: []string{"pv", "home", "grid", "battery_power", "loadpoint_power"}})
+		values, err := e.Values(&plugin.Request{Values: []string{"pv", "home", "grid", "battery-power", "loadpoint-power"}})
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}

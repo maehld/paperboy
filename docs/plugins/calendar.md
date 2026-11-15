@@ -71,6 +71,6 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 | `birthdays` | text | one line per birthday with its age, like the `birthdays` widget |
 | `week` | text | one line per day of the next seven days |
 | `next` | text | title of the first event that has not ended |
-| `next_at` | timestamp | its start |
+| `next-at` | timestamp | its start |
 
 The values take the defaults of the widgets: every calendar, day headings, the configured number of days. They carry every record; the page's box decides how much of it fits.

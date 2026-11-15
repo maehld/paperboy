@@ -312,7 +312,7 @@ type valueEntry struct{ key, de, en string }
 var valueEntries = []valueEntry{
 	{"now", "Aktuell", "Current"},
 	{"avg", "Ø 24h", "Avg 24h"},
-	{"in_band", "Im Band", "In band"},
+	{"in-band", "Im Band", "In band"},
 	{"min", "Tief 24h", "Low 24h"},
 	{"max", "Hoch 24h", "High 24h"},
 	{"delta", "Änderung", "Change"},
@@ -371,7 +371,7 @@ func (d *dexcom) entryText(req *plugin.Request, l limits, rs []reading, key stri
 		if s.count > 0 {
 			return d.value(req, l, s.avg) + " " + l.unit
 		}
-	case "in_band":
+	case "in-band":
 		if s.count > 0 {
 			return fmt.Sprintf("%.0f %%", s.inBand)
 		}
@@ -577,7 +577,7 @@ func (d *dexcom) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 				continue
 			}
 			out[name] = plugin.NumberValue(s.max)
-		case "in_band":
+		case "in-band":
 			if s.count == 0 {
 				out[name] = dash
 				continue

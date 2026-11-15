@@ -288,7 +288,7 @@ func TestValues(t *testing.T) {
 	req, _ := request("de", 20, 4, 0)
 	req.Action = plugin.ActionValues
 	req.Values = []string{"name", "number", "types", "height", "weight", "hp", "attack", "defense",
-		"special_attack", "special_defense", "speed", "flavor"}
+		"special-attack", "special-defense", "speed", "flavor"}
 	if err := p.Prepare(req); err != nil {
 		t.Fatal(err)
 	}

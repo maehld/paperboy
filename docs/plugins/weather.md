@@ -30,12 +30,12 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 | `apparent` | number | °C | 1 | feels like |
 | `humidity` | number | % | 0 | relative humidity |
 | `precipitation` | number | mm | 1 | now |
-| `precipitation_probability` | number | % | 0 | now |
+| `precipitation-probability` | number | % | 0 | now |
 | `wind` | number | km/h | 1 | now |
 | `beaufort` | number | Bft | 0 | wind force |
 | `condition` | text | | | condition in the global language |
-| `min_today` | number | °C | 1 | lowest today |
-| `max_today` | number | °C | 1 | highest today |
+| `min-today` | number | °C | 1 | lowest today |
+| `max-today` | number | °C | 1 | highest today |
 | `sunrise` | timestamp | | | today |
 | `sunset` | timestamp | | | today |
 | `updated` | timestamp | | | time of the forecast |

@@ -24,22 +24,22 @@ var stateValues = []stateValue{
 	{"home", "Haus", "Home", "kW", 1},
 	{"grid", "Netz", "Grid", "kW", 1},
 	{"battery", "Akku", "Battery", "%", 0},
-	{"battery_power", "Akku-Leistung", "Battery power", "kW", 1},
-	{"grid_price", "Strompreis", "Grid price", "ct/kWh", 1},
-	{"feedin_price", "Einspeisevergütung", "Feed-in price", "ct/kWh", 1},
-	{"pv_energy", "PV gesamt", "PV total", "kWh", 1},
-	{"grid_import", "Netzbezug gesamt", "Grid import total", "kWh", 1},
-	{"grid_export", "Einspeisung gesamt", "Grid export total", "kWh", 1},
-	{"battery_charge", "Akku geladen", "Battery charged", "kWh", 1},
-	{"battery_discharge", "Akku entladen", "Battery discharged", "kWh", 1},
-	{"charge_total", "Geladen gesamt", "Charged total", "kWh", 1},
-	{"charge_total_solar", "Solaranteil gesamt", "Solar share total", "%", 0},
-	{"charge_total_price", "Ø Ladepreis gesamt", "Avg. charging price total", "ct/kWh", 1},
-	{"charge_year", "Geladen dieses Jahr", "Charged this year", "kWh", 1},
-	{"charge_year_solar", "Solaranteil dieses Jahr", "Solar share this year", "%", 0},
-	{"charge_year_price", "Ø Ladepreis dieses Jahr", "Avg. charging price this year", "ct/kWh", 1},
-	{"solar_today", "Prognose heute", "Forecast today", "kWh", 1},
-	{"solar_tomorrow", "Prognose morgen", "Forecast tomorrow", "kWh", 1},
+	{"battery-power", "Akku-Leistung", "Battery power", "kW", 1},
+	{"grid-price", "Strompreis", "Grid price", "ct/kWh", 1},
+	{"feedin-price", "Einspeisevergütung", "Feed-in price", "ct/kWh", 1},
+	{"pv-energy", "PV gesamt", "PV total", "kWh", 1},
+	{"grid-import", "Netzbezug gesamt", "Grid import total", "kWh", 1},
+	{"grid-export", "Einspeisung gesamt", "Grid export total", "kWh", 1},
+	{"battery-charge", "Akku geladen", "Battery charged", "kWh", 1},
+	{"battery-discharge", "Akku entladen", "Battery discharged", "kWh", 1},
+	{"charge-total", "Geladen gesamt", "Charged total", "kWh", 1},
+	{"charge-total-solar", "Solaranteil gesamt", "Solar share total", "%", 0},
+	{"charge-total-price", "Ø Ladepreis gesamt", "Avg. charging price total", "ct/kWh", 1},
+	{"charge-year", "Geladen dieses Jahr", "Charged this year", "kWh", 1},
+	{"charge-year-solar", "Solaranteil dieses Jahr", "Solar share this year", "%", 0},
+	{"charge-year-price", "Ø Ladepreis dieses Jahr", "Avg. charging price this year", "ct/kWh", 1},
+	{"solar-today", "Prognose heute", "Forecast today", "kWh", 1},
+	{"solar-tomorrow", "Prognose morgen", "Forecast tomorrow", "kWh", 1},
 }
 
 var stateValueByKey = func() map[string]stateValue {
@@ -104,61 +104,61 @@ func (e *evcc) valueText(key string) string {
 			return "–"
 		}
 		return e.num(s.Battery.SoC, 0) + " %"
-	case "battery_power":
+	case "battery-power":
 		if s.Battery == nil {
 			return "–"
 		}
 		return e.signed(s.Battery.Power)
-	case "grid_price":
+	case "grid-price":
 		if s.TariffGrid == nil {
 			return "–"
 		}
 		return e.price(*s.TariffGrid)
-	case "feedin_price":
+	case "feedin-price":
 		if s.TariffFeedIn == nil {
 			return "–"
 		}
 		return e.price(*s.TariffFeedIn)
-	case "pv_energy":
+	case "pv-energy":
 		return e.kwh(s.PVEnergy)
-	case "grid_import":
+	case "grid-import":
 		if s.Grid == nil {
 			return "–"
 		}
 		return e.kwh(s.Grid.Energy)
-	case "grid_export":
+	case "grid-export":
 		if s.Grid == nil {
 			return "–"
 		}
 		return e.kwh(s.Grid.ReturnEnergy)
-	case "battery_charge":
+	case "battery-charge":
 		if s.Battery == nil {
 			return "–"
 		}
 		return e.kwh(s.Battery.Energy)
-	case "battery_discharge":
+	case "battery-discharge":
 		if s.Battery == nil {
 			return "–"
 		}
 		return e.kwh(s.Battery.ReturnEnergy)
-	case "charge_total", "charge_total_solar", "charge_total_price":
+	case "charge-total", "charge-total-solar", "charge-total-price":
 		st, ok := stats("total")
 		if !ok {
 			return "–"
 		}
 		return e.chargeValue(key, st)
-	case "charge_year", "charge_year_solar", "charge_year_price":
+	case "charge-year", "charge-year-solar", "charge-year-price":
 		st, ok := stats("thisYear")
 		if !ok {
 			return "–"
 		}
 		return e.chargeValue(key, st)
-	case "solar_today":
+	case "solar-today":
 		if s.Forecast == nil || s.Forecast.Solar == nil {
 			return "–"
 		}
 		return e.energy(s.Forecast.Solar.Today.Energy)
-	case "solar_tomorrow":
+	case "solar-tomorrow":
 		if s.Forecast == nil || s.Forecast.Solar == nil {
 			return "–"
 		}
@@ -170,9 +170,9 @@ func (e *evcc) valueText(key string) string {
 // chargeValue picks the field of the statistics of a window.
 func (e *evcc) chargeValue(key string, st statistics) string {
 	switch key {
-	case "charge_total_solar", "charge_year_solar":
+	case "charge-total-solar", "charge-year-solar":
 		return e.num(st.SolarPercentage, 0) + " %"
-	case "charge_total_price", "charge_year_price":
+	case "charge-total-price", "charge-year-price":
 		return e.price(st.AvgPrice)
 	}
 	return e.kwh(st.ChargedKWh)
@@ -201,14 +201,14 @@ func valueSpecs() []plugin.ValueSpec {
 	}
 	return append(out, []plugin.ValueSpec{
 		{Name: "loadpoint", Title: "Charging point", Type: plugin.ValueText},
-		{Name: "loadpoint_mode", Title: "Charge mode", Type: plugin.ValueText},
-		{Name: "loadpoint_status", Title: "Status", Type: plugin.ValueText},
-		{Name: "loadpoint_soc", Title: "State of charge", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
-		{Name: "loadpoint_limit", Title: "Charge limit", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
-		{Name: "loadpoint_range", Title: "Range", Type: plugin.ValueNumber, Unit: "km", Precision: 0},
-		{Name: "loadpoint_power", Title: "Charge power", Type: plugin.ValueNumber, Unit: "kW", Precision: 1},
-		{Name: "session_energy", Title: "Session energy", Type: plugin.ValueNumber, Unit: "kWh", Precision: 1},
-		{Name: "session_solar", Title: "Solar share of the session", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+		{Name: "loadpoint-mode", Title: "Charge mode", Type: plugin.ValueText},
+		{Name: "loadpoint-status", Title: "Status", Type: plugin.ValueText},
+		{Name: "loadpoint-soc", Title: "State of charge", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+		{Name: "loadpoint-limit", Title: "Charge limit", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+		{Name: "loadpoint-range", Title: "Range", Type: plugin.ValueNumber, Unit: "km", Precision: 0},
+		{Name: "loadpoint-power", Title: "Charge power", Type: plugin.ValueNumber, Unit: "kW", Precision: 1},
+		{Name: "session-energy", Title: "Session energy", Type: plugin.ValueNumber, Unit: "kWh", Precision: 1},
+		{Name: "session-solar", Title: "Solar share of the session", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
 		{Name: "remaining", Title: "Remaining charge time", Type: plugin.ValueDuration},
 	}...)
 }
@@ -233,40 +233,40 @@ func (e *evcc) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 				}
 				out[name] = plugin.TextValue(title)
 				continue
-			case "loadpoint_mode":
+			case "loadpoint-mode":
 				out[name] = plugin.TextValue(e.mode(lp.Mode))
 				continue
-			case "loadpoint_status":
+			case "loadpoint-status":
 				out[name] = plugin.TextValue(e.status(lp))
 				continue
-			case "loadpoint_soc":
+			case "loadpoint-soc":
 				out[name] = plugin.NumberValue(math.Max(0, math.Min(100, lp.VehicleSoC)))
 				continue
-			case "loadpoint_limit":
+			case "loadpoint-limit":
 				if lp.EffectiveLimitSoC <= 0 {
 					out[name] = dash
 					continue
 				}
 				out[name] = plugin.NumberValue(lp.EffectiveLimitSoC)
 				continue
-			case "loadpoint_range":
+			case "loadpoint-range":
 				if lp.VehicleRange <= 0 {
 					out[name] = dash
 					continue
 				}
 				out[name] = plugin.NumberValue(lp.VehicleRange)
 				continue
-			case "loadpoint_power":
+			case "loadpoint-power":
 				out[name] = plugin.NumberValue(lp.ChargePower / 1000)
 				continue
-			case "session_energy":
+			case "session-energy":
 				if lp.SessionEnergy <= 0 {
 					out[name] = dash
 					continue
 				}
 				out[name] = plugin.NumberValue(lp.SessionEnergy / 1000)
 				continue
-			case "session_solar":
+			case "session-solar":
 				if lp.SessionEnergy <= 0 || lp.SessionSolarPercentage <= 0 {
 					out[name] = dash
 					continue
@@ -301,8 +301,8 @@ func (e *evcc) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 // isLoadpointValue reports whether name belongs to the loadpoint block.
 func isLoadpointValue(name string) bool {
 	switch name {
-	case "loadpoint", "loadpoint_mode", "loadpoint_status", "loadpoint_soc", "loadpoint_limit",
-		"loadpoint_range", "loadpoint_power", "session_energy", "session_solar", "remaining":
+	case "loadpoint", "loadpoint-mode", "loadpoint-status", "loadpoint-soc", "loadpoint-limit",
+		"loadpoint-range", "loadpoint-power", "session-energy", "session-solar", "remaining":
 		return true
 	}
 	return false
@@ -329,55 +329,55 @@ func (e *evcc) stateNumber(key string) (float64, bool) {
 			return 0, false
 		}
 		return s.Battery.SoC, true
-	case "battery_power":
+	case "battery-power":
 		if s.Battery == nil {
 			return 0, false
 		}
 		return s.Battery.Power / 1000, true
-	case "grid_price":
+	case "grid-price":
 		if s.TariffGrid == nil {
 			return 0, false
 		}
 		return *s.TariffGrid * 100, true
-	case "feedin_price":
+	case "feedin-price":
 		if s.TariffFeedIn == nil {
 			return 0, false
 		}
 		return *s.TariffFeedIn * 100, true
-	case "pv_energy":
+	case "pv-energy":
 		return s.PVEnergy, true
-	case "grid_import":
+	case "grid-import":
 		if s.Grid == nil {
 			return 0, false
 		}
 		return s.Grid.Energy, true
-	case "grid_export":
+	case "grid-export":
 		if s.Grid == nil {
 			return 0, false
 		}
 		return s.Grid.ReturnEnergy, true
-	case "battery_charge":
+	case "battery-charge":
 		if s.Battery == nil {
 			return 0, false
 		}
 		return s.Battery.Energy, true
-	case "battery_discharge":
+	case "battery-discharge":
 		if s.Battery == nil {
 			return 0, false
 		}
 		return s.Battery.ReturnEnergy, true
-	case "charge_total", "charge_total_solar", "charge_total_price":
+	case "charge-total", "charge-total-solar", "charge-total-price":
 		st, ok := s.Statistics["total"]
 		return chargeNumber(key, st, ok)
-	case "charge_year", "charge_year_solar", "charge_year_price":
+	case "charge-year", "charge-year-solar", "charge-year-price":
 		st, ok := s.Statistics["thisYear"]
 		return chargeNumber(key, st, ok)
-	case "solar_today":
+	case "solar-today":
 		if s.Forecast == nil || s.Forecast.Solar == nil {
 			return 0, false
 		}
 		return s.Forecast.Solar.Today.Energy, true
-	case "solar_tomorrow":
+	case "solar-tomorrow":
 		if s.Forecast == nil || s.Forecast.Solar == nil {
 			return 0, false
 		}
@@ -392,9 +392,9 @@ func chargeNumber(key string, st statistics, ok bool) (float64, bool) {
 		return 0, false
 	}
 	switch key {
-	case "charge_total_solar", "charge_year_solar":
+	case "charge-total-solar", "charge-year-solar":
 		return st.SolarPercentage, true
-	case "charge_total_price", "charge_year_price":
+	case "charge-total-price", "charge-year-price":
 		return st.AvgPrice * 100, true
 	}
 	return st.ChargedKWh, true

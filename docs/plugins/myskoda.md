@@ -52,21 +52,21 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 
 | Value | Type | Unit | Precision | Meaning |
 |---|---|---|---|---|
-| `battery_soc` | number | % | 0 | state of charge |
-| `battery_range` | number | km | 0 | remaining range |
-| `charge_state` | text | | | charging state |
-| `charge_power` | number | kW | 1 | charge power |
-| `charge_remaining` | duration | | | time to full |
-| `charge_target` | number | % | 0 | target state of charge |
-| `car_name` | text | | | vehicle name, or the VIN |
-| `license_plate` | text | | | license plate |
-| `lock_state` | text | | | door lock state |
+| `battery-soc` | number | % | 0 | state of charge |
+| `battery-range` | number | km | 0 | remaining range |
+| `charge-state` | text | | | charging state |
+| `charge-power` | number | kW | 1 | charge power |
+| `charge-remaining` | duration | | | time to full |
+| `charge-target` | number | % | 0 | target state of charge |
+| `car-name` | text | | | vehicle name, or the VIN |
+| `license-plate` | text | | | license plate |
+| `lock-state` | text | | | door lock state |
 | `odometer` | number | km | 0 | odometer |
 | `location` | text | | | parking address, or `Unterwegs`/`In motion` |
 | `latitude`, `longitude` | number | ° | 5 | parking position |
-| `climate_state` | text | | | air conditioning state |
-| `climate_temperature` | number | °C | 1 | target temperature |
-| `climate_reach` | timestamp | | | when the target temperature is reached |
+| `climate-state` | text | | | air conditioning state |
+| `climate-temperature` | number | °C | 1 | target temperature |
+| `climate-reach` | timestamp | | | when the target temperature is reached |
 | `profiles` | text | | | one line per charging profile: name, target and times |
 | `captured` | timestamp | | | when the car sent its newest state |
 

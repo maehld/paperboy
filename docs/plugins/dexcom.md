@@ -54,7 +54,7 @@ Single values as rows, like the `values` widget of the evcc plugin. The list arg
 | Key | Shows |
 |---|---|
 | `now` | The newest reading with its unit |
-| `avg`, `in_band` | Average and share inside the band over the last day |
+| `avg`, `in-band` | Average and share inside the band over the last day |
 | `min`, `max` | The lowest and highest reading of the last day |
 | `delta` | The change over the last 15 minutes |
 | `trend` | The trend: the same arrow the `glucose` widget draws |
@@ -76,7 +76,7 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 | `age` | duration | | | age of the newest reading |
 | `avg` | number | mg/dL or mmol/L | 0 or 1 | average of the day |
 | `min`, `max` | number | mg/dL or mmol/L | 0 or 1 | lowest and highest of the day |
-| `in_band` | number | % | 0 | share of the day inside the band |
+| `in-band` | number | % | 0 | share of the day inside the band |
 | `count` | number | | 0 | readings of the day |
 | `band` | text | | | the target band, e.g. `80–280 mg/dL` |
 

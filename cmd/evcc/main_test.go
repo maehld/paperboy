@@ -82,22 +82,22 @@ func TestWidgets(t *testing.T) {
 		render.NewCanvas(10, 10, 2)); err == nil {
 		t.Error("unknown loadpoint accepted")
 	}
-	values, err := e.Values(&plugin.Request{Values: []string{"loadpoint", "loadpoint_soc", "loadpoint_power",
-		"session_energy", "session_solar", "loadpoint_mode", "grid", "pv", "battery", "battery_power", "remaining"}})
+	values, err := e.Values(&plugin.Request{Values: []string{"loadpoint", "loadpoint-soc", "loadpoint-power",
+		"session-energy", "session-solar", "loadpoint-mode", "grid", "pv", "battery", "battery-power", "remaining"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v := values["loadpoint"]; v.Text == nil || *v.Text != "Octavia" {
 		t.Errorf("loadpoint = %+v", v)
 	}
-	for key, want := range map[string]float64{"loadpoint_soc": 64, "loadpoint_power": 3.7,
-		"session_energy": 5.4, "session_solar": 90, "grid": -2.1, "pv": 4.2, "battery": 81, "battery_power": -1.3} {
+	for key, want := range map[string]float64{"loadpoint-soc": 64, "loadpoint-power": 3.7,
+		"session-energy": 5.4, "session-solar": 90, "grid": -2.1, "pv": 4.2, "battery": 81, "battery-power": -1.3} {
 		if v := values[key]; v.Number == nil || *v.Number != want {
 			t.Errorf("%s = %+v, want %v", key, v, want)
 		}
 	}
-	if v := values["loadpoint_mode"]; v.Text == nil || *v.Text != "PV" {
-		t.Errorf("loadpoint_mode = %+v", v)
+	if v := values["loadpoint-mode"]; v.Text == nil || *v.Text != "PV" {
+		t.Errorf("loadpoint-mode = %+v", v)
 	}
 	if v := values["remaining"]; v.Duration == nil || *v.Duration != 2400 {
 		t.Errorf("remaining = %+v", v)

@@ -153,8 +153,8 @@ func (p *departures) Describe() plugin.Description {
 			{Name: "stop", Title: "Stop", Type: plugin.ValueText},
 			{Name: "departures", Title: "Departures", Type: plugin.ValueText},
 			{Name: "next", Title: "Next departure", Type: plugin.ValueText},
-			{Name: "next_at", Title: "Next departure at", Type: plugin.ValueTimestamp},
-			{Name: "next_in", Title: "Next departure in", Type: plugin.ValueDuration},
+			{Name: "next-at", Title: "Next departure at", Type: plugin.ValueTimestamp},
+			{Name: "next-in", Title: "Next departure in", Type: plugin.ValueDuration},
 		},
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "departures", Title: "Real-time departures", Kinds: []string{plugin.KindImage}, MinWidth: 200, MinHeight: 60,

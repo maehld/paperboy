@@ -28,13 +28,13 @@ func (p *departures) Values(req *plugin.Request) (map[string]plugin.Value, error
 			}
 			d := v.list[0]
 			out[name] = plugin.TextValue(strings.TrimSpace(d.Line + " " + v.destination(d, "auto", "after")))
-		case "next_at":
+		case "next-at":
 			if len(v.list) == 0 {
 				out[name] = plugin.TextValue("–")
 				continue
 			}
 			out[name] = plugin.TimestampValue(v.list[0].when())
-		case "next_in":
+		case "next-in":
 			if len(v.list) == 0 {
 				out[name] = plugin.TextValue("–")
 				continue

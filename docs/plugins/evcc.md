@@ -23,14 +23,14 @@ Shows data from [evcc](https://evcc.io) over its REST API: live values from `/ap
 | `values` key | Shows |
 |---|---|
 | `pv`, `home`, `grid` | current power; the grid with + for import and - for export |
-| `battery`, `battery_power` | state of charge and power of the home battery |
-| `grid_price`, `feedin_price` | the tariffs evcc uses, in ct/kWh |
-| `pv_energy` | PV energy since the installation (`pvEnergy`) |
-| `grid_import`, `grid_export` | imported and exported energy since the installation |
-| `battery_charge`, `battery_discharge` | charged and discharged energy since the installation |
-| `charge_total`, `charge_total_solar`, `charge_total_price` | evcc's charging statistics over all sessions: energy, solar share, average price |
-| `charge_year`, `charge_year_solar`, `charge_year_price` | the same for this year |
-| `solar_today`, `solar_tomorrow` | the solar forecast of today and tomorrow |
+| `battery`, `battery-power` | state of charge and power of the home battery |
+| `grid-price`, `feedin-price` | the tariffs evcc uses, in ct/kWh |
+| `pv-energy` | PV energy since the installation (`pvEnergy`) |
+| `grid-import`, `grid-export` | imported and exported energy since the installation |
+| `battery-charge`, `battery-discharge` | charged and discharged energy since the installation |
+| `charge-total`, `charge-total-solar`, `charge-total-price` | evcc's charging statistics over all sessions: energy, solar share, average price |
+| `charge-year`, `charge-year-solar`, `charge-year-price` | the same for this year |
+| `solar-today`, `solar-tomorrow` | the solar forecast of today and tomorrow |
 
 The values are exactly what evcc reports. Paperboy does not derive numbers of its own: autarky, savings and the self-consumed share that evcc's energy page shows are computed in evcc's web UI from the history and the tariffs and have no API of their own; CO₂ needs a CO₂ tariff.
 
@@ -42,25 +42,25 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 |---|---|---|---|---|
 | `pv`, `home`, `grid` | number | kW | 1 | power; the grid with + for import and - for export |
 | `battery` | number | % | 0 | state of charge of the home battery |
-| `battery_power` | number | kW | 1 | battery power; + for discharge, - for charge |
-| `grid_price`, `feedin_price` | number | ct/kWh | 1 | the tariffs evcc uses |
-| `pv_energy` | number | kWh | 1 | PV energy since the installation |
-| `grid_import`, `grid_export` | number | kWh | 1 | imported and exported energy since the installation |
-| `battery_charge`, `battery_discharge` | number | kWh | 1 | charged and discharged energy since the installation |
-| `charge_total` | number | kWh | 1 | energy of all charging sessions |
-| `charge_total_solar` | number | % | 0 | solar share of all sessions |
-| `charge_total_price` | number | ct/kWh | 1 | average price of all sessions |
-| `charge_year`, `charge_year_solar`, `charge_year_price` | | | | the same for this year |
-| `solar_today`, `solar_tomorrow` | number | kWh | 1 | solar forecast of today and tomorrow |
+| `battery-power` | number | kW | 1 | battery power; + for discharge, - for charge |
+| `grid-price`, `feedin-price` | number | ct/kWh | 1 | the tariffs evcc uses |
+| `pv-energy` | number | kWh | 1 | PV energy since the installation |
+| `grid-import`, `grid-export` | number | kWh | 1 | imported and exported energy since the installation |
+| `battery-charge`, `battery-discharge` | number | kWh | 1 | charged and discharged energy since the installation |
+| `charge-total` | number | kWh | 1 | energy of all charging sessions |
+| `charge-total-solar` | number | % | 0 | solar share of all sessions |
+| `charge-total-price` | number | ct/kWh | 1 | average price of all sessions |
+| `charge-year`, `charge-year-solar`, `charge-year-price` | | | | the same for this year |
+| `solar-today`, `solar-tomorrow` | number | kWh | 1 | solar forecast of today and tomorrow |
 | `loadpoint` | text | | | vehicle or name of the first loadpoint |
-| `loadpoint_mode` | text | | | its charge mode |
-| `loadpoint_status` | text | | | charging, connected or not connected |
-| `loadpoint_soc` | number | % | 0 | its state of charge |
-| `loadpoint_limit` | number | % | 0 | its charge limit |
-| `loadpoint_range` | number | km | 0 | its range |
-| `loadpoint_power` | number | kW | 1 | its charge power |
-| `session_energy` | number | kWh | 1 | energy of its session |
-| `session_solar` | number | % | 0 | solar share of its session |
+| `loadpoint-mode` | text | | | its charge mode |
+| `loadpoint-status` | text | | | charging, connected or not connected |
+| `loadpoint-soc` | number | % | 0 | its state of charge |
+| `loadpoint-limit` | number | % | 0 | its charge limit |
+| `loadpoint-range` | number | km | 0 | its range |
+| `loadpoint-power` | number | kW | 1 | its charge power |
+| `session-energy` | number | kWh | 1 | energy of its session |
+| `session-solar` | number | % | 0 | solar share of its session |
 | `remaining` | duration | | | time until it is full |
 
 The loadpoint values describe the first loadpoint, because a values request carries no arguments.

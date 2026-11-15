@@ -392,7 +392,7 @@ func TestValues(t *testing.T) {
 		vevent("UID:a", "DTSTART;TZID=Europe/Berlin:20261103T150000", "DTEND;TZID=Europe/Berlin:20261103T160000", "SUMMARY:Zahnarzt"),
 		vevent("UID:b", "DTSTART;TZID=Europe/Berlin:20261104T090000", "DTEND;TZID=Europe/Berlin:20261104T093000", "SUMMARY:Standup"),
 	))
-	values, err := p.Values(&plugin.Request{Values: []string{"agenda", "birthdays", "week", "next", "next_at"}})
+	values, err := p.Values(&plugin.Request{Values: []string{"agenda", "birthdays", "week", "next", "next-at"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,8 +412,8 @@ func TestValues(t *testing.T) {
 	if v := values["next"]; v.Text == nil || *v.Text != "Zahnarzt" {
 		t.Errorf("next = %+v", v)
 	}
-	if v := values["next_at"]; v.Timestamp == nil || *v.Timestamp != "2026-11-03T14:00:00Z" {
-		t.Errorf("next_at = %+v", v)
+	if v := values["next-at"]; v.Timestamp == nil || *v.Timestamp != "2026-11-03T14:00:00Z" {
+		t.Errorf("next-at = %+v", v)
 	}
 	if _, err := p.Values(&plugin.Request{Values: []string{"nope"}}); !errors.Is(err, plugin.ErrUnknownValue) {
 		t.Errorf("unknown value: %v", err)

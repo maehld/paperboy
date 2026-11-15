@@ -87,12 +87,12 @@ func (w *weather) Describe() plugin.Description {
 			{Name: "apparent", Title: "Feels like", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
 			{Name: "humidity", Title: "Humidity", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
 			{Name: "precipitation", Title: "Precipitation", Type: plugin.ValueNumber, Unit: "mm", Precision: 1},
-			{Name: "precipitation_probability", Title: "Chance of rain", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+			{Name: "precipitation-probability", Title: "Chance of rain", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
 			{Name: "wind", Title: "Wind", Type: plugin.ValueNumber, Unit: "km/h", Precision: 1},
 			{Name: "beaufort", Title: "Wind force", Type: plugin.ValueNumber, Unit: "Bft", Precision: 0},
 			{Name: "condition", Title: "Condition", Type: plugin.ValueText},
-			{Name: "min_today", Title: "Lowest today", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
-			{Name: "max_today", Title: "Highest today", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
+			{Name: "min-today", Title: "Lowest today", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
+			{Name: "max-today", Title: "Highest today", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
 			{Name: "sunrise", Title: "Sunrise", Type: plugin.ValueTimestamp},
 			{Name: "sunset", Title: "Sunset", Type: plugin.ValueTimestamp},
 			{Name: "updated", Title: "Forecast time", Type: plugin.ValueTimestamp},
@@ -390,7 +390,7 @@ func (w *weather) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 			out[name] = plugin.NumberValue(c.Humidity)
 		case "precipitation":
 			out[name] = plugin.NumberValue(c.Precip)
-		case "precipitation_probability":
+		case "precipitation-probability":
 			prob := 0.0
 			if c.PrecipProb != nil {
 				prob = *c.PrecipProb
@@ -402,9 +402,9 @@ func (w *weather) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 			out[name] = plugin.NumberValue(float64(c.Beaufort))
 		case "condition":
 			out[name] = plugin.TextValue(c.Text)
-		case "min_today":
+		case "min-today":
 			out[name] = plugin.NumberValue(t.Min)
-		case "max_today":
+		case "max-today":
 			out[name] = plugin.NumberValue(t.Max)
 		case "sunrise", "sunset":
 			s := t.Sunrise

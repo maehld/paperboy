@@ -294,7 +294,7 @@ func TestWidgets(t *testing.T) {
 	}
 
 	values, err := d.Values(&plugin.Request{Now: req.Now, Language: "de",
-		Values: []string{"glucose", "trend", "delta", "age", "avg", "min", "max", "in_band", "count", "band"}})
+		Values: []string{"glucose", "trend", "delta", "age", "avg", "min", "max", "in-band", "count", "band"}})
 	if err != nil {
 		t.Fatal(err)
 	}
