@@ -197,7 +197,7 @@ func TestEditorVariantsPanel(t *testing.T) {
 		`<h3>Variants</h3>`,
 		`<a href="/ui/editor/page?display=small&amp;file=hochkant&amp;name=solar" title="Edit pages/solar.hochkant.yaml for small">small</a>`,
 		`<select data-serves="small" data-value="hochkant" title="pages/solar.hochkant.yaml" aria-label="File that serves small"><option value="">page file</option><option value="hochkant" selected>hochkant</option></select>`,
-		`<option value="__none__" selected disabled>— none —</option><option value="lcd">lcd</option>`,
+		`<option value="lcd">lcd</option><option value="__none__" selected>— none —</option>`,
 		`<select class="none" data-serves="lcd" data-value="__none__" title="page is for image displays (kind: image)"`,
 		// One dialog creates a variant; no table row carries its own button.
 		`data-dialog="create-variant"`,
@@ -263,8 +263,8 @@ func TestEditorVariantsPanel(t *testing.T) {
 	}
 }
 
-// TestEditorUnusedEntry lists a variants entry whose display type is gone and
-// removes it on demand (ADR 0110).
+// TestEditorUnusedEntry keeps the row of an entry whose display type is gone,
+// so the select can drop it (ADR 0110).
 func TestEditorUnusedEntry(t *testing.T) {
 	s := editorServer(t)
 	writePage(t, s, "solar", "", "title: Solar\nkind: image\ngrid: [2, 2]\nvariants:\n  gone: alt\ncells:\n  - { at: [0, 0], span: [2, 2], widget: paperboy/text }\n")
@@ -272,13 +272,18 @@ func TestEditorUnusedEntry(t *testing.T) {
 
 	body := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil).Body.String()
 	for _, want := range []string{
-		`<p class="types-label">Unused entries</p>`,
-		`gone &rarr; alt`,
-		`data-remove-serves="gone"`,
+		// The row names the type and the kind of the file that is still there.
+		`<td class="type">gone</td>`,
+		`<span class="kind">image</span>`,
+		`<select class="none" data-serves="gone" data-value="alt" title="pages/solar.alt.yaml"`,
+		`<option value="alt" selected>alt</option><option value="__none__">— none —</option>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("editor lacks %q:\n%s", want, body)
 		}
+	}
+	if strings.Contains(body, "Unused entries") {
+		t.Fatalf("the editor carries a second list:\n%s", body)
 	}
 
 	var read editorPage

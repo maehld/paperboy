@@ -144,19 +144,10 @@ type editorPageView struct {
 	WidgetsPage  bool          // the widgets page without a page (ADR 0055)
 	Displays     []displayLink // display type switch of the widgets page
 	Serves       []servesRow   // each configured display type and its file
-	Unused       []unusedEntry // variants entries for display types that are not configured
 	CreateTypes  []variantType // the display types the create dialog offers
 	CreateLabel  string        // the label the create dialog starts with
 	CreateOK     bool          // a display type waits for a variant
 	Data         template.JS   // the starting state of the script
-}
-
-// unusedEntry is a variants entry whose display type is no longer configured.
-// It stays in the page file and can be removed there (ADR 0110).
-type unusedEntry struct {
-	Display string // the display type key
-	Label   string // the file label it names
-	Missing bool   // that file does not exist either
 }
 
 // servesRow is one configured display type in the Variants table: the file
@@ -467,12 +458,13 @@ func pageFileName(name, label string) string {
 // it is never sent, because the option is disabled.
 const noFile = "__none__"
 
-// servesTable lists every configured display type with the files of the page
-// that fit it (ADR 0110). The select writes the page's variants entry, so it
-// holds the file that serves the type. The type opens its preview with the open
-// file, or the file that serves it: the editor never renders another file in
-// place of the open one.
-func servesTable(cfg *Config, name, label, preview string, files []editorPageFile, coverage []pageCoverageEntry, pageExists bool) []servesRow {
+// servesTable lists every display type with the files of the page that fit it
+// (ADR 0110). The select writes the page's variants entry, so it holds the file
+// that serves the type; "— none —" removes the entry. An entry whose display
+// type is no longer configured keeps its row, so the operator can remove it.
+// The type opens its preview with the open file, or the file that serves it:
+// the editor never renders another file in place of the open one.
+func servesTable(cfg *Config, name, label, preview string, files []editorPageFile, coverage []pageCoverageEntry, mapEntries map[string]string, pageExists bool) []servesRow {
 	var pageFile *editorPageFile
 	var variants []editorPageFile
 	for i := range files {
@@ -506,14 +498,19 @@ func servesTable(cfg *Config, name, label, preview string, files []editorPageFil
 				row.URLTitle = "Edit " + pageFileName(name, c.File) + " for " + c.Display
 			}
 		case c.Error != "":
-			row.Value, row.Reason = noFile, true
+			row.Reason = true
 			// The reason stays out of the column: the select carries it in its
 			// tooltip, on one line and without a red block.
 			row.Title = c.Error
-			if c.File != "" && !c.Missing {
-				row.Title = pageFileName(name, c.File) + ": " + c.Error
-				row.URL, _ = pageEditURL(editorPageFile{Name: name, Label: c.File}, coverageVariants(coverage), cfg.Profiles, false)
-				row.URLTitle = "Edit " + pageFileName(name, c.File) + " for " + c.Display
+			if c.File != "" {
+				// The page names this file. It stays the value, so the row shows
+				// what is broken and the select can drop the entry.
+				row.Value = c.File
+				if !c.Missing {
+					row.Title = pageFileName(name, c.File) + ": " + c.Error
+					row.URL, _ = pageEditURL(editorPageFile{Name: name, Label: c.File}, coverageVariants(coverage), cfg.Profiles, false)
+					row.URLTitle = "Edit " + pageFileName(name, c.File) + " for " + c.Display
+				}
 			}
 		}
 		// The options are the files of the page that fit the type; a broken file
@@ -528,41 +525,64 @@ func servesTable(cfg *Config, name, label, preview string, files []editorPageFil
 			}
 			row.Options = append(row.Options, uiOption{Value: f.Label, Label: f.Label})
 		}
-		selected := false
-		for i := range row.Options {
-			if row.Options[i].Value == row.Value {
-				row.Options[i].Selected, selected = true, true
-			}
+		// A file the map names stays an option, so its row is readable and can
+		// be changed even when the file is gone.
+		if row.Value != "" && !hasOption(row.Options, row.Value) {
+			row.Options = append(row.Options, uiOption{Value: row.Value, Label: row.Value})
 		}
-		if !selected {
-			// Nothing of the page fits, or the map names a file that does not:
-			// the select keeps the state and the tooltip says why.
-			row.Options = append([]uiOption{{Value: noFile, Label: "— none —", Selected: true, Disabled: true}}, row.Options...)
-			row.Value = noFile
+		// Without the page file as an option, "none" is how the entry goes away.
+		if !hasOption(row.Options, "") {
+			row.Options = append(row.Options, uiOption{Value: noFile, Label: "— none —"})
 		}
+		selectOption(&row)
 		rows = append(rows, row)
 	}
-	return rows
-}
-
-// unusedEntries lists the variants entries whose display type is no longer
-// configured, sorted by type. The entry keeps working when the type returns.
-func unusedEntries(cfg *Config, name string, variants map[string]string) []unusedEntry {
-	entries := []unusedEntry{}
-	for display, label := range variants {
+	// An entry for a display type that no longer exists keeps a row, so the
+	// operator sees and removes it (ADR 0110).
+	for display, file := range mapEntries {
 		if knownProfile(cfg.Profiles, display) {
 			continue
 		}
-		path, err := pageFilePath(cfg.Pages, name, label)
-		missing := err != nil
-		if err == nil {
-			_, err = os.Stat(path)
-			missing = errors.Is(err, fs.ErrNotExist)
+		row := servesRow{Display: display, Kind: "—", Value: file, Title: pageFileName(name, file), Reason: true}
+		for _, f := range files {
+			if f.Name == name && f.Label == file && f.Kind != "" {
+				row.Kind = f.Kind
+			}
 		}
-		entries = append(entries, unusedEntry{Display: display, Label: label, Missing: missing})
+		row.Options = []uiOption{{Value: file, Label: file}, {Value: noFile, Label: "— none —"}}
+		selectOption(&row)
+		rows = append(rows, row)
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Display < entries[j].Display })
-	return entries
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Display < rows[j].Display })
+	return rows
+}
+
+// hasOption reports whether the select already offers a value.
+func hasOption(options []uiOption, value string) bool {
+	for _, o := range options {
+		if o.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
+// selectOption marks the current value and falls back to "none" when no option
+// holds it.
+func selectOption(row *servesRow) {
+	for i := range row.Options {
+		if row.Options[i].Value == row.Value {
+			row.Options[i].Selected = true
+			return
+		}
+	}
+	for i := range row.Options {
+		if row.Options[i].Value == noFile {
+			row.Options[i].Selected = true
+			row.Value = noFile
+			return
+		}
+	}
 }
 
 // createVariantTypes lists the display types the Create variant dialog offers.
@@ -951,8 +971,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		v.Serves = servesTable(cfg, name, label, display, files, coverage, pageExists)
-		v.Unused = unusedEntries(cfg, name, variants)
+		v.Serves = servesTable(cfg, name, label, display, files, coverage, variants, pageExists)
 		v.CreateTypes = createVariantTypes(name, coverage)
 		// Every configured type is a candidate: the dialog creates the file and
 		// sends the type to it (ADR 0110).

@@ -1525,7 +1525,7 @@
   async function changeServes(select) {
     const before = select.dataset.value || '';
     const display = select.dataset.serves;
-    const file = select.value;
+    const file = select.value === '__none__' ? '' : select.value;
     setStatus('changing the file for ' + display + '…', '');
     let res;
     try {
@@ -1684,31 +1684,6 @@
   for (const select of document.querySelectorAll('select[data-serves]')) {
     select.addEventListener('change', () => changeServes(select));
   }
-  // Remove drops an entry whose display type is no longer configured; the file
-  // stays under pages/ (ADR 0110).
-  for (const b of document.querySelectorAll('button[data-remove-serves]')) {
-    b.addEventListener('click', async () => {
-      const display = b.dataset.removeServes;
-      let res;
-      try {
-        res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '/serves?display=' + encodeURIComponent(display), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ hash: state.pageHash || '', file: '' }),
-        });
-      } catch (e) {
-        setStatus('removing the entry failed: ' + e, 'error');
-        return;
-      }
-      if (res.ok) return location.reload();
-      let msg = '(' + res.status + ')';
-      try {
-        msg = (await res.json()).error || msg;
-      } catch (e) { /* not JSON */ }
-      setStatus('removing the entry failed: ' + msg, 'error');
-    });
-  }
-
   // Create variant asks for a display type and a file label, then writes an
   // empty layout that starts from the type (ADR 0110, issue #238).
   const variantForm = document.querySelector('form[data-create-variant]');

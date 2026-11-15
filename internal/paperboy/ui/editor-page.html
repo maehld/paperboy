@@ -84,9 +84,6 @@ input[type=search] { margin-bottom: .4rem; }
 .panel.serves td.pick select.none { color: #888; background: #f4f4f4; }
 .types-label { margin: .55rem 0 .15rem; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: #666; font-weight: 600; }
 ul.variant-types { margin: 0; padding-left: 1.1rem; font-size: .85rem; }
-ul.unused { margin: 0; padding-left: 1.1rem; font-size: .8rem; color: #666; }
-ul.unused li { margin: .1rem 0; }
-ul.unused button { font-size: .72rem; padding: 0 .35rem; margin-left: .3rem; }
 /* An action that belongs to a panel spans the card, with the same gap above it
    as the panel padding leaves below it. */
 .panel > button { display: block; width: 100%; margin: .8rem 0 0; }
@@ -191,9 +188,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
           {{end}}
         </tbody>
       </table>
-      <button type="button" data-dialog="create-variant">Create variant…</button>
-      {{if .Unused}}<p class="types-label">Unused entries</p>
-      <ul class="unused">{{range .Unused}}<li><span>{{.Display}} &rarr; {{.Label}}{{if .Missing}} (missing){{end}}</span> <button type="button" data-remove-serves="{{.Display}}">Remove</button></li>{{end}}</ul>{{end}}{{end}}
+      <button type="button" data-dialog="create-variant">Create variant…</button>{{end}}
     </section>{{end}}{{end}}
     <section class="panel palette">
       <h3>Widgets</h3>
