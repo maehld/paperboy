@@ -10,7 +10,7 @@ Paperboy is configured with one instance directory, `-config <dir>` (default `.`
 <dir>/
   paperboy.yaml      configuration
   displays/          display types <name>.yaml (ADR 0071)
-  pages/             pages <page>.<display type>.yaml or <page>.yaml
+  pages/             pages <page>.yaml and the variants their map names
   plans/             plans <name>.yaml
   devices/           devices <id>.yaml (ADR 0070)
   plugins/           plugin programs <plugin>-v<version>, e.g. from paperboy-plugins-<os>-<arch>.zip
@@ -84,7 +84,7 @@ ui:
 
 ## Display types
 
-A display type is `displays/<name>.yaml` ([ADR 0071](adr/0071-display-types-in-files-of-their-own.md)). The file name is the name that pages and devices use: it is the suffix of `pages/<page>.<name>.yaml` and the `display_type:` of a device. Paperboy parses the file as strictly as pages and plans. A broken file rejects the configuration and names the file.
+A display type is `displays/<name>.yaml` ([ADR 0071](adr/0071-display-types-in-files-of-their-own.md)). The file name is the name that a device uses as `display_type:` and that a page uses as a key in its `variants` map ([ADR 0110](adr/0110-pages-serve-their-kind-and-name-variants.md)). Paperboy parses the file as strictly as pages and plans. A broken file rejects the configuration and names the file.
 
 ```yaml
 kind: image
