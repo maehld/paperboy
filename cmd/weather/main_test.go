@@ -255,6 +255,53 @@ func TestRenderWidgets(t *testing.T) {
 	}
 }
 
+// TestValues checks the declared values of a text page: the readings stay
+// numbers with their unit, and the forecast carries one line per day.
+func TestValues(t *testing.T) {
+	base := serve(t, testPayload(t), http.StatusOK)
+	f, err := fetch(context.Background(), http.DefaultClient, base, 52.52, 13.4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := branchOf(f, "de")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := &plugin.Request{Language: "de", Timezone: "Europe/Berlin",
+		Now:  time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC),
+		Page: plugin.PageInfo{Width: 20, Height: 4}}
+	p := &weather{cur: &b, req: req, loc: req.Location(), lang: "de"}
+	names := []string{"temperature", "apparent", "humidity", "precipitation", "precipitation_probability",
+		"wind", "beaufort", "condition", "min_today", "max_today", "sunrise", "sunset", "updated", "forecast"}
+	values, err := p.Values(&plugin.Request{Values: names})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range names {
+		if v, ok := values[name]; !ok || v.Type() == "" {
+			t.Fatalf("%s: %+v", name, v)
+		}
+	}
+	if v := values["temperature"]; v.Number == nil || *v.Number != 12.4 {
+		t.Fatalf("temperature = %+v", v)
+	}
+	if v := values["condition"]; v.Text == nil || *v.Text != "Bedeckt" {
+		t.Fatalf("condition = %+v", v)
+	}
+	if v := values["sunrise"]; v.Timestamp == nil || *v.Timestamp != "2026-10-22T04:00:00Z" {
+		t.Fatalf("sunrise = %+v", v)
+	}
+	if v := values["forecast"]; v.Text == nil {
+		t.Fatalf("forecast = %+v", v)
+	} else if lines := strings.Split(*v.Text, "\n"); len(lines) != 5 ||
+		lines[0] != "Heute Bedeckt 15°/8°" || !strings.HasPrefix(lines[1], "Fr ") {
+		t.Fatalf("forecast lines = %q", lines)
+	}
+	if _, err := p.Values(&plugin.Request{Values: []string{"nope"}}); !errors.Is(err, plugin.ErrUnknownValue) {
+		t.Fatalf("unknown value: %v", err)
+	}
+}
+
 // A cell the padding eats up is reported, so Paperboy draws its notice instead
 // of an empty cell.
 func TestTooSmallCell(t *testing.T) {
