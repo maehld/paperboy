@@ -260,6 +260,28 @@ cells:
 	}
 }
 
+func TestTextValueLines(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader(`
+kind: text
+cells:
+  - { at: [0, 0], span: [10, 2], value: a/list, label: L }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := valueSource(map[string]ValueResult{
+		"a/list": {Value: plugin.TextValue("Bus 1\nBus 2\nBus 3"), Spec: plugin.ValueSpec{Name: "list", Type: plugin.ValueText}},
+	})
+	text, err := tmpl.RenderText(Display{Width: 10, Height: 2, Text: true}, Context{Values: src})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"L Bus 1   ", "Bus 2     "}
+	if strings.Join(text.Lines, "|") != strings.Join(want, "|") {
+		t.Fatalf("lines %q, want %q", text.Lines, want)
+	}
+}
+
 func TestTextOverflow(t *testing.T) {
 	cases := []struct {
 		name   string

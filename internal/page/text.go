@@ -170,8 +170,17 @@ func textCellLines(r Result, cell Cell, charset, lang string, now time.Time, loc
 		}
 	} else {
 		value, unit = textValueParts(r, cell, charset, lang, now, loc)
-		if overflow != OverflowScroll {
-			// A value is one line; compose it with the cell's alignment, which
+		if strings.Contains(value, "\n") {
+			// A text value may carry one line per record, such as an agenda
+			// (ADR 0111). The box lays the lines out like literal text; the
+			// label opens the first line and the unit closes the last.
+			lines = strings.Split(value, "\n")
+			lines[0] = textLine(charset, cell.Label, lines[0], "")
+			if unit != "" {
+				lines[len(lines)-1] += " " + unit
+			}
+		} else if overflow != OverflowScroll {
+			// A one-line value is composed with the cell's alignment, which
 			// keeps decimal separators lined up before the unit (ADR 0111).
 			window := make([]string, height)
 			full := strings.TrimRight(textLine(charset, cell.Label, value, unit), " ")
@@ -186,8 +195,9 @@ func textCellLines(r Result, cell Cell, charset, lang string, now time.Time, loc
 				window[0] = composeTextCell(charset, cell.Label, value, unit, width, cell.Align)
 			}
 			return window, nil, "", false
+		} else {
+			lines = []string{textLine(charset, cell.Label, value, unit)}
 		}
-		lines = []string{textLine(charset, cell.Label, value, unit)}
 	}
 	if overflow == OverflowWrap {
 		var wrapped []string
@@ -260,7 +270,17 @@ func textValueParts(r Result, cell Cell, charset, lang string, now time.Time, lo
 			unit = r.Spec.Unit
 		}
 	}
-	return clean(Convert(charset, value)), clean(Convert(charset, unit))
+	return convertLines(charset, value), clean(Convert(charset, unit))
+}
+
+// convertLines maps a text value to the charset and cleans each of its lines,
+// so a value that carries records keeps its line breaks (ADR 0111).
+func convertLines(charset, s string) string {
+	parts := strings.Split(Convert(charset, s), "\n")
+	for i := range parts {
+		parts[i] = clean(parts[i])
+	}
+	return strings.Join(parts, "\n")
 }
 
 // textLine writes label, value and unit without cutting them to a box.

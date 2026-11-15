@@ -80,7 +80,7 @@ cells:
   - { at: [0, 3], span: [12, 1], value: paperboy/long, overflow: scroll }
 ```
 
-A box carries exactly one of `text` and `value`. `text` is literal text and may span lines; a literal text cell has no label or unit. A value cell names `<plugin>/<key>`, the key a plugin declares in `describe.values`. Paperboy asks every plugin once for all keys of the page. It caches the answer like a widget and drops it on a `changed` event. The plugin answers data, never text. The shipped plugins declare their values in a later protocol version; until then a cell with such a key shows `? …`.
+A box carries exactly one of `text` and `value`. `text` is literal text and may span lines; a literal text cell has no label or unit. A value cell names `<plugin>/<key>`, the key a plugin declares in `describe.values`. Paperboy asks every plugin once for all keys of the page. It caches the answer like a widget and drops it on a `changed` event. The plugin answers data, never text. A text value may carry several lines, one per record. The box shows them like literal text; the label opens the first line and the unit closes the last.
 
 | Cell key | Meaning |
 |---|---|
@@ -100,7 +100,7 @@ A box carries exactly one of `text` and `value`. `text` is literal text and may 
 
 Boxes must stay inside the character grid and must not overlap; `at + span` is checked against the display in `Fits`. A box that is not filled stays blank, so a page can leave rows and columns free.
 
-Paperboy formats every value itself: numbers follow the global `language` and the declared `precision`, durations and timestamps their compact forms, and directions their arrows. `RenderText` converts label, value and text to the charset before it measures, wraps or cuts. A stale value marks `!` in the last column of line 1. A missing value becomes a `? …` cell.
+Paperboy formats every value itself: numbers follow the global `language` and the declared `precision`, durations and timestamps their compact forms, and directions their arrows. `RenderText` converts label, value and text to the charset before it measures, wraps or cuts. Lines of a multi-line value follow the cell's `align` and `overflow` like literal text. A stale value marks `!` in the last column of line 1. A missing value becomes a `? …` cell.
 
 A scrolling box adds its full lines, its first window and its direction to the render result. The device answer carries them with the display type's `scroll.step` (default 300 ms) and a flag whether the scroll text changed. A firmware or the virtual display keeps its offset while the flag is false and restarts at the first window when it is true. ePaper pages reject `scroll` and `overflow` with a hint (ADR 0118).
 
