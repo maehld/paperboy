@@ -668,3 +668,26 @@ func TestBrokenStateIsIgnored(t *testing.T) {
 		t.Fatal("a broken state file was used")
 	}
 }
+
+// A car that reports Fahrenheit gets its temperature values in °F.
+func TestValuesFollowFahrenheit(t *testing.T) {
+	m := testPlugin(t, "enyaq.json")
+	unit, value := "FAHRENHEIT", 71.6
+	m.cur.AirConditioning.Target = temperature{Value: &value, Unit: &unit}
+	declared := ""
+	for _, v := range m.Describe().Values {
+		if v.Name == "climate-temperature" {
+			declared = v.Unit
+		}
+	}
+	if declared != "°F" {
+		t.Fatalf("climate-temperature unit = %q", declared)
+	}
+	values, err := m.Values(&plugin.Request{Values: []string{"climate-temperature"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := values["climate-temperature"]; v.Number == nil || *v.Number != value {
+		t.Fatalf("climate-temperature = %+v", v)
+	}
+}

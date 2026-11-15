@@ -65,7 +65,7 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 | `location` | text | | | parking address, or `Unterwegs`/`In motion` |
 | `latitude`, `longitude` | number | ° | 5 | parking position |
 | `climate-state` | text | | | air conditioning state |
-| `climate-temperature` | number | °C | 1 | target temperature |
+| `climate-temperature` | number | °C or °F | 1 | target temperature, in the unit the car reports |
 | `climate-reach` | timestamp | | | when the target temperature is reached |
 | `profiles` | text | | | one line per charging profile: name, target and times |
 | `captured` | timestamp | | | when the car sent its newest state |
