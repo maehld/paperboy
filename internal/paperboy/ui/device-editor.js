@@ -19,6 +19,7 @@
     readOnly: false,
     dirty: false,
     rename: start.rename || null,
+    pairing: null, // set by the API: whether the display may take a key (ADR 0109)
   };
 
   function empty() {
@@ -55,6 +56,10 @@
     el('save').disabled = state.readOnly || (state.isNew && !state.device.mac);
     el('delete').hidden = state.isNew;
     el('rename').hidden = state.isNew || !state.rename;
+    // A code on the panel is the moment to pair; without one the button stays
+    // for a display that has not registered yet (ADR 0109).
+    const p = state.pairing;
+    el('pair').hidden = state.isNew || !p || !p.mac || (!p.waiting && p.paired);
   }
 
   function changed() {
@@ -235,6 +240,7 @@
     const doc = await res.json();
     state.hash = doc.hash || '';
     state.yaml = doc.yaml || '';
+    state.pairing = doc.pairing || null;
     state.dirty = false;
     state.isNew = false;
     if (doc.error) {
@@ -284,6 +290,7 @@
     }
     state.hash = doc.hash || '';
     state.yaml = doc.yaml || '';
+    state.pairing = doc.pairing || null;
     state.dirty = false;
     state.isNew = false;
     if (doc.device) state.device = normalize(doc.device);
@@ -326,6 +333,42 @@
     }
     state.dirty = false;
     location.href = '/ui/editor/device?id=' + encodeURIComponent(id);
+  }
+
+  // pair asks for the code the display shows and hands the confirmation to the
+  // server; the display takes its key on its next register (ADR 0109).
+  async function pair() {
+    const p = state.pairing;
+    if (!p || p.paired) return;
+    const code = (prompt('Code on the display ' + p.mac + ':', '') || '').trim();
+    if (!code) return;
+    setStatus('pairing…', '');
+    let res;
+    try {
+      res = await fetch('/api/state/devices/' + encodeURIComponent(p.mac) + '/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+    } catch (e) {
+      setStatus('pairing failed: ' + e, 'error');
+      return;
+    }
+    const body = await res.text();
+    let doc = {};
+    try {
+      doc = JSON.parse(body);
+    } catch (e) {
+      doc.error = body.trim();
+    }
+    if (!res.ok) {
+      setStatus(doc.error || 'pairing failed (' + res.status + ')', 'error');
+      return;
+    }
+    state.pairing.paired = true;
+    state.pairing.waiting = false;
+    updateSave();
+    setStatus('paired — the display registers within a minute', 'ok');
   }
 
   // remove deletes the file; the server refuses one that changed since it was
@@ -408,6 +451,7 @@
   el('save').addEventListener('click', save);
   el('delete').addEventListener('click', remove);
   el('rename').addEventListener('click', rename);
+  el('pair').addEventListener('click', pair);
   el('reload').addEventListener('click', () => location.reload());
   onField('display', 'display_type');
   onField('mac', 'mac');

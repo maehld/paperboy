@@ -50,12 +50,18 @@ func TestDeviceFlow(t *testing.T) {
 	if rec := register(t, s, `not json`); rec.Code != http.StatusBadRequest {
 		t.Fatalf("malformed registration: %d", rec.Code)
 	}
+	pair(t, s, "aa:bb:cc:dd:ee:01")
 	rec := register(t, s, `{"mac":"aa:bb:cc:dd:ee:01","hardware":"sticky","firmware":"0.4.0"}`)
 	var reg struct{ Key, Device string }
 	if err := json.Unmarshal(rec.Body.Bytes(), &reg); rec.Code != http.StatusOK || err != nil || reg.Key == "" || reg.Device != "test" {
 		t.Fatalf("register: %d %s", rec.Code, rec.Body)
 	}
-	// Registering again keeps the key, so a reflashed device keeps its state.
+	// A second register pairs again, and the key it returns stays the same, so
+	// a reflashed display keeps its state.
+	if rec := register(t, s, `{"mac":"AA:BB:CC:DD:EE:01","hardware":"sticky","firmware":"0.4.1"}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("a second register must pair again: %d %s", rec.Code, rec.Body)
+	}
+	pair(t, s, "AA:BB:CC:DD:EE:01")
 	again := register(t, s, `{"mac":"AA:BB:CC:DD:EE:01","hardware":"sticky","firmware":"0.4.1"}`)
 	if !strings.Contains(again.Body.String(), reg.Key) {
 		t.Fatalf("key must stay: %s", again.Body)
@@ -154,6 +160,7 @@ func TestDeviceStateLivesInOwnFile(t *testing.T) {
 		t.Fatalf("state not loaded by MAC: %+v", s.state)
 	}
 	// Registration hands out the key the device state already has.
+	pair(t, s, "AA:BB:CC:DD:EE:01")
 	if rec := register(t, s, `{"mac":"AA:BB:CC:DD:EE:01","hardware":"sticky"}`); !strings.Contains(rec.Body.String(), "existing-key-1234") {
 		t.Fatalf("register: %s", rec.Body)
 	}
@@ -197,6 +204,7 @@ func TestUnknownDeviceGetsStateFile(t *testing.T) {
 	if st := claimed.state["AABBCCDDEE99"]; st == nil || st.Hardware != "sticky" || st.FirstSeen.IsZero() {
 		t.Fatalf("unclaimed state did not survive: %+v", claimed.state)
 	}
+	pair(t, claimed, "aa:bb:cc:dd:ee:99")
 	rec := register(t, claimed, `{"mac":"aa:bb:cc:dd:ee:99","hardware":"sticky"}`)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"device":"flur"`) {
 		t.Fatalf("claim: %d %s", rec.Code, rec.Body)

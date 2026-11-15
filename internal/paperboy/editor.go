@@ -452,6 +452,8 @@ type editorDevice struct {
 	YAML   string      `json:"yaml"`
 	Device *deviceFile `json:"device,omitempty"`
 	Error  string      `json:"error,omitempty"`
+	// Pairing tells the editor whether the display may take a key (ADR 0109).
+	Pairing pairingInfo `json:"pairing"`
 }
 
 // deviceSave is the body of a device write: the model and the hash of the file
@@ -485,6 +487,7 @@ func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request) {
 		out.Error = shortError(err)
 	} else {
 		out.Device = &f
+		out.Pairing = s.pairingOf(f.MAC)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -563,7 +566,7 @@ func (s *Server) handleSaveDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, editorDevice{ID: id, Path: relativePath(cfg, path), Hash: fileHash(data),
-		YAML: string(data), Device: &written})
+		YAML: string(data), Device: &written, Pairing: s.pairingOf(written.MAC)})
 }
 
 // editorDisplayType is one display type file with its model, the answer of a

@@ -46,6 +46,15 @@ type deviceState struct {
 	ReportedPower string `json:"reported_power,omitempty"` // power source the hardware last reported (ADR 0051)
 	TouchReported bool   `json:"reported_touch,omitempty"` // the firmware reports a digitiser (ADR 0080)
 
+	// Pairing (ADR 0109). PairCode is the code the panel shows; the claim in the
+	// UI turns it into PairAuthorized, which lets exactly the next register take
+	// the key. PairedAt is when that happened the last time.
+	PairedAt       time.Time `json:"paired_at,omitempty"`
+	PairCode       string    `json:"pair_code,omitempty"`
+	PairExpiry     time.Time `json:"pair_expiry,omitempty"`
+	PairTries      int       `json:"pair_tries,omitempty"`
+	PairAuthorized bool      `json:"pair_authorized,omitempty"`
+
 	// What the device was last pointed at; set after rendering, so a failed
 	// render shows up as a notice instead of a page that was never drawn.
 	LastPage     string    `json:"last_page,omitempty"`      // page template; empty for a notice or the battery warning

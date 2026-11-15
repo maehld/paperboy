@@ -116,6 +116,10 @@ globals:
   - id: setup_shown
     type: std::string
     initial_value: '""'
+  # Pairing (ADR 0109): the code the server asks for.
+  - id: pair_code
+    type: std::string
+    initial_value: '""'
 
 http_request:
   useragent: paperboy-esphome
@@ -220,6 +224,8 @@ script:
             t = "Setup: open\nhttp://" + std::string(ip) + "/\nenter Paperboy URL";
           } else if (reason == "clock") {
             t = "No clock for https\ncheck NTP or use http";
+          } else if (reason == "pair") {
+            t = "Pairing code:\n" + id(pair_code);
           } else {
             t = "Unknown display\nAdd MAC to Paperboy:\n" + id(mac);
           }
@@ -259,13 +265,29 @@ script:
                     id(api_key).make_call().set_value(key).perform();
                     id(next_sync) = 0;
                     id(setup_shown) = "";
+                    id(pair_code) = "";
                     ESP_LOGI("paperboy", "registered with Paperboy");
                   } else {
                     ESP_LOGW("paperboy", "registration refused: HTTP %d", response->status_code);
                   }
+                  // A register without the operator's confirmation answers
+                  // with the code the LCD shows (ADR 0109).
+                  if (response->status_code == 403) {
+                    json::parse_json(body, [&](JsonObject root) -> bool {
+                      id(pair_code) = root["code"] | "";
+                      return true;
+                    });
+                  } else {
+                    id(pair_code) = "";
+                  }
               - if:
                   condition:
-                    lambda: "return response->status_code == 403;"
+                    lambda: "return response->status_code == 403 && !id(pair_code).empty();"
+                  then:
+                    - script.execute: { id: show_setup, reason: "pair" }
+              - if:
+                  condition:
+                    lambda: "return response->status_code == 403 && id(pair_code).empty();"
                   then:
                     - script.execute: { id: show_setup, reason: "unknown" }
           on_error:

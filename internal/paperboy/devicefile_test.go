@@ -146,6 +146,7 @@ func TestDeviceWithMissingDisplayTypeAnswers503(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	pair(t, s, "aa:bb:cc:dd:ee:01")
 	rec := register(t, s, `{"mac":"aa:bb:cc:dd:ee:01","hardware":"sticky"}`)
 	var reg struct{ Key, Device string }
 	if err := json.Unmarshal(rec.Body.Bytes(), &reg); rec.Code != http.StatusOK || err != nil || reg.Key == "" {

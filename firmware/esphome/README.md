@@ -25,6 +25,7 @@ installation, nothing installation-specific is compiled in.
 | First contact | `POST /api/device/register` with `mac`, `hardware`, `firmware` | the key is kept in flash; `403` shows "Paperboy does not know this display" with the MAC |
 | Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `rssi`, `power`, `log` | `401` drops the key, registers again and repeats the sync; a failed request keeps the event queue and is retried up to three times (ADR 0064) |
 | No key | `POST /api/device/register` is retried three times as well | without a key and with an unreachable server the device shows the setup screen with its address and the URL it has, instead of sleeping silently |
+| Pairing needed | the register answers `403` with a `code` (ADR 0109) | the panel shows `Pairing code` and the code instead of the setup instructions; the operator enters it in the device editor, and the next register takes the key. A repeated identical code does not repaint |
 | Unchanged content | `image.hash` equals the hash on the panel | no download, no paint |
 | Firmware offer | `firmware` in the sync answer (ADR 0043) | flash `<Paperboy URL><path>` with its MD5 and reboot; a failure is reported in the next sync's `log` |
 | Changed content | `GET <Paperboy URL><image.path>?format=qoi` with the device key (ADR 0097) | QOI, decoded into the panel buffer and painted with the panel's gray mapping (ADR 0072) |
@@ -154,7 +155,8 @@ verified: the device key and the OTA image are authentic on a public proxy
 | Device key | `POST /api/device/register` by MAC | flash |
 | NTP server | build substitution `ntp_server`, default `pool.ntp.org`; only used for an `https://` URL after a power-on | image |
 
-While Wi-Fi or the Paperboy URL is missing, or Paperboy does not know the MAC,
+While Wi-Fi or the Paperboy URL is missing, Paperboy does not know the MAC, or
+the instance asks to pair the display,
 the display shows instructions with the device's address and MAC, the lockup of
 Paperboy's logo and the firmware version above them, and stays awake for up to
 10 minutes before retrying in an hour. The same screen appears when the URL is
@@ -176,7 +178,7 @@ offers), and polls `GET /api/device/text?shown=<hash>` every `refresh_s`, which
 the plan decides (ADR 0045; one minute until the first sync, registration is
 retried once a minute). Unchanged text is a `204` and leaves the LCD alone;
 ESPHome would log any non-2xx answer as a failure. Setup instructions (Wi-Fi hotspot, address for
-the Paperboy URL, unknown MAC) appear on the LCD itself. Paperboy converts the
+the Paperboy URL, unknown MAC, the pairing code) appear on the LCD itself. Paperboy converts the
 text for `charset: hd44780` and keeps only `ä ö ü ß ° µ`, which the firmware
 maps to the A00 character ROM (`pb_hd44780`); a display with the A02 ROM would
 show other glyphs for them.

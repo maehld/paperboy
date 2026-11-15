@@ -85,6 +85,7 @@ Registration, sync, state and what a device receives. See [`03-devices.md`](../d
 | [0097](0097-page-downloads-take-the-device-key.md) | Page downloads take the device key | Accepted, implemented; the dashboard reads the last image through a UI route (ADR-0040, ADR-0096) |
 | [0098](0098-the-device-shows-the-lockup-and-its-version.md) | The device shows the lockup and its firmware version | Accepted, implemented |
 | [0102](0102-rotate-pages-onto-the-panel.md) | Rotate pages onto the panel | Accepted, implemented (firmware not yet flashed); amends the display types of ADR-0071, the device files of ADR-0070 and the sync answer of ADR-0042 |
+| [0109](0109-pair-a-display.md) | Pair a display instead of trusting its MAC address | Accepted, implemented (firmware not yet flashed); replaces the MAC rule of ADR-0042 and builds on the UI password of ADR-0096 |
 
 ## Displays, panels and firmware
 

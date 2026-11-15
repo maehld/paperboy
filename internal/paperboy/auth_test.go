@@ -121,7 +121,8 @@ func TestUIPasswordAllowsAccess(t *testing.T) {
 	if code := get("geheim"); code != http.StatusOK {
 		t.Fatalf("right password: %d", code)
 	}
-	// The device API keeps its own model: register with the configured MAC.
+	// The device API keeps its own model: pairing and register need no password.
+	pair(t, s, "aa:bb:cc:dd:ee:01")
 	rec := register(t, s, `{"mac":"aa:bb:cc:dd:ee:01","hardware":"sticky"}`)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"key"`) {
 		t.Fatalf("register with a UI password: %d %s", rec.Code, rec.Body)

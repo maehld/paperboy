@@ -36,9 +36,10 @@ func keyServer(t *testing.T, password string) *Server {
 	return s
 }
 
-// registerKey registers a device by MAC and returns its key.
+// registerKey pairs a device and returns its key.
 func registerKey(t *testing.T, s *Server, mac string) string {
 	t.Helper()
+	pair(t, s, mac)
 	rec := register(t, s, `{"mac":"`+mac+`","hardware":"sticky"}`)
 	var out struct{ Key string }
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != http.StatusOK || out.Key == "" {

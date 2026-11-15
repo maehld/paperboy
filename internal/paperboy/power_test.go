@@ -137,6 +137,7 @@ func TestSyncRejectsUnknownPower(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("register with power solar: %d", rec.Code)
 	}
+	pair(t, s, planDeviceMAC)
 	rec = register(t, s, `{"mac":"`+planDeviceMAC+`","power":"mains"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("register with power mains: %d", rec.Code)
