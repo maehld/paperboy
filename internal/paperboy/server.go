@@ -208,6 +208,7 @@ func (s *Server) uiRoutes() []route {
 		{"GET /ui/editor/plan.js", s.handlePlanEditorJS},
 		{"GET /ui/editor/device.js", s.handleDeviceEditorJS},
 		{"GET /ui/editor/display.js", s.handleDisplayEditorJS},
+		{"GET /ui/fonts/dotgothic16-latin.woff2", s.handleUIFont},
 		{"POST /ui/download", s.handleDownloadCheck},
 		{"POST /ui/downloads/prune", s.handlePrune},
 		{"GET /api/profiles", s.handleProfiles},
@@ -553,7 +554,7 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		now = t
 	}
 	if p.text() {
-		text, err := s.renderText(cfg, display, name, now, pagePosition{index: 0, count: 1}, "")
+		text, err := s.renderText(cfg, display, name, now, pagePosition{index: 0, count: 1}, "", nil)
 		if errors.Is(err, page.ErrNotFound) {
 			http.NotFound(w, r)
 			return

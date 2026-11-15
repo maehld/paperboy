@@ -2,7 +2,7 @@
 
 # Content
 
-A page is a grid of cells. Every cell shows one widget from one plugin. A plan decides which page a device gets and when.
+A page is a grid of cells on an image display and a character grid of boxes on a text display. Every cell shows one widget from one plugin, and every text cell shows one value a plugin declares. A plan decides which page a device gets and when.
 
 ## Pages
 
@@ -37,14 +37,16 @@ A variant file carries `kind`, `grid`, `style`, `notices` and `cells`. It inheri
 |---|---|
 | `title` | Name on the dashboard, in the plan preview and for the header widget. The page file only. |
 | `kind` | `image` or `text`: required, the kind of the display types the file serves |
-| `grid` | Columns and rows. The reference grid is 6 × 8 cells. |
+| `grid` | Columns and rows of an image page. The reference grid is 6 × 8 cells. |
 | `variants` | Display type to file label. The page file only. |
 | `style.padding` | Space around the grid in points, default 4.5 |
 | `style.rule` | Gap between cells in points, default 0.6 and at least one pixel |
 | `style.text_size` | Base text size in points, 4–144, default 16, capped at 0.12 of the display height |
 | `style.divider` | Lines that Paperboy draws between the cells |
 | `notices` | `show` or `none`: whether a notice page may replace this page |
-| `cells` | `at` (column, row), `span` (columns, rows), `widget`, `args`, `style` (overrides the page style), `scroll` |
+| `cells` | Image pages: `at` (column, row), `span` (columns, rows), `widget`, `args`, `style` |
+| `overflow` | Text pages: default `strip`, `wrap` or `scroll` ([text pages](#text-pages)) |
+| `cells` | Text pages: boxes with `at`, `span`, `text` or `value`, `label`, `unit`, `align` and `overflow` |
 
 Parsing is strict and cells must not overlap. Sizes are in points since [ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md). A fraction such as `0.06` is rejected with a hint: points are physical, and the display type's `ppi` converts them into pixels.
 
@@ -65,11 +67,44 @@ The built-in plugin draws text, lines and fills, so a page that is only text nee
 
 ## Text pages
 
-A text page has no pixels. Its file says `kind: text`, and its grid must equal the character grid of the display type. The LCD2004 has 20 × 4, and any text type has at most 80 × 24 ([ADR 0044](../adr/0044-text-displays-on-the-device-api.md)). A text page file serves only the text types with its character grid; other text types need a variant.
+A text page has no pixels. Its file says `kind: text` and carries `cells`: boxes at a character column and row, with a span in columns and rows ([ADR 0118](../adr/0118-text-boxes-and-overflow.md)). The display type supplies the character grid; the parser rejects `grid` on a text page.
 
-`RenderText` asks the same cells, but in characters. Each widget answers lines. Paperboy converts them to the charset of the display and then cuts or pads every line to its cell width. The charsets are `utf8`, `ascii` and `hd44780`; the last keeps ä ö ü ß ° µ and turns Ä Ö Ü into A O U. A widget that fails contributes wrapped `? …` lines instead of breaking the page. A stale result marks `!` in the last column of line 1.
+```yaml
+title: Werte
+kind: text
+overflow: strip
+cells:
+  - { at: [0, 0], span: [20, 1], text: "Familie" }
+  - { at: [0, 1], span: [12, 2], value: weather/forecast, overflow: wrap }
+  - { at: [14, 1], span: [6, 2], value: paperboy/now, align: right }
+  - { at: [0, 3], span: [12, 1], value: paperboy/long, overflow: scroll }
+```
 
-A full-width cell with `scroll: true` passes the flag to its widget. The widget may then answer a line wider than the cell ([ADR 0092](../adr/0092-scrolling-text-lines.md)). Paperboy keeps the first window in `Lines` and the full text in `Scroll`, and hashes both, so a changed tail changes the page. The firmware moves such a row by one character every 300 ms.
+A box carries exactly one of `text` and `value`. `text` is literal text and may span lines; a literal text cell has no label or unit. A value cell names `<plugin>/<key>`, the key a plugin declares in `describe.values`. Paperboy asks every plugin once for all keys of the page. It caches the answer like a widget and drops it on a `changed` event. The plugin answers data, never text. The shipped plugins declare their values in a later protocol version; until then a cell with such a key shows `? …`.
+
+| Cell key | Meaning |
+|---|---|
+| `at` | `[column, row]` of the top-left corner |
+| `span` | `[columns, rows]` the box takes; default `[1, 1]` |
+| `text` | literal text; multi-line strings keep their line breaks |
+| `value` | `<plugin>/<key>` of the declared value |
+| `label` | value cells only: text in front of the value |
+| `unit` | value cells only: text behind the value; default the declared unit |
+| `align` | `left` (default), `right` or `decimal` |
+| `overflow` | `strip`, `wrap` or `scroll`; default the page's `overflow` |
+
+`overflow` on the page sets the default for every box; a cell overrides it.
+- `strip` cuts after the box's width and height.
+- `wrap` reflows text into the box width at word boundaries, then cuts at its height.
+- `scroll` keeps the full content and moves it. A line wider than the box moves horizontally; more lines than the box move vertically. Both together move vertically by lines.
+
+Boxes must stay inside the character grid and must not overlap; `at + span` is checked against the display in `Fits`. A box that is not filled stays blank, so a page can leave rows and columns free.
+
+Paperboy formats every value itself: numbers follow the global `language` and the declared `precision`, durations and timestamps their compact forms, and directions their arrows. `RenderText` converts label, value and text to the charset before it measures, wraps or cuts. A stale value marks `!` in the last column of line 1. A missing value becomes a `? …` cell.
+
+A scrolling box adds its full lines, its first window and its direction to the render result. The device answer carries them with the display type's `scroll.step` (default 300 ms) and a flag whether the scroll text changed. A firmware or the virtual display keeps its offset while the flag is false and restarts at the first window when it is true. ePaper pages reject `scroll` and `overflow` with a hint (ADR 0118).
+
+The page editor places the same boxes on the board. Drag moves a box and its edges resize it. The inspector edits value or text, label, unit, align and overflow. Text pages have no style in points.
 
 ## Which page a device gets
 
@@ -99,7 +134,7 @@ Rules are tried in order and the first match wins:
 
 A rule lists `pages`, `rotate` (seconds until the next page of the rule) and `refresh` (seconds until the next sync). `UntilNextBoundary` caps the refresh at the next rule change. `fallback` holds the pages of a device whose no rule matches.
 
-A page of a rule that does not fit the device's display type is skipped. That is no file for the type, the other kind, or a text page with the wrong grid. The file the page names decides; a type that names no variant is served by the page file. The skip is logged once per display type, page and reason. No fitting page at all gives a notice page. A broken page is shown as a notice, not skipped. A render that panics is logged with its stack and answered with a notice page.
+A page of a rule that does not fit the device's display type is skipped. That is no file for the type, the other kind, or a text page whose boxes do not fit the character grid. The file the page names decides; a type that names no variant is served by the page file. The skip is logged once per display type, page and reason. No fitting page at all gives a notice page. A broken page is shown as a notice, not skipped. A render that panics is logged with its stack and answered with a notice page.
 
 A broken entry costs one display type, not the page ([ADR 0110](../adr/0110-pages-serve-their-kind-and-name-variants.md)). An entry for a type that no longer exists is unused: the file stays and Paperboy writes no log line. A variant file that no entry names is unused too.
 
@@ -152,6 +187,8 @@ The built-in plugin `paperboy` needs no data and is never cached ([ADR 0049](../
 | `clock` | Time, date or both |
 | `logo` | The Paperboy mark from its geometry; `wordmark` adds the lockup in Go Mono Bold, image displays only |
 
+On a text page the built-in plugin provides four values. `title` is the page title. `time` and `now` are the current moment. `date` is midnight, so Paperboy writes the date.
+
 ## Decisions
 
-[ADR 0025](../adr/0025-plaene-je-display.md) (plans) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md) (the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants)
+[ADR 0025](../adr/0025-plaene-je-display.md) (plans) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md) (the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values)

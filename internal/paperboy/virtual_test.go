@@ -11,9 +11,16 @@ import (
 	"time"
 )
 
-// lcdPage is one text page for the 20×4 display type of the virtual tests.
-func lcdPage(text string) string {
-	return "kind: text\ngrid: [20, 4]\ncells: [{ span: [20, 4], widget: paperboy/text, args: { text: \"" + text + "\" } }]\n"
+// lcdPage is one text variant for the 20×4 display type of the virtual tests.
+// It shows the page title and the built-in values (ADR 0111).
+func lcdPage(string) string {
+	return `kind: text
+cells:
+  - { at: [0, 0], span: [20, 1], value: paperboy/title }
+  - { at: [0, 1], span: [20, 1], value: paperboy/now, align: right }
+  - { at: [0, 2], span: [20, 1], value: paperboy/date }
+  - { at: [0, 3], span: [20, 1], value: paperboy/time, align: right }
+`
 }
 
 // virtualServer starts a server without devices: the virtual display brings
@@ -24,7 +31,7 @@ func virtualServer(t *testing.T, planYAML, actions string) (*Server, *time.Time,
 	pages := filepath.Join(dir, "pages")
 	for _, name := range []string{"eins", "zwei"} {
 		writePageFile(t, filepath.Join(pages, name+".yaml"),
-			strings.Replace(textPage(name), "kind: image", "kind: image\nvariants: {lcd: lcd}", 1))
+			"title: "+name+"\n"+strings.Replace(textPage(name), "kind: image", "kind: image\nvariants: {lcd: lcd}", 1))
 		writePageFile(t, filepath.Join(pages, name+".lcd.yaml"), lcdPage(name))
 	}
 	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), planYAML+actions)

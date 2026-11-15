@@ -4,7 +4,24 @@
    others. Rules here are the union of the nine pages that carried their own
    copy before. */
 
-:root { color-scheme: light; }
+/* The vendored pixel font of the text previews (ADR 0115): one glyph per
+   character slot, a dot-matrix look and no request to a font CDN. The file,
+   its source and its licence sit in ui/fonts/. */
+@font-face {
+  font-family: "DotGothic16";
+  src: url("/ui/fonts/dotgothic16-latin.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+  --lcd-panel-bg: #0d1c07;
+  --lcd-cell-bg: #18310d;
+  --lcd-pixel: #b9f36a;
+  --lcd-edge: #2b4a18;
+}
 * { box-sizing: border-box; }
 
 /* `hidden` must win over a rule that gives an element a display, otherwise a

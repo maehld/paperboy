@@ -113,6 +113,8 @@ A composed page is served as `/pages/{display type}/{page}/{hash}.png`, or as QO
 
 Text displays poll instead: they fetch their lines every `refresh_s`, and an unchanged page answers 304 ([ADR 0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md)).
 
+A text page also carries `scrolls`: one entry per scrolling box. Each entry names `row`, `col`, `width`, `height`, the full `text`, the first `window`, `direction`, `step_ms` and `align`. `scroll_changed` says whether the scrolling text changed. The firmware keeps its offsets while it is false and starts at the first window when it is true ([ADR 0118](../adr/0118-text-boxes-and-overflow.md)). Horizontal moves a wider line by characters. Vertical moves extra lines down by one line per step. Both move vertically first. Static rows stay as they are. The step comes from the display type's `scroll.step`, not from the firmware. The legacy `scroll` rows remain for older firmware.
+
 ## Firmware
 
 The firmware lives in `firmware/esphome/` and is built on ESPHome ([ADR 0041](../adr/0041-esphome-firmware.md)).
@@ -120,9 +122,9 @@ The firmware lives in `firmware/esphome/` and is built on ESPHome ([ADR 0041](..
 | File | Content |
 |---|---|
 | `common.yaml` | Register, sync, download, listen, deep sleep |
-| `paperboy.h` | Sync body, event queue, wake helpers, rotation, QOI paint, the lockup of the setup screens |
+| `paperboy.h` | Sync body, event queue, wake helpers, rotation, QOI paint, the lockup of the setup screens, text rows and the scroll engine |
 | `sticky.yaml`, `e1001.yaml`, `e1003.yaml` | Hardware, buttons, panel driver, battery and charger |
-| `text-common.yaml`, `lcd2004.yaml` | Text displays |
+| `text-common.yaml`, `lcd2004.yaml` | Text displays, text poll and the marquee script |
 | `build.ps1` | Build with a pinned ESPHome (2026.10.1); `-Instance` publishes `firmware/<hardware>-v<version>.bin` |
 
 A cycle runs one at a time; a second trigger is dropped, so it cannot move the page cursor behind a running download. The firmware connects to the saved BSSID and channel without a scan. It decodes QOI itself into the panel buffer, because ESPHome's decoders spend 2.2–2.6 seconds on 384k pixels. Input during sync or paint is queued for one follow-up sync with a 150 ms settle, so a burst of presses becomes one sync. Failures are noted in RTC memory and reported in the next sync's `log`.

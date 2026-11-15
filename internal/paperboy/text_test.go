@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maehld/paperboy/internal/page"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
@@ -21,21 +22,14 @@ func textServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 	dir := t.TempDir()
 	pages := filepath.Join(dir, "pages")
 	writePageFile(t, filepath.Join(pages, "eins.yaml"), `
+title: Eins
 kind: text
-grid: [8, 2]
 cells:
-  - { at: [0, 0], span: [8, 1], widget: value/pv }
-  - { at: [0, 1], span: [8, 1], widget: paperboy/text, args: { text: Größe } }
+  - { at: [0, 0], span: [8, 1], value: value/pv }
+  - { at: [0, 1], span: [8, 1], value: paperboy/title }
 `)
-	writePageFile(t, filepath.Join(pages, "zwei.yaml"), "kind: text\ngrid: [8, 2]\ncells: [{span: [8, 1], widget: paperboy/text, args: {text: zwei}}]\n")
-	writePageFile(t, filepath.Join(pages, "scroll.yaml"), `
-kind: text
-grid: [8, 2]
-cells:
-  - { at: [0, 0], span: [8, 1], widget: paperboy/text, scroll: true, args: { text: "Lange Zeile hier" } }
-  - { at: [0, 1], span: [8, 1], widget: paperboy/text, args: { text: zwei } }
-`)
-	writePageFile(t, filepath.Join(pages, "kaputt.yaml"), "kind: text\ngrid: [8, 2]\ncells: [{widget: paperboy/text, args: {text: x}, colour: red}]\n")
+	writePageFile(t, filepath.Join(pages, "zwei.yaml"), "title: Zwei\nkind: text\ncells:\n  - { at: [0, 0], span: [8, 1], value: paperboy/title }\n")
+	writePageFile(t, filepath.Join(pages, "kaputt.yaml"), "kind: text\ncells:\n  - { at: [0, 0], span: [8, 1], value: paperboy/title, colour: red }\n")
 	if planYAML != "" {
 		writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), planYAML)
 	}
@@ -59,16 +53,25 @@ cells:
 	return s, &now
 }
 
-// valuePlugin is a built-in test plugin with one text widget "PV <value>".
+// valuePlugin is a built-in test plugin with one value "PV <value>".
 type valuePlugin struct{ value int }
 
-func (*valuePlugin) Describe() plugin.Description                   { return plugin.Description{} }
+func (*valuePlugin) Describe() plugin.Description {
+	return plugin.Description{Values: []plugin.ValueSpec{{Name: "pv", Type: plugin.ValueText}}}
+}
 func (*valuePlugin) Configure(plugin.Values, *plugin.Request) error { return nil }
 func (*valuePlugin) Render(*plugin.Request, plugin.WidgetRequest, *image.Paletted) error {
 	return nil
 }
-func (v *valuePlugin) Text(*plugin.Request, plugin.WidgetRequest) ([]string, error) {
-	return []string{fmt.Sprintf("PV %d", v.value)}, nil
+func (v *valuePlugin) Values(req *plugin.Request) (map[string]plugin.Value, error) {
+	out := map[string]plugin.Value{}
+	for _, name := range req.Values {
+		if name != "pv" {
+			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
+		}
+		out[name] = plugin.TextValue(fmt.Sprintf("PV %d", v.value))
+	}
+	return out, nil
 }
 
 func pollText(t *testing.T, s *Server, key, shown string) *httptest.ResponseRecorder {
@@ -106,7 +109,7 @@ func TestTextDeviceSyncAndPoll(t *testing.T) {
 	}
 	text, _ := out["text"].(map[string]any)
 	lines, _ := text["lines"].([]any)
-	if len(lines) != 2 || lines[0] != "PV 42   " || lines[1] != "Groesse " {
+	if len(lines) != 2 || lines[0] != "PV 42   " || lines[1] != "Eins    " {
 		t.Fatalf("sync text: %v", out)
 	}
 	if _, ok := text["scroll"]; ok {
@@ -156,7 +159,7 @@ func TestTextDeviceSyncAndPoll(t *testing.T) {
 	dev.req.Reason = "button"
 	dev.req.Events = []syncEvent{{Type: "button", Button: buttonNext}}
 	displayPage(t, s, dev)
-	if rec := pollText(t, s, dev.key, ""); !strings.Contains(rec.Body.String(), `"zwei    "`) {
+	if rec := pollText(t, s, dev.key, ""); !strings.Contains(rec.Body.String(), `"Zwei    "`) {
 		t.Fatalf("poll after next: %s", rec.Body)
 	}
 	// A broken template becomes notice lines and the device's last error.
@@ -196,7 +199,7 @@ func TestTextPollRejectsImageDisplay(t *testing.T) {
 func TestTextPreview(t *testing.T) {
 	s, _ := textServer(t, "")
 	rec := preview(t, s, "/api/preview/lcd/zwei")
-	if rec.Code != http.StatusOK || rec.Body.String() != "zwei    \n        \n" ||
+	if rec.Code != http.StatusOK || rec.Body.String() != "Zwei    \n        \n" ||
 		!strings.HasPrefix(rec.Header().Get("Content-Type"), "text/plain") {
 		t.Fatalf("preview: %d %q", rec.Code, rec.Body)
 	}
@@ -231,15 +234,15 @@ func TestTextDeviceFirmwareOffer(t *testing.T) {
 func TestPlanSkipsPagesForOtherDisplays(t *testing.T) {
 	s, _ := textServer(t, "rules: [{name: immer, pages: [bild, schmal, zwei]}]\n")
 	writePageFile(t, filepath.Join(s.config().Pages, "bild.yaml"), "kind: image\ngrid: [8, 2]\ncells: [{widget: paperboy/text, args: {text: bild}}]\n")
-	writePageFile(t, filepath.Join(s.config().Pages, "schmal.yaml"), "kind: text\ngrid: [4, 2]\ncells: [{widget: paperboy/text, args: {text: x}}]\n")
+	writePageFile(t, filepath.Join(s.config().Pages, "schmal.yaml"), "kind: text\ncells:\n  - { at: [0, 0], span: [9, 1], value: paperboy/title }\n")
 	dev := planDevice(t, s)
 	out := displayPage(t, s, dev)
-	if lines := anyStrings(out["text"].(map[string]any)["lines"]); lines[0] != "zwei    " {
+	if lines := anyStrings(out["text"].(map[string]any)["lines"]); lines[0] != "Zwei    " {
 		t.Fatalf("first fitting page: %q", lines)
 	}
 	dev.req.Reason = "button"
 	dev.req.Events = []syncEvent{{Type: "button", Button: buttonNext}}
-	if lines := anyStrings(displayPage(t, s, dev)["text"].(map[string]any)["lines"]); lines[0] != "zwei    " {
+	if lines := anyStrings(displayPage(t, s, dev)["text"].(map[string]any)["lines"]); lines[0] != "Zwei    " {
 		t.Fatalf("paging must stay on the only fitting page: %q", lines)
 	}
 	if len(s.skipNotes) != 2 {
@@ -255,51 +258,50 @@ func TestPlanSkipsPagesForOtherDisplays(t *testing.T) {
 	}
 }
 
-const scrollPlan = `
-rules:
-  - name: immer
-    when: { from: "06:00", to: "22:00" }
-    pages: [scroll]
-    refresh: 2s
-fallback: immer
-`
-
-func TestTextScrollRows(t *testing.T) {
-	s, _ := textServer(t, scrollPlan)
-	dev := planDevice(t, s)
-	out := displayPage(t, s, dev)
-	text, _ := out["text"].(map[string]any)
-	lines, _ := text["lines"].([]any)
-	if len(lines) != 2 || lines[0] != "Lange Ze" {
-		t.Fatalf("sync lines: %v", out)
+func TestHashTextCoversScroll(t *testing.T) {
+	static := []string{"Lange Ze", "zwei    "}
+	a := []page.ScrollBox{{At: [2]int{0, 0}, Span: [2]int{8, 1}, Lines: []string{"Lange Zeile A"}, Direction: page.ScrollHorizontal}}
+	b := []page.ScrollBox{{At: [2]int{0, 0}, Span: [2]int{8, 1}, Lines: []string{"Lange Zeile B"}, Direction: page.ScrollHorizontal}}
+	if hashText(static, nil) != hashText(static, []page.ScrollBox{}) {
+		t.Error("a page without scrolling must keep its hash")
 	}
-	scroll, ok := text["scroll"].([]any)
-	if !ok || len(scroll) != 2 {
-		t.Fatalf("sync scroll: %v", text)
+	if hashText(static, a) == hashText(static, b) {
+		t.Error("a change behind the visible columns must change the hash")
 	}
-	if scroll[0] != "Lange Zeile hier" || scroll[1] != "" {
-		t.Fatalf("scroll rows: %v", scroll)
-	}
-
-	rec := pollText(t, s, dev.key, "")
-	var polled syncText
-	if err := json.Unmarshal(rec.Body.Bytes(), &polled); rec.Code != http.StatusOK || err != nil {
-		t.Fatalf("poll: %d %s", rec.Code, rec.Body)
-	}
-	if len(polled.Scroll) != 2 || polled.Scroll[0] != "Lange Zeile hier" {
-		t.Fatalf("polled scroll: %+v", polled)
+	if hashText(static, a) == hashText(static, nil) {
+		t.Error("a scrolling box must change the hash")
 	}
 }
 
-func TestHashTextCoversScroll(t *testing.T) {
-	static := []string{"Lange Ze", "zwei    "}
-	if hashText(static, nil) != hashText(static, []string{"", ""}) {
-		t.Error("a page without scrolling must keep the hash it had before the field existed")
+// TestTextResponseCarriesScrollFields pins the additive fields a text display
+// reads: the box geometry, its full lines and window, the direction, the step
+// and the alignment. scroll_changed stays false while that text is unchanged.
+func TestTextResponseCarriesScrollFields(t *testing.T) {
+	served := servedPage{
+		lines: []string{"abc     ", "def     "},
+		scrolls: []page.ScrollBox{{
+			At: [2]int{1, 0}, Span: [2]int{4, 2},
+			Lines: []string{"one", "two", "three"}, Window: []string{"1one", "2two"},
+			Direction: page.ScrollVertical, Align: "right",
+		}},
+		hash: "h1",
 	}
-	if hashText(static, []string{"Lange Zeile A", ""}) == hashText(static, []string{"Lange Zeile B", ""}) {
-		t.Error("a change behind the visible columns must change the hash")
+	profile := Profile{Kind: kindText, Charset: "ascii", Width: 8, Height: 2, ScrollStep: 300 * time.Millisecond}
+	state := &deviceState{}
+	out := textResponse(served, profile, state)
+	if len(out.Scrolls) != 1 {
+		t.Fatalf("scrolls: %+v", out.Scrolls)
 	}
-	if hashText(static, []string{"Lange Zeile A", ""}) == hashText(static, nil) {
-		t.Error("a scrolling row must change the hash")
+	box := out.Scrolls[0]
+	if box.Row != 0 || box.Col != 1 || box.Width != 4 || box.Height != 2 ||
+		box.StepMS != 300 || box.Direction != page.ScrollVertical || box.Align != "right" ||
+		len(box.Text) != 3 || len(box.Window) != 2 {
+		t.Fatalf("scroll box: %+v", box)
+	}
+	if !out.ScrollChanged {
+		t.Fatal("the first answer must reset the offset")
+	}
+	if again := textResponse(served, profile, state); again.ScrollChanged {
+		t.Fatal("the same scroll text must keep the offset")
 	}
 }

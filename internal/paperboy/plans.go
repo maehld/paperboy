@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"image"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/maehld/paperboy/internal/page"
 	"github.com/maehld/paperboy/internal/plan"
+	"github.com/maehld/paperboy/pkg/plugin"
 )
 
 // hintRefresh is reported for pages that only announce a configuration problem,
@@ -24,15 +26,15 @@ const hintRefresh = 15 * time.Minute
 
 // servedPage is the page an answer points the device to.
 type servedPage struct {
-	path    string        // image path below the server root
-	refresh time.Duration // sleep time to report
-	name    string        // page or template name for logging; empty for a notice
-	page    int           // page index within the plan rule, for logging
-	pages   int           // pages in the rule, for logging
-	hash    string        // content hash of the PNG or the lines; the device repaints when it changes
-	lines   []string      // text displays: the lines to show (ADR 0044)
-	scroll  []string      // text displays: full text of scrolling rows, "" for a static row (ADR 0092)
-	err     error         // render error that turned the page into a notice
+	path    string           // image path below the server root
+	refresh time.Duration    // sleep time to report
+	name    string           // page or template name for logging; empty for a notice
+	page    int              // page index within the plan rule, for logging
+	pages   int              // pages in the rule, for logging
+	hash    string           // content hash of the PNG or the lines; the device repaints when it changes
+	lines   []string         // text displays: the lines to show (ADR 0044)
+	scrolls []page.ScrollBox // text displays: boxes that scroll (ADR 0118)
+	err     error            // render error that turned the page into a notice
 }
 
 // renderedPage is a page template rendered for one profile and page.
@@ -105,37 +107,59 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	return &renderedPage{data: data, hash: hashBytes(data), key: key, pix: img.Pix, rect: img.Rect, at: time.Now()}, nil
 }
 
+// deviceInfo names a device for a plugin request (ADR 0111).
+func pluginDevice(d *Device) *plugin.DeviceInfo {
+	return &plugin.DeviceInfo{ID: d.ID}
+}
+
 // display describes a display type for the page package.
 func (s *Server) display(cfg *Config, p Profile) page.Display {
 	return page.Display{Width: p.Width, Height: p.Height, Levels: p.Levels, Text: p.text(), Charset: p.Charset, PPI: p.PPI,
 		Language: cfg.Language, Timezone: cfg.Timezone}
 }
 
-// hashText is the content hash of a text page. Scrolling rows are part of it,
-// so a change behind the visible columns still repaints the display (ADR 0092);
-// a page without scrolling keeps the hash it had before the field existed.
-func hashText(lines, scroll []string) string {
+// hashText is the content hash of a text page. The full text of scrolling
+// boxes is part of it, so a change behind the visible window still repaints the
+// display (ADR 0118).
+func hashText(lines []string, scrolls []page.ScrollBox) string {
 	data := strings.Join(lines, "\n")
-	if scrollRows(scroll) != nil {
-		data += "\x00" + strings.Join(scroll, "\n")
+	if len(scrolls) > 0 {
+		raw, _ := json.Marshal(scrolls)
+		data += "\x00" + string(raw)
 	}
 	return hashBytes([]byte(data))
 }
 
-// scrollRows drops the row list of a page without scrolling, so the answer
-// carries the field only when a row really moves (ADR 0092).
-func scrollRows(scroll []string) []string {
-	for _, s := range scroll {
-		if s != "" {
-			return scroll
+// legacyScroll fills the old per-row scroll list for horizontal, single-row
+// boxes, so an older firmware keeps working until it reads scrolls (ADR 0118).
+func legacyScroll(scrolls []page.ScrollBox, height int) []string {
+	if len(scrolls) == 0 {
+		return nil
+	}
+	out := make([]string, height)
+	used := false
+	for _, box := range scrolls {
+		if box.Direction != page.ScrollHorizontal || box.Span[1] != 1 || len(box.Lines) == 0 {
+			continue
+		}
+		row := box.At[1]
+		if row >= 0 && row < height {
+			out[row] = box.Lines[0]
+			used = true
 		}
 	}
-	return nil
+	if !used {
+		return nil
+	}
+	return out
 }
 
 // renderText renders pages/<name>.<profile>.yaml for a text display type
-// (ADR 0044). Like renderPage it turns a panic into an error.
-func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, pos pagePosition, self string) (text page.Text, err error) {
+// (ADR 0044). The page lays out plugin values (ADR 0111); device names the
+// display a device render is for, nil for a preview. self is the device the
+// built-in status widget may show (ADR 0115). Like renderPage it turns a
+// panic into an error.
+func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, pos pagePosition, self string, device *plugin.DeviceInfo) (text page.Text, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("text page rendering panicked", "profile", profile, "page", name, "panic", r, "stack", string(debug.Stack()))
@@ -152,7 +176,7 @@ func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, po
 	}
 	status := s.statusSnapshot(cfg, self, selectedDeviceIDs(tmpl), now)
 	return tmpl.RenderText(s.display(cfg, p), page.Context{Now: now, Page: pos.index + 1, Pages: pos.count,
-		Widgets: s.widgetSource(), ServerStatus: status})
+		Values: s.valueSource(), Device: device, ServerStatus: status})
 }
 
 // hintPage is a generated notice page and the display type it was drawn for:
@@ -417,11 +441,11 @@ func (s *Server) renderPlan(cfg *Config, d *Device, c planChoice, now time.Time,
 		return sp
 	}
 	if cfg.Profiles[d.Profile].text() {
-		text, err := s.renderText(cfg, d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages}, d.ID)
+		text, err := s.renderText(cfg, d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages}, d.ID, pluginDevice(d))
 		if err != nil {
 			return s.pageFailed(cfg, d, c, err, quiet)
 		}
-		return servedPage{lines: text.Lines, scroll: text.Scroll, hash: hashText(text.Lines, text.Scroll),
+		return servedPage{lines: text.Lines, scrolls: text.Scrolls, hash: hashText(text.Lines, text.Scrolls),
 			name: c.name, page: c.page, pages: c.pages, refresh: c.refresh}
 	}
 	rp, err := s.renderPage(cfg, d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages}, d.ID, c.banners...)

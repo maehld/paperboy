@@ -4,10 +4,11 @@ Paperboy and its plugins talk over standard input and standard output, one
 JSON object per line ([ADR 0049](../adr/0049-plugin-widgets.md)). This document is the reference for the wire
 format; the Go types live in [`pkg/plugin`](../../pkg/plugin/plugin.go).
 
-- Current version: **6** ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md) added version 3, [ADR 0057](../adr/0057-plugin-actions-from-the-plan.md) added
+- Current version: **7** ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md) added version 3, [ADR 0057](../adr/0057-plugin-actions-from-the-plan.md) added
   actions, [ADR 0081](../adr/0081-plugin-state-over-the-protocol.md) added plugin state and blobs and made 5 the minimum,
-  [ADR 0103](../adr/0103-plugin-conditions-in-plans.md) added conditions). From version 5 on the protocol only grows
-  additively. `server_status` is additive and keeps version 6 ([ADR 0115](../adr/0115-device-status-in-a-widget.md)).
+  [ADR 0103](../adr/0103-plugin-conditions-in-plans.md) added conditions, [ADR 0111](../adr/0111-text-pages-from-plugin-values.md) added values).
+  From version 5 on the protocol only grows additively. `server_status` is additive and keeps version 6
+  ([ADR 0115](../adr/0115-device-status-in-a-widget.md)).
 - Paperboy starts a plugin on first use and keeps it running.
 - Paperboy writes one request line; the plugin writes exactly one answer line
   with the same `id`. Between answers the plugin may write events without an
@@ -23,15 +24,16 @@ Every request carries:
 | Field | Meaning |
 |---|---|
 | `id` | Request identifier; the answer repeats it |
-| `version` | Protocol version, currently `5` |
-| `action` | `configure`, `state`, `describe`, `render`, `text`, `actions`, `action` or `conditions` |
+| `version` | Protocol version, currently `7` |
+| `action` | `configure`, `state`, `describe`, `render`, `text`, `values`, `actions`, `action` or `conditions` |
 | `language` | `"de"` or `"en"` |
 | `timezone` | IANA name such as `Europe/Berlin` |
 | `now` | Time of the request, RFC 3339 |
 | `page` | `title`, `number` (1-based), `count`, display `width`/`height`, and `ppi` for image displays |
 | `widgets` | For `render` and `text`: the widgets to draw |
+| `values` | For `values`: the declared value keys the page needs |
 | `actions` | For `actions` and `action`: the concrete actions |
-| `device` | For `actions` and `action`: `id`, `name`, `hardware` |
+| `device` | For `actions`, `action` and `values`: `id`, `name`, `hardware`; absent for a preview |
 | `server_status` | For `render` and `text`, built-in plugin only: `current_device_status` and `selected_devices_status` (ADR 0115) |
 | `levels` | For `render`: gray levels of the display, 1–256; the canvas falls back to 2, 4 or 16 tones |
 | `config` | For `configure`: the plugin's section of `paperboy.yaml` |
@@ -82,6 +84,15 @@ the plan's action validation.
         "args": {"short": {"type": "bool", "default": false}}
       }
     ],
+    "values": [
+      {
+        "name": "pv",
+        "title": "PV power",
+        "type": "number",
+        "unit": "kW",
+        "precision": 1
+      }
+    ],
     "actions": [
       {
         "name": "mode",
@@ -100,6 +111,9 @@ the plan's action validation.
 ```
 
 - `widgets[].kinds` is `image`, `text` or both.
+- `values[]` declares the data a text page can lay out ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)): `name`, `title`, `type`, `unit`, `precision` and `kind`.
+  `type` is `number`, `text`, `duration`, `timestamp` or `direction`. `precision` is the number of decimals Paperboy writes for a number.
+  `kind` is `value` (default) or `list`; protocol 7 answers only single values. A value is data, not text: the plugin never pads or formats it.
 - `version` is the plugin's own version, matching the `-v<version>` of its program name ([ADR 0075](../adr/0075-plugin-versions.md)). It is optional; Paperboy compares it with the file name and logs one warning when they differ.
 - `widgets[].sizes` are spans of the 6 × 8 reference grid, hints for an editor.
 - `args` use the same [argument schema](#arguments) as configuration keys.
@@ -140,7 +154,10 @@ Reports every declared condition and whether it is active now.
 
 `render` draws each widget on a canvas of exactly `width` × `height` pixels
 with `levels` gray levels and returns a PNG. `text` fills each widget with
-`width` columns and `height` lines and returns `lines`. Widgets get their
+`width` columns and `height` lines and returns `lines`. A text page of values
+no longer uses `text` ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)); the action stays in the protocol and
+Paperboy still asks a plugin for its text widgets in the widgets page. A later
+protocol version may remove it. Widgets get their
 arguments in `args` and the page's look in `style`:
 
 | `style` field | Meaning |
@@ -174,6 +191,25 @@ draw in instead of leaving it blank: `plugin.TooSmall(w)` wraps
 `plugin.ErrTooSmall` with the cell's pixel size and reads
 `cell too small: 800x180`. `max_age` (seconds) tells Paperboy how long it may
 reuse the results; `0` means its default of five minutes.
+
+### `values`
+
+Answers the values of a text page ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). One request covers every key of the page that belongs to this plugin. It carries the usual `page`, optional `device`, `language`, `timezone` and `now`.
+
+```json
+{"id":"7","version":7,"action":"values","language":"de","timezone":"Europe/Berlin","now":"2026-11-15T12:00:00+01:00","device":{"id":"kueche"},"page":{"title":"Werte","number":1,"count":1,"width":20,"height":4},"values":["pv","home"]}
+```
+
+```json
+{"id":"7","version":7,"values":{"pv":{"number":4.2},"home":{"number":1.5}},"max_age":60}
+```
+
+- The answer is a map from the requested name to one value. Exactly one field carries the value:
+  `{"number": 12.5}`, `{"text": "…"}`, `{"duration": 3600}` in seconds, `{"timestamp": "2026-11-15T12:00:00+01:00"}` in RFC 3339, or `{"direction": 1}` with 1 up, 0 flat and -1 down.
+- A missing name is an error for that cell; Paperboy shows a `? …` cell. The other values still reach the page.
+- `max_age` works like for widgets: it tells Paperboy how long it may reuse the answer, and a `changed` event drops it.
+- A plugin that does not declare a requested name is not asked; the cell shows the error instead.
+- Paperboy formats the value: a number with the declared precision and the global language, a duration, a timestamp or a direction. The plugin decides neither width nor alignment.
 
 ### `server_status`
 
@@ -261,7 +297,7 @@ Runs exactly one concrete action. Paperboy sends one `actions` entry.
 ## Answers and events
 
 An answer carries `id`, its `version` and optionally `error`, plus the payload
-for its request: `widgets`, `actions`, `result`, `conditions`, `description`
+for its request: `widgets`, `values`, `actions`, `result`, `conditions`, `description`
 or `max_age`.
 `Handle` fills `version` with the protocol version the plugin was built
 against, in every answer and in the `changed` event. Paperboy calls
@@ -358,6 +394,7 @@ Optional interfaces:
 | Interface | Purpose |
 |---|---|
 | `Texter` | `Text(req, widget) ([]string, error)` for text displays |
+| `Valuer` | `Values(req) (map[string]Value, error)` for the declared values of a text page |
 | `Preparer` | `Prepare(req) error` once per request, before its widgets |
 | `Starter` | `Start(ctx, notify)` for background work; `notify` sends `changed` |
 | `Ager` | `MaxAge(req) time.Duration` for widget and action caching |
@@ -376,6 +413,7 @@ widgets use the same fonts, gray levels and scalings as Paperboy's own.
 | 4 | Actions: `describe.actions`, `actions`, `action`, `actions`/`result` answers, `device` ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md)) |
 | 5 | Plugin state and blobs: the `state` request, `answer.state`/`answer.blobs`, `describe.blobs`; `PAPERBOY_STATE_DIR` removed ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)) |
 | 6 | Conditions: `describe.conditions`, the `conditions` request and `answer.conditions` ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)) |
+| 7 | Values: `describe.values`, the `values` request and `answer.values` ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)) |
 
 A plugin is used as a whole or not at all ([ADR 0058](../adr/0058-plugin-protocol-version-check.md)). The check is a floor,
 not equality: Paperboy requires at least version 5 and accepts newer ones,

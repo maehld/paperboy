@@ -33,27 +33,36 @@ cells:
 - On an image display the grid divides the pixels. Paperboy asks every plugin for its widgets in exactly the pixel size of the cell and the gray levels of the panel. It quantizes the PNG to the palette (nearest gray, no dithering) and pastes it 1:1, so Paperboy never scales a widget. The PNG has 1, 2 or 4 bits (2, 4 or 16 gray levels), depending on the display type. A plugin that answers with another size gets a notice in its cell.
 - `style` is in points (1 pt = 1/72 inch, [ADR 0050](adr/0050-physical-scaling-by-display-ppi.md)). Paperboy passes it to every widget and converts it to pixels with the `ppi` of the display type. `padding` is the inner margin (default 4.5 pt ≈ 1.6 mm). `rule` is the separator width (default 0.6 pt ≈ 0.2 mm, never thinner than 1 px). `text_size` is the base text height (4–144 pt, default 16 pt, at most 0.12 of the display height), so widgets of different plugins match. `divider` (points, at least 1 px, default 0 = none) draws lines between the cells; Paperboy draws them, not the widgets. The `style` of a cell overrides the page style.
 - The **built-in plugin** `paperboy` needs no configuration and provides `paperboy/header`, `paperboy/text`, `paperboy/clock` and `paperboy/logo` (see [docs/plugins/paperboy.md](plugins/paperboy.md)).
-- `kind: image` or `kind: text` is required and says which displays a file is for. A plan may serve image and text displays alike. When a device pages through a rule, Paperboy skips pages that do not fit its display type. A page does not fit when no file serves the type or when it has the other kind. It also does not fit when its text grid is not the character grid of the display. Paperboy logs each skip once per display type and page. When no page of the rule fits, the device gets a notice (*No matching page*). Paperboy does not skip a broken page; it shows its error as a notice.
+- `kind: image` or `kind: text` is required and says which displays a file is for. A plan may serve image and text displays alike. When a device pages through a rule, Paperboy skips pages that do not fit its display type. A page does not fit when no file serves the type or when it has the other kind. It also does not fit when a text box leaves the character grid of the display. Paperboy logs each skip once per display type and page. When no page of the rule fits, the device gets a notice (*No matching page*). Paperboy does not skip a broken page; it shows its error as a notice.
 - **Stale widgets**: when a plugin fails, Paperboy keeps showing its last widgets and marks the page. An image display gets a bar (*Outdated: calendar/agenda*, German *Veraltet: …*), a text display gets `!` in the last column of the first line. `notices: none` turns both off. A widget that never rendered becomes a hatched notice inside its cell with the reason. A plugin that cannot draw in its cell at all answers `cell too small: <width>x<height>` instead of leaving the cell empty, so a cell that is too small for its widget shows that notice.
 - Preview without a device: `GET /api/preview/<display type>/<page>` (PNG, or `text/plain` for text displays; an optional `?at=YYYY-MM-DDTHH:MM` renders the page as at that time in the configured timezone). `GET /api/profiles` lists the display types.
 - The page editor at `/ui/editor` builds a page from the same model (see [Web UI](runtime.md#web-ui)).
 
 ### Text pages
 
-A page for a text display (display type `kind: text`, [ADR 0044](adr/0044-text-displays-on-the-device-api.md)) says `kind: text`. Its grid is the character grid and must match the display size, and cells are measured in characters:
+A page for a text display ([ADR 0044](adr/0044-text-displays-on-the-device-api.md)) says `kind: text` and carries `cells`: boxes at a character column and row ([ADR 0118](adr/0118-text-boxes-and-overflow.md)). The display type supplies the character grid.
 
 ```yaml
+title: Werte
 kind: text
-grid: [20, 4]
+overflow: strip
 cells:
-  - { at: [0, 0], span: [20, 1], widget: paperboy/header }
-  - { at: [0, 1], span: [20, 1], widget: weather/current }
-  - { at: [0, 2], span: [20, 2], widget: calendar/agenda }
+  - { at: [0, 0], span: [20, 1], text: "Familie" }
+  - { at: [0, 1], span: [12, 2], value: paperboy/block, overflow: wrap }
+  - { at: [14, 1], span: [6, 2], value: paperboy/now, align: right }
+  - { at: [0, 3], span: [12, 1], value: paperboy/long, overflow: scroll }
 ```
 
-Plugins answer with lines for the cell. Paperboy converts them to the `charset` of the display type, cuts them to the cell width and pads them. `ascii` transliterates (ä → ae, ° → o, € → EUR). `hd44780` keeps `ä ö ü ß ° µ` for the ROM mapping of the firmware, writes `Ä Ö Ü` as `A O U` (the ROM has no capital umlauts, and the width must stay) and transliterates the rest. Set `charset: hd44780` for HD44780 displays; with the default `utf8` the firmware has to guess. A widget without a text variant shows its error in the cell. A cell that spans the whole display width may set `scroll: true` ([ADR 0092](adr/0092-scrolling-text-lines.md)): the widget then gets `scroll` in its request and may answer a line that is wider than the cell, Paperboy shows the first columns, and firmware 2.2.0 for text displays moves the rest as a marquee. Without the flag a long line is cut; `examples/pages/hinweise.yaml` shows the scrolling line.
+- A box carries exactly one of `text` and `value`. `text` is literal text, may span lines and has no label or unit. A value cell names `<plugin>/<key>`.
+- `at` and `span` are `[column, row]` and `[columns, rows]`. Boxes must stay inside the grid and must not overlap. Unused lines and columns stay blank.
+- Page `overflow` is `strip`, `wrap` or `scroll`; a cell overrides it. `strip` cuts the content, `wrap` reflows at word boundaries and cuts at the box height, and `scroll` moves a wider line horizontally or extra lines vertically.
+- A value cell can set `label`, `unit` and `align` (`left`, `right` or `decimal`). A literal text cell has no label or unit.
+- Paperboy formats values with the global language and the declared precision. It converts label, value and text to the display charset. A missing value shows `? …`; a stale value marks `!` in the last column of line 1.
+- A text page fits a display when every box fits the character grid. Other text sizes need a variant.
+- The editor places and resizes boxes on the board. It hides the style in points, has no rows panel, and edits text or value, label, unit, align and overflow in the right inspector. The stale switch is *Stale values*.
+- A scrolling box gives the device its full text, its first window, a direction, the display type's `scroll.step` (default 300 ms) and a flag whether the scroll text changed. The virtual display and the firmware animate it.
 
-The pages in `examples/pages` (`uebersicht`, `kalender`, `wetter`, `laden` and the 20 × 4 variants `uebersicht.lcd2004` and `laden.lcd2004`) use the shipped plugins; `uebersicht.yaml` and `laden.yaml` name their variant in `variants`. `examples/plans/standard.yaml` pages through them.
+The built-in plugin declares `paperboy/title`, `paperboy/time`, `paperboy/date`, `paperboy/now`, `paperboy/long` and `paperboy/block`. The shipped plugins declare values in a later protocol version; until then the `*.lcd2004` examples use the built-in values.
 
 ## Plans
 

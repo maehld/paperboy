@@ -41,6 +41,11 @@ jobs:
       - name: Check the documentation style
         run: ./scripts/check-docs.sh
 
+      - name: Smoke the browser scripts
+        run: |
+          npm install --no-save --prefix "$RUNNER_TEMP/ui" jsdom
+          NODE_PATH="$RUNNER_TEMP/ui/node_modules" node scripts/check-ui.mjs
+
       - name: Test
         run: go test ./...
 

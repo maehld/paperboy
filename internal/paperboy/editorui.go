@@ -1,6 +1,7 @@
 package paperboy
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -32,7 +33,9 @@ var editorListTmpl = template.Must(template.New("editor").Parse(editorListTempla
 //go:embed ui/editor-page.html
 var editorPageTemplate string
 
-var editorPageTmpl = template.Must(template.New("editor-page").Parse(editorPageTemplate))
+var editorPageTmpl = template.Must(template.New("editor-page").Funcs(template.FuncMap{
+	"inc": func(i int) int { return i + 1 },
+}).Parse(editorPageTemplate))
 
 //go:embed ui/editor.js
 var editorJS []byte
@@ -142,6 +145,8 @@ type editorPageView struct {
 	ParentURL     string        // the page file of an open variant
 	ParentTitle   string        // its path, for the link
 	WidgetsPage   bool          // the widgets page without a page (ADR 0055)
+	TextPage      bool          // a text page: rows are edited instead of cells
+	Cells         []page.Cell   // server-rendered boxes for the no-JS view
 	Displays      []displayLink // display type switch of the widgets page
 	Serves        []servesRow   // each configured display type and its file
 	CreateTypes   []variantType // the display types the create dialog offers
@@ -232,10 +237,11 @@ type editorState struct {
 // display type, so it starts a new variant from the type and never from the
 // open file (ADR 0110, issue #238).
 type editorDisplayInfo struct {
-	Name   string `json:"name"`
-	Kind   string `json:"kind"`
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
+	Name       string `json:"name"`
+	Kind       string `json:"kind"`
+	Width      int    `json:"width"`
+	Height     int    `json:"height"`
+	ScrollStep int    `json:"scroll_step,omitempty"` // ms between marquee steps (ADR 0118)
 }
 
 // displayNames lists the configured display types alphabetically.
@@ -319,7 +325,9 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile) e
 		}
 	}
 	g.Kind, g.Title = shown.Kind, shown.Title
-	if shown.Grid != [2]int{} {
+	if shown.Rows > 0 {
+		g.Grid = fmt.Sprintf("%d rows", shown.Rows)
+	} else if shown.Grid != [2]int{} {
 		g.Grid = fmt.Sprintf("%dx%d", shown.Grid[0], shown.Grid[1])
 	}
 	if page != nil {
@@ -400,7 +408,7 @@ func reassignTargets(files []editorPageFile, name string) []uiOption {
 }
 
 // fileFits reports whether a page file can render a display type: the same kind
-// and, for text, the character grid of the display.
+// and, for text, rows that fit the character grid (ADR 0111).
 func fileFits(f editorPageFile, p Profile) bool {
 	if f.Error != "" || f.Kind == "" {
 		return true // a broken file opens read-only, so any type can show it
@@ -408,7 +416,13 @@ func fileFits(f editorPageFile, p Profile) bool {
 	if p.text() != (f.Kind == page.KindText) {
 		return false
 	}
-	return !p.text() || f.Grid == [2]int{p.Width, p.Height}
+	if !p.text() {
+		return true
+	}
+	if f.Rows > 0 {
+		return f.Rows <= p.Height && f.textWidth <= p.Width
+	}
+	return f.Grid == [2]int{p.Width, p.Height}
 }
 
 // pageEditURL links exactly one page file with the preview display type
@@ -965,7 +979,30 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	if open != nil && open.Kind != "" {
 		kind = open.Kind
 	}
+	// A text page has no pixel grid: its rows are laid out on the character
+	// grid of a text display (ADR 0111).
+	if kind == page.KindText && !p.text() {
+		v.Error = fmt.Sprintf("a text page needs a text display type; %s is an image display", display)
+		renderEditorPage(w, v, http.StatusBadRequest)
+		return
+	}
 	context := editorPageFile{Name: name, Label: label, Kind: kind}
+	if kind == page.KindText {
+		v.TextPage = true
+		if open != nil && open.Error == "" {
+			if data, err := os.ReadFile(path); err == nil {
+				var t *page.Template
+				if label == "" {
+					t, err = page.Parse(bytes.NewReader(data))
+				} else {
+					t, err = page.ParseVariant(bytes.NewReader(data))
+				}
+				if err == nil {
+					v.Cells = t.Cells
+				}
+			}
+		}
+	}
 	switch {
 	case open != nil:
 		context.Grid = open.Grid
@@ -1093,7 +1130,11 @@ func displayInfos(cfg *Config) []editorDisplayInfo {
 		if p.text() {
 			kind = page.KindText
 		}
-		out = append(out, editorDisplayInfo{Name: name, Kind: kind, Width: p.Width, Height: p.Height})
+		info := editorDisplayInfo{Name: name, Kind: kind, Width: p.Width, Height: p.Height}
+		if p.text() {
+			info.ScrollStep = int(p.ScrollStep / time.Millisecond)
+		}
+		out = append(out, info)
 	}
 	return out
 }

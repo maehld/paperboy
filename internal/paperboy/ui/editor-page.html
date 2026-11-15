@@ -46,8 +46,10 @@ input[type=search] { margin-bottom: .4rem; }
 /* The board is the rendered page with the cell boxes on top (ADR 0074):
    the preview is the background, the boxes are the overlay. */
 #board { display: grid; background: #fff; background-size: 100% 100%; background-repeat: no-repeat; background-position: center; border: 1px solid #aaa; width: 100%; touch-action: manipulation; }
-#board.text { background: #2d4a12; }
-#board.text .slot { display: flex; align-items: center; justify-content: center; color: #d8f5a0; font: .8rem/1 ui-monospace, Consolas, monospace; border-color: rgba(216, 245, 160, .14); }
+/* A text page is an LCD module: dark green panel, one glyph per slot and a
+   thin gap between the character cells (ADR 0116). */
+#board.text { background: var(--lcd-panel-bg); gap: 1px; touch-action: none; user-select: none; padding: 3px; border: 3px solid #081304; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--lcd-edge), 0 2px 8px rgba(0, 0, 0, .35); font-family: "DotGothic16", ui-monospace, Consolas, monospace; }
+#board.text .slot { display: flex; align-items: center; justify-content: center; background: var(--lcd-cell-bg); color: var(--lcd-pixel); font-size: var(--lcd-glyph, 1rem); line-height: .95; border: 0; text-shadow: 0 0 2px rgba(185, 243, 106, .35); }
 .slot { border: 1px dashed #e6e6e6; min-height: 0; min-width: 0; overflow: hidden; }
 #board.placing .slot { background: rgba(246, 250, 255, .8); cursor: copy; }
 .cell { position: relative; background: rgba(238, 243, 251, .55); border: 1px solid #b9c9e0; padding: .15rem .3rem; overflow: hidden; min-height: 0; min-width: 0; font-size: .72rem; line-height: 1.2; cursor: grab; user-select: none; touch-action: none; }
@@ -60,6 +62,18 @@ input[type=search] { margin-bottom: .4rem; }
 .cell .handle-xy { right: 0; bottom: 0; width: 12px; height: 12px; cursor: nwse-resize; background: #134e9c; border-radius: 2px 0 0 0; }
 .cell .w { display: block; font-weight: 600; word-break: break-all; }
 .cell .pos { color: #456; }
+/* A text page's cells are transparent boxes over the character slots: the
+   value stays visible, the box is the click and drag target (ADR 0111). */
+.cell.text { background: transparent; border: 1px dashed rgba(216, 245, 160, .35); color: inherit; cursor: grab; padding: 0; user-select: none; z-index: 1; }
+.cell.text.selected { background: rgba(255, 211, 92, .08); outline: 2px solid #ffd35c; outline-offset: -2px; z-index: 3; }
+.cell.text.dragging { cursor: grabbing; opacity: .7; box-shadow: 0 4px 10px rgba(0, 0, 0, .35); }
+.cell.text .handle-x { background: rgba(255, 211, 92, .45); }
+.drop-marker { background: rgba(255, 211, 92, .12); border: 2px dashed #ffd35c; box-sizing: border-box; pointer-events: none; z-index: 4; }
+.drop-marker.invalid { background: rgba(224, 90, 90, .16); border-color: #e05a5a; }
+#board.text .slot { cursor: pointer; }
+#board.text.placing .slot { background: var(--lcd-cell-bg); }
+#board.text.placing .slot:hover { background: #24501a; }
+#board.text .slot.drop { background: #2b531b; }
 #board.hide-cells .slot { border-color: transparent; }
 #board.hide-cells .cell { background: transparent; border-color: transparent; }
 #board.hide-cells .cell.selected { outline: 0; }
@@ -97,10 +111,11 @@ ul.variant-types { margin: 0; padding-left: 1.1rem; font-size: .85rem; }
 .palette .plugin-head .count { margin-left: auto; color: #888; font-size: .72rem; font-weight: 400; }
 .palette button.widget { display: block; width: 100%; text-align: left; margin-bottom: .25rem; }
 .palette button.widget.active { border-color: #134e9c; background: #e2ecfb; }
+.palette button.widget { user-select: none; }
 .palette .note { display: block; color: #888; font-size: .72rem; }
 .preview img { display: block; width: 100%; height: auto; border: 1px solid #ccc; background: #fff; image-rendering: pixelated; }
 .preview.single img { width: auto; max-width: 100%; }
-.lcd { margin: 0; padding: .5rem .6rem; background: #2d4a12; color: #d8f5a0; font: .95rem/1.25 ui-monospace, Consolas, monospace; white-space: pre; overflow-x: auto; border-radius: 4px; }
+.lcd { margin: 0; padding: .5rem .6rem; background: #142b0a; color: var(--lcd-pixel); font: .95rem/1.25 "DotGothic16", ui-monospace, Consolas, monospace; white-space: pre; overflow-x: auto; border-radius: 4px; }
 .inspector .empty { margin: 0; color: #888; font-size: .85rem; }
 .inspector .arg { margin-bottom: .35rem; }
 .inspector .arg .name { font-size: .78rem; color: #555; display: block; }
@@ -119,6 +134,27 @@ ul.variant-types { margin: 0; padding-left: 1.1rem; font-size: .85rem; }
 .inspector .arg .check span { min-width: 0; overflow-wrap: anywhere; }
 .inspector .row-buttons { display: flex; gap: .5rem; margin-top: .6rem; }
 .inspector .muted { margin: 0 0 .4rem; }
+/* The row editor of a text page (ADR 0111). */
+.row-editor { border-top: 1px solid #eee; margin-top: .7rem; padding-top: .5rem; }
+.row-editor:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
+.row-head { display: flex; align-items: center; gap: .35rem; margin: 0 0 .4rem; }
+.row-head .spacer { margin-left: auto; }
+.row-head .over { color: #b00; font-weight: 700; }
+.inspector > .desc { display: block; color: #888; font-size: .72rem; margin: -.15rem 0 .35rem; }
+.row-editor > button { margin-top: .35rem; }
+.noscript-rows .arg { border-top: 1px solid #f0f0f0; margin-top: .5rem; padding-top: .35rem; }
+/* The compact row list under the palette; the inspector edits one cell. */
+.rows-panel .rows-line { align-items: center; border-top: 1px solid #f0f0f0; display: flex; gap: .3rem; padding: .3rem 0; }
+.rows-panel .rows-line:first-of-type { border-top: 0; }
+.rows-panel .rows-line > strong { color: #555; flex: 0 0 3rem; font-size: .74rem; }
+.rows-values { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: .2rem; min-width: 0; }
+.value-chip { align-items: center; background: #f7f9fc; border: 1px solid #dce4ee; border-radius: 4px; display: inline-flex; max-width: 100%; }
+.value-chip.selected { background: #fff8e1; border-color: #c90; }
+.value-pick { background: transparent; border: 0; color: #134e9c; font-size: .72rem; max-width: 9rem; overflow: hidden; padding: .1rem .3rem; text-overflow: ellipsis; white-space: nowrap; }
+.chip-remove { background: transparent; border: 0; border-left: 1px solid #dce4ee; color: #b00; font-size: .8rem; padding: 0 .25rem; }
+.rows-panel .rows-line > button { font-size: .78rem; padding: .05rem .35rem; }
+.rows-panel .rows-line .spacer { margin-left: auto; }
+.palette-ghost { background: #134e9c; border-radius: 4px; box-shadow: 0 2px 8px rgba(0, 0, 0, .25); color: #fff; font-size: .78rem; padding: .15rem .4rem; pointer-events: none; position: fixed; z-index: 1000; }
 .panel-head .muted, .panel-head button { margin-left: auto; }
 .snippet { margin: 0; padding: .4rem .6rem; background: #f6f6f6; border: 1px solid #ddd; border-radius: 4px; font: .85rem ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-word; user-select: all; }
 dialog { border: 1px solid #ccc; border-radius: 8px; padding: 1rem 1.1rem; width: min(22rem, 92vw); box-shadow: 0 8px 30px rgba(0, 0, 0, .18); }
@@ -164,12 +200,15 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
       <label class="field"><span>Title</span><input id="title" autocomplete="off"></label>
       <label class="field"><span>Grid</span><span class="grid2"><input id="cols" type="number" min="1" max="80" title="columns"><input id="rows" type="number" min="1" max="80" title="rows"></span></label>
       <p class="hint" id="grid-note"></p>
-      <h4>Style (pt)</h4>
-      <label class="field"><span>padding</span><input id="padding" type="number" step="0.1" min="0"></label>
-      <label class="field"><span>rule</span><input id="rule" type="number" step="0.1" min="0"></label>
-      <label class="field"><span>text size</span><input id="text-size" type="number" step="0.1" min="0"></label>
-      <label class="field"><span>divider</span><input id="divider" type="number" step="0.1" min="0"></label>
-      <h4>Stale widgets</h4>
+      <div id="style-fields"{{if .TextPage}} hidden{{end}}>
+        <h4>Style (pt)</h4>
+        <label class="field"><span>padding</span><input id="padding" type="number" step="0.1" min="0"></label>
+        <label class="field"><span>rule</span><input id="rule" type="number" step="0.1" min="0"></label>
+        <label class="field"><span>text size</span><input id="text-size" type="number" step="0.1" min="0"></label>
+        <label class="field"><span>divider</span><input id="divider" type="number" step="0.1" min="0"></label>
+      </div>
+      {{if .TextPage}}<label class="field"><span>overflow</span><select id="overflow"><option value="strip">strip</option><option value="wrap">wrap</option><option value="scroll">scroll</option></select></label>{{end}}
+      <h4>{{if .TextPage}}Stale values{{else}}Stale widgets{{end}}</h4>
       <select id="notices"><option value="show">show a bar</option><option value="none">do not show</option></select>
     </section>
     {{if .IsVariant}}<section class="panel">
@@ -198,9 +237,9 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
       <button type="button" data-dialog="create-variant">Create variant…</button>{{end}}
     </section>{{end}}{{end}}
     <section class="panel palette">
-      <h3>Widgets</h3>
-      <input id="palette-filter" type="search" placeholder="Filter widgets…" autocomplete="off" aria-label="Filter widgets">
-      <p class="hint">{{if .WidgetsPage}}Click a widget to show it on the right.{{else}}Click a widget, then a free cell, or drag it there. Drag a box by its body to move it and by an edge or corner to resize it.{{end}}</p>
+      <h3>{{if .TextPage}}Values{{else}}Widgets{{end}}</h3>
+      <input id="palette-filter" type="search" placeholder="{{if .TextPage}}Filter values…{{else}}Filter widgets…{{end}}" autocomplete="off" aria-label="Filter values">
+      <p class="hint">{{if .WidgetsPage}}Click a widget to show it on the right.{{else if .TextPage}}Click a value or Text, then a free slot. Drag a box to move it; drag an edge or corner to resize it.{{else}}Click a widget, then a free cell, or drag it there. Drag a box by its body to move it and by an edge or corner to resize it.{{end}}</p>
       <div id="palette"></div>
     </section>
   </div>
@@ -222,6 +261,24 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     </section>{{end}}
   </div>
   <div class="col">
+    {{if .TextPage}}<noscript>
+    <section class="panel noscript-rows">
+      <h3>Text cells</h3>
+      <p class="hint">JavaScript is off. These fields show the page but do not save it. Edit {{.FilePath}} by hand.</p>
+      {{if .Cells}}{{range $i, $c := .Cells}}
+      <div class="arg">
+        <label class="field"><span>At</span><input value="{{index $c.At 0}},{{index $c.At 1}}" readonly></label>
+        <label class="field"><span>Span</span><input value="{{index $c.Span 0}}×{{index $c.Span 1}}" readonly></label>
+        <label class="field"><span>Text</span><input value="{{$c.Text}}" readonly></label>
+        <label class="field"><span>Value</span><input value="{{$c.Value}}" readonly></label>
+        <label class="field"><span>Label</span><input value="{{$c.Label}}" readonly></label>
+        <label class="field"><span>Unit</span><input value="{{$c.Unit}}" readonly></label>
+        <label class="field"><span>Align</span><input value="{{$c.Align}}" readonly></label>
+        <label class="field"><span>Overflow</span><input value="{{$c.Overflow}}" readonly></label>
+      </div>
+      {{end}}{{else}}<p class="empty">No cells yet.</p>{{end}}
+    </section>
+    </noscript>{{end}}
     <section class="panel inspector" id="inspector"></section>
     {{if .WidgetsPage}}<section class="panel">
       <div class="panel-head"><h3>Snippet</h3><button class="primary" id="copy-cell" type="button" disabled>Copy cell</button></div>

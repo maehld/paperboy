@@ -8,12 +8,12 @@ installation, nothing installation-specific is compiled in.
 | File | Content |
 |---|---|
 | `common.yaml` | Shared cycle and device API (register, sync, download, sleep), included as a package |
-| `paperboy.h` | C++ helpers: sync body, event and log queue, RTC state, gray-level mapping, dithering (mono fallback), text lines and HD44780 character mapping |
+| `paperboy.h` | C++ helpers: sync body, event and log queue, RTC state, gray-level mapping, dithering (mono fallback), text rows, the scroll engine and HD44780 character mapping |
 | `sticky.yaml` | reTerminal Sticky: pins, gray4 panel, touch, BQ27220 fuel gauge |
 | `e1001.yaml` | reTerminal E1001: pins, four-level UC8179 panel via `uc8179_gray4`, ADC battery |
 | `e1003.yaml` | reTerminal E1003: pins, 16-level IT8951 panel, GT911 touch, ADC battery, deep-sleep pin holds |
-| `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep; a row whose cell set `scroll: true` moves one character per 300 ms ([ADR 0092](../../docs/adr/0092-scrolling-text-lines.md)) |
-| `lcd2004.yaml` | ESP32 dev board with a 20×4 HD44780 LCD behind a PCF8574 (I²C 0x27, SDA GPIO21, SCL GPIO22); prints every row through `pb_row`, so a scrolling line shows its window |
+| `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep; scrolling boxes move on the `step_ms` of the sync answer, horizontally, vertically or both ([ADR 0118](../../docs/adr/0118-text-boxes-and-overflow.md)) |
+| `lcd2004.yaml` | ESP32 dev board with a 20×4 HD44780 LCD behind a PCF8574 (I²C 0x27, SDA GPIO21, SCL GPIO22); prints every row through `pb_row`, so every scrolling box shows its window |
 | `fonts/` | Go Mono Bold as a subset, the face of the logo's wordmark and the firmware version ([ADR 0098](../../docs/adr/0098-the-device-shows-the-lockup-and-its-version.md)), with its licence |
 | `build.ps1` | Builds one hardware type with the pinned ESPHome version, optionally publishes it to an instance |
 
@@ -182,6 +182,17 @@ the Paperboy URL, unknown MAC, the pairing code) appear on the LCD itself. Paper
 text for `charset: hd44780` and keeps only `ä ö ü ß ° µ`, which the firmware
 maps to the A00 character ROM (`pb_hd44780`); a display with the A02 ROM would
 show other glyphs for them.
+
+A text page sends `scrolls` with every scrolling box: `row`, `col`, `width`,
+`height`, the full `text`, the first `window`, `direction` (`horizontal`,
+`vertical` or `both`), `step_ms` and `align`. `scroll_changed` says whether the
+scrolling text changed; a sync with the same text keeps the running offset,
+while a changed text, a moved box or another page starts at the first window.
+Horizontal moves a wider line by characters, vertical moves extra lines down by
+one line per step, and both move vertically first. Static rows keep standing.
+The YAML script `text_scroll` waits each step with a `delay`, so Wi-Fi, the web
+server and OTA keep running. An older server without `scrolls` still works
+through the legacy `scroll` rows with a 300 ms step ([ADR 0092](../../docs/adr/0092-scrolling-text-lines.md)).
 
 The display type as `displays/lcd2004.yaml` ([ADR 0071](../../docs/adr/0071-display-types-in-files-of-their-own.md)):
 

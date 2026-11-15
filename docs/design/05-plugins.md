@@ -18,7 +18,7 @@ The resolved path is part of the plugin's specification, so installing a new ver
 
 ## The protocol
 
-Paperboy and the plugin exchange one JSON object per line: a request on stdin, an answer on stdout with the same `id`. The protocol version is 6 ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)). Paperboy requires at least version 5 and accepts newer ones, because the protocol only grows additively. `Message.CheckVersion` runs on every answer; a wrong version fails that plugin with one clear log line instead of a broken page ([ADR 0058](../adr/0058-plugin-protocol-version-check.md), [0081](../adr/0081-plugin-state-over-the-protocol.md)).
+Paperboy and the plugin exchange one JSON object per line: a request on stdin, an answer on stdout with the same `id`. The protocol version is 7 ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). Paperboy requires at least version 5 and accepts newer ones, because the protocol only grows additively. `Message.CheckVersion` runs on every answer; a wrong version fails that plugin with one clear log line instead of a broken page ([ADR 0058](../adr/0058-plugin-protocol-version-check.md), [0081](../adr/0081-plugin-state-over-the-protocol.md)).
 
 | Action | Request carries | Answer carries |
 |---|---|---|
@@ -27,6 +27,7 @@ Paperboy and the plugin exchange one JSON object per line: a request on stdin, a
 | `describe` | – | Widgets, actions, conditions, config keys, blob names, version |
 | `render` | Widgets with pixel `width`/`height`, `args`, `style` | One base64 PNG per widget |
 | `text` | The same in characters | `lines` per widget |
+| `values` | The value keys a text page needs | `values` per key |
 | `actions` | Concrete plan actions, the device | State per action: title, `disabled` reason, `confirm` |
 | `action` | One action with its args, the device | `result` with `ok`, `message`, `changed` |
 | `conditions` | – | A map of the declared conditions, true while active |
@@ -44,6 +45,7 @@ A plugin answers with `version`, optionally `state`, `blobs`, `widgets`, `action
 - **Widgets** with their sizes as spans of the 6 × 8 reference grid, and the arguments of each widget.
 - **Actions** with name, title, arguments, whether they need a confirmation, and the conditions under which they are offered.
 - **Conditions** with name, title and description, for the rules of a plan ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)).
+- **Values** with name, title, type, unit, precision and kind, for the cells of a text page ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)).
 - **Config keys**, the **blob names** that Paperboy stores for it, and its own **version**.
 
 An argument declares its type, default, whether it is required and its description. It can also declare an `enum` of allowed values with `enum_labels` for the display text ([ADR 0055](../adr/0055-allowed-arg-values-and-gallery-form.md)). The stored value is the key; an editor without a label shows the key. `plugin.Values.Check` rejects a value outside the declared set, so a typo in a page fails loudly instead of drawing something unexpected.
@@ -55,10 +57,11 @@ A widget that cannot draw anything in its cell reports `ErrTooSmall` with the ce
 `internal/widget` owns the processes ([ADR 0049](../adr/0049-plugin-widgets.md)).
 
 - A plugin starts on first use. After an exit, after its `timeout` (default 30 seconds, killed) and after a change of its specification it is started again. Removed plugins drop their cached results.
-- The cache is keyed by plugin, widget, arguments, size, gray levels or text, style, page, language and timezone. An entry lives until the plugin's `max_age` (default 5 minutes).
+- The cache is keyed by plugin, widget, arguments, size, gray levels or text, style, page, language, timezone and device. An entry lives until the plugin's `max_age` (default 5 minutes).
 - A background loop every 5 seconds renders entries that were used within the last hour again before they expire, or after a `changed` event. Entries idle for an hour are evicted, and the cache holds at most 1000 entries.
 - A failing plugin serves its stale results and is not asked again for a minute.
 - The built-in plugin runs in process and is never cached.
+- Values get the same cache and the same `changed` event as widgets. A describe answer lives for five minutes, because it carries the declarations a text page uses to format a value.
 
 Conditions get their own cache of 10 seconds per plugin. A sync therefore never waits, and a text display that polls every second does not ask every time. A `changed` event or a changed specification drops the answer. A plugin that fails answers with an error, and then every condition counts as inactive.
 
@@ -80,7 +83,7 @@ Every plugin has its own version in `cmd/<plugin>/VERSION`, embedded in the prog
 
 ## The built-in plugin
 
-`internal/builtin` provides the plugin `paperboy`: `header`, `text`, `clock`, `logo`, `battery` and `device-status`, for image and text displays ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md), [0115](../adr/0115-device-status-in-a-widget.md)). It draws from `pkg/render` and needs no data source, so it is always available and never cached. It is the only plugin that receives `server_status`; a page that shows its own device is cached per device.
+`internal/builtin` provides the plugin `paperboy`: `header`, `text`, `clock`, `logo`, `battery` and `device-status`, for image and text displays ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md), [0115](../adr/0115-device-status-in-a-widget.md)). It draws from `pkg/render` and needs no data source, so it is always available and never cached. Its values `title`, `time`, `now`, `date`, `long` and `block` give a text page data without another plugin ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). It is the only plugin that receives `server_status`; a page that shows its own device is cached per device.
 
 ## The shipped plugins
 
@@ -101,4 +104,4 @@ Most of them have text variants. The [plugin pages](../plugins/README.md) descri
 
 ## Decisions
 
-[ADR 0048](../adr/0048-calendar-provider-and-agenda.md) (calendar) · [0049](../adr/0049-plugin-widgets.md) (plugin widgets) · [0053](../adr/0053-departures-from-efa.md), [0100](../adr/0100-one-stop-per-departures-widget.md) (departures) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0058](../adr/0058-plugin-protocol-version-check.md) (protocol version check) · [0065](../adr/0065-plugin-state-directory.md) → [0081](../adr/0081-plugin-state-over-the-protocol.md) (state) · [0075](../adr/0075-plugin-versions.md), [0107](../adr/0107-plugin-builds-reach-installations.md) (a version per plugin) · [0099](../adr/0099-glucose-readings-from-the-dexcom-share-service.md) (Dexcom) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions)
+[ADR 0048](../adr/0048-calendar-provider-and-agenda.md) (calendar) · [0049](../adr/0049-plugin-widgets.md) (plugin widgets) · [0111](../adr/0111-text-pages-from-plugin-values.md) (values for text pages, amended by [ADR-0118](0118-text-boxes-and-overflow.md)) · [0053](../adr/0053-departures-from-efa.md), [0100](../adr/0100-one-stop-per-departures-widget.md) (departures) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0058](../adr/0058-plugin-protocol-version-check.md) (protocol version check) · [0065](../adr/0065-plugin-state-directory.md) → [0081](../adr/0081-plugin-state-over-the-protocol.md) (state) · [0075](../adr/0075-plugin-versions.md), [0107](../adr/0107-plugin-builds-reach-installations.md) (a version per plugin) · [0099](../adr/0099-glucose-readings-from-the-dexcom-share-service.md) (Dexcom) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions)

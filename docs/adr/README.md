@@ -62,10 +62,12 @@ The content model: what a page is, what draws in it and when it is shown. See [`
 | [0095](0095-the-logo-on-pages-and-devices.md) | The Paperboy logo on pages and on the device | Accepted, implemented |
 | [0103](0103-plugin-conditions-in-plans.md) | Show a page while a plugin condition is active | Accepted, implemented; replaces the unimplemented `when.data` of [ADR-0025](0025-plaene-je-display.md) with conditions from plugins |
 | [0110](0110-pages-serve-their-kind-and-name-variants.md) | Pages serve their kind and name their variants | Accepted, implemented; replaces the implicit variant/shared precedence of [ADR-0049](0049-plugin-widgets.md) and the file handling of [ADR-0068](0068-page-editor-ui.md), [ADR-0073](0073-edit-creates-and-deletes.md), [ADR-0079](0079-rename-config-items.md) (page part), [ADR-0093](0093-every-page-file-is-addressable.md) and [ADR-0094](0094-the-pages-list-is-a-list.md) with an explicit variant list; a page rename moves the variants ([ADR-0113](0113-a-page-rename-moves-its-variants.md)) |
-| [0111](0111-text-pages-from-plugin-values.md) | Text pages from plugin values | Accepted, not implemented; builds on [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md), replaces the text widget of [ADR-0049](0049-plugin-widgets.md) in stages |
+| [0111](0111-text-pages-from-plugin-values.md) | Text pages from plugin values | Accepted, partly implemented (values, text boxes, overflow policies, editor and preview); plugin migrations open, lists (`for-each`) deferred to the first list plugin; builds on [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md), replaces the text widget of [ADR-0049](0049-plugin-widgets.md) in stages |
 | [0112](0112-a-missing-page-file.md) | A missing page file is created by hand | Accepted, implemented; removes the assign dialog and `POST /api/pages/{name}/assign` of [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md); a variant without a page file is read-only; a page rename moves its variants ([ADR-0113](0113-a-page-rename-moves-its-variants.md)) |
 | [0113](0113-a-page-rename-moves-its-variants.md) | A page rename moves its variants | Accepted, implemented; amends the rename part of [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md) and the orphan case of [ADR-0112](0112-a-missing-page-file.md) |
 | [0115](0115-device-status-in-a-widget.md) | Device status in a widget | Accepted, implemented; adds `server_status` to the built-in plugin request and the widgets `battery` and `device-status` |
+| [0117](0117-text-cells-name-their-column.md) | Text cells name their column | Accepted, implemented; amends the row model of [ADR-0111](0111-text-pages-from-plugin-values.md) with a free column per cell, like the `at` of [ADR-0085](0085-moving-and-resizing-widgets.md) |
+| [0118](0118-text-boxes-and-overflow.md) | Text boxes and overflow | Accepted, implemented; replaces the row model of [ADR-0117](0117-text-cells-name-their-column.md) with boxes in a character grid, adds strip/wrap/scroll per cell and literal text cells |
 
 ## Devices and the device protocol
 
@@ -132,6 +134,7 @@ The web UI: what the operator sees and how content is edited. See [`04-operator-
 | [0096](0096-a-password-for-the-operator-ui.md) | A password for the operator UI | Accepted, implemented; supersedes the "no token" decision of [ADR-0040](0040-operator-dashboard.md) and [ADR-0049](0049-plugin-widgets.md) for the operator UI; the device API keeps its key ([ADR-0042](0042-device-protocol.md)) |
 | [0104](0104-runtime-stats-in-the-web-ui.md) | Runtime stats in the web UI | Accepted, implemented |
 | [0106](0106-self-updating-pages-with-htmx.md) | Self-updating operator pages with htmx | Accepted, implemented; replaces the `<meta http-equiv="refresh">` of [ADR-0040](0040-operator-dashboard.md) for the dashboard, the stats page and the downloads page |
+| [0116](0116-a-pixel-font-for-text-previews.md) | A pixel font for text previews | Accepted, implemented; builds on the board of [ADR-0074](0074-editor-board-shows-the-preview.md), the one stylesheet of [ADR-0076](0076-one-stylesheet-and-one-navigation.md), the virtual display of [ADR-0091](0091-virtual-display.md) and the text pages of [ADR-0111](0111-text-pages-from-plugin-values.md) |
 
 ## Plugins
 

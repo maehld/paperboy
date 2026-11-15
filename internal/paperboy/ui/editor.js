@@ -30,7 +30,7 @@
     readOnly: false,
     selected: -1,
     drag: null, // {kind, i, axis, grab, at, span, start, moved} while a box moves or resizes
-    placing: null, // {plugin, widget} waiting for a cell
+    placing: null, // {plugin, widget} or {plugin, name, value: true} waiting for a cell
     filter: '', // text of the palette filter
     collapsed: new Set(), // plugins whose widgets the palette hides
     plugins: [],
@@ -42,7 +42,32 @@
     previewLines: [], // the text lines of a text display, one char per cell
   };
 
+  let suppressPaletteClick = false; // a finished palette drag must not toggle placing
+
   const text = () => state.kind === 'text';
+  // A text page is a layout of rows of values (ADR 0111). The palette offers
+  // the declared values, and the inspector edits rows and cells.
+  const rowsPage = () => !state.widgetsPage && text();
+  const textCellsValid = () => {
+    const t = state.template;
+    if (!t || !Array.isArray(t.cells) || t.cells.length === 0) return false;
+    for (const c of t.cells) {
+      const at = c.at, span = c.span;
+      if (!Array.isArray(at) || !Array.isArray(span)) return false;
+      if (at[0] < 0 || at[1] < 0 || span[0] < 1 || span[1] < 1 ||
+        at[0] + span[0] > state.width || at[1] + span[1] > state.height) return false;
+      if ((c.text || '') === (c.value || '')) return false;
+    }
+    for (let i = 0; i < t.cells.length; i++) {
+      const a = t.cells[i];
+      for (let j = i + 1; j < t.cells.length; j++) {
+        const b = t.cells[j];
+        if (a.at[0] < b.at[0] + b.span[0] && b.at[0] < a.at[0] + a.span[0] &&
+          a.at[1] < b.at[1] + b.span[1] && b.at[1] < a.at[1] + a.span[1]) return false;
+      }
+    }
+    return true;
+  };
   const targetPath = () => 'pages/' + state.name + (state.file ? '.' + state.file : '') + '.yaml';
 
   // ---- status and where ----
@@ -78,8 +103,8 @@
   }
 
   function updateSave() {
-    const hasCell = !!state.template && !state.readOnly &&
-      (!state.widgetsPage || state.template.cells.length > 0);
+    const content = rowsPage() ? textCellsValid() : !!state.template && (!state.widgetsPage || state.template.cells.length > 0);
+    const hasCell = !!state.template && !state.readOnly && content;
     // The page editor saves, the widgets page copies the cell: one button each.
     const save = el('save');
     if (save) save.disabled = !hasCell;
@@ -106,13 +131,24 @@
     updateSave();
     renderBoard();
     if (origin === 'inspector') updateSnippet();
-    else renderInspector();
+    else {
+      renderInspector();
+    }
     schedulePreview();
   }
 
   // ---- model ----
 
   function blank() {
+    if (rowsPage()) {
+      return {
+        title: state.file ? '' : state.name,
+        kind: 'text',
+        overflow: 'strip',
+        cells: [{ at: [0, 0], span: [Math.max(1, state.width), 1], text: 'Text' }],
+        style: {},
+      };
+    }
     const grid = text() ? [state.width, state.height] : (state.widgetsPage ? state.reference.slice() : state.grid.slice());
     return { title: state.file ? '' : state.name, kind: state.kind, grid: grid, style: {}, cells: [] };
   }
@@ -120,6 +156,28 @@
   // normalize keeps the model in the shape serialize writes back: two-element
   // coordinates, args, styles and the variants map present.
   function normalize(t) {
+    if (rowsPage()) {
+      t.kind = 'text';
+      t.grid = [state.width, state.height];
+      t.style = t.style || {};
+      t.variants = t.variants || {};
+      t.overflow = t.overflow || 'strip';
+      t.cells = (t.cells || []).map((c) => {
+        const at = Array.isArray(c.at) && c.at.length === 2 ? [Math.round(Number(c.at[0])) || 0, Math.round(Number(c.at[1])) || 0] : [0, 0];
+        const span = Array.isArray(c.span) && c.span.length === 2 ? [Math.max(1, Math.round(Number(c.span[0])) || 1), Math.max(1, Math.round(Number(c.span[1])) || 1)] : [1, 1];
+        return {
+          at,
+          span,
+          text: c.text || '',
+          value: c.value || '',
+          label: c.label || '',
+          unit: c.unit || '',
+          align: c.align === 'right' || c.align === 'decimal' ? c.align : 'left',
+          overflow: c.overflow === 'wrap' || c.overflow === 'scroll' ? c.overflow : '',
+        };
+      });
+      return t;
+    }
     t.kind = t.kind || state.kind;
     t.grid = Array.isArray(t.grid) && t.grid.length === 2 ? [t.grid[0], t.grid[1]] : state.grid.slice();
     t.style = t.style || {};
@@ -130,7 +188,6 @@
       widget: c.widget,
       args: c.args || {},
       style: c.style || {},
-      scroll: c.scroll === true,
     }));
     return t;
   }
@@ -157,17 +214,30 @@
   // title and the variants map; a variant carries neither (ADR 0110).
   function serialize() {
     const t = state.template;
-    const out = { kind: t.kind, grid: [t.grid[0], t.grid[1]], style: styleOut(t.style || {}), cells: [] };
+    const out = rowsPage()
+      ? { kind: 'text', overflow: t.overflow || 'strip', style: styleOut(t.style || {}), cells: t.cells.map((c) => {
+        const cell = { at: [c.at[0], c.at[1]], span: [c.span[0], c.span[1]] };
+        if (c.text) cell.text = c.text;
+        else {
+          cell.value = c.value;
+          if (c.label) cell.label = c.label;
+          if (c.unit) cell.unit = c.unit;
+        }
+        if (c.align && c.align !== 'left') cell.align = c.align;
+        if (c.overflow) cell.overflow = c.overflow;
+        return cell;
+      }) }
+      : { kind: t.kind, grid: [t.grid[0], t.grid[1]], style: styleOut(t.style || {}), cells: [] };
     if (!state.file) {
       out.title = t.title || '';
       if (t.variants && Object.keys(t.variants).length) out.variants = t.variants;
     }
     if (t.notices === 'none') out.notices = 'none';
+    if (rowsPage()) return out;
     out.cells = t.cells.map((c) => {
       const cell = { at: [c.at[0], c.at[1]], span: [c.span[0], c.span[1]], widget: c.widget, args: c.args || {} };
       const style = styleOut(c.style || {});
       if (Object.keys(style).length) cell.style = style;
-      if (c.scroll) cell.scroll = true;
       return cell;
     });
     return out;
@@ -177,6 +247,195 @@
     const p = state.plugins.find((x) => x.name === plugin);
     if (!p || !p.description) return null;
     return (p.description.widgets || []).find((w) => w.widget === widget) || null;
+  }
+
+  // textValues flattens the value declarations of /api/plugins. A text cell
+  // shows one of them; protocol 7 answers single values only (ADR 0111).
+  function textValues() {
+    const out = [];
+    for (const p of state.plugins) {
+      for (const v of (p.description && p.description.values) || []) {
+        if (v.kind === 'list') continue;
+        out.push({ plugin: p.name, name: v.name, title: v.title || v.name, type: v.type || '', unit: v.unit || '' });
+      }
+    }
+    return out;
+  }
+
+  function valueKey(v) { return v.plugin + '/' + v.name; }
+
+  function valueInfo(key) {
+    return textValues().find((v) => valueKey(v) === key) || null;
+  }
+
+  function firstValueKey() {
+    const v = textValues()[0];
+    return v ? valueKey(v) : '';
+  }
+
+  // defaultValueWidth leaves room for a sample of the value and its unit.
+  function defaultValueWidth(info) {
+    let sample = 'Text';
+    if (info) {
+      switch (info.type) {
+        case 'number': sample = info.precision > 0 ? '0,' + '0'.repeat(info.precision) : '0'; break;
+        case 'duration': sample = '00min'; break;
+        case 'timestamp': sample = '00:00'; break;
+        case 'direction': sample = '^'; break;
+        default: sample = (info.title || info.name || 'Text').slice(0, 4);
+      }
+    }
+    const unit = info && info.unit ? ' ' + info.unit : '';
+    return Math.max(5, Math.min(state.width, (sample + unit).length));
+  }
+
+  // startPaletteDrag drags a value or the literal Text entry onto the board.
+  function startPaletteDrag(e, button, plugin, name, literal) {
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const pointerId = e.pointerId;
+    const info = valueInfo(plugin + '/' + name);
+    const width = literal ? 0 : defaultValueWidth(info);
+    let active = false;
+    let pos = null;
+    let ghost = null;
+    let finished = false;
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!active && Math.abs(dx) + Math.abs(dy) < 4) return;
+      if (!active) {
+        active = true;
+        state.placing = null;
+        button.classList.add('dragging');
+        ghost = document.createElement('div');
+        ghost.className = 'palette-ghost';
+        ghost.textContent = literal ? 'Text' : plugin + '/' + name;
+        document.body.appendChild(ghost);
+      }
+      if (ev.cancelable) ev.preventDefault();
+      ghost.style.left = (ev.clientX + 12) + 'px';
+      ghost.style.top = (ev.clientY + 12) + 'px';
+      pos = cellAtPointer(ev);
+      if (pos) {
+        const w = literal ? Math.min(10, state.width - pos.x) : width;
+        showDropMarker(pos.x, pos.y, Math.max(1, w), 1, !fitsText(pos.x, pos.y, Math.max(1, w), 1, -1));
+      } else {
+        clearDropMarker();
+      }
+    };
+    const finish = (ev, dropIt) => {
+      if (finished) return;
+      finished = true;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      button.classList.remove('dragging');
+      if (ghost) ghost.remove();
+      clearDropMarker();
+      if (button.hasPointerCapture && button.hasPointerCapture(pointerId)) {
+        try { button.releasePointerCapture(pointerId); } catch (err) { /* already gone */ }
+      }
+      if (!active) return;
+      suppressPaletteClick = true;
+      setTimeout(() => { suppressPaletteClick = false; }, 0);
+      if (dropIt) {
+        const at = cellAtPointer(ev);
+        if (at) {
+          placeTextAt(at.x, at.y, plugin, name, literal);
+          return;
+        }
+      }
+    };
+    const up = (ev) => finish(ev, true);
+    const cancel = (ev) => finish(ev, false);
+    try { button.setPointerCapture && button.setPointerCapture(pointerId); } catch (err) { /* no capture */ }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+  }
+
+  // pickTextValue and pickTextLiteral toggle click-then-place mode.
+  function pickTextValue(plugin, name) {
+    if (!state.template) return;
+    const same = state.placing && state.placing.value && !state.placing.literal &&
+      state.placing.plugin === plugin && state.placing.name === name;
+    state.placing = same ? null : { plugin, name, value: true };
+    if (state.placing) setCellsVisible(true);
+    renderPalette();
+    renderBoard();
+  }
+
+  function pickTextLiteral() {
+    if (!state.template) return;
+    state.placing = state.placing && state.placing.literal ? null : { literal: true, value: true };
+    if (state.placing) setCellsVisible(true);
+    renderPalette();
+    renderBoard();
+  }
+
+  function fitsText(x, y, w, h, ignore) {
+    if (x < 0 || y < 0 || w < 1 || h < 1 || x+w > state.width || y+h > state.height) return false;
+    return !overlaps(x, y, w, h, ignore);
+  }
+
+  // placeTextAt puts a value or literal text box at the clicked slot.
+  function placeTextAt(x, y, plugin, name, literal) {
+    const t = state.template;
+    if (!t) return;
+    const info = valueInfo(plugin + '/' + name);
+    let w = literal ? Math.min(10, state.width - x) : defaultValueWidth(info);
+    w = Math.max(1, Math.min(w, state.width - x));
+    if (!fitsText(x, y, w, 1, -1)) {
+      if (fitsText(x, y, 1, 1, -1)) w = 1;
+      else { setStatus('That area is taken; click a free slot.', 'error'); return; }
+    }
+    t.cells = t.cells || [];
+    t.cells.push({
+      at: [x, y], span: [w, 1],
+      text: literal ? 'Text' : '', value: literal ? '' : plugin + '/' + name,
+      label: '', unit: '',
+      align: !literal && info && info.type === 'number' ? 'decimal' : 'left',
+      overflow: '',
+    });
+    state.selected = t.cells.length - 1;
+    state.placing = null;
+    changed();
+    renderPalette();
+  }
+
+  // showDropMarker draws the rectangle a palette drop would create.
+  function showDropMarker(x, y, w, h, invalid) {
+    const board = el('board');
+    if (!board || !state.template) return;
+    clearDropMarker();
+    const width = Math.max(1, Math.min(w, state.width));
+    const height = Math.max(1, Math.min(h, state.height));
+    const col = Math.max(0, Math.min(state.width - width, x));
+    const row = Math.max(0, Math.min(state.height - height, y));
+    const marker = document.createElement('div');
+    marker.className = 'drop-marker' + (invalid ? ' invalid' : '');
+    marker.style.gridArea = (row + 1) + ' / ' + (col + 1) + ' / span ' + height + ' / span ' + width;
+    board.appendChild(marker);
+  }
+
+  function clearDropMarker() {
+    const board = el('board');
+    if (!board) return;
+    for (const node of board.querySelectorAll('.drop-marker')) node.remove();
+    for (const slot of board.querySelectorAll('.slot.drop')) slot.classList.remove('drop');
+  }
+
+  // cellAtPointer maps the pointer to a slot only while it is over the board;
+  // a drop outside the board cancels.
+  function cellAtPointer(e) {
+    const board = el('board');
+    const t = state.template;
+    if (!board || !t) return null;
+    const r = board.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    if (e.clientX < r.left || e.clientX >= r.right || e.clientY < r.top || e.clientY >= r.bottom) return null;
+    return cellAt(e);
   }
 
   function overlaps(x, y, w, h, skip) {
@@ -191,26 +450,30 @@
     if (state.widgetsPage) return;
     const t = state.template;
     const off = !t || state.readOnly;
-    for (const id of ['title', 'cols', 'rows', 'padding', 'rule', 'text-size', 'divider', 'notices']) el(id).disabled = off;
+    for (const id of ['title', 'padding', 'rule', 'text-size', 'divider', 'notices']) el(id).disabled = off;
+    if (el('overflow')) el('overflow').disabled = off;
     el('title').disabled = off || state.file !== '';
     el('cols').disabled = off || text();
     el('rows').disabled = off || text();
-    el('grid-note').textContent = text()
-      ? 'The grid is the character grid of the display and cannot be changed.'
-      : 'Cells of the page; plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid.';
+    el('grid-note').textContent = rowsPage()
+      ? 'Text page: ' + state.width + '×' + state.height + ' characters. Drag a box to move it; its edges resize it.'
+      : text()
+        ? 'The grid is the character grid of the display and cannot be changed.'
+        : 'Cells of the page; plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid.';
     if (!t) {
       for (const id of ['title', 'cols', 'rows', 'padding', 'rule', 'text-size', 'divider']) el(id).value = '';
       return;
     }
     const s = t.style || {};
     el('title').value = t.title || state.page_title || '';
-    el('cols').value = t.grid[0];
-    el('rows').value = t.grid[1];
+    el('cols').value = rowsPage() ? state.width : t.grid[0];
+    el('rows').value = rowsPage() ? state.height : t.grid[1];
     el('padding').value = s.padding === undefined || s.padding === null ? '' : s.padding;
     el('rule').value = s.rule || '';
     el('text-size').value = s.text_size || '';
     el('divider').value = s.divider || '';
     el('notices').value = t.notices === 'none' ? 'none' : 'show';
+    if (el('overflow')) el('overflow').value = t.overflow || 'strip';
   }
 
   function applyGrid() {
@@ -237,9 +500,108 @@
 
   // ---- palette ----
 
+  // renderValuePalette lists the values the plugins declare, grouped by
+  // plugin, so a text page picks data instead of widgets (ADR 0111).
+  function renderValuePalette(box) {
+    if (!state.plugins.length) {
+      box.innerHTML = '<p class="hint">No plugin answered.</p>';
+      return;
+    }
+    const filter = state.filter.trim().toLowerCase();
+    let shown = 0;
+    if (!filter || 'text literal'.includes(filter)) {
+      const textButton = document.createElement('button');
+      textButton.type = 'button';
+      textButton.className = 'widget' + (state.placing && state.placing.literal ? ' active' : '');
+      textButton.textContent = 'Text — literal text';
+      const note = document.createElement('span');
+      note.className = 'note';
+      note.textContent = 'a plain label';
+      textButton.appendChild(note);
+      textButton.addEventListener('click', () => {
+        if (suppressPaletteClick) { suppressPaletteClick = false; return; }
+        pickTextLiteral();
+      });
+      box.appendChild(textButton);
+      shown++;
+    }
+    for (const p of state.plugins) {
+      const values = ((p.description && p.description.values) || []).filter((v) => v.kind !== 'list');
+      const matches = values.filter((v) => !filter ||
+        (p.name + ' ' + v.name + ' ' + (v.title || '')).toLowerCase().includes(filter));
+      if (!matches.length) continue;
+      const section = document.createElement('div');
+      section.className = 'plugin';
+      const head = document.createElement('div');
+      head.className = 'plugin-head';
+      head.title = 'Show or hide the values of this plugin';
+      const collapsed = state.collapsed.has(p.name);
+      const chev = document.createElement('span');
+      chev.className = 'chev';
+      chev.textContent = collapsed ? '▸' : '▾';
+      const name = document.createElement('span');
+      name.textContent = p.name + (p.description && p.description.title ? ' · ' + p.description.title : '');
+      const count = document.createElement('span');
+      count.className = 'count';
+      count.textContent = String(matches.length);
+      head.append(chev, name, count);
+      head.addEventListener('click', () => {
+        if (collapsed) state.collapsed.delete(p.name);
+        else state.collapsed.add(p.name);
+        renderPalette();
+      });
+      section.appendChild(head);
+      if (collapsed) {
+        box.appendChild(section);
+        continue;
+      }
+      if (p.error) {
+        const note = document.createElement('span');
+        note.className = 'note';
+        note.textContent = p.error;
+        section.appendChild(note);
+      }
+      for (const v of matches) {
+        shown++;
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'widget' + (state.placing && state.placing.value && !state.placing.literal &&
+          state.placing.plugin === p.name && state.placing.name === v.name ? ' active' : '');
+        b.textContent = v.name + ' — ' + (v.title || v.name);
+        const note = document.createElement('span');
+        note.className = 'note';
+        note.textContent = [v.type, v.unit].filter(Boolean).join(' · ');
+        if (note.textContent) b.appendChild(note);
+        b.addEventListener('click', () => {
+          if (suppressPaletteClick) {
+            suppressPaletteClick = false;
+            return;
+          }
+          pickTextValue(p.name, v.name);
+        });
+        b.addEventListener('pointerdown', (e) => {
+          if (e.button !== undefined && e.button !== 0) return;
+          startPaletteDrag(e, b, p.name, v.name, false);
+        });
+        section.appendChild(b);
+      }
+      box.appendChild(section);
+    }
+    if (!shown) {
+      const p = document.createElement('p');
+      p.className = 'hint';
+      p.textContent = filter ? 'No value matches “' + state.filter.trim() + '”.' : 'No plugin declares a value.';
+      box.appendChild(p);
+    }
+  }
+
   function renderPalette() {
     const box = el('palette');
     box.innerHTML = '';
+    if (rowsPage()) {
+      renderValuePalette(box);
+      return;
+    }
     if (state.readOnly || !state.template) {
       box.innerHTML = '<p class="hint">The file does not read as a page; fix it by hand and reload.</p>';
       return;
@@ -251,6 +613,22 @@
     const kind = text() ? 'text' : 'image';
     const filter = state.filter.trim().toLowerCase();
     let shown = 0;
+    if (!filter || 'text literal'.includes(filter)) {
+      const textButton = document.createElement('button');
+      textButton.type = 'button';
+      textButton.className = 'widget' + (state.placing && state.placing.literal ? ' active' : '');
+      textButton.textContent = 'Text — literal text';
+      const note = document.createElement('span');
+      note.className = 'note';
+      note.textContent = 'a plain label';
+      textButton.appendChild(note);
+      textButton.addEventListener('click', () => {
+        if (suppressPaletteClick) { suppressPaletteClick = false; return; }
+        pickTextLiteral();
+      });
+      box.appendChild(textButton);
+      shown++;
+    }
     for (const p of state.plugins) {
       const widgets = (p.description && p.description.widgets) || [];
       const fitting = widgets.filter((w) => !w.kinds || !w.kinds.length || w.kinds.includes(kind));
@@ -325,7 +703,7 @@
   }
 
   function pick(plugin, widget) {
-    if (!state.template) return;
+    if (!state.template || rowsPage()) return;
     if (state.widgetsPage) {
       showWidget(plugin, widget);
       return;
@@ -549,8 +927,13 @@
     else setSpan(d.i, d.span[0], d.span[1]);
   }
 
-  // boardDrop places a widget that was dragged out of the palette: the cell
-  // under the pointer is the top-left corner of the new box.
+  // boardDragOver accepts a drag over the board and marks the drop position of
+  // a text page.
+  function boardDragOver(e) {
+    e.preventDefault();
+  }
+
+  // boardDrop places a widget that was dragged out of the palette.
   function boardDrop(e) {
     e.preventDefault();
     const t = state.template;
@@ -601,22 +984,66 @@
       el('board-note').textContent = 'The file cannot be edited until it reads as a page again.';
       return;
     }
-    board.style.gridTemplateColumns = 'repeat(' + t.grid[0] + ', 1fr)';
-    board.style.gridTemplateRows = 'repeat(' + t.grid[1] + ', 1fr)';
+    const cols = rowsPage() ? state.width : t.grid[0];
+    const rows = rowsPage() ? state.height : t.grid[1];
+    board.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+    board.style.gridTemplateRows = 'repeat(' + rows + ', 1fr)';
     board.style.aspectRatio = state.width + ' / ' + state.height;
-    for (let y = 0; y < t.grid[1]; y++) {
-      for (let x = 0; x < t.grid[0]; x++) {
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
         const slot = document.createElement('div');
         slot.className = 'slot';
         slot.dataset.x = String(x);
         slot.dataset.y = String(y);
         slot.style.gridArea = (y + 1) + ' / ' + (x + 1);
         slot.addEventListener('click', () => {
-          if (state.placing) place(state.placing.plugin, state.placing.widget, x, y);
+          if (rowsPage()) {
+            if (state.placing) placeTextAt(x, y, state.placing.plugin, state.placing.name, state.placing.literal);
+            else select(-1);
+          } else if (state.placing) place(state.placing.plugin, state.placing.widget, x, y);
           else select(-1);
         });
         board.appendChild(slot);
       }
+    }
+    if (rowsPage()) {
+      t.cells.forEach((c, i) => {
+        const box = document.createElement('div');
+        box.className = 'cell text' + (i === state.selected ? ' selected' : '');
+        box.dataset.i = String(i);
+        box.style.gridArea = (c.at[1] + 1) + ' / ' + (c.at[0] + 1) + ' / span ' + c.span[1] + ' / span ' + c.span[0];
+        box.title = (c.text ? 'text' : c.value || 'no value') + ' · ' + c.at[0] + ',' + c.at[1] + ' · ' + c.span[0] + '×' + c.span[1];
+        box.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          startDrag(e, i, 'move');
+        });
+        for (const [axis, cls, label] of [
+          ['x', 'handle-x', 'Drag to change the width'],
+          ['y', 'handle-y', 'Drag to change the height'],
+          ['both', 'handle-xy', 'Drag to resize'],
+        ]) {
+          const handle = document.createElement('span');
+          handle.className = 'handle ' + cls;
+          handle.title = label;
+          handle.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            startDrag(e, i, 'resize', axis);
+          });
+          box.appendChild(handle);
+        }
+        board.appendChild(box);
+      });
+      let note = state.width + '×' + state.height + ' characters, ' + t.cells.length + ' boxes';
+      const scrollers = t.cells.filter((c) => (c.overflow || t.overflow || 'strip') === 'scroll');
+      if (scrollers.length) {
+        const display = state.displays.find((d) => d.name === state.display);
+        const step = (display && display.scroll_step) || 300;
+        note += ' · scrolls, step ' + step + ' ms';
+      }
+      if (state.placing) note = 'Click a slot to place ' + (state.placing.literal ? 'text' : state.placing.plugin + '/' + state.placing.name) + '.';
+      el('board-note').textContent = note;
+      applyBoardPreview();
+      return;
     }
     t.cells.forEach((c, i) => {
       const cell = document.createElement('div');
@@ -675,13 +1102,19 @@
     }
     for (const slot of board.querySelectorAll('.slot')) slot.textContent = '';
     if (state.previewKind !== 'text' || !state.template) return;
-    const [cols, rows] = state.template.grid;
+    const [cols, rows] = rowsPage() ? [state.width, state.height] : state.template.grid;
     for (let y = 0; y < rows; y++) {
       const line = state.previewLines[y] || '';
       for (let x = 0; x < cols; x++) {
         const slot = board.querySelector('.slot[data-x="' + x + '"][data-y="' + y + '"]');
         if (slot) slot.textContent = line[x] || '';
       }
+    }
+    // The pixel font fills the glyph box of one slot (ADR 0116).
+    const cell = board.querySelector('.slot');
+    if (cell) {
+      const h = cell.getBoundingClientRect().height;
+      if (h > 0) board.style.setProperty('--lcd-glyph', (h * 1.0) + 'px');
     }
   }
 
@@ -758,6 +1191,11 @@
     const head = document.createElement('h3');
     head.textContent = state.widgetsPage ? 'Widget' : 'Cell';
     box.appendChild(head);
+    if (rowsPage()) {
+      renderTextInspector(box);
+      updateSave();
+      return;
+    }
     const t = state.template;
     const c = t && state.selected >= 0 ? t.cells[state.selected] : null;
     if (!c) {
@@ -829,36 +1267,6 @@
     };
     atX.addEventListener('change', applyPos);
     atY.addEventListener('change', applyPos);
-
-    // A scrolling cell shows a line that is wider than the display as a
-    // marquee instead of cutting it (ADR 0092); only a full-width cell can.
-    if (text()) {
-      const scroll = document.createElement('input');
-      scroll.type = 'checkbox';
-      scroll.checked = c.scroll === true;
-      scroll.addEventListener('change', () => {
-        if (scroll.checked && c.span[0] !== t.grid[0]) {
-          setStatus('scroll needs the full display width', 'error');
-          scroll.checked = false;
-          return;
-        }
-        if (scroll.checked) c.scroll = true;
-        else delete c.scroll;
-        setStatus('');
-        changed('inspector');
-      });
-      const wrap = document.createElement('div');
-      wrap.className = 'arg';
-      const name = document.createElement('span');
-      name.className = 'name';
-      name.textContent = 'Scroll';
-      wrap.append(name, scroll);
-      const hint = document.createElement('span');
-      hint.className = 'desc';
-      hint.textContent = 'Show a line that is too wide as a marquee; the widget may then return more than the cell width.';
-      wrap.appendChild(hint);
-      box.appendChild(wrap);
-    }
 
     // arguments from the plugin's schema (ADR 0055)
     const info = widgetInfo(c.widget.split('/')[0], c.widget.split('/')[1]);
@@ -1002,16 +1410,198 @@
       box.appendChild(field(key, input));
     }
 
-    const buttons = document.createElement('div');
-    buttons.className = 'row-buttons';
     const remove = document.createElement('button');
     remove.type = 'button';
+    remove.className = 'danger';
     remove.textContent = state.widgetsPage ? 'Clear' : 'Delete cell';
     remove.addEventListener('click', removeCell);
-    buttons.appendChild(remove);
-    box.appendChild(buttons);
+    box.appendChild(remove);
     updateSnippet();
     updateSave();
+  }
+
+  // renderTextInspector shows the fields of the selected text box.
+  function renderTextInspector(box) {
+    const t = state.template;
+    const c = t && t.cells && state.selected >= 0 ? t.cells[state.selected] : null;
+    if (!c) {
+      const hint = document.createElement('p');
+      hint.className = 'empty';
+      hint.textContent = 'Select a cell on the board.';
+      box.appendChild(hint);
+      return;
+    }
+    const where = document.createElement('p');
+    where.className = 'muted';
+    where.textContent = ((c.text || '') !== '' ? 'text' : (c.value || 'no value')) + ' at ' + c.at[0] + ',' + c.at[1];
+    box.appendChild(where);
+    textCellFields(box, c);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'danger';
+    remove.textContent = 'Delete cell';
+    remove.addEventListener('click', removeCell);
+    box.appendChild(remove);
+  }
+
+  // textCellFields edits one text box in the inspector panel.
+  function textCellFields(box, c) {
+
+    const spanWrap = document.createElement('span');
+    spanWrap.className = 'grid2';
+    const cols = numberInput(c.span[0], 1, 1);
+    cols.max = String(state.width - c.at[0]);
+    const rows = numberInput(c.span[1], 1, 1);
+    rows.max = String(state.height - c.at[1]);
+    spanWrap.append(cols, rows);
+    box.appendChild(field('Span', spanWrap));
+    const applySpan = () => {
+      const w = Math.max(1, Math.min(state.width - c.at[0], Math.round(num(cols.value) || 1)));
+      const h = Math.max(1, Math.min(state.height - c.at[1], Math.round(num(rows.value) || 1)));
+      setSpan(state.selected, w, h);
+    };
+    cols.addEventListener('change', applySpan);
+    rows.addEventListener('change', applySpan);
+
+    const posWrap = document.createElement('span');
+    posWrap.className = 'grid2';
+    const atX = numberInput(c.at[0], 1, 0);
+    atX.max = String(state.width - c.span[0]);
+    const atY = numberInput(c.at[1], 1, 0);
+    atY.max = String(state.height - c.span[1]);
+    posWrap.append(atX, atY);
+    box.appendChild(field('Position', posWrap));
+    const applyPos = () => {
+      const x = Math.max(0, Math.min(state.width - c.span[0], Math.round(num(atX.value) || 0)));
+      const y = Math.max(0, Math.min(state.height - c.span[1], Math.round(num(atY.value) || 0)));
+      moveCell(state.selected, x, y);
+    };
+    atX.addEventListener('change', applyPos);
+    atY.addEventListener('change', applyPos);
+
+    const isText = (c.text || '') !== '';
+    const kind = document.createElement('select');
+    for (const [value, text] of [['value', 'Value'], ['text', 'Text']]) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = text;
+      kind.appendChild(option);
+    }
+    kind.value = isText ? 'text' : 'value';
+    kind.addEventListener('change', () => {
+      if (kind.value === 'text') {
+        c.text = c.text || 'Text';
+        c.value = '';
+        c.label = '';
+        c.unit = '';
+      } else {
+        c.value = c.value || firstValueKey();
+        c.text = '';
+      }
+      changed();
+    });
+    box.appendChild(field('Content', kind));
+
+    if (isText) {
+      const area = document.createElement('textarea');
+      area.rows = 3;
+      area.value = c.text;
+      area.addEventListener('input', () => {
+        c.text = area.value;
+        changed('inspector');
+      });
+      box.appendChild(field('Text', area));
+    } else {
+      const values = textValues();
+      const select = document.createElement('select');
+      const none = document.createElement('option');
+      none.value = '';
+      none.textContent = values.length ? '— choose a value —' : '— no value declared —';
+      select.appendChild(none);
+      const groups = new Map();
+      for (const v of values) {
+        const key = valueKey(v);
+        if (!groups.has(v.plugin)) {
+          const plugin = state.plugins.find((p) => p.name === v.plugin) || {};
+          const group = document.createElement('optgroup');
+          group.label = v.plugin + (plugin.description && plugin.description.title ? ' · ' + plugin.description.title : '');
+          groups.set(v.plugin, group);
+          select.appendChild(group);
+        }
+        const option = document.createElement('option');
+        option.value = key;
+        option.textContent = v.name + ' — ' + v.title + (v.unit ? ' (' + v.unit + ')' : '');
+        groups.get(v.plugin).appendChild(option);
+      }
+      if (c.value && !values.some((v) => valueKey(v) === c.value)) {
+        const option = document.createElement('option');
+        option.value = c.value;
+        option.textContent = c.value + ' — not declared';
+        select.appendChild(option);
+      }
+      select.value = c.value || '';
+      select.addEventListener('change', () => {
+        c.value = select.value;
+        changed();
+      });
+      box.appendChild(field('Value', select));
+      const info = valueInfo(c.value);
+      if (info) {
+        const note = document.createElement('span');
+        note.className = 'desc';
+        note.textContent = [info.type, info.unit].filter(Boolean).join(' · ');
+        box.appendChild(note);
+      }
+
+      const label = document.createElement('input');
+      label.type = 'text';
+      label.autocomplete = 'off';
+      label.value = c.label || '';
+      label.addEventListener('input', () => {
+        c.label = label.value;
+        changed('inspector');
+      });
+      box.appendChild(field('Label', label));
+
+      const unit = document.createElement('input');
+      unit.type = 'text';
+      unit.autocomplete = 'off';
+      unit.value = c.unit || '';
+      unit.placeholder = info && info.unit ? info.unit : '';
+      unit.addEventListener('input', () => {
+        c.unit = unit.value;
+        changed('inspector');
+      });
+      box.appendChild(field('Unit', unit));
+    }
+
+    const align = document.createElement('select');
+    for (const [value, text] of [['left', 'left'], ['right', 'right'], ['decimal', 'decimal']]) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = text;
+      align.appendChild(option);
+    }
+    align.value = c.align === 'right' || c.align === 'decimal' ? c.align : 'left';
+    align.addEventListener('change', () => {
+      c.align = align.value;
+      changed();
+    });
+    box.appendChild(field('Align', align));
+
+    const overflow = document.createElement('select');
+    for (const [value, text] of [['', 'page default'], ['strip', 'strip'], ['wrap', 'wrap'], ['scroll', 'scroll']]) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = text;
+      overflow.appendChild(option);
+    }
+    overflow.value = c.overflow || '';
+    overflow.addEventListener('change', () => {
+      c.overflow = overflow.value;
+      changed();
+    });
+    box.appendChild(field('Overflow', overflow));
   }
 
   function removeCell() {
@@ -1250,11 +1840,11 @@
       setRendering(false);
       return;
     }
-    if (!state.template.cells.length) {
+    if (!state.template || !Array.isArray(state.template.cells) || state.template.cells.length === 0) {
       clearBoardPreview();
       if (error) {
         error.hidden = false;
-        error.textContent = 'Add a widget to see a preview.';
+        error.textContent = rowsPage() ? 'Place a cell to see a preview.' : 'Add a widget to see a preview.';
       }
       setRendering(false);
       return;
@@ -1480,7 +2070,9 @@
     const info = state.displays.find((d) => d.name === display) || {};
     const kind = info.kind === 'text' ? 'text' : 'image';
     const grid = kind === 'text' ? [info.width, info.height] : state.reference.slice();
-    const template = { kind: kind, grid: grid, style: {}, cells: [blankCell(kind, grid)] };
+    const template = kind === 'text'
+      ? { kind: 'text', overflow: 'strip', cells: [{ at: [0, 0], span: [Math.max(1, info.width), 1], text: 'Text' }], style: {} }
+      : { kind: kind, grid: grid, style: {}, cells: [blankCell(kind, grid)] };
     setStatus('creating the variant for ' + display + '…', '');
     let res;
     try {
@@ -1844,8 +2436,9 @@
   }
   // The board takes every drop: a palette widget is placed on the cell under
   // the pointer, a dragged box moves there.
-  on('board', 'dragover', (e) => e.preventDefault());
+  on('board', 'dragover', boardDragOver);
   on('board', 'drop', boardDrop);
+  window.addEventListener('resize', () => applyBoardPreview());
   on('title', 'input', () => {
     if (!state.template) return;
     state.template.title = el('title').value;
@@ -1866,6 +2459,11 @@
     if (!state.template) return;
     if (el('notices').value === 'none') state.template.notices = 'none';
     else delete state.template.notices;
+    changed();
+  });
+  on('overflow', 'change', () => {
+    if (!state.template || !rowsPage()) return;
+    state.template.overflow = el('overflow').value || 'strip';
     changed();
   });
   document.addEventListener('keydown', (e) => {

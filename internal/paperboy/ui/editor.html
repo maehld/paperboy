@@ -71,7 +71,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   {{if not .Kinds}}<p class="empty">No display types configured. Add one under <code>displays/</code>.</p>{{end}}
   {{if .Groups}}
   <table id="page-table">
-    <thead><tr><th>Page</th><th>Variants</th><th>Kind</th><th>Grid</th><th>Title</th></tr></thead>
+    <thead><tr><th>Page</th><th>Variants</th><th>Kind</th><th>Grid / rows</th><th>Title</th></tr></thead>
     <tbody>
       {{range .Groups}}
       <tr{{if .PageURL}} class="rowlink" data-href="{{.PageURL}}"{{end}}>

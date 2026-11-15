@@ -27,6 +27,16 @@ func (s *Server) widgetSource() page.WidgetSource {
 	}
 }
 
+// valueSource lets a text page ask the plugins for the values it lays out
+// (ADR 0111). It waits for plugins like widgetSource.
+func (s *Server) valueSource() page.ValueSource {
+	return func(b page.ValueBatch) []page.Result {
+		done := s.stats.Start("render.values")
+		defer done()
+		return s.widgets.FetchValues(context.Background(), b)
+	}
+}
+
 type pluginInfo struct {
 	Name        string              `json:"name"`
 	Builtin     bool                `json:"builtin,omitempty"`

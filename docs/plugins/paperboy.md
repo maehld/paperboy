@@ -1,6 +1,26 @@
 # paperboy plugin
 
-The built-in plugin `paperboy` runs inside Paperboy and needs no configuration. All widgets work on image and text displays.
+The built-in plugin `paperboy` runs inside Paperboy and needs no configuration. Its widgets draw on image pages; its values feed text pages ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)).
+
+## Values
+
+A text page lays out values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). The plugin declares:
+
+| Value | Type | Content |
+|---|---|---|
+| `title` | text | the page title |
+| `time` | timestamp | the current moment |
+| `date` | timestamp | midnight of the current day, so Paperboy writes the date |
+| `now` | timestamp | the current moment, for a layout test |
+| `long` | text | a line wider than a 20-column display, for `overflow: scroll` |
+| `block` | text | four lines, one with a very long word, for `overflow: wrap` |
+
+```yaml
+cells:
+  - { at: [0, 0], span: [20, 1], value: paperboy/title }
+  - { at: [0, 1], span: [20, 1], value: paperboy/date, label: Datum }
+  - { at: [0, 2], span: [20, 1], value: paperboy/time, label: Zeit, align: right }
+```
 
 ## Widgets
 
@@ -22,7 +42,4 @@ Arguments with a fixed set of values reject anything else ([ADR 0055](../adr/005
 
 The battery, `device-status` and the header's battery read `server_status` from the request (ADR 0115). Only the built-in plugin gets this object; Paperboy keeps no key, MAC or address in it. The page that shows its own device is rendered once per device, so two displays of the same type keep their own status.
 
-On a text display, a full-width cell with `scroll: true` lets a line run: the
-`text` widget returns a line that is wider than the cell untrimmed and the
-display shows it as a marquee instead of cutting it ([ADR 0092](../adr/0092-scrolling-text-lines.md)). Without the
-flag a long line is cut as before, and `header`/`clock` keep their own fit.
+A text page shows these values, not widgets ([ADR 0118](../adr/0118-text-boxes-and-overflow.md)). A box that scrolls takes its content from a value and moves it with the display type's `scroll.step`; a box that wraps or strips cuts it instead.

@@ -43,9 +43,9 @@ Concurrency rule: a device request takes the configuration before it locks the s
 1. A device wakes and calls `POST /api/device/sync`. The operator UI can ask the same questions for a plan preview or for the virtual display instead.
 2. Paperboy asks the plan's conditions: one `conditions` call per plugin that a rule names. The widget host answers from a cache of 10 seconds.
 3. The plan selects a page: the first rule whose time window, weekdays and conditions match, else its fallback. A page that does not fit the device's display type is skipped ([ADR 0049](../adr/0049-plugin-widgets.md)).
-4. The page composes its cells. All widgets of the page go to the widget host in one request. The render therefore costs one round trip per plugin, not one per cell.
-5. The widget host answers from its cache. A missing or expired entry is drawn by the plugin process.
-6. Paperboy quantizes every widget image to the gray levels of the display type, pastes it one to one into the page and hashes the pixels.
+4. The page composes its cells. All widgets of an image page or all values of a text page go to the plugin host in one request per plugin. The render therefore costs one round trip per plugin, not one per cell.
+5. The plugin host answers from its cache. A missing or expired entry is drawn or answered by the plugin process.
+6. Paperboy quantizes every widget image to the gray levels of the display type, pastes it one to one into the page and hashes the pixels. A text page formats its values and lays them into its boxes (ADR 0118).
 7. The finished page is kept in memory as PNG and as its hash. A device downloads it from `/pages/{display type}/{page}/{hash}.png`, or as QOI with `?format=qoi` for the firmware ([ADR 0072](../adr/0072-pages-as-qoi.md)).
 8. The device paints the page, reports its battery and goes back to sleep, or stays awake for a menu.
 9. A page that cannot be composed becomes a notice page (`/hints/{hash}.png`), never an error.
@@ -109,10 +109,10 @@ The whole configuration reloads on change ([ADR 0047](../adr/0047-config-reload.
 |---|---|
 | `cmd/paperboy/` | Startup, options and the example configuration |
 | `internal/paperboy/` | Configuration, device API, plans, state, operator UI, downloads |
-| `internal/page/` | Page parsing and composition from widgets |
+| `internal/page/` | Page parsing and composition from widgets and values |
 | `internal/plan/` | Time rules that select pages |
-| `internal/widget/` | Plugin processes, widget cache, background refresh, conditions |
-| `internal/builtin/` | Built-in plugin `paperboy`: header, text, clock, logo, battery, device status |
+| `internal/widget/` | Plugin processes, widget and value cache, background refresh, conditions |
+| `internal/builtin/` | Built-in plugin `paperboy`: header, text, clock, logo, battery, device status, values |
 | `internal/download/` | Release lists, archives and verification |
 | `internal/semver/` | Version grammar of programs and images |
 | `internal/stats/` | Timers, gauges and process numbers for the stats page |

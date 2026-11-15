@@ -1,7 +1,35 @@
-# The overview on a 20x4 character display: the grid is the character grid.
 kind: text
-grid: [20, 4]
 cells:
-  - { at: [0, 0], span: [20, 1], widget: paperboy/header }
-  - { at: [0, 1], span: [20, 1], widget: weather/current }
-  - { at: [0, 2], span: [20, 2], widget: calendar/agenda }
+- at:
+  - 0
+  - 0
+  span:
+  - 20
+  - 1
+  value: paperboy/title
+- at:
+  - 0
+  - 1
+  span:
+  - 20
+  - 1
+  value: paperboy/date
+  label: Datum
+- at:
+  - 0
+  - 2
+  span:
+  - 20
+  - 1
+  value: paperboy/time
+  label: Zeit
+  align: right
+- at:
+  - 0
+  - 3
+  span:
+  - 20
+  - 1
+  value: paperboy/now
+  label: Jetzt
+  align: decimal

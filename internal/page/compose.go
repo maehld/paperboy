@@ -64,13 +64,17 @@ func (d Display) levels() int {
 }
 
 // Context carries the position in the plan, extra banners such as the
-// battery warning and the source of the widgets.
+// battery warning and the sources of the widgets and values.
 type Context struct {
 	Now     time.Time
 	Page    int // 1-based page index
 	Pages   int // number of pages in the plan rule
 	Banners []string
 	Widgets WidgetSource
+	// Values is the source of the values of a text page (ADR 0111).
+	Values ValueSource
+	// Device is the display a page is composed for; nil for previews.
+	Device *plugin.DeviceInfo
 	// ServerStatus is Paperboy's own device status for the built-in plugin;
 	// nil in previews that belong to no device (ADR 0115).
 	ServerStatus *plugin.ServerStatus
@@ -101,6 +105,8 @@ type WidgetRequest struct {
 type Result struct {
 	Image image.Image // image displays
 	Lines []string    // text displays
+	Value *plugin.Value
+	Spec  plugin.ValueSpec // the declaration of a value
 	Err   error
 	Stale bool // an older result, because the plugin failed
 }
@@ -109,6 +115,24 @@ type Result struct {
 // request in the same order. It runs before the page is drawn and outside the
 // render lock, because plugins are external processes.
 type WidgetSource func(b Batch) []Result
+
+// ValueRequest is one declared value a text page needs.
+type ValueRequest struct {
+	Plugin string
+	Name   string
+}
+
+// ValueBatch asks for all values of one page, one entry per value. Device is
+// the display a device render is for; nil for a preview.
+type ValueBatch struct {
+	Page   plugin.PageInfo
+	Device *plugin.DeviceInfo
+	Values []ValueRequest
+}
+
+// ValueSource fetches values for a text page; the result has one entry per
+// request in the same order. Like WidgetSource it runs outside the render lock.
+type ValueSource func(b ValueBatch) []Result
 
 // renderMu serializes drawing: the cached font faces are not safe for
 // concurrent use.
@@ -231,6 +255,24 @@ func fetch(src WidgetSource, b Batch) []Result {
 	return results
 }
 
+// fetchValues fills the answers a source did not give, so a missing plugin is
+// an error for its cells instead of a silent gap.
+func fetchValues(src ValueSource, b ValueBatch) []Result {
+	var results []Result
+	if src != nil {
+		results = src(b)
+	}
+	if len(results) != len(b.Values) {
+		out := make([]Result, len(b.Values))
+		copy(out, results)
+		for i := len(results); i < len(out); i++ {
+			out[i] = Result{Err: fmt.Errorf("plugin %q is not available", b.Values[i].Plugin)}
+		}
+		results = out
+	}
+	return results
+}
+
 // dividers draws the configured lines along the inner edges of the cells.
 func (t *Template) dividers(img *image.Paletted, rects []image.Rectangle, d Display) {
 	w := d.pxAtLeast1(t.Style.Divider)
@@ -310,70 +352,91 @@ func WithBanner(img *image.Paletted, texts ...string) *image.Paletted {
 	return out
 }
 
-// maxScrollColumns caps a scrolling line: the answer has to fit the firmware's
-// 2 KiB response buffer, and 120 columns already take 36 seconds per cycle.
-const maxScrollColumns = 120
-
-// Text is a composed text page: the lines the display shows and, for a
-// scrolling cell, the full text of its rows (ADR 0092). Scroll has one entry
-// per line; an empty entry is a static row.
+// Text is a composed text page. Scrolls carry the full content and the first
+// window of every scrolling box, so the firmware and the virtual display can
+// animate without composing the page again (ADR 0118).
 type Text struct {
-	Lines  []string
-	Scroll []string
+	Lines   []string
+	Scrolls []ScrollBox
 }
 
-// RenderText composes the page for a text display. The grid of a text page
-// is the character grid of the display; every widget fills its cell with
-// lines, cut and padded by Paperboy. A stale widget marks the last column of
-// the first line with "!".
+// ScrollBox is one scrolling text box of a composed page.
+type ScrollBox struct {
+	At        [2]int
+	Span      [2]int
+	Lines     []string // full content, not cut to the box
+	Window    []string // the first visible lines
+	Direction string   // horizontal, vertical or both
+	Align     string   // left, right or decimal; empty means left
+}
+
+// RenderText composes a text page from boxes of values and literal text. A
+// cell's overflow decides whether its content is cut, wrapped or scrolled.
 func (t *Template) RenderText(d Display, c Context) (Text, error) {
+	if t.Kind != KindText {
+		return Text{}, fmt.Errorf("page is for image displays (kind: %s)", t.Kind)
+	}
 	if err := t.Fits(d); err != nil {
 		return Text{}, err
 	}
-	batch := Batch{Text: true, Charset: d.Charset, Page: t.pageInfo(d, c), ServerStatus: c.ServerStatus}
+	type key struct{ plugin, name string }
+	var requests []ValueRequest
+	index := map[key]int{}
 	for _, cell := range t.Cells {
-		batch.Widgets = append(batch.Widgets, WidgetRequest{Plugin: cell.Plugin(), Widget: cell.Name(), Args: cell.Args,
-			Width: cell.Span[0], Height: cell.Span[1], Scroll: cell.Scroll})
-	}
-	results := fetch(c.Widgets, batch)
-	grid := make([][]rune, d.Height)
-	for y := range grid {
-		grid[y] = []rune(strings.Repeat(" ", d.Width))
-	}
-	scroll := make([]string, d.Height)
-	stale := false
-	for i, cell := range t.Cells {
-		r := results[i]
-		lines := r.Lines
-		if r.Err != nil && lines == nil {
-			lines = wrap("? "+r.Err.Error(), cell.Span[0])
+		if cell.Value == "" {
+			continue
 		}
-		stale = stale || r.Stale
-		for row := 0; row < cell.Span[1] && row < len(lines); row++ {
-			// Convert before measuring or cutting: the display counts columns,
-			// not UTF-8 bytes.
-			text := clean(Convert(d.Charset, lines[row]))
-			y := cell.At[1] + row
-			if full := []rune(strings.TrimRight(text, " ")); cell.Scroll && len(full) > d.Width {
-				if len(full) > maxScrollColumns {
-					full = full[:maxScrollColumns]
-				}
-				scroll[y] = string(full)
+		k := key{cell.ValuePlugin(), cell.ValueKey()}
+		if _, ok := index[k]; !ok {
+			index[k] = len(requests)
+			requests = append(requests, ValueRequest{Plugin: k.plugin, Name: k.name})
+		}
+	}
+	results := fetchValues(c.Values, ValueBatch{Page: t.pageInfo(d, c), Device: c.Device, Values: requests})
+	now := c.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	loc := d.Timezone
+	if loc == nil {
+		loc = time.Local
+	}
+	lang := d.language()
+	stale := false
+	lines := make([]rune, d.Width*d.Height)
+	for i := range lines {
+		lines[i] = ' '
+	}
+	var scrolls []ScrollBox
+	for _, cell := range t.Cells {
+		var r Result
+		if cell.Value != "" {
+			r = results[index[key{cell.ValuePlugin(), cell.ValueKey()}]]
+			stale = stale || r.Stale
+		}
+		window, full, direction, scrolling := textCellLines(r, cell, d.Charset, lang, now, loc, t.Overflow)
+		for y, line := range window {
+			row := cell.At[1] + y
+			if row >= d.Height {
+				break
 			}
-			line := []rune(fit(text, cell.Span[0]))
-			copy(grid[y][cell.At[0]:], line)
+			text := []rune(fit(line, cell.Span[0]))
+			copy(lines[row*d.Width+cell.At[0]:], text)
+		}
+		if scrolling {
+			scrolls = append(scrolls, ScrollBox{At: cell.At, Span: cell.Span, Lines: full, Window: window, Direction: direction, Align: cell.Align})
 		}
 	}
 	out := make([]string, d.Height)
-	for y := range grid {
-		out[y] = string(grid[y])
+	for y := 0; y < d.Height; y++ {
+		out[y] = string(lines[y*d.Width : (y+1)*d.Width])
 	}
 	if stale && t.Notices == "show" && d.Width > 0 {
 		line := []rune(out[0])
 		line[len(line)-1] = '!'
 		out[0] = string(line)
 	}
-	return Text{Lines: out, Scroll: scroll}, nil
+	return Text{Lines: out, Scrolls: scrolls}, nil
 }
 
 // DefaultStyle is the style a widget gets on a page of display d without a
@@ -409,9 +472,9 @@ func WidgetImage(r Result, width, height, levels int, label string) *image.Palet
 	return render.Quantize(r.Image, levels)
 }
 
-// TextCell fits widget lines to a cell of a text display like a page does:
+// TextLines fits widget lines to a cell of a text display like a page did:
 // converted to the charset, cut and padded; an error becomes wrapped lines.
-func TextCell(r Result, charset string, width, height int) []string {
+func TextLines(r Result, charset string, width, height int) []string {
 	lines := r.Lines
 	if r.Err != nil && lines == nil {
 		lines = wrap("? "+r.Err.Error(), width)
