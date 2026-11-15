@@ -352,17 +352,25 @@ func WithBanner(img *image.Paletted, texts ...string) *image.Paletted {
 	return out
 }
 
-// Text is a composed text page: the lines the display shows. Scroll stays for
-// the firmware protocol (ADR 0092); a page of values does not scroll yet.
+// Text is a composed text page. Scrolls carry the full content and the first
+// window of every scrolling box, so the firmware and the virtual display can
+// animate without composing the page again (ADR 0117).
 type Text struct {
-	Lines  []string
-	Scroll []string
+	Lines   []string
+	Scrolls []ScrollBox
 }
 
-// RenderText composes a text page from declared plugin values (ADR 0111). A
-// cell holds a value the page formats with the display's language and charset;
-// a value that fails becomes a `? …` cell. A stale value marks the last column
-// of line 1 with "!".
+// ScrollBox is one scrolling text box of a composed page.
+type ScrollBox struct {
+	At        [2]int
+	Span      [2]int
+	Lines     []string // full content, not cut to the box
+	Window    []string // the first visible lines
+	Direction string   // horizontal, vertical or both
+}
+
+// RenderText composes a text page from boxes of values and literal text. A
+// cell's overflow decides whether its content is cut, wrapped or scrolled.
 func (t *Template) RenderText(d Display, c Context) (Text, error) {
 	if t.Kind != KindText {
 		return Text{}, fmt.Errorf("page is for image displays (kind: %s)", t.Kind)
@@ -373,13 +381,14 @@ func (t *Template) RenderText(d Display, c Context) (Text, error) {
 	type key struct{ plugin, name string }
 	var requests []ValueRequest
 	index := map[key]int{}
-	for _, row := range t.Rows {
-		for _, cell := range row {
-			k := key{cell.Plugin(), cell.Key()}
-			if _, ok := index[k]; !ok {
-				index[k] = len(requests)
-				requests = append(requests, ValueRequest{Plugin: k.plugin, Name: k.name})
-			}
+	for _, cell := range t.Cells {
+		if cell.Value == "" {
+			continue
+		}
+		k := key{cell.ValuePlugin(), cell.ValueKey()}
+		if _, ok := index[k]; !ok {
+			index[k] = len(requests)
+			requests = append(requests, ValueRequest{Plugin: k.plugin, Name: k.name})
 		}
 	}
 	results := fetchValues(c.Values, ValueBatch{Page: t.pageInfo(d, c), Device: c.Device, Values: requests})
@@ -393,31 +402,40 @@ func (t *Template) RenderText(d Display, c Context) (Text, error) {
 	}
 	lang := d.language()
 	stale := false
-	lines := make([]string, d.Height)
-	for y := range lines {
-		lines[y] = strings.Repeat(" ", d.Width)
+	lines := make([]rune, d.Width*d.Height)
+	for i := range lines {
+		lines[i] = ' '
 	}
-	for y, row := range t.Rows {
-		positions, err := textRowPositions(row, d.Width)
-		if err != nil {
-			return Text{}, fmt.Errorf("row %d: %w", y+1, err)
-		}
-		line := []rune(strings.Repeat(" ", d.Width))
-		for i, cell := range row {
-			r := results[index[key{cell.Plugin(), cell.Key()}]]
+	var scrolls []ScrollBox
+	for _, cell := range t.Cells {
+		var r Result
+		if cell.Value != "" {
+			r = results[index[key{cell.ValuePlugin(), cell.ValueKey()}]]
 			stale = stale || r.Stale
-			text := []rune(renderTextCell(r, cell, d.Charset, lang, now, loc))
-			at := positions[i]
-			copy(line[at:min(at+cell.Width, len(line))], text)
 		}
-		lines[y] = string(line)
+		window, full, direction, scrolling := textCellLines(r, cell, d.Charset, lang, now, loc, t.Overflow)
+		for y, line := range window {
+			row := cell.At[1] + y
+			if row >= d.Height {
+				break
+			}
+			text := []rune(fit(line, cell.Span[0]))
+			copy(lines[row*d.Width+cell.At[0]:], text)
+		}
+		if scrolling {
+			scrolls = append(scrolls, ScrollBox{At: cell.At, Span: cell.Span, Lines: full, Window: window, Direction: direction})
+		}
+	}
+	out := make([]string, d.Height)
+	for y := 0; y < d.Height; y++ {
+		out[y] = string(lines[y*d.Width : (y+1)*d.Width])
 	}
 	if stale && t.Notices == "show" && d.Width > 0 {
-		line := []rune(lines[0])
+		line := []rune(out[0])
 		line[len(line)-1] = '!'
-		lines[0] = string(line)
+		out[0] = string(line)
 	}
-	return Text{Lines: lines}, nil
+	return Text{Lines: out, Scrolls: scrolls}, nil
 }
 
 // DefaultStyle is the style a widget gets on a page of display d without a

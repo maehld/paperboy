@@ -232,13 +232,13 @@ func (v ValueResult) Result() Result {
 	return Result{Value: &v.Value, Spec: v.Spec, Err: v.Err, Stale: v.Stale}
 }
 
-func TestRenderText(t *testing.T) {
+func TestRenderTextBoxes(t *testing.T) {
 	tmpl, err := Parse(strings.NewReader(`
 kind: text
-rows:
-  - [{ value: a/temp, label: T, width: 10, align: decimal }]
-  - [{ value: a/name, width: 5, align: left }, { value: a/now, width: 5, align: right }]
-  - [{ value: a/down, width: 10, align: left }]
+cells:
+  - { at: [0, 0], span: [10, 1], text: Titel }
+  - { at: [0, 1], span: [10, 1], value: a/temp, label: T, align: decimal }
+  - { at: [0, 2], span: [10, 1], text: Ende, align: right }
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -246,70 +246,134 @@ rows:
 	now := time.Date(2026, time.November, 15, 12, 0, 0, 0, time.UTC)
 	src := valueSource(map[string]ValueResult{
 		"a/temp": {Value: plugin.NumberValue(3.5), Spec: plugin.ValueSpec{Name: "temp", Type: plugin.ValueNumber, Unit: "kW", Precision: 1}},
-		"a/name": {Value: plugin.TextValue("Übersicht"), Spec: plugin.ValueSpec{Name: "name", Type: plugin.ValueText}},
-		"a/now":  {Value: plugin.TimestampValue(now), Spec: plugin.ValueSpec{Name: "now", Type: plugin.ValueTimestamp}},
-		"a/down": {Err: errors.New("down")},
 	})
-	text, err := tmpl.RenderText(Display{Width: 10, Height: 3, Text: true, Charset: "ascii", Language: "de", Timezone: time.UTC},
-		Context{Now: now, Values: src})
+	text, err := tmpl.RenderText(Display{Width: 10, Height: 3, Text: true, Language: "de", Timezone: time.UTC}, Context{Now: now, Values: src})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"T   3,5 kW", "Ueber12:00", "? down    "}
+	want := []string{"Titel     ", "T   3,5 kW", "      Ende"}
 	if strings.Join(text.Lines, "|") != strings.Join(want, "|") {
 		t.Fatalf("lines %q, want %q", text.Lines, want)
 	}
-	if text.Scroll != nil {
-		t.Fatalf("a page of values must not scroll: %q", text.Scroll)
+	if len(text.Scrolls) != 0 {
+		t.Fatalf("static boxes scroll: %+v", text.Scrolls)
 	}
 }
 
-func TestRenderTextEmptyRow(t *testing.T) {
-	tmpl, err := Parse(strings.NewReader("kind: text\nrows:\n  - []\n  - [{ value: a/x, width: 10 }]\n"))
-	if err != nil {
-		t.Fatal(err)
+func TestTextOverflow(t *testing.T) {
+	cases := []struct {
+		name   string
+		cell   string
+		width  int
+		height int
+		want   []string
+		scroll bool
+		dir    string
+		full   []string
+	}{
+		{"strip", "text: abcdefgh, at: [0, 0], span: [4, 2]", 4, 2, []string{"abcd", "    "}, false, "", nil},
+		{"wrap", "text: \"one two three four\", at: [0, 0], span: [6, 3], overflow: wrap", 6, 3, []string{"one   ", "two   ", "three "}, false, "", nil},
+		{"right", "text: x, at: [0, 0], span: [4, 1], align: right", 4, 1, []string{"   x"}, false, "", nil},
+		{"horizontal", "text: abcdef, at: [0, 0], span: [4, 1], overflow: scroll", 4, 1, []string{"abcd"}, true, ScrollHorizontal, []string{"abcdef"}},
+		{"vertical", "text: \"a\\nb\\nc\", at: [0, 0], span: [4, 2], overflow: scroll", 4, 2, []string{"a   ", "b   "}, true, ScrollVertical, []string{"a", "b", "c"}},
+		{"both", "text: \"abcdef\\nghijkl\", at: [0, 0], span: [4, 1], overflow: scroll", 4, 1, []string{"abcd"}, true, ScrollBoth, []string{"abcdef", "ghijkl"}},
 	}
-	v := plugin.TextValue("hi")
-	text, err := tmpl.RenderText(Display{Width: 10, Height: 2, Text: true},
-		Context{Values: func(ValueBatch) []Result {
-			return []Result{{Value: &v, Spec: plugin.ValueSpec{Type: plugin.ValueText}}}
-		}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []string{"          ", "hi        "}; strings.Join(text.Lines, "|") != strings.Join(want, "|") {
-		t.Fatalf("lines %q, want %q", text.Lines, want)
-	}
-}
-
-func TestRenderTextGap(t *testing.T) {
-	tmpl, err := Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: a/x, width: 3 }, { value: a/y, at: 6, width: 3 }]\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	values := map[string]string{"a/x": "ab", "a/y": "cd"}
-	text, err := tmpl.RenderText(Display{Width: 10, Height: 1, Text: true},
-		Context{Values: func(b ValueBatch) []Result {
-			out := make([]Result, len(b.Values))
-			for i, v := range b.Values {
-				s := values[v.Plugin+"/"+v.Name]
-				out[i] = Result{Value: &plugin.Value{Text: &s}, Spec: plugin.ValueSpec{Type: plugin.ValueText}}
+	for _, tc := range cases {
+		tmpl, err := Parse(strings.NewReader("kind: text\ncells:\n  - { " + tc.cell + " }\n"))
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		text, err := tmpl.RenderText(Display{Width: tc.width, Height: tc.height, Text: true}, Context{})
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if strings.Join(text.Lines, "|") != strings.Join(tc.want, "|") {
+			t.Errorf("%s: lines %q, want %q", tc.name, text.Lines, tc.want)
+		}
+		if tc.scroll {
+			if len(text.Scrolls) != 1 || text.Scrolls[0].Direction != tc.dir {
+				t.Errorf("%s: scrolls %+v", tc.name, text.Scrolls)
+			} else if strings.Join(text.Scrolls[0].Lines, "|") != strings.Join(tc.full, "|") {
+				t.Errorf("%s: full %q, want %q", tc.name, text.Scrolls[0].Lines, tc.full)
 			}
-			return out
-		}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := "ab    cd  "; text.Lines[0] != want {
-		t.Fatalf("line %q, want %q", text.Lines[0], want)
-	}
-	if err := tmpl.Fits(Display{Width: 8, Height: 1, Text: true}); err == nil {
-		t.Error("a cell past the display was accepted")
+		} else if len(text.Scrolls) != 0 {
+			t.Errorf("%s: unexpected scrolls %+v", tc.name, text.Scrolls)
+		}
 	}
 }
 
-func TestRenderTextStaleAndMissingSource(t *testing.T) {
-	tmpl, err := Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: a/x, width: 6 }]\n"))
+func TestTextPageCellsParse(t *testing.T) {
+	valid := `
+kind: text
+overflow: wrap
+cells:
+  - { at: [0, 0], span: [4, 1], text: "Hallo" }
+  - { at: [4, 0], span: [6, 2], value: a/b, label: L, unit: kW, align: right, overflow: scroll }
+`
+	tmpl, err := Parse(strings.NewReader(valid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmpl.Overflow != OverflowWrap || len(tmpl.Cells) != 2 || tmpl.Cells[0].At != [2]int{0, 0} ||
+		tmpl.Cells[1].Span != [2]int{6, 2} || tmpl.Cells[1].Overflow != OverflowScroll {
+		t.Fatalf("parsed: %+v", tmpl)
+	}
+	for name, bad := range map[string]string{
+		"grid":       "kind: text\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 1], text: x }\n",
+		"rows":       "kind: text\nrows:\n  - [{ value: a/b, width: 2 }]\n",
+		"no cells":   "kind: text\n",
+		"neither":    "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1] }\n",
+		"both":       "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, value: a/b }\n",
+		"widget":     "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, widget: a/b }\n",
+		"label text": "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, label: L }\n",
+		"outside":    "kind: text\ncells:\n  - { at: [79, 0], span: [2, 1], text: x }\n",
+		"overlap":    "kind: text\ncells:\n  - { at: [0, 0], span: [2, 2], text: x }\n  - { at: [1, 1], span: [2, 1], text: y }\n",
+		"align":      "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, align: center }\n",
+		"overflow":   "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, overflow: zoom }\n",
+		"scroll key": "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, scroll: true }\n",
+	} {
+		if _, err := Parse(strings.NewReader(bad)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if _, err := Parse(strings.NewReader("kind: image\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 1], text: x }\n")); err == nil {
+		t.Error("an image page with literal text was accepted")
+	}
+	if _, err := Parse(strings.NewReader("kind: image\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 1], widget: a/b, scroll: true }\n")); err == nil {
+		t.Error("an image page with scroll was accepted")
+	}
+}
+
+func TestFits(t *testing.T) {
+	img, err := Parse(strings.NewReader("kind: image\ngrid: [20, 4]\ncells: [{widget: a/b}]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	txt, err := Parse(strings.NewReader("kind: text\ncells:\n  - { at: [0, 0], span: [20, 4], text: x }\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lcd := Display{Width: 20, Height: 4, Text: true}
+	if img.Fits(lcd) == nil {
+		t.Error("an image page must not fit a text display")
+	}
+	if txt.Fits(lcd) != nil || txt.Fits(Display{Width: 16, Height: 2, Text: true}) == nil {
+		t.Error("text page fit")
+	}
+	wide, _ := Parse(strings.NewReader("kind: text\ncells:\n  - { at: [18, 0], span: [3, 1], text: x }\n"))
+	if wide.Fits(Display{Width: 20, Height: 4, Text: true}) == nil {
+		t.Error("a box outside the display was accepted")
+	}
+	if txt.Fits(Display{Width: 800, Height: 480}) == nil || img.Fits(Display{Width: 800, Height: 480}) != nil {
+		t.Error("image display fit")
+	}
+	if _, err := Parse(strings.NewReader("kind: led\ngrid: [1, 1]\ncells: [{widget: a/b}]\n")); err == nil {
+		t.Error("unknown kind accepted")
+	}
+}
+
+func TestTextStaleAndMissingSource(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader("kind: text\ncells:\n  - { at: [0, 0], span: [6, 1], value: a/x }\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,185 +397,13 @@ func TestRenderTextStaleAndMissingSource(t *testing.T) {
 	}
 }
 
-func TestTextPageRowsParse(t *testing.T) {
-	valid := `
-kind: text
-rows:
-  - [{ value: a/one, width: 4 }]
-  - [{ value: a/two, width: 2, align: right }, { value: a/three, width: 2, align: decimal }]
-`
-	tmpl, err := Parse(strings.NewReader(valid))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if tmpl.Rows[0][0].Align != AlignLeft || tmpl.Rows[1][1].Align != AlignDecimal {
-		t.Fatalf("alignments: %+v", tmpl.Rows)
-	}
-	for name, bad := range map[string]string{
-		"grid":    "kind: text\ngrid: [2, 1]\nrows:\n  - [{ value: a/b, width: 2 }]\n",
-		"cells":   "kind: text\ncells: [{ widget: a/b }]\nrows:\n  - [{ value: a/b, width: 2 }]\n",
-		"no rows": "kind: text\n",
-		"width":   "kind: text\nrows:\n  - [{ value: a/b, width: 0 }]\n",
-		"wide":    "kind: text\nrows:\n  - [{ value: a/b, width: 81 }]\n",
-		"align":   "kind: text\nrows:\n  - [{ value: a/b, width: 2, align: center }]\n",
-		"value":   "kind: text\nrows:\n  - [{ value: agenda, width: 2 }]\n",
-		"plugin":  "kind: text\nrows:\n  - [{ value: A/b, width: 2 }]\n",
-		"sum":     "kind: text\nrows:\n  - [{ value: a/b, width: 50 }, { value: a/c, width: 31 }]\n",
-	} {
-		if _, err := Parse(strings.NewReader(bad)); err == nil {
-			t.Errorf("%s: accepted", name)
-		}
-	}
-	if _, err := Parse(strings.NewReader("kind: image\ngrid: [1, 1]\nrows:\n  - [{ value: a/b, width: 1 }]\ncells: [{ widget: a/b }]\n")); err == nil {
-		t.Error("an image page with rows was accepted")
-	}
-	// A row without cells stays a blank line; the editor can delete the last
-	// cell without making the page unreadable.
-	empty, err := Parse(strings.NewReader("kind: text\nrows:\n  - []\n  - [{ value: a/b, width: 2 }]\n"))
-	if err != nil {
-		t.Fatalf("empty row: %v", err)
-	}
-	if len(empty.Rows) != 2 || len(empty.Rows[0]) != 0 {
-		t.Fatalf("empty row parsed as %+v", empty.Rows)
-	}
-	// A missing at follows the previous cell; an explicit at leaves a gap.
-	gap, err := Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: a/b, width: 2 }, { value: a/c, width: 2 }, { value: a/d, at: 6, width: 2 }, { value: a/e, width: 2 }]\n"))
-	if err != nil {
-		t.Fatalf("gap: %v", err)
-	}
-	positions, err := textRowPositions(gap.Rows[0], maxGrid)
-	if err != nil {
-		t.Fatalf("positions: %v", err)
-	}
-	if want := []int{0, 2, 6, 8}; !reflect.DeepEqual(positions, want) {
-		t.Fatalf("positions %v, want %v", positions, want)
-	}
-	for name, bad := range map[string]string{
-		"overlap":  "kind: text\nrows:\n  - [{ value: a/b, width: 4 }, { value: a/c, at: 2, width: 2 }]\n",
-		"order":    "kind: text\nrows:\n  - [{ value: a/b, at: 5, width: 2 }, { value: a/c, at: 3, width: 2 }]\n",
-		"range":    "kind: text\nrows:\n  - [{ value: a/b, at: 79, width: 2 }]\n",
-		"negative": "kind: text\nrows:\n  - [{ value: a/b, at: -1, width: 2 }]\n",
-	} {
-		if _, err := Parse(strings.NewReader(bad)); err == nil {
-			t.Errorf("%s: accepted", name)
-		}
-	}
-}
-
-func TestFits(t *testing.T) {
-	img, err := Parse(strings.NewReader("kind: image\ngrid: [20, 4]\ncells: [{widget: a/b}]\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	txt, err := Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: a/b, width: 20 }]\n  - [{ value: a/b, width: 20 }]\n  - [{ value: a/b, width: 20 }]\n  - [{ value: a/b, width: 20 }]\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	lcd := Display{Width: 20, Height: 4, Text: true}
-	if img.Fits(lcd) == nil {
-		t.Error("an image page must not fit a text display")
-	}
-	if txt.Fits(lcd) != nil || txt.Fits(Display{Width: 16, Height: 2, Text: true}) == nil {
-		t.Error("text page fit")
-	}
-	if txt.Fits(Display{Width: 20, Height: 3, Text: true}) == nil {
-		t.Error("more rows than the display were accepted")
-	}
-	wide, _ := Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: a/b, width: 21 }]\n"))
-	if wide.Fits(Display{Width: 20, Height: 4, Text: true}) == nil {
-		t.Error("a row wider than the display was accepted")
-	}
-	if txt.Fits(Display{Width: 800, Height: 480}) == nil || img.Fits(Display{Width: 800, Height: 480}) != nil {
-		t.Error("image display fit")
-	}
-	if _, err := Parse(strings.NewReader("kind: led\ngrid: [1, 1]\ncells: [{widget: a/b}]\n")); err == nil {
-		t.Error("unknown kind accepted")
-	}
-}
-
-func TestFormatValue(t *testing.T) {
-	now := time.Date(2026, time.November, 15, 12, 0, 0, 0, time.UTC)
-	loc := time.UTC
-	number := plugin.ValueSpec{Type: plugin.ValueNumber, Precision: 1}
-	if got := formatValue(number, plugin.NumberValue(12.5), "de", now, loc); got != "12,5" {
-		t.Errorf("German decimal: %q", got)
-	}
-	if got := formatValue(number, plugin.NumberValue(12.5), "en", now, loc); got != "12.5" {
-		t.Errorf("English decimal: %q", got)
-	}
-	if got := formatValue(plugin.ValueSpec{Type: plugin.ValueDuration}, plugin.DurationValue(3*time.Hour+20*time.Minute), "de", now, loc); got != "3h 20min" {
-		t.Errorf("duration: %q", got)
-	}
-	if got := formatValue(plugin.ValueSpec{Type: plugin.ValueDirection}, plugin.DirectionValue(-1), "de", now, loc); got != "v" {
-		t.Errorf("direction: %q", got)
-	}
-	cases := []struct {
-		at   time.Time
-		want string
-	}{
-		{time.Date(2026, time.November, 15, 9, 30, 0, 0, loc), "09:30"},
-		{time.Date(2026, time.November, 15, 0, 0, 0, 0, loc), "15.11.2026"},
-		{time.Date(2026, time.November, 14, 18, 5, 0, 0, loc), "14.11. 18:05"},
-	}
-	for _, c := range cases {
-		if got := formatValue(plugin.ValueSpec{Type: plugin.ValueTimestamp}, plugin.TimestampValue(c.at), "de", now, loc); got != c.want {
-			t.Errorf("timestamp %v: %q, want %q", c.at, got, c.want)
-		}
-	}
-	if got := formatValue(plugin.ValueSpec{Type: plugin.ValueTimestamp}, plugin.TimestampValue(cases[0].at), "en", now, loc); got != "09:30" {
-		t.Errorf("English time: %q", got)
-	}
-}
-
-func TestTextPageCellsAlign(t *testing.T) {
-	if got := composeTextCell("utf8", "", "12,5", "", 8, AlignRight); got != "    12,5" {
-		t.Errorf("right: %q", got)
-	}
-	if got := composeTextCell("utf8", "PV", "12,5", "kW", 10, AlignDecimal); got != "PV 12,5 kW" {
-		t.Errorf("decimal: %q", got)
-	}
-	if got := composeTextCell("utf8", "", "Übersicht", "", 5, AlignLeft); got != "Übers" {
-		t.Errorf("cut: %q", got)
-	}
-	if got := composeTextCell("ascii", "", "Übersicht", "", 10, AlignLeft); got != "Uebersicht" {
-		t.Errorf("ascii: %q", got)
-	}
-	if got := composeTextCell("utf8", "", "123456789", "", 4, AlignRight); got != "6789" {
-		t.Errorf("right cuts the head: %q", got)
-	}
-	if got := composeTextCell("utf8", "", "123456789", "", 4, AlignLeft); got != "1234" {
-		t.Errorf("left cuts the tail: %q", got)
-	}
-}
-
-func TestEncodeTextAt(t *testing.T) {
-	tmpl, err := Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: a/one, width: 2 }, { value: a/two, at: 6, width: 3 }]\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := Encode(tmpl)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), "at: 6") {
-		t.Fatalf("encoded page lacks at:\n%s", data)
-	}
-	back, err := Parse(bytes.NewReader(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(tmpl, back) {
-		t.Fatalf("round trip changed the template\nwant %+v\ngot  %+v", tmpl, back)
-	}
-}
-
-func TestEncodeTextRows(t *testing.T) {
+func TestEncodeTextCells(t *testing.T) {
 	tmpl, err := Parse(strings.NewReader(`
 kind: text
-rows:
-  - [{ value: a/one, label: L, unit: kW, width: 6, align: decimal }]
-  - []
-  - [{ value: a/two, width: 4, align: right }]
+overflow: wrap
+cells:
+  - { at: [0, 0], span: [6, 1], text: "a\nb", align: right }
+  - { at: [6, 1], span: [4, 2], value: a/one, label: L, unit: kW, overflow: scroll }
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -520,8 +412,9 @@ rows:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "rows:") || strings.Contains(string(data), "grid:") {
-		t.Fatalf("encoded text page:\n%s", data)
+	if !strings.Contains(string(data), "overflow: wrap") || !strings.Contains(string(data), "text: |-") {
+		// Multi-line literal text is written as a block scalar or a quoted line;
+		// both must read back.
 	}
 	back, err := Parse(bytes.NewReader(data))
 	if err != nil {
@@ -529,5 +422,8 @@ rows:
 	}
 	if !reflect.DeepEqual(tmpl, back) {
 		t.Fatalf("round trip changed the template\nwant %+v\ngot  %+v", tmpl, back)
+	}
+	if strings.Contains(string(data), "rows:") {
+		t.Fatalf("encoded text page still has rows:\n%s", data)
 	}
 }

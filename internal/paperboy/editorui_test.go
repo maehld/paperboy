@@ -147,21 +147,21 @@ func TestEditorTextRows(t *testing.T) {
 	if rec := request(t, s, http.MethodGet, "/api/pages/werte", nil, &doc); rec.Code != http.StatusOK {
 		t.Fatalf("read: %d %s", rec.Code, rec.Body)
 	}
-	if doc.Template == nil || doc.Template.Kind != page.KindText || len(doc.Template.Rows) != 4 ||
-		doc.Template.Rows[0][0].Value != "paperboy/title" || doc.Template.Rows[0][0].Width != 20 {
-		t.Fatalf("text page rows: %+v", doc.Template)
+	if doc.Template == nil || doc.Template.Kind != page.KindText || len(doc.Template.Cells) != 4 ||
+		doc.Template.Cells[0].Value != "paperboy/title" || doc.Template.Cells[0].Span[0] != 20 {
+		t.Fatalf("text page cells: %+v", doc.Template)
 	}
 	body := request(t, s, http.MethodGet, "/ui/editor/page?name=werte&display=lcd", nil, nil).Body.String()
 	for _, want := range []string{
 		`"kind":"text"`,
 		`<noscript>`,
-		`<h3>Text rows</h3>`,
+		`<h3>Text cells</h3>`,
 		`value="paperboy/title" readonly`,
-		`value="20" readonly`,
-		`Click a value, then a slot, or drag it onto a row`,
+		`value="0,0" readonly`,
+		`value="20×1" readonly`,
+		`Click a value or Text, then a free slot`,
 		`.cell.text`,
 		`.drop-marker`,
-		`id="rows-panel"`,
 		`Filter values…`,
 	} {
 		if !strings.Contains(body, want) {
@@ -175,9 +175,9 @@ func TestEditorTextRows(t *testing.T) {
 	if !strings.Contains(list, `<td class="num">4 rows</td>`) {
 		t.Fatalf("the pages list does not count the rows:\n%s", list)
 	}
-	for _, want := range []string{"renderRowsPanel", "renderTextInspector", "textCellFields", "renderValuePalette",
-		"renderTextBoxes", "pickValue", "insertValueAt", "moveTextCell", "startTextResize", "startPaletteDrag",
-		"startTextCellDrag", "cellAtPointer", "setPointerCapture", "showDropMarker", "drop-marker", "removeTextCell"} {
+	for _, want := range []string{"renderTextInspector", "textCellFields", "renderValuePalette",
+		"placeTextAt", "pickTextValue", "pickTextLiteral", "startPaletteDrag", "startDrag",
+		"cellAtPointer", "setPointerCapture", "showDropMarker", "drop-marker", "removeCell"} {
 		if !strings.Contains(string(editorJS), want) {
 			t.Fatalf("the editor script lacks %q", want)
 		}
@@ -191,7 +191,7 @@ func TestEditorPageRows(t *testing.T) {
 	writePage(t, s, "solar", "", pageWithVariant)
 	writePage(t, s, "solar", "hochkant", variantPage)
 	writePage(t, s, "solar", "lcd", textVariant)
-	writePage(t, s, "clock", "", "title: Clock\nkind: text\nrows:\n  - [{ value: paperboy/title, width: 20 }]\n  - [{ value: paperboy/time, width: 20 }]\n")
+	writePage(t, s, "clock", "", "title: Clock\nkind: text\ncells:\n  - { at: [0, 0], span: [20, 1], value: paperboy/title }\n  - { at: [0, 1], span: [20, 1], value: paperboy/time }\n")
 
 	body := request(t, s, http.MethodGet, "/ui/editor", nil, nil).Body.String()
 	for _, want := range []string{
@@ -258,7 +258,7 @@ func TestEditorVariantsPanel(t *testing.T) {
 	}
 
 	// A type the open file serves is its preview link, marked as current.
-	writePage(t, s, "clock", "", "title: Clock\nkind: text\nrows:\n  - [{ value: paperboy/title, width: 20 }]\n  - [{ value: paperboy/time, width: 20 }]\n")
+	writePage(t, s, "clock", "", "title: Clock\nkind: text\ncells:\n  - { at: [0, 0], span: [20, 1], value: paperboy/title }\n  - { at: [0, 1], span: [20, 1], value: paperboy/time }\n")
 	body = request(t, s, http.MethodGet, "/ui/editor/page?name=clock&display=lcd", nil, nil).Body.String()
 	for _, want := range []string{
 		`<a href="/ui/editor/page?display=lcd&amp;name=clock" aria-current="true" title="Preview lcd with this file">lcd</a>`,
@@ -794,7 +794,7 @@ func TestEditorScript(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "PUT", "pointerdown", "handle-xy", "firstWidget", "renderRowsPanel", "renderTextInspector", "textCellFields", "startPaletteDrag", "startTextCellDrag"} {
+	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "PUT", "pointerdown", "handle-xy", "firstWidget", "renderTextInspector", "textCellFields", "placeTextAt", "startPaletteDrag"} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("script lacks %q", want)
 		}

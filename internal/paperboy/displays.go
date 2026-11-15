@@ -27,15 +27,21 @@ import (
 // empty field keeps the default, so the editor writes back only what is set.
 // The model is also the JSON model of the display type API.
 type displayFile struct {
-	Kind       string   `yaml:"kind" json:"kind"`
-	Size       [2]int   `yaml:"size" json:"size"`
-	GrayLevels int      `yaml:"gray_levels" json:"gray_levels,omitempty"`
-	PPI        float64  `yaml:"ppi" json:"ppi,omitempty"`
-	Charset    string   `yaml:"charset" json:"charset,omitempty"`
-	MinRefresh Duration `yaml:"min_refresh" json:"min_refresh,omitempty"`
-	Power      string   `yaml:"power" json:"power,omitempty"`
-	Rotation   int      `yaml:"rotation" json:"rotation,omitempty"`           // page → panel, ADR 0102
-	WidthMM    *int     `yaml:"width_mm,omitempty" json:"width_mm,omitempty"` // removed by ADR 0050, rejected with a hint
+	Kind       string         `yaml:"kind" json:"kind"`
+	Size       [2]int         `yaml:"size" json:"size"`
+	GrayLevels int            `yaml:"gray_levels" json:"gray_levels,omitempty"`
+	PPI        float64        `yaml:"ppi" json:"ppi,omitempty"`
+	Charset    string         `yaml:"charset" json:"charset,omitempty"`
+	MinRefresh Duration       `yaml:"min_refresh" json:"min_refresh,omitempty"`
+	Power      string         `yaml:"power" json:"power,omitempty"`
+	Rotation   int            `yaml:"rotation" json:"rotation,omitempty"`           // page → panel, ADR 0102
+	Scroll     *displayScroll `yaml:"scroll,omitempty" json:"scroll,omitempty"`     // text displays, ADR 0117
+	WidthMM    *int           `yaml:"width_mm,omitempty" json:"width_mm,omitempty"` // removed by ADR 0050, rejected with a hint
+}
+
+// displayScroll is the marquee timing of a text display (ADR 0117).
+type displayScroll struct {
+	Step Duration `yaml:"step,omitempty" json:"step,omitempty"`
 }
 
 // parseDisplayFile reads one display type file strictly: an unknown key or a
@@ -68,6 +74,14 @@ func (f displayFile) check(name string) error {
 	if !validRotation(f.Rotation) {
 		return fmt.Errorf("display type %s: rotation must be 0, 90, 180 or 270", name)
 	}
+	if f.Scroll != nil {
+		if f.Kind != kindText {
+			return fmt.Errorf("display type %s: scroll only applies to kind text", name)
+		}
+		if f.Scroll.Step < 0 {
+			return fmt.Errorf("display type %s: scroll.step must not be negative", name)
+		}
+	}
 	return nil
 }
 
@@ -76,6 +90,13 @@ func (f displayFile) profile() Profile {
 	levels := 2
 	if f.GrayLevels > 2 {
 		levels = f.GrayLevels
+	}
+	step := time.Duration(0)
+	if f.Kind == kindText {
+		step = DefaultScrollStep
+		if f.Scroll != nil && f.Scroll.Step > 0 {
+			step = time.Duration(f.Scroll.Step)
+		}
 	}
 	return Profile{
 		Kind:       f.Kind,
@@ -87,6 +108,7 @@ func (f displayFile) profile() Profile {
 		MinRefresh: f.MinRefresh,
 		Power:      f.Power,
 		Rotation:   f.Rotation,
+		ScrollStep: step,
 	}
 }
 

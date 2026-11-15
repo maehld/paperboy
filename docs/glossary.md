@@ -10,10 +10,11 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **instance** | The directory that `-config` selects, with `paperboy.yaml`, the content and the state | data directory, config directory |
 | **plugin** | A long-running program that draws widgets and answers actions | provider, backend, service |
 | **widget** | One drawing unit of a plugin, identified as `<plugin>/<widget>` | module, fragment, block |
-| **cell** | One box of an image page, which shows exactly one widget, or one run of characters on a text page | tile, slot |
-| **row** | One line of a text page, made of value cells | line, block |
+| **cell** | One box of a page: a widget on an image page, a value or literal text on a text page | tile, slot |
+| **text cell** | One box of a text page: a value or literal text with a column, span, alignment and overflow | row, line, label |
 | **value** | One piece of data a plugin declares by name, for example `evcc/pv`; a text cell shows it | reading, datum, key |
-| **page** | An image grid of widgets or a text layout of value rows, with a size from its display type | screen, template, view |
+| **overflow** | A text box policy: `strip`, `wrap` or `scroll` | clip, fitting |
+| **page** | An image grid of widgets or a text grid of value and text boxes, with a size from its display type | screen, template, view |
 | **page file** | `pages/<page>.yaml`: the layout for its kind and the `variants` map. It serves every display type of its kind. | shared page, main page, base page |
 | **variant** | `pages/<page>.<label>.yaml`: one layout that the page file names for a display type. It carries no title. | display version, page |
 | **display type** | The kind of panel that pages fit: kind, size, gray levels, ppi or charset, power, rotation | display, panel, profile, device type |

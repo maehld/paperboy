@@ -133,27 +133,27 @@ type editorPageView struct {
 	Display       string // the preview type (ADR 0110)
 	Text          bool
 	Error         string
-	File          string            // the label of the open file; empty: the page file
-	FilePath      string            // pages/<name>[.<label>].yaml
-	Notice        string            // the preview type is not the file the editor shows
-	NoticeWarn    bool              // the notice is a warning, not a hint
-	Orphan        bool              // the open variant has no page file
-	NoPage        bool              // the page has no page file
-	IsVariant     bool              // a variant is open; the page file owns the map
-	VariantTypes  []string          // display types that name the open variant, read-only
-	PageTitle     string            // title of the page file, shown read-only on a variant
-	ParentURL     string            // the page file of an open variant
-	ParentTitle   string            // its path, for the link
-	WidgetsPage   bool              // the widgets page without a page (ADR 0055)
-	TextPage      bool              // a text page: rows are edited instead of cells
-	Rows          [][]page.TextCell // server-rendered rows for the no-JS view
-	Displays      []displayLink     // display type switch of the widgets page
-	Serves        []servesRow       // each configured display type and its file
-	CreateTypes   []variantType     // the display types the create dialog offers
-	CreateLabel   string            // the label the create dialog starts with
-	CreateOK      bool              // a display type waits for a variant
-	ReassignPages []uiOption        // the other pages with a page file (ADR 0110)
-	Data          template.JS       // the starting state of the script
+	File          string        // the label of the open file; empty: the page file
+	FilePath      string        // pages/<name>[.<label>].yaml
+	Notice        string        // the preview type is not the file the editor shows
+	NoticeWarn    bool          // the notice is a warning, not a hint
+	Orphan        bool          // the open variant has no page file
+	NoPage        bool          // the page has no page file
+	IsVariant     bool          // a variant is open; the page file owns the map
+	VariantTypes  []string      // display types that name the open variant, read-only
+	PageTitle     string        // title of the page file, shown read-only on a variant
+	ParentURL     string        // the page file of an open variant
+	ParentTitle   string        // its path, for the link
+	WidgetsPage   bool          // the widgets page without a page (ADR 0055)
+	TextPage      bool          // a text page: rows are edited instead of cells
+	Cells         []page.Cell   // server-rendered boxes for the no-JS view
+	Displays      []displayLink // display type switch of the widgets page
+	Serves        []servesRow   // each configured display type and its file
+	CreateTypes   []variantType // the display types the create dialog offers
+	CreateLabel   string        // the label the create dialog starts with
+	CreateOK      bool          // a display type waits for a variant
+	ReassignPages []uiOption    // the other pages with a page file (ADR 0110)
+	Data          template.JS   // the starting state of the script
 }
 
 // servesRow is one configured display type in the Variants table: the file
@@ -997,7 +997,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 					t, err = page.ParseVariant(bytes.NewReader(data))
 				}
 				if err == nil {
-					v.Rows = t.Rows
+					v.Cells = t.Cells
 				}
 			}
 		}

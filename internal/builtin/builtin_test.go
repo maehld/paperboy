@@ -72,7 +72,7 @@ func TestValues(t *testing.T) {
 	if len(out) != 0 {
 		t.Fatalf("a request without names answered %v", out)
 	}
-	req.Values = []string{"title", "time", "date", "now"}
+	req.Values = []string{"title", "time", "date", "now", "long", "block"}
 	out, err = Plugin{}.Values(req)
 	if err != nil {
 		t.Fatal(err)
@@ -90,6 +90,12 @@ func TestValues(t *testing.T) {
 	if out["date"].Timestamp == nil || *out["date"].Timestamp != "2026-11-15T00:00:00Z" {
 		t.Errorf("date: %+v", out["date"])
 	}
+	if out["long"].Text == nil || len(*out["long"].Text) <= 20 {
+		t.Errorf("long: %+v", out["long"])
+	}
+	if out["block"].Text == nil || !strings.Contains(*out["block"].Text, "\n") {
+		t.Errorf("block: %+v", out["block"])
+	}
 	req.Values = []string{"nope"}
 	if _, err := (Plugin{}).Values(req); !errors.Is(err, plugin.ErrUnknownValue) {
 		t.Errorf("unknown value: %v", err)
@@ -105,7 +111,7 @@ func TestValuesDeclared(t *testing.T) {
 			t.Errorf("value %q is incomplete: %+v", v.Name, v)
 		}
 	}
-	for _, name := range []string{"title", "time", "date", "now"} {
+	for _, name := range []string{"title", "time", "date", "now", "long", "block"} {
 		if !seen[name] {
 			t.Errorf("value %q is not declared", name)
 		}

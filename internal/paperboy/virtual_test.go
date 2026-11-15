@@ -15,11 +15,11 @@ import (
 // It shows the page title and the built-in values (ADR 0111).
 func lcdPage(string) string {
 	return `kind: text
-rows:
-  - [{ value: paperboy/title, width: 20, align: left }]
-  - [{ value: paperboy/now, width: 20, align: right }]
-  - [{ value: paperboy/date, width: 20, align: left }]
-  - [{ value: paperboy/time, width: 20, align: right }]
+cells:
+  - { at: [0, 0], span: [20, 1], value: paperboy/title }
+  - { at: [0, 1], span: [20, 1], value: paperboy/now, align: right }
+  - { at: [0, 2], span: [20, 1], value: paperboy/date }
+  - { at: [0, 3], span: [20, 1], value: paperboy/time, align: right }
 `
 }
 

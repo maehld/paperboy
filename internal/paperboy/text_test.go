@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maehld/paperboy/internal/page"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
@@ -23,12 +24,12 @@ func textServer(t *testing.T, planYAML string) (*Server, *time.Time) {
 	writePageFile(t, filepath.Join(pages, "eins.yaml"), `
 title: Eins
 kind: text
-rows:
-  - [{ value: value/pv, width: 8, align: left }]
-  - [{ value: paperboy/title, width: 8, align: left }]
+cells:
+  - { at: [0, 0], span: [8, 1], value: value/pv }
+  - { at: [0, 1], span: [8, 1], value: paperboy/title }
 `)
-	writePageFile(t, filepath.Join(pages, "zwei.yaml"), "title: Zwei\nkind: text\nrows:\n  - [{ value: paperboy/title, width: 8, align: left }]\n")
-	writePageFile(t, filepath.Join(pages, "kaputt.yaml"), "kind: text\nrows:\n  - [{ value: paperboy/title, width: 8, colour: red }]\n")
+	writePageFile(t, filepath.Join(pages, "zwei.yaml"), "title: Zwei\nkind: text\ncells:\n  - { at: [0, 0], span: [8, 1], value: paperboy/title }\n")
+	writePageFile(t, filepath.Join(pages, "kaputt.yaml"), "kind: text\ncells:\n  - { at: [0, 0], span: [8, 1], value: paperboy/title, colour: red }\n")
 	if planYAML != "" {
 		writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), planYAML)
 	}
@@ -233,7 +234,7 @@ func TestTextDeviceFirmwareOffer(t *testing.T) {
 func TestPlanSkipsPagesForOtherDisplays(t *testing.T) {
 	s, _ := textServer(t, "rules: [{name: immer, pages: [bild, schmal, zwei]}]\n")
 	writePageFile(t, filepath.Join(s.config().Pages, "bild.yaml"), "kind: image\ngrid: [8, 2]\ncells: [{widget: paperboy/text, args: {text: bild}}]\n")
-	writePageFile(t, filepath.Join(s.config().Pages, "schmal.yaml"), "kind: text\nrows:\n  - [{ value: paperboy/title, width: 9 }]\n")
+	writePageFile(t, filepath.Join(s.config().Pages, "schmal.yaml"), "kind: text\ncells:\n  - { at: [0, 0], span: [9, 1], value: paperboy/title }\n")
 	dev := planDevice(t, s)
 	out := displayPage(t, s, dev)
 	if lines := anyStrings(out["text"].(map[string]any)["lines"]); lines[0] != "Zwei    " {
@@ -259,13 +260,15 @@ func TestPlanSkipsPagesForOtherDisplays(t *testing.T) {
 
 func TestHashTextCoversScroll(t *testing.T) {
 	static := []string{"Lange Ze", "zwei    "}
-	if hashText(static, nil) != hashText(static, []string{"", ""}) {
-		t.Error("a page without scrolling must keep the hash it had before the field existed")
+	a := []page.ScrollBox{{At: [2]int{0, 0}, Span: [2]int{8, 1}, Lines: []string{"Lange Zeile A"}, Direction: page.ScrollHorizontal}}
+	b := []page.ScrollBox{{At: [2]int{0, 0}, Span: [2]int{8, 1}, Lines: []string{"Lange Zeile B"}, Direction: page.ScrollHorizontal}}
+	if hashText(static, nil) != hashText(static, []page.ScrollBox{}) {
+		t.Error("a page without scrolling must keep its hash")
 	}
-	if hashText(static, []string{"Lange Zeile A", ""}) == hashText(static, []string{"Lange Zeile B", ""}) {
+	if hashText(static, a) == hashText(static, b) {
 		t.Error("a change behind the visible columns must change the hash")
 	}
-	if hashText(static, []string{"Lange Zeile A", ""}) == hashText(static, nil) {
-		t.Error("a scrolling row must change the hash")
+	if hashText(static, a) == hashText(static, nil) {
+		t.Error("a scrolling box must change the hash")
 	}
 }

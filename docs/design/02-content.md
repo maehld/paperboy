@@ -2,7 +2,7 @@
 
 # Content
 
-A page is a grid of cells on an image display and a layout of rows of values on a text display. Every cell shows one widget from one plugin, and every text cell shows one value a plugin declares. A plan decides which page a device gets and when.
+A page is a grid of cells on an image display and a character grid of boxes on a text display. Every cell shows one widget from one plugin, and every text cell shows one value a plugin declares. A plan decides which page a device gets and when.
 
 ## Pages
 
@@ -44,8 +44,9 @@ A variant file carries `kind`, `grid`, `style`, `notices` and `cells`. It inheri
 | `style.text_size` | Base text size in points, 4–144, default 16, capped at 0.12 of the display height |
 | `style.divider` | Lines that Paperboy draws between the cells |
 | `notices` | `show` or `none`: whether a notice page may replace this page |
-| `cells` | Image pages only: `at` (column, row), `span` (columns, rows), `widget`, `args`, `style` (overrides the page style), `scroll` |
-| `rows` | Text pages only: lists of cells, each with `at`, `value`, `label`, `unit`, `width` and `align` ([text pages](#text-pages)) |
+| `cells` | Image pages: `at` (column, row), `span` (columns, rows), `widget`, `args`, `style` |
+| `overflow` | Text pages: default `strip`, `wrap` or `scroll` ([text pages](#text-pages)) |
+| `cells` | Text pages: boxes with `at`, `span`, `text` or `value`, `label`, `unit`, `align` and `overflow` |
 
 Parsing is strict and cells must not overlap. Sizes are in points since [ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md). A fraction such as `0.06` is rejected with a hint: points are physical, and the display type's `ppi` converts them into pixels.
 
@@ -66,47 +67,44 @@ The built-in plugin draws text, lines and fills, so a page that is only text nee
 
 ## Text pages
 
-A text page has no pixels. Its file says `kind: text` and carries `rows`: a list of lines, and every line a list of cells shown side by side ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). The parser rejects `grid` and `cells` on a text page with a hint, because the character grid belongs to the display.
+A text page has no pixels. Its file says `kind: text` and carries `cells`: boxes at a character column and row, with a span in columns and rows ([ADR 0117](../adr/0117-text-boxes-and-overflow.md)). The display type supplies the character grid; the parser rejects `grid` on a text page.
 
 ```yaml
 title: Werte
 kind: text
-rows:
-  - [{ value: paperboy/title, width: 20, align: left }]
-  - [{ value: paperboy/date, label: Datum, width: 20, align: left }]
-  - [{ value: weather/temperature, label: Temp, width: 10, align: decimal },
-     { value: weather/humidity, unit: "%", width: 10, align: right }]
-  - [{ value: evcc/pv, label: PV, width: 10, align: decimal, unit: kW }]
+overflow: strip
+cells:
+  - { at: [0, 0], span: [20, 1], text: "Familie" }
+  - { at: [0, 1], span: [12, 2], value: weather/forecast, overflow: wrap }
+  - { at: [14, 1], span: [6, 2], value: paperboy/now, align: right }
+  - { at: [0, 3], span: [12, 1], value: paperboy/long, overflow: scroll }
 ```
 
-A row may be empty: it stays a blank line, so deleting the last cell of a row does not break the page. A cell names a `value` as `<plugin>/<key>`, the key a plugin declares in `describe.values`. `at` is the 0-based column of the cell; without `at` the cell follows the previous one, so hand-written rows flow from column 0 (ADR 0116). Paperboy asks every plugin once for all keys of that page. It caches the answer like a widget, and a `changed` event drops it. The plugin answers data, never text: a number, a text, a duration in seconds, a timestamp or a direction. The shipped plugins declare their values in a later protocol version; until then a cell with such a key shows `? …`.
+A box carries exactly one of `text` and `value`. `text` is literal text and may span lines; a literal text cell has no label or unit. A value cell names `<plugin>/<key>`, the key a plugin declares in `describe.values`. Paperboy asks every plugin once for all keys of the page. It caches the answer like a widget and drops it on a `changed` event. The plugin answers data, never text. The shipped plugins declare their values in a later protocol version; until then a cell with such a key shows `? …`.
 
 | Cell key | Meaning |
 |---|---|
-| `at` | 0-based column; missing means after the previous cell (flow) |
+| `at` | `[column, row]` of the top-left corner |
+| `span` | `[columns, rows]` the box takes; default `[1, 1]` |
+| `text` | literal text; multi-line strings keep their line breaks |
 | `value` | `<plugin>/<key>` of the declared value |
-| `label` | Text in front of the value, followed by one space |
-| `unit` | Text behind the value, preceded by one space; default the unit the plugin declares for a number |
-| `width` | Columns the cell takes, 1 to 80 |
+| `label` | value cells only: text in front of the value |
+| `unit` | value cells only: text behind the value; default the declared unit |
 | `align` | `left` (default), `right` or `decimal` |
+| `overflow` | `strip`, `wrap` or `scroll`; default the page's `overflow` |
 
-`at + width` must fit the display, and two cells of a row must not overlap. Paperboy writes every cell at its column and leaves a gap as spaces. The editor resolves the flow of an existing page and writes an explicit `at` when it saves (ADR 0116).
+`overflow` on the page sets the default for every box; a cell overrides it.
+- `strip` cuts after the box's width and height.
+- `wrap` reflows text into the box width at word boundaries, then cuts at its height.
+- `scroll` keeps the full content and moves it. A line wider than the box moves horizontally; more lines than the box move vertically. Both together move vertically by lines.
 
-Paperboy formats every value itself, so the same reading looks the same on every page:
+Boxes must stay inside the character grid and must not overlap; `at + span` is checked against the display in `Fits`. A box that is not filled stays blank, so a page can leave rows and columns free.
 
-- A number follows the global `language`: decimal comma for `de`, decimal point for `en`, and the `precision` the plugin declares. There is no grouping.
-- A text stays as it is.
-- A duration of seconds becomes `45s`, `12min`, `3h 20min` or `2d 4h`.
-- A timestamp shows its time on the page's day. At midnight it shows its date (`02.01.2006`, English `Jan 2, 2006`). On another day it shows both (`14.11. 18:05`, English `Nov 14, 18:05`).
-- A direction is a trend arrow: `^` up, `>` flat, `v` down, doubled for a strong move.
+Paperboy formats every value itself: numbers follow the global `language` and the declared `precision`, durations and timestamps their compact forms, and directions their arrows. `RenderText` converts label, value and text to the charset before it measures, wraps or cuts. A stale value marks `!` in the last column of line 1. A missing value becomes a `? …` cell.
 
-`left` starts the cell text at the first column. `right` ends it at the last. `decimal` puts the label at the left and the value against the unit, so decimal separators line up. The text is cut to the `width`; with `right` and `decimal` the end stays.
+A scrolling box adds its full lines, its first window and its direction to the render result. The device answer carries them with the display type's `scroll.step` (default 300 ms) and a flag whether the scroll text changed. A firmware or the virtual display keeps its offset while the flag is false and restarts at the first window when it is true. ePaper pages reject `scroll` and `overflow` with a hint (ADR 0117).
 
-`RenderText` converts label, value and unit to the charset of the display before it measures or cuts: `utf8`, `ascii` or `hd44780`. The HD44780 keeps ä ö ü ß ° µ and turns Ä Ö Ü into A O U. A value the page asks for but no plugin declares becomes a wrapped `? …` cell, like a failing widget did. A stale value marks `!` in the last column of line 1.
-
-A text page fits a text display when its rows fit the character grid. It has no more rows than the display, and every row is at most as wide. Rows the page does not fill stay blank. Other text sizes need a variant ([ADR 0110](../adr/0110-pages-serve-their-kind-and-name-variants.md)).
-
-The page editor edits rows and value cells, including their columns (ADR 0111, 0116). Lists (`for-each`) and scrolling rows arrive in later steps. A page of values does not scroll yet.
+The page editor places the same boxes on the board. Drag moves a box and its edges resize it. The inspector edits value or text, label, unit, align and overflow. Text pages have no style in points.
 
 ## Which page a device gets
 
@@ -136,7 +134,7 @@ Rules are tried in order and the first match wins:
 
 A rule lists `pages`, `rotate` (seconds until the next page of the rule) and `refresh` (seconds until the next sync). `UntilNextBoundary` caps the refresh at the next rule change. `fallback` holds the pages of a device whose no rule matches.
 
-A page of a rule that does not fit the device's display type is skipped. That is no file for the type, the other kind, or a text page whose rows do not fit the character grid. The file the page names decides; a type that names no variant is served by the page file. The skip is logged once per display type, page and reason. No fitting page at all gives a notice page. A broken page is shown as a notice, not skipped. A render that panics is logged with its stack and answered with a notice page.
+A page of a rule that does not fit the device's display type is skipped. That is no file for the type, the other kind, or a text page whose boxes do not fit the character grid. The file the page names decides; a type that names no variant is served by the page file. The skip is logged once per display type, page and reason. No fitting page at all gives a notice page. A broken page is shown as a notice, not skipped. A render that panics is logged with its stack and answered with a notice page.
 
 A broken entry costs one display type, not the page ([ADR 0110](../adr/0110-pages-serve-their-kind-and-name-variants.md)). An entry for a type that no longer exists is unused: the file stays and Paperboy writes no log line. A variant file that no entry names is unused too.
 

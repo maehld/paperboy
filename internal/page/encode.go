@@ -53,15 +53,14 @@ func encode(t *Template, variant bool) ([]byte, error) {
 		add(root, "notices", str(c.Notices))
 	}
 	if c.Kind == KindText {
-		rows := newSeq(false)
-		for _, row := range c.Rows {
-			cells := newSeq(false)
-			for _, cell := range row {
-				cells.Content = append(cells.Content, textCellNode(cell))
-			}
-			rows.Content = append(rows.Content, cells)
+		if c.Overflow != "" && c.Overflow != OverflowStrip {
+			add(root, "overflow", str(c.Overflow))
 		}
-		add(root, "rows", rows)
+		cells := newSeq(false)
+		for _, cell := range c.Cells {
+			cells.Content = append(cells.Content, textCellNode(cell))
+		}
+		add(root, "cells", cells)
 		return marshalNode(root)
 	}
 	add(root, "grid", intSeq(c.Grid[0], c.Grid[1]))
@@ -73,24 +72,29 @@ func encode(t *Template, variant bool) ([]byte, error) {
 	return marshalNode(root)
 }
 
-// textCellNode is one cell of a text page in flow style, e.g.
-// { value: weather/temperature, width: 6, align: decimal }.
-func textCellNode(c TextCell) *yaml.Node {
+// textCellNode is one box of a text page in flow style, e.g.
+// { at: [0, 1], span: [6, 2], value: weather/forecast, align: right }.
+func textCellNode(c Cell) *yaml.Node {
 	n := newMap()
 	n.Style = yaml.FlowStyle
-	if c.At != nil {
-		add(n, "at", valueNode(*c.At))
+	add(n, "at", intSeq(c.At[0], c.At[1]))
+	add(n, "span", intSeq(c.Span[0], c.Span[1]))
+	if c.Text != "" {
+		add(n, "text", str(c.Text))
+	} else {
+		add(n, "value", str(c.Value))
+		if c.Label != "" {
+			add(n, "label", str(c.Label))
+		}
+		if c.Unit != "" {
+			add(n, "unit", str(c.Unit))
+		}
 	}
-	add(n, "value", str(c.Value))
-	if c.Label != "" {
-		add(n, "label", str(c.Label))
-	}
-	if c.Unit != "" {
-		add(n, "unit", str(c.Unit))
-	}
-	add(n, "width", valueNode(c.Width))
 	if c.Align != "" && c.Align != AlignLeft {
 		add(n, "align", str(c.Align))
+	}
+	if c.Overflow != "" {
+		add(n, "overflow", str(c.Overflow))
 	}
 	return n
 }

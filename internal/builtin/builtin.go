@@ -38,6 +38,8 @@ func (Plugin) Describe() plugin.Description {
 			{Name: "time", Title: "Current time", Type: plugin.ValueTimestamp},
 			{Name: "date", Title: "Current date", Type: plugin.ValueTimestamp},
 			{Name: "now", Title: "Current date and time", Type: plugin.ValueTimestamp},
+			{Name: "long", Title: "Long line", Type: plugin.ValueText},
+			{Name: "block", Title: "Text block", Type: plugin.ValueText},
 		},
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "header", Title: "Page header", Kinds: both, Sizes: []plugin.Span{{Columns: 6, Rows: 1}, {Columns: 4, Rows: 1}},
@@ -98,6 +100,10 @@ func (Plugin) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 			out[name] = plugin.TimestampValue(now)
 		case "date":
 			out[name] = plugin.TimestampValue(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()))
+		case "long":
+			out[name] = plugin.TextValue("Diese Zeile ist absichtlich zu lang für das Display.")
+		case "block":
+			out[name] = plugin.TextValue("Zeile eins mit einem sehrlangenWort\nZeile zwei\nZeile drei\nZeile vier")
 		default:
 			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
 		}

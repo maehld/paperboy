@@ -86,8 +86,50 @@ type syncImage struct {
 // syncText is the content of a text display (ADR 0044).
 type syncText struct {
 	Lines  []string `json:"lines"`
-	Scroll []string `json:"scroll,omitempty"` // full text of scrolling rows, "" for a static row (ADR 0092)
-	Hash   string   `json:"hash"`
+	Scroll []string `json:"scroll,omitempty"` // legacy single-row marquee (ADR 0092)
+	// Scrolls describe the scrolling text boxes with their full text, window,
+	// direction and step (ADR 0117).
+	Scrolls       []syncScroll `json:"scrolls,omitempty"`
+	ScrollChanged bool         `json:"scroll_changed,omitempty"`
+	Hash          string       `json:"hash"`
+}
+
+// syncScroll is one scrolling text box of a text page (ADR 0117).
+type syncScroll struct {
+	Row       int      `json:"row"`
+	Col       int      `json:"col"`
+	Width     int      `json:"width"`
+	Height    int      `json:"height"`
+	Text      []string `json:"text"`   // full content, not cut to the box
+	Window    []string `json:"window"` // the first visible lines
+	StepMS    int      `json:"step_ms"`
+	Direction string   `json:"direction"` // horizontal, vertical or both
+}
+
+// textResponse builds the text part of a sync or poll answer. The scroll hash
+// lets a device keep its marquee offset while the scroll text is unchanged.
+func textResponse(served servedPage, p Profile, st *deviceState) *syncText {
+	step := p.ScrollStep
+	if step <= 0 {
+		step = DefaultScrollStep
+	}
+	out := &syncText{Lines: served.lines, Scroll: legacyScroll(served.scrolls, p.Height), Hash: served.hash}
+	hash := ""
+	for _, box := range served.scrolls {
+		out.Scrolls = append(out.Scrolls, syncScroll{
+			Row: box.At[1], Col: box.At[0], Width: box.Span[0], Height: box.Span[1],
+			Text: box.Lines, Window: box.Window, StepMS: int(step / time.Millisecond), Direction: box.Direction,
+		})
+	}
+	if len(served.scrolls) > 0 {
+		raw, _ := json.Marshal(served.scrolls)
+		hash = hashBytes(raw)
+	}
+	if st != nil {
+		out.ScrollChanged = hash != st.ScrollHash
+		st.ScrollHash = hash
+	}
+	return out
 }
 
 type syncResponse struct {
@@ -708,7 +750,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		Wake:     wake,
 	}
 	if textDisplay {
-		resp.Text = &syncText{Lines: served.lines, Scroll: scrollRows(served.scroll), Hash: served.hash}
+		resp.Text = textResponse(served, cfg.Profiles[d.Profile], st)
 	} else {
 		resp.Image = &syncImage{Path: served.path, Hash: served.hash}
 	}
@@ -847,5 +889,5 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	writeJSON(w, http.StatusOK, syncText{Lines: served.lines, Scroll: scrollRows(served.scroll), Hash: served.hash})
+	writeJSON(w, http.StatusOK, textResponse(served, cfg.Profiles[d.Profile], st))
 }

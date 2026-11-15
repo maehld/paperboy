@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"image"
 	"log/slog"
@@ -25,15 +26,15 @@ const hintRefresh = 15 * time.Minute
 
 // servedPage is the page an answer points the device to.
 type servedPage struct {
-	path    string        // image path below the server root
-	refresh time.Duration // sleep time to report
-	name    string        // page or template name for logging; empty for a notice
-	page    int           // page index within the plan rule, for logging
-	pages   int           // pages in the rule, for logging
-	hash    string        // content hash of the PNG or the lines; the device repaints when it changes
-	lines   []string      // text displays: the lines to show (ADR 0044)
-	scroll  []string      // text displays: full text of scrolling rows, "" for a static row (ADR 0092)
-	err     error         // render error that turned the page into a notice
+	path    string           // image path below the server root
+	refresh time.Duration    // sleep time to report
+	name    string           // page or template name for logging; empty for a notice
+	page    int              // page index within the plan rule, for logging
+	pages   int              // pages in the rule, for logging
+	hash    string           // content hash of the PNG or the lines; the device repaints when it changes
+	lines   []string         // text displays: the lines to show (ADR 0044)
+	scrolls []page.ScrollBox // text displays: boxes that scroll (ADR 0117)
+	err     error            // render error that turned the page into a notice
 }
 
 // renderedPage is a page template rendered for one profile and page.
@@ -117,26 +118,40 @@ func (s *Server) display(cfg *Config, p Profile) page.Display {
 		Language: cfg.Language, Timezone: cfg.Timezone}
 }
 
-// hashText is the content hash of a text page. Scrolling rows are part of it,
-// so a change behind the visible columns still repaints the display (ADR 0092);
-// a page without scrolling keeps the hash it had before the field existed.
-func hashText(lines, scroll []string) string {
+// hashText is the content hash of a text page. The full text of scrolling
+// boxes is part of it, so a change behind the visible window still repaints the
+// display (ADR 0117).
+func hashText(lines []string, scrolls []page.ScrollBox) string {
 	data := strings.Join(lines, "\n")
-	if scrollRows(scroll) != nil {
-		data += "\x00" + strings.Join(scroll, "\n")
+	if len(scrolls) > 0 {
+		raw, _ := json.Marshal(scrolls)
+		data += "\x00" + string(raw)
 	}
 	return hashBytes([]byte(data))
 }
 
-// scrollRows drops the row list of a page without scrolling, so the answer
-// carries the field only when a row really moves (ADR 0092).
-func scrollRows(scroll []string) []string {
-	for _, s := range scroll {
-		if s != "" {
-			return scroll
+// legacyScroll fills the old per-row scroll list for horizontal, single-row
+// boxes, so an older firmware keeps working until it reads scrolls (ADR 0117).
+func legacyScroll(scrolls []page.ScrollBox, height int) []string {
+	if len(scrolls) == 0 {
+		return nil
+	}
+	out := make([]string, height)
+	used := false
+	for _, box := range scrolls {
+		if box.Direction != page.ScrollHorizontal || box.Span[1] != 1 || len(box.Lines) == 0 {
+			continue
+		}
+		row := box.At[1]
+		if row >= 0 && row < height {
+			out[row] = box.Lines[0]
+			used = true
 		}
 	}
-	return nil
+	if !used {
+		return nil
+	}
+	return out
 }
 
 // renderText renders pages/<name>.<profile>.yaml for a text display type
@@ -430,7 +445,7 @@ func (s *Server) renderPlan(cfg *Config, d *Device, c planChoice, now time.Time,
 		if err != nil {
 			return s.pageFailed(cfg, d, c, err, quiet)
 		}
-		return servedPage{lines: text.Lines, scroll: text.Scroll, hash: hashText(text.Lines, text.Scroll),
+		return servedPage{lines: text.Lines, scrolls: text.Scrolls, hash: hashText(text.Lines, text.Scrolls),
 			name: c.name, page: c.page, pages: c.pages, refresh: c.refresh}
 	}
 	rp, err := s.renderPage(cfg, d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages}, d.ID, c.banners...)

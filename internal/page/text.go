@@ -146,23 +146,145 @@ func wrap(s string, n int) []string {
 	return lines
 }
 
-// renderTextCell formats one cell of a text page: the value, its label and its
-// unit laid out in the cell's width (ADR 0111). A failed or missing value
-// becomes a `? …` cell, like a failing widget did.
-func renderTextCell(r Result, cell TextCell, charset, lang string, now time.Time, loc *time.Location) string {
-	value, unit := "", cell.Unit
+// Scroll directions of a text box (ADR 0117).
+const (
+	ScrollHorizontal = "horizontal"
+	ScrollVertical   = "vertical"
+	ScrollBoth       = "both"
+)
+
+// textCellLines turns one text box into the lines it shows and, for a
+// scrolling box, its full content and direction. The cell's overflow overrides
+// the page default.
+func textCellLines(r Result, cell Cell, charset, lang string, now time.Time, loc *time.Location, pageOverflow string) (window, full []string, direction string, scrolling bool) {
+	width, height := cell.Span[0], cell.Span[1]
+	overflow := cell.Overflow
+	if overflow == "" {
+		overflow = pageOverflow
+	}
+	var lines []string
+	value, unit := "", ""
+	if cell.Text != "" {
+		for _, line := range strings.Split(cell.Text, "\n") {
+			lines = append(lines, clean(Convert(charset, line)))
+		}
+	} else {
+		value, unit = textValueParts(r, cell, charset, lang, now, loc)
+		if overflow != OverflowScroll {
+			// A value is one line; compose it with the cell's alignment, which
+			// keeps decimal separators lined up before the unit (ADR 0111).
+			window := make([]string, height)
+			full := strings.TrimRight(textLine(charset, cell.Label, value, unit), " ")
+			if overflow == OverflowWrap && len([]rune(full)) > width {
+				for i, line := range wrap(full, width) {
+					if i >= height {
+						break
+					}
+					window[i] = clean(align(width, line, alignMode(cell.Align)))
+				}
+			} else {
+				window[0] = composeTextCell(charset, cell.Label, value, unit, width, cell.Align)
+			}
+			return window, nil, "", false
+		}
+		lines = []string{textLine(charset, cell.Label, value, unit)}
+	}
+	if overflow == OverflowWrap {
+		var wrapped []string
+		for _, line := range lines {
+			if line == "" {
+				wrapped = append(wrapped, "")
+				continue
+			}
+			wrapped = append(wrapped, wrap(line, width)...)
+		}
+		lines = wrapped
+	}
+	alignLine := func(line string) string {
+		return align(width, line, alignMode(cell.Align))
+	}
+	if overflow == OverflowScroll {
+		wide, tall := false, len(lines) > height
+		for _, line := range lines {
+			if len([]rune(line)) > width {
+				wide = true
+			}
+		}
+		switch {
+		case wide && tall:
+			direction = ScrollBoth
+		case wide:
+			direction = ScrollHorizontal
+		case tall:
+			direction = ScrollVertical
+		}
+		for i := 0; i < height; i++ {
+			line := ""
+			if i < len(lines) {
+				line = lines[i]
+			}
+			if wide && direction != ScrollVertical {
+				if r := []rune(line); len(r) > width {
+					line = string(r[:width])
+				}
+			}
+			window = append(window, alignLine(line))
+		}
+		if direction != "" {
+			return window, lines, direction, true
+		}
+		return window, nil, "", false
+	}
+	for i := 0; i < height; i++ {
+		line := ""
+		if i < len(lines) {
+			line = lines[i]
+		}
+		window = append(window, alignLine(line))
+	}
+	return window, nil, "", false
+}
+
+// textValueParts formats one value and resolves its unit.
+func textValueParts(r Result, cell Cell, charset, lang string, now time.Time, loc *time.Location) (value, unit string) {
+	value, unit = "", cell.Unit
 	if r.Err != nil || r.Value == nil {
 		msg := "no value"
 		if r.Err != nil {
 			msg = firstLine(r.Err.Error())
 		}
-		return composeTextCell(charset, cell.Label, "? "+msg, unit, cell.Width, AlignLeft)
+		value = "? " + msg
+	} else {
+		value = formatValue(r.Spec, *r.Value, lang, now, loc)
+		if unit == "" && r.Spec.Type == plugin.ValueNumber {
+			unit = r.Spec.Unit
+		}
 	}
-	value = formatValue(r.Spec, *r.Value, lang, now, loc)
-	if unit == "" && r.Spec.Type == plugin.ValueNumber {
-		unit = r.Spec.Unit
+	return clean(Convert(charset, value)), clean(Convert(charset, unit))
+}
+
+// textLine writes label, value and unit without cutting them to a box.
+func textLine(charset, label, value, unit string) string {
+	label = clean(Convert(charset, label))
+	var b strings.Builder
+	if label != "" {
+		b.WriteString(label)
+		b.WriteByte(' ')
 	}
-	return composeTextCell(charset, cell.Label, value, unit, cell.Width, cell.Align)
+	b.WriteString(value)
+	if unit != "" {
+		b.WriteByte(' ')
+		b.WriteString(unit)
+	}
+	return b.String()
+}
+
+// alignMode maps a cell alignment to the byte align expects.
+func alignMode(align string) byte {
+	if align == AlignRight || align == AlignDecimal {
+		return 'r'
+	}
+	return 'l'
 }
 
 // formatValue turns a plugin value into the text a cell shows. Paperboy owns

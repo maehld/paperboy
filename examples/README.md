@@ -38,20 +38,20 @@ grid, the spans and the arguments.
 - `geburtstage.yaml` - the next birthdays with the age next to a short agenda
   limited to the private calendar; `geburtstage.lcd2004.yaml` puts them on
   20×4.
-- `uebersicht.lcd2004.yaml` - values on a 20×4 character display: rows of the
+- `uebersicht.lcd2004.yaml` - boxes on a 20×4 character display with the
   built-in values `paperboy/title`, `paperboy/date`, `paperboy/time` and
-  `paperboy/now` ([ADR 0111](../docs/adr/0111-text-pages-from-plugin-values.md)).
-- `hinweise.yaml` - a text page with rows of built-in values. The shipped
-  plugins declare their own values in a later protocol version; until then the
-  `*.lcd2004.yaml` variants show the built-in values too.
+  `paperboy/now` ([ADR 0117](../docs/adr/0117-text-boxes-and-overflow.md)).
+- `hinweise.yaml` - a text page with literal text and boxes of built-in values.
+  The shipped plugins declare their own values in a later protocol version;
+  until then the `*.lcd2004.yaml` variants show the built-in values too.
 
 A page file `<page>.yaml` serves every display type of its kind, so
 `uebersicht.yaml` works on 800×480 and on 400×300 panels alike: the plugins draw
 every widget in the size of its cell. Its `variants` map names the exceptions
 ([ADR 0110](../docs/adr/0110-pages-serve-their-kind-and-name-variants.md)):
 `uebersicht.yaml` names `lcd2004: lcd2004`, so `uebersicht.lcd2004.yaml` serves
-the text display. A text page carries rows of values, and its rows must fit the
-character grid of the display.
+the text display. A text page carries boxes of values or literal text, and every
+box must fit the character grid of the display.
 
 The plugin names in the pages are the keys under `plugins` in `paperboy.yaml`;
 `cmd/paperboy/paperboy.example.yaml` declares all of them.

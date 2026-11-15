@@ -96,6 +96,9 @@ type Profile struct {
 	// firmware was built for. A portrait page on a landscape panel needs 90 or
 	// 270; a device may override it for its mounting.
 	Rotation int `json:"rotation,omitempty"`
+	// ScrollStep is the time between two marquee steps of a text display
+	// (ADR 0117); 300 ms unless the display type sets scroll.step.
+	ScrollStep time.Duration `json:"scroll_step,omitempty"`
 }
 
 // validRotation reports whether n is one of the quarter turns a device and a
@@ -124,6 +127,9 @@ const (
 const mainsImageMinRefresh = 10 * time.Second
 
 func validPower(p string) bool { return p == powerAuto || p == powerBattery || p == powerMains }
+
+// DefaultScrollStep is the marquee step of a text display (ADR 0117).
+const DefaultScrollStep = 300 * time.Millisecond
 
 const (
 	kindImage = "image"
@@ -730,11 +736,19 @@ func validateProfile(name string, p *Profile) error {
 		if p.Charset == "" {
 			p.Charset = page.CharsetUTF8
 		}
+		if p.ScrollStep == 0 {
+			p.ScrollStep = DefaultScrollStep
+		}
+		if p.ScrollStep < 50*time.Millisecond {
+			return fmt.Errorf("display type %s: scroll.step must be at least 50ms", name)
+		}
 		if p.PPI != 0 || p.Levels > 2 {
 			return fmt.Errorf("display type %s: gray_levels and ppi do not apply to kind text", name)
 		}
 	} else if p.Charset != "" {
 		return fmt.Errorf("display type %s: charset only applies to kind text", name)
+	} else if p.ScrollStep != 0 {
+		return fmt.Errorf("display type %s: scroll only applies to kind text", name)
 	} else if p.PPI < 20 || p.PPI > 1000 {
 		return fmt.Errorf("display type %s: ppi is required for image displays: pixels per inch between 20 and 1000, e.g. 125 (ADR 0050)", name)
 	} else {

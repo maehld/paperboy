@@ -202,12 +202,15 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
       <label class="field"><span>Title</span><input id="title" autocomplete="off"></label>
       <label class="field"><span>Grid</span><span class="grid2"><input id="cols" type="number" min="1" max="80" title="columns"><input id="rows" type="number" min="1" max="80" title="rows"></span></label>
       <p class="hint" id="grid-note"></p>
-      <h4>Style (pt)</h4>
-      <label class="field"><span>padding</span><input id="padding" type="number" step="0.1" min="0"></label>
-      <label class="field"><span>rule</span><input id="rule" type="number" step="0.1" min="0"></label>
-      <label class="field"><span>text size</span><input id="text-size" type="number" step="0.1" min="0"></label>
-      <label class="field"><span>divider</span><input id="divider" type="number" step="0.1" min="0"></label>
-      <h4>Stale widgets</h4>
+      <div id="style-fields"{{if .TextPage}} hidden{{end}}>
+        <h4>Style (pt)</h4>
+        <label class="field"><span>padding</span><input id="padding" type="number" step="0.1" min="0"></label>
+        <label class="field"><span>rule</span><input id="rule" type="number" step="0.1" min="0"></label>
+        <label class="field"><span>text size</span><input id="text-size" type="number" step="0.1" min="0"></label>
+        <label class="field"><span>divider</span><input id="divider" type="number" step="0.1" min="0"></label>
+      </div>
+      {{if .TextPage}}<label class="field"><span>overflow</span><select id="overflow"><option value="strip">strip</option><option value="wrap">wrap</option><option value="scroll">scroll</option></select></label>{{end}}
+      <h4>{{if .TextPage}}Stale values{{else}}Stale widgets{{end}}</h4>
       <select id="notices"><option value="show">show a bar</option><option value="none">do not show</option></select>
     </section>
     {{if .IsVariant}}<section class="panel">
@@ -238,10 +241,9 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <section class="panel palette">
       <h3>{{if .TextPage}}Values{{else}}Widgets{{end}}</h3>
       <input id="palette-filter" type="search" placeholder="{{if .TextPage}}Filter values…{{else}}Filter widgets…{{end}}" autocomplete="off" aria-label="Filter values">
-      <p class="hint">{{if .WidgetsPage}}Click a widget to show it on the right.{{else if .TextPage}}Click a value, then a slot, or drag it onto a row. Drag a cell to move it; drag its right edge to resize it.{{else}}Click a widget, then a free cell, or drag it there. Drag a box by its body to move it and by an edge or corner to resize it.{{end}}</p>
+      <p class="hint">{{if .WidgetsPage}}Click a widget to show it on the right.{{else if .TextPage}}Click a value or Text, then a free slot. Drag a box to move it; drag an edge or corner to resize it.{{else}}Click a widget, then a free cell, or drag it there. Drag a box by its body to move it and by an edge or corner to resize it.{{end}}</p>
       <div id="palette"></div>
     </section>
-    {{if .TextPage}}<section class="panel rows-panel" id="rows-panel"></section>{{end}}
   </div>
   <div class="col">
     {{if .WidgetsPage}}<section class="panel preview single">
@@ -263,20 +265,20 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   <div class="col">
     {{if .TextPage}}<noscript>
     <section class="panel noscript-rows">
-      <h3>Text rows</h3>
+      <h3>Text cells</h3>
       <p class="hint">JavaScript is off. These fields show the page but do not save it. Edit {{.FilePath}} by hand.</p>
-      {{if .Rows}}{{range $y, $row := .Rows}}
-      <h4>Row {{inc $y}}</h4>
-      {{range $i, $c := $row}}
+      {{if .Cells}}{{range $i, $c := .Cells}}
       <div class="arg">
+        <label class="field"><span>At</span><input value="{{index $c.At 0}},{{index $c.At 1}}" readonly></label>
+        <label class="field"><span>Span</span><input value="{{index $c.Span 0}}×{{index $c.Span 1}}" readonly></label>
+        <label class="field"><span>Text</span><input value="{{$c.Text}}" readonly></label>
         <label class="field"><span>Value</span><input value="{{$c.Value}}" readonly></label>
         <label class="field"><span>Label</span><input value="{{$c.Label}}" readonly></label>
         <label class="field"><span>Unit</span><input value="{{$c.Unit}}" readonly></label>
-        <label class="field"><span>At</span><input type="number" value="{{$c.AtValue}}" readonly></label>
-        <label class="field"><span>Width</span><input type="number" value="{{$c.Width}}" readonly></label>
         <label class="field"><span>Align</span><input value="{{$c.Align}}" readonly></label>
+        <label class="field"><span>Overflow</span><input value="{{$c.Overflow}}" readonly></label>
       </div>
-      {{end}}{{end}}{{else}}<p class="empty">No rows yet.</p>{{end}}
+      {{end}}{{else}}<p class="empty">No cells yet.</p>{{end}}
     </section>
     </noscript>{{end}}
     <section class="panel inspector" id="inspector"></section>

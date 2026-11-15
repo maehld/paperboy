@@ -88,11 +88,11 @@ cells:
 // textVariant is a text layout for the LCD of editorServer.
 const textVariant = `
 kind: text
-rows:
-  - [{ value: paperboy/title, width: 20, align: left }]
-  - [{ value: paperboy/time, width: 20, align: right }]
-  - [{ value: paperboy/date, width: 20, align: left }]
-  - [{ value: paperboy/now, width: 20, align: decimal }]
+cells:
+  - { at: [0, 0], span: [20, 1], value: paperboy/title }
+  - { at: [0, 1], span: [20, 1], value: paperboy/time, align: right }
+  - { at: [0, 2], span: [20, 1], value: paperboy/date }
+  - { at: [0, 3], span: [20, 1], value: paperboy/now, align: decimal }
 `
 
 // coverageOf returns the coverage entry of one display type.
@@ -180,8 +180,8 @@ title: Solar
 kind: text
 variants:
   small: fehlt
-rows:
-  - [{ value: paperboy/title, width: 40 }]
+cells:
+  - { at: [0, 0], span: [40, 1], value: paperboy/title }
 `)
 	writePage(t, s, "broken", "klein", "kind: image\ngrid: [1, 1]\ncells: [{ at: [0, 0], span: [1, 1], widget: paperboy/text }]\ntitle: nope\n")
 
@@ -194,7 +194,7 @@ rows:
 		t.Fatalf("coverage small: %+v", c)
 	}
 	// The page is text with another grid than the LCD.
-	if c := coverageOf(t, read, "lcd"); c.Missing || c.Error == "" || !strings.Contains(c.Error, "leave 20 columns") {
+	if c := coverageOf(t, read, "lcd"); c.Missing || c.Error == "" || !strings.Contains(c.Error, "leaves the 20x4 character grid") {
 		t.Fatalf("coverage lcd: %+v", c)
 	}
 
@@ -367,7 +367,7 @@ func TestCreateVariant(t *testing.T) {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body)
 	}
 	if created.File != "lcd" || created.Path != "pages/solar.lcd.yaml" || created.Template == nil ||
-		created.Template.Kind != page.KindText || len(created.Template.Rows) != 4 {
+		created.Template.Kind != page.KindText || len(created.Template.Cells) != 4 {
 		t.Fatalf("created variant: %+v", created)
 	}
 	if c := coverageOf(t, created, "lcd"); c.File != "lcd" || c.Missing || c.Error != "" {
@@ -586,7 +586,7 @@ func TestDraftPreview(t *testing.T) {
 		t.Fatalf("draft wrote files: %v", files)
 	}
 
-	text, err := page.Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: paperboy/title, width: 20 }]\n  - [{ value: paperboy/time, width: 20 }]\n  - [{ value: paperboy/date, width: 20 }]\n  - [{ value: paperboy/now, width: 20 }]\n"))
+	text, err := page.Parse(strings.NewReader("kind: text\ncells:\n  - { at: [0, 0], span: [20, 1], value: paperboy/title }\n  - { at: [0, 1], span: [20, 1], value: paperboy/time }\n  - { at: [0, 2], span: [20, 1], value: paperboy/date }\n  - { at: [0, 3], span: [20, 1], value: paperboy/now }\n"))
 	if err != nil {
 		t.Fatal(err)
 	}

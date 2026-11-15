@@ -38,10 +38,12 @@ type Template struct {
 	Grid     [2]int            `yaml:"grid" json:"grid"`                 // columns, rows; image pages only
 	Style    Style             `yaml:"style" json:"style"`               // look passed to every widget
 	Notices  string            `yaml:"notices" json:"notices,omitempty"` // show (default) or none: stale widgets
-	Cells    []Cell            `yaml:"cells" json:"cells,omitempty"`     // image pages only
-	// Rows are the lines of a text page; each row is a list of cells with a
-	// value, a width and an alignment (ADR 0111). Text pages have no grid.
-	Rows [][]TextCell `yaml:"rows" json:"rows,omitempty"`
+	// Overflow is the default of a text page: strip, wrap or scroll. A cell
+	// may override it (ADR 0117).
+	Overflow string `yaml:"overflow" json:"overflow,omitempty"`
+	// Cells are boxes of an image page in grid cells, or boxes of a text page
+	// in character columns and rows (ADR 0111, 0117).
+	Cells []Cell `yaml:"cells" json:"cells,omitempty"`
 	// Actions belong to the plan, not to a page. The field only exists to
 	// reject the key with a hint instead of "field not found".
 	Actions []any `yaml:"actions" json:"-"`
@@ -56,13 +58,25 @@ type Style struct {
 	Divider  float64  `yaml:"divider" json:"divider,omitempty"`     // lines Paperboy draws between cells, pt; default 0 (none), at least 1 px
 }
 
-// Cell places one widget on the grid.
+// Cell places one widget on an image page or one box of text on a text page.
 type Cell struct {
-	At     [2]int         `yaml:"at" json:"at"`                 // column, row of the top-left cell
-	Span   [2]int         `yaml:"span" json:"span"`             // columns, rows; default 1x1
-	Widget string         `yaml:"widget" json:"widget"`         // plugin/widget
-	Args   map[string]any `yaml:"args" json:"args,omitempty"`   // widget arguments
-	Style  *Style         `yaml:"style" json:"style,omitempty"` // overrides the page style for this widget
+	At     [2]int         `yaml:"at" json:"at"`     // column, row of the top-left cell
+	Span   [2]int         `yaml:"span" json:"span"` // columns, rows; default 1x1
+	Widget string         `yaml:"widget,omitempty" json:"widget,omitempty"`
+	Args   map[string]any `yaml:"args,omitempty" json:"args,omitempty"`
+	Style  *Style         `yaml:"style,omitempty" json:"style,omitempty"`
+	// Text is literal text of a text page; Value is a declared value. Exactly
+	// one of them is set (ADR 0117). Multi-line text keeps its line breaks.
+	Text  string `yaml:"text,omitempty" json:"text,omitempty"`
+	Value string `yaml:"value,omitempty" json:"value,omitempty"`
+	Label string `yaml:"label,omitempty" json:"label,omitempty"`
+	Unit  string `yaml:"unit,omitempty" json:"unit,omitempty"`
+	// Align is left, right or decimal; empty means left.
+	Align string `yaml:"align,omitempty" json:"align,omitempty"`
+	// Overflow overrides the page's strip, wrap or scroll.
+	Overflow string `yaml:"overflow,omitempty" json:"overflow,omitempty"`
+	// Scroll only exists to reject the old image key with a hint.
+	Scroll bool `yaml:"scroll,omitempty" json:"-"`
 }
 
 // Plugin and widget name of the cell.
@@ -78,36 +92,18 @@ const (
 	AlignDecimal = "decimal"
 )
 
-// TextCell is one cell of a text page: a value in a run of characters. Width
-// and alignment belong to the page, not to the plugin.
-type TextCell struct {
-	// At is the 0-based character column of the cell. A missing at means the
-	// cell follows the previous one (flow), so hand-written pages stay terse.
-	At *int `yaml:"at" json:"at,omitempty"`
-	// Value is the declared value as <plugin>/<key>.
-	Value string `yaml:"value" json:"value"`
-	// Label sits in front of the value, Unit behind it with one space each.
-	Label string `yaml:"label" json:"label,omitempty"`
-	Unit  string `yaml:"unit" json:"unit,omitempty"`
-	// Width is the number of characters the cell takes.
-	Width int `yaml:"width" json:"width"`
-	// Align is left, right or decimal; empty means left.
-	Align string `yaml:"align" json:"align,omitempty"`
-}
+// Overflow policies of a text cell (ADR 0117).
+const (
+	OverflowStrip  = "strip"
+	OverflowWrap   = "wrap"
+	OverflowScroll = "scroll"
+)
 
-// AtValue is the explicit column for templates; empty means the cell flows.
-func (c TextCell) AtValue() any {
-	if c.At == nil {
-		return ""
-	}
-	return *c.At
-}
+// Plugin and value name of a value cell.
+func (c Cell) ValuePlugin() string { p, _, _ := strings.Cut(c.Value, "/"); return p }
 
-// Plugin and value name of the cell.
-func (c TextCell) Plugin() string { p, _, _ := strings.Cut(c.Value, "/"); return p }
-
-// Key is the value name without the plugin.
-func (c TextCell) Key() string { _, k, _ := strings.Cut(c.Value, "/"); return k }
+// ValueKey is the value name without the plugin.
+func (c Cell) ValueKey() string { _, k, _ := strings.Cut(c.Value, "/"); return k }
 
 const maxGrid = 80
 
@@ -266,15 +262,15 @@ func (t *Template) validate() error {
 		return fmt.Errorf("style: %w", err)
 	}
 	if t.Kind == KindText {
-		return t.validateRows()
+		return t.validateText()
 	}
 	return t.validateGrid()
 }
 
 // validateGrid checks the layout of an image page: a grid of widget cells.
 func (t *Template) validateGrid() error {
-	if len(t.Rows) > 0 {
-		return fmt.Errorf("rows are for text pages (kind: text); an image page uses grid and cells")
+	if t.Overflow != "" {
+		return fmt.Errorf("overflow is for text pages (kind: text); ePaper cannot animate")
 	}
 	cols, rows := t.Grid[0], t.Grid[1]
 	if cols < 1 || rows < 1 || cols > maxGrid || rows > maxGrid {
@@ -290,6 +286,12 @@ func (t *Template) validateGrid() error {
 			c.Span = [2]int{1, 1}
 		}
 		where := fmt.Sprintf("cell %d (%s)", i+1, c.Widget)
+		if c.Scroll {
+			return fmt.Errorf("%s: scroll is for text pages; ePaper cannot animate (ADR 0117)", where)
+		}
+		if c.Text != "" || c.Value != "" || c.Label != "" || c.Unit != "" || c.Align != "" || c.Overflow != "" {
+			return fmt.Errorf("%s: text and value are for text pages (kind: text); use widget", where)
+		}
 		plugin, widget, ok := strings.Cut(c.Widget, "/")
 		if !ok || !ValidName(plugin) || !ValidName(widget) {
 			return fmt.Errorf("%s: widget %q: expected plugin/widget with a-z, 0-9 and -", where, c.Widget)
@@ -315,78 +317,85 @@ func (t *Template) validateGrid() error {
 	return nil
 }
 
-// validateRows checks the layout of a text page: rows of value cells, no
-// pixel grid and no widget cells (ADR 0111).
-func (t *Template) validateRows() error {
+// Limits of a text page: the character grid of a display type (ADR 0044).
+const (
+	maxTextColumns = 80
+	maxTextRows    = 24
+)
+
+// validateText checks the boxes of a text page. It does not know the display
+// type, so it uses the largest character grid; Fits checks the real one.
+func (t *Template) validateText() error {
 	if t.Grid != [2]int{} {
-		return fmt.Errorf("a text page has no grid: the character grid is the display's; use rows (ADR 0111)")
+		return fmt.Errorf("a text page has no grid: the character grid is the display's; use cells (ADR 0117)")
 	}
-	if len(t.Cells) > 0 {
-		return fmt.Errorf("cells are for image pages; a text page uses rows of values (ADR 0111)")
+	switch t.Overflow {
+	case "":
+		t.Overflow = OverflowStrip
+	case OverflowStrip, OverflowWrap, OverflowScroll:
+	default:
+		return fmt.Errorf("overflow %q: expected strip, wrap or scroll", t.Overflow)
 	}
-	if len(t.Rows) == 0 {
-		return fmt.Errorf("rows missing: a text page needs at least one row")
+	if len(t.Cells) == 0 {
+		return fmt.Errorf("cells missing")
 	}
-	if len(t.Rows) > maxGrid {
-		return fmt.Errorf("rows: at most %d rows", maxGrid)
-	}
-	for y, row := range t.Rows {
-		for i := range row {
-			c := &row[i]
-			where := fmt.Sprintf("row %d, cell %d (%s)", y+1, i+1, c.Value)
+	taken := make([]int, maxTextColumns*maxTextRows)
+	for i := range t.Cells {
+		c := &t.Cells[i]
+		if c.Span == [2]int{} {
+			c.Span = [2]int{1, 1}
+		}
+		where := fmt.Sprintf("cell %d", i+1)
+		if c.Widget != "" || len(c.Args) > 0 || c.Style != nil {
+			return fmt.Errorf("%s: widget, args and style are for image pages (kind: image)", where)
+		}
+		if c.Scroll {
+			return fmt.Errorf("%s: use overflow: scroll instead of scroll (ADR 0117)", where)
+		}
+		if c.At[0] < 0 || c.At[1] < 0 || c.Span[0] < 1 || c.Span[1] < 1 ||
+			c.At[0]+c.Span[0] > maxTextColumns || c.At[1]+c.Span[1] > maxTextRows {
+			return fmt.Errorf("%s: at %v span %v leaves the %dx%d character grid", where, c.At, c.Span, maxTextColumns, maxTextRows)
+		}
+		if (c.Text == "") == (c.Value == "") {
+			return fmt.Errorf("%s: exactly one of text and value is required", where)
+		}
+		if c.Value != "" {
 			plugin, key, ok := strings.Cut(c.Value, "/")
 			if !ok || !ValidName(plugin) || !ValidName(key) {
 				return fmt.Errorf("%s: value %q: expected plugin/value with a-z, 0-9 and -", where, c.Value)
 			}
-			if c.Width < 1 || c.Width > maxGrid {
-				return fmt.Errorf("%s: width %d: expected 1 to %d characters", where, c.Width, maxGrid)
-			}
-			switch c.Align {
-			case "":
-				c.Align = AlignLeft
-			case AlignLeft, AlignRight, AlignDecimal:
-			default:
-				return fmt.Errorf("%s: align %q: expected left, right or decimal", where, c.Align)
-			}
+		} else if c.Label != "" || c.Unit != "" {
+			return fmt.Errorf("%s: a literal text cell has no label or unit", where)
 		}
-		if _, err := textRowPositions(row, maxGrid); err != nil {
-			return fmt.Errorf("row %d: %w", y+1, err)
+		switch c.Align {
+		case "":
+			c.Align = AlignLeft
+		case AlignLeft, AlignRight, AlignDecimal:
+		default:
+			return fmt.Errorf("%s: align %q: expected left, right or decimal", where, c.Align)
+		}
+		switch c.Overflow {
+		case "":
+			c.Overflow = t.Overflow
+		case OverflowStrip, OverflowWrap, OverflowScroll:
+		default:
+			return fmt.Errorf("%s: overflow %q: expected strip, wrap or scroll", where, c.Overflow)
+		}
+		for y := c.At[1]; y < c.At[1]+c.Span[1]; y++ {
+			for x := c.At[0]; x < c.At[0]+c.Span[0]; x++ {
+				if other := taken[y*maxTextColumns+x]; other != 0 {
+					return fmt.Errorf("%s overlaps cell %d at [%d, %d]", where, other, x, y)
+				}
+				taken[y*maxTextColumns+x] = i + 1
+			}
 		}
 	}
 	return nil
 }
 
-// textRowPositions resolves the effective column of every cell of a text row
-// and rejects an out-of-range or overlapping cell. A missing at flows after the
-// previous cell (ADR 0116).
-func textRowPositions(row []TextCell, width int) ([]int, error) {
-	positions := make([]int, len(row))
-	next := 0
-	for i := range row {
-		c := &row[i]
-		at := next
-		if c.At != nil {
-			at = *c.At
-		}
-		if at < 0 {
-			return nil, fmt.Errorf("cell %d: at %d: expected a column from 0", i+1, at)
-		}
-		if at < next {
-			return nil, fmt.Errorf("cell %d: at %d overlaps the cell before it, which ends at %d", i+1, at, next)
-		}
-		if at+c.Width > width {
-			return nil, fmt.Errorf("cell %d: at %d and width %d leave %d columns", i+1, at, c.Width, width)
-		}
-		positions[i] = at
-		next = at + c.Width
-	}
-	return positions, nil
-}
-
 // Fits reports why the page cannot be shown on a display: a text page on an
-// image display or the other way round, an image page whose grid is not the
-// display's pixel grid (the grid divides pixels, so any grid fits), or a text
-// page whose rows do not fit the character grid. nil means it fits.
+// image display or the other way round, or a text box outside the character
+// grid. nil means it fits.
 func (t *Template) Fits(d Display) error {
 	switch {
 	case d.Text && t.Kind != KindText:
@@ -394,12 +403,22 @@ func (t *Template) Fits(d Display) error {
 	case !d.Text && t.Kind == KindText:
 		return fmt.Errorf("page is for text displays (kind: text)")
 	case d.Text:
-		if len(t.Rows) > d.Height {
-			return fmt.Errorf("%d rows do not fit the text display (%d rows)", len(t.Rows), d.Height)
+		if len(t.Cells) > d.Width*d.Height {
+			return fmt.Errorf("%d cells do not fit the text display", len(t.Cells))
 		}
-		for y, row := range t.Rows {
-			if _, err := textRowPositions(row, d.Width); err != nil {
-				return fmt.Errorf("row %d: %w", y+1, err)
+		taken := make([]int, d.Width*d.Height)
+		for i, c := range t.Cells {
+			if c.At[0] < 0 || c.At[1] < 0 || c.Span[0] < 1 || c.Span[1] < 1 ||
+				c.At[0]+c.Span[0] > d.Width || c.At[1]+c.Span[1] > d.Height {
+				return fmt.Errorf("cell %d: at %v span %v leaves the %dx%d character grid", i+1, c.At, c.Span, d.Width, d.Height)
+			}
+			for y := c.At[1]; y < c.At[1]+c.Span[1]; y++ {
+				for x := c.At[0]; x < c.At[0]+c.Span[0]; x++ {
+					if other := taken[y*d.Width+x]; other != 0 {
+						return fmt.Errorf("cell %d overlaps cell %d at [%d, %d]", i+1, other, x, y)
+					}
+					taken[y*d.Width+x] = i + 1
+				}
 			}
 		}
 	}

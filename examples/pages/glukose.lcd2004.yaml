@@ -1,8 +1,35 @@
-# Values on a 20x4 character display. The Dexcom plugin declares its values in a
-# later protocol version (ADR 0111); until then this page uses Paperboy's own.
 kind: text
-rows:
-  - [{ value: paperboy/title, width: 20, align: left }]
-  - [{ value: paperboy/date, label: Datum, width: 20, align: left }]
-  - [{ value: paperboy/time, label: Zeit, width: 20, align: right }]
-  - [{ value: paperboy/now, label: Jetzt, width: 20, align: decimal }]
+cells:
+- at:
+  - 0
+  - 0
+  span:
+  - 20
+  - 1
+  value: paperboy/title
+- at:
+  - 0
+  - 1
+  span:
+  - 20
+  - 1
+  value: paperboy/date
+  label: Datum
+- at:
+  - 0
+  - 2
+  span:
+  - 20
+  - 1
+  value: paperboy/time
+  label: Zeit
+  align: right
+- at:
+  - 0
+  - 3
+  span:
+  - 20
+  - 1
+  value: paperboy/now
+  label: Jetzt
+  align: decimal

@@ -42,9 +42,13 @@
     return parts.join(" · ");
   }
 
-  // paintText fills one character per slot, so the grid never reflows. It
-  // sizes the pixel font to the slot height (ADR 0115).
-  function paintText(lines) {
+  // text scroll state, so a sync with unchanged scroll text keeps the offset.
+  let scrollBase = [];
+  let scrollBoxes = [];
+  let scrollOffsets = new Map();
+  let scrollTimer = 0;
+
+  function paintGrid(lines) {
     const cols = Number(text.dataset.cols) || (lines[0] || "").length;
     const rows = Number(text.dataset.rows) || lines.length;
     text.replaceChildren();
@@ -64,17 +68,65 @@
     sizeText();
   }
 
-  function sizeText() {
-    const cell = text.querySelector(".cell");
-    if (!cell) return;
-    const h = cell.getBoundingClientRect().height;
-    if (h > 0) text.style.setProperty("--lcd-glyph", (h * 1.0) + "px");
+  function paintText(lines, scrolls, changed) {
+    scrollBase = lines.slice();
+    scrollBoxes = scrolls || [];
+    if (changed) scrollOffsets.clear();
+    for (const box of scrollBoxes) {
+      const key = box.row + ":" + box.col;
+      if (!scrollOffsets.has(key)) scrollOffsets.set(key, 0);
+    }
+    renderScrollFrame();
+    clearInterval(scrollTimer);
+    if (scrollBoxes.length) {
+      const step = Math.max(50, Number(scrollBoxes[0].step_ms) || 300);
+      scrollTimer = setInterval(() => {
+        for (const box of scrollBoxes) {
+          if (box.direction === "horizontal" || box.direction === "vertical" || box.direction === "both") {
+            const key = box.row + ":" + box.col;
+            scrollOffsets.set(key, (scrollOffsets.get(key) || 0) + 1);
+          }
+        }
+        renderScrollFrame();
+      }, step);
+    }
+  }
+
+  function renderScrollFrame() {
+    const cols = Number(text.dataset.cols) || 20;
+    const rows = Number(text.dataset.rows) || 4;
+    const grid = [];
+    for (let y = 0; y < rows; y++) {
+      grid.push(Array.from(String(scrollBase[y] || "").padEnd(cols, " ").slice(0, cols)));
+    }
+    for (const box of scrollBoxes) {
+      const key = box.row + ":" + box.col;
+      const offset = scrollOffsets.get(key) || 0;
+      const full = box.text || [];
+      for (let i = 0; i < box.height && box.row + i < rows; i++) {
+        let line = full[i] || "";
+        if (box.direction === "vertical" || box.direction === "both") {
+          line = full.length ? full[(offset + i) % full.length] : "";
+        }
+        let visible = Array.from(String(line).padEnd(box.width, " "));
+        if (box.direction === "horizontal" || box.direction === "both") {
+          visible = Array.from(String(line).padEnd(box.width, " "));
+          const window = [];
+          for (let x = 0; x < box.width; x++) window.push(visible[(offset + x) % visible.length]);
+          visible = window;
+        }
+        for (let x = 0; x < box.width && box.col + x < cols; x++) {
+          grid[box.row + i][box.col + x] = visible[x] || " ";
+        }
+      }
+    }
+    paintGrid(grid.map((line) => line.join("")));
   }
 
   // paint shows the answer and reports the hash only once the panel has it.
   function paint(out) {
     if (out.text) {
-      paintText(out.text.lines || []);
+      paintText(out.text.lines || [], out.text.scrolls || [], !!out.text.scroll_changed);
       image.hidden = true;
       shown = out.text.hash;
       return Promise.resolve();
@@ -217,7 +269,7 @@
       }
       shown = "";
       queue = [];
-      image.hidden = true;
+      clearInterval(scrollTimer);
       text.hidden = true;
       say("session reset");
       sync("powercycle");
