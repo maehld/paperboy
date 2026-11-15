@@ -215,11 +215,13 @@ func (s *Server) uiRoutes() []route {
 		{"POST /api/state/devices/{mac}/pair", s.handlePairDevice},
 		{"GET /api/preview/{display}/{page}", s.handlePreview},
 		{"GET /api/widget/{plugin}/{widget}", s.handleWidget},
-		// Page and plan editing (ADR 0066, ADR 0073).
+		// Page and plan editing (ADR 0066, ADR 0073, ADR 0110).
 		{"GET /api/pages", s.handlePages},
 		{"GET /api/pages/{name}", s.handlePage},
 		{"PUT /api/pages/{name}", s.handleSavePage},
 		{"DELETE /api/pages/{name}", s.handleDeletePage},
+		{"POST /api/pages/{name}/variant", s.handleCreateVariant},
+		{"POST /api/pages/{name}/assign", s.handleAssignPage},
 		{"POST /api/pages/{name}/rename", s.handleRenamePage},
 		{"GET /api/plans", s.handlePlans},
 		{"GET /api/plans/{name}", s.handlePlan},

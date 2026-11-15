@@ -2,7 +2,6 @@ package paperboy
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -80,31 +79,9 @@ func targetExists(w http.ResponseWriter, cfg *Config, path string) bool {
 	}
 }
 
-// pageSetHash hashes every file of one page in the order pageFiles lists them,
-// so a page rename only applies to the files the editor saw (ADR 0079).
-func pageSetHash(files []editorPageFile, name string) string {
-	var b strings.Builder
-	for _, f := range files {
-		if f.Name != name {
-			continue
-		}
-		fmt.Fprintf(&b, "%s:%s;", f.Display, f.Hash)
-	}
-	return fileHash([]byte(b.String()))
-}
-
-// pageSetHashAt reads the page files and hashes every file of one page.
-func pageSetHashAt(dir, name string) (string, error) {
-	files, err := pageFiles(dir)
-	if err != nil {
-		return "", err
-	}
-	return pageSetHash(files, name), nil
-}
-
-// handleRenamePage moves the shared page and every variant of the page, so the
-// page keeps its name in all display types or in none (ADR 0079). The optional
-// hash guards the whole set.
+// handleRenamePage moves the page file pages/<name>.yaml only (ADR 0110). The
+// variant files stay under the old name and become orphans, which the editor
+// offers to assign. The optional hash guards that one file.
 func (s *Server) handleRenamePage(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	old := r.PathValue("name")
@@ -116,53 +93,57 @@ func (s *Server) handleRenamePage(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "the new page name is the same as the old one")
 		return
 	}
+	from, err := pageFilePath(cfg.Pages, old, "")
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	data, err := os.ReadFile(from)
+	if errors.Is(err, fs.ErrNotExist) {
+		writeAPIError(w, http.StatusNotFound, "there is no page %q; only its page file can be renamed", old)
+		return
+	}
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	if hash := r.URL.Query().Get("hash"); hash != "" && fileHash(data) != hash {
+		writeAPIError(w, http.StatusConflict, "the page changed on disk; read it again before renaming")
+		return
+	}
+	to, err := pageFilePath(cfg.Pages, name, "")
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	if targetExists(w, cfg, to) {
+		return
+	}
+	// The variant files keep the old name. Name them, so the operator knows
+	// what waits for an assignment.
 	files, err := pageFiles(cfg.Pages)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
-	var moves []fileMove
+	orphans := []string{}
 	for _, f := range files {
-		if f.Name == name {
-			// Renaming onto an existing page would merge the two file sets.
-			writeAPIError(w, http.StatusConflict, "there already is a page %q", name)
-			return
-		}
-	}
-	for _, f := range files {
-		if f.Name != old {
+		if f.Name != old || f.Label == "" {
 			continue
 		}
-		from, err := pageFilePath(cfg.Pages, old, f.Display)
-		if err != nil {
-			writeAPIError(w, http.StatusBadRequest, "%v", err)
-			return
-		}
-		to, err := pageFilePath(cfg.Pages, name, f.Display)
-		if err != nil {
-			writeAPIError(w, http.StatusBadRequest, "%v", err)
-			return
-		}
-		moves = append(moves, fileMove{from: from, to: to})
-	}
-	if len(moves) == 0 {
-		writeAPIError(w, http.StatusNotFound, "there is no page %q", old)
-		return
-	}
-	if hash := r.URL.Query().Get("hash"); hash != "" && pageSetHash(files, old) != hash {
-		writeAPIError(w, http.StatusConflict, "the page changed on disk; read it again before renaming")
-		return
-	}
-	for _, m := range moves {
-		if targetExists(w, cfg, m.to) {
-			return
+		if p, err := pageFilePath(cfg.Pages, old, f.Label); err == nil {
+			orphans = append(orphans, relativePath(cfg, p))
 		}
 	}
-	if err := moveFiles(moves); err != nil {
+	if err := moveFiles([]fileMove{{from: from, to: to}}); err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, renameAnswer(cfg, name, moves))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name":    name,
+		"files":   []string{relativePath(cfg, to)},
+		"orphans": orphans,
+	})
 }
 
 // handleRenamePlan moves one plan file. Devices that name the plan keep the old
@@ -320,14 +301,16 @@ type renameAction struct {
 	Warn string `json:"warn"`
 }
 
-// pageRenameWarning is the confirmation of a page rename: the files that move
-// and the plans that keep the old name.
+// pageRenameWarning is the confirmation of a page rename: the one file that
+// moves, the variants that stay behind and the plans that keep the old name
+// (ADR 0110).
 func pageRenameWarning(name string, plans []string) string {
-	msg := "Rename page " + name + "?"
+	msg := "Rename page " + name + "?" +
+		"\n\nOnly pages/" + name + ".yaml moves. Its variants keep the old name and become orphans; assign them in the editor."
 	if len(plans) == 0 {
-		return msg + "\n\nThe shared page and every variant move with it. No plan names this page."
+		return msg + "\n\nNo plan names this page."
 	}
-	return msg + "\n\nThe shared page and every variant move with it. Plans that name it are not rewritten and show a notice until updated: " + strings.Join(plans, ", ") + "."
+	return msg + "\n\nPlans that name it are not rewritten and show a notice until updated: " + strings.Join(plans, ", ") + "."
 }
 
 // planRenameWarning is the confirmation of a plan rename: the devices that keep
@@ -348,18 +331,19 @@ func deviceRenameWarning(id string) string {
 }
 
 // displayRenameWarning is the confirmation of a display type rename: only the
-// file moves, so the page variants and devices that use the name keep it.
+// file moves, so the pages that name a variant for it and the devices that use
+// the name keep it (ADR 0079, 0110).
 func displayRenameWarning(name string, pages, devices []displayReference) string {
 	msg := "Rename display type " + name + "?"
 	var refs []string
 	if len(pages) > 0 {
-		refs = append(refs, "page variants: "+referenceLabels(pages))
+		refs = append(refs, "pages: "+referenceLabels(pages))
 	}
 	if len(devices) > 0 {
 		refs = append(refs, "devices: "+referenceLabels(devices))
 	}
 	if len(refs) == 0 {
-		return msg + "\n\nNo page variant or device uses this display type."
+		return msg + "\n\nNo page names a variant for this display type and no device uses it."
 	}
 	msg += "\n\nOnly the file moves; nothing is rewritten. Keeps the old name → " + strings.Join(refs, "; ") + "."
 	if len(devices) > 0 {
@@ -368,22 +352,14 @@ func displayRenameWarning(name string, pages, devices []displayReference) string
 	return msg
 }
 
-// pageRenameAction builds the rename for a page file set; nil when the page has
-// no file yet.
+// pageRenameAction builds the rename for a page file; nil when the page has no
+// page file, because a rename moves exactly that file (ADR 0110).
 func pageRenameAction(cfg *Config, name string, usedBy []string) *renameAction {
-	files, err := pageFiles(cfg.Pages)
+	path, err := pageFilePath(cfg.Pages, name, "")
 	if err != nil {
-		slog.Warn("page list for the rename failed", "page", name, "error", err)
 		return nil
 	}
-	var found bool
-	for _, f := range files {
-		if f.Name == name {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if _, err := os.Stat(path); err != nil {
 		return nil
 	}
 	return &renameAction{URL: "/api/pages/" + url.PathEscape(name) + "/rename", Warn: pageRenameWarning(name, usedBy)}

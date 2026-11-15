@@ -31,28 +31,44 @@ const (
 	editorMaxBody = 1 << 20
 )
 
-// editorPageFile is one page file in the list.
+// editorPageFile is one page file in the list: pages/<name>.yaml or
+// pages/<name>.<label>.yaml (ADR 0110).
 type editorPageFile struct {
-	Name    string `json:"name"`
-	Display string `json:"display,omitempty"` // empty: pages/<name>.yaml, the shared page
-	Title   string `json:"title,omitempty"`
-	Kind    string `json:"kind,omitempty"`
-	Grid    [2]int `json:"grid"`
-	Hash    string `json:"hash"`
-	Error   string `json:"error,omitempty"`
+	Name   string `json:"name"`
+	Label  string `json:"label,omitempty"` // empty: the page file
+	Title  string `json:"title,omitempty"`
+	Kind   string `json:"kind,omitempty"`
+	Grid   [2]int `json:"grid"`
+	Hash   string `json:"hash"`
+	Error  string `json:"error,omitempty"`
+	Orphan bool   `json:"orphan,omitempty"` // no page file of this name
+	// Variants is the map of the page file: the display type each label
+	// serves. A variant file carries none (ADR 0110).
+	Variants map[string]string `json:"variants,omitempty"`
 }
 
 // editorPage is one page file with its model, the answer of a read and of a
 // successful write.
 type editorPage struct {
-	Name     string         `json:"name"`
-	Display  string         `json:"display,omitempty"`
-	Path     string         `json:"path"` // relative to the instance directory
-	Hash     string         `json:"hash"`
-	SetHash  string         `json:"set_hash,omitempty"` // hash over every file of the page, for the rename (ADR 0079)
-	YAML     string         `json:"yaml"`
-	Template *page.Template `json:"template,omitempty"`
-	Error    string         `json:"error,omitempty"`
+	Name     string              `json:"name"`
+	File     string              `json:"file,omitempty"` // label of the open file; empty: the page file
+	Path     string              `json:"path"`           // relative to the instance directory
+	Hash     string              `json:"hash"`
+	YAML     string              `json:"yaml"`
+	Template *page.Template      `json:"template,omitempty"`
+	Variants map[string]string   `json:"variants,omitempty"` // the page's map; empty for a variant
+	Coverage []pageCoverageEntry `json:"coverage"`           // every configured display type (ADR 0110)
+	Error    string              `json:"error,omitempty"`
+}
+
+// pageCoverageEntry says whether a page serves one configured display type and
+// through which file (ADR 0110).
+type pageCoverageEntry struct {
+	Display string `json:"display"`
+	Kind    string `json:"kind"`              // image or text: the kind of the display type
+	File    string `json:"file"`              // the label that serves it; empty: the page file
+	Missing bool   `json:"missing,omitempty"` // no file serves the display type
+	Error   string `json:"error,omitempty"`   // why the display type is not served
 }
 
 // editorPlanFile is one plan file in the list.
@@ -104,60 +120,39 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) error {
 	return dec.Decode(v)
 }
 
-// pageFilePath is the file of a page for a display type; an empty display
-// type is the shared page pages/<name>.yaml.
-func pageFilePath(dir, name, display string) (string, error) {
+// pageFilePath is one page file: empty label is the page file
+// pages/<name>.yaml, else the variant pages/<name>.<label>.yaml (ADR 0110).
+func pageFilePath(dir, name, label string) (string, error) {
 	if !page.ValidName(name) {
 		return "", fmt.Errorf("page name %q: only a-z, 0-9 and -", name)
 	}
-	if display != "" && !page.ValidName(display) {
-		return "", fmt.Errorf("display type %q: only a-z, 0-9 and -", display)
+	if label == "" {
+		return page.PagePath(dir, name)
 	}
-	if display == "" {
-		return filepath.Join(dir, name+".yaml"), nil
+	if !page.ValidName(label) {
+		return "", fmt.Errorf("page file %q: only a-z, 0-9 and -", label)
 	}
-	return filepath.Join(dir, name+"."+display+".yaml"), nil
+	return page.VariantPath(dir, name, label)
 }
 
-// existingPageFile resolves the file a display type would use, the variant
-// first and the shared page second, like page.Load. It reports the display the
-// file belongs to, so the editor writes back to the file it read.
-func existingPageFile(dir, name, display string) (path, fileDisplay string, err error) {
-	tries := []string{""}
-	if display != "" {
-		tries = []string{display, ""}
-	}
-	for _, d := range tries {
-		p, err := pageFilePath(dir, name, d)
-		if err != nil {
-			return "", "", err
-		}
-		if _, err := os.Stat(p); err == nil {
-			return p, d, nil
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			return "", "", err
-		}
-	}
-	return "", "", fs.ErrNotExist
-}
-
-// pageFileParts splits pages/<name>[.<display>].yaml; names cannot contain
-// dots, so anything else is not a page of this service.
-func pageFileParts(file string) (name, display string, ok bool) {
+// pageFileParts splits pages/<name>[.<label>].yaml; names cannot contain dots,
+// so anything else is not a page of this service.
+func pageFileParts(file string) (name, label string, ok bool) {
 	base, found := strings.CutSuffix(file, ".yaml")
 	if !found {
 		return "", "", false
 	}
-	name, display, _ = strings.Cut(base, ".")
-	if !page.ValidName(name) || (display != "" && !page.ValidName(display)) {
+	name, label, _ = strings.Cut(base, ".")
+	if !page.ValidName(name) || (label != "" && !page.ValidName(label)) {
 		return "", "", false
 	}
-	return name, display, true
+	return name, label, true
 }
 
 // pageFiles lists the page files of the instance directory: the data behind
-// GET /api/pages and the editor's overview (ADR 0068). A file that does not
-// parse still appears, with its error, so it can be found.
+// GET /api/pages and the editor's overview (ADR 0068, 0110). A file that does
+// not parse still appears, with its error, so it can be found. A variant whose
+// page file is missing is an orphan.
 func pageFiles(dir string) ([]editorPageFile, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -167,11 +162,12 @@ func pageFiles(dir string) ([]editorPageFile, error) {
 		return nil, err
 	}
 	list := []editorPageFile{}
+	hasPage := map[string]bool{}
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
-		name, display, ok := pageFileParts(e.Name())
+		name, label, ok := pageFileParts(e.Name())
 		if !ok {
 			continue
 		}
@@ -179,21 +175,116 @@ func pageFiles(dir string) ([]editorPageFile, error) {
 		if err != nil {
 			continue
 		}
-		f := editorPageFile{Name: name, Display: display, Hash: fileHash(data)}
-		if t, err := page.Parse(bytes.NewReader(data)); err != nil {
+		f := editorPageFile{Name: name, Label: label, Hash: fileHash(data)}
+		if label == "" {
+			hasPage[name] = true
+		}
+		var t *page.Template
+		if label == "" {
+			t, err = page.Parse(bytes.NewReader(data))
+		} else {
+			t, err = page.ParseVariant(bytes.NewReader(data))
+		}
+		if err != nil {
 			f.Error = shortError(err)
 		} else {
 			f.Title, f.Kind, f.Grid = t.Title, t.Kind, t.Grid
+			f.Variants = t.Variants
 		}
 		list = append(list, f)
+	}
+	for i := range list {
+		list[i].Orphan = list[i].Label != "" && !hasPage[list[i].Name]
 	}
 	sort.Slice(list, func(i, j int) bool {
 		if list[i].Name != list[j].Name {
 			return list[i].Name < list[j].Name
 		}
-		return list[i].Display < list[j].Display
+		return list[i].Label < list[j].Label
 	})
 	return list, nil
+}
+
+// pageCoverage answers which configured display type a page serves and through
+// which file (ADR 0110). It reads the page file and the variant the map names
+// for each type, so a missing or broken file costs one display type, not the
+// page. It also returns the page's variants map.
+func (s *Server) pageCoverage(cfg *Config, name string) ([]pageCoverageEntry, map[string]string) {
+	coverage := []pageCoverageEntry{}
+	variants := map[string]string{}
+	pagePath, err := pageFilePath(cfg.Pages, name, "")
+	if err != nil {
+		return coverage, variants
+	}
+	var pageErr error
+	var t *page.Template
+	data, err := os.ReadFile(pagePath)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		pageErr = fmt.Errorf("pages/%s.yaml is missing", name)
+	case err != nil:
+		pageErr = err
+	default:
+		t, pageErr = page.Parse(bytes.NewReader(data))
+		if pageErr != nil {
+			pageErr = fmt.Errorf("pages/%s.yaml: %w", name, pageErr)
+		} else {
+			variants = t.Variants
+		}
+	}
+	for _, display := range displayNames(cfg) {
+		p := cfg.Profiles[display]
+		entry := pageCoverageEntry{Display: display, Kind: page.KindImage}
+		if p.text() {
+			entry.Kind = page.KindText
+		}
+		if pageErr != nil {
+			entry.Missing = true
+			entry.Error = shortError(pageErr)
+			coverage = append(coverage, entry)
+			continue
+		}
+		label, named := variants[display]
+		if !named {
+			// The page file serves its kind, and a text page only the types
+			// with its character grid (ADR 0110).
+			if err := t.Fits(s.display(cfg, p)); err != nil {
+				entry.Error = shortError(err)
+			}
+			coverage = append(coverage, entry)
+			continue
+		}
+		entry.File = label
+		v, err := s.variantTemplate(cfg, name, label)
+		if err != nil {
+			entry.Missing = true
+			entry.Error = shortError(err)
+		} else if err := v.Fits(s.display(cfg, p)); err != nil {
+			entry.Error = shortError(err)
+		}
+		coverage = append(coverage, entry)
+	}
+	return coverage, variants
+}
+
+// variantTemplate reads and validates one variant file of a page.
+func (s *Server) variantTemplate(cfg *Config, name, label string) (*page.Template, error) {
+	path, err := pageFilePath(cfg.Pages, name, label)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("%s is missing", relativePath(cfg, path))
+	}
+	if err != nil {
+		return nil, err
+	}
+	t, err := page.ParseVariant(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", relativePath(cfg, path), err)
+	}
+	return t, nil
 }
 
 func (s *Server) handlePages(w http.ResponseWriter, r *http.Request) {
@@ -205,32 +296,41 @@ func (s *Server) handlePages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"pages": list})
 }
 
-// handlePage reads one page file: the variant for the display type, else the
-// shared page. A broken file still answers, so an editor can show and repair
-// its text.
+// handlePage reads one page file exactly: the page file without a label, else
+// the variant with that label (ADR 0110). A broken file still answers, so an
+// editor can show and repair its text. Every answer carries the coverage of the
+// page, so the editor can say which display type no file serves.
 func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
-	name, display := r.PathValue("name"), r.URL.Query().Get("display")
-	path, fileDisplay, err := existingPageFile(cfg.Pages, name, display)
-	if errors.Is(err, fs.ErrNotExist) {
-		http.NotFound(w, r)
-		return
-	}
+	name, label := r.PathValue("name"), r.URL.Query().Get("file")
+	path, err := pageFilePath(cfg.Pages, name, label)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, "%v", err)
 		return
 	}
 	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		http.NotFound(w, r)
+		return
+	}
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
-	out := editorPage{Name: name, Display: fileDisplay, Path: relativePath(cfg, path),
+	out := editorPage{Name: name, File: label, Path: relativePath(cfg, path),
 		Hash: fileHash(data), YAML: string(data)}
-	if set, err := pageSetHashAt(cfg.Pages, name); err == nil {
-		out.SetHash = set
+	var variants map[string]string
+	out.Coverage, variants = s.pageCoverage(cfg, name)
+	if label == "" {
+		out.Variants = variants
 	}
-	if t, err := page.Parse(bytes.NewReader(data)); err != nil {
+	var t *page.Template
+	if label == "" {
+		t, err = page.Parse(bytes.NewReader(data))
+	} else {
+		t, err = page.ParseVariant(bytes.NewReader(data))
+	}
+	if err != nil {
 		out.Error = shortError(err)
 	} else {
 		out.Template = t
@@ -238,21 +338,17 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// handleSavePage validates a page, then writes it. A hash that no longer
-// matches the file on disk is a conflict, so a hand edit is never lost.
+// handleSavePage validates a page file or a variant, then writes it. A variant
+// carries the layout without the title and without variants (ADR 0110). A hash
+// that no longer matches the file on disk is a conflict, so a hand edit is
+// never lost.
 func (s *Server) handleSavePage(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
-	name, display := r.PathValue("name"), r.URL.Query().Get("display")
-	path, err := pageFilePath(cfg.Pages, name, display)
+	name, label := r.PathValue("name"), r.URL.Query().Get("file")
+	path, err := pageFilePath(cfg.Pages, name, label)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, "%v", err)
 		return
-	}
-	if display != "" {
-		if _, ok := cfg.Profiles[display]; !ok {
-			writeAPIError(w, http.StatusBadRequest, "unknown display type %q", display)
-			return
-		}
 	}
 	var body pageSave
 	if err := decodeBody(w, r, &body); err != nil {
@@ -263,7 +359,12 @@ func (s *Server) handleSavePage(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "template missing")
 		return
 	}
-	data, err := page.Encode(body.Template)
+	var data []byte
+	if label == "" {
+		data, err = page.Encode(body.Template)
+	} else {
+		data, err = page.EncodeVariant(body.Template)
+	}
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, "%v", err)
 		return
@@ -286,23 +387,270 @@ func (s *Server) handleSavePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if exists {
-		s.backupFile(cfg, "pages", backupLabel(name, display), cur)
+		s.backupFile(cfg, "pages", backupLabel(name, label), cur)
 	}
 	if err := writeAtomic(path, data); err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
-	t, err := page.Parse(bytes.NewReader(data))
+	out := editorPage{Name: name, File: label, Path: relativePath(cfg, path),
+		Hash: fileHash(data), YAML: string(data)}
+	var variants map[string]string
+	out.Coverage, variants = s.pageCoverage(cfg, name)
+	if label == "" {
+		out.Variants = variants
+	}
+	var t *page.Template
+	if label == "" {
+		t, err = page.Parse(bytes.NewReader(data))
+	} else {
+		t, err = page.ParseVariant(bytes.NewReader(data))
+	}
 	if err != nil { // never expected: Encode wrote what Parse reads
 		writeAPIError(w, http.StatusInternalServerError, "written page does not read back: %v", err)
 		return
 	}
-	out := editorPage{Name: name, Display: display, Path: relativePath(cfg, path),
-		Hash: fileHash(data), YAML: string(data), Template: t}
-	if set, err := pageSetHashAt(cfg.Pages, name); err == nil {
-		out.SetHash = set
-	}
+	out.Template = t
 	writeJSON(w, http.StatusOK, out)
+}
+
+// handleCreateVariant writes the layout of one display type and adds its entry
+// to the page in one action (ADR 0110). The body is the layout; its kind and
+// grid have to fit the display type, so a variant never inherits them from
+// another file (issue #238).
+func (s *Server) handleCreateVariant(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	name := r.PathValue("name")
+	display := r.URL.Query().Get("display")
+	p, ok := cfg.Profiles[display]
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "unknown display type %q", display)
+		return
+	}
+	var body pageSave
+	if err := decodeBody(w, r, &body); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	if body.Template == nil {
+		writeAPIError(w, http.StatusBadRequest, "template missing")
+		return
+	}
+	pagePath, err := pageFilePath(cfg.Pages, name, "")
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	cur, err := os.ReadFile(pagePath)
+	if errors.Is(err, fs.ErrNotExist) {
+		writeAPIError(w, http.StatusNotFound, "there is no page %q; create its page file first", name)
+		return
+	}
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	pageT, err := page.Parse(bytes.NewReader(cur))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "pages/%s.yaml does not read as a page: %v", name, err)
+		return
+	}
+	if body.Hash != "" && fileHash(cur) != body.Hash {
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error": "the page changed on disk; read it again before adding a variant",
+			"hash":  fileHash(cur),
+		})
+		return
+	}
+	data, err := page.EncodeVariant(body.Template)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	written, err := page.ParseVariant(bytes.NewReader(data))
+	if err != nil { // never expected: EncodeVariant wrote what ParseVariant reads
+		writeAPIError(w, http.StatusInternalServerError, "written variant does not read back: %v", err)
+		return
+	}
+	if err := written.Fits(s.display(cfg, p)); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "page %q for display type %q: %v", name, display, err)
+		return
+	}
+	// The map decides the file name; a display type that already names a label
+	// keeps it, so a missing file is repaired in place (ADR 0110).
+	label := display
+	if l, named := pageT.Variants[display]; named {
+		label = l
+	}
+	variantPath, err := pageFilePath(cfg.Pages, name, label)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	if _, err := os.Stat(variantPath); err == nil {
+		writeAPIError(w, http.StatusConflict, "%s already exists", relativePath(cfg, variantPath))
+		return
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	if err := writeAtomic(variantPath, data); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	if pageT.Variants == nil {
+		pageT.Variants = map[string]string{}
+	}
+	pageT.Variants[display] = label
+	pageData, err := page.Encode(pageT)
+	if err != nil { // never expected: the map only gained a valid entry
+		os.Remove(variantPath)
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	s.backupFile(cfg, "pages", name, cur)
+	if err := writeAtomic(pagePath, pageData); err != nil {
+		os.Remove(variantPath)
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	out := editorPage{Name: name, File: label, Path: relativePath(cfg, variantPath),
+		Hash: fileHash(data), YAML: string(data), Template: written}
+	var variants map[string]string
+	out.Coverage, variants = s.pageCoverage(cfg, name)
+	out.Variants = variants
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleAssignPage moves a page file onto a page that has none, or makes it a
+// variant of a page that exists and adds the entry (ADR 0110). The editor's
+// list offers it for a file without a page, so an orphan or a page that
+// exists only as variants becomes reachable again.
+func (s *Server) handleAssignPage(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	name := r.PathValue("name")
+	q := r.URL.Query()
+	from, label, display := q.Get("from"), q.Get("file"), q.Get("display")
+	src, err := pageFilePath(cfg.Pages, from, label)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	if _, err := os.Stat(src); errors.Is(err, fs.ErrNotExist) {
+		writeAPIError(w, http.StatusNotFound, "%s is missing", relativePath(cfg, src))
+		return
+	} else if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	if display == "" {
+		dst, err := pageFilePath(cfg.Pages, name, "")
+		if err != nil {
+			writeAPIError(w, http.StatusBadRequest, "%v", err)
+			return
+		}
+		if targetExists(w, cfg, dst) {
+			return
+		}
+		if err := moveFiles([]fileMove{{from: src, to: dst}}); err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "%v", err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"file": relativePath(cfg, dst)})
+		return
+	}
+	p, ok := cfg.Profiles[display]
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "unknown display type %q", display)
+		return
+	}
+	pagePath, err := pageFilePath(cfg.Pages, name, "")
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	cur, err := os.ReadFile(pagePath)
+	if errors.Is(err, fs.ErrNotExist) {
+		writeAPIError(w, http.StatusNotFound, "there is no page %q; assign it as a page file first", name)
+		return
+	}
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	pageT, err := page.Parse(bytes.NewReader(cur))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "pages/%s.yaml does not read as a page: %v", name, err)
+		return
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	// The source can be a variant or a page file that becomes a variant; a
+	// variant carries neither the title nor the variants of its page.
+	var t *page.Template
+	if label == "" {
+		t, err = page.Parse(bytes.NewReader(data))
+	} else {
+		t, err = page.ParseVariant(bytes.NewReader(data))
+	}
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%s does not read as a page: %v", relativePath(cfg, src), err)
+		return
+	}
+	if err := t.Fits(s.display(cfg, p)); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%s for display type %q: %v", relativePath(cfg, src), display, err)
+		return
+	}
+	target := label
+	if target == "" {
+		if l, named := pageT.Variants[display]; named {
+			target = l
+		} else {
+			target = display
+		}
+	}
+	t.Title = ""
+	t.Variants = nil
+	variantData, err := page.EncodeVariant(t)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	dst, err := pageFilePath(cfg.Pages, name, target)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	if targetExists(w, cfg, dst) {
+		return
+	}
+	s.backupFile(cfg, "pages", name, cur)
+	if err := writeAtomic(dst, variantData); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	if err := os.Remove(src); err != nil {
+		os.Remove(dst)
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	if pageT.Variants == nil {
+		pageT.Variants = map[string]string{}
+	}
+	pageT.Variants[display] = target
+	pageData, err := page.Encode(pageT)
+	if err != nil { // never expected: the map only gained a valid entry
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	if err := writeAtomic(pagePath, pageData); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"file": relativePath(cfg, dst)})
 }
 
 // planFiles lists the plan files of the instance directory: the data behind
@@ -701,19 +1049,18 @@ func (s *Server) handleSaveDisplay(w http.ResponseWriter, r *http.Request) {
 		YAML: string(data), Display: &written})
 }
 
-// handleDeletePage removes one page file (ADR 0073). The display type names
-// the variant exactly; the shared page is removed without one. A variant is
-// never resolved to the shared page here, so a delete hits the file the row
-// names and nothing else.
+// handleDeletePage removes one page file (ADR 0073, 0110). The label names the
+// variant exactly; without one the page file is removed. Nothing resolves, so a
+// delete hits the file the row names and nothing else.
 func (s *Server) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
-	name, display := r.PathValue("name"), r.URL.Query().Get("display")
-	path, err := pageFilePath(cfg.Pages, name, display)
+	name, label := r.PathValue("name"), r.URL.Query().Get("file")
+	path, err := pageFilePath(cfg.Pages, name, label)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, "%v", err)
 		return
 	}
-	s.deleteFile(w, cfg, "pages", backupLabel(name, display), path, r.URL.Query().Get("hash"), "page")
+	s.deleteFile(w, cfg, "pages", backupLabel(name, label), path, r.URL.Query().Get("hash"), "page")
 }
 
 // handleDeletePlan removes one plan file.
@@ -866,11 +1213,11 @@ func (s *Server) renderDraft(cfg *Config, display string, tmpl *page.Template, n
 	return img, nil, err
 }
 
-func backupLabel(name, display string) string {
-	if display == "" {
+func backupLabel(name, label string) string {
+	if label == "" {
 		return name
 	}
-	return name + "." + display
+	return name + "." + label
 }
 
 // backupFile keeps a copy of a file before it is overwritten and drops the

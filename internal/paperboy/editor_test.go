@@ -64,73 +64,192 @@ func request(t *testing.T, s *Server, method, path string, body any, out any) *h
 	return rec
 }
 
+// pageWithVariant is a page file that sends the display type small to the
+// variant "hochkant" (ADR 0110).
+const pageWithVariant = `
+title: Solar
+kind: image
+grid: [2, 2]
+variants:
+  small: hochkant
+cells:
+  - { at: [0, 0], span: [2, 1], widget: paperboy/header }
+  - { at: [0, 1], span: [2, 1], widget: paperboy/text, args: { text: "4,2 kW" } }
+`
+
+// variantPage is the layout of a variant: no title and no variants.
+const variantPage = `
+kind: image
+grid: [2, 2]
+cells:
+  - { at: [0, 0], span: [2, 2], widget: paperboy/text, args: { text: hochkant } }
+`
+
+// textVariant is a text layout for the LCD of editorServer.
+const textVariant = `
+kind: text
+grid: [20, 4]
+cells:
+  - { at: [0, 0], span: [20, 1], widget: paperboy/text, args: { text: hi } }
+`
+
+// coverageOf returns the coverage entry of one display type.
+func coverageOf(t *testing.T, page editorPage, display string) pageCoverageEntry {
+	t.Helper()
+	for _, c := range page.Coverage {
+		if c.Display == display {
+			return c
+		}
+	}
+	t.Fatalf("coverage has no %q: %+v", display, page.Coverage)
+	return pageCoverageEntry{}
+}
+
 func TestPagesListAndRead(t *testing.T) {
-	s, _ := testServer(t)
-	writePage(t, s, "solar", "small", previewTemplate)
-	writePage(t, s, "shared", "", previewTemplate)
+	s := editorServer(t)
+	writePage(t, s, "solar", "", pageWithVariant)
+	writePage(t, s, "solar", "hochkant", variantPage)
+	writePage(t, s, "orphan", "klein", variantPage)
 
 	var list struct{ Pages []editorPageFile }
 	if rec := request(t, s, http.MethodGet, "/api/pages", nil, &list); rec.Code != http.StatusOK {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
 	}
-	if len(list.Pages) != 2 {
+	if len(list.Pages) != 3 {
 		t.Fatalf("pages: %+v", list.Pages)
 	}
-	byName := map[string]editorPageFile{}
+	byFile := map[string]editorPageFile{}
 	for _, f := range list.Pages {
-		byName[f.Name] = f
+		byFile[f.Name+"/"+f.Label] = f
 	}
-	if f := byName["solar"]; f.Display != "small" || f.Title != "Solar" || f.Kind != "image" || f.Grid != [2]int{2, 2} || f.Hash == "" {
-		t.Fatalf("solar: %+v", f)
+	if f := byFile["solar/"]; f.Label != "" || f.Title != "Solar" || f.Kind != "image" || f.Grid != [2]int{2, 2} ||
+		f.Hash == "" || f.Variants["small"] != "hochkant" || f.Orphan {
+		t.Fatalf("page file: %+v", f)
 	}
-	if f := byName["shared"]; f.Display != "" || f.Title != "Solar" {
-		t.Fatalf("shared: %+v", f)
+	if f := byFile["solar/hochkant"]; f.Label != "hochkant" || f.Title != "" || f.Orphan || len(f.Variants) != 0 {
+		t.Fatalf("variant: %+v", f)
+	}
+	// A variant without its page file is an orphan.
+	if f := byFile["orphan/klein"]; !f.Orphan {
+		t.Fatalf("orphan variant: %+v", f)
 	}
 
 	var one editorPage
-	if rec := request(t, s, http.MethodGet, "/api/pages/solar?display=small", nil, &one); rec.Code != http.StatusOK {
+	if rec := request(t, s, http.MethodGet, "/api/pages/solar", nil, &one); rec.Code != http.StatusOK {
 		t.Fatalf("read: %d %s", rec.Code, rec.Body)
 	}
-	if one.Display != "small" || one.Template == nil || len(one.Template.Cells) != 2 || one.Hash != byName["solar"].Hash {
-		t.Fatalf("read solar: %+v", one)
+	if one.File != "" || one.Template == nil || one.Template.Title != "Solar" || one.Hash != byFile["solar/"].Hash ||
+		one.Variants["small"] != "hochkant" {
+		t.Fatalf("read page file: %+v", one)
 	}
-	// Without a display type the shared page is read; the variant for small
-	// does not leak into it.
-	var shared editorPage
-	if rec := request(t, s, http.MethodGet, "/api/pages/shared", nil, &shared); rec.Code != http.StatusOK || shared.Display != "" || shared.Template == nil {
-		t.Fatalf("read shared: %d %s", rec.Code, rec.Body)
+	// The page sends small to the variant, so the coverage names that file.
+	if c := coverageOf(t, one, "small"); c.File != "hochkant" || c.Missing || c.Error != "" {
+		t.Fatalf("coverage small: %+v", c)
 	}
-	// A display type without its own variant gets the shared page, reported
-	// with display "" so a save writes the file that was read.
-	shared = editorPage{}
-	if rec := request(t, s, http.MethodGet, "/api/pages/shared?display=small", nil, &shared); rec.Code != http.StatusOK || shared.Display != "" || shared.Path != "pages/shared.yaml" {
-		t.Fatalf("read shared as small: %d %+v", rec.Code, shared)
+	// The image page cannot serve the text display.
+	if c := coverageOf(t, one, "lcd"); c.File != "" || c.Missing || !strings.Contains(c.Error, "image displays") {
+		t.Fatalf("coverage lcd: %+v", c)
 	}
-	for _, path := range []string{"/api/pages/unknown", "/api/pages/..%2Fx"} {
+
+	var variant editorPage
+	if rec := request(t, s, http.MethodGet, "/api/pages/solar?file=hochkant", nil, &variant); rec.Code != http.StatusOK {
+		t.Fatalf("read variant: %d %s", rec.Code, rec.Body)
+	}
+	if variant.File != "hochkant" || variant.Path != "pages/solar.hochkant.yaml" || variant.Template == nil ||
+		variant.Template.Title != "" || len(variant.Variants) != 0 || variant.Hash != byFile["solar/hochkant"].Hash {
+		t.Fatalf("read variant: %+v", variant)
+	}
+
+	for _, path := range []string{"/api/pages/unknown", "/api/pages/unknown?file=klein", "/api/pages/..%2Fx", "/api/pages/solar?file=Nope"} {
 		if rec := request(t, s, http.MethodGet, path, nil, nil); rec.Code != http.StatusNotFound && rec.Code != http.StatusBadRequest {
 			t.Fatalf("%s: %d", path, rec.Code)
 		}
 	}
 }
 
-func TestSavePage(t *testing.T) {
-	s, _ := testServer(t)
-	writePage(t, s, "solar", "small", previewTemplate)
+// TestPageCoverage tells a missing page file, a missing variant and a variant
+// of another kind apart (ADR 0110).
+func TestPageCoverage(t *testing.T) {
+	s := editorServer(t)
+	// The page names a variant that is not there, and its text layout does not
+	// have the character grid of the LCD.
+	writePage(t, s, "solar", "", `
+title: Solar
+kind: text
+grid: [40, 4]
+variants:
+  small: fehlt
+cells:
+  - { at: [0, 0], span: [1, 1], widget: paperboy/text, args: { text: hi } }
+`)
+	writePage(t, s, "broken", "klein", "kind: image\ngrid: [1, 1]\ncells: [{ at: [0, 0], span: [1, 1], widget: paperboy/text }]\ntitle: nope\n")
 
 	var read editorPage
-	request(t, s, http.MethodGet, "/api/pages/solar?display=small", nil, &read)
+	if rec := request(t, s, http.MethodGet, "/api/pages/solar", nil, &read); rec.Code != http.StatusOK {
+		t.Fatalf("read: %d %s", rec.Code, rec.Body)
+	}
+	// small is named, but its file is missing.
+	if c := coverageOf(t, read, "small"); !c.Missing || c.File != "fehlt" || !strings.Contains(c.Error, "solar.fehlt.yaml is missing") {
+		t.Fatalf("coverage small: %+v", c)
+	}
+	// The page is text with another grid than the LCD.
+	if c := coverageOf(t, read, "lcd"); c.Missing || c.Error == "" || !strings.Contains(c.Error, "does not match the text display") {
+		t.Fatalf("coverage lcd: %+v", c)
+	}
+
+	// Without a page file every type is unserved.
+	writePage(t, s, "lost", "klein", variantPage)
+	var lost editorPage
+	if rec := request(t, s, http.MethodGet, "/api/pages/lost?file=klein", nil, &lost); rec.Code != http.StatusOK {
+		t.Fatalf("read orphan: %d %s", rec.Code, rec.Body)
+	}
+	for _, c := range lost.Coverage {
+		if !c.Missing || !strings.Contains(c.Error, "pages/lost.yaml is missing") {
+			t.Fatalf("coverage of an orphan: %+v", lost.Coverage)
+		}
+	}
+
+	// A variant file that does not parse is named with its error, and it costs
+	// only its display type.
+	writePage(t, s, "solar", "", "kind: image\ngrid: [2, 2]\nvariants: {small: klein}\ncells: [{ at: [0, 0], span: [2, 2], widget: paperboy/text }]\n")
+	writePage(t, s, "solar", "klein", "title: nope\nkind: image\ngrid: [2, 2]\ncells: [{ at: [0, 0], span: [2, 2], widget: paperboy/text }]\n")
+	var broken editorPage
+	request(t, s, http.MethodGet, "/api/pages/solar", nil, &broken)
+	if c := coverageOf(t, broken, "small"); !c.Missing || c.File != "klein" || !strings.Contains(c.Error, "title belongs to the page") {
+		t.Fatalf("coverage of a broken variant: %+v", c)
+	}
+
+	// A variant of the other kind costs its display type: the entry stays, the
+	// file exists, and the type is not served (ADR 0110).
+	writePage(t, s, "solar", "", "kind: image\ngrid: [2, 2]\nvariants: {lcd: bild}\ncells: [{ at: [0, 0], span: [2, 2], widget: paperboy/text }]\n")
+	writePage(t, s, "solar", "bild", variantPage)
+	var crossKind editorPage
+	request(t, s, http.MethodGet, "/api/pages/solar", nil, &crossKind)
+	if c := coverageOf(t, crossKind, "lcd"); c.Missing || c.File != "bild" || !strings.Contains(c.Error, "image displays") {
+		t.Fatalf("coverage of a variant of the other kind: %+v", c)
+	}
+}
+
+func TestSavePage(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "solar", "", pageWithVariant)
+	writePage(t, s, "solar", "hochkant", variantPage)
+
+	var read editorPage
+	request(t, s, http.MethodGet, "/api/pages/solar", nil, &read)
 
 	edited := *read.Template
 	edited.Title = "Sonne"
-	rec := request(t, s, http.MethodPut, "/api/pages/solar?display=small", pageSave{Hash: read.Hash, Template: &edited}, nil)
+	edited.Variants = map[string]string{"small": "hochkant"}
+	rec := request(t, s, http.MethodPut, "/api/pages/solar", pageSave{Hash: read.Hash, Template: &edited}, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("save: %d %s", rec.Code, rec.Body)
 	}
-	data, err := os.ReadFile(filepath.Join(s.config().Pages, "solar.small.yaml"))
+	data, err := os.ReadFile(filepath.Join(s.config().Pages, "solar.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "title: Sonne") {
+	if !strings.Contains(string(data), "title: Sonne") || !strings.Contains(string(data), "small: hochkant") {
 		t.Fatalf("file: %s", data)
 	}
 	if _, err := page.Parse(bytes.NewReader(data)); err != nil {
@@ -138,7 +257,7 @@ func TestSavePage(t *testing.T) {
 	}
 
 	// The old version is kept under state/editor.
-	backups, err := filepath.Glob(filepath.Join(s.config().Dir, "state", "editor", "pages", "solar.small", "*.yaml"))
+	backups, err := filepath.Glob(filepath.Join(s.config().Dir, "state", "editor", "pages", "solar", "*.yaml"))
 	if err != nil || len(backups) != 1 {
 		t.Fatalf("backups: %v %v", backups, err)
 	}
@@ -147,42 +266,180 @@ func TestSavePage(t *testing.T) {
 	}
 
 	// An outdated hash is a conflict and leaves the file alone.
-	if rec := request(t, s, http.MethodPut, "/api/pages/solar?display=small",
+	if rec := request(t, s, http.MethodPut, "/api/pages/solar",
 		pageSave{Hash: read.Hash, Template: &edited}, nil); rec.Code != http.StatusConflict {
 		t.Fatalf("stale hash: %d %s", rec.Code, rec.Body)
 	}
-	if now, _ := os.ReadFile(filepath.Join(s.config().Pages, "solar.small.yaml")); !bytes.Equal(now, data) {
+	if now, _ := os.ReadFile(filepath.Join(s.config().Pages, "solar.yaml")); !bytes.Equal(now, data) {
 		t.Fatal("a conflicted save changed the file")
+	}
+
+	// A variant carries neither a title nor a variants map (ADR 0110).
+	var variant editorPage
+	request(t, s, http.MethodGet, "/api/pages/solar?file=hochkant", nil, &variant)
+	withTitle := *variant.Template
+	withTitle.Title = "Sonne"
+	if rec := request(t, s, http.MethodPut, "/api/pages/solar?file=hochkant",
+		pageSave{Hash: variant.Hash, Template: &withTitle}, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("variant with a title: %d %s", rec.Code, rec.Body)
+	}
+	// A layout that parses is written as it is.
+	saved := *variant.Template
+	saved.Cells[0].Args = map[string]any{"text": "neu"}
+	if rec := request(t, s, http.MethodPut, "/api/pages/solar?file=hochkant",
+		pageSave{Hash: variant.Hash, Template: &saved}, nil); rec.Code != http.StatusOK {
+		t.Fatalf("save variant: %d %s", rec.Code, rec.Body)
+	}
+	variantData, err := os.ReadFile(filepath.Join(s.config().Pages, "solar.hochkant.yaml"))
+	if err != nil || !strings.Contains(string(variantData), "neu") || strings.Contains(string(variantData), "title:") {
+		t.Fatalf("variant file: %s %v", variantData, err)
+	}
+	if _, err := page.ParseVariant(bytes.NewReader(variantData)); err != nil {
+		t.Fatalf("written variant: %v", err)
+	}
+	if files, _ := filepath.Glob(filepath.Join(s.config().Dir, "state", "editor", "pages", "solar.hochkant", "*.yaml")); len(files) != 1 {
+		t.Fatalf("variant backup: %v", files)
 	}
 
 	// Invalid templates never reach the file.
 	bad := *read.Template
 	bad.Grid = [2]int{1, 1}
-	if rec := request(t, s, http.MethodPut, "/api/pages/solar?display=small",
+	if rec := request(t, s, http.MethodPut, "/api/pages/solar",
 		pageSave{Template: &bad}, nil); rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid template: %d %s", rec.Code, rec.Body)
 	}
-	if now, _ := os.ReadFile(filepath.Join(s.config().Pages, "solar.small.yaml")); !bytes.Equal(now, data) {
+	if now, _ := os.ReadFile(filepath.Join(s.config().Pages, "solar.yaml")); !bytes.Equal(now, data) {
 		t.Fatal("an invalid save changed the file")
 	}
-
-	// A typo in the display type would create a file no display uses.
-	if rec := request(t, s, http.MethodPut, "/api/pages/solar?display=nope",
-		pageSave{Template: &edited}, nil); rec.Code != http.StatusBadRequest {
-		t.Fatalf("unknown display: %d", rec.Code)
-	}
 	// Unknown body fields fail instead of being dropped.
-	if rec := request(t, s, http.MethodPut, "/api/pages/solar?display=small",
+	if rec := request(t, s, http.MethodPut, "/api/pages/solar",
 		`{"hash":"`+read.Hash+`","template":{"grid":[2,2],"cells":[]},"nope":1}`, nil); rec.Code != http.StatusBadRequest {
 		t.Fatalf("unknown field: %d", rec.Code)
 	}
 
 	// A file that disappeared since it was read is a conflict too, so a delete
 	// by hand is not undone by a stale save.
-	os.Remove(filepath.Join(s.config().Pages, "solar.small.yaml"))
-	if rec := request(t, s, http.MethodPut, "/api/pages/solar?display=small",
+	os.Remove(filepath.Join(s.config().Pages, "solar.yaml"))
+	if rec := request(t, s, http.MethodPut, "/api/pages/solar",
 		pageSave{Hash: read.Hash, Template: &edited}, nil); rec.Code != http.StatusConflict {
 		t.Fatalf("removed file: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// TestCreateVariant creates the layout of a display type in one action: the
+// file and its entry in the page's variants map (ADR 0110). The layout starts
+// from the display type, so the image grid of the page never becomes a text
+// variant (issue #238).
+func TestCreateVariant(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "solar", "", previewTemplate)
+
+	var read editorPage
+	request(t, s, http.MethodGet, "/api/pages/solar", nil, &read)
+
+	text, err := page.ParseVariant(strings.NewReader(textVariant))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The image grid of the open page does not fit the text display.
+	wrong := *text
+	wrong.Grid = [2]int{6, 8}
+	if rec := request(t, s, http.MethodPost, "/api/pages/solar/variant?display=lcd",
+		pageSave{Hash: read.Hash, Template: &wrong}, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("wrong grid: %d %s", rec.Code, rec.Body)
+	}
+	// A stale page hash is a conflict.
+	if rec := request(t, s, http.MethodPost, "/api/pages/solar/variant?display=lcd",
+		pageSave{Hash: "stale", Template: text}, nil); rec.Code != http.StatusConflict {
+		t.Fatalf("stale hash: %d %s", rec.Code, rec.Body)
+	}
+	// An unknown display type is refused.
+	if rec := request(t, s, http.MethodPost, "/api/pages/solar/variant?display=nope",
+		pageSave{Hash: read.Hash, Template: text}, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown display: %d %s", rec.Code, rec.Body)
+	}
+
+	var created editorPage
+	rec := request(t, s, http.MethodPost, "/api/pages/solar/variant?display=lcd",
+		pageSave{Hash: read.Hash, Template: text}, &created)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body)
+	}
+	if created.File != "lcd" || created.Path != "pages/solar.lcd.yaml" || created.Template == nil ||
+		created.Template.Kind != page.KindText || created.Template.Grid != [2]int{20, 4} {
+		t.Fatalf("created variant: %+v", created)
+	}
+	if c := coverageOf(t, created, "lcd"); c.File != "lcd" || c.Missing || c.Error != "" {
+		t.Fatalf("coverage lcd: %+v", c)
+	}
+	// The page file names the new variant and keeps its own layout.
+	var pageNow editorPage
+	request(t, s, http.MethodGet, "/api/pages/solar", nil, &pageNow)
+	if pageNow.Variants["lcd"] != "lcd" || pageNow.Template.Kind != page.KindImage {
+		t.Fatalf("page after the variant: %+v", pageNow)
+	}
+	// A second call does not overwrite the file.
+	if rec := request(t, s, http.MethodPost, "/api/pages/solar/variant?display=lcd",
+		pageSave{Hash: pageNow.Hash, Template: text}, nil); rec.Code != http.StatusConflict {
+		t.Fatalf("existing variant: %d %s", rec.Code, rec.Body)
+	}
+	// The page needs a file to take an entry.
+	if rec := request(t, s, http.MethodPost, "/api/pages/nope/variant?display=lcd",
+		pageSave{Template: text}, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing page: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// TestAssignPage moves a file without a page onto a page: it becomes the page
+// file, or the layout of a display type of an existing page (ADR 0110).
+func TestAssignPage(t *testing.T) {
+	s := editorServer(t)
+	// An orphan variant that becomes the page file of a new page.
+	writePage(t, s, "alt", "klein", variantPage)
+	var out struct{ File string }
+	rec := request(t, s, http.MethodPost, "/api/pages/neu/assign?from=alt&file=klein", nil, &out)
+	if rec.Code != http.StatusOK || out.File != "pages/neu.yaml" {
+		t.Fatalf("assign as page file: %d %s", rec.Code, rec.Body)
+	}
+	if _, err := os.Stat(filepath.Join(s.config().Pages, "alt.klein.yaml")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the source stayed: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(s.config().Pages, "neu.yaml")); err != nil || !strings.Contains(string(data), "hochkant") {
+		t.Fatalf("page file: %s %v", data, err)
+	}
+	// A target page that already has a page file is refused.
+	writePage(t, s, "solar", "", previewTemplate)
+	if rec := request(t, s, http.MethodPost, "/api/pages/solar/assign?from=neu", nil, nil); rec.Code != http.StatusConflict {
+		t.Fatalf("existing page: %d %s", rec.Code, rec.Body)
+	}
+
+	// A variant of an existing page: the file moves and the page names it.
+	writePage(t, s, "alt", "gross", variantPage)
+	var assign struct{ File string }
+	rec = request(t, s, http.MethodPost, "/api/pages/solar/assign?from=alt&file=gross&display=small", nil, &assign)
+	if rec.Code != http.StatusOK || assign.File != "pages/solar.gross.yaml" {
+		t.Fatalf("assign as variant: %d %s", rec.Code, rec.Body)
+	}
+	var read editorPage
+	request(t, s, http.MethodGet, "/api/pages/solar", nil, &read)
+	if read.Variants["small"] != "gross" {
+		t.Fatalf("variants after the assign: %+v", read.Variants)
+	}
+	if _, err := os.Stat(filepath.Join(s.config().Pages, "alt.gross.yaml")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the source stayed: %v", err)
+	}
+	// A source that does not fit the display type is refused: a text file never
+	// becomes the layout of an image display.
+	writePage(t, s, "alt", "text", "kind: text\ngrid: [20, 4]\ncells: [{ at: [0, 0], span: [20, 1], widget: paperboy/text }]\n")
+	if rec := request(t, s, http.MethodPost, "/api/pages/solar/assign?from=alt&file=text&display=small", nil, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("wrong kind: %d %s", rec.Code, rec.Body)
+	}
+	// A missing source is a 404, a missing target page a 404 as well.
+	if rec := request(t, s, http.MethodPost, "/api/pages/solar/assign?from=alt&file=nope", nil, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing source: %d %s", rec.Code, rec.Body)
+	}
+	if rec := request(t, s, http.MethodPost, "/api/pages/nope/assign?from=alt&file=text&display=lcd", nil, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing page: %d %s", rec.Code, rec.Body)
 	}
 }
 
@@ -282,34 +539,34 @@ func TestDeleteFiles(t *testing.T) {
 	}
 
 	// A page: the stale hash is a conflict, the right one removes the file.
-	writePage(t, s, "solar", "small", previewTemplate)
+	writePage(t, s, "solar", "klein", variantPage)
 	var read editorPage
-	request(t, s, http.MethodGet, "/api/pages/solar?display=small", nil, &read)
-	pagePath := filepath.Join(s.config().Pages, "solar.small.yaml")
-	if rec := request(t, s, http.MethodDelete, "/api/pages/solar?display=small&hash=stale", nil, nil); rec.Code != http.StatusConflict {
+	request(t, s, http.MethodGet, "/api/pages/solar?file=klein", nil, &read)
+	pagePath := filepath.Join(s.config().Pages, "solar.klein.yaml")
+	if rec := request(t, s, http.MethodDelete, "/api/pages/solar?file=klein&hash=stale", nil, nil); rec.Code != http.StatusConflict {
 		t.Fatalf("stale hash: %d %s", rec.Code, rec.Body)
 	}
 	if _, err := os.Stat(pagePath); err != nil {
 		t.Fatalf("a conflicted delete removed the page: %v", err)
 	}
 	var deleted struct{ Deleted string }
-	rec := request(t, s, http.MethodDelete, "/api/pages/solar?display=small&hash="+read.Hash, nil, &deleted)
-	if rec.Code != http.StatusOK || deleted.Deleted != "pages/solar.small.yaml" {
+	rec := request(t, s, http.MethodDelete, "/api/pages/solar?file=klein&hash="+read.Hash, nil, &deleted)
+	if rec.Code != http.StatusOK || deleted.Deleted != "pages/solar.klein.yaml" {
 		t.Fatalf("delete page: %d %s", rec.Code, rec.Body)
 	}
 	if _, err := os.Stat(pagePath); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("page still there: %v", err)
 	}
-	if files := backups("pages", "solar.small"); len(files) != 1 {
+	if files := backups("pages", "solar.klein"); len(files) != 1 {
 		t.Fatalf("page backup: %v", files)
 	}
-	if rec := request(t, s, http.MethodDelete, "/api/pages/solar?display=small", nil, nil); rec.Code != http.StatusNotFound {
+	if rec := request(t, s, http.MethodDelete, "/api/pages/solar?file=klein", nil, nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("deleted page again: %d", rec.Code)
 	}
-	// The shared page is a file of its own and is not touched by that.
+	// The page file is a file of its own and is not touched by that.
 	writePage(t, s, "solar", "", previewTemplate)
 	if _, err := os.Stat(filepath.Join(s.config().Pages, "solar.yaml")); err != nil {
-		t.Fatalf("shared page: %v", err)
+		t.Fatalf("page file: %v", err)
 	}
 
 	// A plan: no hash deletes it deliberately, like an overwrite without one.

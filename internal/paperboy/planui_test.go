@@ -40,8 +40,9 @@ func writePlanFile(t *testing.T, s *Server, name, content string) {
 func planEditorServer(t *testing.T) *Server {
 	t.Helper()
 	s := editorServer(t)
-	writePage(t, s, "solar", "small", previewTemplate)
-	writePage(t, s, "lcd", "", "kind: text\ngrid: [20, 4]\ncells: [{ at: [0, 0], span: [20, 4], widget: paperboy/text, args: { text: hi } }]\n")
+	writePage(t, s, "solar", "", pageWithVariant)
+	writePage(t, s, "solar", "hochkant", variantPage)
+	writePage(t, s, "lcd", "", textVariant)
 	writePlanFile(t, s, "tour", testEditablePlan)
 	return s
 }
