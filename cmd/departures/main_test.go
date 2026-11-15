@@ -174,6 +174,24 @@ func TestMultipleStops(t *testing.T) {
 	if v := p.views["Kaputt"]; v.err == nil || !strings.Contains(v.err.Error(), "HTTP 500") {
 		t.Errorf("broken stop: %v", v.err)
 	}
+
+	// The value arguments pick the stop (ADR 0120).
+	hbf, err := p.Values(&plugin.Request{Values: []string{"stop", "departures"}, ValueArgs: plugin.Values{"stop": "Hbf"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := hbf["stop"]; v.Text == nil || *v.Text != "Beispielstadt, Hauptbahnhof" {
+		t.Errorf("stop by argument = %+v", v)
+	}
+	if v := hbf["departures"]; v.Text == nil || *v.Text == "" {
+		t.Errorf("departures of Hbf = %+v", v)
+	}
+	if _, err := p.Values(&plugin.Request{Values: []string{"stop"}, ValueArgs: plugin.Values{"stop": "Nope"}}); err == nil {
+		t.Error("an unknown stop argument was accepted")
+	}
+	if _, err := p.Values(&plugin.Request{Values: []string{"stop"}, ValueArgs: plugin.Values{"nope": 1}}); err == nil {
+		t.Error("an undeclared value argument was accepted")
+	}
 }
 
 func TestResolveOnceAndValues(t *testing.T) {

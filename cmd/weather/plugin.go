@@ -75,6 +75,11 @@ type weather struct {
 	lang string
 }
 
+// forecastArgs are the arguments the forecast value reads (ADR 0120).
+var forecastArgs = map[string]plugin.Arg{
+	"days": {Type: "int", Default: 5, Description: "number of days, 1 to 5"},
+}
+
 func (w *weather) Describe() plugin.Description {
 	image := []string{plugin.KindImage}
 	return plugin.Description{
@@ -96,7 +101,7 @@ func (w *weather) Describe() plugin.Description {
 			{Name: "sunrise", Title: "Sunrise", Type: plugin.ValueTimestamp},
 			{Name: "sunset", Title: "Sunset", Type: plugin.ValueTimestamp},
 			{Name: "updated", Title: "Forecast time", Type: plugin.ValueTimestamp},
-			{Name: "forecast", Title: "Daily forecast", Type: plugin.ValueText},
+			{Name: "forecast", Title: "Daily forecast", Type: plugin.ValueText, Args: forecastArgs},
 		},
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "current", Title: "Current weather", Kinds: image, MinWidth: 160, MinHeight: 80,
@@ -106,9 +111,7 @@ func (w *weather) Describe() plugin.Description {
 				}},
 			{Widget: "days", Title: "Daily forecast", Kinds: image, MinWidth: 200, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 2}},
-				Args: map[string]plugin.Arg{
-					"days": {Type: "int", Default: 5, Description: "number of days, 1 to 5"},
-				}},
+				Args:  forecastArgs},
 			{Widget: "hours", Title: "Temperature today", Kinds: image, MinWidth: 200, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}}},
 		},
@@ -371,6 +374,9 @@ func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) error {
 // Values answers the declared values of a text page from the forecast the
 // plugin loaded (ADR 0111). forecast carries one line per day.
 func (w *weather) Values(req *plugin.Request) (map[string]plugin.Value, error) {
+	if err := req.ValueArgs.Check(forecastArgs); err != nil {
+		return nil, err
+	}
 	out := make(map[string]plugin.Value, len(req.Values))
 	c, t := w.cur.Current, w.cur.Today
 	at := func(s string) (plugin.Value, error) {
@@ -423,7 +429,7 @@ func (w *weather) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 			}
 			out[name] = v
 		case "forecast":
-			out[name] = plugin.TextValue(w.forecastLines())
+			out[name] = plugin.TextValue(w.forecastLines(req.ValueArgs.Int("days", 5)))
 		default:
 			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
 		}
@@ -433,9 +439,9 @@ func (w *weather) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 
 // forecastLines is the daily forecast as one line per day: label, condition
 // and the range.
-func (w *weather) forecastLines() string {
+func (w *weather) forecastLines(days int) string {
 	var lines []string
-	for i, d := range w.dayList(5) {
+	for i, d := range w.dayList(days) {
 		label := d.Label
 		if i == 0 {
 			label = w.t("Heute", "Today")

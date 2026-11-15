@@ -22,7 +22,7 @@ The pictograms come from [OpenMoji](https://openmoji.org) (CC BY-SA 4.0, see `cm
 
 ## Values
 
-A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)):
+A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md)). `forecast` reads the argument `days`, 1 to 5 (default 5):
 
 | Value | Type | Unit | Precision | Meaning |
 |---|---|---|---|---|

@@ -137,6 +137,40 @@ type departures struct {
 }
 
 func (p *departures) Describe() plugin.Description {
+	valueArgs := p.valueArgs()
+	stopArg := valueArgs["stop"]
+	timeArg := valueArgs["time"]
+	localityArg := valueArgs["locality"]
+	orderArg := valueArgs["locality_order"]
+	return plugin.Description{
+		Title:   "Departures",
+		Version: version(),
+		Config:  configKeys,
+		Values: []plugin.ValueSpec{
+			{Name: "stop", Title: "Stop", Type: plugin.ValueText, Args: map[string]plugin.Arg{"stop": stopArg}},
+			{Name: "departures", Title: "Departures", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "next", Title: "Next departure", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "next-at", Title: "Next departure at", Type: plugin.ValueTimestamp, Args: map[string]plugin.Arg{"stop": stopArg}},
+			{Name: "next-in", Title: "Next departure in", Type: plugin.ValueDuration, Args: map[string]plugin.Arg{"stop": stopArg}},
+		},
+		Widgets: []plugin.WidgetInfo{
+			{Widget: "departures", Title: "Real-time departures", Kinds: []string{plugin.KindImage}, MinWidth: 200, MinHeight: 60,
+				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 3}, {Columns: 6, Rows: 4}},
+				Args: map[string]plugin.Arg{
+					"stop":           stopArg,
+					"header":         {Type: "bool", Default: false, Description: "show the stop name above the departures"},
+					"time":           timeArg,
+					"locality":       localityArg,
+					"locality_order": orderArg,
+				}},
+		},
+	}
+}
+
+// valueArgs is the union of the arguments the values read: a values request
+// carries one argument set for several values, and the stop is shared by all
+// of them (ADR 0120).
+func (p *departures) valueArgs() map[string]plugin.Arg {
 	names := make([]any, 0, len(p.stops))
 	for _, s := range p.stops {
 		names = append(names, s.spec.Name)
@@ -145,30 +179,13 @@ func (p *departures) Describe() plugin.Description {
 	if len(p.stops) > 0 {
 		first = p.stops[0].spec.Name
 	}
-	return plugin.Description{
-		Title:   "Departures",
-		Version: version(),
-		Config:  configKeys,
-		Values: []plugin.ValueSpec{
-			{Name: "stop", Title: "Stop", Type: plugin.ValueText},
-			{Name: "departures", Title: "Departures", Type: plugin.ValueText},
-			{Name: "next", Title: "Next departure", Type: plugin.ValueText},
-			{Name: "next-at", Title: "Next departure at", Type: plugin.ValueTimestamp},
-			{Name: "next-in", Title: "Next departure in", Type: plugin.ValueDuration},
-		},
-		Widgets: []plugin.WidgetInfo{
-			{Widget: "departures", Title: "Real-time departures", Kinds: []string{plugin.KindImage}, MinWidth: 200, MinHeight: 60,
-				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 3}, {Columns: 6, Rows: 4}},
-				Args: map[string]plugin.Arg{
-					"stop":   {Type: "string", Default: first, Enum: names, Description: "one of the configured stops by name; default the first"},
-					"header": {Type: "bool", Default: false, Description: "show the stop name above the departures"},
-					"time":   {Type: "string", Default: "auto", Description: "auto: minutes, a clock time from one hour on; minutes; clock", Enum: []any{"auto", "minutes", "clock"}},
-					"locality": {Type: "string", Default: "auto", Description: "locality of a destination (\"City, Stop\"): auto drops it when it is the monitored stop's locality; always drops it; never keeps it",
-						Enum: []any{"auto", "always", "never"}},
-					"locality_order": {Type: "string", Default: "after", Description: "where the locality sits: after the stop (\"Stop, City\"), before it (\"City, Stop\") or nowhere; for the header and the destinations",
-						Enum: []any{"after", "before", "none"}},
-				}},
-		},
+	return map[string]plugin.Arg{
+		"stop": {Type: "string", Default: first, Enum: names, Description: "one of the configured stops by name; default the first"},
+		"time": {Type: "string", Default: "auto", Description: "auto: minutes, a clock time from one hour on; minutes; clock", Enum: []any{"auto", "minutes", "clock"}},
+		"locality": {Type: "string", Default: "auto", Description: "locality of a destination (\"City, Stop\"): auto drops it when it is the monitored stop's locality; always drops it; never keeps it",
+			Enum: []any{"auto", "always", "never"}},
+		"locality_order": {Type: "string", Default: "after", Description: "where the locality sits: after the stop (\"Stop, City\"), before it (\"City, Stop\") or nowhere; for the header and the destinations",
+			Enum: []any{"after", "before", "none"}},
 	}
 }
 

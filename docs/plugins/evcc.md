@@ -63,7 +63,7 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 | `session-solar` | number | % | 0 | solar share of its session |
 | `remaining` | duration | | | time until it is full |
 
-The loadpoint values describe the first loadpoint, because a values request carries no arguments.
+The loadpoint values read the argument `index`, the loadpoint counted from 0 (default 0), like the `loadpoint` widget. A `values` request carries one argument set, so the other values ignore it.
 
 The history needs an evcc with the energy database (the *Energie* page in evcc's UI). An older evcc leaves the other widgets working: the history cell shows the HTTP error instead of values.
 

@@ -68,6 +68,7 @@ The content model: what a page is, what draws in it and when it is shown. See [`
 | [0115](0115-device-status-in-a-widget.md) | Device status in a widget | Accepted, implemented; adds `server_status` to the built-in plugin request and the widgets `battery` and `device-status` |
 | [0117](0117-text-cells-name-their-column.md) | Text cells name their column | Accepted, implemented; amends the row model of [ADR-0111](0111-text-pages-from-plugin-values.md) with a free column per cell, like the `at` of [ADR-0085](0085-moving-and-resizing-widgets.md) |
 | [0118](0118-text-boxes-and-overflow.md) | Text boxes and overflow | Accepted, implemented; replaces the row model of [ADR-0117](0117-text-cells-name-their-column.md) with boxes in a character grid, adds strip/wrap/scroll per cell and literal text cells |
+| [0120](0120-arguments-for-values.md) | Arguments for values | Accepted, implemented; extends the values of [ADR-0111](0111-text-pages-from-plugin-values.md) with arguments per value, like widgets have them ([ADR-0055](0055-allowed-arg-values-and-gallery-form.md)) |
 
 ## Devices and the device protocol
 

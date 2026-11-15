@@ -175,6 +175,49 @@ func TestValue(t *testing.T) {
 	}
 }
 
+func TestValues(t *testing.T) {
+	loc := berlin(t)
+	now := at(2026, 11, 20, 12, 0, loc)
+	req, _ := request(t, now, nil)
+	req.Values = []string{"value", "target", "days", "percent"}
+	req.ValueArgs = plugin.Values{"date": "12-24", "since": "01-01"}
+	values, err := countdown{}.Values(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := values["value"]; v.Text == nil || *v.Text != "34 Tage" {
+		t.Errorf("value = %+v", v)
+	}
+	if v := values["days"]; v.Number == nil || *v.Number != 34 {
+		t.Errorf("days = %+v", v)
+	}
+	if v := values["target"]; v.Timestamp == nil || *v.Timestamp != "2026-12-24T00:00:00+01:00" {
+		t.Errorf("target = %+v", v)
+	}
+	if v := values["percent"]; v.Number == nil || *v.Number < 80 || *v.Number > 100 {
+		t.Errorf("percent = %+v", v)
+	}
+	// Without a reference date there is no passed share.
+	req.ValueArgs = plugin.Values{"date": "12-24"}
+	values, err = countdown{}.Values(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := values["percent"]; v.Text == nil || *v.Text != "\u2013" {
+		t.Errorf("percent without since = %+v", v)
+	}
+	// A countdown without a date has no target.
+	req.ValueArgs = nil
+	if _, err := (countdown{}).Values(req); err == nil {
+		t.Error("a countdown without a date was accepted")
+	}
+	// The label belongs to the cell, not to the value arguments.
+	req.ValueArgs = plugin.Values{"date": "12-24", "label": "Weihnachten"}
+	if _, err := (countdown{}).Values(req); err == nil {
+		t.Error("a label argument was accepted; the cell carries the label")
+	}
+}
+
 func TestRenderViaProtocol(t *testing.T) {
 	loc := berlin(t)
 	now := at(2026, 11, 20, 12, 0, loc)

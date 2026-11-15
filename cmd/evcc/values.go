@@ -192,35 +192,43 @@ func (e *evcc) valueKeys(w plugin.WidgetRequest) []string {
 
 // ---- values for text pages (ADR 0111) ----
 
+// loadpointArg picks the charging point the loadpoint values describe
+// (ADR 0120).
+var loadpointArg = plugin.Arg{Type: "int", Default: 0, Description: "loadpoint, counted from 0"}
+
 // valueSpecs is the declaration of every value the plugin answers: the state
-// values followed by the values of the first loadpoint.
+// values followed by the values of the loadpoint named by the index argument.
 func valueSpecs() []plugin.ValueSpec {
 	out := make([]plugin.ValueSpec, 0, len(stateValues)+10)
 	for _, v := range stateValues {
 		out = append(out, plugin.ValueSpec{Name: v.key, Title: v.en, Type: plugin.ValueNumber, Unit: v.unit, Precision: v.precision})
 	}
+	lp := map[string]plugin.Arg{"index": loadpointArg}
 	return append(out, []plugin.ValueSpec{
-		{Name: "loadpoint", Title: "Charging point", Type: plugin.ValueText},
-		{Name: "loadpoint-mode", Title: "Charge mode", Type: plugin.ValueText},
-		{Name: "loadpoint-status", Title: "Status", Type: plugin.ValueText},
-		{Name: "loadpoint-soc", Title: "State of charge", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
-		{Name: "loadpoint-limit", Title: "Charge limit", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
-		{Name: "loadpoint-range", Title: "Range", Type: plugin.ValueNumber, Unit: "km", Precision: 0},
-		{Name: "loadpoint-power", Title: "Charge power", Type: plugin.ValueNumber, Unit: "kW", Precision: 1},
-		{Name: "session-energy", Title: "Session energy", Type: plugin.ValueNumber, Unit: "kWh", Precision: 1},
-		{Name: "session-solar", Title: "Solar share of the session", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
-		{Name: "remaining", Title: "Remaining charge time", Type: plugin.ValueDuration},
+		{Name: "loadpoint", Title: "Charging point", Type: plugin.ValueText, Args: lp},
+		{Name: "loadpoint-mode", Title: "Charge mode", Type: plugin.ValueText, Args: lp},
+		{Name: "loadpoint-status", Title: "Status", Type: plugin.ValueText, Args: lp},
+		{Name: "loadpoint-soc", Title: "State of charge", Type: plugin.ValueNumber, Unit: "%", Precision: 0, Args: lp},
+		{Name: "loadpoint-limit", Title: "Charge limit", Type: plugin.ValueNumber, Unit: "%", Precision: 0, Args: lp},
+		{Name: "loadpoint-range", Title: "Range", Type: plugin.ValueNumber, Unit: "km", Precision: 0, Args: lp},
+		{Name: "loadpoint-power", Title: "Charge power", Type: plugin.ValueNumber, Unit: "kW", Precision: 1, Args: lp},
+		{Name: "session-energy", Title: "Session energy", Type: plugin.ValueNumber, Unit: "kWh", Precision: 1, Args: lp},
+		{Name: "session-solar", Title: "Solar share of the session", Type: plugin.ValueNumber, Unit: "%", Precision: 0, Args: lp},
+		{Name: "remaining", Title: "Remaining charge time", Type: plugin.ValueDuration, Args: lp},
 	}...)
 }
 
 // Values answers the declared values of a text page (ADR 0111). A value evcc
-// does not report becomes a dash. The loadpoint values describe the first
-// loadpoint.
+// does not report becomes a dash. The loadpoint values describe the loadpoint
+// named by the index argument, the first one without it (ADR 0120).
 func (e *evcc) Values(req *plugin.Request) (map[string]plugin.Value, error) {
+	if err := req.ValueArgs.Check(map[string]plugin.Arg{"index": loadpointArg}); err != nil {
+		return nil, err
+	}
 	dash := plugin.TextValue("–")
 	var lp *loadpoint
-	if len(e.cur.Loadpoints) > 0 {
-		lp = &e.cur.Loadpoints[0]
+	if i := req.ValueArgs.Int("index", 0); i >= 0 && i < len(e.cur.Loadpoints) {
+		lp = &e.cur.Loadpoints[i]
 	}
 	out := make(map[string]plugin.Value, len(req.Values))
 	for _, name := range req.Values {

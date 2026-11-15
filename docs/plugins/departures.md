@@ -57,7 +57,7 @@ The arg `locality` decides whether a destination shows its town at all:
 
 ## Values
 
-A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). They describe the first configured stop, because a values request carries no arguments:
+A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md)). The value arguments pick the stop and the format like the widget's arguments: `stop` (one of the configured stops by name, default the first), `time`, `locality` and `locality_order`. Without `stop` they describe the first configured stop.
 
 | Value | Type | Meaning |
 |---|---|---|

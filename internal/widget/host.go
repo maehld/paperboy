@@ -163,11 +163,19 @@ func (j job) key(env Env) string {
 		j.widget.Width, j.widget.Height, j.widget.Scroll, args, style, page, env.Language, env.Timezone, device)
 }
 
-// group is the batching key: the request header without the widgets.
+// group is the batching key: the request header without the widgets. A
+// values request carries one argument set, because its answer is keyed by
+// name, so values of different arguments go out in separate requests
+// (ADR 0120).
 func (j job) group() string {
 	page, _ := json.Marshal(j.page)
 	device, _ := json.Marshal(j.device)
-	return fmt.Sprintf("%s|%s|%d|%s|%s", j.plugin, j.action, j.levels, page, device)
+	args := ""
+	if j.action == plugin.ActionValues {
+		a, _ := json.Marshal(j.widget.Args)
+		args = "|" + string(a)
+	}
+	return fmt.Sprintf("%s|%s|%d|%s|%s%s", j.plugin, j.action, j.levels, page, device, args)
 }
 
 func (h *Host) now() time.Time {
@@ -318,7 +326,7 @@ func (h *Host) FetchValues(ctx context.Context, b page.ValueBatch) []page.Result
 				continue
 			}
 			jobs = append(jobs, job{plugin: name, action: plugin.ActionValues, page: b.Page, spec: spec, device: b.Device,
-				widget: plugin.WidgetRequest{Widget: v.Name}})
+				widget: plugin.WidgetRequest{Widget: v.Name, Args: v.Args}})
 			jobIdx = append(jobIdx, i)
 		}
 		if len(jobs) == 0 {
@@ -438,6 +446,7 @@ func (h *Host) run(ctx context.Context, spec Spec, env Env, jobs []job) ([]page.
 		req := plugin.Request{Version: plugin.Version, Action: first.action, Language: env.Language,
 			Timezone: env.Timezone, Now: h.now(), Levels: first.levels, Page: first.page, Device: first.device}
 		if first.action == plugin.ActionValues {
+			req.ValueArgs = plugin.Values(first.widget.Args)
 			for _, i := range idx {
 				req.Values = append(req.Values, jobs[i].widget.Widget)
 			}
@@ -565,6 +574,7 @@ func (h *Host) builtin(name string, handler plugin.Handler, jobs []job, idx []in
 			Timezone: env.Timezone, Now: h.now(), Levels: first.levels, Page: first.page,
 			Device: first.device, ServerStatus: status}
 		if first.action == plugin.ActionValues {
+			req.ValueArgs = plugin.Values(first.widget.Args)
 			for _, p := range pos {
 				req.Values = append(req.Values, jobs[p].widget.Widget)
 			}

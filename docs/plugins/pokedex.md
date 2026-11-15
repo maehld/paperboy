@@ -37,7 +37,7 @@ The plugin downloads the artwork at runtime and reduces it to the display's gray
 
 ## Values
 
-A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). They describe the Pokémon of the default seed, because a values request carries no arguments.
+A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md)). The argument `seed` picks the Pokémon like the card's `seed`; without it they describe the default seed.
 
 | Value | Type | Unit | Precision | Meaning |
 |---|---|---|---|---|

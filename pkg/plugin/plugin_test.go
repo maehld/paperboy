@@ -233,6 +233,7 @@ func TestVersion(t *testing.T) {
 type valueHandler struct {
 	testHandler
 	prepared bool
+	args     Values
 }
 
 func (valueHandler) Describe() Description {
@@ -244,7 +245,8 @@ func (h *valueHandler) Prepare(*Request) error {
 	return nil
 }
 
-func (valueHandler) Values(req *Request) (map[string]Value, error) {
+func (h *valueHandler) Values(req *Request) (map[string]Value, error) {
+	h.args = req.ValueArgs
 	out := map[string]Value{}
 	for _, name := range req.Values {
 		if name != "pv" {
@@ -253,6 +255,17 @@ func (valueHandler) Values(req *Request) (map[string]Value, error) {
 		out[name] = NumberValue(12.5)
 	}
 	return out, nil
+}
+
+func TestValuesActionArguments(t *testing.T) {
+	h := &valueHandler{}
+	m := Handle(h, &Request{Action: ActionValues, Values: []string{"pv"}, ValueArgs: Values{"unit": "W"}})
+	if m.Error != "" {
+		t.Fatalf("values with arguments: %s", m.Error)
+	}
+	if h.args.String("unit", "") != "W" {
+		t.Errorf("plugin read value args %v, want unit W", h.args)
+	}
 }
 
 func TestValuesAction(t *testing.T) {

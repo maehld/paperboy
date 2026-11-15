@@ -56,7 +56,7 @@ The widget is for image displays; the values `headline`, `source`, `summary` and
 
 ## Values
 
-A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)):
+A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md)). The argument `feed` picks one configured feed by name, or all feeds mixed (default `all`):
 
 | Value | Type | Meaning |
 |---|---|---|

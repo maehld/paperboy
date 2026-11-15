@@ -11,7 +11,13 @@ import (
 // Values answers the declared values of a text page from the newest entries
 // (ADR 0111). entries carries one line per entry.
 func (p *rss) Values(req *plugin.Request) (map[string]plugin.Value, error) {
-	list := p.snap.merged
+	if err := req.ValueArgs.Check(p.valueArgs()); err != nil {
+		return nil, err
+	}
+	list, err := p.snap.entries(req.ValueArgs.String("feed", "all"))
+	if err != nil {
+		return nil, err
+	}
 	now := p.now(req)
 	var first entry
 	has := len(list) > 0
@@ -46,7 +52,7 @@ func (p *rss) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 			}
 			out[name] = plugin.TimestampValue(first.Time)
 		case "entries":
-			out[name] = plugin.TextValue(p.entryLines(req, now))
+			out[name] = plugin.TextValue(p.entryLines(req, list, now))
 		default:
 			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
 		}
@@ -56,10 +62,10 @@ func (p *rss) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 
 // entryLines writes one line per entry: the age, the feed name when several
 // feeds are mixed, and the title.
-func (p *rss) entryLines(req *plugin.Request, now time.Time) string {
+func (p *rss) entryLines(req *plugin.Request, list []entry, now time.Time) string {
 	source := len(p.feeds) > 1
-	lines := make([]string, 0, len(p.snap.merged))
-	for _, e := range p.snap.merged {
+	lines := make([]string, 0, len(list))
+	for _, e := range list {
 		line := e.Title
 		if source && e.Source != "" {
 			line = e.Source + ": " + line

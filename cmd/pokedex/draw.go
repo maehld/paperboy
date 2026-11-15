@@ -286,9 +286,12 @@ func dither(img *image.Paletted, r image.Rectangle, src *image.RGBA) {
 }
 
 // Values answers the declared values of a text page for the Pokémon of the
-// default seed (ADR 0111).
+// seed argument (ADR 0111, 0120).
 func (p *pokedex) Values(req *plugin.Request) (map[string]plugin.Value, error) {
-	m, err := p.current(plugin.WidgetRequest{Widget: "card"})
+	if err := req.ValueArgs.Check(valueArgs); err != nil {
+		return nil, err
+	}
+	m, err := p.current(plugin.WidgetRequest{Widget: "card", Args: req.ValueArgs})
 	if err != nil {
 		return nil, err
 	}

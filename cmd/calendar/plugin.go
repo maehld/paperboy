@@ -92,18 +92,20 @@ func (p *calendarPlugin) Describe() plugin.Description {
 	if choices := p.calendarChoices(); len(choices) > 0 {
 		calendars.Enum = choices
 	}
+	valueArgs := p.valueArgs(true)
 	return plugin.Description{
 		Title:   "Calendar",
 		Version: version(),
 		Config:  configKeys,
 		// Values give a text page the agenda, the birthdays and the week
-		// without a widget (ADR 0111).
+		// without a widget (ADR 0111). They read the arguments of the widget
+		// they replace (ADR 0120).
 		Values: []plugin.ValueSpec{
-			{Name: "agenda", Title: "Upcoming events", Type: plugin.ValueText},
-			{Name: "birthdays", Title: "Next birthdays", Type: plugin.ValueText},
-			{Name: "week", Title: "The next seven days", Type: plugin.ValueText},
-			{Name: "next", Title: "Next event", Type: plugin.ValueText},
-			{Name: "next-at", Title: "Next event at", Type: plugin.ValueTimestamp},
+			{Name: "agenda", Title: "Upcoming events", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "birthdays", Title: "Next birthdays", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "week", Title: "The next seven days", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "next", Title: "Next event", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "next-at", Title: "Next event at", Type: plugin.ValueTimestamp, Args: valueArgs},
 		},
 		Widgets: []plugin.WidgetInfo{
 			{
@@ -154,6 +156,29 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				},
 			},
 		},
+	}
+}
+
+// valueArgs is the union of the arguments the values read: a values request
+// carries one argument set for several values (ADR 0120). withChoices adds the
+// calendar enum for the editor; checking a request does not need it, because
+// eventsFor already rejects an unknown calendar.
+func (p *calendarPlugin) valueArgs(withChoices bool) map[string]plugin.Arg {
+	calendars := plugin.Arg{Type: "list", Description: "only these calendars; default all"}
+	if withChoices {
+		if choices := p.calendarChoices(); len(choices) > 0 {
+			calendars.Enum = choices
+		}
+	}
+	return map[string]plugin.Arg{
+		"days":      {Type: "int", Description: "days from today, 1 to the loaded window; default the configured days"},
+		"headings":  {Type: "bool", Default: true, Description: "day headings"},
+		"start":     {Type: "string", Default: "week", Description: "first day of the week: week = Monday for German, Sunday otherwise, today = today", Enum: []any{"week", "today"}},
+		"age":       {Type: "bool", Default: false, Description: "append the age of birthdays"},
+		"location":  {Type: "bool", Default: false, Description: "append the location to the title"},
+		"empty":     {Type: "bool", Description: "show days without events with \"No events\"; default true when days is set"},
+		"more":      {Type: "bool", Default: true, Description: "show \"+N more\" for events that did not fit"},
+		"calendars": calendars,
 	}
 }
 
@@ -281,23 +306,33 @@ func (p *calendarPlugin) weekValue(w plugin.WidgetRequest) ([]string, error) {
 // birthdays and week carry one line per record; next and next-at name the
 // first event that has not ended.
 func (p *calendarPlugin) Values(req *plugin.Request) (map[string]plugin.Value, error) {
+	if err := req.ValueArgs.Check(p.valueArgs(false)); err != nil {
+		return nil, err
+	}
+	w := plugin.WidgetRequest{Widget: "week", Width: 40, Height: 7, Args: req.ValueArgs}
 	out := make(map[string]plugin.Value, len(req.Values))
 	for _, name := range req.Values {
 		switch name {
 		case "agenda", "birthdays":
-			lines, err := p.agendaValue(plugin.WidgetRequest{Widget: name})
+			w.Widget = name
+			lines, err := p.agendaValue(w)
 			if err != nil {
 				return nil, err
 			}
 			out[name] = plugin.TextValue(strings.Join(lines, "\n"))
 		case "week":
-			lines, err := p.weekValue(plugin.WidgetRequest{Widget: "week", Width: 40, Height: 7})
+			w.Widget = "week"
+			lines, err := p.weekValue(w)
 			if err != nil {
 				return nil, err
 			}
 			out[name] = plugin.TextValue(strings.Join(lines, "\n"))
 		case "next", "next-at":
-			e, ok := p.nextEvent()
+			evs, err := p.eventsFor(w)
+			if err != nil {
+				return nil, err
+			}
+			e, ok := p.nextEvent(evs)
 			if !ok {
 				out[name] = plugin.TextValue("–")
 				continue
@@ -316,11 +351,11 @@ func (p *calendarPlugin) Values(req *plugin.Request) (map[string]plugin.Value, e
 
 // nextEvent is the event that ends last in the future, so an ongoing event
 // counts as next.
-func (p *calendarPlugin) nextEvent() (parsedEvent, bool) {
+func (p *calendarPlugin) nextEvent(events []event) (parsedEvent, bool) {
 	now := p.now.In(p.loc)
 	var best parsedEvent
 	found := false
-	for _, e := range p.parsed(p.events) {
+	for _, e := range p.parsed(events) {
 		ongoing := e.end.After(now) || (e.end.Equal(e.start) && !e.start.Before(now))
 		if !ongoing {
 			continue

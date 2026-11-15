@@ -2,4 +2,4 @@ kind: text
 cells:
   - { at: [0, 0], span: [20, 1], value: paperboy/title }
   - { at: [0, 1], span: [20, 1], value: departures/stop }
-  - { at: [0, 2], span: [20, 2], value: departures/departures, overflow: scroll }
+  - { at: [0, 2], span: [20, 2], value: departures/departures, args: { time: clock }, overflow: scroll }

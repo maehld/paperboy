@@ -73,4 +73,4 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 | `next` | text | title of the first event that has not ended |
 | `next-at` | timestamp | its start |
 
-The values take the defaults of the widgets: every calendar, day headings, the configured number of days. They carry every record; the page's box decides how much of it fits.
+The values take the arguments of the widget they replace ([ADR 0120](../adr/0120-arguments-for-values.md)): `days`, `headings`, `start`, `age`, `location`, `empty`, `more` and `calendars`. Without them they take the widget defaults: every calendar, day headings, the configured number of days. They carry every record; the page's box decides how much of it fits.

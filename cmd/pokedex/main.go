@@ -108,32 +108,36 @@ func newPokedex(c *http.Client) *pokedex {
 		curs: map[string]loaded{}}
 }
 
+// valueArgs are the arguments the values read (ADR 0120).
+var valueArgs = map[string]plugin.Arg{
+	"seed": {Type: "string", Description: "a label such as a device name; every seed shows its own random Pokémon"},
+}
+
 func (p *pokedex) Describe() plugin.Description {
 	return plugin.Description{
 		Title:   "Pokédex",
 		Version: version(),
 		Config:  configKeys,
-		// Values give a text page the Pokémon of the default seed (ADR 0111).
+		// Values give a text page the Pokémon of the seed argument, the
+		// default seed without it (ADR 0111, 0120).
 		Values: []plugin.ValueSpec{
-			{Name: "name", Title: "Name", Type: plugin.ValueText},
-			{Name: "number", Title: "Number", Type: plugin.ValueNumber},
-			{Name: "types", Title: "Types", Type: plugin.ValueText},
-			{Name: "height", Title: "Height", Type: plugin.ValueNumber, Unit: "m", Precision: 1},
-			{Name: "weight", Title: "Weight", Type: plugin.ValueNumber, Unit: "kg", Precision: 1},
-			{Name: "hp", Title: "HP", Type: plugin.ValueNumber},
-			{Name: "attack", Title: "Attack", Type: plugin.ValueNumber},
-			{Name: "defense", Title: "Defense", Type: plugin.ValueNumber},
-			{Name: "special-attack", Title: "Special attack", Type: plugin.ValueNumber},
-			{Name: "special-defense", Title: "Special defense", Type: plugin.ValueNumber},
-			{Name: "speed", Title: "Speed", Type: plugin.ValueNumber},
-			{Name: "flavor", Title: "Flavor text", Type: plugin.ValueText},
+			{Name: "name", Title: "Name", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "number", Title: "Number", Type: plugin.ValueNumber, Args: valueArgs},
+			{Name: "types", Title: "Types", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "height", Title: "Height", Type: plugin.ValueNumber, Unit: "m", Precision: 1, Args: valueArgs},
+			{Name: "weight", Title: "Weight", Type: plugin.ValueNumber, Unit: "kg", Precision: 1, Args: valueArgs},
+			{Name: "hp", Title: "HP", Type: plugin.ValueNumber, Args: valueArgs},
+			{Name: "attack", Title: "Attack", Type: plugin.ValueNumber, Args: valueArgs},
+			{Name: "defense", Title: "Defense", Type: plugin.ValueNumber, Args: valueArgs},
+			{Name: "special-attack", Title: "Special attack", Type: plugin.ValueNumber, Args: valueArgs},
+			{Name: "special-defense", Title: "Special defense", Type: plugin.ValueNumber, Args: valueArgs},
+			{Name: "speed", Title: "Speed", Type: plugin.ValueNumber, Args: valueArgs},
+			{Name: "flavor", Title: "Flavor text", Type: plugin.ValueText, Args: valueArgs},
 		},
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "card", Title: "Pokémon card", Kinds: []string{plugin.KindImage}, MinWidth: 240, MinHeight: 240,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 4}, {Columns: 6, Rows: 8}},
-				Args: map[string]plugin.Arg{
-					"seed": {Type: "string", Description: "a label such as a device name; every seed draws its own random Pokémon"},
-				}},
+				Args:  valueArgs},
 		},
 	}
 }

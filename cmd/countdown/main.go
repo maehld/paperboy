@@ -47,10 +47,28 @@ var widgetArgs = map[string]plugin.Arg{
 	},
 }
 
+// valueArgs are the arguments the values read (ADR 0120). The label is not
+// one of them: the page puts its own label in front of the value. A request
+// carries one argument set, so the check allows both keys.
+var valueArgs = map[string]plugin.Arg{
+	"date":  widgetArgs["date"],
+	"since": widgetArgs["since"],
+}
+
 func (countdown) Describe() plugin.Description {
+	dateArg := map[string]plugin.Arg{"date": widgetArgs["date"]}
+	percentArgs := valueArgs
 	return plugin.Description{
 		Title:   "Countdown",
 		Version: version(),
+		// A countdown is all arguments, so its values read the date and the
+		// reference of the cell (ADR 0111, 0120).
+		Values: []plugin.ValueSpec{
+			{Name: "value", Title: "Days left", Type: plugin.ValueText, Args: dateArg},
+			{Name: "target", Title: "Target date", Type: plugin.ValueTimestamp, Args: dateArg},
+			{Name: "days", Title: "Calendar days left", Type: plugin.ValueNumber, Args: dateArg},
+			{Name: "percent", Title: "Passed share", Type: plugin.ValueNumber, Unit: "%", Precision: 0, Args: percentArgs},
+		},
 		Widgets: []plugin.WidgetInfo{{
 			Widget:    "countdown",
 			Title:     "Days to a date",
@@ -191,16 +209,57 @@ func (a *args) evaluate() state {
 	return st
 }
 
+// Values answers the declared values of a text page (ADR 0111, 0120). The
+// page names the date and the reference in the value arguments; without a
+// date a countdown has no target. The label is the cell's.
+func (countdown) Values(req *plugin.Request) (map[string]plugin.Value, error) {
+	if err := req.ValueArgs.Check(valueArgs); err != nil {
+		return nil, err
+	}
+	a, err := parseArgs(req, plugin.WidgetRequest{Widget: "countdown", Args: req.ValueArgs})
+	if err != nil {
+		return nil, err
+	}
+	st := a.evaluate()
+	dash := plugin.TextValue("\u2013")
+	out := make(map[string]plugin.Value, len(req.Values))
+	for _, name := range req.Values {
+		switch name {
+		case "value":
+			out[name] = plugin.TextValue(a.value(req, st))
+		case "target":
+			out[name] = plugin.TimestampValue(a.target)
+		case "days":
+			out[name] = plugin.NumberValue(float64(st.days))
+		case "percent":
+			if !st.bar {
+				out[name] = dash
+				continue
+			}
+			out[name] = plugin.NumberValue(math.Round(st.fraction * 100))
+		default:
+			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
+		}
+	}
+	return out, nil
+}
+
 // MaxAge ends at the next local midnight, when the day count changes; a
 // countdown in its last day counts minutes and refreshes more often.
 func (countdown) MaxAge(req *plugin.Request) time.Duration {
 	loc := req.Location()
 	now := req.Now.In(loc)
 	d := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, loc).Sub(now)
+	var asks []plugin.WidgetRequest
 	for _, w := range req.Widgets {
-		if w.Widget != "countdown" {
-			continue
+		if w.Widget == "countdown" {
+			asks = append(asks, w)
 		}
+	}
+	if len(req.Values) > 0 {
+		asks = append(asks, plugin.WidgetRequest{Widget: "countdown", Args: req.ValueArgs})
+	}
+	for _, w := range asks {
 		a, err := parseArgs(req, w)
 		if err != nil {
 			continue

@@ -2,6 +2,7 @@
 # lower ones are fixed dates, the last with a time and a progress bar.
 title: Countdown
 kind: image
+variants: {lcd2004: lcd2004}
 grid: [6, 8]
 style: { padding: 4.5 }
 cells:

@@ -50,10 +50,16 @@ shows no year when `date` repeats every year.
 
 ## Values
 
-None. Every countdown is a set of widget arguments, and a values request
-carries no arguments, so a text page cannot show a countdown yet. A later
-protocol version can carry arguments or repeat a cell per record
-([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)).
+A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md)). They read the value arguments `date` (required) and, for `percent`, `since`. Without `date` the value fails, because a countdown has no target.
+
+| Value | Type | Meaning |
+|---|---|---|
+| `value` | text | the main text: `34 Tage`, `6 Std 30 Min`, `heute` or `vorbei`, in the request's language |
+| `target` | timestamp | the target date |
+| `days` | number | calendar days to a date-only target, negative after it; 0 when the target is a time less than a day away |
+| `percent` | number | the passed share of `since` to `date`, in percent; a dash without `since` |
+
+The `value` text follows the widget's wording, so a page that wants the number alone uses `days`. The label is the cell's, not a value argument: `label: Weihnachten` in front of `countdown/value` writes the same line as the widget.
 
 ## Refresh
 

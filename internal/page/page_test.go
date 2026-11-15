@@ -282,6 +282,54 @@ cells:
 	}
 }
 
+func TestTextValueArguments(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader(`
+kind: text
+cells:
+  - { at: [0, 0], span: [10, 1], value: a/text, args: { n: 1 } }
+  - { at: [0, 1], span: [10, 1], value: a/text, args: { n: 2 } }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var batches []ValueBatch
+	src := func(b ValueBatch) []Result {
+		batches = append(batches, b)
+		out := make([]Result, len(b.Values))
+		for i, v := range b.Values {
+			n := fmt.Sprint(v.Args["n"])
+			val := plugin.TextValue("n=" + n)
+			out[i] = Result{Value: &val, Spec: plugin.ValueSpec{Name: v.Name, Type: plugin.ValueText}}
+		}
+		return out
+	}
+	text, err := tmpl.RenderText(Display{Width: 10, Height: 2, Text: true}, Context{Values: src})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(batches) != 1 || len(batches[0].Values) != 2 {
+		t.Fatalf("batches %+v, want one request with two values", batches)
+	}
+	if got := fmt.Sprint(batches[0].Values[0].Args["n"]); got != "1" {
+		t.Errorf("first value args n = %s, want 1", got)
+	}
+	want := []string{"n=1       ", "n=2       "}
+	if strings.Join(text.Lines, "|") != strings.Join(want, "|") {
+		t.Fatalf("lines %q, want %q", text.Lines, want)
+	}
+}
+
+func TestTextArgumentsAreForValueCellsOnly(t *testing.T) {
+	_, err := Parse(strings.NewReader(`
+kind: text
+cells:
+  - { at: [0, 0], span: [10, 1], text: hello, args: { n: 1 } }
+`))
+	if err == nil || !strings.Contains(err.Error(), "literal text cell has no label, unit or args") {
+		t.Fatalf("literal text with args: %v", err)
+	}
+}
+
 func TestTextOverflow(t *testing.T) {
 	cases := []struct {
 		name   string
