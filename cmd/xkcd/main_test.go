@@ -276,37 +276,23 @@ func TestRenderViaProtocol(t *testing.T) {
 	}
 }
 
-func TestText(t *testing.T) {
+func TestValues(t *testing.T) {
 	srv, _ := server(t, "latest.json")
-	x, req := start(t, plugin.Values{"base": srv.URL}, func(...string) {})
-	lines, err := x.Text(req, plugin.WidgetRequest{Widget: "comic", Width: 20, Height: 4})
-	if err != nil || len(lines) != 4 {
-		t.Fatalf("%q %v", lines, err)
+	x, _ := start(t, plugin.Values{"base": srv.URL}, func(...string) {})
+	values, err := x.Values(&plugin.Request{Values: []string{"number", "title", "alt"}})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if lines[0] != "#3200 Test Comic    " && !strings.HasPrefix(lines[0], "#3200 Test Comic") {
-		t.Errorf("first line %q", lines[0])
+	if v := values["number"]; v.Number == nil || *v.Number != 3200 {
+		t.Fatalf("number = %+v", v)
 	}
-	if !strings.HasSuffix(lines[3], "…") {
-		t.Errorf("cut alt text lacks an ellipsis: %q", lines[3])
+	if v := values["title"]; v.Text == nil || *v.Text != "Test Comic" {
+		t.Fatalf("title = %+v", v)
 	}
-	for _, l := range lines {
-		if len([]rune(l)) > 20 {
-			t.Errorf("line %q wider than 20", l)
-		}
+	if v := values["alt"]; v.Text == nil || *v.Text == "" {
+		t.Fatalf("alt = %+v", v)
 	}
-	long, _ := x.Text(req, plugin.WidgetRequest{Widget: "comic", Width: 20, Height: 30})
-	if strings.HasSuffix(long[len(long)-1], "…") {
-		t.Errorf("complete alt text ends with an ellipsis: %q", long)
-	}
-	if _, err := x.Text(req, plugin.WidgetRequest{Widget: "nope", Width: 20, Height: 4}); err == nil {
-		t.Error("unknown widget accepted")
-	}
-}
-
-func TestWrap(t *testing.T) {
-	got := wrap("aa bb cc dddddddddd", 5)
-	want := []string{"aa bb", "cc", "ddddd", "ddddd"}
-	if strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Fatalf("%q, want %q", got, want)
+	if _, err := x.Values(&plugin.Request{Values: []string{"nope"}}); !errors.Is(err, plugin.ErrUnknownValue) {
+		t.Fatalf("unknown value: %v", err)
 	}
 }

@@ -75,24 +75,44 @@ type weather struct {
 	lang string
 }
 
+// forecastArgs are the arguments the forecast value reads (ADR 0120).
+var forecastArgs = map[string]plugin.Arg{
+	"days": {Type: "int", Default: 5, Description: "number of days, 1 to 5"},
+}
+
 func (w *weather) Describe() plugin.Description {
-	both := []string{plugin.KindImage, plugin.KindText}
+	image := []string{plugin.KindImage}
 	return plugin.Description{
 		Title:   "Weather (Open-Meteo)",
 		Version: version(),
 		Config:  configKeys,
+		// Values give a text page the forecast without a widget (ADR 0111).
+		Values: []plugin.ValueSpec{
+			{Name: "temperature", Title: "Temperature", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
+			{Name: "apparent", Title: "Feels like", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
+			{Name: "humidity", Title: "Humidity", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+			{Name: "precipitation", Title: "Precipitation", Type: plugin.ValueNumber, Unit: "mm", Precision: 1},
+			{Name: "precipitation-probability", Title: "Chance of rain", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+			{Name: "wind", Title: "Wind", Type: plugin.ValueNumber, Unit: "km/h", Precision: 1},
+			{Name: "beaufort", Title: "Wind force", Type: plugin.ValueNumber, Unit: "Bft", Precision: 0},
+			{Name: "condition", Title: "Condition", Type: plugin.ValueText},
+			{Name: "min-today", Title: "Lowest today", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
+			{Name: "max-today", Title: "Highest today", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
+			{Name: "sunrise", Title: "Sunrise", Type: plugin.ValueTimestamp},
+			{Name: "sunset", Title: "Sunset", Type: plugin.ValueTimestamp},
+			{Name: "updated", Title: "Forecast time", Type: plugin.ValueTimestamp},
+			{Name: "forecast", Title: "Daily forecast", Type: plugin.ValueText, Args: forecastArgs},
+		},
 		Widgets: []plugin.WidgetInfo{
-			{Widget: "current", Title: "Current weather", Kinds: both, MinWidth: 160, MinHeight: 80,
+			{Widget: "current", Title: "Current weather", Kinds: image, MinWidth: 160, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 3}},
 				Args: map[string]plugin.Arg{
 					"clothing": {Type: "bool", Default: false, Description: "T-shirt or pullover by apparent temperature and wind"},
 				}},
-			{Widget: "days", Title: "Daily forecast", Kinds: both, MinWidth: 200, MinHeight: 80,
+			{Widget: "days", Title: "Daily forecast", Kinds: image, MinWidth: 200, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 2}},
-				Args: map[string]plugin.Arg{
-					"days": {Type: "int", Default: 5, Description: "number of days, 1 to 5"},
-				}},
-			{Widget: "hours", Title: "Temperature today", Kinds: []string{plugin.KindImage}, MinWidth: 200, MinHeight: 80,
+				Args:  forecastArgs},
+			{Widget: "hours", Title: "Temperature today", Kinds: image, MinWidth: 200, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}}},
 		},
 	}
@@ -351,20 +371,82 @@ func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) error {
 	return nil
 }
 
-// Text fills the widgets of a character display.
-func (w *weather) Text(req *plugin.Request, wr plugin.WidgetRequest) ([]string, error) {
-	switch wr.Widget {
-	case "current":
-		c := w.cur.Current
-		lines := []string{plugin.Columns(c.Text, w.num(c.Temp, 1)+"°C", wr.Width)}
-		lines = append(lines, fmt.Sprintf("%s %s Bft %d", w.t("gef.", "feels"), w.temp(c.Apparent), c.Beaufort))
-		return lines, nil
-	case "days":
-		var out []string
-		for _, d := range w.dayList(wr.Height) {
-			out = append(out, plugin.Columns(d.Label+" "+d.Text, w.temp(d.Max)+"/"+w.temp(d.Min), wr.Width))
-		}
-		return out, nil
+// Values answers the declared values of a text page from the forecast the
+// plugin loaded (ADR 0111). forecast carries one line per day.
+func (w *weather) Values(req *plugin.Request) (map[string]plugin.Value, error) {
+	if err := req.ValueArgs.Check(forecastArgs); err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("%w %q for text displays", plugin.ErrUnknownWidget, wr.Widget)
+	out := make(map[string]plugin.Value, len(req.Values))
+	c, t := w.cur.Current, w.cur.Today
+	at := func(s string) (plugin.Value, error) {
+		v, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			return plugin.Value{}, fmt.Errorf("time %q: %w", s, err)
+		}
+		return plugin.TimestampValue(v), nil
+	}
+	for _, name := range req.Values {
+		switch name {
+		case "temperature":
+			out[name] = plugin.NumberValue(c.Temp)
+		case "apparent":
+			out[name] = plugin.NumberValue(c.Apparent)
+		case "humidity":
+			out[name] = plugin.NumberValue(c.Humidity)
+		case "precipitation":
+			out[name] = plugin.NumberValue(c.Precip)
+		case "precipitation-probability":
+			prob := 0.0
+			if c.PrecipProb != nil {
+				prob = *c.PrecipProb
+			}
+			out[name] = plugin.NumberValue(prob)
+		case "wind":
+			out[name] = plugin.NumberValue(c.Wind)
+		case "beaufort":
+			out[name] = plugin.NumberValue(float64(c.Beaufort))
+		case "condition":
+			out[name] = plugin.TextValue(c.Text)
+		case "min-today":
+			out[name] = plugin.NumberValue(t.Min)
+		case "max-today":
+			out[name] = plugin.NumberValue(t.Max)
+		case "sunrise", "sunset":
+			s := t.Sunrise
+			if name == "sunset" {
+				s = t.Sunset
+			}
+			v, err := at(s)
+			if err != nil {
+				return nil, err
+			}
+			out[name] = v
+		case "updated":
+			v, err := at(w.cur.Updated)
+			if err != nil {
+				return nil, err
+			}
+			out[name] = v
+		case "forecast":
+			out[name] = plugin.TextValue(w.forecastLines(req.ValueArgs.Int("days", 5)))
+		default:
+			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
+		}
+	}
+	return out, nil
+}
+
+// forecastLines is the daily forecast as one line per day: label, condition
+// and the range.
+func (w *weather) forecastLines(days int) string {
+	var lines []string
+	for i, d := range w.dayList(days) {
+		label := d.Label
+		if i == 0 {
+			label = w.t("Heute", "Today")
+		}
+		lines = append(lines, fmt.Sprintf("%s %s %s/%s", label, d.Text, w.temp(d.Max), w.temp(d.Min)))
+	}
+	return strings.Join(lines, "\n")
 }

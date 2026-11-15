@@ -1,47 +1,50 @@
 package main
 
 import (
-	"strings"
+	"errors"
 	"testing"
 
 	"github.com/maehld/paperboy/pkg/plugin"
 	"github.com/maehld/paperboy/pkg/render"
 )
 
-func TestValuesText(t *testing.T) {
-	e, req := newTestPlugin(t)
+func TestStateValues(t *testing.T) {
+	e, _ := newTestPlugin(t)
 	cases := []struct {
-		values []any
-		want   [][2]string
+		key  string
+		want float64
 	}{
-		{nil, [][2]string{{"PV", "4,2 kW"}, {"Haus", "800 W"}, {"Netz", "-2,1 kW"}, {"Akku", "81 %"}}},
-		{[]any{"pv_energy", "grid_import", "grid_export", "battery_charge", "battery_discharge"},
-			[][2]string{{"PV gesamt", "26.010 kWh"}, {"Netzbezug gesamt", "9.698 kWh"},
-				{"Einspeisung gesamt", "11.142 kWh"}, {"Akku geladen", "6.014 kWh"},
-				{"Akku entladen", "6.362 kWh"}}},
-		{[]any{"charge_year", "charge_year_solar", "charge_year_price"},
-			[][2]string{{"Geladen dieses Jahr", "145 kWh"}, {"Solaranteil dieses Jahr", "55 %"},
-				{"Ø Ladepreis dieses Jahr", "16,4 ct"}}},
-		{[]any{"solar_today", "solar_tomorrow", "feedin_price"},
-			[][2]string{{"Prognose heute", "12,0 kWh"}, {"Prognose morgen", "8,6 kWh"},
-				{"Einspeisevergütung", "–"}}},
+		{"pv", 4.2}, {"home", 0.8}, {"grid", -2.1}, {"battery", 81}, {"battery-power", -1.3},
+		{"grid-price", 27}, {"pv-energy", 26009.5}, {"grid-import", 9697.5}, {"grid-export", 11141.6},
+		{"battery-charge", 6013.7}, {"battery-discharge", 6362.4},
+		{"charge-total", 1234.5}, {"charge-total-solar", 54.8}, {"charge-total-price", 17.05},
+		{"charge-year", 145.3}, {"charge-year-solar", 55.1}, {"charge-year-price", 16.39},
+		{"solar-today", 12000}, {"solar-tomorrow", 8600},
+	}
+	names := make([]string, len(cases))
+	for i, c := range cases {
+		names[i] = c.key
+	}
+	values, err := e.Values(&plugin.Request{Values: names})
+	if err != nil {
+		t.Fatal(err)
 	}
 	for _, c := range cases {
-		var args map[string]any
-		if c.values != nil {
-			args = map[string]any{"values": c.values}
+		v := values[c.key]
+		if v.Number == nil || *v.Number != c.want {
+			t.Errorf("%s = %+v, want %v", c.key, v, c.want)
 		}
-		lines, err := e.Text(req, plugin.WidgetRequest{Widget: "values", Width: 26, Height: len(c.want), Args: args})
-		if err != nil {
-			t.Fatal(err)
-		}
-		var want []string
-		for _, w := range c.want {
-			want = append(want, plugin.Columns(w[0], w[1], 26))
-		}
-		if strings.Join(lines, "|") != strings.Join(want, "|") {
-			t.Errorf("%v:\n%q\nwant\n%q", c.values, lines, want)
-		}
+	}
+	// A value evcc does not report becomes a dash.
+	values, err = e.Values(&plugin.Request{Values: []string{"feedin-price"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := values["feedin-price"]; v.Text == nil || *v.Text != "–" {
+		t.Errorf("feedin-price = %+v", v)
+	}
+	if _, err := e.Values(&plugin.Request{Values: []string{"nope"}}); !errors.Is(err, plugin.ErrUnknownValue) {
+		t.Errorf("unknown value: %v", err)
 	}
 }
 
@@ -49,14 +52,6 @@ func TestValuesText(t *testing.T) {
 // absent arg, which keeps the default set.
 func TestValuesExplicitEmpty(t *testing.T) {
 	e, req := newTestPlugin(t)
-	lines, err := e.Text(req, plugin.WidgetRequest{Widget: "values", Width: 20, Height: 2,
-		Args: map[string]any{"values": []any{}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(lines) != 0 {
-		t.Fatalf("empty selection drew %q", lines)
-	}
 	img := render.NewCanvas(300, 120, 2)
 	if err := e.Render(req, plugin.WidgetRequest{Widget: "values", Width: 300, Height: 120,
 		Args: map[string]any{"values": []any{}}, Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 20}}, img); err != nil {
@@ -109,8 +104,7 @@ func TestValuesWidget(t *testing.T) {
 	if !hasInk(img) {
 		t.Error("empty widget")
 	}
-	if _, err := e.Text(req, plugin.WidgetRequest{Widget: "values", Width: 20, Height: 2,
-		Args: map[string]any{"values": []any{"nonsense"}}}); err == nil {
+	if _, err := e.Values(&plugin.Request{Values: []string{"nonsense"}}); err == nil {
 		t.Error("unknown value accepted")
 	}
 }

@@ -538,21 +538,3 @@ func fillPolygon(img *image.Paletted, c color.Color, pts ...fpt) {
 
 // flowText lists the flows compactly: PV, home, active vehicles, grid (+ import,
 // - export) and battery (state of charge, + discharging, - charging).
-func (e *evcc) flowText(w plugin.WidgetRequest) []string {
-	s := e.cur
-	signed := e.signed
-	line := func(l, v string) string { return plugin.Columns(l, v, w.Width) }
-	out := []string{line("PV", e.power(s.PVPower)), line(e.t("Haus", "Home"), e.power(s.HomePower))}
-	for _, lp := range s.activeLoadpoints() {
-		out = append(out, line(e.t("Auto", "Car"), e.power(lp.ChargePower)))
-	}
-	out = append(out, line(e.t("Netz", "Grid"), signed(s.gridPower())))
-	if s.hasBattery() {
-		v := e.num(s.Battery.SoC, 0) + "% " + signed(s.Battery.Power)
-		if w.Width < 20 {
-			v = e.num(s.Battery.SoC, 0) + "%"
-		}
-		out = append(out, line(e.t("Akku", "Batt"), v))
-	}
-	return strings.Split(strings.Join(out, "\n"), "\n")
-}

@@ -40,7 +40,7 @@ A list of one feed, or of all feeds mixed.
 
 All titles of a cell share one size: the largest that fits every visible title down to 0.7 of the page's base text; longer ones end with an ellipsis. The list fills the cell, so a taller cell shows more entries (or the same entries with their summaries).
 
-The text variant puts one entry per line, the compact age (`12m`, `5h`, `2d`, then a date) in front and the title behind it.
+The widget is for image displays; the value `entries` gives a text page the same list.
 
 ## Widget `headline`
 
@@ -52,7 +52,19 @@ The newest entry of one feed, large: the feed's name and the age on top, the tit
 | `summary` | The entry's summary, default `true` |
 | `time` | `relative` (default), `clock` or `none` |
 
-The text variant shows the source and age in the first line, then the wrapped title and, when there is room, one line of the summary.
+The widget is for image displays; the values `headline`, `source`, `summary` and `published` give a text page the newest entry.
+
+## Values
+
+A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md)). The argument `feed` picks one configured feed by name, or all feeds mixed (default `all`):
+
+| Value | Type | Meaning |
+|---|---|---|
+| `headline` | text | title of the newest entry |
+| `source` | text | feed of the newest entry |
+| `summary` | text | summary of the newest entry |
+| `published` | timestamp | date of the newest entry |
+| `entries` | text | one line per entry: compact age, the feed name when several feeds are mixed, and the title |
 
 ## Times
 

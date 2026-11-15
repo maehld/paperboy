@@ -60,11 +60,13 @@ type Style struct {
 
 // Cell places one widget on an image page or one box of text on a text page.
 type Cell struct {
-	At     [2]int         `yaml:"at" json:"at"`     // column, row of the top-left cell
-	Span   [2]int         `yaml:"span" json:"span"` // columns, rows; default 1x1
-	Widget string         `yaml:"widget,omitempty" json:"widget,omitempty"`
-	Args   map[string]any `yaml:"args,omitempty" json:"args,omitempty"`
-	Style  *Style         `yaml:"style,omitempty" json:"style,omitempty"`
+	At     [2]int `yaml:"at" json:"at"`     // column, row of the top-left cell
+	Span   [2]int `yaml:"span" json:"span"` // columns, rows; default 1x1
+	Widget string `yaml:"widget,omitempty" json:"widget,omitempty"`
+	// Args are the arguments of the widget or of the value of a text cell
+	// (ADR 0055, 0120).
+	Args  map[string]any `yaml:"args,omitempty" json:"args,omitempty"`
+	Style *Style         `yaml:"style,omitempty" json:"style,omitempty"`
 	// Text is literal text of a text page; Value is a declared value. Exactly
 	// one of them is set (ADR 0118). Multi-line text keeps its line breaks.
 	Text  string `yaml:"text,omitempty" json:"text,omitempty"`
@@ -346,8 +348,8 @@ func (t *Template) validateText() error {
 			c.Span = [2]int{1, 1}
 		}
 		where := fmt.Sprintf("cell %d", i+1)
-		if c.Widget != "" || len(c.Args) > 0 || c.Style != nil {
-			return fmt.Errorf("%s: widget, args and style are for image pages (kind: image)", where)
+		if c.Widget != "" || c.Style != nil {
+			return fmt.Errorf("%s: widget and style are for image pages (kind: image)", where)
 		}
 		if c.Scroll {
 			return fmt.Errorf("%s: use overflow: scroll instead of scroll (ADR 0118)", where)
@@ -364,8 +366,8 @@ func (t *Template) validateText() error {
 			if !ok || !ValidName(plugin) || !ValidName(key) {
 				return fmt.Errorf("%s: value %q: expected plugin/value with a-z, 0-9 and -", where, c.Value)
 			}
-		} else if c.Label != "" || c.Unit != "" {
-			return fmt.Errorf("%s: a literal text cell has no label or unit", where)
+		} else if c.Label != "" || c.Unit != "" || len(c.Args) > 0 {
+			return fmt.Errorf("%s: a literal text cell has no label, unit or args", where)
 		}
 		switch c.Align {
 		case "":

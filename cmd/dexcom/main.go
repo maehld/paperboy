@@ -100,7 +100,7 @@ type dexcom struct {
 
 var (
 	_ plugin.Handler     = (*dexcom)(nil)
-	_ plugin.Texter      = (*dexcom)(nil)
+	_ plugin.Valuer      = (*dexcom)(nil)
 	_ plugin.Starter     = (*dexcom)(nil)
 	_ plugin.Ager        = (*dexcom)(nil)
 	_ plugin.Stater      = (*dexcom)(nil)
@@ -108,7 +108,8 @@ var (
 )
 
 func (d *dexcom) Describe() plugin.Description {
-	both := []string{plugin.KindImage, plugin.KindText}
+	l, _ := d.limits()
+	image := []string{plugin.KindImage}
 	return plugin.Description{
 		Title:   "Dexcom",
 		Version: version(),
@@ -118,9 +119,21 @@ func (d *dexcom) Describe() plugin.Description {
 			{Name: "low", Title: "Low", Description: "the reading is below the low threshold, including the urgent range"},
 			{Name: "high", Title: "High", Description: "the reading is above the high threshold"},
 		},
+		Values: []plugin.ValueSpec{
+			{Name: "glucose", Title: "Glucose", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
+			{Name: "trend", Title: "Trend", Type: plugin.ValueDirection},
+			{Name: "delta", Title: "Change in 15 min", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
+			{Name: "age", Title: "Age of the reading", Type: plugin.ValueDuration},
+			{Name: "avg", Title: "Average of the day", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
+			{Name: "min", Title: "Lowest of the day", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
+			{Name: "max", Title: "Highest of the day", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
+			{Name: "in-band", Title: "Share in the target band", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+			{Name: "count", Title: "Readings of the day", Type: plugin.ValueNumber},
+			{Name: "band", Title: "Target band", Type: plugin.ValueText},
+		},
 		Widgets: []plugin.WidgetInfo{
 			{
-				Widget: "glucose", Title: "Glucose reading", Kinds: both,
+				Widget: "glucose", Title: "Glucose reading", Kinds: image,
 				Sizes:    []plugin.Span{{Columns: 2, Rows: 2}, {Columns: 3, Rows: 2}},
 				MinWidth: 120, MinHeight: 80,
 				Args: map[string]plugin.Arg{},
@@ -138,7 +151,7 @@ func (d *dexcom) Describe() plugin.Description {
 				},
 			},
 			{
-				Widget: "values", Title: "Glucose values", Kinds: both,
+				Widget: "values", Title: "Glucose values", Kinds: image,
 				Sizes:    []plugin.Span{{Columns: 2, Rows: 2}, {Columns: 3, Rows: 2}},
 				MinWidth: 120, MinHeight: 60,
 				Args: map[string]plugin.Arg{

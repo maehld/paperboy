@@ -175,63 +175,46 @@ func TestValue(t *testing.T) {
 	}
 }
 
-func TestText(t *testing.T) {
+func TestValues(t *testing.T) {
 	loc := berlin(t)
-	req, w := request(t, at(2026, 11, 20, 12, 0, loc), map[string]any{"label": "Weihnachten", "date": "12-24"})
-	w.Width, w.Height = 20, 2
-	lines, err := countdown{}.Text(req, w)
+	now := at(2026, 11, 20, 12, 0, loc)
+	req, _ := request(t, now, nil)
+	req.Values = []string{"value", "target", "days", "percent"}
+	req.ValueArgs = plugin.Values{"date": "12-24", "since": "01-01"}
+	values, err := countdown{}.Values(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lines) != 2 || lines[0] != "Weihnachten  34 Tage" || !strings.HasPrefix(lines[1], "24.12.") {
-		t.Fatalf("lines %q", lines)
+	if v := values["value"]; v.Text == nil || *v.Text != "34 Tage" {
+		t.Errorf("value = %+v", v)
 	}
-	for _, l := range lines {
-		if len([]rune(l)) > 20 {
-			t.Errorf("line %q is wider than 20 columns", l)
-		}
+	if v := values["days"]; v.Number == nil || *v.Number != 34 {
+		t.Errorf("days = %+v", v)
 	}
-
-	// With a reference the bar takes the second line.
-	req, w = request(t, at(2026, 11, 20, 12, 0, loc), map[string]any{"label": "Weihnachten", "date": "12-24", "since": "01-01"})
-	w.Width, w.Height = 20, 3
-	lines, _ = countdown{}.Text(req, w)
-	if len(lines) != 3 || !strings.HasPrefix(lines[1], "[") || !strings.HasSuffix(lines[1], "]") {
-		t.Fatalf("lines %q", lines)
+	if v := values["target"]; v.Timestamp == nil || *v.Timestamp != "2026-12-24T00:00:00+01:00" {
+		t.Errorf("target = %+v", v)
 	}
-
-	// Without a label the value is centered.
-	req, w = request(t, at(2026, 11, 20, 12, 0, loc), map[string]any{"date": "12-24"})
-	w.Width, w.Height = 20, 1
-	lines, _ = countdown{}.Text(req, w)
-	if len(lines) != 1 || lines[0] != "      34 Tage" {
-		t.Errorf("centered line %q", lines[0])
+	if v := values["percent"]; v.Number == nil || *v.Number < 80 || *v.Number > 100 {
+		t.Errorf("percent = %+v", v)
 	}
-
-	// Passed and short values stay inside the width.
-	req, w = request(t, at(2026, 12, 25, 0, 1, loc), map[string]any{"date": "2026-12-24"})
-	w.Width, w.Height = 8, 1
-	lines, _ = countdown{}.Text(req, w)
-	if len(lines) != 1 || strings.TrimSpace(lines[0]) != "vorbei" {
-		t.Errorf("passed line %q", lines[0])
+	// Without a reference date there is no passed share.
+	req.ValueArgs = plugin.Values{"date": "12-24"}
+	values, err = countdown{}.Values(req)
+	if err != nil {
+		t.Fatal(err)
 	}
-	req, w = request(t, at(2026, 11, 20, 12, 0, loc), map[string]any{"date": "12-24"})
-	w.Width, w.Height = 6, 1
-	lines, _ = countdown{}.Text(req, w)
-	if len(lines) != 1 || strings.TrimSpace(lines[0]) != "34 d" {
-		t.Errorf("short line %q", lines[0])
+	if v := values["percent"]; v.Text == nil || *v.Text != "\u2013" {
+		t.Errorf("percent without since = %+v", v)
 	}
-}
-
-func TestBarLine(t *testing.T) {
-	cases := map[float64]string{0: "[----]", 0.5: "[##--]", 1: "[####]"}
-	for f, want := range cases {
-		if got := barLine(f, 6); got != want {
-			t.Errorf("barLine(%v) = %q, want %q", f, got, want)
-		}
+	// A countdown without a date has no target.
+	req.ValueArgs = nil
+	if _, err := (countdown{}).Values(req); err == nil {
+		t.Error("a countdown without a date was accepted")
 	}
-	if barLine(0.5, 3) != "" {
-		t.Error("a bar narrower than four columns is drawn")
+	// The label belongs to the cell, not to the value arguments.
+	req.ValueArgs = plugin.Values{"date": "12-24", "label": "Weihnachten"}
+	if _, err := (countdown{}).Values(req); err == nil {
+		t.Error("a label argument was accepted; the cell carries the label")
 	}
 }
 
@@ -298,8 +281,8 @@ func TestRenderFails(t *testing.T) {
 	if m := plugin.Handle(countdown{}, req); len(m.Widgets) != 1 || !strings.Contains(m.Widgets[0].Error, "since must be before date") {
 		t.Fatalf("%+v", m)
 	}
-	if _, err := (countdown{}).Text(req, plugin.WidgetRequest{Widget: "nope", Width: 20, Height: 2}); err == nil {
-		t.Error("unknown widget accepted")
+	if m := plugin.Handle(countdown{}, &plugin.Request{Action: plugin.ActionRender, Levels: 2, Widgets: []plugin.WidgetRequest{{Widget: "nope", Width: 20, Height: 2}}}); len(m.Widgets) != 1 || !strings.Contains(m.Widgets[0].Error, "unknown widget") {
+		t.Fatalf("%+v", m)
 	}
 }
 

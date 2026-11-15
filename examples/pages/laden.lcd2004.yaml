@@ -1,35 +1,10 @@
 kind: text
 cells:
-- at:
-  - 0
-  - 0
-  span:
-  - 20
-  - 1
-  value: paperboy/title
-- at:
-  - 0
-  - 1
-  span:
-  - 20
-  - 1
-  value: paperboy/date
-  label: Datum
-- at:
-  - 0
-  - 2
-  span:
-  - 20
-  - 1
-  value: paperboy/time
-  label: Zeit
-  align: right
-- at:
-  - 0
-  - 3
-  span:
-  - 20
-  - 1
-  value: paperboy/now
-  label: Jetzt
-  align: decimal
+  - { at: [0, 0], span: [20, 1], value: paperboy/title }
+  - { at: [0, 1], span: [9, 1], value: evcc/pv, label: PV }
+  - { at: [9, 1], span: [11, 1], value: evcc/home, label: Haus, align: right }
+  - { at: [0, 2], span: [10, 1], value: evcc/loadpoint }
+  - { at: [10, 2], span: [10, 1], value: evcc/loadpoint-soc, align: right }
+  - { at: [0, 3], span: [8, 1], value: evcc/loadpoint-status }
+  - { at: [8, 3], span: [6, 1], value: evcc/loadpoint-power, align: right }
+  - { at: [14, 3], span: [6, 1], value: evcc/remaining, align: right }

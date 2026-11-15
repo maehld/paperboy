@@ -15,8 +15,8 @@
 //   - "values": the values of /api/state, such as meter readings, prices and
 //     evcc's charging statistics.
 //
-// "site", "flow", "loadpoint", "history" and "values" have text variants for
-// character displays.
+// All widgets are for image displays; the values below give a text page the
+// same numbers.
 //
 //	plugins:
 //	  evcc:
@@ -154,7 +154,7 @@ type evcc struct {
 }
 
 func (e *evcc) Describe() plugin.Description {
-	both := []string{plugin.KindImage, plugin.KindText}
+	image := []string{plugin.KindImage}
 	return plugin.Description{
 		Title:   "evcc",
 		Version: version(),
@@ -162,27 +162,28 @@ func (e *evcc) Describe() plugin.Description {
 		Actions: []plugin.ActionSpec{
 			{Name: "mode", Title: "Charge mode", Args: actionArgs, Confirm: &plugin.Confirm{Required: true}},
 		},
+		Values: valueSpecs(),
 		Widgets: []plugin.WidgetInfo{
-			{Widget: "site", Title: "Energy flow", Kinds: both, MinWidth: 200, MinHeight: 80,
+			{Widget: "site", Title: "Energy flow", Kinds: image, MinWidth: 200, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"columns": {Type: "int", Default: 2, Description: "tiles per row: 2 or 4", Enum: []any{2, 4}},
 				}},
-			{Widget: "flow", Title: "Energy flow diagram", Kinds: both, MinWidth: 240, MinHeight: 200,
+			{Widget: "flow", Title: "Energy flow diagram", Kinds: image, MinWidth: 240, MinHeight: 200,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 4}}},
-			{Widget: "loadpoint", Title: "Charging point", Kinds: both, MinWidth: 200, MinHeight: 100,
+			{Widget: "loadpoint", Title: "Charging point", Kinds: image, MinWidth: 200, MinHeight: 100,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 3}},
 				Args: map[string]plugin.Arg{
 					"index": {Type: "int", Default: 0, Description: "loadpoint, counted from 0"},
 				}},
-			{Widget: "history", Title: "Energy history", Kinds: both, MinWidth: 160, MinHeight: 100,
+			{Widget: "history", Title: "Energy history", Kinds: image, MinWidth: 160, MinHeight: 100,
 				Sizes: []plugin.Span{{Columns: 2, Rows: 4}, {Columns: 2, Rows: 7}, {Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"source": {Type: "string", Default: "pv", Description: "pv, battery, loadpoint, grid or home", Enum: []any{"pv", "battery", "loadpoint", "grid", "home"}},
 					"metric": {Type: "string", Default: "energy", Description: "energy, or return for battery discharge and grid export", Enum: []any{"energy", "return"}},
 					"index":  {Type: "int", Default: 0, Description: "loadpoint, counted from 0 (source loadpoint)"},
 				}},
-			{Widget: "values", Title: "Values", Kinds: both, MinWidth: 120, MinHeight: 40,
+			{Widget: "values", Title: "Values", Kinds: image, MinWidth: 120, MinHeight: 40,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 1}, {Columns: 3, Rows: 2}, {Columns: 3, Rows: 3}, {Columns: 6, Rows: 1}, {Columns: 6, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"values":  {Type: "list", Default: []any{"pv", "home", "grid", "battery"}, Description: "the values to show", Enum: valueEnum(), EnumLabels: valueLabels(e.lang)},

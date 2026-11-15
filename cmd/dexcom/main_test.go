@@ -293,12 +293,22 @@ func TestWidgets(t *testing.T) {
 		t.Fatalf("hour graph: %v", err)
 	}
 
-	lines, err := d.Text(req, plugin.WidgetRequest{Widget: "glucose", Width: 20, Height: 1, Style: style()})
+	values, err := d.Values(&plugin.Request{Now: req.Now, Language: "de",
+		Values: []string{"glucose", "trend", "delta", "age", "avg", "min", "max", "in-band", "count", "band"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lines) != 1 || !strings.Contains(lines[0], "mg/dL") {
-		t.Errorf("text lines = %q", lines)
+	if v := values["glucose"]; v.Number == nil {
+		t.Errorf("glucose = %+v", v)
+	}
+	if v := values["count"]; v.Number == nil || *v.Number != maxReadings {
+		t.Errorf("count = %+v", v)
+	}
+	if v := values["band"]; v.Text == nil || !strings.Contains(*v.Text, "mg/dL") {
+		t.Errorf("band = %+v", v)
+	}
+	if v := values["age"]; v.Duration == nil || *v.Duration < 0 {
+		t.Errorf("age = %+v", v)
 	}
 }
 
@@ -314,12 +324,15 @@ func TestAlarmStates(t *testing.T) {
 	if err := d.update(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	lines, err := d.Text(req, plugin.WidgetRequest{Widget: "glucose", Width: 20, Height: 1, Style: style()})
+	values, err := d.Values(&plugin.Request{Now: req.Now, Values: []string{"glucose", "trend"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(lines[0], "Dringend!") {
-		t.Errorf("the urgent state is not named: %q", lines[0])
+	if v := values["glucose"]; v.Number == nil || *v.Number != 48 {
+		t.Errorf("glucose = %+v", v)
+	}
+	if v := values["trend"]; v.Direction == nil || *v.Direction != -2 {
+		t.Errorf("trend = %+v", v)
 	}
 	img := render.NewCanvas(400, 240, 4)
 	if err := d.Render(req, plugin.WidgetRequest{Widget: "glucose", Width: 400, Height: 240, Style: style()}, img); err != nil {
@@ -373,8 +386,7 @@ func TestGraphInAShortCell(t *testing.T) {
 	}
 }
 
-// The trend of the values widget is drawn as the arrow of the glucose widget,
-// not as the ASCII arrow the text variant uses.
+// The trend of the values widget is drawn as the arrow of the glucose widget.
 func TestValuesTrendArrow(t *testing.T) {
 	now := time.Date(2026, 11, 13, 20, 0, 0, 0, time.UTC)
 	d, _, req := newTestDexcom(t, now)
@@ -631,7 +643,7 @@ func TestConditions(t *testing.T) {
 }
 
 // The plugin as the widget host talks to it: describe, configure, render and
-// text over the JSON lines of the protocol.
+// values over the JSON lines of the protocol.
 func TestProtocol(t *testing.T) {
 	now := time.Now()
 	f := &fakeShare{values: series(now, 288)}
@@ -698,12 +710,12 @@ func TestProtocol(t *testing.T) {
 		t.Fatalf("render answer = %+v", m.Widgets)
 	}
 
-	send(plugin.Request{ID: "4", Action: plugin.ActionText, Language: "de", Now: now,
-		Page:    plugin.PageInfo{Width: 20, Height: 4},
-		Widgets: []plugin.WidgetRequest{{Widget: "glucose", Width: 20, Height: 1}}})
+	send(plugin.Request{ID: "4", Action: plugin.ActionValues, Language: "de", Now: now,
+		Page:   plugin.PageInfo{Width: 20, Height: 4},
+		Values: []string{"glucose", "band"}})
 	m = next()
-	if len(m.Widgets) != 1 || len(m.Widgets[0].Lines) != 1 {
-		t.Fatalf("text answer = %+v", m.Widgets)
+	if len(m.Values) != 2 || m.Values["glucose"].Number == nil || m.Values["band"].Text == nil {
+		t.Fatalf("values answer = %+v", m.Values)
 	}
 
 	send(plugin.Request{ID: "5", Action: plugin.ActionRender, Language: "de", Now: now, Levels: 4,

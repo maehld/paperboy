@@ -14,7 +14,7 @@ Pokémon from [PokéAPI](https://pokeapi.co), no API key needed.
 
 ## Widget `card`
 
-The card shows the artwork, the name in the request language (from the species names, with English as fallback), the number, types, height and weight, the six base stats as bars and the flavor text in the request language. There are image and text variants.
+The card is for image displays. It shows the artwork, the name in the request language (from the species names, with English as fallback), the number, types, height and weight, the six base stats as bars and the flavor text in the request language.
 
 Arguments:
 
@@ -34,5 +34,19 @@ cells:
 Each distinct seed of a request costs one Pokémon (a handful of requests to PokéAPI) per rotation.
 
 The plugin downloads the artwork at runtime and reduces it to the display's gray levels with error diffusion; it is never stored or shipped. It caches responses in memory, sends requests one at a time with a pause between them, and reports a change when the Pokémon rotates.
+
+## Values
+
+A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md)). The argument `seed` picks the Pokémon like the card's `seed`; without it they describe the default seed.
+
+| Value | Type | Unit | Precision | Meaning |
+|---|---|---|---|---|
+| `name` | text | | | name in the request language |
+| `number` | number | | 0 | national dex number |
+| `types` | text | | | types, separated by `/` |
+| `height` | number | m | 1 | height |
+| `weight` | number | kg | 1 | weight |
+| `hp`, `attack`, `defense`, `special-attack`, `special-defense`, `speed` | number | | 0 | base stats |
+| `flavor` | text | | | flavor text in the request language |
 
 Pokémon and their artwork belong to Nintendo, Game Freak and The Pokémon Company. The plugin only fetches them for private display.

@@ -33,7 +33,7 @@ widget that has no `stop` shows the first configured stop.
 The arg `stop` picks one of the configured stops by name (a choice of the
 configured names, no "all"): two widgets on one page may show two stops.
 
-Each line shows the line number, the destination, the minutes until departure (a clock time from one hour on; `time`: `auto` (default), `minutes` or `clock`) and the delay as `+N`. Cancelled trips are struck through with „Ausfall“. `header: true` adds the stop name. The text variant fits 20 × 4 displays (`examples/pages/abfahrten.lcd2004.yaml`).
+The widget is for image displays. Each line shows the line number, the destination, the minutes until departure (a clock time from one hour on; `time`: `auto` (default), `minutes` or `clock`) and the delay as `+N`. Cancelled trips are struck through with „Ausfall“. `header: true` adds the stop name.
 
 EFA names stops and destinations `<town>, <stop>` (e.g. „Bielefeld, Sieker“). The arg `locality_order` decides where the town sits, both in the header and in the destinations:
 
@@ -53,7 +53,19 @@ The arg `locality` decides whether a destination shows its town at all:
 | `always` | Always drop it: „Bielefeld, Sieker“ becomes „Sieker“ |
 | `never` | Always keep it; `locality_order` still decides where |
 
-`locality_order: none` suppresses the town in every destination, whatever `locality` says. Image and text variants follow the same rules, and `directions` still matches the full name including the town. On image displays all destinations of a widget share one font size: the smallest size any of them needs to fit, but not below 0.8 of the base text. Destinations still too long at that size end with an ellipsis; line, delay and time keep their size.
+`locality_order: none` suppresses the town in every destination, whatever `locality` says. The widget and the values follow the same rules, and `directions` still matches the full name including the town. On image displays all destinations of a widget share one font size: the smallest size any of them needs to fit, but not below 0.8 of the base text. Destinations still too long at that size end with an ellipsis; line, delay and time keep their size.
+
+## Values
+
+A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md)). The value arguments pick the stop and the format like the widget's arguments: `stop` (one of the configured stops by name, default the first), `time`, `locality` and `locality_order`. Without `stop` they describe the first configured stop.
+
+| Value | Type | Meaning |
+|---|---|---|
+| `stop` | text | name of the stop as EFA writes it |
+| `departures` | text | one line per departure: line, destination, delay and minutes; `examples/pages/abfahrten.lcd2004.yaml` |
+| `next` | text | line and destination of the next departure |
+| `next-at` | timestamp | time of the next departure |
+| `next-in` | duration | seconds until the next departure |
 
 The plugin reports a change when a departure, a delay or a cancellation changes
 at any stop.

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/png"
 	"os"
@@ -88,6 +89,7 @@ func fakePlugin(mode string) {
 				{Name: "a", Type: plugin.ValueNumber, Precision: 1},
 				{Name: "b", Type: plugin.ValueText},
 				{Name: "bad", Type: plugin.ValueText},
+				{Name: "echo", Type: plugin.ValueText},
 			}}
 			enc.Encode(plugin.Message{ID: req.ID, Version: version, Description: &d})
 			continue
@@ -101,6 +103,8 @@ func fakePlugin(mode string) {
 					msg.Values[name] = plugin.NumberValue(12.5)
 				case "b":
 					msg.Values[name] = plugin.TextValue("text")
+				case "echo":
+					msg.Values[name] = plugin.TextValue(fmt.Sprint(req.ValueArgs))
 				default:
 					msg.Values[name] = plugin.Value{}
 				}
@@ -284,6 +288,34 @@ func TestHostValues(t *testing.T) {
 	out = h.FetchValues(context.Background(), page.ValueBatch{Values: []page.ValueRequest{{Plugin: "fake", Name: "bad"}}})
 	if len(out) != 1 || out[0].Err == nil || !strings.Contains(out[0].Err.Error(), "no number") {
 		t.Fatalf("empty value: %+v", out)
+	}
+}
+
+func TestHostValuesGroupByArguments(t *testing.T) {
+	f := newFake(t)
+	h := newHost(t, f.spec("values"))
+	args := func(n float64) map[string]any { return map[string]any{"n": n} }
+	b := page.ValueBatch{Values: []page.ValueRequest{
+		{Plugin: "fake", Name: "echo", Args: args(1)},
+		{Plugin: "fake", Name: "echo", Args: args(2)},
+	}}
+	out := h.FetchValues(context.Background(), b)
+	if len(out) != 2 || out[0].Err != nil || out[1].Err != nil {
+		t.Fatalf("values: %+v", out)
+	}
+	if got := *out[0].Value.Text; got != "map[n:1]" {
+		t.Errorf("first value = %q, want its own arguments", got)
+	}
+	if got := *out[1].Value.Text; got != "map[n:2]" {
+		t.Errorf("second value = %q, want its own arguments", got)
+	}
+	if n := runs(f.count); n != 2 {
+		t.Errorf("plugin got %d values requests, want 2 (one per argument set)", n)
+	}
+	// The same arguments come from the cache.
+	h.FetchValues(context.Background(), b)
+	if n := runs(f.count); n != 2 {
+		t.Errorf("plugin got %d values requests after the cache hit, want 2", n)
 	}
 }
 

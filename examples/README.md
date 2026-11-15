@@ -4,7 +4,9 @@ The pages under `pages/` are grids of widgets from the shipped plugins
 ([ADR 0049](../docs/adr/0049-plugin-widgets.md)): `weather`, `calendar`, `evcc`, `departures`, `pokedex`, `xkcd`,
 `myskoda`, `countdown`, `rss`, `dexcom` and the built-in `paperboy` plugin. Copy the
 files you need into the `pages/` directory of your instance and adapt the
-grid, the spans and the arguments.
+grid, the spans and the arguments. A text page's value cells read the same
+`args` as the widget, so a page picks its stop, loadpoint, calendar window or
+date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
 
 - `uebersicht.yaml` - weather, energy flow from evcc, agenda and a three-day
   forecast.
@@ -16,17 +18,21 @@ grid, the spans and the arguments.
 - `wetter.yaml` - current weather with clothing advice, five days and today's
   temperature curve.
 - `laden.yaml` - evcc: energy flow, the charging point and the forecast;
-  `laden.lcd2004.yaml` shows site and charging point on 20×4.
+  `laden.lcd2004.yaml` shows PV, home and the first charging point from the
+  evcc values on 20×4.
 - `auto.yaml` - myskoda: battery, charging, climate, the vehicle image, charging
-  plans and position; `auto.lcd2004.yaml` shows the overview on 20×4.
+  plans and position; `auto.lcd2004.yaml` shows battery, charging and climate
+  from the myskoda values on 20×4.
 - `energie.yaml` - evcc energy flow with site values and the charging point.
 - `ertrag.yaml` - evcc energy history: PV yield, battery discharge and the
   first loadpoint for today, yesterday, the week, the month and the year.
 - `werte.yaml` - evcc values: meter readings and charging statistics as a
   list, without a graph.
-- `abfahrten.yaml` - real-time departures; `abfahrten.lcd2004.yaml` on 20×4.
+- `abfahrten.yaml` - real-time departures; `abfahrten.lcd2004.yaml` lists the
+  stop and the departures with clock times on 20×4.
 - `glukose.yaml` - the glucose reading next to the day with the numbers of the
-  day below; `glukose.lcd2004.yaml` puts the reading and three values on 20×4.
+  day below; `glukose.lcd2004.yaml` puts the reading, the trend, the change,
+  the age and the target band on 20×4.
 - `nachrichten.yaml` - two RSS feeds: headlines with summaries and a mixed
   list of all sources.
 - `unterwegs.yaml` - current weather with clothing advice and the next
@@ -34,16 +40,15 @@ grid, the spans and the arguments.
 - `pokemon.yaml` - a full-screen Pokédex card.
 - `comic.yaml` - a full-screen xkcd comic with title and alt text.
 - `countdown.yaml` - countdowns to Christmas and New Year (yearly, one with a
-  progress bar) and two fixed dates, the last with a time and a bar.
+  progress bar) and two fixed dates, the last with a time and a bar;
+  `countdown.lcd2004.yaml` shows the countdown values with their dates on 20×4.
 - `geburtstage.yaml` - the next birthdays with the age next to a short agenda
-  limited to the private calendar; `geburtstage.lcd2004.yaml` puts them on
-  20×4.
+  limited to the private calendar; `geburtstage.lcd2004.yaml` scrolls through
+  the birthday lines of the next 30 days on 20×4.
 - `uebersicht.lcd2004.yaml` - boxes on a 20×4 character display with the
-  built-in values `paperboy/title`, `paperboy/date`, `paperboy/time` and
-  `paperboy/now` ([ADR 0118](../docs/adr/0118-text-boxes-and-overflow.md)).
+  built-in title and the values of weather, evcc and calendar
+  ([ADR 0118](../docs/adr/0118-text-boxes-and-overflow.md)).
 - `hinweise.yaml` - a text page with literal text and boxes of built-in values.
-  The shipped plugins declare their own values in a later protocol version;
-  until then the `*.lcd2004.yaml` variants show the built-in values too.
 
 A page file `<page>.yaml` serves every display type of its kind, so
 `uebersicht.yaml` works on 800×480 and on 400×300 panels alike: the plugins draw

@@ -461,10 +461,11 @@ func TestProtocol(t *testing.T) {
 		t.Fatalf("max_age = %d", msg.MaxAge)
 	}
 
-	req.Action = plugin.ActionText
-	req.Widgets = []plugin.WidgetRequest{{Widget: "battery", Width: 20, Height: 4}}
+	req.Action = plugin.ActionValues
+	req.Widgets = nil
+	req.Values = []string{"battery-soc", "charge-state"}
 	msg = plugin.Handle(m, req)
-	if msg.Error != "" || len(msg.Widgets) != 1 || len(msg.Widgets[0].Lines) == 0 {
+	if msg.Error != "" || len(msg.Values) != 2 || msg.Values["battery-soc"].Number == nil {
 		t.Fatalf("%+v", msg)
 	}
 	if err := msg.CheckVersion(); err != nil {
@@ -665,5 +666,28 @@ func TestBrokenStateIsIgnored(t *testing.T) {
 	}
 	if m.data != nil {
 		t.Fatal("a broken state file was used")
+	}
+}
+
+// A car that reports Fahrenheit gets its temperature values in °F.
+func TestValuesFollowFahrenheit(t *testing.T) {
+	m := testPlugin(t, "enyaq.json")
+	unit, value := "FAHRENHEIT", 71.6
+	m.cur.AirConditioning.Target = temperature{Value: &value, Unit: &unit}
+	declared := ""
+	for _, v := range m.Describe().Values {
+		if v.Name == "climate-temperature" {
+			declared = v.Unit
+		}
+	}
+	if declared != "°F" {
+		t.Fatalf("climate-temperature unit = %q", declared)
+	}
+	values, err := m.Values(&plugin.Request{Values: []string{"climate-temperature"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := values["climate-temperature"]; v.Number == nil || *v.Number != value {
+		t.Fatalf("climate-temperature = %+v", v)
 	}
 }

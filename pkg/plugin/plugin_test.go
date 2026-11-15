@@ -230,13 +230,23 @@ func TestVersion(t *testing.T) {
 	}
 }
 
-type valueHandler struct{ testHandler }
+type valueHandler struct {
+	testHandler
+	prepared bool
+	args     Values
+}
 
 func (valueHandler) Describe() Description {
 	return Description{Values: []ValueSpec{{Name: "pv", Title: "PV", Type: ValueNumber, Unit: "kW", Precision: 1}}}
 }
 
-func (valueHandler) Values(req *Request) (map[string]Value, error) {
+func (h *valueHandler) Prepare(*Request) error {
+	h.prepared = true
+	return nil
+}
+
+func (h *valueHandler) Values(req *Request) (map[string]Value, error) {
+	h.args = req.ValueArgs
 	out := map[string]Value{}
 	for _, name := range req.Values {
 		if name != "pv" {
@@ -245,6 +255,17 @@ func (valueHandler) Values(req *Request) (map[string]Value, error) {
 		out[name] = NumberValue(12.5)
 	}
 	return out, nil
+}
+
+func TestValuesActionArguments(t *testing.T) {
+	h := &valueHandler{}
+	m := Handle(h, &Request{Action: ActionValues, Values: []string{"pv"}, ValueArgs: Values{"unit": "W"}})
+	if m.Error != "" {
+		t.Fatalf("values with arguments: %s", m.Error)
+	}
+	if h.args.String("unit", "") != "W" {
+		t.Errorf("plugin read value args %v, want unit W", h.args)
+	}
 }
 
 func TestValuesAction(t *testing.T) {
@@ -256,6 +277,9 @@ func TestValuesAction(t *testing.T) {
 	v, ok := m.Values["pv"]
 	if !ok || v.Number == nil || *v.Number != 12.5 || v.Type() != ValueNumber {
 		t.Fatalf("value: %+v", v)
+	}
+	if !h.prepared {
+		t.Error("a values request did not prepare the plugin, so it read an old snapshot")
 	}
 	if m := Handle(h, &Request{Action: ActionValues}); m.Error == "" {
 		t.Error("a request without names was accepted")

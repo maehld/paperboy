@@ -283,37 +283,42 @@ func TestLanguages(t *testing.T) {
 	}
 }
 
-func TestText(t *testing.T) {
+func TestValues(t *testing.T) {
 	p, _ := configured(t, map[string]any{"pokemon": "25"})
-	req, w := request("de", 20, 4, 0)
-	req.Page = plugin.PageInfo{Width: 20, Height: 4}
-	req.Widgets = []plugin.WidgetRequest{w}
+	req, _ := request("de", 20, 4, 0)
+	req.Action = plugin.ActionValues
+	req.Values = []string{"name", "number", "types", "height", "weight", "hp", "attack", "defense",
+		"special-attack", "special-defense", "speed", "flavor"}
 	if err := p.Prepare(req); err != nil {
 		t.Fatal(err)
 	}
-	lines, err := p.Text(req, w)
+	values, err := p.Values(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"Pikachu         #0025", "Elektro   0,4m·6,0kg", "KP35 Ang55 Vert40", "SpA50 SpV50 Init90"}
-	if len(lines) < 4 {
-		t.Fatalf("lines %q", lines)
+	if v := values["name"]; v.Text == nil || *v.Text != "Pikachu" {
+		t.Fatalf("name = %+v", v)
 	}
-	for i, l := range want {
-		if i < 2 {
-			continue // widths of the first two lines are checked below
-		}
-		if lines[i] != l {
-			t.Errorf("line %d = %q, want %q", i, lines[i], l)
-		}
+	if v := values["number"]; v.Number == nil || *v.Number != 25 {
+		t.Fatalf("number = %+v", v)
 	}
-	for _, l := range lines {
-		if len([]rune(l)) > 20 {
-			t.Errorf("line %q wider than 20", l)
-		}
+	if v := values["types"]; v.Text == nil || *v.Text != "Elektro" {
+		t.Fatalf("types = %+v", v)
 	}
-	if !strings.HasPrefix(lines[0], "Pikachu") || !strings.HasSuffix(lines[0], "#0025") || !strings.Contains(lines[1], "Elektro") {
-		t.Errorf("header lines %q", lines[:2])
+	if v := values["height"]; v.Number == nil || *v.Number != 0.4 {
+		t.Fatalf("height = %+v", v)
+	}
+	if v := values["weight"]; v.Number == nil || *v.Number != 6 {
+		t.Fatalf("weight = %+v", v)
+	}
+	if v := values["speed"]; v.Number == nil || *v.Number != 90 {
+		t.Fatalf("speed = %+v", v)
+	}
+	if v := values["flavor"]; v.Text == nil || *v.Text == "" {
+		t.Fatalf("flavor = %+v", v)
+	}
+	if _, err := p.Values(&plugin.Request{Values: []string{"nope"}}); !errors.Is(err, plugin.ErrUnknownValue) {
+		t.Fatalf("unknown value: %v", err)
 	}
 }
 

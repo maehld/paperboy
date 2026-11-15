@@ -39,7 +39,7 @@ A 29 February falls on 1 March in the other years, because the date is
 normalized. `MM-DD` in `since` is the occurrence before `date`, so
 `since: "01-01"` with a yearly target measures the current year.
 
-## Image variant
+## Layout
 
 The label and the passed percentage share the first line, the number fills the
 middle, the bar and the target date follow. Sizes come from the page's text
@@ -48,13 +48,18 @@ too small for every row drops the target date first, then the label, then the
 bar; a one-row cell puts the label and the value side by side. The target date
 shows no year when `date` repeats every year.
 
-## Text variant
+## Values
 
-The first line carries the value, right-aligned next to the label (`34 Tage`,
-`vorbei`, `6 Std 30 Min`); a narrower cell shortens it (`34 d`). With `since`
-the second line is a bar of `#` and `-`, because the `hd44780` charset has no
-block characters, and the third line is the target date. The value follows the
-request's `language`.
+A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md)). They read the value arguments `date` (required) and, for `percent`, `since`. Without `date` the value fails, because a countdown has no target.
+
+| Value | Type | Meaning |
+|---|---|---|
+| `value` | text | the main text: `34 Tage`, `6 Std 30 Min`, `heute` or `vorbei`, in the request's language |
+| `target` | timestamp | the target date |
+| `days` | number | calendar days to a date-only target, negative after it; 0 when the target is a time less than a day away |
+| `percent` | number | the passed share of `since` to `date`, in percent; a dash without `since` |
+
+The `value` text follows the widget's wording, so a page that wants the number alone uses `days`. The label is the cell's, not a value argument: `label: Weihnachten` in front of `countdown/value` writes the same line as the widget.
 
 ## Refresh
 

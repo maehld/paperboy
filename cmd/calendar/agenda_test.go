@@ -36,9 +36,9 @@ func agendaPluginAt(t *testing.T, now time.Time, data string) *calendarPlugin {
 	return p
 }
 
-func agendaText(t *testing.T, p *calendarPlugin, args map[string]any, height int) []string {
+func agendaText(t *testing.T, p *calendarPlugin, args map[string]any, _ int) []string {
 	t.Helper()
-	lines, err := p.Text(&plugin.Request{}, plugin.WidgetRequest{Widget: "agenda", Width: 30, Height: height, Args: args})
+	lines, err := p.agendaValue(plugin.WidgetRequest{Widget: "agenda", Args: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,10 +81,10 @@ func TestAgendaSmallCell(t *testing.T) {
 	if lines[0].text != "Zahnarzt" || more != "· +1 weitere" {
 		t.Errorf("one line = %+v, summary %q", lines, more)
 	}
-	// A text display keeps the summary on a line of its own, even with headings
-	// asked for in a cell that has no room for one.
-	if got, want := agendaText(t, p, map[string]any{"days": 1, "headings": true}, 2), []string{"15:00 Zahnarzt", "+1 weitere"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("text = %q, want %q", got, want)
+	// The value gives a text page every record, because the page decides how
+	// much of it fits.
+	if got, want := agendaText(t, p, map[string]any{"days": 1, "headings": true}, 2), []string{"Heute:", "15:00 Zahnarzt", "17:00 Abendessen"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("value = %q, want %q", got, want)
 	}
 	// A free day still says so.
 	lines, _ = agendaCell(t, agendaPlugin(t, ics()), map[string]any{"days": 1}, 1, 772, 92)
@@ -141,9 +141,9 @@ func TestAgendaMoreOff(t *testing.T) {
 	if more != "" || len(lines) != 3 || !lines[1].event || !lines[2].event {
 		t.Errorf("three lines = %+v, summary %q", lines, more)
 	}
-	// The text display fills its lines too.
-	if got, want := agendaText(t, p, map[string]any{"days": 1, "headings": true, "more": false}, 3), []string{"Heute:", "15:00 Zahnarzt", "16:00 Abholen"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("text = %q, want %q", got, want)
+	// The value lists every event; only a cell has lines to fill.
+	if got := agendaText(t, p, map[string]any{"days": 1, "headings": true, "more": false}, 3); len(got) != 5 || got[0] != "Heute:" || got[4] != "19:00 Kino" {
+		t.Errorf("value = %q", got)
 	}
 }
 
@@ -228,10 +228,10 @@ func TestAgendaImageDays(t *testing.T) {
 	}
 }
 
-// birthdayText asks the birthdays widget for its text lines.
-func birthdayText(t *testing.T, p *calendarPlugin, args map[string]any, height int) []string {
+// birthdayText asks the birthdays value for its lines.
+func birthdayText(t *testing.T, p *calendarPlugin, args map[string]any, _ int) []string {
 	t.Helper()
-	lines, err := p.Text(&plugin.Request{}, plugin.WidgetRequest{Widget: "birthdays", Width: 30, Height: height, Args: args})
+	lines, err := p.agendaValue(plugin.WidgetRequest{Widget: "birthdays", Args: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,5 +382,40 @@ func TestMoreArgumentDeclared(t *testing.T) {
 		if !ok || arg.Type != "bool" || arg.Default != true {
 			t.Errorf("%s: more = %+v, declared %v", w.Widget, arg, ok)
 		}
+	}
+}
+
+// TestValues answers the values of a text page: lines for the lists and the
+// first event that has not ended.
+func TestValues(t *testing.T) {
+	p := agendaPlugin(t, ics(
+		vevent("UID:a", "DTSTART;TZID=Europe/Berlin:20261103T150000", "DTEND;TZID=Europe/Berlin:20261103T160000", "SUMMARY:Zahnarzt"),
+		vevent("UID:b", "DTSTART;TZID=Europe/Berlin:20261104T090000", "DTEND;TZID=Europe/Berlin:20261104T093000", "SUMMARY:Standup"),
+	))
+	values, err := p.Values(&plugin.Request{Values: []string{"agenda", "birthdays", "week", "next", "next-at"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := values["agenda"]; v.Text == nil {
+		t.Fatalf("agenda = %+v", v)
+	} else if lines := strings.Split(*v.Text, "\n"); len(lines) < 3 || lines[0] != "Heute:" || lines[1] != "15:00 Zahnarzt" {
+		t.Fatalf("agenda lines = %q", lines)
+	}
+	if v := values["birthdays"]; v.Text == nil || *v.Text != "Keine Geburtstage" {
+		t.Errorf("birthdays = %+v", v)
+	}
+	if v := values["week"]; v.Text == nil {
+		t.Fatalf("week = %+v", v)
+	} else if lines := strings.Split(*v.Text, "\n"); len(lines) != 7 {
+		t.Errorf("week lines = %q", lines)
+	}
+	if v := values["next"]; v.Text == nil || *v.Text != "Zahnarzt" {
+		t.Errorf("next = %+v", v)
+	}
+	if v := values["next-at"]; v.Timestamp == nil || *v.Timestamp != "2026-11-03T14:00:00Z" {
+		t.Errorf("next-at = %+v", v)
+	}
+	if _, err := p.Values(&plugin.Request{Values: []string{"nope"}}); !errors.Is(err, plugin.ErrUnknownValue) {
+		t.Errorf("unknown value: %v", err)
 	}
 }

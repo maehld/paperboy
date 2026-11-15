@@ -77,7 +77,9 @@ import (
 // the state request, Message.state, describe.blobs and the blobs of answers.
 // Version 6 (ADR 0103) added conditions: describe.conditions, the conditions
 // request and Message.conditions. Version 7 (ADR 0111) added values:
-// describe.values, the values request and Message.values.
+// describe.values, the values request and Message.values, with arguments per
+// value and the request's value_args ([ADR 0120]). Version 7 has not shipped
+// yet, so it carries both.
 // Plugins report the version in every answer (Message.Version); Paperboy
 // refuses a plugin that speaks less than MinVersion (ADR 0081).
 const Version = 7
@@ -128,8 +130,13 @@ type Request struct {
 	// receives it for now (ADR 0115).
 	ServerStatus *ServerStatus `json:"server_status,omitempty"`
 	// Values are the declared value keys a values request asks for; one
-	// request per plugin and page covers every key of that page (ADR 0111).
+	// request per plugin, page and argument set covers every key of that page
+	// (ADR 0111, 0120). ValueArgs carries the arguments of that set.
 	Values []string `json:"values,omitempty"`
+	// ValueArgs are the arguments of every value in Values (ADR 0120). A
+	// values request carries one set, because its answer is keyed by name.
+	// A value that declares args reads and checks them here.
+	ValueArgs Values `json:"value_args,omitempty"`
 	// State is the JSON object the plugin stored last time; missing when it
 	// has none. It arrives with the state request, once after configure
 	// (ADR 0081).
@@ -331,7 +338,7 @@ const (
 	ValueDirection = "direction" // 1 up, 0 flat, -1 down
 )
 
-// Kinds of a value declaration. Only single values exist in protocol 7; list
+// Kinds of a value declaration. Only single values exist in protocol 8; list
 // is reserved for the records of a later version (ADR 0111).
 const (
 	ValueKindValue = "value"
@@ -348,8 +355,11 @@ type ValueSpec struct {
 	Unit string `json:"unit,omitempty"`
 	// Precision is the number of decimals Paperboy writes for a number.
 	Precision int `json:"precision,omitempty"`
-	// Kind is value (default) or list; protocol 7 only answers values.
+	// Kind is value (default) or list; protocol 8 only answers values.
 	Kind string `json:"kind,omitempty"`
+	// Args are the arguments the value reads, with the same shape as a
+	// widget's arguments (ADR 0055, 0120). Empty means the value takes none.
+	Args map[string]Arg `json:"args,omitempty"`
 }
 
 // Value is one answer of a values request. Exactly one field is set; the
@@ -542,8 +552,9 @@ type Texter interface {
 }
 
 // Valuer is implemented by plugins whose values a text page lays out
-// (ADR 0111). Values answers every requested name of req.Values; a name the
-// plugin does not declare is an error.
+// (ADR 0111). Values answers every name in req.Values; a name the plugin does
+// not declare is an error. A value that declares args reads req.ValueArgs and
+// checks them with Values.Check (ADR 0120).
 type Valuer interface {
 	Values(req *Request) (map[string]Value, error)
 }
@@ -839,7 +850,9 @@ func handleConditions(h Handler, req *Request, m *Message) {
 }
 
 // handleValues answers a values request (ADR 0111). A plugin without the
-// Valuer interface has none, and a request without names is an error.
+// Valuer interface has none, and a request without names is an error. Like a
+// widget request it prepares the plugin first, because a values answer reads
+// the same per-request snapshot a widget does.
 func handleValues(h Handler, req *Request, m *Message) {
 	v, ok := h.(Valuer)
 	if !ok {
@@ -849,6 +862,12 @@ func handleValues(h Handler, req *Request, m *Message) {
 	if len(req.Values) == 0 {
 		m.Error = "values: no names requested"
 		return
+	}
+	if p, ok := h.(Preparer); ok {
+		if err := p.Prepare(req); err != nil {
+			m.Error = err.Error()
+			return
+		}
 	}
 	values, err := v.Values(req)
 	if err != nil {

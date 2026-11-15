@@ -156,59 +156,74 @@ func TestMultipleStops(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Without the arg the widget shows the first stop.
-	line, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 20, Height: 1})
-	if err != nil || len(line) != 1 || !strings.HasPrefix(line[0], "355 Depot") {
-		t.Errorf("default stop: %q %v", line, err)
+	// Values describe the first configured stop.
+	values, err := p.Values(&plugin.Request{Values: []string{"stop", "departures", "next", "next-at", "next-in"}})
+	if err != nil {
+		t.Fatal(err)
 	}
-	// The arg picks another stop with its own header.
-	hbf, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 40, Height: 2,
-		Args: map[string]any{"stop": "Hbf", "header": true}})
-	if err != nil || len(hbf) != 2 || hbf[0] != "Hauptbahnhof, Beispielstadt" || !strings.HasPrefix(hbf[1], "1 Depot") {
-		t.Errorf("Hbf: %q %v", hbf, err)
+	if v := values["stop"]; v.Text == nil || *v.Text != "Beispielstadt, Marktplatz" {
+		t.Errorf("stop = %+v", v)
+	}
+	if v := values["departures"]; v.Text == nil || !strings.HasPrefix(*v.Text, "355 Depot") {
+		t.Errorf("departures = %+v", v)
 	}
 	if v := p.views["Hbf"]; v.name != "Beispielstadt, Hauptbahnhof" {
 		t.Errorf("Hbf name: %q", v.name)
 	}
 	// One failing stop does not affect the others, but reports its own error.
-	if _, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 40, Height: 2,
-		Args: map[string]any{"stop": "Kaputt"}}); err == nil || !strings.Contains(err.Error(), "HTTP 500") {
-		t.Errorf("broken stop: %v", err)
+	if v := p.views["Kaputt"]; v.err == nil || !strings.Contains(v.err.Error(), "HTTP 500") {
+		t.Errorf("broken stop: %v", v.err)
 	}
-	if _, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 40, Height: 2,
-		Args: map[string]any{"stop": "Nirgendwo"}}); err == nil {
-		t.Error("unknown stop accepted")
+
+	// The value arguments pick the stop (ADR 0120).
+	hbf, err := p.Values(&plugin.Request{Values: []string{"stop", "departures"}, ValueArgs: plugin.Values{"stop": "Hbf"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := hbf["stop"]; v.Text == nil || *v.Text != "Beispielstadt, Hauptbahnhof" {
+		t.Errorf("stop by argument = %+v", v)
+	}
+	if v := hbf["departures"]; v.Text == nil || *v.Text == "" {
+		t.Errorf("departures of Hbf = %+v", v)
+	}
+	if _, err := p.Values(&plugin.Request{Values: []string{"stop"}, ValueArgs: plugin.Values{"stop": "Nope"}}); err == nil {
+		t.Error("an unknown stop argument was accepted")
+	}
+	if _, err := p.Values(&plugin.Request{Values: []string{"stop"}, ValueArgs: plugin.Values{"nope": 1}}); err == nil {
+		t.Error("an undeclared value argument was accepted")
 	}
 }
 
-func TestResolveOnceAndText(t *testing.T) {
-	p, req, finds := configured(t, plugin.Values{}, "dm_disruption.json")
+func TestResolveOnceAndValues(t *testing.T) {
+	p, _, finds := configured(t, plugin.Values{}, "dm_disruption.json")
 	if _, err := p.resolve(context.Background(), p.stops[0]); err != nil || atomic.LoadInt32(finds) != 1 {
 		t.Fatalf("stop finder asked %d times: %v", atomic.LoadInt32(finds), err)
 	}
-	lines, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 20, Height: 4})
-	want := []string{"355 Depot      +7 11", "R82 Neustadt      20", "355 Hauptstraß Ausf.", "355 Depot   +1 14:05"}
-	if err != nil || strings.Join(lines, "|") != strings.Join(want, "|") {
-		t.Fatalf("%q (%v)", lines, err)
+	values, err := p.Values(&plugin.Request{Values: []string{"stop", "departures", "next", "next-at", "next-in"}})
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, l := range lines {
-		if len([]rune(l)) != 20 {
-			t.Errorf("line %q is not 20 characters", l)
-		}
+	if v := values["stop"]; v.Text == nil || *v.Text != "Beispielstadt, Marktplatz" {
+		t.Errorf("stop = %+v", v)
 	}
-	header, _ := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 40, Height: 2, Args: map[string]any{"header": true}})
-	if len(header) != 2 || header[0] != "Marktplatz, Beispielstadt" {
-		t.Errorf("header: %q", header)
+	lines := strings.Split(*values["departures"].Text, "\n")
+	if len(lines) != 8 || lines[0] != "355 Depot +7 11" || lines[1] != "R82 Neustadt 20" {
+		t.Fatalf("departures = %q", lines)
 	}
-	before, _ := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 40, Height: 2,
-		Args: map[string]any{"header": true, "locality_order": "before"}})
-	if len(before) != 2 || before[0] != "Beispielstadt, Marktplatz" {
-		t.Errorf("header before: %q", before)
+	if !strings.HasSuffix(lines[2], "Ausf.") || lines[3] != "355 Depot +1 14:05" {
+		t.Errorf("departures = %q", lines)
 	}
-	none, _ := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 40, Height: 2,
-		Args: map[string]any{"header": true, "locality_order": "none"}})
-	if len(none) != 2 || none[0] != "Marktplatz" {
-		t.Errorf("header none: %q", none)
+	if v := values["next"]; v.Text == nil || *v.Text != "355 Depot" {
+		t.Errorf("next = %+v", v)
+	}
+	if v := values["next-at"]; v.Timestamp == nil {
+		t.Errorf("next-at = %+v", v)
+	}
+	if v := values["next-in"]; v.Duration == nil || *v.Duration <= 0 {
+		t.Errorf("next-in = %+v", v)
+	}
+	if _, err := p.Values(&plugin.Request{Values: []string{"nope"}}); !errors.Is(err, plugin.ErrUnknownValue) {
+		t.Errorf("unknown value: %v", err)
 	}
 }
 
@@ -302,8 +317,9 @@ func TestConfigure(t *testing.T) {
 	}
 }
 
-func TestLocalityText(t *testing.T) {
-	p, req, _ := configured(t, plugin.Values{}, "dm_locality.json")
+func TestDestinationLocalities(t *testing.T) {
+	p, _, _ := configured(t, plugin.Values{}, "dm_locality.json")
+	v := first(t, p)
 	for _, c := range []struct {
 		mode, order string
 		want        []string
@@ -320,24 +336,17 @@ func TestLocalityText(t *testing.T) {
 		{"always", "none", []string{"1 Depot", "355 Bahnhof", "RE6 Fernstadt Hbf", "4 Universität Westfriedhof Lohmannshof Wendeschleife"}},
 		{"never", "none", []string{"1 Depot", "355 Bahnhof", "RE6 Fernstadt Hbf", "4 Universität Westfriedhof Lohmannshof Wendeschleife"}},
 	} {
-		args := map[string]any{"locality": c.mode}
-		if c.order != "" {
-			args["locality_order"] = c.order
-		}
-		lines, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 80, Height: 4, Args: args})
-		if err != nil || len(lines) != 4 {
-			t.Fatalf("%s/%s: %q %v", c.mode, c.order, lines, err)
-		}
-		for i, l := range lines {
-			if !strings.HasPrefix(l, c.want[i]+" ") {
-				t.Errorf("%s/%s: %q does not start with %q", c.mode, c.order, l, c.want[i])
+		for i, d := range v.list {
+			got := d.Line + " " + v.destination(d, c.mode, c.order)
+			if !strings.HasPrefix(got, c.want[i]) {
+				t.Errorf("%s/%s: %q does not start with %q", c.mode, c.order, got, c.want[i])
 			}
 		}
 	}
-	if _, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 20, Height: 4, Args: map[string]any{"locality": "x"}}); err == nil {
+	if _, err := localityMode(plugin.WidgetRequest{Args: map[string]any{"locality": "x"}}); err == nil {
 		t.Error("bad locality accepted")
 	}
-	if _, err := p.Text(req, plugin.WidgetRequest{Widget: "departures", Width: 20, Height: 4, Args: map[string]any{"locality_order": "x"}}); err == nil {
+	if _, err := localityOrder(plugin.WidgetRequest{Args: map[string]any{"locality_order": "x"}}); err == nil {
 		t.Error("bad locality_order accepted")
 	}
 	// The filter matches the full name, including the dropped locality.

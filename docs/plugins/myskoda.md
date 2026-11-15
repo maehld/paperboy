@@ -32,7 +32,7 @@ plugins:
 
 ## Widgets
 
-All widgets except `card` have text variants for character displays.
+All widgets are for image displays; the values below give a text page the same data.
 
 - `battery`: state of charge as a large number with a bar, range, charging state and power, remaining time or time of full charge, target state of charge, and the capture time. Args: `range` (default `true`).
 - `charging`: charging state and power, state of charge against the target, remaining time, the current charging profile with its next charging time, capture time. Args: `profile` (default `true`).
@@ -44,18 +44,31 @@ All widgets except `card` have text variants for character displays.
 
 The render image comes from `info.renderUrl` and is downloaded once per URL, cached in memory and never committed; a missing image (`RENDER_UNAVAILABLE`) leaves the card without it instead of failing. The API key is not sent to the image host.
 
-The charging state comes from `charging.status.state` and keeps short labels, because it shares a line with the power and, on character displays, with the range: `Getrennt` (`CONNECT_CABLE`), `Bereit` (`READY_FOR_CHARGING`), `Lädt`, `Erhaltung` (`CONSERVING`), `Entlädt` and `Unterbrochen` (`CHARGING_INTERRUPTED`); in English `Unplugged`, `Ready`, `Charging`, `Holding`, `Discharging`, `Interrupted`. An unknown value is shown as it is. Whether the cable is connected is already part of that state, so no widget repeats it from `plugConnectionState`.
+The charging state comes from `charging.status.state` and keeps short labels, because it shares a line with the power: `Getrennt` (`CONNECT_CABLE`), `Bereit` (`READY_FOR_CHARGING`), `Lädt`, `Erhaltung` (`CONSERVING`), `Entlädt` and `Unterbrochen` (`CHARGING_INTERRUPTED`); in English `Unplugged`, `Ready`, `Charging`, `Holding`, `Discharging`, `Interrupted`. An unknown value is shown as it is. Whether the cable is connected is already part of that state, so no widget repeats it from `plugConnectionState`.
 
-Text variants:
+## Values
 
-| Widget | Lines |
-|---|---|
-| `battery` | `Akku  71 %`, charging state with power and range, remaining time, target |
-| `charging` | state and remaining time, state of charge against the target, current profile |
-| `profiles` | one or two lines per profile, current one marked with `*` |
-| `location` | wrapped address, coordinates, capture time (or `Unterwegs`) |
-| `climate` | state and target temperature, expected time, window heating and auxiliary states |
-| `car` | name and state of charge, range and charging state with lock state, odometer |
+A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)); a value the API did not report becomes `–`:
+
+| Value | Type | Unit | Precision | Meaning |
+|---|---|---|---|---|
+| `battery-soc` | number | % | 0 | state of charge |
+| `battery-range` | number | km | 0 | remaining range |
+| `charge-state` | text | | | charging state |
+| `charge-power` | number | kW | 1 | charge power |
+| `charge-remaining` | duration | | | time to full |
+| `charge-target` | number | % | 0 | target state of charge |
+| `car-name` | text | | | vehicle name, or the VIN |
+| `license-plate` | text | | | license plate |
+| `lock-state` | text | | | door lock state |
+| `odometer` | number | km | 0 | odometer |
+| `location` | text | | | parking address, or `Unterwegs`/`In motion` |
+| `latitude`, `longitude` | number | ° | 5 | parking position |
+| `climate-state` | text | | | air conditioning state |
+| `climate-temperature` | number | °C or °F | 1 | target temperature, in the unit the car reports |
+| `climate-reach` | timestamp | | | when the target temperature is reached |
+| `profiles` | text | | | one line per charging profile: name, target and times |
+| `captured` | timestamp | | | when the car sent its newest state |
 
 ## Actions
 

@@ -73,12 +73,26 @@ type rss struct {
 	req   *plugin.Request
 }
 
+// valueArgs are the arguments the values read (ADR 0120).
+func (p *rss) valueArgs() map[string]plugin.Arg {
+	names := []any{"all"}
+	for _, f := range p.feeds {
+		names = append(names, f.Name)
+	}
+	return map[string]plugin.Arg{
+		"feed": {
+			Type: "string", Default: "all", Enum: names,
+			Description: "one configured feed by name, or all for the newest entries of every feed",
+		},
+	}
+}
+
 func (p *rss) Describe() plugin.Description {
 	names := []any{"all"}
 	for _, f := range p.feeds {
 		names = append(names, f.Name)
 	}
-	both := []string{plugin.KindImage, plugin.KindText}
+	image := []string{plugin.KindImage}
 	feedArgs := map[string]plugin.Arg{
 		"feed": {
 			Type: "string", Default: "all", Enum: names,
@@ -105,6 +119,7 @@ func (p *rss) Describe() plugin.Description {
 			Description: "relative age, a clock time, or nothing",
 		},
 	}
+	valueArgs := p.valueArgs()
 	headlineArgs := map[string]plugin.Arg{
 		"feed": {
 			Type: "string", Default: "all", Enum: names,
@@ -123,15 +138,24 @@ func (p *rss) Describe() plugin.Description {
 		Title:   "RSS and Atom feeds",
 		Version: version(),
 		Config:  configKeys,
+		// Values give a text page the newest entries without a widget
+		// (ADR 0111); the feed argument picks one feed (ADR 0120).
+		Values: []plugin.ValueSpec{
+			{Name: "headline", Title: "Newest headline", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "source", Title: "Feed of the headline", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "summary", Title: "Summary of the headline", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "published", Title: "Published", Type: plugin.ValueTimestamp, Args: valueArgs},
+			{Name: "entries", Title: "Newest entries", Type: plugin.ValueText, Args: valueArgs},
+		},
 		Widgets: []plugin.WidgetInfo{
 			{
-				Widget: "feed", Title: "Newest entries of a feed", Kinds: both,
+				Widget: "feed", Title: "Newest entries of a feed", Kinds: image,
 				MinWidth: 160, MinHeight: 50,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 3, Rows: 6}, {Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}, {Columns: 6, Rows: 4}, {Columns: 6, Rows: 6}},
 				Args:  feedArgs,
 			},
 			{
-				Widget: "headline", Title: "The newest entry, large", Kinds: both,
+				Widget: "headline", Title: "The newest entry, large", Kinds: image,
 				MinWidth: 200, MinHeight: 70,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 2}, {Columns: 3, Rows: 3}, {Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}, {Columns: 6, Rows: 4}},
 				Args:  headlineArgs,

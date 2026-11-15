@@ -1,6 +1,7 @@
 package page
 
 import (
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
@@ -116,10 +117,12 @@ type Result struct {
 // render lock, because plugins are external processes.
 type WidgetSource func(b Batch) []Result
 
-// ValueRequest is one declared value a text page needs.
+// ValueRequest is one declared value a text page needs, with the arguments of
+// its box (ADR 0120).
 type ValueRequest struct {
 	Plugin string
 	Name   string
+	Args   map[string]any
 }
 
 // ValueBatch asks for all values of one page, one entry per value. Device is
@@ -370,6 +373,16 @@ type ScrollBox struct {
 	Align     string   // left, right or decimal; empty means left
 }
 
+// valueKey is the identity of an answer a text cell reads: the value and the
+// arguments of its box (ADR 0120).
+type valueKey struct{ plugin, name, args string }
+
+// keyOf derives the identity from a text cell.
+func keyOf(cell Cell) valueKey {
+	args, _ := json.Marshal(cell.Args) // map keys are sorted
+	return valueKey{cell.ValuePlugin(), cell.ValueKey(), string(args)}
+}
+
 // RenderText composes a text page from boxes of values and literal text. A
 // cell's overflow decides whether its content is cut, wrapped or scrolled.
 func (t *Template) RenderText(d Display, c Context) (Text, error) {
@@ -379,17 +392,16 @@ func (t *Template) RenderText(d Display, c Context) (Text, error) {
 	if err := t.Fits(d); err != nil {
 		return Text{}, err
 	}
-	type key struct{ plugin, name string }
 	var requests []ValueRequest
-	index := map[key]int{}
+	index := map[valueKey]int{}
 	for _, cell := range t.Cells {
 		if cell.Value == "" {
 			continue
 		}
-		k := key{cell.ValuePlugin(), cell.ValueKey()}
+		k := keyOf(cell)
 		if _, ok := index[k]; !ok {
 			index[k] = len(requests)
-			requests = append(requests, ValueRequest{Plugin: k.plugin, Name: k.name})
+			requests = append(requests, ValueRequest{Plugin: cell.ValuePlugin(), Name: cell.ValueKey(), Args: cell.Args})
 		}
 	}
 	results := fetchValues(c.Values, ValueBatch{Page: t.pageInfo(d, c), Device: c.Device, Values: requests})
@@ -411,7 +423,7 @@ func (t *Template) RenderText(d Display, c Context) (Text, error) {
 	for _, cell := range t.Cells {
 		var r Result
 		if cell.Value != "" {
-			r = results[index[key{cell.ValuePlugin(), cell.ValueKey()}]]
+			r = results[index[keyOf(cell)]]
 			stale = stale || r.Stale
 		}
 		window, full, direction, scrolling := textCellLines(r, cell, d.Charset, lang, now, loc, t.Overflow)

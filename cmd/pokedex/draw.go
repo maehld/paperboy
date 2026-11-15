@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -284,53 +285,40 @@ func dither(img *image.Paletted, r image.Rectangle, src *image.RGBA) {
 	}
 }
 
-// Text is the text variant: name and number, types and size, the stats packed
-// into as few lines as fit, then the flavor text.
-func (p *pokedex) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
-	m, err := p.current(w)
+// Values answers the declared values of a text page for the Pokémon of the
+// seed argument (ADR 0111, 0120).
+func (p *pokedex) Values(req *plugin.Request) (map[string]plugin.Value, error) {
+	if err := req.ValueArgs.Check(valueArgs); err != nil {
+		return nil, err
+	}
+	m, err := p.current(plugin.WidgetRequest{Widget: "card", Args: req.ValueArgs})
 	if err != nil {
 		return nil, err
 	}
-	return textLines(m, req.Lang(), w.Width), nil
-}
-
-func textLines(m *mon, lang string, width int) []string {
-	lines := []string{plugin.Columns(m.displayName(lang), m.number(), width)}
-	types, size := m.typesText(lang, "/"), strings.ReplaceAll(m.sizeText(lang), " ", "")
-	if len([]rune(types))+len([]rune(size))+1 <= width {
-		lines = append(lines, plugin.Columns(types, size, width))
-	} else {
-		lines = append(lines, types, size)
-	}
-	labels := statLabels(lang)
-	line := ""
-	for i, l := range labels {
-		item := l + strconv.Itoa(m.stats[i])
-		if line != "" && len([]rune(line+" "+item)) > width {
-			lines = append(lines, line)
-			line = item
-			continue
-		}
-		if line != "" {
-			line += " "
-		}
-		line += item
-	}
-	lines = append(lines, line)
-	if text := m.flavorText(lang); text != "" {
-		line = ""
-		for _, word := range strings.Fields(text) {
-			if line != "" && len([]rune(line+" "+word)) > width {
-				lines = append(lines, line)
-				line = word
-				continue
+	lang := req.Lang()
+	stats := [6]string{"hp", "attack", "defense", "special-attack", "special-defense", "speed"}
+	out := make(map[string]plugin.Value, len(req.Values))
+	for _, name := range req.Values {
+		switch name {
+		case "name":
+			out[name] = plugin.TextValue(m.displayName(lang))
+		case "number":
+			out[name] = plugin.NumberValue(float64(m.id))
+		case "types":
+			out[name] = plugin.TextValue(m.typesText(lang, "/"))
+		case "height":
+			out[name] = plugin.NumberValue(float64(m.height) / 10)
+		case "weight":
+			out[name] = plugin.NumberValue(float64(m.weight) / 10)
+		case "flavor":
+			out[name] = plugin.TextValue(m.flavorText(lang))
+		default:
+			i := slices.Index(stats[:], name)
+			if i < 0 {
+				return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
 			}
-			if line != "" {
-				line += " "
-			}
-			line += word
+			out[name] = plugin.NumberValue(float64(m.stats[i]))
 		}
-		lines = append(lines, line)
 	}
-	return lines
+	return out, nil
 }

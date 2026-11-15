@@ -174,6 +174,7 @@
           unit: c.unit || '',
           align: c.align === 'right' || c.align === 'decimal' ? c.align : 'left',
           overflow: c.overflow === 'wrap' || c.overflow === 'scroll' ? c.overflow : '',
+          args: c.args || {},
         };
       });
       return t;
@@ -225,6 +226,7 @@
         }
         if (c.align && c.align !== 'left') cell.align = c.align;
         if (c.overflow) cell.overflow = c.overflow;
+        if (c.args && Object.keys(c.args).length) cell.args = c.args;
         return cell;
       }) }
       : { kind: t.kind, grid: [t.grid[0], t.grid[1]], style: styleOut(t.style || {}), cells: [] };
@@ -256,7 +258,8 @@
     for (const p of state.plugins) {
       for (const v of (p.description && p.description.values) || []) {
         if (v.kind === 'list') continue;
-        out.push({ plugin: p.name, name: v.name, title: v.title || v.name, type: v.type || '', unit: v.unit || '' });
+        out.push({ plugin: p.name, name: v.name, title: v.title || v.name, type: v.type || '', unit: v.unit || '',
+          args: v.args || {} });
       }
     }
     return out;
@@ -1270,7 +1273,37 @@
 
     // arguments from the plugin's schema (ADR 0055)
     const info = widgetInfo(c.widget.split('/')[0], c.widget.split('/')[1]);
-    const args = (info && info.args) || {};
+    renderArgFields(box, c, (info && info.args) || {});
+
+    const style = c.style || {};
+    c.style = style;
+    const h = document.createElement('h4');
+    h.textContent = 'Style (pt)';
+    box.appendChild(h);
+    for (const key of ['padding', 'rule', 'text_size']) {
+      const input = numberInput(style[key], 0.1, 0);
+      input.addEventListener('input', () => {
+        const v = num(input.value);
+        if (v === null) delete style[key];
+        else style[key] = v;
+        changed('inspector');
+      });
+      box.appendChild(field(key, input));
+    }
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'danger';
+    remove.textContent = state.widgetsPage ? 'Clear' : 'Delete cell';
+    remove.addEventListener('click', removeCell);
+    box.appendChild(remove);
+    updateSnippet();
+    updateSave();
+  }
+
+  // renderArgFields draws the argument controls of a widget or a value from
+  // the plugin's schema (ADR 0055, 0120).
+  function renderArgFields(box, c, args) {
     const names = Object.keys(args).sort();
     if (names.length) {
       const h = document.createElement('h4');
@@ -1393,31 +1426,6 @@
       }
       box.appendChild(wrap);
     }
-
-    const style = c.style || {};
-    c.style = style;
-    const h = document.createElement('h4');
-    h.textContent = 'Style (pt)';
-    box.appendChild(h);
-    for (const key of ['padding', 'rule', 'text_size']) {
-      const input = numberInput(style[key], 0.1, 0);
-      input.addEventListener('input', () => {
-        const v = num(input.value);
-        if (v === null) delete style[key];
-        else style[key] = v;
-        changed('inspector');
-      });
-      box.appendChild(field(key, input));
-    }
-
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'danger';
-    remove.textContent = state.widgetsPage ? 'Clear' : 'Delete cell';
-    remove.addEventListener('click', removeCell);
-    box.appendChild(remove);
-    updateSnippet();
-    updateSave();
   }
 
   // renderTextInspector shows the fields of the selected text box.
@@ -1573,6 +1581,8 @@
         changed('inspector');
       });
       box.appendChild(field('Unit', unit));
+
+      renderArgFields(box, c, (info && info.args) || {});
     }
 
     const align = document.createElement('select');

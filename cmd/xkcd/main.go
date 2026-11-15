@@ -147,13 +147,17 @@ type xkcd struct {
 }
 
 func (x *xkcd) Describe() plugin.Description {
-	both := []string{plugin.KindImage, plugin.KindText}
 	return plugin.Description{
 		Title:   "xkcd comic",
 		Version: version(),
 		Config:  configKeys,
+		Values: []plugin.ValueSpec{
+			{Name: "number", Title: "Comic number", Type: plugin.ValueNumber},
+			{Name: "title", Title: "Title", Type: plugin.ValueText},
+			{Name: "alt", Title: "Alt text", Type: plugin.ValueText},
+		},
 		Widgets: []plugin.WidgetInfo{
-			{Widget: "comic", Title: "Comic", Kinds: both, MinWidth: 200, MinHeight: 100,
+			{Widget: "comic", Title: "Comic", Kinds: []string{plugin.KindImage}, MinWidth: 200, MinHeight: 100,
 				Sizes: []plugin.Span{{Columns: 6, Rows: 4}, {Columns: 6, Rows: 3}, {Columns: 6, Rows: 8}, {Columns: 3, Rows: 4}},
 				Args: map[string]plugin.Arg{
 					"title": {Type: "bool", Default: false, Description: "show number and title above the comic"},
@@ -282,31 +286,23 @@ func (x *xkcd) Prepare(req *plugin.Request) error {
 
 func (x *xkcd) MaxAge(*plugin.Request) time.Duration { return time.Hour }
 
-// Text fills a character display: "#number title", then the wrapped alt text,
-// cut with an ellipsis when it does not fit.
-func (x *xkcd) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
-	if w.Widget != "comic" {
-		return nil, fmt.Errorf("%w %q for text displays", plugin.ErrUnknownWidget, w.Widget)
-	}
-	lines := append([]string{plugin.Align(fmt.Sprintf("#%d %s", x.cur.Num, x.cur.Title), w.Width, "left")},
-		wrap(x.cur.Alt, w.Width)...)
-	if len(lines) > w.Height {
-		lines = lines[:w.Height]
-		last := []rune(lines[w.Height-1])
-		if w.Height > 1 {
-			if len(last) >= w.Width {
-				last = last[:max(w.Width-1, 0)]
-			}
-			lines[w.Height-1] = string(last) + "…"
+// Values answers the declared values of a text page from the loaded comic
+// (ADR 0111).
+func (x *xkcd) Values(req *plugin.Request) (map[string]plugin.Value, error) {
+	out := make(map[string]plugin.Value, len(req.Values))
+	for _, name := range req.Values {
+		switch name {
+		case "number":
+			out[name] = plugin.NumberValue(float64(x.cur.Num))
+		case "title":
+			out[name] = plugin.TextValue(x.cur.Title)
+		case "alt":
+			out[name] = plugin.TextValue(x.cur.Alt)
+		default:
+			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
 		}
 	}
-	return lines, nil
-}
-
-// wrap breaks s at spaces into lines of at most width runes; longer words are
-// split.
-func wrap(s string, width int) []string {
-	return wrapFunc(s, func(l string) bool { return len([]rune(l)) <= width }, width)
+	return out, nil
 }
 
 // wrapFunc breaks s into lines for which fits is true. A word that does not

@@ -80,7 +80,7 @@ cells:
   - { at: [0, 3], span: [12, 1], value: paperboy/long, overflow: scroll }
 ```
 
-A box carries exactly one of `text` and `value`. `text` is literal text and may span lines; a literal text cell has no label or unit. A value cell names `<plugin>/<key>`, the key a plugin declares in `describe.values`. Paperboy asks every plugin once for all keys of the page. It caches the answer like a widget and drops it on a `changed` event. The plugin answers data, never text. The shipped plugins declare their values in a later protocol version; until then a cell with such a key shows `? …`.
+A box carries exactly one of `text` and `value`. `text` is literal text and may span lines; a literal text cell has no label, unit or args. A value cell names `<plugin>/<key>`, the key a plugin declares in `describe.values`. Paperboy asks every plugin once for all keys of the page and argument set. The value reads the box's `args`, the arguments the plugin declares for it ([ADR 0120](../adr/0120-arguments-for-values.md)). Two boxes with the same value and different arguments are two requests. Paperboy caches the answer like a widget and drops it on a `changed` event. The plugin answers data, never text. A text value may carry several lines, one per record. The box shows them like literal text; the label opens the first line and the unit closes the last.
 
 | Cell key | Meaning |
 |---|---|
@@ -88,6 +88,7 @@ A box carries exactly one of `text` and `value`. `text` is literal text and may 
 | `span` | `[columns, rows]` the box takes; default `[1, 1]` |
 | `text` | literal text; multi-line strings keep their line breaks |
 | `value` | `<plugin>/<key>` of the declared value |
+| `args` | value cells only: the arguments of the declared value |
 | `label` | value cells only: text in front of the value |
 | `unit` | value cells only: text behind the value; default the declared unit |
 | `align` | `left` (default), `right` or `decimal` |
@@ -100,7 +101,7 @@ A box carries exactly one of `text` and `value`. `text` is literal text and may 
 
 Boxes must stay inside the character grid and must not overlap; `at + span` is checked against the display in `Fits`. A box that is not filled stays blank, so a page can leave rows and columns free.
 
-Paperboy formats every value itself: numbers follow the global `language` and the declared `precision`, durations and timestamps their compact forms, and directions their arrows. `RenderText` converts label, value and text to the charset before it measures, wraps or cuts. A stale value marks `!` in the last column of line 1. A missing value becomes a `? …` cell.
+Paperboy formats every value itself: numbers follow the global `language` and the declared `precision`, durations and timestamps their compact forms, and directions their arrows. `RenderText` converts label, value and text to the charset before it measures, wraps or cuts. Lines of a multi-line value follow the cell's `align` and `overflow` like literal text. A stale value marks `!` in the last column of line 1. A missing value becomes a `? …` cell.
 
 A scrolling box adds its full lines, its first window and its direction to the render result. The device answer carries them with the display type's `scroll.step` (default 300 ms) and a flag whether the scroll text changed. A firmware or the virtual display keeps its offset while the flag is false and restarts at the first window when it is true. ePaper pages reject `scroll` and `overflow` with a hint (ADR 0118).
 
@@ -191,4 +192,4 @@ On a text page the built-in plugin provides four values. `title` is the page tit
 
 ## Decisions
 
-[ADR 0025](../adr/0025-plaene-je-display.md) (plans) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md) (the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values)
+[ADR 0025](../adr/0025-plaene-je-display.md) (plans) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md) (the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values)

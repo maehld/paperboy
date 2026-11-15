@@ -90,23 +90,38 @@ func TestRenderUnknownWidget(t *testing.T) {
 	}
 }
 
-func TestTextWidgets(t *testing.T) {
+func TestValues(t *testing.T) {
 	for _, fixture := range []string{"enyaq.json", "partial.json", "motion.json"} {
 		m := testPlugin(t, fixture)
-		for _, name := range []string{"battery", "charging", "profiles", "location", "climate", "car"} {
-			lines, err := m.Text(m.req, plugin.WidgetRequest{Widget: name, Width: 20, Height: 4})
-			if err != nil {
-				t.Fatalf("%s/%s: %v", fixture, name, err)
-			}
-			if len(lines) == 0 {
-				t.Errorf("%s/%s: no lines", fixture, name)
-			}
-			for _, line := range lines {
-				if len([]rune(line)) > 20 {
-					t.Errorf("%s/%s: %q is wider than 20", fixture, name, line)
-				}
+		names := []string{"battery-soc", "battery-range", "charge-state", "charge-power", "charge-remaining",
+			"charge-target", "car-name", "license-plate", "lock-state", "odometer", "location",
+			"latitude", "longitude", "climate-state", "climate-temperature", "climate-reach", "profiles", "captured"}
+		values, err := m.Values(&plugin.Request{Language: "de", Values: names})
+		if err != nil {
+			t.Fatalf("%s: %v", fixture, err)
+		}
+		for _, name := range names {
+			if v, ok := values[name]; !ok || v.Type() == "" {
+				t.Errorf("%s/%s: %+v", fixture, name, v)
 			}
 		}
+	}
+	m := testPlugin(t, "enyaq.json")
+	values, err := m.Values(&plugin.Request{Language: "de", Values: []string{"battery-soc", "battery-range", "charge-power", "odometer"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := values["battery-soc"]; v.Number == nil || *v.Number != 71 {
+		t.Errorf("battery-soc = %+v", v)
+	}
+	if v := values["battery-range"]; v.Number == nil || *v.Number != 249 {
+		t.Errorf("battery-range = %+v", v)
+	}
+	if v := values["charge-power"]; v.Number == nil || *v.Number != 20.2 {
+		t.Errorf("charge-power = %+v", v)
+	}
+	if _, err := m.Values(&plugin.Request{Values: []string{"nope"}}); !errors.Is(err, plugin.ErrUnknownValue) {
+		t.Errorf("unknown value: %v", err)
 	}
 }
 
@@ -120,42 +135,13 @@ func TestChargingDoesNotRepeatTheCable(t *testing.T) {
 		m.cur.Charging.Status.State = &s
 		m.cur.Charging.Status.PlugState = &connected
 		m.cur.Charging.Status.PlugLock = &locked
-		lines, err := m.Text(m.req, plugin.WidgetRequest{Widget: "charging", Width: 20, Height: 4})
+		values, err := m.Values(&plugin.Request{Values: []string{"charge-state"}})
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, line := range lines {
-			if strings.Contains(line, "Kabel") {
-				t.Errorf("%s: line repeats the cable: %q", state, line)
-			}
+		if v := values["charge-state"]; v.Text == nil || strings.Contains(*v.Text, "Kabel") {
+			t.Errorf("%s: charge state repeats the cable: %+v", state, v)
 		}
-	}
-}
-
-func TestTextBatteryContent(t *testing.T) {
-	m := testPlugin(t, "enyaq.json")
-	lines, err := m.Text(m.req, plugin.WidgetRequest{Widget: "battery", Width: 20, Height: 4})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(lines) < 3 {
-		t.Fatalf("lines = %q", lines)
-	}
-	if got := lines[0]; got != "Akku            71 %" {
-		t.Fatalf("line 0 = %q", got)
-	}
-	if got := lines[1]; got != "Lädt 20,2 kW  249 km" {
-		t.Fatalf("line 1 = %q", got)
-	}
-}
-
-func TestTextUnknownWidget(t *testing.T) {
-	m := testPlugin(t, "enyaq.json")
-	if _, err := m.Text(m.req, plugin.WidgetRequest{Widget: "nope", Width: 20, Height: 4}); err == nil {
-		t.Fatal("unknown widget accepted")
-	}
-	if _, err := m.Text(m.req, plugin.WidgetRequest{Widget: "card", Width: 20, Height: 4}); err == nil {
-		t.Fatal("card has no text variant")
 	}
 }
 
@@ -177,12 +163,12 @@ func TestTinyCellsReportTooSmall(t *testing.T) {
 func TestProfilesEmpty(t *testing.T) {
 	m := testPlugin(t, "enyaq.json")
 	m.cur.ChargingProfiles = nil
-	lines, err := m.Text(m.req, plugin.WidgetRequest{Widget: "profiles", Width: 20, Height: 4})
+	values, err := m.Values(&plugin.Request{Values: []string{"profiles"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lines) != 1 || lines[0] != "Keine Ladepläne" {
-		t.Fatalf("lines = %q", lines)
+	if v := values["profiles"]; v.Text == nil || *v.Text != "Keine Ladepläne" {
+		t.Fatalf("profiles = %+v", v)
 	}
 	img := renderWidget(t, m, "profiles", 200, 100, 4, nil)
 	if ink(img) == 0 {
@@ -200,23 +186,5 @@ func TestProfileListLimit(t *testing.T) {
 	}
 	if got := len(m.profileList(99)); got != 2 {
 		t.Fatalf("max 99: %d", got)
-	}
-}
-
-func TestWrapAndCut(t *testing.T) {
-	lines := wrapRunes("Prinzipalmarkt 1, 48143 Münster, Germany", 12, 2)
-	if len(lines) != 2 {
-		t.Fatalf("lines = %q", lines)
-	}
-	for _, line := range lines {
-		if len([]rune(line)) > 12 {
-			t.Fatalf("%q is too wide", line)
-		}
-	}
-	if got := cut("abcdef", 4); got != "abc…" {
-		t.Fatalf("cut = %q", got)
-	}
-	if got := cut("abc", 4); got != "abc" {
-		t.Fatalf("cut = %q", got)
 	}
 }

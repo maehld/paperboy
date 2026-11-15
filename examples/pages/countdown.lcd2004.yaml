@@ -1,0 +1,8 @@
+# The countdown's values on a 20×4 display. The cell's label opens the line,
+# the cell's args name the date and the reference for the passed share.
+kind: text
+cells:
+  - { at: [0, 0], span: [20, 1], value: countdown/value, label: Weihnachten, args: { date: "12-24" } }
+  - { at: [0, 1], span: [20, 1], value: countdown/days, label: Ferien, unit: Tage, args: { date: "2027-07-10T08:00" }, align: right }
+  - { at: [0, 2], span: [20, 1], value: countdown/percent, label: Anteil, args: { date: "12-24", since: "01-01" } }
+  - { at: [0, 3], span: [20, 1], value: countdown/target, label: Ziel, args: { date: "12-24" } }

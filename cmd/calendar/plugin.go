@@ -87,18 +87,29 @@ func (p *calendarPlugin) load(ctx context.Context) (branch, error) {
 }
 
 func (p *calendarPlugin) Describe() plugin.Description {
-	both := []string{plugin.KindImage, plugin.KindText}
+	image := []string{plugin.KindImage}
 	calendars := plugin.Arg{Type: "list", Description: "only these calendars; default all"}
 	if choices := p.calendarChoices(); len(choices) > 0 {
 		calendars.Enum = choices
 	}
+	valueArgs := p.valueArgs(true)
 	return plugin.Description{
 		Title:   "Calendar",
 		Version: version(),
 		Config:  configKeys,
+		// Values give a text page the agenda, the birthdays and the week
+		// without a widget (ADR 0111). They read the arguments of the widget
+		// they replace (ADR 0120).
+		Values: []plugin.ValueSpec{
+			{Name: "agenda", Title: "Upcoming events", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "birthdays", Title: "Next birthdays", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "week", Title: "The next seven days", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "next", Title: "Next event", Type: plugin.ValueText, Args: valueArgs},
+			{Name: "next-at", Title: "Next event at", Type: plugin.ValueTimestamp, Args: valueArgs},
+		},
 		Widgets: []plugin.WidgetInfo{
 			{
-				Widget: "agenda", Title: "Upcoming events", Kinds: both,
+				Widget: "agenda", Title: "Upcoming events", Kinds: image,
 				Sizes:    []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 3, Rows: 7}, {Columns: 6, Rows: 4}},
 				MinWidth: 160, MinHeight: 80,
 				Args: map[string]plugin.Arg{
@@ -113,7 +124,7 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				},
 			},
 			{
-				Widget: "birthdays", Title: "Next birthdays", Kinds: both,
+				Widget: "birthdays", Title: "Next birthdays", Kinds: image,
 				Sizes:    []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 3, Rows: 7}, {Columns: 6, Rows: 4}},
 				MinWidth: 160, MinHeight: 80,
 				Args: map[string]plugin.Arg{
@@ -125,7 +136,7 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				},
 			},
 			{
-				Widget: "month", Title: "Month grid", Kinds: both,
+				Widget: "month", Title: "Month grid", Kinds: image,
 				Sizes:    []plugin.Span{{Columns: 3, Rows: 7}, {Columns: 6, Rows: 7}},
 				MinWidth: 210, MinHeight: 160,
 				Args: map[string]plugin.Arg{
@@ -134,7 +145,7 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				},
 			},
 			{
-				Widget: "week", Title: "Week view", Kinds: both,
+				Widget: "week", Title: "Week view", Kinds: image,
 				Sizes:    []plugin.Span{{Columns: 6, Rows: 4}, {Columns: 6, Rows: 7}},
 				MinWidth: 320, MinHeight: 160,
 				Args: map[string]plugin.Arg{
@@ -145,6 +156,29 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				},
 			},
 		},
+	}
+}
+
+// valueArgs is the union of the arguments the values read: a values request
+// carries one argument set for several values (ADR 0120). withChoices adds the
+// calendar enum for the editor; checking a request does not need it, because
+// eventsFor already rejects an unknown calendar.
+func (p *calendarPlugin) valueArgs(withChoices bool) map[string]plugin.Arg {
+	calendars := plugin.Arg{Type: "list", Description: "only these calendars; default all"}
+	if withChoices {
+		if choices := p.calendarChoices(); len(choices) > 0 {
+			calendars.Enum = choices
+		}
+	}
+	return map[string]plugin.Arg{
+		"days":      {Type: "int", Description: "days from today, 1 to the loaded window; default the configured days"},
+		"headings":  {Type: "bool", Default: true, Description: "day headings"},
+		"start":     {Type: "string", Default: "week", Description: "first day of the week: week = Monday for German, Sunday otherwise, today = today", Enum: []any{"week", "today"}},
+		"age":       {Type: "bool", Default: false, Description: "append the age of birthdays"},
+		"location":  {Type: "bool", Default: false, Description: "append the location to the title"},
+		"empty":     {Type: "bool", Description: "show days without events with \"No events\"; default true when days is set"},
+		"more":      {Type: "bool", Default: true, Description: "show \"+N more\" for events that did not fit"},
+		"calendars": calendars,
 	}
 }
 
@@ -234,65 +268,103 @@ func (p *calendarPlugin) Render(req *plugin.Request, w plugin.WidgetRequest, img
 	}
 }
 
-// Text fills the widgets of a character display: the agenda as "time title"
-// lines, the month as the remaining days of the week with their events.
-func (p *calendarPlugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
-	switch w.Widget {
-	case "agenda", "birthdays":
-		opts, err := p.widgetArgs(w, w.Height > 2)
-		if err != nil {
-			return nil, err
-		}
-		lines, hidden := p.agendaLines(w.Height, opts)
-		// A text display puts the summary on a line of its own, so keep one free
-		// while events remain.
-		if opts.more && hidden > 0 && len(lines) >= w.Height && w.Height > 1 {
-			lines, hidden = p.agendaLines(w.Height-1, opts)
-		}
-		if len(lines) == 0 {
-			return []string{p.emptyText(opts)}, nil
-		}
-		if opts.more && hidden > 0 && len(lines) < w.Height {
-			lines = append(lines, agendaLine{text: p.moreText(hidden)})
-		}
-		var out []string
-		for _, l := range lines {
-			switch {
-			case l.heading:
-				out = append(out, l.text+":")
-			case l.when != "":
-				out = append(out, shortWhen(l.when)+" "+p.lineText(l, false))
-			default:
-				out = append(out, p.lineText(l, false))
-			}
-		}
-		return out, nil
-	case "week":
-		evs, err := p.eventsFor(w)
-		if err != nil {
-			return nil, err
-		}
-		return p.weekLines(w, evs), nil
-	case "month":
-		evs, err := p.eventsFor(w)
-		if err != nil {
-			return nil, err
-		}
-		now := p.now.In(p.loc)
-		today := midnight(now)
-		byDay := p.eventsByDay(evs, today, w.Height)
-		var out []string
-		for i := range w.Height {
-			day := today.AddDate(0, 0, i)
-			line := fmt.Sprintf("%s %2d", weekday(day, p.lang), day.Day())
-			if len(byDay[i]) > 0 {
-				line += " " + strings.Join(byDay[i], ", ")
-			}
-			out = append(out, line)
-		}
-		return out, nil
+// agendaValue answers the agenda or the birthdays as one line per record for
+// a text page (ADR 0111): day headings, times and titles, without a width.
+func (p *calendarPlugin) agendaValue(w plugin.WidgetRequest) ([]string, error) {
+	opts, err := p.widgetArgs(w, true)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
+	lines, _ := p.agendaLines(100, opts)
+	if len(lines) == 0 {
+		return []string{p.emptyText(opts)}, nil
+	}
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		switch {
+		case l.heading:
+			out = append(out, l.text+":")
+		case l.when != "":
+			out = append(out, shortWhen(l.when)+" "+p.lineText(l, false))
+		default:
+			out = append(out, p.lineText(l, false))
+		}
+	}
+	return out, nil
+}
+
+// weekValue answers the week as one line per day for a text page.
+func (p *calendarPlugin) weekValue(w plugin.WidgetRequest) ([]string, error) {
+	evs, err := p.eventsFor(w)
+	if err != nil {
+		return nil, err
+	}
+	return p.weekLines(w, evs), nil
+}
+
+// Values answers the declared values of a text page (ADR 0111). agenda,
+// birthdays and week carry one line per record; next and next-at name the
+// first event that has not ended.
+func (p *calendarPlugin) Values(req *plugin.Request) (map[string]plugin.Value, error) {
+	if err := req.ValueArgs.Check(p.valueArgs(false)); err != nil {
+		return nil, err
+	}
+	w := plugin.WidgetRequest{Widget: "week", Width: 40, Height: 7, Args: req.ValueArgs}
+	out := make(map[string]plugin.Value, len(req.Values))
+	for _, name := range req.Values {
+		switch name {
+		case "agenda", "birthdays":
+			w.Widget = name
+			lines, err := p.agendaValue(w)
+			if err != nil {
+				return nil, err
+			}
+			out[name] = plugin.TextValue(strings.Join(lines, "\n"))
+		case "week":
+			w.Widget = "week"
+			lines, err := p.weekValue(w)
+			if err != nil {
+				return nil, err
+			}
+			out[name] = plugin.TextValue(strings.Join(lines, "\n"))
+		case "next", "next-at":
+			evs, err := p.eventsFor(w)
+			if err != nil {
+				return nil, err
+			}
+			e, ok := p.nextEvent(evs)
+			if !ok {
+				out[name] = plugin.TextValue("–")
+				continue
+			}
+			if name == "next" {
+				out[name] = plugin.TextValue(strings.TrimSpace(e.title))
+				continue
+			}
+			out[name] = plugin.TimestampValue(e.start)
+		default:
+			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
+		}
+	}
+	return out, nil
+}
+
+// nextEvent is the event that ends last in the future, so an ongoing event
+// counts as next.
+func (p *calendarPlugin) nextEvent(events []event) (parsedEvent, bool) {
+	now := p.now.In(p.loc)
+	var best parsedEvent
+	found := false
+	for _, e := range p.parsed(events) {
+		ongoing := e.end.After(now) || (e.end.Equal(e.start) && !e.start.Before(now))
+		if !ongoing {
+			continue
+		}
+		if !found || e.start.Before(best.start) {
+			best, found = e, true
+		}
+	}
+	return best, found
 }
 
 // shortWhen keeps the time column of a text agenda narrow.
