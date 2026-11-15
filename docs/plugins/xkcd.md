@@ -13,10 +13,18 @@ Comics from [xkcd](https://xkcd.com) through its JSON API (`info.0.json`). The p
 
 ## Widget `comic`
 
-The comic is scaled to fit the cell with its aspect ratio kept (Catmull-Rom on gray values, transparent areas turn white) and then reduced to the display's gray levels. Very wide strips and very tall comics only get smaller. Text sizes follow the page's base text.
+The widget is for image displays. The comic is scaled to fit the cell with its aspect ratio kept (Catmull-Rom on gray values, transparent areas turn white) and then reduced to the display's gray levels. Very wide strips and very tall comics only get smaller. Text sizes follow the page's base text.
 
 Args: `title: true` adds the number and title above the comic, `alt: true` adds the alt text below.
 
-The text variant shows `#number title` and the wrapped alt text.
+## Values
+
+A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)):
+
+| Value | Type | Precision | Meaning |
+|---|---|---|---|
+| `number` | number | 0 | comic number |
+| `title` | text | | title |
+| `alt` | text | | alt text; a `wrap` box reflows it |
 
 The comics are by Randall Munroe and licensed under [CC BY-NC 2.5](https://creativecommons.org/licenses/by-nc/2.5/). Paperboy does not redistribute them, but keep the attribution and non-commercial terms in mind when you show them.
