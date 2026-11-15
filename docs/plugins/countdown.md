@@ -39,7 +39,7 @@ A 29 February falls on 1 March in the other years, because the date is
 normalized. `MM-DD` in `since` is the occurrence before `date`, so
 `since: "01-01"` with a yearly target measures the current year.
 
-## Image variant
+## Layout
 
 The label and the passed percentage share the first line, the number fills the
 middle, the bar and the target date follow. Sizes come from the page's text
@@ -48,13 +48,12 @@ too small for every row drops the target date first, then the label, then the
 bar; a one-row cell puts the label and the value side by side. The target date
 shows no year when `date` repeats every year.
 
-## Text variant
+## Values
 
-The first line carries the value, right-aligned next to the label (`34 Tage`,
-`vorbei`, `6 Std 30 Min`); a narrower cell shortens it (`34 d`). With `since`
-the second line is a bar of `#` and `-`, because the `hd44780` charset has no
-block characters, and the third line is the target date. The value follows the
-request's `language`.
+None. Every countdown is a set of widget arguments, and a values request
+carries no arguments, so a text page cannot show a countdown yet. A later
+protocol version can carry arguments or repeat a cell per record
+([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)).
 
 ## Refresh
 

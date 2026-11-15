@@ -30,12 +30,12 @@ func request(t *testing.T, now time.Time, args map[string]any) (*plugin.Request,
 	t.Helper()
 	loc := berlin(t)
 	return &plugin.Request{
-		Language: "de", Timezone: "Europe/Berlin", Now: now.In(loc),
-		Page: plugin.PageInfo{PPI: 125, Width: 800, Height: 480},
-	}, plugin.WidgetRequest{
-		Widget: "countdown", Width: 400, Height: 120, Args: args,
-		Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 28},
-	}
+			Language: "de", Timezone: "Europe/Berlin", Now: now.In(loc),
+			Page: plugin.PageInfo{PPI: 125, Width: 800, Height: 480},
+		}, plugin.WidgetRequest{
+			Widget: "countdown", Width: 400, Height: 120, Args: args,
+			Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 28},
+		}
 }
 
 func TestParseDate(t *testing.T) {
@@ -175,66 +175,6 @@ func TestValue(t *testing.T) {
 	}
 }
 
-func TestText(t *testing.T) {
-	loc := berlin(t)
-	req, w := request(t, at(2026, 11, 20, 12, 0, loc), map[string]any{"label": "Weihnachten", "date": "12-24"})
-	w.Width, w.Height = 20, 2
-	lines, err := countdown{}.Text(req, w)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(lines) != 2 || lines[0] != "Weihnachten  34 Tage" || !strings.HasPrefix(lines[1], "24.12.") {
-		t.Fatalf("lines %q", lines)
-	}
-	for _, l := range lines {
-		if len([]rune(l)) > 20 {
-			t.Errorf("line %q is wider than 20 columns", l)
-		}
-	}
-
-	// With a reference the bar takes the second line.
-	req, w = request(t, at(2026, 11, 20, 12, 0, loc), map[string]any{"label": "Weihnachten", "date": "12-24", "since": "01-01"})
-	w.Width, w.Height = 20, 3
-	lines, _ = countdown{}.Text(req, w)
-	if len(lines) != 3 || !strings.HasPrefix(lines[1], "[") || !strings.HasSuffix(lines[1], "]") {
-		t.Fatalf("lines %q", lines)
-	}
-
-	// Without a label the value is centered.
-	req, w = request(t, at(2026, 11, 20, 12, 0, loc), map[string]any{"date": "12-24"})
-	w.Width, w.Height = 20, 1
-	lines, _ = countdown{}.Text(req, w)
-	if len(lines) != 1 || lines[0] != "      34 Tage" {
-		t.Errorf("centered line %q", lines[0])
-	}
-
-	// Passed and short values stay inside the width.
-	req, w = request(t, at(2026, 12, 25, 0, 1, loc), map[string]any{"date": "2026-12-24"})
-	w.Width, w.Height = 8, 1
-	lines, _ = countdown{}.Text(req, w)
-	if len(lines) != 1 || strings.TrimSpace(lines[0]) != "vorbei" {
-		t.Errorf("passed line %q", lines[0])
-	}
-	req, w = request(t, at(2026, 11, 20, 12, 0, loc), map[string]any{"date": "12-24"})
-	w.Width, w.Height = 6, 1
-	lines, _ = countdown{}.Text(req, w)
-	if len(lines) != 1 || strings.TrimSpace(lines[0]) != "34 d" {
-		t.Errorf("short line %q", lines[0])
-	}
-}
-
-func TestBarLine(t *testing.T) {
-	cases := map[float64]string{0: "[----]", 0.5: "[##--]", 1: "[####]"}
-	for f, want := range cases {
-		if got := barLine(f, 6); got != want {
-			t.Errorf("barLine(%v) = %q, want %q", f, got, want)
-		}
-	}
-	if barLine(0.5, 3) != "" {
-		t.Error("a bar narrower than four columns is drawn")
-	}
-}
-
 func TestRenderViaProtocol(t *testing.T) {
 	loc := berlin(t)
 	now := at(2026, 11, 20, 12, 0, loc)
@@ -298,8 +238,8 @@ func TestRenderFails(t *testing.T) {
 	if m := plugin.Handle(countdown{}, req); len(m.Widgets) != 1 || !strings.Contains(m.Widgets[0].Error, "since must be before date") {
 		t.Fatalf("%+v", m)
 	}
-	if _, err := (countdown{}).Text(req, plugin.WidgetRequest{Widget: "nope", Width: 20, Height: 2}); err == nil {
-		t.Error("unknown widget accepted")
+	if m := plugin.Handle(countdown{}, &plugin.Request{Action: plugin.ActionRender, Levels: 2, Widgets: []plugin.WidgetRequest{{Widget: "nope", Width: 20, Height: 2}}}); len(m.Widgets) != 1 || !strings.Contains(m.Widgets[0].Error, "unknown widget") {
+		t.Fatalf("%+v", m)
 	}
 }
 

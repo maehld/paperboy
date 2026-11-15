@@ -27,13 +27,10 @@ import (
 
 func main() { plugin.Serve(countdown{}) }
 
-// countdown implements plugin.Handler and plugin.Texter.
+// countdown implements plugin.Handler.
 type countdown struct{}
 
-var (
-	_ plugin.Handler = countdown{}
-	_ plugin.Texter  = countdown{}
-)
+var _ plugin.Handler = countdown{}
 
 var widgetArgs = map[string]plugin.Arg{
 	"date": {
@@ -57,7 +54,7 @@ func (countdown) Describe() plugin.Description {
 		Widgets: []plugin.WidgetInfo{{
 			Widget:    "countdown",
 			Title:     "Days to a date",
-			Kinds:     []string{plugin.KindImage, plugin.KindText},
+			Kinds:     []string{plugin.KindImage},
 			Sizes:     []plugin.Span{{Columns: 3, Rows: 1}, {Columns: 3, Rows: 2}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 2}},
 			MinWidth:  120,
 			MinHeight: 40,
@@ -224,75 +221,6 @@ func (countdown) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.
 		return err
 	}
 	return draw(a, req, w, img)
-}
-
-// Text fills the widget on a text display: the value, the bar and the target
-// date, as many lines as the cell has rows.
-func (countdown) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
-	if w.Widget != "countdown" {
-		return nil, fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
-	}
-	a, err := parseArgs(req, w)
-	if err != nil {
-		return nil, err
-	}
-	st := a.evaluate()
-	value := a.textValue(req, st, w.Width)
-	lines := make([]string, 0, 3)
-	if a.label != "" {
-		lines = append(lines, plugin.Columns(a.label, value, w.Width))
-	} else {
-		lines = append(lines, plugin.Align(value, w.Width, "center"))
-	}
-	if st.bar && len(lines) < w.Height {
-		lines = append(lines, barLine(st.fraction, w.Width))
-	}
-	if date := a.dateText(req); date != "" && len(lines) < w.Height {
-		lines = append(lines, plugin.Align(date, w.Width, "left"))
-	}
-	return lines, nil
-}
-
-// textValue is the value on a text display, short enough for the cell.
-func (a *args) textValue(req *plugin.Request, st state, width int) string {
-	switch {
-	case st.passed:
-		return req.T("vorbei", "passed")
-	case st.today:
-		return req.T("heute", "today")
-	case st.timed:
-		h, m := int(st.remain.Hours()), int(st.remain.Minutes())%60
-		switch {
-		case h > 0 && m > 0:
-			if long := fmt.Sprintf("%d %s %d %s", h, req.T("Std", "h"), m, req.T("Min", "min")); len([]rune(long)) <= width {
-				return long
-			}
-			return fmt.Sprintf("%dh%02dm", h, m)
-		case h > 0:
-			return fmt.Sprintf("%d %s", h, req.T("Std", "h"))
-		default:
-			return fmt.Sprintf("%d %s", max(m, 1), req.T("Min", "min"))
-		}
-	}
-	unit := req.T("Tage", "days")
-	if st.days == 1 {
-		unit = req.T("Tag", "day")
-	}
-	if long := fmt.Sprintf("%d %s", st.days, unit); len([]rune(long)) <= width {
-		return long
-	}
-	return fmt.Sprintf("%d d", st.days)
-}
-
-// barLine draws the passed part of the span with the characters a 20x4
-// display has.
-func barLine(fraction float64, width int) string {
-	if width < 4 {
-		return ""
-	}
-	n := width - 2
-	filled := int(math.Round(float64(n) * fraction))
-	return "[" + strings.Repeat("#", filled) + strings.Repeat("-", n-filled) + "]"
 }
 
 // dateText is the target date below the bar; a date without a year repeats,
