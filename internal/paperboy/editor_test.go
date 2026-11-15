@@ -194,7 +194,7 @@ rows:
 		t.Fatalf("coverage small: %+v", c)
 	}
 	// The page is text with another grid than the LCD.
-	if c := coverageOf(t, read, "lcd"); c.Missing || c.Error == "" || !strings.Contains(c.Error, "40 characters wide") {
+	if c := coverageOf(t, read, "lcd"); c.Missing || c.Error == "" || !strings.Contains(c.Error, "leave 20 columns") {
 		t.Fatalf("coverage lcd: %+v", c)
 	}
 

@@ -78,6 +78,9 @@ func encode(t *Template, variant bool) ([]byte, error) {
 func textCellNode(c TextCell) *yaml.Node {
 	n := newMap()
 	n.Style = yaml.FlowStyle
+	if c.At != nil {
+		add(n, "at", valueNode(*c.At))
+	}
 	add(n, "value", str(c.Value))
 	if c.Label != "" {
 		add(n, "label", str(c.Label))

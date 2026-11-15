@@ -68,8 +68,8 @@ input[type=search] { margin-bottom: .4rem; }
 .cell.text.selected { background: rgba(255, 211, 92, .08); outline: 2px solid #ffd35c; outline-offset: -2px; z-index: 3; }
 .cell.text.dragging { cursor: grabbing; opacity: .7; box-shadow: 0 4px 10px rgba(0, 0, 0, .35); }
 .cell.text .handle-x { background: rgba(255, 211, 92, .45); }
-.drop-marker { border-left: 2px solid #ffd35c; box-shadow: -1px 0 6px rgba(255, 211, 92, .7); pointer-events: none; z-index: 4; }
-.drop-marker.at-end { border-left: 0; border-right: 2px solid #ffd35c; box-shadow: 1px 0 6px rgba(255, 211, 92, .7); }
+.drop-marker { background: rgba(255, 211, 92, .12); border: 2px dashed #ffd35c; box-sizing: border-box; pointer-events: none; z-index: 4; }
+.drop-marker.invalid { background: rgba(224, 90, 90, .16); border-color: #e05a5a; }
 #board.text .slot { cursor: pointer; }
 #board.text.placing .slot { background: var(--lcd-cell-bg); }
 #board.text.placing .slot:hover { background: #24501a; }
@@ -272,6 +272,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
         <label class="field"><span>Value</span><input value="{{$c.Value}}" readonly></label>
         <label class="field"><span>Label</span><input value="{{$c.Label}}" readonly></label>
         <label class="field"><span>Unit</span><input value="{{$c.Unit}}" readonly></label>
+        <label class="field"><span>At</span><input type="number" value="{{$c.AtValue}}" readonly></label>
         <label class="field"><span>Width</span><input type="number" value="{{$c.Width}}" readonly></label>
         <label class="field"><span>Align</span><input value="{{$c.Align}}" readonly></label>
       </div>

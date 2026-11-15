@@ -81,6 +81,9 @@ const (
 // TextCell is one cell of a text page: a value in a run of characters. Width
 // and alignment belong to the page, not to the plugin.
 type TextCell struct {
+	// At is the 0-based character column of the cell. A missing at means the
+	// cell follows the previous one (flow), so hand-written pages stay terse.
+	At *int `yaml:"at" json:"at,omitempty"`
 	// Value is the declared value as <plugin>/<key>.
 	Value string `yaml:"value" json:"value"`
 	// Label sits in front of the value, Unit behind it with one space each.
@@ -90,6 +93,14 @@ type TextCell struct {
 	Width int `yaml:"width" json:"width"`
 	// Align is left, right or decimal; empty means left.
 	Align string `yaml:"align" json:"align,omitempty"`
+}
+
+// AtValue is the explicit column for templates; empty means the cell flows.
+func (c TextCell) AtValue() any {
+	if c.At == nil {
+		return ""
+	}
+	return *c.At
 }
 
 // Plugin and value name of the cell.
@@ -320,7 +331,6 @@ func (t *Template) validateRows() error {
 		return fmt.Errorf("rows: at most %d rows", maxGrid)
 	}
 	for y, row := range t.Rows {
-		width := 0
 		for i := range row {
 			c := &row[i]
 			where := fmt.Sprintf("row %d, cell %d (%s)", y+1, i+1, c.Value)
@@ -338,13 +348,39 @@ func (t *Template) validateRows() error {
 			default:
 				return fmt.Errorf("%s: align %q: expected left, right or decimal", where, c.Align)
 			}
-			width += c.Width
 		}
-		if width > maxGrid {
-			return fmt.Errorf("row %d: %d characters wide, at most %d", y+1, width, maxGrid)
+		if _, err := textRowPositions(row, maxGrid); err != nil {
+			return fmt.Errorf("row %d: %w", y+1, err)
 		}
 	}
 	return nil
+}
+
+// textRowPositions resolves the effective column of every cell of a text row
+// and rejects an out-of-range or overlapping cell. A missing at flows after the
+// previous cell (ADR 0116).
+func textRowPositions(row []TextCell, width int) ([]int, error) {
+	positions := make([]int, len(row))
+	next := 0
+	for i := range row {
+		c := &row[i]
+		at := next
+		if c.At != nil {
+			at = *c.At
+		}
+		if at < 0 {
+			return nil, fmt.Errorf("cell %d: at %d: expected a column from 0", i+1, at)
+		}
+		if at < next {
+			return nil, fmt.Errorf("cell %d: at %d overlaps the cell before it, which ends at %d", i+1, at, next)
+		}
+		if at+c.Width > width {
+			return nil, fmt.Errorf("cell %d: at %d and width %d leave %d columns", i+1, at, c.Width, width)
+		}
+		positions[i] = at
+		next = at + c.Width
+	}
+	return positions, nil
 }
 
 // Fits reports why the page cannot be shown on a display: a text page on an
@@ -362,12 +398,8 @@ func (t *Template) Fits(d Display) error {
 			return fmt.Errorf("%d rows do not fit the text display (%d rows)", len(t.Rows), d.Height)
 		}
 		for y, row := range t.Rows {
-			width := 0
-			for _, c := range row {
-				width += c.Width
-			}
-			if width > d.Width {
-				return fmt.Errorf("row %d is %d characters wide, the text display has %d columns", y+1, width, d.Width)
+			if _, err := textRowPositions(row, d.Width); err != nil {
+				return fmt.Errorf("row %d: %w", y+1, err)
 			}
 		}
 	}

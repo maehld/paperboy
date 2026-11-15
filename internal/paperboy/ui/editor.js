@@ -51,7 +51,15 @@
   // the declared values, and the inspector edits rows and cells.
   const rowsPage = () => !state.widgetsPage && text();
   const hasRows = () => !!(state.template && Array.isArray(state.template.rows) && state.template.rows.length);
-  const textRowsValid = () => hasRows() && state.template.rows.every((row) => row.every((c) => c.value));
+  const textRowsValid = () => hasRows() && state.template.rows.every((row) => {
+    let next = 0;
+    for (const c of [...row].sort((a, b) => a.at - b.at)) {
+      const at = Math.round(Number(c.at));
+      if (!c.value || !Number.isFinite(at) || at < next || at + c.width > state.width) return false;
+      next = at + c.width;
+    }
+    return true;
+  });
   const targetPath = () => 'pages/' + state.name + (state.file ? '.' + state.file : '') + '.yaml';
 
   // ---- status and where ----
@@ -129,7 +137,7 @@
       return {
         title: state.file ? '' : state.name,
         kind: 'text',
-        rows: [[{ value: firstValueKey(), label: '', unit: '', width: Math.max(1, state.width), align: 'left' }]],
+        rows: [[{ at: 0, value: firstValueKey(), label: '', unit: '', width: Math.max(1, state.width), align: 'left' }]],
         style: {},
       };
     }
@@ -145,13 +153,24 @@
       t.grid = [state.width, state.height];
       t.style = t.style || {};
       t.variants = t.variants || {};
-      t.rows = (t.rows || []).map((row) => (row || []).map((c) => ({
-        value: c.value || '',
-        label: c.label || '',
-        unit: c.unit || '',
-        width: Math.max(1, Math.round(Number(c.width) || 1)),
-        align: c.align === 'right' || c.align === 'decimal' ? c.align : 'left',
-      })));
+      t.rows = (t.rows || []).map((row) => {
+        let next = 0;
+        return (row || []).map((c) => {
+          const width = Math.max(1, Math.round(Number(c.width) || 1));
+          let at = c.at === undefined || c.at === null ? next : Math.round(Number(c.at));
+          if (!Number.isFinite(at)) at = next;
+          const cell = {
+            at,
+            value: c.value || '',
+            label: c.label || '',
+            unit: c.unit || '',
+            width,
+            align: c.align === 'right' || c.align === 'decimal' ? c.align : 'left',
+          };
+          next = at + width;
+          return cell;
+        }).sort((a, b) => a.at - b.at);
+      });
       t.cells = [];
       return t;
     }
@@ -193,7 +212,7 @@
     const t = state.template;
     const out = rowsPage()
       ? { kind: 'text', style: styleOut(t.style || {}), rows: t.rows.map((row) => row.map((c) => {
-        const cell = { value: c.value, width: c.width };
+        const cell = { value: c.value, width: c.width, at: Math.round(Number(c.at) || 0) };
         if (c.label) cell.label = c.label;
         if (c.unit) cell.unit = c.unit;
         if (c.align && c.align !== 'left') cell.align = c.align;
@@ -248,16 +267,13 @@
   // defaultTextCell is a new cell for a row; width stays within the display.
   function defaultTextCell(width) {
     return {
+      at: 0,
       value: firstValueKey(),
       label: '',
       unit: '',
       width: Math.max(1, Math.min(Math.round(width || 6), state.width)),
       align: 'left',
     };
-  }
-
-  function textRowWidth(row) {
-    return (row || []).reduce((sum, c) => sum + (Number(c.width) || 0), 0);
   }
 
   function addTextRow() {
@@ -267,8 +283,6 @@
     state.textSelected = { row: state.template.rows.length - 1, cell: 0 };
     changed();
   }
-
-
 
   function removeTextRow(rowIndex) {
     if (!state.template || !state.template.rows) return;
@@ -306,172 +320,96 @@
     changed();
   }
 
-  // textCellStart is the first slot of one cell in its row.
-  function textCellStart(row, cellIndex) {
-    let start = 0;
-    for (let i = 0; i < cellIndex && i < row.length; i++) start += row[i].width;
-    return start;
-  }
-
-  // textCellAt finds the cell under one slot of a row.
+  // textCellAt finds the cell under one column of a row; a gap has no cell.
   function textCellAt(rowIndex, x) {
     const row = state.template && state.template.rows && state.template.rows[rowIndex];
-    if (!row) return { cell: -1, start: 0 };
-    let start = 0;
+    if (!row) return { cell: -1, start: x };
     for (let i = 0; i < row.length; i++) {
-      if (x < start + row[i].width) return { cell: i, start };
-      start += row[i].width;
+      const at = Math.round(Number(row[i].at)) || 0;
+      if (x >= at && x < at + row[i].width) return { cell: i, start: at };
     }
-    return { cell: -1, start };
+    return { cell: -1, start: x };
   }
 
-  // textInsertIndex names the boundary before which a drop inserts. The middle
-  // of a cell decides whether the drop goes before or after it.
-  function textInsertIndex(rowIndex, x) {
+  function overlapsRange(row, at, width, ignore) {
+    return (row || []).some((c, i) => i !== ignore &&
+      at < (Math.round(Number(c.at)) || 0) + c.width &&
+      (Math.round(Number(c.at)) || 0) < at + width);
+  }
+
+  // freeColumn finds the first free column at or after desired that holds the
+  // cell width; -1 means the row has no room.
+  function freeColumn(rowIndex, desired, width, ignore) {
     const row = state.template && state.template.rows && state.template.rows[rowIndex];
-    if (!row) return 0;
-    let start = 0;
-    for (let i = 0; i < row.length; i++) {
-      if (x < start + row[i].width / 2) return i;
-      start += row[i].width;
+    const maxStart = Math.max(0, state.width - width);
+    let start = Math.round(Number(desired) || 0);
+    start = Math.max(0, Math.min(maxStart, start));
+    for (let at = start; at <= maxStart; at++) {
+      if (!overlapsRange(row, at, width, ignore)) return at;
     }
-    return row.length;
+    return -1;
   }
 
-  // textInsertColumn is the slot of the drop marker; the display edge wins at
-  // the end of a full row.
-  function textInsertColumn(rowIndex, x) {
-    const row = state.template && state.template.rows && state.template.rows[rowIndex];
-    if (!row) return Math.min(x, state.width - 1);
-    let start = 0;
-    for (const c of row) {
-      if (x < start + c.width / 2) return start;
-      start += c.width;
-    }
-    return Math.min(start, state.width - 1);
-  }
-
-  // defaultValueWidth leaves room for a sample of the value and its unit.
-  function defaultValueWidth(info) {
-    let sample = 'text';
-    if (info) {
-      switch (info.type) {
-        case 'number': sample = info.precision > 0 ? '0,' + '0'.repeat(info.precision) : '0'; break;
-        case 'duration': sample = '00min'; break;
-        case 'timestamp': sample = '00:00'; break;
-        case 'direction': sample = '^'; break;
-        default: sample = (info.title || info.name || 'text').slice(0, 4);
+  // textDropPlan resolves a drop to a row and column. A row beyond the last
+  // one starts a new row when the display has room.
+  function textDropPlan(rowIndex, desired, width, ignore) {
+    const rows = state.template && state.template.rows;
+    if (!rows) return null;
+    const row = Math.max(0, Math.min(rowIndex, rows.length));
+    if (row >= rows.length) {
+      if (rows.length >= state.height) {
+        return { row: Math.min(rowIndex, state.height - 1), at: Math.max(0, Math.min(state.width - width, Math.round(desired) || 0)), ok: false, fresh: false };
       }
+      return { row, at: 0, ok: true, fresh: true };
     }
-    const unit = info && info.unit ? ' ' + info.unit : '';
-    return Math.max(5, Math.min(state.width, (sample + unit).length));
+    const at = freeColumn(row, desired, width, ignore);
+    if (at < 0) {
+      return { row, at: Math.max(0, Math.min(state.width - width, Math.round(desired) || 0)), ok: false, fresh: false };
+    }
+    return { row, at, ok: true, fresh: false };
   }
 
-  function newValueCell(plugin, name) {
-    const info = valueInfo(plugin + '/' + name);
-    return {
-      value: plugin + '/' + name,
-      label: '',
-      unit: '',
-      width: defaultValueWidth(info),
-      align: info && info.type === 'number' ? 'decimal' : 'left',
-    };
-  }
-
-  // insertValueAt inserts a palette value before the cell at x; a full row or a
-  // row beyond the display starts a new row.
-  function insertValueAt(plugin, name, rowIndex, x) {
+  // insertValueAt puts a palette value at the first free column at or after the
+  // drop. A full row refuses instead of overlapping (ADR 0116).
+  function insertValueAt(plugin, name, rowIndex, desired) {
     if (!state.template) return;
     const rows = state.template.rows = state.template.rows || [];
     const cell = newValueCell(plugin, name);
-    let row = Math.max(0, Math.min(rowIndex, rows.length));
-    if (row >= rows.length) {
-      if (rows.length >= state.height) {
-        setStatus('The page has no room for another row; shorten or remove a cell first.', 'error');
-        return;
-      }
-      rows.push([]);
-      row = rows.length - 1;
+    const plan = textDropPlan(rowIndex, desired, cell.width, -1);
+    if (!plan || !plan.ok) {
+      setStatus('That column is taken; drop the value on a free column.', 'error');
+      return;
     }
-    let index = textInsertIndex(row, x);
-    let room = state.width - textRowWidth(rows[row]);
-    if (room < 1) {
-      if (rows.length >= state.height) {
-        setStatus('The page has no room for another row; shorten or remove a cell first.', 'error');
-        return;
-      }
-      rows.splice(row + 1, 0, []);
-      row += 1;
-      index = 0;
-      room = state.width;
-    }
-    cell.width = Math.max(1, Math.min(cell.width, room));
-    rows[row].splice(index, 0, cell);
-    state.textSelected = { row, cell: index };
+    if (plan.fresh) rows.push([]);
+    cell.at = plan.at;
+    rows[plan.row].push(cell);
+    rows[plan.row].sort((a, b) => a.at - b.at);
+    state.textSelected = { row: plan.row, cell: rows[plan.row].indexOf(cell) };
     state.placing = null;
     changed();
   }
 
-  // moveTextCell reorders a cell inside its row or moves it to another row.
-  // A rightward drop lands after the cell under the pointer, a leftward drop
-  // before it; the old position of the dragged cell is not counted.
-  function moveTextCell(fromRow, fromCell, toRow, x) {
+  // moveTextCell sets the cell's new column. It refuses an occupied range and
+  // keeps the source row, even when it becomes empty (ADR 0116).
+  function moveTextCell(fromRow, fromCell, toRow, desired) {
     const rows = state.template && state.template.rows;
     const source = rows && rows[fromRow];
-    if (!source || !source[fromCell]) return;
-    const moved = source[fromCell];
-    const targetIndex = Math.max(0, toRow);
-    let dest = rows[targetIndex] || null;
-    if (!dest) {
-      if (rows.length >= state.height) {
-        setStatus('The page has no room for another row; shorten or remove a cell first.', 'error');
-        return;
-      }
-      dest = [];
-      rows.push(dest);
+    const moved = source && source[fromCell];
+    if (!moved) return;
+    const plan = textDropPlan(toRow, desired, moved.width, toRow === fromRow ? fromCell : -1);
+    if (!plan || !plan.ok) {
+      setStatus('That column is taken; drop the cell on a free column.', 'error');
+      return;
     }
-    let index;
-    if (dest === source) {
-      const hit = textCellAt(fromRow, x);
-      if (hit.cell === fromCell) return; // a drop on the cell itself does not move it
-      if (hit.cell < 0) index = dest.length;
-      else if (hit.cell > fromCell) index = hit.cell + 1;
-      else index = hit.cell;
-    } else {
-      const hit = textCellAt(targetIndex, x);
-      if (hit.cell < 0) index = dest.length;
-      else index = hit.cell + (x >= hit.start + dest[hit.cell].width / 2 ? 1 : 0);
-      if (textRowWidth(dest) + moved.width > state.width) {
-        if (rows.length >= state.height) {
-          setStatus('The page has no room for another row; shorten or remove a cell first.', 'error');
-          return;
-        }
-        dest = [];
-        rows.push(dest);
-        index = 0;
-      }
-    }
-    const [cell] = source.splice(fromCell, 1);
-    if (dest === source && fromCell < index) index -= 1;
-    // The source row stays in place, even when its last cell moved away: an
-    // empty row is a blank line and remains a valid drop target.
-    index = Math.max(0, Math.min(index, dest.length));
-    dest.splice(index, 0, cell);
-    state.textSelected = { row: rows.indexOf(dest), cell: index };
+    if (plan.fresh) rows.push([]);
+    const dest = rows[plan.row];
+    if (dest === source && plan.at === (Math.round(Number(moved.at)) || 0)) return;
+    source.splice(fromCell, 1);
+    moved.at = plan.at;
+    dest.push(moved);
+    dest.sort((a, b) => a.at - b.at);
+    state.textSelected = { row: plan.row, cell: dest.indexOf(moved) };
     changed();
-  }
-
-  // textMoveColumn is the slot where the drop marker of a cell move belongs.
-  function textMoveColumn(fromRow, fromCell, toRow, x) {
-    const rows = state.template && state.template.rows;
-    if (!rows || toRow >= rows.length) return 0;
-    if (toRow !== fromRow) return textInsertColumn(toRow, x);
-    const row = rows[fromRow];
-    const hit = textCellAt(fromRow, x);
-    if (hit.cell < 0) return Math.min(textRowWidth(row), state.width);
-    if (hit.cell === fromCell) return hit.start;
-    if (hit.cell > fromCell) return hit.start + row[hit.cell].width;
-    return hit.start;
   }
 
   // selectTextCell marks one box and refreshes the inspector without rebuilding
@@ -517,6 +455,8 @@
     const startX = e.clientX;
     const startY = e.clientY;
     const pointerId = e.pointerId;
+    const info = valueInfo(plugin + '/' + name);
+    const width = defaultValueWidth(info);
     let active = false;
     let pos = null;
     let ghost = null;
@@ -538,8 +478,13 @@
       ghost.style.left = (ev.clientX + 12) + 'px';
       ghost.style.top = (ev.clientY + 12) + 'px';
       pos = cellAtPointer(ev);
-      if (pos) showDropMarker(pos.y, pos.x);
-      else clearDropMarker();
+      if (pos) {
+        const plan = textDropPlan(pos.y, pos.x, width, -1);
+        if (plan) showDropMarker(plan.row, plan.at, width, !plan.ok);
+        else clearDropMarker();
+      } else {
+        clearDropMarker();
+      }
     };
     const finish = (ev, dropIt) => {
       if (finished) return;
@@ -585,19 +530,18 @@
     renderBoard();
   }
 
-  // showDropMarker draws the insertion line of a drag over the board.
-  function showDropMarker(y, x, source) {
+  // showDropMarker draws the range a dropped cell will occupy.
+  function showDropMarker(rowIndex, at, width, invalid) {
     const board = el('board');
     if (!board || !state.template) return;
     clearDropMarker();
     const rows = state.template.rows || [];
-    const row = Math.min(y, rows.length);
-    let col = row >= rows.length ? 0 : textInsertColumn(row, x);
-    if (source) col = textMoveColumn(source.row, source.cell, row, x);
-    const atEnd = col >= state.width;
+    const row = Math.max(0, Math.min(rowIndex, rows.length));
+    const w = Math.max(1, Math.min(Math.round(Number(width) || 1), state.width));
+    const col = Math.max(0, Math.min(state.width - w, Math.round(Number(at) || 0)));
     const marker = document.createElement('div');
-    marker.className = 'drop-marker' + (atEnd ? ' at-end' : '');
-    marker.style.gridArea = (row + 1) + ' / ' + ((atEnd ? state.width - 1 : col) + 1) + ' / span 1 / span 1';
+    marker.className = 'drop-marker' + (invalid ? ' invalid' : '');
+    marker.style.gridArea = (row + 1) + ' / ' + (col + 1) + ' / span 1 / span ' + w;
     board.appendChild(marker);
     for (const slot of board.querySelectorAll('.slot[data-y="' + row + '"]')) slot.classList.add('drop');
   }
@@ -627,6 +571,10 @@
     const startX = e.clientX;
     const startY = e.clientY;
     const pointerId = e.pointerId;
+    const row = state.template && state.template.rows[rowIndex];
+    const c = row && row[cellIndex];
+    const hit = cellAt(e);
+    const grabX = hit && c ? hit.x - (Math.round(Number(c.at)) || 0) : 0;
     let active = false;
     let pos = null;
     let finished = false;
@@ -642,8 +590,14 @@
       if (ev.cancelable) ev.preventDefault();
       box.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
       pos = cellAtPointer(ev);
-      if (pos) showDropMarker(pos.y, pos.x, { row: rowIndex, cell: cellIndex });
-      else clearDropMarker();
+      if (pos) {
+        const desired = pos.x - grabX;
+        const plan = textDropPlan(pos.y, desired, c.width, pos.y === rowIndex ? cellIndex : -1);
+        if (plan) showDropMarker(plan.row, plan.at, c.width, !plan.ok);
+        else clearDropMarker();
+      } else {
+        clearDropMarker();
+      }
     };
     const finish = (ev, moveIt) => {
       if (finished) return;
@@ -660,7 +614,9 @@
       }
       if (moveIt && active) {
         const at = cellAtPointer(ev);
-        if (at) moveTextCell(rowIndex, cellIndex, at.y, at.x);
+        if (at && !(at.y === rowIndex && textCellAt(rowIndex, at.x).cell === cellIndex)) {
+          moveTextCell(rowIndex, cellIndex, at.y, at.x - grabX);
+        }
         suppressTextClick = true;
         setTimeout(() => { suppressTextClick = false; }, 0);
       }
@@ -685,9 +641,11 @@
     if (!slotWidth) return;
     const startX = e.clientX;
     const startWidth = c.width;
-    const prefix = textCellStart(row, cellIndex);
-    const suffix = textRowWidth(row) - prefix - c.width;
-    const maxWidth = Math.max(1, state.width - prefix - suffix);
+    const currentAt = Math.round(Number(c.at)) || 0;
+    const next = row
+      .filter((other, i) => i !== cellIndex && (Math.round(Number(other.at)) || 0) > currentAt)
+      .sort((a, b) => a.at - b.at)[0];
+    const maxWidth = Math.max(1, (next ? Math.round(Number(next.at)) || 0 : state.width) - currentAt);
     const handle = e.currentTarget;
     const pointerId = e.pointerId;
     const move = (ev) => {
@@ -1220,17 +1178,17 @@
     const t = state.template;
     if (!t || !t.rows) return;
     t.rows.forEach((row, y) => {
-      let start = 0;
       row.forEach((c, i) => {
-        const width = Math.max(1, Math.min(c.width, state.width - start));
-        if (start >= state.width) return;
+        const at = Math.round(Number(c.at)) || 0;
+        if (at >= state.width) return;
+        const width = Math.max(1, Math.min(c.width, state.width - at));
         const selected = state.textSelected && state.textSelected.row === y && state.textSelected.cell === i;
         const box = document.createElement('div');
         box.className = 'cell text' + (selected ? ' selected' : '');
         box.dataset.row = String(y);
         box.dataset.cell = String(i);
-        box.style.gridArea = (y + 1) + ' / ' + (start + 1) + ' / span 1 / span ' + width;
-        box.title = (c.value || 'no value') + ' · ' + width + ' chars · ' + (c.align || 'left');
+        box.style.gridArea = (y + 1) + ' / ' + (at + 1) + ' / span 1 / span ' + width;
+        box.title = (c.value || 'no value') + ' · at ' + at + ', width ' + width + ' · ' + (c.align || 'left');
         box.addEventListener('pointerdown', (e) => {
           e.stopPropagation();
           if (state.placing && state.placing.value) {
@@ -1258,7 +1216,6 @@
         });
         box.appendChild(handle);
         board.appendChild(box);
-        start += c.width;
       });
     });
   }
@@ -1728,7 +1685,7 @@
         pick.textContent = c.value || '(empty)';
         const info = valueInfo(c.value);
         pick.title = (c.value || 'no value') + (info && info.title ? ' · ' + info.title : '') +
-          ' · ' + c.width + ' chars · ' + (c.align || 'left');
+          ' · at ' + (Math.round(Number(c.at)) || 0) + ', width ' + c.width + ' · ' + (c.align || 'left');
         pick.addEventListener('click', () => selectTextCell(y, i));
         const remove = document.createElement('button');
         remove.type = 'button';
@@ -1783,7 +1740,7 @@
       box.appendChild(hint);
       return;
     }
-    box.appendChild(textCellFields(c));
+    box.appendChild(textCellFields(c, sel.row, sel.cell));
     const buttons = document.createElement('div');
     buttons.className = 'row-buttons';
     const remove = document.createElement('button');
@@ -1795,8 +1752,8 @@
     box.appendChild(buttons);
   }
 
-  // textCellFields is one selected cell: value, label, unit, width and align.
-  function textCellFields(c) {
+  // textCellFields is one selected cell: value, label, unit, at, width and align.
+  function textCellFields(c, rowIndex, cellIndex) {
     const wrap = document.createElement('div');
     wrap.className = 'text-cell';
     const values = textValues();
@@ -1862,13 +1819,40 @@
     });
     wrap.appendChild(field('Unit', unit));
 
+    const row = state.template && state.template.rows && state.template.rows[rowIndex];
+    const currentAt = Math.round(Number(c.at)) || 0;
+    const next = (row || [])
+      .filter((other, i) => i !== cellIndex && (Math.round(Number(other.at)) || 0) > currentAt)
+      .sort((a, b) => a.at - b.at)[0];
+    const maxWidth = Math.max(1, (next ? Math.round(Number(next.at)) || 0 : state.width) - currentAt);
+
+    const at = document.createElement('input');
+    at.type = 'number';
+    at.min = '0';
+    at.max = String(Math.max(0, state.width - c.width));
+    at.value = String(currentAt);
+    at.addEventListener('change', () => {
+      let v = Math.max(0, Math.min(state.width - c.width, Math.round(Number(at.value) || 0)));
+      if (overlapsRange(row, v, c.width, cellIndex)) {
+        setStatus('That column is taken; choose a free column.', 'error');
+        at.value = String(c.at);
+        return;
+      }
+      c.at = v;
+      row.sort((a, b) => a.at - b.at);
+      state.textSelected = { row: rowIndex, cell: row.indexOf(c) };
+      setStatus('');
+      changed();
+    });
+    wrap.appendChild(field('At', at));
+
     const width = document.createElement('input');
     width.type = 'number';
     width.min = '1';
-    width.max = String(state.width);
+    width.max = String(maxWidth);
     width.value = String(c.width || 1);
     width.addEventListener('change', () => {
-      c.width = Math.max(1, Math.min(state.width, Math.round(Number(width.value) || 1)));
+      c.width = Math.max(1, Math.min(maxWidth, Math.round(Number(width.value) || 1)));
       width.value = String(c.width);
       changed();
     });
@@ -2361,7 +2345,7 @@
     const kind = info.kind === 'text' ? 'text' : 'image';
     const grid = kind === 'text' ? [info.width, info.height] : state.reference.slice();
     const template = kind === 'text'
-      ? { kind: 'text', rows: [[{ value: firstValueKey(), width: Math.max(1, info.width), align: 'left' }]], style: {} }
+      ? { kind: 'text', rows: [[{ at: 0, value: firstValueKey(), width: Math.max(1, info.width), align: 'left' }]], style: {} }
       : { kind: kind, grid: grid, style: {}, cells: [blankCell(kind, grid)] };
     setStatus('creating the variant for ' + display + '…', '');
     let res;

@@ -282,6 +282,32 @@ func TestRenderTextEmptyRow(t *testing.T) {
 	}
 }
 
+func TestRenderTextGap(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: a/x, width: 3 }, { value: a/y, at: 6, width: 3 }]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{"a/x": "ab", "a/y": "cd"}
+	text, err := tmpl.RenderText(Display{Width: 10, Height: 1, Text: true},
+		Context{Values: func(b ValueBatch) []Result {
+			out := make([]Result, len(b.Values))
+			for i, v := range b.Values {
+				s := values[v.Plugin+"/"+v.Name]
+				out[i] = Result{Value: &plugin.Value{Text: &s}, Spec: plugin.ValueSpec{Type: plugin.ValueText}}
+			}
+			return out
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "ab    cd  "; text.Lines[0] != want {
+		t.Fatalf("line %q, want %q", text.Lines[0], want)
+	}
+	if err := tmpl.Fits(Display{Width: 8, Height: 1, Text: true}); err == nil {
+		t.Error("a cell past the display was accepted")
+	}
+}
+
 func TestRenderTextStaleAndMissingSource(t *testing.T) {
 	tmpl, err := Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: a/x, width: 6 }]\n"))
 	if err != nil {
@@ -347,6 +373,28 @@ rows:
 	}
 	if len(empty.Rows) != 2 || len(empty.Rows[0]) != 0 {
 		t.Fatalf("empty row parsed as %+v", empty.Rows)
+	}
+	// A missing at follows the previous cell; an explicit at leaves a gap.
+	gap, err := Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: a/b, width: 2 }, { value: a/c, width: 2 }, { value: a/d, at: 6, width: 2 }, { value: a/e, width: 2 }]\n"))
+	if err != nil {
+		t.Fatalf("gap: %v", err)
+	}
+	positions, err := textRowPositions(gap.Rows[0], maxGrid)
+	if err != nil {
+		t.Fatalf("positions: %v", err)
+	}
+	if want := []int{0, 2, 6, 8}; !reflect.DeepEqual(positions, want) {
+		t.Fatalf("positions %v, want %v", positions, want)
+	}
+	for name, bad := range map[string]string{
+		"overlap":  "kind: text\nrows:\n  - [{ value: a/b, width: 4 }, { value: a/c, at: 2, width: 2 }]\n",
+		"order":    "kind: text\nrows:\n  - [{ value: a/b, at: 5, width: 2 }, { value: a/c, at: 3, width: 2 }]\n",
+		"range":    "kind: text\nrows:\n  - [{ value: a/b, at: 79, width: 2 }]\n",
+		"negative": "kind: text\nrows:\n  - [{ value: a/b, at: -1, width: 2 }]\n",
+	} {
+		if _, err := Parse(strings.NewReader(bad)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
 	}
 }
 
@@ -433,6 +481,27 @@ func TestTextPageCellsAlign(t *testing.T) {
 	}
 	if got := composeTextCell("utf8", "", "123456789", "", 4, AlignLeft); got != "1234" {
 		t.Errorf("left cuts the tail: %q", got)
+	}
+}
+
+func TestEncodeTextAt(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: a/one, width: 2 }, { value: a/two, at: 6, width: 3 }]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := Encode(tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "at: 6") {
+		t.Fatalf("encoded page lacks at:\n%s", data)
+	}
+	back, err := Parse(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(tmpl, back) {
+		t.Fatalf("round trip changed the template\nwant %+v\ngot  %+v", tmpl, back)
 	}
 }
 

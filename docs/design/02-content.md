@@ -45,7 +45,7 @@ A variant file carries `kind`, `grid`, `style`, `notices` and `cells`. It inheri
 | `style.divider` | Lines that Paperboy draws between the cells |
 | `notices` | `show` or `none`: whether a notice page may replace this page |
 | `cells` | Image pages only: `at` (column, row), `span` (columns, rows), `widget`, `args`, `style` (overrides the page style), `scroll` |
-| `rows` | Text pages only: lists of cells, each with `value`, `label`, `unit`, `width` and `align` ([text pages](#text-pages)) |
+| `rows` | Text pages only: lists of cells, each with `at`, `value`, `label`, `unit`, `width` and `align` ([text pages](#text-pages)) |
 
 Parsing is strict and cells must not overlap. Sizes are in points since [ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md). A fraction such as `0.06` is rejected with a hint: points are physical, and the display type's `ppi` converts them into pixels.
 
@@ -79,15 +79,18 @@ rows:
   - [{ value: evcc/pv, label: PV, width: 10, align: decimal, unit: kW }]
 ```
 
-A row may be empty: it stays a blank line, so deleting the last cell of a row does not break the page. A cell names a `value` as `<plugin>/<key>`, the key a plugin declares in `describe.values`. Paperboy asks every plugin once for all keys of that page. It caches the answer like a widget, and a `changed` event drops it. The plugin answers data, never text: a number, a text, a duration in seconds, a timestamp or a direction. The shipped plugins declare their values in a later protocol version; until then a cell with such a key shows `? …`.
+A row may be empty: it stays a blank line, so deleting the last cell of a row does not break the page. A cell names a `value` as `<plugin>/<key>`, the key a plugin declares in `describe.values`. `at` is the 0-based column of the cell; without `at` the cell follows the previous one, so hand-written rows flow from column 0 (ADR 0116). Paperboy asks every plugin once for all keys of that page. It caches the answer like a widget, and a `changed` event drops it. The plugin answers data, never text: a number, a text, a duration in seconds, a timestamp or a direction. The shipped plugins declare their values in a later protocol version; until then a cell with such a key shows `? …`.
 
 | Cell key | Meaning |
 |---|---|
+| `at` | 0-based column; missing means after the previous cell (flow) |
 | `value` | `<plugin>/<key>` of the declared value |
 | `label` | Text in front of the value, followed by one space |
 | `unit` | Text behind the value, preceded by one space; default the unit the plugin declares for a number |
 | `width` | Columns the cell takes, 1 to 80 |
 | `align` | `left` (default), `right` or `decimal` |
+
+`at + width` must fit the display, and two cells of a row must not overlap. Paperboy writes every cell at its column and leaves a gap as spaces. The editor resolves the flow of an existing page and writes an explicit `at` when it saves (ADR 0116).
 
 Paperboy formats every value itself, so the same reading looks the same on every page:
 
@@ -103,7 +106,7 @@ Paperboy formats every value itself, so the same reading looks the same on every
 
 A text page fits a text display when its rows fit the character grid. It has no more rows than the display, and every row is at most as wide. Rows the page does not fill stay blank. Other text sizes need a variant ([ADR 0110](../adr/0110-pages-serve-their-kind-and-name-variants.md)).
 
-The page editor edits rows and value cells (ADR 0111). Lists (`for-each`) and scrolling rows arrive in later steps. A page of values does not scroll yet.
+The page editor edits rows and value cells, including their columns (ADR 0111, 0116). Lists (`for-each`) and scrolling rows arrive in later steps. A page of values does not scroll yet.
 
 ## Which page a device gets
 

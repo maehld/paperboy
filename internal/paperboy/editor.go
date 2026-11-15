@@ -195,11 +195,15 @@ func pageFiles(dir string) ([]editorPageFile, error) {
 			f.Title, f.Kind, f.Grid = t.Title, t.Kind, t.Grid
 			f.Rows = len(t.Rows)
 			for _, row := range t.Rows {
-				width := 0
+				end := 0
 				for _, c := range row {
-					width += c.Width
+					at := end
+					if c.At != nil {
+						at = *c.At
+					}
+					end = at + c.Width
+					f.textWidth = max(f.textWidth, end)
 				}
-				f.textWidth = max(f.textWidth, width)
 			}
 			f.Variants = t.Variants
 		}

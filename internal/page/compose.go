@@ -398,13 +398,19 @@ func (t *Template) RenderText(d Display, c Context) (Text, error) {
 		lines[y] = strings.Repeat(" ", d.Width)
 	}
 	for y, row := range t.Rows {
-		var line strings.Builder
-		for _, cell := range row {
+		positions, err := textRowPositions(row, d.Width)
+		if err != nil {
+			return Text{}, fmt.Errorf("row %d: %w", y+1, err)
+		}
+		line := []rune(strings.Repeat(" ", d.Width))
+		for i, cell := range row {
 			r := results[index[key{cell.Plugin(), cell.Key()}]]
 			stale = stale || r.Stale
-			line.WriteString(renderTextCell(r, cell, d.Charset, lang, now, loc))
+			text := []rune(renderTextCell(r, cell, d.Charset, lang, now, loc))
+			at := positions[i]
+			copy(line[at:min(at+cell.Width, len(line))], text)
 		}
-		lines[y] = fit(line.String(), d.Width)
+		lines[y] = string(line)
 	}
 	if stale && t.Notices == "show" && d.Width > 0 {
 		line := []rune(lines[0])
