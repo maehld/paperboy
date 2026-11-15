@@ -74,7 +74,8 @@ type editorListPage struct {
 	Version   string
 	GoVersion string
 	Groups    []editorPageGroup
-	Options   []uiOption         // display types of the new-page form
+	Kinds     []uiOption         // kinds of the new-page form
+	Grids     []uiOption         // character grids of a text page, by display type
 	Plans     []editorPlanRow    // the plan files next to the pages (ADR 0069)
 	Devices   []editorDeviceRow  // the device files (ADR 0070)
 	Unclaimed []editorUnclaimed  // state files whose MAC no device file uses (ADR 0080)
@@ -654,6 +655,18 @@ func plansByPage(plans []editorPlanFile) map[string][]string {
 	return index
 }
 
+// displayOfKind returns a configured display type of the given kind, so a
+// caller can pick a preview or a character grid without knowing a name. An
+// unknown or empty kind returns "".
+func displayOfKind(displays map[string]Profile, kind string) string {
+	for _, n := range sortedDisplays(displays) {
+		if (displays[n].Kind == kindText) == (kind == page.KindText) {
+			return n
+		}
+	}
+	return ""
+}
+
 func knownProfile(displays map[string]Profile, name string) bool {
 	_, ok := displays[name]
 	return ok
@@ -756,8 +769,18 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 		}
 		v.Types = append(v.Types, row)
 	}
+	// The new-page form asks for the kind: a page file serves its kind, not one
+	// display type (ADR 0110). A text page still needs a character grid, so the
+	// text display types name theirs.
+	for _, kind := range []string{page.KindImage, page.KindText} {
+		if displayOfKind(cfg.Profiles, kind) != "" {
+			v.Kinds = append(v.Kinds, uiOption{Value: kind, Label: kind, Selected: len(v.Kinds) == 0})
+		}
+	}
 	for _, n := range displayNames(cfg) {
-		v.Options = append(v.Options, uiOption{Value: n, Label: n, Selected: n == editorDisplay(cfg, "")})
+		if p := cfg.Profiles[n]; p.text() {
+			v.Grids = append(v.Grids, uiOption{Value: n, Label: fmt.Sprintf("%d×%d (%s)", p.Width, p.Height, n)})
+		}
 	}
 	v.Tabs = []uiTab{
 		{Name: "pages", Label: "Pages", Count: len(v.Groups), URL: editorTabURL("pages")},
@@ -808,6 +831,26 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	newPage := q.Get("new") == "1"
+	kindParam := q.Get("kind")
+	if kindParam != "" && kindParam != page.KindImage && kindParam != page.KindText {
+		v.Error = fmt.Sprintf("kind %q: expected image or text", kindParam)
+		renderEditorPage(w, v, http.StatusBadRequest)
+		return
+	}
+	if newPage && kindParam != "" {
+		// The new-page dialog asks for the kind; only a text page takes a
+		// character grid from a display type (ADR 0110).
+		if kindParam == page.KindText && display != "" && cfg.Profiles[display].text() {
+			// keep the chosen character grid
+		} else {
+			display = displayOfKind(cfg.Profiles, kindParam)
+			if display == "" {
+				v.Error = fmt.Sprintf("no display type of kind %q is configured", kindParam)
+				renderEditorPage(w, v, http.StatusBadRequest)
+				return
+			}
+		}
+	}
 	files, err := pageFiles(cfg.Pages)
 	if err != nil {
 		v.Error = err.Error()

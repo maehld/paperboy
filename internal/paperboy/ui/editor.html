@@ -65,9 +65,9 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <h2>Pages{{if .Groups}} <span class="count">{{len .Groups}}</span>{{end}}</h2>
     <span class="spacer"></span>
     <input class="filter" type="search" placeholder="Filter pages…" data-filter="page-table" aria-label="Filter pages">
-    {{if .Options}}<button class="new" type="button" data-dialog="new-page">New page</button>{{end}}
+    {{if .Kinds}}<button class="new" type="button" data-dialog="new-page">New page</button>{{end}}
   </div>
-  {{if not .Options}}<p class="empty">No display types configured. Add one under <code>displays/</code>.</p>{{end}}
+  {{if not .Kinds}}<p class="empty">No display types configured. Add one under <code>displays/</code>.</p>{{end}}
   {{if .Groups}}
   <table id="page-table">
     <thead><tr><th>Page</th><th>Variants</th><th>Kind</th><th>Grid</th><th>Title</th></tr></thead>
@@ -99,14 +99,17 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   {{else}}
   <p class="empty">No pages yet. A page is <code>pages/&lt;name&gt;.yaml</code>.</p>
   {{end}}
-  {{if .Options}}<dialog id="new-page">
+  {{if .Kinds}}<dialog id="new-page">
     <form method="get" action="/ui/editor/page">
       <h3>New page</h3>
       <input type="hidden" name="new" value="1">
       <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. solar" title="lower case letters, digits and -"></label>
-      <label>Display type <select name="display">
-        {{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+      <label>Kind <select name="kind" id="new-kind">
+        {{range .Kinds}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
       </select></label>
+      {{if .Grids}}<label id="new-grid-label">Character grid <select name="display" id="new-grid">
+        {{range .Grids}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
+      </select></label>{{end}}
       <p class="hint">Lower case letters, digits and <code>-</code>. The page file serves every display type of its kind; a variant covers another layout.</p>
       <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Create</button></div>
     </form>
@@ -295,6 +298,25 @@ for (const d of document.querySelectorAll('dialog')) {
   d.addEventListener('click', (e) => {
     if (e.target === d) d.close();
   });
+}
+
+// The new-page form asks for the kind; only a text page needs a character grid,
+// so the grid select is disabled for an image page and not submitted
+// (ADR 0110).
+{
+  const kind = document.getElementById('new-kind');
+  const grid = document.getElementById('new-grid');
+  const label = document.getElementById('new-grid-label');
+  const toggle = () => {
+    if (!kind || !grid || !label) return;
+    const text = kind.value === 'text';
+    label.hidden = !text;
+    grid.disabled = !text;
+  };
+  if (kind) {
+    kind.addEventListener('change', toggle);
+    toggle();
+  }
 }
 
 // Assigning moves one page file onto a page that has none, or makes it the

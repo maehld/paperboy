@@ -30,6 +30,9 @@ func TestEditorOverview(t *testing.T) {
 		`<a href="/ui/editor/page?display=small&amp;file=hochkant&amp;name=solar">hochkant</a>`,
 		"New page",
 		`data-dialog="new-page"`, `id="new-page"`, `action="/ui/editor/page"`,
+		`<select name="kind" id="new-kind">`, `<option value="text">text</option>`,
+		`<label id="new-grid-label">Character grid <select name="display" id="new-grid">`,
+		`20×4 (lcd)`,
 		`href="/ui/editor?tab=pages" class="active">Pages<span class="count">1</span>`,
 		`href="/ui/editor?tab=plans">Plans<span class="count">`,
 		"<a href=\"/ui/downloads\">Downloads</a> · <a href=\"/ui/plugins\">Widgets</a> · <a class=\"active\" href=\"/ui/editor\">Editor",
@@ -540,22 +543,37 @@ func TestEditorPage(t *testing.T) {
 }
 
 // TestEditorNewPageCreatesFromType starts a new page as exactly the page file
-// with the kind and grid of the display type; other files of the page never
-// open in its place (ADR 0110, issue #238).
+// with the kind the dialog asks for; a text page takes its character grid from
+// a text display type (ADR 0110, issue #238).
 func TestEditorNewPageCreatesFromType(t *testing.T) {
 	s := editorServer(t)
 	writePage(t, s, "wetter", "hochkant", variantPage)
 
 	// A new text page next to a variant of another kind starts with the
-	// character grid of the text display.
-	body := request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&display=lcd&new=1", nil, nil).Body.String()
+	// character grid of the chosen text display type.
+	body := request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&kind=text&display=lcd&new=1", nil, nil).Body.String()
 	if !strings.Contains(body, `"file":"","kind":"text","width":20,"height":4,"new":true,"grid":[20,4]`) {
 		t.Fatalf("new text page next to a variant:\n%s", body)
 	}
-	// A new image page is its own file as well.
-	body = request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&display=small&new=1", nil, nil).Body.String()
+	// Without a chosen grid it takes the first configured text type.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&kind=text&new=1", nil, nil).Body.String()
+	if !strings.Contains(body, `"kind":"text"`) || !strings.Contains(body, `"grid":[20,4]`) {
+		t.Fatalf("new text page without a chosen grid:\n%s", body)
+	}
+	// A new image page is its own file as well, whatever display type a stale
+	// link names.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&kind=image&display=lcd&new=1", nil, nil).Body.String()
 	if !strings.Contains(body, `"file":"","kind":"image","width":40,"height":20,"new":true`) {
 		t.Fatalf("new image page next to a variant:\n%s", body)
+	}
+	// An unknown kind is refused.
+	if rec := request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&kind=led&new=1", nil, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown kind: %d %s", rec.Code, rec.Body)
+	}
+	// The old link without a kind still derives it from the display type.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=wetter&display=lcd&new=1", nil, nil).Body.String()
+	if !strings.Contains(body, `"kind":"text"`) {
+		t.Fatalf("new page from a display type:\n%s", body)
 	}
 	// A page file that exists opens as it is, &new=1 or not.
 	writePage(t, s, "solar", "", pageWithVariant)
