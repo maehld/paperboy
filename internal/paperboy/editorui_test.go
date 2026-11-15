@@ -666,7 +666,7 @@ func TestEditorPage(t *testing.T) {
 	for _, want := range []string{
 		`"name":"solar","display":"small","file":"","kind":"image","width":40,"height":20,"new":false,"grid":[2,2],"reference":[6,8],"page_hash":`,
 		`"page_exists":true`,
-		`"displays":[{"name":"lcd","kind":"text","width":20,"height":4},{"name":"small","kind":"image","width":40,"height":20}]`,
+		`"displays":[{"name":"lcd","kind":"text","width":20,"height":4,"scroll_step":300},{"name":"small","kind":"image","width":40,"height":20}]`,
 		// The preview type is the served one; the file is not a link there.
 		`data-serves="small"`,
 		`"rename":{"url":"/api/pages/solar/rename"}`,

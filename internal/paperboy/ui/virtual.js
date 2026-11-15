@@ -68,6 +68,15 @@
     sizeText();
   }
 
+  // sizeText fits the glyph to the slot height, which the grid only knows
+  // after the cells exist.
+  function sizeText() {
+    const cell = text.querySelector(".cell");
+    if (!cell) return;
+    const h = cell.getBoundingClientRect().height;
+    if (h > 0) text.style.setProperty("--lcd-glyph", h + "px");
+  }
+
   function paintText(lines, scrolls, changed) {
     scrollBase = lines.slice();
     scrollBoxes = scrolls || [];

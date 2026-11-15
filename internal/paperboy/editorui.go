@@ -237,10 +237,11 @@ type editorState struct {
 // display type, so it starts a new variant from the type and never from the
 // open file (ADR 0110, issue #238).
 type editorDisplayInfo struct {
-	Name   string `json:"name"`
-	Kind   string `json:"kind"`
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
+	Name       string `json:"name"`
+	Kind       string `json:"kind"`
+	Width      int    `json:"width"`
+	Height     int    `json:"height"`
+	ScrollStep int    `json:"scroll_step,omitempty"` // ms between marquee steps (ADR 0117)
 }
 
 // displayNames lists the configured display types alphabetically.
@@ -1129,7 +1130,11 @@ func displayInfos(cfg *Config) []editorDisplayInfo {
 		if p.text() {
 			kind = page.KindText
 		}
-		out = append(out, editorDisplayInfo{Name: name, Kind: kind, Width: p.Width, Height: p.Height})
+		info := editorDisplayInfo{Name: name, Kind: kind, Width: p.Width, Height: p.Height}
+		if p.text() {
+			info.ScrollStep = int(p.ScrollStep / time.Millisecond)
+		}
+		out = append(out, info)
 	}
 	return out
 }

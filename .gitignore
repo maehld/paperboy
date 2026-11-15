@@ -27,3 +27,6 @@
 /displayd.json
 /displayd-data/
 .env
+
+# Test tooling only.
+node_modules/

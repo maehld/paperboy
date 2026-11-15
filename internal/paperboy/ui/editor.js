@@ -1034,6 +1034,12 @@
         board.appendChild(box);
       });
       let note = state.width + '×' + state.height + ' characters, ' + t.cells.length + ' boxes';
+      const scrollers = t.cells.filter((c) => (c.overflow || t.overflow || 'strip') === 'scroll');
+      if (scrollers.length) {
+        const display = state.displays.find((d) => d.name === state.display);
+        const step = (display && display.scroll_step) || 300;
+        note += ' · scrolls, step ' + step + ' ms';
+      }
       if (state.placing) note = 'Click a slot to place ' + (state.placing.literal ? 'text' : state.placing.plugin + '/' + state.placing.name) + '.';
       el('board-note').textContent = note;
       applyBoardPreview();
