@@ -461,10 +461,11 @@ func TestProtocol(t *testing.T) {
 		t.Fatalf("max_age = %d", msg.MaxAge)
 	}
 
-	req.Action = plugin.ActionText
-	req.Widgets = []plugin.WidgetRequest{{Widget: "battery", Width: 20, Height: 4}}
+	req.Action = plugin.ActionValues
+	req.Widgets = nil
+	req.Values = []string{"battery_soc", "charge_state"}
 	msg = plugin.Handle(m, req)
-	if msg.Error != "" || len(msg.Widgets) != 1 || len(msg.Widgets[0].Lines) == 0 {
+	if msg.Error != "" || len(msg.Values) != 2 || msg.Values["battery_soc"].Number == nil {
 		t.Fatalf("%+v", msg)
 	}
 	if err := msg.CheckVersion(); err != nil {
