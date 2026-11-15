@@ -24,7 +24,7 @@ Paperboy and the plugin exchange one JSON object per line: a request on stdin, a
 |---|---|---|
 | `configure` | The plugin's `config`, `env`, `language`, `timezone` | Nothing, or an error |
 | `state` | The stored state and the declared blobs | New state and changed blobs |
-| `describe` | – | Widgets, actions, conditions, config keys, blob names, version |
+| `describe` | – | Widgets, values, actions, conditions, config keys, blob names, version |
 | `render` | Widgets with pixel `width`/`height`, `args`, `style` | One base64 PNG per widget |
 | `text` | The same in characters | `lines` per widget |
 | `values` | The value keys a text page needs | `values` per key |
@@ -100,7 +100,7 @@ Every plugin has its own version in `cmd/<plugin>/VERSION`, embedded in the prog
 | [`countdown`](../plugins/countdown.md) | none, every date is an argument | `countdown` |
 | [`pokedex`](../plugins/pokedex.md) | PokéAPI | `card` |
 
-Most of them have text variants. The [plugin pages](../plugins/README.md) describe arguments, config keys, refresh rules and the data source of each one.
+Every widget is for an image display. A plugin with data for a text page declares values instead ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). The [plugin pages](../plugins/README.md) describe arguments, config keys, values, refresh rules and the data source of each one.
 
 ## Decisions
 
