@@ -203,7 +203,7 @@
       return;
     }
     const s = t.style || {};
-    el('title').value = t.title || '';
+    el('title').value = t.title || state.page_title || '';
     el('cols').value = t.grid[0];
     el('rows').value = t.grid[1];
     el('padding').value = s.padding === undefined || s.padding === null ? '' : s.padding;

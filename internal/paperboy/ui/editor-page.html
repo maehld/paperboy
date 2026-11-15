@@ -82,10 +82,8 @@ input[type=search] { margin-bottom: .4rem; }
 .panel.serves td.pick { white-space: nowrap; }
 .panel.serves td.pick select { width: 100%; min-width: 0; font-size: .78rem; padding: .05rem .1rem; }
 .panel.serves td.pick select.none { color: #888; background: #f4f4f4; }
-.panel.variant-types, dl.variant-types { margin: 0; }
-dl.variant-types { display: grid; grid-template-columns: 5.5rem 1fr; gap: .2rem .5rem; font-size: .85rem; }
-dl.variant-types dt { color: #555; }
-dl.variant-types dd { margin: 0; }
+.types-label { margin: .55rem 0 .15rem; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: #666; font-weight: 600; }
+ul.variant-types { margin: 0; padding-left: 1.1rem; font-size: .85rem; }
 /* An action that belongs to a panel spans the card, with the same gap above it
    as the panel padding leaves below it. */
 .panel > button { display: block; width: 100%; margin: .8rem 0 0; }
@@ -161,7 +159,6 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     {{if not .WidgetsPage}}<section class="panel">
       <h3>Page</h3>
       <label class="field"><span>Title</span><input id="title" autocomplete="off"></label>
-      {{if .IsVariant}}{{if .ParentURL}}<p class="hint" id="parent">Parent: <a href="{{.ParentURL}}">{{.Name}}</a></p>{{end}}{{end}}
       <label class="field"><span>Grid</span><span class="grid2"><input id="cols" type="number" min="1" max="80" title="columns"><input id="rows" type="number" min="1" max="80" title="rows"></span></label>
       <p class="hint" id="grid-note"></p>
       <h4>Style (pt)</h4>
@@ -174,11 +171,9 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     </section>
     {{if .IsVariant}}<section class="panel">
       <h3>Variant</h3>
-      <p class="hint">This is a variant for</p>
-      <dl class="variant-types">
-        <dt>Display type</dt>
-        <dd>{{if .VariantFor}}{{.VariantFor}}{{else}}none{{end}}</dd>
-      </dl>
+      <p class="hint">This is a variant for {{if .ParentURL}}<a href="{{.ParentURL}}">{{.PageTitle}}</a>{{else}}{{.PageTitle}}{{end}}</p>
+      <p class="types-label">Display types</p>
+      {{if .VariantTypes}}<ul class="variant-types">{{range .VariantTypes}}<li>{{.}}</li>{{end}}</ul>{{else}}<p class="hint">none</p>{{end}}
     </section>{{else}}<section class="panel serves">
       <h3>Variants</h3>
       {{if .NoPage}}<p class="hint">{{if .Orphan}}This page has no page file yet. Assign one in the pages list.{{else}}This page has no file yet; the first save writes it.{{end}}</p>{{else}}<table>

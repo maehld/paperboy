@@ -124,29 +124,30 @@ type editorPlanRow struct {
 // editorPageView is the shell of one page; the script reads the model, the
 // plugin list and the profiles from the API.
 type editorPageView struct {
-	Version     string
-	GoVersion   string
-	Name        string
-	Display     string // the preview type (ADR 0110)
-	Text        bool
-	Error       string
-	File        string        // the label of the open file; empty: the page file
-	FilePath    string        // pages/<name>[.<label>].yaml
-	Notice      string        // the preview type is not the file the editor shows
-	NoticeWarn  bool          // the notice is a warning, not a hint
-	Orphan      bool          // the open variant has no page file
-	NoPage      bool          // the page has no page file
-	IsVariant   bool          // a variant is open; the page file owns the map
-	VariantFor  string        // display types that name the open variant, read-only
-	ParentURL   string        // the page file of an open variant
-	ParentTitle string        // its path, for the link
-	WidgetsPage bool          // the widgets page without a page (ADR 0055)
-	Displays    []displayLink // display type switch of the widgets page
-	Serves      []servesRow   // each configured display type and its file
-	CreateTypes []variantType // the display types the create dialog offers
-	CreateLabel string        // the label the create dialog starts with
-	CreateOK    bool          // a display type waits for a variant
-	Data        template.JS   // the starting state of the script
+	Version      string
+	GoVersion    string
+	Name         string
+	Display      string // the preview type (ADR 0110)
+	Text         bool
+	Error        string
+	File         string        // the label of the open file; empty: the page file
+	FilePath     string        // pages/<name>[.<label>].yaml
+	Notice       string        // the preview type is not the file the editor shows
+	NoticeWarn   bool          // the notice is a warning, not a hint
+	Orphan       bool          // the open variant has no page file
+	NoPage       bool          // the page has no page file
+	IsVariant    bool          // a variant is open; the page file owns the map
+	VariantTypes []string      // display types that name the open variant, read-only
+	PageTitle    string        // title of the page file, shown read-only on a variant
+	ParentURL    string        // the page file of an open variant
+	ParentTitle  string        // its path, for the link
+	WidgetsPage  bool          // the widgets page without a page (ADR 0055)
+	Displays     []displayLink // display type switch of the widgets page
+	Serves       []servesRow   // each configured display type and its file
+	CreateTypes  []variantType // the display types the create dialog offers
+	CreateLabel  string        // the label the create dialog starts with
+	CreateOK     bool          // a display type waits for a variant
+	Data         template.JS   // the starting state of the script
 }
 
 // servesRow is one configured display type in the Variants table: the file
@@ -211,10 +212,11 @@ type editorState struct {
 	New         bool                `json:"new"`  // there is no file yet
 	Grid        [2]int              `json:"grid"` // grid a new page starts with
 	Reference   [2]int              `json:"reference"`
-	PageHash    string              `json:"page_hash,omitempty"` // hash of the page file, for a new variant
-	PageExists  bool                `json:"page_exists"`         // the page file exists
-	Named       bool                `json:"named,omitempty"`     // the page names this variant
-	Displays    []editorDisplayInfo `json:"displays,omitempty"`  // configured display types (ADR 0110)
+	PageHash    string              `json:"page_hash,omitempty"`  // hash of the page file, for a new variant
+	PageExists  bool                `json:"page_exists"`          // the page file exists
+	PageTitle   string              `json:"page_title,omitempty"` // the title of the page file, shown read-only on a variant
+	Named       bool                `json:"named,omitempty"`      // the page names this variant
+	Displays    []editorDisplayInfo `json:"displays,omitempty"`   // configured display types (ADR 0110)
 	WidgetsPage bool                `json:"widgets_page,omitempty"`
 	Widget      string              `json:"widget,omitempty"` // plugin/widget the widgets page starts with
 	Span        *[2]int             `json:"span,omitempty"`   // its size on the reference grid
@@ -898,10 +900,14 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	// belongs to the widgets page only.
 	v.IsVariant = label != ""
 	if v.IsVariant {
-		v.VariantFor = strings.Join(servesTypes(variants, label), ", ")
+		v.VariantTypes = servesTypes(variants, label)
+		v.PageTitle = name
 		if pageFile != nil {
 			v.ParentTitle = pageFileName(name, "")
 			v.ParentURL, _ = pageEditURL(*pageFile, variants, cfg.Profiles, false)
+			if pageFile.Title != "" {
+				v.PageTitle = pageFile.Title
+			}
 		}
 	} else {
 		v.Serves = servesTable(cfg, name, label, display, files, coverage, pageExists)
@@ -944,6 +950,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 		Grid:       pageGrid(kind, p, *openOrBlank(open, name, label)),
 		PageHash:   pageHash,
 		PageExists: pageExists,
+		PageTitle:  v.PageTitle,
 		Named:      named,
 		Displays:   displayInfos(cfg),
 		UsedBy:     usedBy,

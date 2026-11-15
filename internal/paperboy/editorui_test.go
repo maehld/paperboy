@@ -225,11 +225,11 @@ func TestEditorVariantsPanel(t *testing.T) {
 	// A variant is a child page: it names its page file and shows no table.
 	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&file=hochkant", nil, nil).Body.String()
 	for _, want := range []string{
-		`Parent: <a href="/ui/editor/page?display=small&amp;name=solar">solar</a>`,
+		`"page_title":"Solar"`,
 		`<h3>Variant</h3>`,
-		`This is a variant for`,
-		`<dt>Display type</dt>`,
-		`<dd>small</dd>`,
+		`This is a variant for <a href="/ui/editor/page?display=small&amp;name=solar">Solar</a>`,
+		`<p class="types-label">Display types</p>`,
+		`<ul class="variant-types"><li>small</li></ul>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the variant misses %q:\n%s", want, body)
@@ -246,7 +246,7 @@ func TestEditorVariantsPanel(t *testing.T) {
 	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=lcd&file=lcd", nil, nil).Body.String()
 	for _, want := range []string{
 		`class="warn" id="file-notice">This variant is unused. It is not shown on any device.`,
-		`<dd>none</dd>`,
+		`<p class="hint">none</p>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("unused variant lacks %q:\n%s", want, body)
