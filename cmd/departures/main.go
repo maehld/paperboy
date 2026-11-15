@@ -7,7 +7,8 @@
 //   - "departures": line, destination, minutes or time, delay, cancellations.
 //
 // One plugin serves several stops; the widget picks one of them by name
-// (ADR 0100). The widget has a text variant for character displays.
+// (ADR 0100). The widget is for image displays; its values give a text page
+// the departures of the first stop.
 //
 //	plugins:
 //	  departures:
@@ -136,7 +137,6 @@ type departures struct {
 }
 
 func (p *departures) Describe() plugin.Description {
-	both := []string{plugin.KindImage, plugin.KindText}
 	names := make([]any, 0, len(p.stops))
 	for _, s := range p.stops {
 		names = append(names, s.spec.Name)
@@ -149,8 +149,15 @@ func (p *departures) Describe() plugin.Description {
 		Title:   "Departures",
 		Version: version(),
 		Config:  configKeys,
+		Values: []plugin.ValueSpec{
+			{Name: "stop", Title: "Stop", Type: plugin.ValueText},
+			{Name: "departures", Title: "Departures", Type: plugin.ValueText},
+			{Name: "next", Title: "Next departure", Type: plugin.ValueText},
+			{Name: "next_at", Title: "Next departure at", Type: plugin.ValueTimestamp},
+			{Name: "next_in", Title: "Next departure in", Type: plugin.ValueDuration},
+		},
 		Widgets: []plugin.WidgetInfo{
-			{Widget: "departures", Title: "Real-time departures", Kinds: both, MinWidth: 200, MinHeight: 60,
+			{Widget: "departures", Title: "Real-time departures", Kinds: []string{plugin.KindImage}, MinWidth: 200, MinHeight: 60,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 3}, {Columns: 6, Rows: 4}},
 				Args: map[string]plugin.Arg{
 					"stop":   {Type: "string", Default: first, Enum: names, Description: "one of the configured stops by name; default the first"},

@@ -151,49 +151,6 @@ func (p *departures) timeIn(d departure, now time.Time, mode string, compact boo
 	return fmt.Sprintf("%d min", mins)
 }
 
-// Text draws one departure per line: line and destination left, delay and
-// time right. A header line with the stop name is optional.
-func (p *departures) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
-	mode, err := timeMode(w)
-	if err != nil {
-		return nil, err
-	}
-	locMode, err := localityMode(w)
-	if err != nil {
-		return nil, err
-	}
-	order, err := localityOrder(w)
-	if err != nil {
-		return nil, err
-	}
-	v, err := p.selected(w)
-	if err != nil {
-		return nil, err
-	}
-	var lines []string
-	if w.Arg().Bool("header", false) && v.name != "" {
-		lines = append(lines, plugin.Align(v.header(order), w.Width, "left"))
-	}
-	if len(v.list) == 0 {
-		lines = append(lines, p.t("Keine Abfahrten", "No departures"))
-	}
-	for _, d := range v.list {
-		right := p.timeIn(d, req.Now, mode, true)
-		if dl := delayText(d); dl != "" && !d.Cancelled {
-			right = dl + " " + right
-		}
-		left := d.Line
-		if d.Destination != "" {
-			left += " " + v.destination(d, locMode, order)
-		}
-		lines = append(lines, plugin.Columns(left, right, w.Width))
-	}
-	if len(lines) > w.Height {
-		lines = lines[:w.Height]
-	}
-	return lines, nil
-}
-
 func localityMode(w plugin.WidgetRequest) (string, error) {
 	m := w.Arg().String("locality", "auto")
 	switch m {
