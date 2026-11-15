@@ -70,7 +70,7 @@ state/editor/                       backups of edited and deleted files (ADR 006
 state/download/<train>/cache.json   release lists per release train (ADR 0090)
 ```
 
-The file name is the stable name. A page variant is named after its display type, a device file after the device ID. A display type file carries the name that pages and devices refer to. Renaming a file therefore means renaming a reference; the editor names the references and moves the file only ([ADR 0079](../adr/0079-rename-config-items.md)).
+The file name is the stable name. A variant is named by the label that the page file gives it in `variants`; a device file is named after the device ID. A display type file carries the name that pages and devices refer to. Renaming a file therefore means renaming a reference; the editor names the references and moves the file only ([ADR 0079](../adr/0079-rename-config-items.md), [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md)).
 
 `plugins/` is optional. Paperboy finds a program in `plugins/` first and on `PATH` second ([ADR 0060](../adr/0060-download-from-releases.md), [0075](../adr/0075-plugin-versions.md)).
 

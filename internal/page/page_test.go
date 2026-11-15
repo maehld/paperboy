@@ -17,6 +17,7 @@ import (
 
 const gridPage = `
 title: Test
+kind: image
 grid: [4, 2]
 style: { padding: 4, divider: 2 }
 cells:
@@ -47,18 +48,62 @@ func TestParseValidatesGrid(t *testing.T) {
 	}
 }
 
-func TestLoadFallsBackToSharedPage(t *testing.T) {
+func TestParseNeedsKindAndValidVariants(t *testing.T) {
+	if _, err := Parse(strings.NewReader("grid: [1, 1]\ncells: [{widget: a/b}]\n")); err == nil || !strings.Contains(err.Error(), "kind is required") {
+		t.Fatalf("missing kind: %v", err)
+	}
+	for name, bad := range map[string]string{
+		"display":   "kind: image\ngrid: [1, 1]\nvariants: {Sticky: s}\ncells: [{widget: a/b}]\n",
+		"label":     "kind: image\ngrid: [1, 1]\nvariants: {sticky: S}\ncells: [{widget: a/b}]\n",
+		"duplicate": "kind: image\ngrid: [1, 1]\nvariants: {sticky: a, sticky: b}\ncells: [{widget: a/b}]\n",
+	} {
+		if _, err := Parse(strings.NewReader(bad)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestParseVariantRejectsTitleAndVariants(t *testing.T) {
+	for name, bad := range map[string]string{
+		"title":    "title: x\nkind: image\ngrid: [1, 1]\ncells: [{widget: a/b}]\n",
+		"variants": "kind: image\ngrid: [1, 1]\nvariants: {small: s}\ncells: [{widget: a/b}]\n",
+	} {
+		if _, err := ParseVariant(strings.NewReader(bad)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	variant := "kind: image\ngrid: [1, 1]\ncells: [{widget: a/b}]\n"
+	if _, err := ParseVariant(strings.NewReader(variant)); err != nil {
+		t.Errorf("a variant without a title: %v", err)
+	}
+	if _, err := Parse(strings.NewReader(variant)); err != nil {
+		t.Errorf("a page may omit its title: %v", err)
+	}
+}
+
+// TestLoadForNamesVariants explains the resolution of ADR 0110: the page file
+// serves its kind, and the variants map names the files that serve the rest.
+func TestLoadForNamesVariants(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("title: shared\ngrid: [1, 1]\ncells: [{widget: a/b}]\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "a.small.yaml"), []byte("title: own\ngrid: [1, 1]\ncells: [{widget: a/b}]\n"), 0o644)
-	if p, err := Load(dir, "a", "small"); err != nil || p.Title != "own" {
-		t.Fatalf("own variant: %v %v", p, err)
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if p, err := Load(dir, "a", "big"); err != nil || p.Title != "shared" {
-		t.Fatalf("shared page: %v %v", p, err)
+	write("a.yaml", "title: shared\nkind: image\ngrid: [1, 1]\nvariants: {small: hoch}\ncells: [{widget: a/b}]\n")
+	write("a.hoch.yaml", "kind: image\ngrid: [1, 2]\ncells: [{widget: a/b}]\n")
+	if p, err := LoadFor(dir, "a", "small"); err != nil || p.Title != "shared" || p.Grid != [2]int{1, 2} {
+		t.Fatalf("variant: %+v %v", p, err)
 	}
-	if _, err := Load(dir, "b", "big"); !errors.Is(err, ErrNotFound) {
+	if p, err := LoadFor(dir, "a", "big"); err != nil || p.Grid != [2]int{1, 1} {
+		t.Fatalf("page file: %+v %v", p, err)
+	}
+	if _, err := LoadFor(dir, "b", "big"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing page: %v", err)
+	}
+	write("c.yaml", "kind: image\ngrid: [1, 1]\nvariants: {small: gone}\ncells: [{widget: a/b}]\n")
+	if _, err := LoadFor(dir, "c", "small"); !errors.Is(err, ErrNotFound) || !strings.Contains(err.Error(), "gone") {
+		t.Fatalf("missing variant: %v", err)
 	}
 }
 
@@ -217,7 +262,7 @@ func TestBannerOnTinyDisplayStaysBlack(t *testing.T) {
 }
 
 func TestFits(t *testing.T) {
-	img, _ := Parse(strings.NewReader("grid: [20, 4]\ncells: [{widget: a/b}]\n"))
+	img, _ := Parse(strings.NewReader("kind: image\ngrid: [20, 4]\ncells: [{widget: a/b}]\n"))
 	txt, _ := Parse(strings.NewReader("kind: text\ngrid: [20, 4]\ncells: [{widget: a/b}]\n"))
 	lcd := Display{Width: 20, Height: 4, Text: true}
 	if img.Fits(lcd) == nil {
@@ -269,7 +314,7 @@ cells:
 }
 
 func TestScrollNeedsTextPageAndFullWidth(t *testing.T) {
-	if _, err := Parse(strings.NewReader("grid: [10, 1]\ncells: [{span: [10, 1], widget: a/b, scroll: true}]\n")); err == nil {
+	if _, err := Parse(strings.NewReader("kind: image\ngrid: [10, 1]\ncells: [{span: [10, 1], widget: a/b, scroll: true}]\n")); err == nil {
 		t.Error("scroll on an image page accepted")
 	}
 	tmpl, err := Parse(strings.NewReader("kind: text\ngrid: [10, 2]\ncells: [{span: [6, 1], widget: a/b, scroll: true}]\n"))

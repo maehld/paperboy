@@ -1,5 +1,6 @@
 # evcc: energy flow on top, site values and the charging point below.
 title: Energie
+kind: image
 grid: [6, 8]
 style: { padding: 4.5, divider: 0.6 }
 cells:

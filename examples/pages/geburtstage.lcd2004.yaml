@@ -1,5 +1,4 @@
 # The next birthdays on a 20x4 character display: the age in parentheses.
-title: Geburtstage
 kind: text
 grid: [20, 4]
 cells:

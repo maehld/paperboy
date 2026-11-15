@@ -9,23 +9,42 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// Encode writes a template as a page file the way Parse reads it (ADR 0066).
-// It fills the defaults Parse fills (kind, notices, spans), so what it writes
-// reads back unchanged, and it rejects an invalid template before anything is
-// written. The layout is stable and hand-readable: fixed key order, flow style
-// for coordinates and one cell per line.
-func Encode(t *Template) ([]byte, error) {
+// Encode writes a page file the way Parse reads it (ADR 0066). It fills the
+// defaults Parse fills (notices, spans), so what it writes reads back
+// unchanged, and it rejects an invalid page before anything is written. The
+// layout is stable and hand-readable: fixed key order, flow style for
+// coordinates and one cell per line.
+func Encode(t *Template) ([]byte, error) { return encode(t, false) }
+
+// EncodeVariant writes a variant file: the layout without the title and the
+// variants of its page (ADR 0110).
+func EncodeVariant(t *Template) ([]byte, error) { return encode(t, true) }
+
+func encode(t *Template, variant bool) ([]byte, error) {
 	c := *t
 	c.Cells = append([]Cell(nil), t.Cells...)
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
+	if variant && (c.Title != "" || len(c.Variants) > 0) {
+		return nil, fmt.Errorf("a variant carries neither title nor variants")
+	}
 	root := newMap()
-	if c.Title != "" {
+	if !variant && c.Title != "" {
 		add(root, "title", str(c.Title))
 	}
-	if c.Kind == KindText {
-		add(root, "kind", str(c.Kind))
+	add(root, "kind", str(c.Kind))
+	if !variant && len(c.Variants) > 0 {
+		variants := newMap()
+		keys := make([]string, 0, len(c.Variants))
+		for k := range c.Variants {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			add(variants, k, str(c.Variants[k]))
+		}
+		add(root, "variants", variants)
 	}
 	add(root, "grid", intSeq(c.Grid[0], c.Grid[1]))
 	if s := styleNode(c.Style, false); len(s.Content) > 0 {

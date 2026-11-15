@@ -12,9 +12,10 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **widget** | One drawing unit of a plugin, identified as `<plugin>/<widget>` | module, fragment, block |
 | **cell** | One box of a page grid, which shows exactly one widget | tile, slot |
 | **page** | A grid of cells with a size from its display type | screen, template, view |
-| **page file** | `pages/<page>.<display type>.yaml` for one display type, or `pages/<page>.yaml` shared by all | page, variant (for the shared file) |
-| **variant** | The page file of one display type | profile, page |
+| **page file** | `pages/<page>.yaml`: the layout for its kind and the `variants` map. It serves every display type of its kind. | shared page, main page, base page |
+| **variant** | `pages/<page>.<label>.yaml`: one layout that the page file names for a display type. It carries no title. | display version, page |
 | **display type** | The kind of panel that pages fit: kind, size, gray levels, ppi or charset, power, rotation | display, panel, profile, device type |
+| **orphan** | A variant whose page file is missing, and a page that exists only as variants | stray file, leftover |
 | **device** | One panel with Paperboy's firmware, identified by MAC and one file under `devices/` | display, node, client, target |
 | **plan** | The rules that select the pages of one device over time | playlist, schedule |
 | **rule** | One entry of a plan: time window, days, conditions, pages, rotation, refresh | plan, entry |

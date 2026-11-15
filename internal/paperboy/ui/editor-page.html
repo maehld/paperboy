@@ -65,6 +65,15 @@ input[type=search] { margin-bottom: .4rem; }
 #board.hide-cells .cell.selected { outline: 0; }
 #board.hide-cells .cell .w, #board.hide-cells .cell .pos, #board.hide-cells .cell .handle { display: none; }
 .hint { margin: .4rem 0 0; font-size: .8rem; color: #666; }
+.warn { margin: .5rem 0; padding: .5rem .6rem; background: #fff8e1; border-left: 3px solid #c90; font-size: .85rem; }
+.warn a { color: #134e9c; }
+.panel.coverage table { border-collapse: collapse; width: 100%; font-size: .8rem; }
+.panel.coverage th, .panel.coverage td { text-align: left; padding: .22rem .4rem .22rem 0; border-top: 1px solid #eee; vertical-align: top; }
+.panel.coverage th { border-top: 0; color: #666; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+.panel.coverage td.act { text-align: right; white-space: nowrap; }
+.panel.coverage .why { display: block; color: #b00; font-size: .74rem; }
+.panel.coverage .served { word-break: break-all; }
+.panel.coverage button { font-size: .74rem; padding: .05rem .45rem; }
 .palette .plugin { border-top: 1px solid #eee; padding-top: .5rem; margin-top: .5rem; }
 .palette .plugin:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
 .palette .plugin-head { display: flex; align-items: center; gap: .3rem; margin: 0 0 .3rem; font-size: .85rem; color: #333; font-weight: 600; cursor: pointer; user-select: none; }
@@ -110,18 +119,18 @@ input[type=search] { margin-bottom: .4rem; }
 {{else}}
 {{if not .WidgetsPage}}<div class="bar">
   <a href="/ui/editor?tab=pages">← Pages</a>
-  <h2>page {{.Name}} - <span id="file-label">{{.File}}</span></h2>
+  <h2>page {{.Name}}{{with .File}} - <span id="file-label">{{.}}</span>{{end}}</h2>
   <span class="spacer"></span>
   <span class="status" id="status"></span>
-  {{if .Toggle}}<a class="action" id="file-toggle" href="{{.Toggle.URL}}">{{.Toggle.Label}}</a>{{end}}
-  <button id="specialize" type="button" hidden></button>
   <button id="rename" type="button" hidden>Rename</button>
   <button id="delete" type="button" class="danger" hidden>Delete</button>
   <button id="reload" type="button">Reload</button>
   <button class="primary" id="save" type="button">Save</button>
-</div>{{end}}
+</div>
+{{if .Warning}}<p class="warn" id="file-warning">{{.Warning}}{{if .WarnURL}} <a href="{{.WarnURL}}">{{.WarnLabel}}</a>{{end}}</p>{{end}}
+{{if .Orphan}}<p class="warn">This file belongs to no page. <a href="/ui/editor?tab=pages">Assign it in the pages list.</a></p>{{end}}{{end}}
 <div class="switch" id="display-switch">
-  <span class="muted">Display type:</span>
+  <span class="muted">{{if .WidgetsPage}}Display type:{{else}}Preview:{{end}}</span>
   {{range .Displays}}<a href="{{.URL}}" data-display="{{.Name}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
   {{if .WidgetsPage}}<span class="status" id="status"></span>{{end}}
 </div>
@@ -130,6 +139,7 @@ input[type=search] { margin-bottom: .4rem; }
     {{if not .WidgetsPage}}<section class="panel">
       <h3>Page</h3>
       <label class="field"><span>Title</span><input id="title" autocomplete="off"></label>
+      <p class="hint" id="title-note"></p>
       <label class="field"><span>Grid</span><span class="grid2"><input id="cols" type="number" min="1" max="80" title="columns"><input id="rows" type="number" min="1" max="80" title="rows"></span></label>
       <p class="hint" id="grid-note"></p>
       <h4>Style (pt)</h4>
@@ -139,6 +149,22 @@ input[type=search] { margin-bottom: .4rem; }
       <label class="field"><span>divider</span><input id="divider" type="number" step="0.1" min="0"></label>
       <h4>Stale widgets</h4>
       <select id="notices"><option value="show">show a bar</option><option value="none">do not show</option></select>
+    </section>
+    <section class="panel coverage">
+      <h3>Coverage</h3>
+      <p class="hint">{{if .NoPage}}This page has no page file yet. Assign one in the pages list.{{else}}Which file serves each configured display type.{{end}}</p>
+      {{if .Coverage}}<table>
+        <thead><tr><th>Display type</th><th>Served by</th><th></th></tr></thead>
+        <tbody>
+          {{range .Coverage}}
+          <tr>
+            <td>{{.Display}} <span class="why">{{.Kind}}</span></td>
+            <td class="served">{{if .Served}}{{.Served}}{{else}}&mdash;{{end}}{{if .Reason}}<span class="why">{{.Reason}}</span>{{end}}</td>
+            <td class="act">{{if .Open}}<a href="{{.Open}}">Open</a>{{end}}{{if .Create}}<button type="button" data-variant="{{.Display}}">Create layout</button>{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>{{end}}
     </section>{{end}}
     <section class="panel palette">
       <h3>Widgets</h3>

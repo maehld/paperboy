@@ -71,8 +71,8 @@ func menuServer(t *testing.T, actions string, tweak func(*Device)) (*Server, *ti
 func menuServerRules(t *testing.T, rules, actions string, tweak func(*Device)) (*Server, *time.Time, *menuPlugin) {
 	t.Helper()
 	dir := t.TempDir()
-	writePageFile(t, filepath.Join(dir, "pages", "eins.small.yaml"), textPage("eins"))
-	writePageFile(t, filepath.Join(dir, "pages", "zwei.small.yaml"), textPage("zwei"))
+	writePageFile(t, filepath.Join(dir, "pages", "eins.yaml"), textPage("eins"))
+	writePageFile(t, filepath.Join(dir, "pages", "zwei.yaml"), textPage("zwei"))
 	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), rules+actions)
 	d := Device{ID: "test", MAC: menuDeviceMAC, Profile: "small", Plan: "zimmer",
 		Refresh: Duration(10 * time.Minute)}

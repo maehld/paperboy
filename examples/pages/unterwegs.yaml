@@ -1,5 +1,6 @@
 # Before leaving the house: weather with clothing advice and the next departures.
 title: Unterwegs
+kind: image
 grid: [6, 8]
 style: { padding: 4.5, divider: 0.6 }
 cells:

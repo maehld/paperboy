@@ -4,11 +4,13 @@
 
 ## Pages
 
-A page is a grid of cells, and every cell shows one widget ([ADR 0049](adr/0049-plugin-widgets.md)): `pages/<page>.<display type>.yaml`, or `pages/<page>.yaml` for all display types without their own variant.
+A page is a grid of cells, and every cell shows one widget ([ADR 0049](adr/0049-plugin-widgets.md)). The page file `pages/<page>.yaml` carries the layout and serves every display type of its kind. Its `variants` map names the exceptions ([ADR 0110](adr/0110-pages-serve-their-kind-and-name-variants.md)): `sticky: hochkant` means that `pages/<page>.hochkant.yaml` serves the sticky display type. The variant file carries the layout without the title and without `variants`.
 
 ```yaml
 title: Übersicht
+kind: image
 grid: [6, 8]                 # columns, rows
+variants: { sticky: hochkant }
 style: { padding: 4.5, rule: 0.6, text_size: 16, divider: 0.6 }   # points
 notices: show                # show (default) or none
 cells:
@@ -19,11 +21,19 @@ cells:
   - { at: [3, 4], span: [3, 4], widget: weather/days, args: { days: 3 } }
 ```
 
+```yaml
+# pages/uebersicht.hochkant.yaml: the same screen on the portrait panel
+kind: image
+grid: [6, 8]
+cells:
+  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
+```
+
 - `widget` is `<plugin>/<widget>`. Paperboy passes `args` to the widget unchanged. `at` is the top-left cell (column, row, from 0), and `span` is the size in cells (default `[1, 1]`). Cells must stay inside the grid and must not overlap. Empty cells stay white.
 - On an image display the grid divides the pixels. Paperboy asks every plugin for its widgets in exactly the pixel size of the cell and the gray levels of the panel. It quantizes the PNG to the palette (nearest gray, no dithering) and pastes it 1:1, so Paperboy never scales a widget. The PNG has 1, 2 or 4 bits (2, 4 or 16 gray levels), depending on the display type. A plugin that answers with another size gets a notice in its cell.
 - `style` is in points (1 pt = 1/72 inch, [ADR 0050](adr/0050-physical-scaling-by-display-ppi.md)). Paperboy passes it to every widget and converts it to pixels with the `ppi` of the display type. `padding` is the inner margin (default 4.5 pt ≈ 1.6 mm). `rule` is the separator width (default 0.6 pt ≈ 0.2 mm, never thinner than 1 px). `text_size` is the base text height (4–144 pt, default 16 pt, at most 0.12 of the display height), so widgets of different plugins match. `divider` (points, at least 1 px, default 0 = none) draws lines between the cells; Paperboy draws them, not the widgets. The `style` of a cell overrides the page style.
 - The **built-in plugin** `paperboy` needs no configuration and provides `paperboy/header`, `paperboy/text`, `paperboy/clock` and `paperboy/logo` (see [docs/plugins/paperboy.md](plugins/paperboy.md)).
-- `kind: image` (default) or `kind: text` says which displays a page is for. A plan may serve image and text displays alike. When a device pages through a rule, Paperboy skips pages that do not fit its display type. A page does not fit when it has no variant and no shared page or when it has the other kind. It also does not fit when its text grid is not the character grid of the display. Paperboy logs each skip once per display type and page. When no page of the rule fits, the device gets a notice (*No matching page*). Paperboy does not skip a broken page; it shows its error as a notice.
+- `kind: image` or `kind: text` is required and says which displays a file is for. A plan may serve image and text displays alike. When a device pages through a rule, Paperboy skips pages that do not fit its display type. A page does not fit when no file serves the type or when it has the other kind. It also does not fit when its text grid is not the character grid of the display. Paperboy logs each skip once per display type and page. When no page of the rule fits, the device gets a notice (*No matching page*). Paperboy does not skip a broken page; it shows its error as a notice.
 - **Stale widgets**: when a plugin fails, Paperboy keeps showing its last widgets and marks the page. An image display gets a bar (*Outdated: calendar/agenda*, German *Veraltet: …*), a text display gets `!` in the last column of the first line. `notices: none` turns both off. A widget that never rendered becomes a hatched notice inside its cell with the reason. A plugin that cannot draw in its cell at all answers `cell too small: <width>x<height>` instead of leaving the cell empty, so a cell that is too small for its widget shows that notice.
 - Preview without a device: `GET /api/preview/<display type>/<page>` (PNG, or `text/plain` for text displays; an optional `?at=YYYY-MM-DDTHH:MM` renders the page as at that time in the configured timezone). `GET /api/profiles` lists the display types.
 - The page editor at `/ui/editor` builds a page from the same model (see [Web UI](runtime.md#web-ui)).
@@ -41,9 +51,9 @@ cells:
   - { at: [0, 2], span: [20, 2], widget: calendar/agenda }
 ```
 
-Plugins answer with lines for the cell. Paperboy converts them to the `charset` of the display type, cuts them to the cell width and pads them. `ascii` transliterates (ä → ae, ° → o, € → EUR). `hd44780` keeps `ä ö ü ß ° µ` for the ROM mapping of the firmware, writes `Ä Ö Ü` as `A O U` (the ROM has no capital umlauts, and the width must stay) and transliterates the rest. Set `charset: hd44780` for HD44780 displays; with the default `utf8` the firmware has to guess. A widget without a text variant shows its error in the cell. A cell that spans the whole display width may set `scroll: true` ([ADR 0092](adr/0092-scrolling-text-lines.md)): the widget then gets `scroll` in its request and may answer a line that is wider than the cell, Paperboy shows the first columns, and firmware 2.2.0 for text displays moves the rest as a marquee. Without the flag a long line is cut; `examples/pages/hinweise.lcd2004.yaml` shows the scrolling line.
+Plugins answer with lines for the cell. Paperboy converts them to the `charset` of the display type, cuts them to the cell width and pads them. `ascii` transliterates (ä → ae, ° → o, € → EUR). `hd44780` keeps `ä ö ü ß ° µ` for the ROM mapping of the firmware, writes `Ä Ö Ü` as `A O U` (the ROM has no capital umlauts, and the width must stay) and transliterates the rest. Set `charset: hd44780` for HD44780 displays; with the default `utf8` the firmware has to guess. A widget without a text variant shows its error in the cell. A cell that spans the whole display width may set `scroll: true` ([ADR 0092](adr/0092-scrolling-text-lines.md)): the widget then gets `scroll` in its request and may answer a line that is wider than the cell, Paperboy shows the first columns, and firmware 2.2.0 for text displays moves the rest as a marquee. Without the flag a long line is cut; `examples/pages/hinweise.yaml` shows the scrolling line.
 
-The pages in `examples/pages` (`uebersicht`, `kalender`, `wetter`, `laden` and the 20 × 4 variants `uebersicht.lcd2004` and `laden.lcd2004`) use the shipped plugins. `examples/plans/standard.yaml` pages through them.
+The pages in `examples/pages` (`uebersicht`, `kalender`, `wetter`, `laden` and the 20 × 4 variants `uebersicht.lcd2004` and `laden.lcd2004`) use the shipped plugins; `uebersicht.yaml` and `laden.yaml` name their variant in `variants`. `examples/plans/standard.yaml` pages through them.
 
 ## Plans
 

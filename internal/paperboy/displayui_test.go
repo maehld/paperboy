@@ -42,7 +42,8 @@ func TestEditorDisplaysTab(t *testing.T) {
 func TestDisplayEditor(t *testing.T) {
 	s := editorServer(t)
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
-	writePage(t, s, "solar", "small", previewTemplate)
+	writePage(t, s, "solar", "", pageWithVariant)
+	writePage(t, s, "solar", "hochkant", variantPage)
 	writeDeviceFile(t, s.config().Dir, "flur", "display_type: small\nmac: \"AA:BB:CC:DD:EE:02\"\n")
 
 	rec := request(t, s, http.MethodGet, "/ui/editor/display?name=small", nil, nil)
@@ -55,7 +56,9 @@ func TestDisplayEditor(t *testing.T) {
 		`id="panel-diagonal"`, `id="panel-width"`, `id="panel-height"`,
 		`id="use-diagonal"`, `id="use-width"`, `id="use-height"`, `id="panel-hint"`,
 		`id="min_refresh"`, `id="power"`, `id="yaml"`, `<script src="/ui/editor/display.js"></script>`,
-		`href="/ui/editor/page?display=small&amp;name=solar"`, `href="/ui/editor/device?id=flur"`,
+		// The page names this display type: the editor links the variant.
+		`href="/ui/editor/page?display=small&amp;file=hochkant&amp;name=solar"`, `href="/ui/editor/device?id=flur"`,
+		`"pages":["solar"]`,
 		"display type small",
 	} {
 		if !strings.Contains(body, want) {

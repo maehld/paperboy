@@ -1,6 +1,9 @@
-# Overview for image displays of any size: one file serves every display type
-# without its own variant (ADR 0049). The grid has 6 columns and 8 rows.
+# Overview for image displays of any size: the page file serves every display
+# type of its kind, and variants names the exceptions (ADR 0110). The grid has
+# 6 columns and 8 rows.
 title: Übersicht
+kind: image
+variants: {lcd2004: lcd2004}
 grid: [6, 8]
 style: { padding: 4.5, divider: 0.6 }
 cells:

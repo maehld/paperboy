@@ -28,7 +28,7 @@ var displayEditorTmpl = template.Must(template.New("display-editor").Parse(displ
 //go:embed ui/display-editor.js
 var displayEditorJS []byte
 
-// displayReference is one page variant or device that uses a display type.
+// displayReference is one page or device that uses a display type.
 type displayReference struct {
 	Label string
 	URL   string
@@ -50,7 +50,7 @@ type displayEditorView struct {
 type displayEditorState struct {
 	Name    string        `json:"name"`
 	New     bool          `json:"new"`
-	Pages   []string      `json:"pages,omitempty"`   // page variants that use the type
+	Pages   []string      `json:"pages,omitempty"`   // pages that name a variant for the type
 	Devices []string      `json:"devices,omitempty"` // devices that use the type
 	Rename  *renameAction `json:"rename,omitempty"`
 }
@@ -112,20 +112,22 @@ func (s *Server) handleDisplayEditor(w http.ResponseWriter, r *http.Request) {
 	renderDisplayEditor(w, v, http.StatusOK)
 }
 
-// displayReferences lists what uses a display type: the page variants named
-// after it and the device files that point at it. Renaming or deleting a
-// display type is a manual step, so the editor shows the consequences.
+// displayReferences lists what uses a display type: the pages whose variants
+// map names it and the device files that point at it. Renaming or deleting a
+// display type is a manual step, so the editor shows the consequences
+// (ADR 0079, 0110).
 func displayReferences(cfg *Config, name string) (pages, devices []displayReference) {
 	files, err := pageFiles(cfg.Pages)
 	if err != nil {
 		slog.Warn("page list for the display type editor failed", "error", err)
 	}
 	for _, f := range files {
-		if f.Display != name {
+		label, named := f.Variants[name]
+		if f.Label != "" || !named {
 			continue
 		}
 		pages = append(pages, displayReference{Label: f.Name, URL: "/ui/editor/page?" + url.Values{
-			"name": {f.Name}, "display": {name}}.Encode()})
+			"name": {f.Name}, "file": {label}, "display": {name}}.Encode()})
 	}
 	list, err := deviceFileList(cfg.DevicesDir)
 	if err != nil {

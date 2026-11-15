@@ -34,13 +34,13 @@ func TestDisplaySurvivesRenderingPanic(t *testing.T) {
 // request renders normally.
 func TestDisplayPageErrorsKeepDeviceWorking(t *testing.T) {
 	s, _ := planServer(t, "rules: [{name: tag, pages: [kaputt]}]\n")
-	writePageFile(t, s.config().Pages+"/kaputt.small.yaml", "grid: [1, 1]\ncells: [\n")
+	writePageFile(t, s.config().Pages+"/kaputt.yaml", "kind: image\ngrid: [1, 1]\ncells: [\n")
 	dev := planDevice(t, s)
 	if got := pagePath(displayPage(t, s, dev)); !strings.HasPrefix(got, "/hints/") {
 		t.Fatalf("broken template must show a notice: %q", got)
 	}
 	// Fixing the file serves the page again without a restart.
-	writePageFile(t, s.config().Pages+"/kaputt.small.yaml", textPage("ok"))
+	writePageFile(t, s.config().Pages+"/kaputt.yaml", textPage("ok"))
 	if got := pagePath(displayPage(t, s, dev)); !strings.HasPrefix(got, "/pages/small/kaputt/") {
 		t.Fatalf("fixed template must render again: %q", got)
 	}

@@ -1,5 +1,6 @@
 # Calendar: the coming days as columns.
 title: Woche
+kind: image
 grid: [6, 8]
 style: { padding: 4.5, divider: 0.6 }
 cells:

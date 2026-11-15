@@ -55,6 +55,7 @@ func TestEncodeKeepsCellLayout(t *testing.T) {
 	out := string(data)
 	for _, want := range []string{
 		"title: Preview\n",
+		"kind: image\n",
 		"grid: [6, 8]\n",
 		"- {at: [0, 0], span: [6, 1], widget: paperboy/header}\n",
 		"args: {days: 3, start: today}",
@@ -63,7 +64,7 @@ func TestEncodeKeepsCellLayout(t *testing.T) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
 	}
-	for _, unwanted := range []string{"kind: image", "notices: show", "actions:"} {
+	for _, unwanted := range []string{"notices: show", "actions:"} {
 		if strings.Contains(out, unwanted) {
 			t.Fatalf("unexpected %q in:\n%s", unwanted, out)
 		}
@@ -72,6 +73,7 @@ func TestEncodeKeepsCellLayout(t *testing.T) {
 
 const previewYAML = `
 title: Preview
+kind: image
 grid: [6, 8]
 cells:
   - { at: [0, 0], span: [6, 1], widget: paperboy/header }
@@ -82,12 +84,12 @@ cells:
 // template Parse would reject as well.
 func TestEncodeRejectsInvalidTemplate(t *testing.T) {
 	for name, tmpl := range map[string]*Template{
-		"overlap": {Grid: [2]int{2, 2}, Cells: []Cell{
+		"overlap": {Kind: KindImage, Grid: [2]int{2, 2}, Cells: []Cell{
 			{At: [2]int{0, 0}, Span: [2]int{2, 2}, Widget: "a/b"},
 			{At: [2]int{1, 1}, Span: [2]int{1, 1}, Widget: "a/c"},
 		}},
-		"leaves grid": {Grid: [2]int{1, 1}, Cells: []Cell{{At: [2]int{1, 0}, Span: [2]int{1, 1}, Widget: "a/b"}}},
-		"bad widget":  {Grid: [2]int{1, 1}, Cells: []Cell{{At: [2]int{0, 0}, Span: [2]int{1, 1}, Widget: "nope"}}},
+		"leaves grid": {Kind: KindImage, Grid: [2]int{1, 1}, Cells: []Cell{{At: [2]int{1, 0}, Span: [2]int{1, 1}, Widget: "a/b"}}},
+		"bad widget":  {Kind: KindImage, Grid: [2]int{1, 1}, Cells: []Cell{{At: [2]int{0, 0}, Span: [2]int{1, 1}, Widget: "nope"}}},
 	} {
 		if _, err := Encode(tmpl); err == nil {
 			t.Fatalf("%s: expected an error", name)
@@ -98,7 +100,7 @@ func TestEncodeRejectsInvalidTemplate(t *testing.T) {
 // TestEncodeArgsKeepTheirTypes verifies that numbers, booleans and lists read
 // back as the types an operator wrote.
 func TestEncodeArgsKeepTheirTypes(t *testing.T) {
-	tmpl := &Template{Grid: [2]int{1, 1}, Cells: []Cell{{
+	tmpl := &Template{Kind: KindImage, Grid: [2]int{1, 1}, Cells: []Cell{{
 		At: [2]int{0, 0}, Span: [2]int{1, 1}, Widget: "calendar/agenda",
 		Args: map[string]any{"days": 3.0, "empty": true, "lines": []any{"a", 2.0}, "city": "Münster: Mitte"},
 	}}}

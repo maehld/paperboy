@@ -10,21 +10,22 @@
 
   const state = {
     name: start.name,
-    display: start.display,
-    kind: start.kind, // image or text
+    display: start.display, // preview display type
+    kind: start.kind, // image or text: the kind of the open file
     width: start.width, // characters of a text display, pixels of an image display
     height: start.height,
     reference: start.reference, // grid plugins declare their sizes on
     grid: start.grid, // grid a new page starts with
-    file: start.file || '', // display type of the open file; empty: the shared page
-    variantExists: !!start.variant_exists, // the display type has a variant next to the shared page
+    file: start.file || '', // label of the open file; empty: the page file
+    pageHash: start.page_hash || '', // hash of the page file, for a new variant
+    pageExists: !!start.page_exists, // the page file exists
+    displays: start.displays || [], // configured display types (ADR 0110)
+    named: !!start.named, // the page names this variant
     widgetsPage: !!start.widgets_page, // the widgets page: one widget, no page
     usedBy: start.usedBy || [], // plans that name the page, for the delete warning
     rename: start.rename || null, // endpoint and confirmation for a rename (ADR 0079)
-    orphan: start.orphan || '', // variant of a display type that is not configured (ADR 0079)
-    fileDisplay: '', // display variant the file belongs to; empty: shared page
+    orphan: start.orphan || '', // the variant has no page file (ADR 0110)
     hash: '',
-    setHash: '', // hash over every file of the page, for the rename
     template: null,
     readOnly: false,
     selected: -1,
@@ -42,7 +43,7 @@
   };
 
   const text = () => state.kind === 'text';
-  const targetPath = () => 'pages/' + state.name + (state.fileDisplay ? '.' + state.fileDisplay : '') + '.yaml';
+  const targetPath = () => 'pages/' + state.name + (state.file ? '.' + state.file : '') + '.yaml';
 
   // ---- status and where ----
 
@@ -63,18 +64,17 @@
     ].join(' · ');
   }
 
-  // updateFile names the open file behind the page name: "shared" or the
-  // display type of the variant (ADR 0094).
+  // updateFile names the open file behind the page name: nothing for the page
+  // file, the label for a variant (ADR 0110).
   function updateFile() {
     const label = el('file-label');
-    if (label) label.textContent = state.fileDisplay || 'shared';
+    if (label) label.textContent = state.file;
   }
 
-  // orphaned reports whether the opened file belongs to a display type that is
-  // not configured any more; Save stays off until it is saved as a variant of
-  // the open display type (ADR 0079).
+  // orphaned reports whether the open variant has no page file any more; the
+  // editor names it and the pages list offers to assign it (ADR 0110).
   function orphaned() {
-    return !!state.orphan && state.fileDisplay === state.orphan;
+    return !!state.orphan;
   }
 
   function updateSave() {
@@ -82,19 +82,13 @@
       (!state.widgetsPage || state.template.cells.length > 0);
     // The page editor saves, the widgets page copies the cell: one button each.
     const save = el('save');
-    if (save) save.disabled = !hasCell || orphaned();
+    if (save) save.disabled = !hasCell;
     const copy = el('copy-cell');
     if (copy) copy.disabled = !hasCell;
     const del = el('delete');
     if (del) del.hidden = state.widgetsPage || !state.hash;
     const rename = el('rename');
     if (rename) rename.hidden = state.widgetsPage || !state.rename;
-    const specialize = el('specialize');
-    if (!specialize) return;
-    // The shared page offers the variant only when the display type has none
-    // yet; an existing variant is reached through the file toggle (ADR 0093).
-    specialize.hidden = state.widgetsPage || !hasCell || !(orphaned() || (state.fileDisplay === '' && !state.variantExists));
-    if (!specialize.hidden) specialize.textContent = 'Save as ' + state.display + ' variant';
   }
 
   // Rebuilding the board and the preview after a change, without touching the
@@ -120,21 +114,23 @@
 
   function blank() {
     const grid = text() ? [state.width, state.height] : (state.widgetsPage ? state.reference.slice() : state.grid.slice());
-    return { title: state.widgetsPage ? '' : state.name, kind: state.kind, grid: grid, style: {}, cells: [] };
+    return { title: state.file ? '' : state.name, kind: state.kind, grid: grid, style: {}, cells: [] };
   }
 
   // normalize keeps the model in the shape serialize writes back: two-element
-  // coordinates, args and styles present.
+  // coordinates, args, styles and the variants map present.
   function normalize(t) {
     t.kind = t.kind || state.kind;
     t.grid = Array.isArray(t.grid) && t.grid.length === 2 ? [t.grid[0], t.grid[1]] : state.grid.slice();
     t.style = t.style || {};
+    t.variants = t.variants || {};
     t.cells = (t.cells || []).map((c) => ({
       at: [c.at[0], c.at[1]],
       span: Array.isArray(c.span) && c.span.length === 2 ? [c.span[0], c.span[1]] : [1, 1],
       widget: c.widget,
       args: c.args || {},
       style: c.style || {},
+      scroll: c.scroll === true,
     }));
     return t;
   }
@@ -157,10 +153,15 @@
   }
 
   // serialize builds the body of PUT /api/pages: only the fields the API
-  // knows, with the defaults Page.Encode leaves out.
+  // knows, with the defaults Page.Encode leaves out. The page file carries the
+  // title and the variants map; a variant carries neither (ADR 0110).
   function serialize() {
     const t = state.template;
-    const out = { title: t.title || '', kind: t.kind, grid: [t.grid[0], t.grid[1]], style: styleOut(t.style || {}), cells: [] };
+    const out = { kind: t.kind, grid: [t.grid[0], t.grid[1]], style: styleOut(t.style || {}), cells: [] };
+    if (!state.file) {
+      out.title = t.title || '';
+      if (t.variants && Object.keys(t.variants).length) out.variants = t.variants;
+    }
     if (t.notices === 'none') out.notices = 'none';
     out.cells = t.cells.map((c) => {
       const cell = { at: [c.at[0], c.at[1]], span: [c.span[0], c.span[1]], widget: c.widget, args: c.args || {} };
@@ -191,8 +192,12 @@
     const t = state.template;
     const off = !t || state.readOnly;
     for (const id of ['title', 'cols', 'rows', 'padding', 'rule', 'text-size', 'divider', 'notices']) el(id).disabled = off;
+    el('title').disabled = off || state.file !== '';
     el('cols').disabled = off || text();
     el('rows').disabled = off || text();
+    el('title-note').textContent = state.file
+      ? 'The title belongs to the page file; a variant carries only the layout.'
+      : '';
     el('grid-note').textContent = text()
       ? 'The grid is the character grid of the display and cannot be changed.'
       : 'Cells of the page; plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid.';
@@ -357,11 +362,11 @@
     renderPalette();
   }
 
-  // firstWidget names the first widget the palette offers for this display kind,
+  // firstWidget names the first widget the palette offers for a display kind,
   // in the order the palette lists the plugins (the built-in header), so the
-  // widgets page opens with a preview instead of an error (ADR 0084).
-  function firstWidget() {
-    const kind = text() ? 'text' : 'image';
+  // widgets page and a new variant open with a preview instead of an error
+  // (ADR 0084, 0110).
+  function firstWidget(kind) {
     for (const p of state.plugins) {
       const widgets = (p.description && p.description.widgets) || [];
       const w = widgets.find((x) => !x.kinds || !x.kinds.length || x.kinds.includes(kind));
@@ -1339,32 +1344,26 @@
       loadWidgetsPage();
       return;
     }
-    // A new page has no file yet. The page API resolves a display type like the
-    // runtime, variant first and shared page second, so asking for it could
-    // open the shared page of the same name in its place - often of the other
-    // kind, with a grid that does not fit (ADR 0094). The server already
-    // decided that this page is new.
+    // A new page has no file yet; it starts from the preview display type and
+    // never from another file of the page (ADR 0110).
     if (start.new) {
       state.template = blank();
-      state.fileDisplay = state.file;
       state.hash = '';
-      state.setHash = '';
       state.readOnly = false;
       state.dirty = false;
       state.selected = -1;
       renderAll();
       return;
     }
-    // The open file is named exactly: empty is the shared page, else the
-    // display type of its variant (ADR 0093).
-    const res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '?display=' + encodeURIComponent(state.file), { cache: 'no-store' });
+    // The open file is named exactly: without a label the page file, else the
+    // variant with that label (ADR 0110).
+    const res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '?file=' + encodeURIComponent(state.file), { cache: 'no-store' });
     if (res.status === 401) {
       setStatus(signedOut(), 'error');
       return;
     }
     if (res.status === 404) {
       state.template = blank();
-      state.fileDisplay = state.file;
       state.hash = '';
       state.readOnly = false;
       state.dirty = false;
@@ -1377,9 +1376,9 @@
       return;
     }
     const doc = await res.json();
-    state.fileDisplay = doc.display || '';
+    state.file = doc.file || '';
     state.hash = doc.hash || '';
-    state.setHash = doc.set_hash || '';
+    if (!state.file) state.pageHash = state.hash;
     state.selected = -1;
     state.dirty = false;
     if (doc.error) {
@@ -1400,7 +1399,6 @@
   // preview never opens on an error.
   function loadWidgetsPage() {
     state.template = blank();
-    state.fileDisplay = '';
     state.hash = '';
     state.readOnly = false;
     state.dirty = false;
@@ -1419,7 +1417,7 @@
         }
       }
     } else {
-      const first = firstWidget();
+      const first = firstWidget(text() ? 'text' : 'image');
       if (first) setWidget(first.plugin, first.widget);
     }
     renderAll();
@@ -1432,7 +1430,7 @@
     setStatus('saving…', '');
     let res;
     try {
-      res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '?display=' + encodeURIComponent(state.fileDisplay), {
+      res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '?file=' + encodeURIComponent(state.file), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hash: state.hash, template: serialize() }),
@@ -1460,29 +1458,84 @@
       setStatus(doc.error || 'save failed (' + res.status + ')', 'error');
       return;
     }
+    const firstSave = !state.pageExists && !state.file;
     state.hash = doc.hash || '';
-    state.setHash = doc.set_hash || '';
-    state.fileDisplay = doc.display || '';
+    state.file = doc.file || '';
+    if (!state.file) {
+      state.pageHash = state.hash;
+      state.pageExists = true;
+    }
     if (doc.template) state.template = normalize(doc.template);
     state.dirty = false;
     setStatus('saved ' + new Date().toLocaleTimeString(), 'ok');
+    if (firstSave) {
+      // The coverage, the rename and the variant actions appear with the file.
+      location.reload();
+      return;
+    }
     renderAll();
   }
 
-  // A shared page can become the variant of this display type; the shared file
-  // then stays as it is (ADR 0068).
-  function specialize() {
-    if (!state.template) return;
-    state.fileDisplay = state.display;
-    state.hash = '';
-    setStatus('the next save writes the variant; the shared page stays unchanged', '');
-    updateFile();
-    updateWhere();
-    updateSave();
+  // createVariant writes the layout of a display type in one action (ADR 0110).
+  // The layout starts from the display type: kind and grid come from the type,
+  // never from the open file, which is the defect of issue #238.
+  async function createVariant(display) {
+    const info = state.displays.find((d) => d.name === display) || {};
+    const kind = info.kind === 'text' ? 'text' : 'image';
+    const grid = kind === 'text' ? [info.width, info.height] : state.reference.slice();
+    const template = { kind: kind, grid: grid, style: {}, cells: [blankCell(kind, grid)] };
+    setStatus('creating the layout for ' + display + '…', '');
+    let res;
+    try {
+      res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '/variant?display=' + encodeURIComponent(display), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hash: state.pageHash, template: template }),
+      });
+    } catch (e) {
+      setStatus('creating the layout failed: ' + e, 'error');
+      return;
+    }
+    if (res.status === 401) {
+      setStatus(signedOut(), 'error');
+      return;
+    }
+    let doc = {};
+    const body = await res.text();
+    try {
+      doc = JSON.parse(body);
+    } catch (e) {
+      doc.error = body.trim();
+    }
+    if (res.status === 409) {
+      setStatus('the page changed on disk — Reload shows the newest version', 'error');
+      return;
+    }
+    if (!res.ok) {
+      setStatus(doc.error || 'creating the layout failed (' + res.status + ')', 'error');
+      return;
+    }
+    state.dirty = false;
+    const params = new URLSearchParams({ name: state.name, display: display });
+    if (doc.file) params.set('file', doc.file);
+    location.href = '/ui/editor/page?' + params.toString();
   }
 
-  // rename moves the shared page and every variant; the plans that name it keep
-  // the old name, so the confirmation names them (ADR 0079).
+  // blankCell starts a variant with the first widget the palette offers for the
+  // kind of the display type.
+  function blankCell(kind, grid) {
+    const first = firstWidget(kind);
+    const info = first ? widgetInfo(first.plugin, first.widget) : null;
+    let span = kind === 'text'
+      ? [grid[0], 1]
+      : (info && info.sizes && info.sizes.length ? [info.sizes[0].columns, info.sizes[0].rows] : [2, 1]);
+    span = [Math.max(1, Math.min(span[0], grid[0])), Math.max(1, Math.min(span[1], grid[1]))];
+    return { at: [0, 0], span: span, widget: first ? first.plugin + '/' + first.widget : 'paperboy/header', args: {}, style: {} };
+  }
+
+  // rename moves the page file only; the variants keep the old name and the
+  // plans that name the page keep it too, so the confirmation names them
+  // (ADR 0079, 0110).
   async function rename() {
     if (!state.rename) return;
     const warn = state.rename.warn +
@@ -1494,7 +1547,7 @@
     setStatus('renaming…', '');
     let res;
     try {
-      res = await fetch(state.rename.url + (state.setHash ? '?hash=' + encodeURIComponent(state.setHash) : ''), {
+      res = await fetch(state.rename.url + (state.pageHash ? '?hash=' + encodeURIComponent(state.pageHash) : ''), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
@@ -1515,21 +1568,25 @@
     location.href = '/ui/editor/page?name=' + encodeURIComponent(name) + '&display=' + encodeURIComponent(state.display);
   }
 
-  // remove deletes the file that was opened, after naming the plans that use
-  // the page; the server refuses one that changed since it was read (ADR 0073).
+  // remove deletes the one file that was opened, after naming the plans that use
+  // the page; the server refuses one that changed since it was read (ADR 0073,
+  // 0110).
   async function remove() {
     if (!state.hash) return;
     const used = state.usedBy || [];
-    const warn = 'Delete ' + targetPath() + '?' +
+    let warn = 'Delete ' + targetPath() + '?' +
       (used.length ? '\n\nPlans that name it: ' + used.join(', ') + '.' : '\n\nNo plan names this page.') +
       (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
       '\n\nA copy stays under state/editor/.';
+    if (state.file && state.named) {
+      warn += '\n\nThe page still names this file: its display type has no page until the file is back or the entry is removed.';
+    }
     if (!confirm(warn)) return;
     setStatus('deleting…', '');
     let res;
     try {
       res = await fetch('/api/pages/' + encodeURIComponent(state.name) +
-        '?display=' + encodeURIComponent(state.fileDisplay) +
+        '?file=' + encodeURIComponent(state.file) +
         '&hash=' + encodeURIComponent(state.hash), { method: 'DELETE' });
     } catch (e) {
       setStatus('delete failed: ' + e, 'error');
@@ -1573,9 +1630,13 @@
   on('save', 'click', save);
   on('copy-cell', 'click', copyCell);
   on('reload', 'click', () => location.reload());
-  on('specialize', 'click', specialize);
   on('delete', 'click', remove);
   on('rename', 'click', rename);
+  // The coverage panel creates the layout of a display type in one action, so a
+  // variant starts from the type and never from the open file (ADR 0110).
+  for (const b of document.querySelectorAll('button[data-variant]')) {
+    b.addEventListener('click', () => createVariant(b.dataset.variant));
+  }
   on('palette-filter', 'input', () => {
     state.filter = el('palette-filter').value;
     renderPalette();

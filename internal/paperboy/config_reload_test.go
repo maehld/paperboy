@@ -61,7 +61,7 @@ func configServer(t *testing.T, dir string) *Server {
 // being served (ADR 0047).
 func TestConfigReloadChangesDeviceList(t *testing.T) {
 	dir := t.TempDir()
-	writePageFile(t, filepath.Join(dir, "pages", "seite.e1001.yaml"), textPage("eins"))
+	writePageFile(t, filepath.Join(dir, "pages", "seite.yaml"), textPage("eins"))
 	writeConfig(t, dir, reloadConfig)
 	writeDisplayFile(t, dir, "e1001", reloadDisplay)
 	writeDeviceFile(t, dir, "flur", reloadDevice)
@@ -174,7 +174,7 @@ func TestConfigReloadKeepsLastValid(t *testing.T) {
 // configuration, and applies the file once it becomes valid.
 func TestDegradedStartAppliesConfig(t *testing.T) {
 	dir := t.TempDir()
-	writePageFile(t, filepath.Join(dir, "pages", "seite.e1001.yaml"), textPage("eins"))
+	writePageFile(t, filepath.Join(dir, "pages", "seite.yaml"), textPage("eins"))
 	if _, err := LoadConfig(dir); err == nil {
 		t.Fatal("unexpected: directory without paperboy.yaml loads")
 	}
@@ -266,7 +266,7 @@ plugins:
     config: { black: ` + fmt.Sprint(black) + `, secret: "${PAPERBOY_TEST_SECRET}" }
 `
 	}
-	writePageFile(t, filepath.Join(dir, "pages", "eins.yaml"), "grid: [1, 1]\ncells: [{widget: test/area}]\n")
+	writePageFile(t, filepath.Join(dir, "pages", "eins.yaml"), "kind: image\ngrid: [1, 1]\ncells: [{widget: test/area}]\n")
 	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), "rules: [{name: immer, pages: [eins]}]\n")
 	if err := os.MkdirAll(filepath.Join(dir, pluginsDirName), 0o755); err != nil {
 		t.Fatal(err)
@@ -367,8 +367,8 @@ plan: zimmer
 // without a restart (ADR 0033, 0047).
 func TestConfigReloadMovesPlanRules(t *testing.T) {
 	dir := t.TempDir()
-	writePageFile(t, filepath.Join(dir, "pages", "eins.e1001.yaml"), textPage("eins"))
-	writePageFile(t, filepath.Join(dir, "pages", "zwei.e1001.yaml"), textPage("zwei"))
+	writePageFile(t, filepath.Join(dir, "pages", "eins.yaml"), textPage("eins"))
+	writePageFile(t, filepath.Join(dir, "pages", "zwei.yaml"), textPage("zwei"))
 	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), `
 rules:
   - name: frueh

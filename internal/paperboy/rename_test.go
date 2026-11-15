@@ -15,65 +15,91 @@ func fileExists(t *testing.T, path string) bool {
 	return err == nil
 }
 
-// TestRenamePage moves the shared page and every variant as one set, and
-// refuses a set that changed since it was read (ADR 0079).
+// TestRenamePage moves the page file only; its variants keep the old name and
+// become orphans, which the assign action repairs (ADR 0110).
 func TestRenamePage(t *testing.T) {
 	s := editorServer(t)
-	writePage(t, s, "solar", "small", previewTemplate)
-	writePage(t, s, "solar", "", previewTemplate)
-	writePage(t, s, "other", "small", previewTemplate)
+	writePage(t, s, "solar", "", pageWithVariant)
+	writePage(t, s, "solar", "hochkant", variantPage)
+	writePage(t, s, "other", "", previewTemplate)
 
 	var page editorPage
-	if rec := request(t, s, http.MethodGet, "/api/pages/solar?display=small", nil, &page); rec.Code != http.StatusOK {
+	if rec := request(t, s, http.MethodGet, "/api/pages/solar", nil, &page); rec.Code != http.StatusOK {
 		t.Fatalf("read: %d %s", rec.Code, rec.Body)
 	}
-	if page.SetHash == "" {
-		t.Fatal("the read page carries no set hash")
+	if page.Hash == "" {
+		t.Fatal("the read page carries no hash")
 	}
 
-	// A stale set hash is a conflict.
+	// A stale hash is a conflict.
 	rec := request(t, s, http.MethodPost, "/api/pages/solar/rename?hash=stale", map[string]string{"name": "sun"}, nil)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("stale hash: %d %s", rec.Code, rec.Body)
 	}
-	if !fileExists(t, filepath.Join(s.config().Pages, "solar.small.yaml")) {
+	if !fileExists(t, filepath.Join(s.config().Pages, "solar.yaml")) {
 		t.Fatal("a refused rename moved a file")
 	}
 
 	// A name that is already taken is refused.
-	rec = request(t, s, http.MethodPost, "/api/pages/solar/rename?hash="+page.SetHash, map[string]string{"name": "other"}, nil)
+	rec = request(t, s, http.MethodPost, "/api/pages/solar/rename?hash="+page.Hash, map[string]string{"name": "other"}, nil)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("collision: %d %s", rec.Code, rec.Body)
 	}
 
 	var out struct {
-		Name  string
-		Files []string
+		Name    string
+		Files   []string
+		Orphans []string
 	}
 	rec = request(t, s, http.MethodPost, "/api/pages/solar/rename", map[string]string{"name": "sun"}, &out)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
-	if out.Name != "sun" || len(out.Files) != 2 {
+	if out.Name != "sun" || len(out.Files) != 1 || out.Files[0] != "pages/sun.yaml" {
 		t.Fatalf("answer: %+v", out)
 	}
-	for _, gone := range []string{"solar.small.yaml", "solar.yaml"} {
-		if fileExists(t, filepath.Join(s.config().Pages, gone)) {
-			t.Fatalf("%s survived the rename", gone)
+	if len(out.Orphans) != 1 || out.Orphans[0] != "pages/solar.hochkant.yaml" {
+		t.Fatalf("orphans: %+v", out)
+	}
+	if fileExists(t, filepath.Join(s.config().Pages, "solar.yaml")) || !fileExists(t, filepath.Join(s.config().Pages, "sun.yaml")) {
+		t.Fatal("the page file did not move")
+	}
+	if !fileExists(t, filepath.Join(s.config().Pages, "solar.hochkant.yaml")) {
+		t.Fatal("the variant moved with the page")
+	}
+	// The variant is an orphan now, and the page sun has no page file naming it.
+	var list struct{ Pages []editorPageFile }
+	request(t, s, http.MethodGet, "/api/pages", nil, &list)
+	for _, f := range list.Pages {
+		if f.Name == "solar" && f.Label == "hochkant" && !f.Orphan {
+			t.Fatalf("variant is not an orphan: %+v", f)
 		}
 	}
-	for _, moved := range []string{"sun.small.yaml", "sun.yaml"} {
-		if !fileExists(t, filepath.Join(s.config().Pages, moved)) {
-			t.Fatalf("%s is missing after the rename", moved)
-		}
+
+	// The assign action makes the orphan a variant of the renamed page.
+	rec = request(t, s, http.MethodPost, "/api/pages/sun/assign?from=solar&file=hochkant&display=small", nil, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("assign: %d %s", rec.Code, rec.Body)
 	}
+	var sun editorPage
+	request(t, s, http.MethodGet, "/api/pages/sun", nil, &sun)
+	if sun.Variants["small"] != "hochkant" {
+		t.Fatalf("variants after the assign: %+v", sun.Variants)
+	}
+	if !fileExists(t, filepath.Join(s.config().Pages, "sun.hochkant.yaml")) {
+		t.Fatal("the variant did not move to the new page")
+	}
+
 	// The same name is not a rename.
 	if rec := request(t, s, http.MethodPost, "/api/pages/sun/rename", map[string]string{"name": "sun"}, nil); rec.Code != http.StatusBadRequest {
 		t.Fatalf("same name: %d %s", rec.Code, rec.Body)
 	}
-	// A page that does not exist is a 404.
-	if rec := request(t, s, http.MethodPost, "/api/pages/nope/rename", map[string]string{"name": "x"}, nil); rec.Code != http.StatusNotFound {
-		t.Fatalf("missing: %d %s", rec.Code, rec.Body)
+	// A page that does not exist is a 404; so is a page that exists only as a
+	// variant, because only the page file moves (ADR 0110).
+	for _, name := range []string{"nope", "solar"} {
+		if rec := request(t, s, http.MethodPost, "/api/pages/"+name+"/rename", map[string]string{"name": "x"}, nil); rec.Code != http.StatusNotFound {
+			t.Fatalf("missing page %q: %d %s", name, rec.Code, rec.Body)
+		}
 	}
 	// An invalid new name is a 400.
 	if rec := request(t, s, http.MethodPost, "/api/pages/sun/rename", map[string]string{"name": "Not Valid"}, nil); rec.Code != http.StatusBadRequest {
@@ -190,7 +216,7 @@ func TestEditorRenameButtons(t *testing.T) {
 	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"aa:bb:cc:dd:ee:01\"\nplan: tour\n")
 
 	for _, tc := range []struct{ tab, link string }{
-		{"pages", "/ui/editor/page?display=small&amp;file=small&amp;name=solar"},
+		{"pages", "/ui/editor/page?display=small&amp;name=solar"},
 		{"plans", "/ui/editor/plan?name=tour"},
 		{"devices", "/ui/editor/device?id=test"},
 		{"displays", "/ui/editor/display?name=small"},

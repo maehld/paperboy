@@ -6,12 +6,15 @@ A page is a grid of cells. Every cell shows one widget from one plugin. A plan d
 
 ## Pages
 
-A page file is `pages/<page>.<display type>.yaml`, or `pages/<page>.yaml` when every display type without its own variant shares it ([ADR 0049](../adr/0049-plugin-widgets.md), [0094](../adr/0094-the-pages-list-is-a-list.md)).
+A page is one or more files under `pages/` ([ADR 0110](../adr/0110-pages-serve-their-kind-and-name-variants.md)). The page file `pages/<page>.yaml` carries the layout for its kind and serves every configured display type of that kind. Its `variants` map names the exceptions: the key is a display type, the value is the label of a file that serves it.
 
 ```yaml
 title: Morning
-grid: [6, 8]
 kind: image
+grid: [6, 8]
+variants:
+  sticky: hochkant
+  lcd2004: lcd
 style:
   padding: 4.5
   text_size: 16
@@ -26,11 +29,16 @@ cells:
     widget: weather/current
 ```
 
+`sticky: hochkant` means that `pages/<page>.hochkant.yaml` serves the sticky. Several types may name one label, and a type appears once.
+
+A variant file carries `kind`, `grid`, `style`, `notices` and `cells`. It inherits the title and its display types from the page file. It carries neither `title` nor `variants`, and the parser rejects both with a hint (ADR 0110).
+
 | Key | Meaning |
 |---|---|
-| `title` | Name on the dashboard, in the plan preview and for the header widget |
+| `title` | Name on the dashboard, in the plan preview and for the header widget. The page file only. |
+| `kind` | `image` or `text`: required, the kind of the display types the file serves |
 | `grid` | Columns and rows. The reference grid is 6 × 8 cells. |
-| `kind` | `image` (default) or `text` |
+| `variants` | Display type to file label. The page file only. |
 | `style.padding` | Space around the grid in points, default 4.5 |
 | `style.rule` | Gap between cells in points, default 0.6 and at least one pixel |
 | `style.text_size` | Base text size in points, 4–144, default 16, capped at 0.12 of the display height |
@@ -57,7 +65,7 @@ The built-in plugin draws text, lines and fills, so a page that is only text nee
 
 ## Text pages
 
-A text page has no pixels. Its grid must equal the character grid of the display type. The LCD2004 has 20 × 4, and any text type has at most 80 × 24 ([ADR 0044](../adr/0044-text-displays-on-the-device-api.md)).
+A text page has no pixels. Its file says `kind: text`, and its grid must equal the character grid of the display type. The LCD2004 has 20 × 4, and any text type has at most 80 × 24 ([ADR 0044](../adr/0044-text-displays-on-the-device-api.md)). A text page file serves only the text types with its character grid; other text types need a variant.
 
 `RenderText` asks the same cells, but in characters. Each widget answers lines. Paperboy converts them to the charset of the display and then cuts or pads every line to its cell width. The charsets are `utf8`, `ascii` and `hd44780`; the last keeps ä ö ü ß ° µ and turns Ä Ö Ü into A O U. A widget that fails contributes wrapped `? …` lines instead of breaking the page. A stale result marks `!` in the last column of line 1.
 
@@ -91,7 +99,9 @@ Rules are tried in order and the first match wins:
 
 A rule lists `pages`, `rotate` (seconds until the next page of the rule) and `refresh` (seconds until the next sync). `UntilNextBoundary` caps the refresh at the next rule change. `fallback` holds the pages of a device whose no rule matches.
 
-A page of a rule that does not fit the device's display type is skipped. That is a missing file, the other kind, or a text page with the wrong grid. The skip is logged once per display type, page and reason. No fitting page at all gives a notice page. A broken page is shown as a notice, not skipped. A render that panics is logged with its stack and answered with a notice page.
+A page of a rule that does not fit the device's display type is skipped. That is no file for the type, the other kind, or a text page with the wrong grid. The file the page names decides; a type that names no variant is served by the page file. The skip is logged once per display type, page and reason. No fitting page at all gives a notice page. A broken page is shown as a notice, not skipped. A render that panics is logged with its stack and answered with a notice page.
+
+A broken entry costs one display type, not the page ([ADR 0110](../adr/0110-pages-serve-their-kind-and-name-variants.md)). An entry for a type that no longer exists is unused: the file stays and Paperboy writes no log line. A variant file that no entry names is unused too.
 
 Paperboy caches a parsed page by its modification time, so an edit applies with the next sync.
 
@@ -142,4 +152,4 @@ The built-in plugin `paperboy` needs no data and is never cached ([ADR 0049](../
 
 ## Decisions
 
-[ADR 0025](../adr/0025-plaene-je-display.md) (plans) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md) (the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0094](../adr/0094-the-pages-list-is-a-list.md) (shared and variant files) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions)
+[ADR 0025](../adr/0025-plaene-je-display.md) (plans) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md) (the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants)

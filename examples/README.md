@@ -37,14 +37,17 @@ grid, the spans and the arguments.
   20×4.
 - `uebersicht.lcd2004.yaml` - the overview on a 20×4 character display; its
   grid is the character grid.
-- `hinweise.lcd2004.yaml` - a scrolling line on a 20×4 character display: a
+- `hinweise.yaml` - a scrolling line on a 20×4 character display: a
   full-width cell with `scroll: true` shows a line that is too wide as a
   marquee instead of cutting it ([ADR 0092](../docs/adr/0092-scrolling-text-lines.md)).
 
-A page without a display type suffix serves every display type that has no own
-variant, so `uebersicht.yaml` works on 800×480 and on 400×300 panels alike: the
-plugins draw every widget in the size of its cell. A text display needs its own
-`<page>.<display type>.yaml`, because its grid must match the display.
+A page file `<page>.yaml` serves every display type of its kind, so
+`uebersicht.yaml` works on 800×480 and on 400×300 panels alike: the plugins draw
+every widget in the size of its cell. Its `variants` map names the exceptions
+([ADR 0110](../docs/adr/0110-pages-serve-their-kind-and-name-variants.md)):
+`uebersicht.yaml` names `lcd2004: lcd2004`, so `uebersicht.lcd2004.yaml` serves
+the text display. A text page needs its own grid because it must match the
+character grid of the display.
 
 The plugin names in the pages are the keys under `plugins` in `paperboy.yaml`;
 `cmd/paperboy/paperboy.example.yaml` declares all of them.
