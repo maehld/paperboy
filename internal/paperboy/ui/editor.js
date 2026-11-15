@@ -397,7 +397,7 @@
     t.cells.push({
       at: [x, y], span: [w, 1],
       text: literal ? 'Text' : '', value: literal ? '' : plugin + '/' + name,
-      label: '', unit: '',
+      label: '', unit: '', args: {},
       align: !literal && info && info.type === 'number' ? 'decimal' : 'left',
       overflow: '',
     });
@@ -1304,6 +1304,7 @@
   // renderArgFields draws the argument controls of a widget or a value from
   // the plugin's schema (ADR 0055, 0120).
   function renderArgFields(box, c, args) {
+    c.args = c.args || {};
     const names = Object.keys(args).sort();
     if (names.length) {
       const h = document.createElement('h4');
@@ -1497,6 +1498,7 @@
     }
     kind.value = isText ? 'text' : 'value';
     kind.addEventListener('change', () => {
+      c.args = {};
       if (kind.value === 'text') {
         c.text = c.text || 'Text';
         c.value = '';
@@ -1550,6 +1552,8 @@
       select.value = c.value || '';
       select.addEventListener('change', () => {
         c.value = select.value;
+        // the arguments belong to the value, so a new one starts without
+        c.args = {};
         changed();
       });
       box.appendChild(field('Value', select));
