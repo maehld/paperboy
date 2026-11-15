@@ -794,9 +794,17 @@ func TestEditorScript(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "PUT", "pointerdown", "handle-xy", "firstWidget", "renderTextInspector", "textCellFields", "placeTextAt", "startPaletteDrag"} {
+	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "PUT", "pointerdown", "handle-xy", "firstWidget",
+		"renderTextInspector", "textCellFields(box, c)", "where.className = 'muted'", "placeTextAt", "startPaletteDrag"} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("script lacks %q", want)
+		}
+	}
+	// The text inspector is a panel like the image one: no nested box and no
+	// leftover wrapper it could return.
+	for _, unwanted := range []string{"text-cell", "return wrap"} {
+		if strings.Contains(rec.Body.String(), unwanted) {
+			t.Fatalf("the text inspector still carries %q", unwanted)
 		}
 	}
 }

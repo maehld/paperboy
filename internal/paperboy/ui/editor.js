@@ -1431,19 +1431,21 @@
       box.appendChild(hint);
       return;
     }
-    box.appendChild(textCellFields(c));
+    const where = document.createElement('p');
+    where.className = 'muted';
+    where.textContent = ((c.text || '') !== '' ? 'text' : (c.value || 'no value')) + ' at ' + c.at[0] + ',' + c.at[1];
+    box.appendChild(where);
+    textCellFields(box, c);
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'danger';
-    remove.textContent = 'Delete';
+    remove.textContent = 'Delete cell';
     remove.addEventListener('click', removeCell);
     box.appendChild(remove);
   }
 
-  // textCellFields edits one text box.
-  function textCellFields(c) {
-    const wrap = document.createElement('div');
-    wrap.className = 'text-cell';
+  // textCellFields edits one text box in the inspector panel.
+  function textCellFields(box, c) {
 
     const spanWrap = document.createElement('span');
     spanWrap.className = 'grid2';
@@ -1452,7 +1454,7 @@
     const rows = numberInput(c.span[1], 1, 1);
     rows.max = String(state.height - c.at[1]);
     spanWrap.append(cols, rows);
-    wrap.appendChild(field('Span', spanWrap));
+    box.appendChild(field('Span', spanWrap));
     const applySpan = () => {
       const w = Math.max(1, Math.min(state.width - c.at[0], Math.round(num(cols.value) || 1)));
       const h = Math.max(1, Math.min(state.height - c.at[1], Math.round(num(rows.value) || 1)));
@@ -1468,7 +1470,7 @@
     const atY = numberInput(c.at[1], 1, 0);
     atY.max = String(state.height - c.span[1]);
     posWrap.append(atX, atY);
-    wrap.appendChild(field('At', posWrap));
+    box.appendChild(field('Position', posWrap));
     const applyPos = () => {
       const x = Math.max(0, Math.min(state.width - c.span[0], Math.round(num(atX.value) || 0)));
       const y = Math.max(0, Math.min(state.height - c.span[1], Math.round(num(atY.value) || 0)));
@@ -1498,7 +1500,7 @@
       }
       changed();
     });
-    wrap.appendChild(field('Content', kind));
+    box.appendChild(field('Content', kind));
 
     if (isText) {
       const area = document.createElement('textarea');
@@ -1508,7 +1510,7 @@
         c.text = area.value;
         changed('inspector');
       });
-      wrap.appendChild(field('Text', area));
+      box.appendChild(field('Text', area));
     } else {
       const values = textValues();
       const select = document.createElement('select');
@@ -1542,13 +1544,13 @@
         c.value = select.value;
         changed();
       });
-      wrap.appendChild(field('Value', select));
+      box.appendChild(field('Value', select));
       const info = valueInfo(c.value);
       if (info) {
         const note = document.createElement('span');
         note.className = 'desc';
         note.textContent = [info.type, info.unit].filter(Boolean).join(' · ');
-        wrap.appendChild(note);
+        box.appendChild(note);
       }
 
       const label = document.createElement('input');
@@ -1559,7 +1561,7 @@
         c.label = label.value;
         changed('inspector');
       });
-      wrap.appendChild(field('Label', label));
+      box.appendChild(field('Label', label));
 
       const unit = document.createElement('input');
       unit.type = 'text';
@@ -1570,7 +1572,7 @@
         c.unit = unit.value;
         changed('inspector');
       });
-      wrap.appendChild(field('Unit', unit));
+      box.appendChild(field('Unit', unit));
     }
 
     const align = document.createElement('select');
@@ -1585,7 +1587,7 @@
       c.align = align.value;
       changed();
     });
-    wrap.appendChild(field('Align', align));
+    box.appendChild(field('Align', align));
 
     const overflow = document.createElement('select');
     for (const [value, text] of [['', 'page default'], ['strip', 'strip'], ['wrap', 'wrap'], ['scroll', 'scroll']]) {
@@ -1599,8 +1601,7 @@
       c.overflow = overflow.value;
       changed();
     });
-    wrap.appendChild(field('Overflow', overflow));
-    return wrap;
+    box.appendChild(field('Overflow', overflow));
   }
 
   function removeCell() {
