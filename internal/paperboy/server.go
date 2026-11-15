@@ -208,7 +208,7 @@ func (s *Server) uiRoutes() []route {
 		{"GET /ui/editor/plan.js", s.handlePlanEditorJS},
 		{"GET /ui/editor/device.js", s.handleDeviceEditorJS},
 		{"GET /ui/editor/display.js", s.handleDisplayEditorJS},
-		{"GET /ui/fonts/silkscreen-latin.woff2", s.handleUIFont},
+		{"GET /ui/fonts/dotgothic16-latin.woff2", s.handleUIFont},
 		{"POST /ui/download", s.handleDownloadCheck},
 		{"POST /ui/downloads/prune", s.handlePrune},
 		{"GET /api/profiles", s.handleProfiles},

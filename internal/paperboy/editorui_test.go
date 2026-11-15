@@ -794,7 +794,7 @@ func TestEditorScript(t *testing.T) {
 // shared stylesheet and the text board (ADR 0115).
 func TestTextPreviewFont(t *testing.T) {
 	s := editorServer(t)
-	rec := request(t, s, http.MethodGet, "/ui/fonts/silkscreen-latin.woff2", nil, nil)
+	rec := request(t, s, http.MethodGet, "/ui/fonts/dotgothic16-latin.woff2", nil, nil)
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "font/woff2" {
 		t.Fatalf("font: %d %q", rec.Code, rec.Header().Get("Content-Type"))
 	}
@@ -802,12 +802,12 @@ func TestTextPreviewFont(t *testing.T) {
 		t.Fatalf("font body: %d bytes, not woff2", len(body))
 	}
 	css := request(t, s, http.MethodGet, "/ui/ui.css", nil, nil).Body.String()
-	if !strings.Contains(css, `@font-face`) || !strings.Contains(css, `/ui/fonts/silkscreen-latin.woff2`) ||
-		!strings.Contains(css, `font-family: "Silkscreen"`) {
+	if !strings.Contains(css, `@font-face`) || !strings.Contains(css, `/ui/fonts/dotgothic16-latin.woff2`) ||
+		!strings.Contains(css, `font-family: "DotGothic16"`) {
 		t.Fatal("the stylesheet does not load the vendored font")
 	}
 	pageBody := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil).Body.String()
-	if !strings.Contains(pageBody, `font-family: "Silkscreen"`) {
+	if !strings.Contains(pageBody, `font-family: "DotGothic16"`) {
 		t.Fatal("the board does not use the pixel font")
 	}
 	virtual := request(t, s, http.MethodGet, "/ui/virtual?plan=standard&display=lcd", nil, nil).Body.String()

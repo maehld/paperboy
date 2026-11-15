@@ -8,8 +8,8 @@
    character slot, a dot-matrix look and no request to a font CDN. The file,
    its source and its licence sit in ui/fonts/. */
 @font-face {
-  font-family: "Silkscreen";
-  src: url("/ui/fonts/silkscreen-latin.woff2") format("woff2");
+  font-family: "DotGothic16";
+  src: url("/ui/fonts/dotgothic16-latin.woff2") format("woff2");
   font-style: normal;
   font-weight: 400;
   font-display: swap;

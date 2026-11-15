@@ -68,7 +68,7 @@
     const cell = text.querySelector(".cell");
     if (!cell) return;
     const h = cell.getBoundingClientRect().height;
-    if (h > 0) text.style.setProperty("--lcd-glyph", (h * 1.1) + "px");
+    if (h > 0) text.style.setProperty("--lcd-glyph", (h * 1.0) + "px");
   }
 
   // paint shows the answer and reports the hash only once the panel has it.

@@ -61,7 +61,7 @@ var uiFavicon []byte
 // uiFont is the vendored pixel font of the text previews (ADR 0115). The
 // licence and the source sit next to the file in ui/fonts/.
 //
-//go:embed ui/fonts/silkscreen-latin.woff2
+//go:embed ui/fonts/dotgothic16-latin.woff2
 var uiFont []byte
 
 // handleUIFont serves the pixel font of the text previews behind the password.

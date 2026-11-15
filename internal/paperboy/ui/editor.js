@@ -894,7 +894,7 @@
     const cell = board.querySelector('.slot');
     if (cell) {
       const h = cell.getBoundingClientRect().height;
-      if (h > 0) board.style.setProperty('--lcd-glyph', (h * 1.1) + 'px');
+      if (h > 0) board.style.setProperty('--lcd-glyph', (h * 1.0) + 'px');
     }
   }
 
