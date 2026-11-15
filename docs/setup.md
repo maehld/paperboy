@@ -122,7 +122,7 @@ menu_show_duration: 30s # optional, overrides defaults.menu_show_duration
 touch: false            # optional: draw the menu's tap controls (ADR 0082)
 ```
 
-- `protocol` accepts only `paperboy` (the default): devices running the Paperboy firmware ([ADR 0042](adr/0042-device-protocol.md)). Paperboy rejects `trmnl` (removed), `opendisplay` (not supported yet) and `text-http`/`image-http` (the device API replaced them, [ADR 0044](adr/0044-text-displays-on-the-device-api.md)).
+- `protocol` accepts only `paperboy` (the default): devices running the Paperboy firmware ([ADR 0042](adr/0042-device-protocol.md)). Paperboy rejects `trmnl` and `opendisplay` (both removed) and `text-http`/`image-http` (the device API replaced them, [ADR 0044](adr/0044-text-displays-on-the-device-api.md)).
 - `plan` should name an existing `plans/<name>.yaml`. Paperboy logs a missing or broken plan and shows a notice page instead of rejecting the configuration, so you can add a plan file while the server runs ([ADR 0047](adr/0047-config-reload.md)). Without `plan`, the device shows a notice page in the configured language (*No plan configured* / *Kein Plan konfiguriert*).
 - Create and assign devices in the editor at `/ui/editor` ([ADR 0070](adr/0070-devices-in-their-own-files.md)). The files stay the source of truth, so Paperboy picks up a hand edit on the next request.
 - Paperboy keeps the source address of the last register, sync or text poll in the state file of the device (`client_ip`, [ADR 0083](adr/0083-device-address.md)). It shows the address on the dashboard, in the devices tab and in `GET /api/devices`. The address comes from the connection, never from a header, so a reverse proxy in front of Paperboy would show its own address.
