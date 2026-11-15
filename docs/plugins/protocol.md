@@ -155,9 +155,9 @@ Reports every declared condition and whether it is active now.
 `render` draws each widget on a canvas of exactly `width` × `height` pixels
 with `levels` gray levels and returns a PNG. `text` fills each widget with
 `width` columns and `height` lines and returns `lines`. A text page of values
-no longer uses `text` ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)); the action stays in the protocol and
-Paperboy still asks a plugin for its text widgets in the widgets page. A later
-protocol version may remove it. Widgets get their
+no longer uses `text` ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)); the action stays in the protocol for
+older plugins, and the built-in plugin still answers text widgets for the
+widgets page. A later protocol version may remove it. Widgets get their
 arguments in `args` and the page's look in `style`:
 
 | `style` field | Meaning |
@@ -210,6 +210,7 @@ Answers the values of a text page ([ADR 0111](../adr/0111-text-pages-from-plugin
 - `max_age` works like for widgets: it tells Paperboy how long it may reuse the answer, and a `changed` event drops it.
 - A plugin that does not declare a requested name is not asked; the cell shows the error instead.
 - Paperboy formats the value: a number with the declared precision and the global language, a duration, a timestamp or a direction. The plugin decides neither width nor alignment.
+- A text value may carry several lines, one per record, such as an agenda or a list of departures. Paperboy shows them line by line; the label opens the first line and the unit closes the last. List values with named fields arrive in a later version.
 
 ### `server_status`
 
