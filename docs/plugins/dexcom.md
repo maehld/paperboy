@@ -33,11 +33,9 @@ plugins:
 
 ## Widget `glucose`
 
-The reading large, its trend as an arrow, how it moved over the last 15 minutes, its age, and a bar that shows the target band, the urgent threshold and where the value sits in the scale. Image and text variants.
+The widget is for image displays. It shows the reading large, its trend as an arrow, how it moved over the last 15 minutes, its age, and a bar that shows the target band, the urgent threshold and where the value sits in the scale.
 
 Outside the band the value is drawn inverted (light on dark), below `urgent` it gets a ring and the word „Dringend!"/“Urgent!”. A reading older than 15 minutes is drawn gray instead of as a current value.
-
-The text variant is one line: `112 mg/dL` and the change, the alarm or the age next to it (`examples/pages/glukose.lcd2004.yaml`).
 
 The arrow beside the value is the trend the sensor reports with every reading: the direction and the speed of the change. Dexcom derives it from the last readings and names seven states, from `DoubleUp` (rising faster than 3 mg/dL per minute) over `SingleUp`, `FortyFiveUp` and `Flat` (inside ±1 mg/dL per minute) down to `DoubleDown`. The plugin does not compute it itself; it draws the reported state at 0, ±45 or ±90 degrees and as two arrows for the `Double` states.
 
@@ -59,12 +57,30 @@ Single values as rows, like the `values` widget of the evcc plugin. The list arg
 | `avg`, `in_band` | Average and share inside the band over the last day |
 | `min`, `max` | The lowest and highest reading of the last day |
 | `delta` | The change over the last 15 minutes |
-| `trend` | The trend: the same arrow the `glucose` widget draws, the ASCII arrow on text displays |
+| `trend` | The trend: the same arrow the `glucose` widget draws |
 | `age` | How old the newest reading is |
 | `count` | How many readings the day has |
 | `band` | The configured target band |
 
-Without `values` all entries are shown; `columns` sets one or two columns. Rows that do not fit the cell are left out, so the order of the list is the order of importance. Image and text variants.
+Without `values` all entries are shown; `columns` sets one or two columns. Rows that do not fit the cell are left out, so the order of the list is the order of importance. The widget is for image displays; the values below carry the same data to a text page.
+
+## Values
+
+A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)); a value without a reading becomes a dash:
+
+| Value | Type | Unit | Precision | Meaning |
+|---|---|---|---|---|
+| `glucose` | number | mg/dL or mmol/L | 0 or 1 | the newest reading |
+| `trend` | direction | | | 1 up, 0 flat, -1 down, doubled for the double arrows |
+| `delta` | number | mg/dL or mmol/L | 0 or 1 | change over the last 15 minutes |
+| `age` | duration | | | age of the newest reading |
+| `avg` | number | mg/dL or mmol/L | 0 or 1 | average of the day |
+| `min`, `max` | number | mg/dL or mmol/L | 0 or 1 | lowest and highest of the day |
+| `in_band` | number | % | 0 | share of the day inside the band |
+| `count` | number | | 0 | readings of the day |
+| `band` | text | | | the target band, e.g. `80–280 mg/dL` |
+
+The unit and the precision follow the configuration or the unit the account reports.
 
 ## Conditions in a plan
 
