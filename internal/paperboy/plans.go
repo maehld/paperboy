@@ -16,6 +16,7 @@ import (
 
 	"github.com/maehld/paperboy/internal/page"
 	"github.com/maehld/paperboy/internal/plan"
+	"github.com/maehld/paperboy/pkg/plugin"
 )
 
 // hintRefresh is reported for pages that only announce a configuration problem,
@@ -105,6 +106,11 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	return &renderedPage{data: data, hash: hashBytes(data), key: key, pix: img.Pix, rect: img.Rect, at: time.Now()}, nil
 }
 
+// deviceInfo names a device for a plugin request (ADR 0111).
+func pluginDevice(d *Device) *plugin.DeviceInfo {
+	return &plugin.DeviceInfo{ID: d.ID}
+}
+
 // display describes a display type for the page package.
 func (s *Server) display(cfg *Config, p Profile) page.Display {
 	return page.Display{Width: p.Width, Height: p.Height, Levels: p.Levels, Text: p.text(), Charset: p.Charset, PPI: p.PPI,
@@ -134,8 +140,11 @@ func scrollRows(scroll []string) []string {
 }
 
 // renderText renders pages/<name>.<profile>.yaml for a text display type
-// (ADR 0044). Like renderPage it turns a panic into an error.
-func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, pos pagePosition, self string) (text page.Text, err error) {
+// (ADR 0044). The page lays out plugin values (ADR 0111); device names the
+// display a device render is for, nil for a preview. self is the device the
+// built-in status widget may show (ADR 0115). Like renderPage it turns a
+// panic into an error.
+func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, pos pagePosition, self string, device *plugin.DeviceInfo) (text page.Text, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("text page rendering panicked", "profile", profile, "page", name, "panic", r, "stack", string(debug.Stack()))
@@ -152,7 +161,7 @@ func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, po
 	}
 	status := s.statusSnapshot(cfg, self, selectedDeviceIDs(tmpl), now)
 	return tmpl.RenderText(s.display(cfg, p), page.Context{Now: now, Page: pos.index + 1, Pages: pos.count,
-		Widgets: s.widgetSource(), ServerStatus: status})
+		Values: s.valueSource(), Device: device, ServerStatus: status})
 }
 
 // hintPage is a generated notice page and the display type it was drawn for:
@@ -417,7 +426,7 @@ func (s *Server) renderPlan(cfg *Config, d *Device, c planChoice, now time.Time,
 		return sp
 	}
 	if cfg.Profiles[d.Profile].text() {
-		text, err := s.renderText(cfg, d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages}, d.ID)
+		text, err := s.renderText(cfg, d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages}, d.ID, pluginDevice(d))
 		if err != nil {
 			return s.pageFailed(cfg, d, c, err, quiet)
 		}

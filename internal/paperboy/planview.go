@@ -183,7 +183,7 @@ func (s *Server) planViewPage(cfg *Config, profile, name string, text bool, at t
 		return vp
 	}
 	if text {
-		text, err := s.renderText(cfg, profile, name, at, pagePosition{index: 0, count: 1}, "")
+		text, err := s.renderText(cfg, profile, name, at, pagePosition{index: 0, count: 1}, "", nil)
 		if err != nil {
 			vp.Error = shortError(err)
 			return vp

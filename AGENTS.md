@@ -55,6 +55,7 @@ The structure is in `docs/design/`; these are the rules that a change must not b
 - **A plugin request never runs under the state lock.** The configuration snapshot is taken before locking, the conditions are asked before locking, page selection happens under the lock, and composing, drawing and writing happen outside it. Interactions with `state/` are atomic, and state belongs to the MAC, not to a file name (ADR 0080).
 - **The instance directory is the configuration.** Files are parsed strictly with a hint for every rejected key, and the same parser validates the runtime and the editor API.
 - **A page is a grid of widgets on a 6 × 8 reference grid.** Sizes are physical (points, `ppi`), a widget draws exactly its cell, and a widget that cannot draw there answers `ErrTooSmall` instead of leaving the cell empty.
+- **A text page is rows of declared plugin values (ADR 0111).** It has no `grid` and no `cells`; every cell names a value a plugin declares in `describe.values`, and Paperboy formats it, aligns it and maps it to the charset. The `text` action stays in the protocol until the last plugin declares values.
 - **Every plugin is a separate program** with its own version in `cmd/<plugin>/VERSION`; the protocol is public in `pkg/plugin` and only grows additively.
 
 ## Essential rules for devices
@@ -69,7 +70,7 @@ Paperboy v2 (ADR 0049) replaced the data document (ADR 0024), the region model (
 
 Still in place from v1: the device API (ADR 0042) with text displays (ADR 0044, 0045), plans (ADR 0025), configuration reload (ADR 0047), device status and dashboard (ADR 0039, 0040), firmware distribution (ADR 0043) and the battery warning (ADR 0020). ADR 0041's firmware compiles for all four hardware types but is not yet flashed on every device; the rollback test with a deliberately broken image succeeded, so `firmware.update: auto` may be used on real devices. CalDAV against the real iCloud was tested on 2026-11-05 with the v1 provider; the plugin mode uses the same code but has not run against iCloud yet.
 
-Open: a SolarAI plugin (it talks to SolarAI over HTTP; SolarAI knows nothing about Paperboy), plans/delivery for OpenDisplay, push delivery to text displays and faster menu steps through partial e-paper updates for overlay screens (the Sticky can do black-and-white partial refreshes, the E1001 in grayscale mode cannot; issue #151).
+Open: value lists (`for-each`), the text editor and the plugin migrations of ADR 0111; a SolarAI plugin (it talks to SolarAI over HTTP; SolarAI knows nothing about Paperboy), plans/delivery for OpenDisplay, push delivery to text displays and faster menu steps through partial e-paper updates for overlay screens (the Sticky can do black-and-white partial refreshes, the E1001 in grayscale mode cannot; issue #151).
 
 ## Startup and checks
 

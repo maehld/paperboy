@@ -39,9 +39,13 @@ type editorPageFile struct {
 	Title  string `json:"title,omitempty"`
 	Kind   string `json:"kind,omitempty"`
 	Grid   [2]int `json:"grid"`
+	Rows   int    `json:"rows,omitempty"` // text pages: number of rows (ADR 0111)
 	Hash   string `json:"hash"`
 	Error  string `json:"error,omitempty"`
 	Orphan bool   `json:"orphan,omitempty"` // no page file of this name
+	// textWidth is the widest row of a text page, for whether a display type
+	// can show it.
+	textWidth int
 	// Variants is the map of the page file: the display type each label
 	// serves. A variant file carries none (ADR 0110).
 	Variants map[string]string `json:"variants,omitempty"`
@@ -189,6 +193,14 @@ func pageFiles(dir string) ([]editorPageFile, error) {
 			f.Error = shortError(err)
 		} else {
 			f.Title, f.Kind, f.Grid = t.Title, t.Kind, t.Grid
+			f.Rows = len(t.Rows)
+			for _, row := range t.Rows {
+				width := 0
+				for _, c := range row {
+					width += c.Width
+				}
+				f.textWidth = max(f.textWidth, width)
+			}
 			f.Variants = t.Variants
 		}
 		list = append(list, f)
@@ -1192,7 +1204,7 @@ func (s *Server) renderDraft(cfg *Config, display string, tmpl *page.Template, n
 	}()
 	d := s.display(cfg, cfg.Profiles[display])
 	status := s.statusSnapshot(cfg, "", selectedDeviceIDs(tmpl), now)
-	ctx := page.Context{Now: now, Page: 1, Pages: 1, Widgets: s.widgetSource(), ServerStatus: status}
+	ctx := page.Context{Now: now, Page: 1, Pages: 1, Widgets: s.widgetSource(), Values: s.valueSource(), ServerStatus: status}
 	if d.Text {
 		text, err := tmpl.RenderText(d, ctx)
 		return nil, text.Lines, err

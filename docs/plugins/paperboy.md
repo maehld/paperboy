@@ -2,6 +2,24 @@
 
 The built-in plugin `paperboy` runs inside Paperboy and needs no configuration. All widgets work on image and text displays.
 
+## Values
+
+A text page lays out values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). The plugin declares:
+
+| Value | Type | Content |
+|---|---|---|
+| `title` | text | the page title |
+| `time` | timestamp | the current moment |
+| `date` | timestamp | midnight of the current day, so Paperboy writes the date |
+| `now` | timestamp | the current moment, for a layout test |
+
+```yaml
+rows:
+  - [{ value: paperboy/title, width: 20, align: left }]
+  - [{ value: paperboy/date, label: Datum, width: 20, align: left }]
+  - [{ value: paperboy/time, label: Zeit, width: 20, align: right }]
+```
+
 ## Widgets
 
 - `header`: page header. Args: `title` (default the page title), `subtitle`, `clock`, `date` (weekday and date before the clock, in the longest of four forms that fits, e.g. „Samstag, 7. November 2026“, „Sa, 7.11.2026“, „Sa, 7.11.“, „7.11.“; left out when none fits), `page_indicator`, `align` (`left`, `center` or `right`, default `left`) and `battery` (default `false`: an icon and the charge of this device at the right).

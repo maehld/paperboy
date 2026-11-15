@@ -43,6 +43,10 @@
   };
 
   const text = () => state.kind === 'text';
+  // A text page is a layout of rows of values (ADR 0111). This iteration shows
+  // it read-only; the file is edited by hand.
+  const rowsPage = () => !state.widgetsPage && text();
+  const hasRows = () => !!(state.template && Array.isArray(state.template.rows) && state.template.rows.length);
   const targetPath = () => 'pages/' + state.name + (state.file ? '.' + state.file : '') + '.yaml';
 
   // ---- status and where ----
@@ -78,8 +82,8 @@
   }
 
   function updateSave() {
-    const hasCell = !!state.template && !state.readOnly &&
-      (!state.widgetsPage || state.template.cells.length > 0);
+    const content = rowsPage() ? hasRows() : !!state.template && (!state.widgetsPage || state.template.cells.length > 0);
+    const hasCell = !!state.template && !state.readOnly && content;
     // The page editor saves, the widgets page copies the cell: one button each.
     const save = el('save');
     if (save) save.disabled = !hasCell;
@@ -113,6 +117,14 @@
   // ---- model ----
 
   function blank() {
+    if (rowsPage()) {
+      return {
+        title: state.file ? '' : state.name,
+        kind: 'text',
+        rows: [[{ value: 'paperboy/title', label: '', unit: '', width: Math.max(1, state.width), align: 'left' }]],
+        style: {},
+      };
+    }
     const grid = text() ? [state.width, state.height] : (state.widgetsPage ? state.reference.slice() : state.grid.slice());
     return { title: state.file ? '' : state.name, kind: state.kind, grid: grid, style: {}, cells: [] };
   }
@@ -120,6 +132,21 @@
   // normalize keeps the model in the shape serialize writes back: two-element
   // coordinates, args, styles and the variants map present.
   function normalize(t) {
+    if (rowsPage()) {
+      t.kind = 'text';
+      t.grid = [state.width, state.height];
+      t.style = t.style || {};
+      t.variants = t.variants || {};
+      t.rows = (t.rows || []).map((row) => (row || []).map((c) => ({
+        value: c.value || '',
+        label: c.label || '',
+        unit: c.unit || '',
+        width: Math.max(1, Math.round(Number(c.width) || 1)),
+        align: c.align === 'right' || c.align === 'decimal' ? c.align : 'left',
+      })));
+      t.cells = [];
+      return t;
+    }
     t.kind = t.kind || state.kind;
     t.grid = Array.isArray(t.grid) && t.grid.length === 2 ? [t.grid[0], t.grid[1]] : state.grid.slice();
     t.style = t.style || {};
@@ -157,12 +184,21 @@
   // title and the variants map; a variant carries neither (ADR 0110).
   function serialize() {
     const t = state.template;
-    const out = { kind: t.kind, grid: [t.grid[0], t.grid[1]], style: styleOut(t.style || {}), cells: [] };
+    const out = rowsPage()
+      ? { kind: 'text', style: styleOut(t.style || {}), rows: t.rows.map((row) => row.map((c) => {
+        const cell = { value: c.value, width: c.width };
+        if (c.label) cell.label = c.label;
+        if (c.unit) cell.unit = c.unit;
+        if (c.align && c.align !== 'left') cell.align = c.align;
+        return cell;
+      })) }
+      : { kind: t.kind, grid: [t.grid[0], t.grid[1]], style: styleOut(t.style || {}), cells: [] };
     if (!state.file) {
       out.title = t.title || '';
       if (t.variants && Object.keys(t.variants).length) out.variants = t.variants;
     }
     if (t.notices === 'none') out.notices = 'none';
+    if (rowsPage()) return out;
     out.cells = t.cells.map((c) => {
       const cell = { at: [c.at[0], c.at[1]], span: [c.span[0], c.span[1]], widget: c.widget, args: c.args || {} };
       const style = styleOut(c.style || {});
@@ -190,22 +226,24 @@
   function renderSettings() {
     if (state.widgetsPage) return;
     const t = state.template;
-    const off = !t || state.readOnly;
+    const off = !t || state.readOnly || rowsPage();
     for (const id of ['title', 'cols', 'rows', 'padding', 'rule', 'text-size', 'divider', 'notices']) el(id).disabled = off;
     el('title').disabled = off || state.file !== '';
     el('cols').disabled = off || text();
     el('rows').disabled = off || text();
-    el('grid-note').textContent = text()
-      ? 'The grid is the character grid of the display and cannot be changed.'
-      : 'Cells of the page; plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid.';
+    el('grid-note').textContent = rowsPage()
+      ? 'Text page: rows are edited by hand in ' + targetPath() + '.'
+      : text()
+        ? 'The grid is the character grid of the display and cannot be changed.'
+        : 'Cells of the page; plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid.';
     if (!t) {
       for (const id of ['title', 'cols', 'rows', 'padding', 'rule', 'text-size', 'divider']) el(id).value = '';
       return;
     }
     const s = t.style || {};
     el('title').value = t.title || state.page_title || '';
-    el('cols').value = t.grid[0];
-    el('rows').value = t.grid[1];
+    el('cols').value = rowsPage() ? state.width : t.grid[0];
+    el('rows').value = rowsPage() ? state.height : t.grid[1];
     el('padding').value = s.padding === undefined || s.padding === null ? '' : s.padding;
     el('rule').value = s.rule || '';
     el('text-size').value = s.text_size || '';
@@ -240,6 +278,11 @@
   function renderPalette() {
     const box = el('palette');
     box.innerHTML = '';
+    if (rowsPage()) {
+      box.innerHTML = '<p class="hint">A text page is a layout of rows and values. This version shows it read-only; edit ' +
+        targetPath() + ' by hand.</p>';
+      return;
+    }
     if (state.readOnly || !state.template) {
       box.innerHTML = '<p class="hint">The file does not read as a page; fix it by hand and reload.</p>';
       return;
@@ -325,7 +368,7 @@
   }
 
   function pick(plugin, widget) {
-    if (!state.template) return;
+    if (!state.template || rowsPage()) return;
     if (state.widgetsPage) {
       showWidget(plugin, widget);
       return;
@@ -601,11 +644,13 @@
       el('board-note').textContent = 'The file cannot be edited until it reads as a page again.';
       return;
     }
-    board.style.gridTemplateColumns = 'repeat(' + t.grid[0] + ', 1fr)';
-    board.style.gridTemplateRows = 'repeat(' + t.grid[1] + ', 1fr)';
+    const cols = rowsPage() ? state.width : t.grid[0];
+    const rows = rowsPage() ? state.height : t.grid[1];
+    board.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+    board.style.gridTemplateRows = 'repeat(' + rows + ', 1fr)';
     board.style.aspectRatio = state.width + ' / ' + state.height;
-    for (let y = 0; y < t.grid[1]; y++) {
-      for (let x = 0; x < t.grid[0]; x++) {
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
         const slot = document.createElement('div');
         slot.className = 'slot';
         slot.dataset.x = String(x);
@@ -617,6 +662,11 @@
         });
         board.appendChild(slot);
       }
+    }
+    if (rowsPage()) {
+      el('board-note').textContent = t.rows.length + ' rows, edited by hand in ' + targetPath() + '.';
+      applyBoardPreview();
+      return;
     }
     t.cells.forEach((c, i) => {
       const cell = document.createElement('div');
@@ -675,7 +725,7 @@
     }
     for (const slot of board.querySelectorAll('.slot')) slot.textContent = '';
     if (state.previewKind !== 'text' || !state.template) return;
-    const [cols, rows] = state.template.grid;
+    const [cols, rows] = rowsPage() ? [state.width, state.height] : state.template.grid;
     for (let y = 0; y < rows; y++) {
       const line = state.previewLines[y] || '';
       for (let x = 0; x < cols; x++) {
@@ -756,8 +806,13 @@
     const box = el('inspector');
     box.innerHTML = '';
     const head = document.createElement('h3');
-    head.textContent = state.widgetsPage ? 'Widget' : 'Cell';
+    head.textContent = rowsPage() ? 'Rows' : state.widgetsPage ? 'Widget' : 'Cell';
     box.appendChild(head);
+    if (rowsPage()) {
+      renderRowsInspector(box);
+      updateSave();
+      return;
+    }
     const t = state.template;
     const c = t && state.selected >= 0 ? t.cells[state.selected] : null;
     if (!c) {
@@ -1014,6 +1069,35 @@
     updateSave();
   }
 
+  // renderRowsInspector lists the rows of a text page read-only (ADR 0111).
+  function renderRowsInspector(box) {
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = 'Rows are read-only here. Edit ' + targetPath() + ' by hand.';
+    box.appendChild(note);
+    if (!hasRows()) {
+      const empty = document.createElement('p');
+      empty.className = 'empty';
+      empty.textContent = 'This page has no rows.';
+      box.appendChild(empty);
+      return;
+    }
+    state.template.rows.forEach((row, y) => {
+      const head = document.createElement('h4');
+      head.textContent = 'Row ' + (y + 1);
+      box.appendChild(head);
+      for (const c of row) {
+        const line = document.createElement('p');
+        line.className = 'muted';
+        const parts = [c.value || '(no value)', c.width + ' chars', c.align || 'left'];
+        if (c.label) parts.push('label ' + c.label);
+        if (c.unit) parts.push('unit ' + c.unit);
+        line.textContent = parts.join(' · ');
+        box.appendChild(line);
+      }
+    });
+  }
+
   function removeCell() {
     if (!state.template || state.selected < 0) return;
     state.template.cells.splice(state.selected, 1);
@@ -1250,11 +1334,11 @@
       setRendering(false);
       return;
     }
-    if (!state.template.cells.length) {
+    if (rowsPage() ? !hasRows() : !state.template.cells.length) {
       clearBoardPreview();
       if (error) {
         error.hidden = false;
-        error.textContent = 'Add a widget to see a preview.';
+        error.textContent = rowsPage() ? 'Add a row to see a preview.' : 'Add a widget to see a preview.';
       }
       setRendering(false);
       return;
@@ -1480,7 +1564,9 @@
     const info = state.displays.find((d) => d.name === display) || {};
     const kind = info.kind === 'text' ? 'text' : 'image';
     const grid = kind === 'text' ? [info.width, info.height] : state.reference.slice();
-    const template = { kind: kind, grid: grid, style: {}, cells: [blankCell(kind, grid)] };
+    const template = kind === 'text'
+      ? { kind: 'text', rows: [[{ value: 'paperboy/title', width: Math.max(1, info.width), align: 'left' }]], style: {} }
+      : { kind: kind, grid: grid, style: {}, cells: [blankCell(kind, grid)] };
     setStatus('creating the variant for ' + display + '…', '');
     let res;
     try {
@@ -1847,7 +1933,7 @@
   on('board', 'dragover', (e) => e.preventDefault());
   on('board', 'drop', boardDrop);
   on('title', 'input', () => {
-    if (!state.template) return;
+    if (!state.template || rowsPage()) return;
     state.template.title = el('title').value;
     changed();
   });

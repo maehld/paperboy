@@ -3,6 +3,7 @@ package page
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"os"
@@ -12,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maehld/paperboy/pkg/render"
+	"github.com/maehld/paperboy/pkg/plugin"
 )
 
 const gridPage = `
@@ -204,72 +205,147 @@ func TestRenderImageWithoutSource(t *testing.T) {
 	}
 }
 
+func valueSource(values map[string]ValueResult) ValueSource {
+	return func(b ValueBatch) []Result {
+		out := make([]Result, len(b.Values))
+		for i, v := range b.Values {
+			r, ok := values[v.Plugin+"/"+v.Name]
+			if !ok {
+				out[i] = Result{Err: fmt.Errorf("value %s/%s is not declared", v.Plugin, v.Name)}
+				continue
+			}
+			out[i] = r.Result()
+		}
+		return out
+	}
+}
+
+// ValueResult is one value with its declaration for a test page.
+type ValueResult struct {
+	Value plugin.Value
+	Spec  plugin.ValueSpec
+	Err   error
+	Stale bool
+}
+
+func (v ValueResult) Result() Result {
+	return Result{Value: &v.Value, Spec: v.Spec, Err: v.Err, Stale: v.Stale}
+}
+
 func TestRenderText(t *testing.T) {
 	tmpl, err := Parse(strings.NewReader(`
 kind: text
-grid: [10, 3]
-cells:
-  - { at: [0, 0], span: [10, 1], widget: paperboy/header }
-  - { at: [0, 1], span: [6, 2], widget: cal/agenda }
-  - { at: [6, 1], span: [4, 2], widget: solar/tiles }
+rows:
+  - [{ value: a/temp, label: T, width: 10, align: decimal }]
+  - [{ value: a/name, width: 5, align: left }, { value: a/now, width: 5, align: right }]
+  - [{ value: a/down, width: 10, align: left }]
 `))
 	if err != nil {
 		t.Fatal(err)
 	}
-	src := func(b Batch) []Result {
-		if !b.Text || b.Charset != "ascii" {
-			t.Fatalf("batch: %+v", b)
-		}
-		return []Result{
-			{Lines: []string{"Übersicht 12:00"}},
-			{Lines: []string{"10:00 Schwimmen", "Mo", "ignored"}, Stale: true},
-			{Err: errors.New("down")},
-		}
-	}
-	text, err := tmpl.RenderText(Display{Width: 10, Height: 3, Text: true, Charset: "ascii"}, Context{Widgets: src})
+	now := time.Date(2026, time.November, 15, 12, 0, 0, 0, time.UTC)
+	src := valueSource(map[string]ValueResult{
+		"a/temp": {Value: plugin.NumberValue(3.5), Spec: plugin.ValueSpec{Name: "temp", Type: plugin.ValueNumber, Unit: "kW", Precision: 1}},
+		"a/name": {Value: plugin.TextValue("Übersicht"), Spec: plugin.ValueSpec{Name: "name", Type: plugin.ValueText}},
+		"a/now":  {Value: plugin.TimestampValue(now), Spec: plugin.ValueSpec{Name: "now", Type: plugin.ValueTimestamp}},
+		"a/down": {Err: errors.New("down")},
+	})
+	text, err := tmpl.RenderText(Display{Width: 10, Height: 3, Text: true, Charset: "ascii", Language: "de", Timezone: time.UTC},
+		Context{Now: now, Values: src})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"Uebersich!", "10:00 ?   ", "Mo    down"}
+	want := []string{"T   3,5 kW", "Ueber12:00", "? down    "}
 	if strings.Join(text.Lines, "|") != strings.Join(want, "|") {
 		t.Fatalf("lines %q, want %q", text.Lines, want)
 	}
-	if strings.Join(text.Scroll, "|") != "||" {
-		t.Fatalf("scroll %q, want no scrolling rows", text.Scroll)
-	}
-	if _, err := tmpl.RenderText(Display{Width: 20, Height: 4, Text: true}, Context{Widgets: src}); err == nil {
-		t.Fatal("a grid that does not match the display must fail")
+	if text.Scroll != nil {
+		t.Fatalf("a page of values must not scroll: %q", text.Scroll)
 	}
 }
 
-func TestBannerOnTinyDisplayStaysBlack(t *testing.T) {
-	img := WithBanner(render.NewCanvas(40, 20, 4), "Akku schwach – bitte laden")
-	for x := 0; x < 40; x++ {
-		if gray(img, x, 19) != 0 {
-			t.Fatalf("pixel %d of the bar is %d, want black", x, gray(img, x, 19))
+func TestRenderTextStaleAndMissingSource(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: a/x, width: 6 }]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := func(ValueBatch) []Result {
+		v := plugin.TextValue("hi")
+		return []Result{{Value: &v, Spec: plugin.ValueSpec{Type: plugin.ValueText}, Stale: true}}
+	}
+	text, err := tmpl.RenderText(Display{Width: 6, Height: 1, Text: true}, Context{Values: stale})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text.Lines[0] != "hi   !" {
+		t.Fatalf("stale marker: %q", text.Lines[0])
+	}
+	text, err = tmpl.RenderText(Display{Width: 6, Height: 1, Text: true}, Context{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(text.Lines[0], "? ") {
+		t.Fatalf("missing source: %q", text.Lines[0])
+	}
+}
+
+func TestTextPageRowsParse(t *testing.T) {
+	valid := `
+kind: text
+rows:
+  - [{ value: a/one, width: 4 }]
+  - [{ value: a/two, width: 2, align: right }, { value: a/three, width: 2, align: decimal }]
+`
+	tmpl, err := Parse(strings.NewReader(valid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmpl.Rows[0][0].Align != AlignLeft || tmpl.Rows[1][1].Align != AlignDecimal {
+		t.Fatalf("alignments: %+v", tmpl.Rows)
+	}
+	for name, bad := range map[string]string{
+		"grid":      "kind: text\ngrid: [2, 1]\nrows:\n  - [{ value: a/b, width: 2 }]\n",
+		"cells":     "kind: text\ncells: [{ widget: a/b }]\nrows:\n  - [{ value: a/b, width: 2 }]\n",
+		"no rows":   "kind: text\n",
+		"empty row": "kind: text\nrows:\n  - []\n",
+		"width":     "kind: text\nrows:\n  - [{ value: a/b, width: 0 }]\n",
+		"wide":      "kind: text\nrows:\n  - [{ value: a/b, width: 81 }]\n",
+		"align":     "kind: text\nrows:\n  - [{ value: a/b, width: 2, align: center }]\n",
+		"value":     "kind: text\nrows:\n  - [{ value: agenda, width: 2 }]\n",
+		"plugin":    "kind: text\nrows:\n  - [{ value: A/b, width: 2 }]\n",
+		"sum":       "kind: text\nrows:\n  - [{ value: a/b, width: 50 }, { value: a/c, width: 31 }]\n",
+	} {
+		if _, err := Parse(strings.NewReader(bad)); err == nil {
+			t.Errorf("%s: accepted", name)
 		}
 	}
-	big := WithBanner(render.NewCanvas(400, 200, 4), "Akku schwach")
-	white := 0
-	for x := 0; x < 400; x++ {
-		if gray(big, x, 190) == 255 {
-			white++
-		}
-	}
-	if white == 0 {
-		t.Fatal("a large bar must carry the text")
+	if _, err := Parse(strings.NewReader("kind: image\ngrid: [1, 1]\nrows:\n  - [{ value: a/b, width: 1 }]\ncells: [{ widget: a/b }]\n")); err == nil {
+		t.Error("an image page with rows was accepted")
 	}
 }
 
 func TestFits(t *testing.T) {
-	img, _ := Parse(strings.NewReader("kind: image\ngrid: [20, 4]\ncells: [{widget: a/b}]\n"))
-	txt, _ := Parse(strings.NewReader("kind: text\ngrid: [20, 4]\ncells: [{widget: a/b}]\n"))
+	img, err := Parse(strings.NewReader("kind: image\ngrid: [20, 4]\ncells: [{widget: a/b}]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	txt, err := Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: a/b, width: 20 }]\n  - [{ value: a/b, width: 20 }]\n  - [{ value: a/b, width: 20 }]\n  - [{ value: a/b, width: 20 }]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	lcd := Display{Width: 20, Height: 4, Text: true}
 	if img.Fits(lcd) == nil {
-		t.Error("an image page with a matching grid must not fit a text display")
+		t.Error("an image page must not fit a text display")
 	}
 	if txt.Fits(lcd) != nil || txt.Fits(Display{Width: 16, Height: 2, Text: true}) == nil {
 		t.Error("text page fit")
+	}
+	if txt.Fits(Display{Width: 20, Height: 3, Text: true}) == nil {
+		t.Error("more rows than the display were accepted")
+	}
+	wide, _ := Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: a/b, width: 21 }]\n"))
+	if wide.Fits(Display{Width: 20, Height: 4, Text: true}) == nil {
+		t.Error("a row wider than the display was accepted")
 	}
 	if txt.Fits(Display{Width: 800, Height: 480}) == nil || img.Fits(Display{Width: 800, Height: 480}) != nil {
 		t.Error("image display fit")
@@ -279,62 +355,68 @@ func TestFits(t *testing.T) {
 	}
 }
 
-func TestRenderTextScroll(t *testing.T) {
+func TestFormatValue(t *testing.T) {
+	now := time.Date(2026, time.November, 15, 12, 0, 0, 0, time.UTC)
+	loc := time.UTC
+	number := plugin.ValueSpec{Type: plugin.ValueNumber, Precision: 1}
+	if got := formatValue(number, plugin.NumberValue(12.5), "de", now, loc); got != "12,5" {
+		t.Errorf("German decimal: %q", got)
+	}
+	if got := formatValue(number, plugin.NumberValue(12.5), "en", now, loc); got != "12.5" {
+		t.Errorf("English decimal: %q", got)
+	}
+	if got := formatValue(plugin.ValueSpec{Type: plugin.ValueDuration}, plugin.DurationValue(3*time.Hour+20*time.Minute), "de", now, loc); got != "3h 20min" {
+		t.Errorf("duration: %q", got)
+	}
+	if got := formatValue(plugin.ValueSpec{Type: plugin.ValueDirection}, plugin.DirectionValue(-1), "de", now, loc); got != "v" {
+		t.Errorf("direction: %q", got)
+	}
+	cases := []struct {
+		at   time.Time
+		want string
+	}{
+		{time.Date(2026, time.November, 15, 9, 30, 0, 0, loc), "09:30"},
+		{time.Date(2026, time.November, 15, 0, 0, 0, 0, loc), "15.11.2026"},
+		{time.Date(2026, time.November, 14, 18, 5, 0, 0, loc), "14.11. 18:05"},
+	}
+	for _, c := range cases {
+		if got := formatValue(plugin.ValueSpec{Type: plugin.ValueTimestamp}, plugin.TimestampValue(c.at), "de", now, loc); got != c.want {
+			t.Errorf("timestamp %v: %q, want %q", c.at, got, c.want)
+		}
+	}
+	if got := formatValue(plugin.ValueSpec{Type: plugin.ValueTimestamp}, plugin.TimestampValue(cases[0].at), "en", now, loc); got != "09:30" {
+		t.Errorf("English time: %q", got)
+	}
+}
+
+func TestTextPageCellsAlign(t *testing.T) {
+	if got := composeTextCell("utf8", "", "12,5", "", 8, AlignRight); got != "    12,5" {
+		t.Errorf("right: %q", got)
+	}
+	if got := composeTextCell("utf8", "PV", "12,5", "kW", 10, AlignDecimal); got != "PV 12,5 kW" {
+		t.Errorf("decimal: %q", got)
+	}
+	if got := composeTextCell("utf8", "", "Übersicht", "", 5, AlignLeft); got != "Übers" {
+		t.Errorf("cut: %q", got)
+	}
+	if got := composeTextCell("ascii", "", "Übersicht", "", 10, AlignLeft); got != "Uebersicht" {
+		t.Errorf("ascii: %q", got)
+	}
+	if got := composeTextCell("utf8", "", "123456789", "", 4, AlignRight); got != "6789" {
+		t.Errorf("right cuts the head: %q", got)
+	}
+	if got := composeTextCell("utf8", "", "123456789", "", 4, AlignLeft); got != "1234" {
+		t.Errorf("left cuts the tail: %q", got)
+	}
+}
+
+func TestEncodeTextRows(t *testing.T) {
 	tmpl, err := Parse(strings.NewReader(`
 kind: text
-grid: [10, 2]
-cells:
-  - { at: [0, 0], span: [10, 1], widget: paperboy/text, scroll: true }
-  - { at: [0, 1], span: [10, 1], widget: paperboy/text }
+rows:
+  - [{ value: a/one, label: L, unit: kW, width: 6, align: decimal }]
+  - [{ value: a/two, width: 4, align: right }]
 `))
-	if err != nil {
-		t.Fatal(err)
-	}
-	src := func(b Batch) []Result {
-		if len(b.Widgets) != 2 || !b.Widgets[0].Scroll || b.Widgets[1].Scroll {
-			t.Fatalf("widgets: %+v", b.Widgets)
-		}
-		return []Result{
-			{Lines: []string{"Übersicht 12:00 Uhr  "}},
-			{Lines: []string{"Übersicht 12:00 Uhr"}},
-		}
-	}
-	text, err := tmpl.RenderText(Display{Width: 10, Height: 2, Text: true, Charset: "ascii"}, Context{Widgets: src})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []string{"Uebersicht", "Uebersicht"}; strings.Join(text.Lines, "|") != strings.Join(want, "|") {
-		t.Fatalf("lines %q, want %q", text.Lines, want)
-	}
-	// Convert first: the display counts columns, and the full line keeps the
-	// text behind column 10 for the display to scroll (ADR 0092).
-	if want := []string{"Uebersicht 12:00 Uhr", ""}; strings.Join(text.Scroll, "|") != strings.Join(want, "|") {
-		t.Fatalf("scroll %q, want %q", text.Scroll, want)
-	}
-}
-
-func TestScrollNeedsTextPageAndFullWidth(t *testing.T) {
-	if _, err := Parse(strings.NewReader("kind: image\ngrid: [10, 1]\ncells: [{span: [10, 1], widget: a/b, scroll: true}]\n")); err == nil {
-		t.Error("scroll on an image page accepted")
-	}
-	tmpl, err := Parse(strings.NewReader("kind: text\ngrid: [10, 2]\ncells: [{span: [6, 1], widget: a/b, scroll: true}]\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tmpl.Fits(Display{Width: 10, Height: 2, Text: true}); err == nil {
-		t.Error("a scrolling cell that is not as wide as the display must not fit")
-	}
-	tmpl, err = Parse(strings.NewReader("kind: text\ngrid: [10, 2]\ncells: [{span: [10, 1], widget: a/b, scroll: true}]\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tmpl.Fits(Display{Width: 10, Height: 2, Text: true}); err != nil {
-		t.Errorf("full-width scrolling cell: %v", err)
-	}
-}
-
-func TestEncodeScroll(t *testing.T) {
-	tmpl, err := Parse(strings.NewReader("kind: text\ngrid: [10, 1]\ncells: [{span: [10, 1], widget: a/b, scroll: true}]\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,8 +424,8 @@ func TestEncodeScroll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "scroll: true") {
-		t.Fatalf("scroll missing in:\n%s", data)
+	if !strings.Contains(string(data), "rows:") || strings.Contains(string(data), "grid:") {
+		t.Fatalf("encoded text page:\n%s", data)
 	}
 	back, err := Parse(bytes.NewReader(data))
 	if err != nil {
@@ -351,8 +433,5 @@ func TestEncodeScroll(t *testing.T) {
 	}
 	if !reflect.DeepEqual(tmpl, back) {
 		t.Fatalf("round trip changed the template\nwant %+v\ngot  %+v", tmpl, back)
-	}
-	if strings.Contains(string(data), "scroll: false") {
-		t.Fatalf("a static cell must not carry scroll:\n%s", data)
 	}
 }

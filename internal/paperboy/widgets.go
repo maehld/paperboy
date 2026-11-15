@@ -157,7 +157,7 @@ func (s *Server) handleWidget(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if wq.p.text() {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write([]byte(strings.Join(page.TextCell(res, wq.p.Charset, wq.req.Width, wq.req.Height), "\n") + "\n"))
+		w.Write([]byte(strings.Join(page.TextLines(res, wq.p.Charset, wq.req.Width, wq.req.Height), "\n") + "\n"))
 		return
 	}
 	levels := wq.p.Levels

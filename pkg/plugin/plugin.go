@@ -23,6 +23,7 @@
 //   - "action": run exactly one concrete action and report the outcome.
 //   - "conditions": report the state of the named conditions a plan may
 //     depend on (ADR 0103).
+//   - "values": the declared values a text page lays out (ADR 0111).
 //
 // Plugins written in Go implement Handler, call Serve and draw with
 // pkg/render, so widgets share the fonts and gray levels of Paperboy.
@@ -75,10 +76,11 @@ import (
 // and action results. Version 5 (ADR 0081) added the plugin state and blobs:
 // the state request, Message.state, describe.blobs and the blobs of answers.
 // Version 6 (ADR 0103) added conditions: describe.conditions, the conditions
-// request and Message.conditions.
+// request and Message.conditions. Version 7 (ADR 0111) added values:
+// describe.values, the values request and Message.values.
 // Plugins report the version in every answer (Message.Version); Paperboy
 // refuses a plugin that speaks less than MinVersion (ADR 0081).
-const Version = 6
+const Version = 7
 
 // MinVersion is the oldest protocol Paperboy accepts. Version 5 is the cut
 // that introduced state and blobs; from here on the protocol grows additively,
@@ -97,6 +99,8 @@ const (
 	// ActionConditions asks for the state of the named conditions a plan may
 	// depend on (ADR 0103).
 	ActionConditions = "conditions"
+	// ActionValues asks for declared values a text page lays out (ADR 0111).
+	ActionValues = "values"
 )
 
 // EventChanged tells Paperboy that widgets are out of date.
@@ -123,6 +127,9 @@ type Request struct {
 	// object, separate from the page data, and only the built-in plugin
 	// receives it for now (ADR 0115).
 	ServerStatus *ServerStatus `json:"server_status,omitempty"`
+	// Values are the declared value keys a values request asks for; one
+	// request per plugin and page covers every key of that page (ADR 0111).
+	Values []string `json:"values,omitempty"`
 	// State is the JSON object the plugin stored last time; missing when it
 	// has none. It arrives with the state request, once after configure
 	// (ADR 0081).
@@ -244,11 +251,14 @@ type Message struct {
 	// Conditions is the answer to a conditions request: every declared
 	// condition of the plugin, true while it is active (ADR 0103). A missing
 	// name counts as inactive.
-	Conditions  map[string]bool `json:"conditions,omitempty"`
-	MaxAge      int             `json:"max_age,omitempty"` // seconds the results stay valid; 0 = Paperboy's default
-	Description *Description    `json:"description,omitempty"`
-	Event       string          `json:"event,omitempty"`
-	Changed     []string        `json:"changed,omitempty"` // widgets of a "changed" event; empty = all
+	Conditions map[string]bool `json:"conditions,omitempty"`
+	// Values is the answer to a values request, keyed by the requested name
+	// (ADR 0111). A missing name is an error for that cell.
+	Values      map[string]Value `json:"values,omitempty"`
+	MaxAge      int              `json:"max_age,omitempty"` // seconds the results stay valid; 0 = Paperboy's default
+	Description *Description     `json:"description,omitempty"`
+	Event       string           `json:"event,omitempty"`
+	Changed     []string         `json:"changed,omitempty"` // widgets of a "changed" event; empty = all
 	// State is the JSON object to store for the next start (ADR 0081). A
 	// missing field means unchanged, a null value forgets the stored state.
 	State *json.RawMessage `json:"state,omitempty"`
@@ -271,6 +281,9 @@ type Description struct {
 	// logs a mismatch (ADR 0075); empty means the plugin does not say.
 	Version string       `json:"version,omitempty"`
 	Widgets []WidgetInfo `json:"widgets"`
+	// Values are the data keys a text page may lay out (ADR 0111). A page
+	// asks for them with the values request.
+	Values  []ValueSpec  `json:"values,omitempty"`
 	Actions []ActionSpec `json:"actions,omitempty"` // actions a plan may list (ADR 0057)
 	// Conditions are the named states a plan may depend on (ADR 0103). A
 	// plugin reports them on the conditions request.
@@ -307,6 +320,104 @@ type Span struct {
 	Columns int `json:"columns"`
 	Rows    int `json:"rows"`
 }
+
+// Kinds of values (ADR 0111). The type is what Paperboy formats for a text
+// page; a value is data, not text.
+const (
+	ValueNumber    = "number"
+	ValueText      = "text"
+	ValueDuration  = "duration" // seconds
+	ValueTimestamp = "timestamp"
+	ValueDirection = "direction" // 1 up, 0 flat, -1 down
+)
+
+// Kinds of a value declaration. Only single values exist in protocol 7; list
+// is reserved for the records of a later version (ADR 0111).
+const (
+	ValueKindValue = "value"
+	ValueKindList  = "list"
+)
+
+// ValueSpec describes one value a plugin declares.
+type ValueSpec struct {
+	Name  string `json:"name"`  // the key in a page and in the values answer
+	Title string `json:"title"` // display name for editors
+	// Type is number, text, duration, timestamp or direction.
+	Type string `json:"type"`
+	// Unit is appended to a number, e.g. "kW"; a page may override it.
+	Unit string `json:"unit,omitempty"`
+	// Precision is the number of decimals Paperboy writes for a number.
+	Precision int `json:"precision,omitempty"`
+	// Kind is value (default) or list; protocol 7 only answers values.
+	Kind string `json:"kind,omitempty"`
+}
+
+// Value is one answer of a values request. Exactly one field is set; the
+// matching one follows ValueSpec.Type. The pointers keep a zero number and an
+// empty text apart from an absent field.
+type Value struct {
+	Number    *float64 `json:"number,omitempty"`
+	Text      *string  `json:"text,omitempty"`
+	Duration  *int64   `json:"duration,omitempty"`  // seconds
+	Timestamp *string  `json:"timestamp,omitempty"` // RFC 3339
+	Direction *int     `json:"direction,omitempty"` // 1 up, 0 flat, -1 down
+}
+
+// NumberValue returns a value of type number.
+func NumberValue(f float64) Value { return Value{Number: &f} }
+
+// TextValue returns a value of type text.
+func TextValue(s string) Value { return Value{Text: &s} }
+
+// DurationValue returns a value of type duration, in seconds.
+func DurationValue(d time.Duration) Value {
+	s := int64(d / time.Second)
+	return Value{Duration: &s}
+}
+
+// TimestampValue returns a value of type timestamp.
+func TimestampValue(t time.Time) Value {
+	s := t.Format(time.RFC3339)
+	return Value{Timestamp: &s}
+}
+
+// DirectionValue returns a trend direction: 1 up, 0 flat, -1 down.
+func DirectionValue(d int) Value { return Value{Direction: &d} }
+
+// Type names the field a value carries, or "" when it carries none.
+func (v Value) Type() string {
+	switch {
+	case v.Number != nil:
+		return ValueNumber
+	case v.Text != nil:
+		return ValueText
+	case v.Duration != nil:
+		return ValueDuration
+	case v.Timestamp != nil:
+		return ValueTimestamp
+	case v.Direction != nil:
+		return ValueDirection
+	}
+	return ""
+}
+
+// Time reads a timestamp value in loc.
+func (v Value) Time(loc *time.Location) (time.Time, error) {
+	if v.Timestamp == nil {
+		return time.Time{}, errors.New("not a timestamp")
+	}
+	t, err := time.Parse(time.RFC3339, *v.Timestamp)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("timestamp %q: %w", *v.Timestamp, err)
+	}
+	if loc != nil {
+		t = t.In(loc)
+	}
+	return t, nil
+}
+
+// ErrUnknownValue is returned for a value name a plugin does not declare.
+var ErrUnknownValue = errors.New("unknown value")
 
 // ActionSpec describes one action a plugin offers (ADR 0057).
 type ActionSpec struct {
@@ -428,6 +539,13 @@ type Handler interface {
 // result may be shorter than the requested size; Paperboy pads and cuts.
 type Texter interface {
 	Text(req *Request, w WidgetRequest) ([]string, error)
+}
+
+// Valuer is implemented by plugins whose values a text page lays out
+// (ADR 0111). Values answers every requested name of req.Values; a name the
+// plugin does not declare is an error.
+type Valuer interface {
+	Values(req *Request) (map[string]Value, error)
 }
 
 // Actioner is implemented by plugins that offer actions the device menu can
@@ -586,6 +704,8 @@ func Handle(h Handler, req *Request) (m Message) {
 		handleActions(h, req, &m)
 	case ActionConditions:
 		handleConditions(h, req, &m)
+	case ActionValues:
+		handleValues(h, req, &m)
 	default:
 		m.Error = fmt.Sprintf("unknown action %q", req.Action)
 	}
@@ -716,6 +836,32 @@ func handleConditions(h Handler, req *Request, m *Message) {
 		return
 	}
 	m.Conditions = active
+}
+
+// handleValues answers a values request (ADR 0111). A plugin without the
+// Valuer interface has none, and a request without names is an error.
+func handleValues(h Handler, req *Request, m *Message) {
+	v, ok := h.(Valuer)
+	if !ok {
+		m.Error = "this plugin has no values"
+		return
+	}
+	if len(req.Values) == 0 {
+		m.Error = "values: no names requested"
+		return
+	}
+	values, err := v.Values(req)
+	if err != nil {
+		m.Error = err.Error()
+		return
+	}
+	if values == nil {
+		values = map[string]Value{}
+	}
+	m.Values = values
+	if a, ok := h.(Ager); ok {
+		m.MaxAge = int(a.MaxAge(req) / time.Second)
+	}
 }
 
 func renderOne(h Handler, req *Request, w WidgetRequest) (res Result) {

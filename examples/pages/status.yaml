@@ -3,7 +3,6 @@
 # cells show this device and a fixed list from the device files.
 title: Status
 kind: image
-variants: { lcd2004: lcd2004 }
 grid: [6, 8]
 style: { padding: 4.5, divider: 0.6 }
 cells:

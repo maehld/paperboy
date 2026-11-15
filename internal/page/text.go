@@ -1,8 +1,13 @@
 package page
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
+
+	"github.com/maehld/paperboy/pkg/plugin"
 )
 
 // Character sets of text displays (ADR 0044).
@@ -139,4 +144,156 @@ func wrap(s string, n int) []string {
 		lines = append(lines, cur)
 	}
 	return lines
+}
+
+// renderTextCell formats one cell of a text page: the value, its label and its
+// unit laid out in the cell's width (ADR 0111). A failed or missing value
+// becomes a `? …` cell, like a failing widget did.
+func renderTextCell(r Result, cell TextCell, charset, lang string, now time.Time, loc *time.Location) string {
+	value, unit := "", cell.Unit
+	if r.Err != nil || r.Value == nil {
+		msg := "no value"
+		if r.Err != nil {
+			msg = firstLine(r.Err.Error())
+		}
+		return composeTextCell(charset, cell.Label, "? "+msg, unit, cell.Width, AlignLeft)
+	}
+	value = formatValue(r.Spec, *r.Value, lang, now, loc)
+	if unit == "" && r.Spec.Type == plugin.ValueNumber {
+		unit = r.Spec.Unit
+	}
+	return composeTextCell(charset, cell.Label, value, unit, cell.Width, cell.Align)
+}
+
+// formatValue turns a plugin value into the text a cell shows. Paperboy owns
+// the formatting, so the same reading looks the same on every page: numbers
+// follow the global language and the declared precision, timestamps the page's
+// day, durations and directions their compact form.
+func formatValue(spec plugin.ValueSpec, v plugin.Value, lang string, now time.Time, loc *time.Location) string {
+	switch v.Type() {
+	case plugin.ValueNumber:
+		precision := 0
+		if spec.Type == plugin.ValueNumber {
+			precision = spec.Precision
+		}
+		s := strconv.FormatFloat(*v.Number, 'f', precision, 64)
+		if lang == "de" {
+			s = strings.Replace(s, ".", ",", 1)
+		}
+		return s
+	case plugin.ValueText:
+		return *v.Text
+	case plugin.ValueDuration:
+		return formatDuration(*v.Duration)
+	case plugin.ValueTimestamp:
+		t, err := v.Time(loc)
+		if err != nil {
+			return "? " + err.Error()
+		}
+		return formatTimestamp(t, lang, now, loc)
+	case plugin.ValueDirection:
+		return formatDirection(*v.Direction)
+	}
+	return "?"
+}
+
+// formatDuration writes a duration of seconds compactly: 45s, 12min, 3h 20min,
+// 2d 4h.
+func formatDuration(seconds int64) string {
+	sign := ""
+	if seconds < 0 {
+		sign, seconds = "-", -seconds
+	}
+	days := seconds / 86400
+	hours := seconds % 86400 / 3600
+	minutes := seconds % 3600 / 60
+	switch {
+	case days > 0:
+		return fmt.Sprintf("%s%dd %dh", sign, days, hours)
+	case hours > 0 && minutes > 0:
+		return fmt.Sprintf("%s%dh %dmin", sign, hours, minutes)
+	case hours > 0:
+		return fmt.Sprintf("%s%dh", sign, hours)
+	case minutes > 0:
+		return fmt.Sprintf("%s%dmin", sign, minutes)
+	}
+	return fmt.Sprintf("%s%ds", sign, seconds)
+}
+
+// formatDirection turns a trend direction into the ASCII arrows text displays
+// use: ^ up, > flat, v down, doubled for a strong move.
+func formatDirection(d int) string {
+	switch d {
+	case 2:
+		return "^^"
+	case 1:
+		return "^"
+	case 0:
+		return ">"
+	case -1:
+		return "v"
+	case -2:
+		return "vv"
+	}
+	return "?"
+}
+
+// formatTimestamp writes a timestamp relative to the page's day: its time
+// today, its date at midnight, and both on another day.
+func formatTimestamp(t time.Time, lang string, now time.Time, loc *time.Location) string {
+	if loc != nil {
+		t, now = t.In(loc), now.In(loc)
+	}
+	switch {
+	case t.Hour() == 0 && t.Minute() == 0 && t.Second() == 0:
+		if lang == "de" {
+			return t.Format("02.01.2006")
+		}
+		return t.Format("Jan 2, 2006")
+	case t.Year() == now.Year() && t.YearDay() == now.YearDay():
+		return t.Format("15:04")
+	}
+	if lang == "de" {
+		return t.Format("02.01. 15:04")
+	}
+	return t.Format("Jan 2, 15:04")
+}
+
+// composeTextCell lays label, value and unit out in exactly width characters.
+// The charset conversion happens first, so the display's columns are counted
+// after transliteration (ä becomes ae on ascii).
+func composeTextCell(charset, label, value, unit string, width int, mode string) string {
+	if width < 0 {
+		width = 0
+	}
+	label = clean(Convert(charset, label))
+	value = clean(Convert(charset, value))
+	unit = clean(Convert(charset, unit))
+	prefix, suffix := "", ""
+	if label != "" {
+		prefix = label + " "
+	}
+	if unit != "" {
+		suffix = " " + unit
+	}
+	switch mode {
+	case AlignRight:
+		return align(width, prefix+value+suffix, 'r')
+	case AlignDecimal:
+		room := width - len([]rune(prefix)) - len([]rune(suffix))
+		if room < 0 { // the label yields before the value and the unit
+			prefix = ""
+			room = width - len([]rune(suffix))
+		}
+		if room < 0 {
+			suffix = ""
+			room = width
+		}
+		v := []rune(value)
+		if len(v) > room {
+			v = v[len(v)-room:]
+		}
+		return fit(prefix+strings.Repeat(" ", room-len(v))+string(v)+suffix, width)
+	}
+	return fit(prefix+value+suffix, width)
 }

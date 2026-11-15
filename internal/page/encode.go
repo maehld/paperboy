@@ -46,19 +46,50 @@ func encode(t *Template, variant bool) ([]byte, error) {
 		}
 		add(root, "variants", variants)
 	}
-	add(root, "grid", intSeq(c.Grid[0], c.Grid[1]))
 	if s := styleNode(c.Style, false); len(s.Content) > 0 {
 		add(root, "style", s)
 	}
 	if c.Notices == "none" {
 		add(root, "notices", str(c.Notices))
 	}
+	if c.Kind == KindText {
+		rows := newSeq(false)
+		for _, row := range c.Rows {
+			cells := newSeq(false)
+			for _, cell := range row {
+				cells.Content = append(cells.Content, textCellNode(cell))
+			}
+			rows.Content = append(rows.Content, cells)
+		}
+		add(root, "rows", rows)
+		return marshalNode(root)
+	}
+	add(root, "grid", intSeq(c.Grid[0], c.Grid[1]))
 	cells := newSeq(false)
 	for _, cell := range c.Cells {
 		cells.Content = append(cells.Content, cellNode(cell))
 	}
 	add(root, "cells", cells)
 	return marshalNode(root)
+}
+
+// textCellNode is one cell of a text page in flow style, e.g.
+// { value: weather/temperature, width: 6, align: decimal }.
+func textCellNode(c TextCell) *yaml.Node {
+	n := newMap()
+	n.Style = yaml.FlowStyle
+	add(n, "value", str(c.Value))
+	if c.Label != "" {
+		add(n, "label", str(c.Label))
+	}
+	if c.Unit != "" {
+		add(n, "unit", str(c.Unit))
+	}
+	add(n, "width", valueNode(c.Width))
+	if c.Align != "" && c.Align != AlignLeft {
+		add(n, "align", str(c.Align))
+	}
+	return n
 }
 
 // cellNode is one cell in flow style, e.g.

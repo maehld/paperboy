@@ -53,6 +53,9 @@ const (
 	// delays a sync less than its widget request would. The plugin is marked
 	// as failing, which also skips its widgets for a minute.
 	conditionTimeout = 5 * time.Second
+	// describeTTL keeps a describe answer for the value declarations of a
+	// text page, so a poll every second does not ask the plugin every time.
+	describeTTL = 5 * time.Minute
 	// tick is the interval of the background loop.
 	tick = 5 * time.Second
 
@@ -100,6 +103,7 @@ type Host struct {
 	mismatch map[string]bool        // plugin -> version mismatch already logged
 	blobNote map[string]bool        // plugin -> undeclared blobs already logged
 	conds    map[string]condition   // plugin -> last condition answer (ADR 0103)
+	descs    map[string]descEntry   // plugin -> last describe answer, for values
 	builtMu  sync.Mutex
 	builtCfg map[string]bool
 
@@ -119,11 +123,20 @@ type condition struct {
 	at     time.Time
 }
 
-// entry is one cached widget and what is needed to render it again.
+// descEntry is a cached describe answer. It carries the value declarations a
+// text page needs to format a value.
+type descEntry struct {
+	desc *plugin.Description
+	at   time.Time
+}
+
+// entry is one cached widget or value and what is needed to render it again.
 type entry struct {
 	job      job
 	img      image.Image
 	lines    []string
+	value    *plugin.Value
+	spec     plugin.ValueSpec
 	stale    bool
 	created  time.Time // when the plugin drew it; the runtime page ages the cache by it (ADR 0104)
 	expires  time.Time
@@ -137,20 +150,24 @@ type job struct {
 	levels int
 	page   plugin.PageInfo
 	widget plugin.WidgetRequest
+	spec   plugin.ValueSpec   // action values: the declaration of the value
+	device *plugin.DeviceInfo // action values: the display the page is for
 }
 
 func (j job) key(env Env) string {
 	args, _ := json.Marshal(j.widget.Args) // map keys are sorted
 	style, _ := json.Marshal(j.widget.Style)
 	page, _ := json.Marshal(j.page)
-	return fmt.Sprintf("%s|%s|%s|%d|%dx%d|%t|%s|%s|%s|%s|%s", j.plugin, j.widget.Widget, j.action, j.levels,
-		j.widget.Width, j.widget.Height, j.widget.Scroll, args, style, page, env.Language, env.Timezone)
+	device, _ := json.Marshal(j.device)
+	return fmt.Sprintf("%s|%s|%s|%d|%dx%d|%t|%s|%s|%s|%s|%s|%s", j.plugin, j.widget.Widget, j.action, j.levels,
+		j.widget.Width, j.widget.Height, j.widget.Scroll, args, style, page, env.Language, env.Timezone, device)
 }
 
 // group is the batching key: the request header without the widgets.
 func (j job) group() string {
 	page, _ := json.Marshal(j.page)
-	return fmt.Sprintf("%s|%s|%d|%s", j.plugin, j.action, j.levels, page)
+	device, _ := json.Marshal(j.device)
+	return fmt.Sprintf("%s|%s|%d|%s|%s", j.plugin, j.action, j.levels, page, device)
 }
 
 func (h *Host) now() time.Time {
@@ -187,6 +204,7 @@ func (h *Host) Configure(specs map[string]Spec, env Env) {
 	h.mu.Lock()
 	old := h.specs
 	h.specs, h.env = specs, env
+	h.descs = nil // declarations may have changed with the program
 	var stop []*process
 	for name, p := range h.procs {
 		if spec, ok := specs[name]; !ok || !sameSpec(spec, p.spec) {
@@ -258,6 +276,94 @@ func (h *Host) Fetch(ctx context.Context, b page.Batch) []page.Result {
 	return out
 }
 
+// FetchValues returns one result per value of the batch (ADR 0111). Values of
+// one plugin go out in one request, and the cache, max_age and changed events
+// work like for widgets. The declaration of each value travels with it, so the
+// page can format it; a value the plugin does not declare is an error for that
+// cell.
+func (h *Host) FetchValues(ctx context.Context, b page.ValueBatch) []page.Result {
+	h.mu.Lock()
+	specs, env := h.specs, h.env
+	h.mu.Unlock()
+	out := make([]page.Result, len(b.Values))
+	byPlugin := map[string][]int{}
+	for i, v := range b.Values {
+		byPlugin[v.Plugin] = append(byPlugin[v.Plugin], i)
+	}
+	names := make([]string, 0, len(byPlugin))
+	for name := range byPlugin {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		idx := byPlugin[name]
+		desc, err := h.description(ctx, name)
+		if err != nil {
+			for _, i := range idx {
+				out[i] = page.Result{Err: err}
+			}
+			continue
+		}
+		known := make(map[string]plugin.ValueSpec, len(desc.Values))
+		for _, v := range desc.Values {
+			known[v.Name] = v
+		}
+		var jobs []job
+		var jobIdx []int
+		for _, i := range idx {
+			v := b.Values[i]
+			spec, ok := known[v.Name]
+			if !ok {
+				out[i] = page.Result{Err: fmt.Errorf("plugin %q does not declare value %q", name, v.Name)}
+				continue
+			}
+			jobs = append(jobs, job{plugin: name, action: plugin.ActionValues, page: b.Page, spec: spec, device: b.Device,
+				widget: plugin.WidgetRequest{Widget: v.Name}})
+			jobIdx = append(jobIdx, i)
+		}
+		if len(jobs) == 0 {
+			continue
+		}
+		if handler, ok := h.Builtin[name]; ok {
+			// Values carry no server status: a page of values asks a plugin
+			// for its data, and only widgets draw the device status (ADR 0115).
+			h.builtin(name, handler, jobs, jobIdx, env, nil, out)
+			continue
+		}
+		spec, ok := specs[name]
+		if !ok {
+			for _, i := range jobIdx {
+				out[i] = page.Result{Err: fmt.Errorf("plugin %q is not configured", name)}
+			}
+			continue
+		}
+		h.fetchPlugin(ctx, spec, env, jobs, jobIdx, out)
+	}
+	return out
+}
+
+// description returns a cached describe answer, so a text page that polls
+// every second does not ask the plugin for its value declarations every time.
+func (h *Host) description(ctx context.Context, name string) (*plugin.Description, error) {
+	h.mu.Lock()
+	if e, ok := h.descs[name]; ok && h.now().Sub(e.at) < describeTTL {
+		h.mu.Unlock()
+		return e.desc, nil
+	}
+	h.mu.Unlock()
+	d, err := h.Describe(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	h.mu.Lock()
+	if h.descs == nil {
+		h.descs = map[string]descEntry{}
+	}
+	h.descs[name] = descEntry{desc: d, at: h.now()}
+	h.mu.Unlock()
+	return d, nil
+}
+
 func (h *Host) fetchPlugin(ctx context.Context, spec Spec, env Env, jobs []job, idx []int, out []page.Result) {
 	now := h.now()
 	var missing []job
@@ -300,7 +406,7 @@ func (h *Host) fetchPlugin(ctx context.Context, spec Spec, env Env, jobs []job, 
 }
 
 func (e *entry) result(stale bool) page.Result {
-	return page.Result{Image: e.img, Lines: e.lines, Stale: stale || e.stale}
+	return page.Result{Image: e.img, Lines: e.lines, Value: e.value, Spec: e.spec, Stale: stale || e.stale}
 }
 
 // run sends the jobs of one plugin and request header group, stores the
@@ -330,13 +436,19 @@ func (h *Host) run(ctx context.Context, spec Spec, env Env, jobs []job) ([]page.
 		idx := groups[g]
 		first := jobs[idx[0]]
 		req := plugin.Request{Version: plugin.Version, Action: first.action, Language: env.Language,
-			Timezone: env.Timezone, Now: h.now(), Levels: first.levels, Page: first.page}
-		for _, i := range idx {
-			req.Widgets = append(req.Widgets, jobs[i].widget)
+			Timezone: env.Timezone, Now: h.now(), Levels: first.levels, Page: first.page, Device: first.device}
+		if first.action == plugin.ActionValues {
+			for _, i := range idx {
+				req.Values = append(req.Values, jobs[i].widget.Widget)
+			}
+		} else {
+			for _, i := range idx {
+				req.Widgets = append(req.Widgets, jobs[i].widget)
+			}
 		}
 		start := time.Now()
 		msg, err := h.call(ctx, spec, req)
-		if err == nil && len(msg.Widgets) != len(idx) {
+		if err == nil && first.action != plugin.ActionValues && len(msg.Widgets) != len(idx) {
 			err = fmt.Errorf("%d results for %d widgets", len(msg.Widgets), len(idx))
 		}
 		if err != nil {
@@ -357,7 +469,13 @@ func (h *Host) run(ctx context.Context, spec Spec, env Env, jobs []job) ([]page.
 		var failed error
 		for n, i := range idx {
 			j := jobs[i]
-			r, err := decode(j, msg.Widgets[n])
+			var r page.Result
+			var err error
+			if first.action == plugin.ActionValues {
+				r, err = decodeValue(j, msg.Values)
+			} else {
+				r, err = decode(j, msg.Widgets[n])
+			}
 			if err != nil {
 				err = fmt.Errorf("%s/%s: %w", spec.Name, j.widget.Widget, err)
 				failed = cmp(failed, err)
@@ -365,7 +483,8 @@ func (h *Host) run(ctx context.Context, spec Spec, env Env, jobs []job) ([]page.
 				continue
 			}
 			out[i] = r
-			h.store(j, env, &entry{job: j, img: r.Image, lines: r.Lines, created: now, expires: expires, lastUsed: now})
+			h.store(j, env, &entry{job: j, img: r.Image, lines: r.Lines, value: r.Value, spec: j.spec,
+				created: now, expires: expires, lastUsed: now})
 		}
 		if failed != nil {
 			slog.Warn("plugin widget failed", "plugin", spec.Name, "error", failed)
@@ -406,6 +525,19 @@ func decode(j job, r plugin.Result) (page.Result, error) {
 	return page.Result{Image: img}, nil
 }
 
+// decodeValue reads one answer of a values request. A missing name is an
+// error for that cell, so a plugin can rarely fail one value without the page.
+func decodeValue(j job, values map[string]plugin.Value) (page.Result, error) {
+	v, ok := values[j.widget.Widget]
+	if !ok {
+		return page.Result{}, errors.New("no value")
+	}
+	if v.Type() == "" {
+		return page.Result{}, errors.New("value carries no number, text, duration, timestamp or direction")
+	}
+	return page.Result{Value: &v, Spec: j.spec}, nil
+}
+
 // builtin answers widgets of an in-process plugin directly.
 func (h *Host) builtin(name string, handler plugin.Handler, jobs []job, idx []int, env Env, status *plugin.ServerStatus, out []page.Result) {
 	h.builtMu.Lock()
@@ -419,30 +551,44 @@ func (h *Host) builtin(name string, handler plugin.Handler, jobs []job, idx []in
 	}
 	groups := map[string][]int{}
 	var order []string
-	for _, i := range idx {
-		g := jobs[i].group()
+	for pos := range idx {
+		g := jobs[pos].group()
 		if _, ok := groups[g]; !ok {
 			order = append(order, g)
 		}
-		groups[g] = append(groups[g], i)
+		groups[g] = append(groups[g], pos)
 	}
 	for _, g := range order {
-		ids := groups[g]
-		first := jobs[ids[0]]
+		pos := groups[g]
+		first := jobs[pos[0]]
 		req := plugin.Request{Version: plugin.Version, Action: first.action, Language: env.Language,
-			Timezone: env.Timezone, Now: h.now(), Levels: first.levels, Page: first.page, ServerStatus: status}
-		for _, i := range ids {
-			req.Widgets = append(req.Widgets, jobs[i].widget)
+			Timezone: env.Timezone, Now: h.now(), Levels: first.levels, Page: first.page,
+			Device: first.device, ServerStatus: status}
+		if first.action == plugin.ActionValues {
+			for _, p := range pos {
+				req.Values = append(req.Values, jobs[p].widget.Widget)
+			}
+		} else {
+			for _, p := range pos {
+				req.Widgets = append(req.Widgets, jobs[p].widget)
+			}
 		}
 		msg := plugin.Handle(handler, &req)
-		for n, i := range ids {
+		for n, p := range pos {
+			i := idx[p]
 			if msg.Error != "" {
 				out[i] = page.Result{Err: errors.New(msg.Error)}
 				continue
 			}
-			r, err := decode(jobs[i], msg.Widgets[n])
+			var r page.Result
+			var err error
+			if first.action == plugin.ActionValues {
+				r, err = decodeValue(jobs[p], msg.Values)
+			} else {
+				r, err = decode(jobs[p], msg.Widgets[n])
+			}
 			if err != nil {
-				r = page.Result{Err: fmt.Errorf("%s/%s: %w", name, jobs[i].widget.Widget, err)}
+				r = page.Result{Err: fmt.Errorf("%s/%s: %w", name, jobs[p].widget.Widget, err)}
 			}
 			out[i] = r
 		}

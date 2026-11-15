@@ -137,6 +137,33 @@ func TestEditorOrphanVariant(t *testing.T) {
 	}
 }
 
+// TestEditorTextRowsReadOnly opens a text page with rows: the editor gets the
+// rows and the list counts them (ADR 0111). The script shows them read-only.
+func TestEditorTextRowsReadOnly(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "werte", "", textVariant)
+
+	var doc editorPage
+	if rec := request(t, s, http.MethodGet, "/api/pages/werte", nil, &doc); rec.Code != http.StatusOK {
+		t.Fatalf("read: %d %s", rec.Code, rec.Body)
+	}
+	if doc.Template == nil || doc.Template.Kind != page.KindText || len(doc.Template.Rows) != 4 ||
+		doc.Template.Rows[0][0].Value != "paperboy/title" || doc.Template.Rows[0][0].Width != 20 {
+		t.Fatalf("text page rows: %+v", doc.Template)
+	}
+	body := request(t, s, http.MethodGet, "/ui/editor/page?name=werte&display=lcd", nil, nil).Body.String()
+	if !strings.Contains(body, `"kind":"text"`) {
+		t.Fatalf("text page editor lacks the kind:\n%s", body)
+	}
+	list := request(t, s, http.MethodGet, "/ui/editor", nil, nil).Body.String()
+	if !strings.Contains(list, `<td class="num">4 rows</td>`) {
+		t.Fatalf("the pages list does not count the rows:\n%s", list)
+	}
+	if js := string(editorJS); !strings.Contains(js, "edited by hand") || !strings.Contains(js, "renderRowsInspector") {
+		t.Fatal("the editor script does not show text rows read-only")
+	}
+}
+
 // TestEditorPageRows shows one row per page and names the display types a file
 // serves (ADR 0110). A page whose page file exists opens it, not its variants.
 func TestEditorPageRows(t *testing.T) {
@@ -144,7 +171,7 @@ func TestEditorPageRows(t *testing.T) {
 	writePage(t, s, "solar", "", pageWithVariant)
 	writePage(t, s, "solar", "hochkant", variantPage)
 	writePage(t, s, "solar", "lcd", textVariant)
-	writePage(t, s, "clock", "", "title: Clock\nkind: text\ngrid: [20, 4]\ncells:\n  - { at: [0, 0], span: [20, 1], widget: paperboy/clock }\n")
+	writePage(t, s, "clock", "", "title: Clock\nkind: text\nrows:\n  - [{ value: paperboy/title, width: 20 }]\n  - [{ value: paperboy/time, width: 20 }]\n")
 
 	body := request(t, s, http.MethodGet, "/ui/editor", nil, nil).Body.String()
 	for _, want := range []string{
@@ -211,7 +238,7 @@ func TestEditorVariantsPanel(t *testing.T) {
 	}
 
 	// A type the open file serves is its preview link, marked as current.
-	writePage(t, s, "clock", "", "title: Clock\nkind: text\ngrid: [20, 4]\ncells:\n  - { at: [0, 0], span: [20, 1], widget: paperboy/clock }\n")
+	writePage(t, s, "clock", "", "title: Clock\nkind: text\nrows:\n  - [{ value: paperboy/title, width: 20 }]\n  - [{ value: paperboy/time, width: 20 }]\n")
 	body = request(t, s, http.MethodGet, "/ui/editor/page?name=clock&display=lcd", nil, nil).Body.String()
 	for _, want := range []string{
 		`<a href="/ui/editor/page?display=lcd&amp;name=clock" aria-current="true" title="Preview lcd with this file">lcd</a>`,

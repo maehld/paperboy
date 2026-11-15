@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/color"
 	"strings"
+	"time"
 
 	"github.com/maehld/paperboy/pkg/plugin"
 	"github.com/maehld/paperboy/pkg/render"
@@ -23,12 +24,21 @@ type Plugin struct{}
 var (
 	_ plugin.Handler = Plugin{}
 	_ plugin.Texter  = Plugin{}
+	_ plugin.Valuer  = Plugin{}
 )
 
 func (Plugin) Describe() plugin.Description {
 	both := []string{plugin.KindImage, plugin.KindText}
 	return plugin.Description{
 		Title: "Paperboy",
+		// Values need no data source: a text page can show its title and the
+		// time without another plugin (ADR 0111).
+		Values: []plugin.ValueSpec{
+			{Name: "title", Title: "Page title", Type: plugin.ValueText},
+			{Name: "time", Title: "Current time", Type: plugin.ValueTimestamp},
+			{Name: "date", Title: "Current date", Type: plugin.ValueTimestamp},
+			{Name: "now", Title: "Current date and time", Type: plugin.ValueTimestamp},
+		},
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "header", Title: "Page header", Kinds: both, Sizes: []plugin.Span{{Columns: 6, Rows: 1}, {Columns: 4, Rows: 1}},
 				Args: map[string]plugin.Arg{
@@ -73,6 +83,27 @@ func (Plugin) Describe() plugin.Description {
 }
 
 func (Plugin) Configure(plugin.Values, *plugin.Request) error { return nil }
+
+// Values answers the declared values of a text page: the page title and the
+// page's moment. date is midnight, so Paperboy shows its date; time and now
+// are the current moment and show their time (ADR 0111).
+func (Plugin) Values(req *plugin.Request) (map[string]plugin.Value, error) {
+	out := make(map[string]plugin.Value, len(req.Values))
+	now := req.Now.In(req.Location())
+	for _, name := range req.Values {
+		switch name {
+		case "title":
+			out[name] = plugin.TextValue(req.Page.Title)
+		case "time", "now":
+			out[name] = plugin.TimestampValue(now)
+		case "date":
+			out[name] = plugin.TimestampValue(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()))
+		default:
+			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
+		}
+	}
+	return out, nil
+}
 
 func align(s string, def render.Align) render.Align {
 	switch s {

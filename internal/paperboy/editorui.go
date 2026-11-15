@@ -319,7 +319,9 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile) e
 		}
 	}
 	g.Kind, g.Title = shown.Kind, shown.Title
-	if shown.Grid != [2]int{} {
+	if shown.Rows > 0 {
+		g.Grid = fmt.Sprintf("%d rows", shown.Rows)
+	} else if shown.Grid != [2]int{} {
 		g.Grid = fmt.Sprintf("%dx%d", shown.Grid[0], shown.Grid[1])
 	}
 	if page != nil {
@@ -400,7 +402,7 @@ func reassignTargets(files []editorPageFile, name string) []uiOption {
 }
 
 // fileFits reports whether a page file can render a display type: the same kind
-// and, for text, the character grid of the display.
+// and, for text, rows that fit the character grid (ADR 0111).
 func fileFits(f editorPageFile, p Profile) bool {
 	if f.Error != "" || f.Kind == "" {
 		return true // a broken file opens read-only, so any type can show it
@@ -408,7 +410,13 @@ func fileFits(f editorPageFile, p Profile) bool {
 	if p.text() != (f.Kind == page.KindText) {
 		return false
 	}
-	return !p.text() || f.Grid == [2]int{p.Width, p.Height}
+	if !p.text() {
+		return true
+	}
+	if f.Rows > 0 {
+		return f.Rows <= p.Height && f.textWidth <= p.Width
+	}
+	return f.Grid == [2]int{p.Width, p.Height}
 }
 
 // pageEditURL links exactly one page file with the preview display type
@@ -964,6 +972,13 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	}
 	if open != nil && open.Kind != "" {
 		kind = open.Kind
+	}
+	// A text page has no pixel grid: its rows are laid out on the character
+	// grid of a text display (ADR 0111).
+	if kind == page.KindText && !p.text() {
+		v.Error = fmt.Sprintf("a text page needs a text display type; %s is an image display", display)
+		renderEditorPage(w, v, http.StatusBadRequest)
+		return
 	}
 	context := editorPageFile{Name: name, Label: label, Kind: kind}
 	switch {

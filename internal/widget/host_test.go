@@ -83,7 +83,31 @@ func fakePlugin(mode string) {
 			enc.Encode(plugin.Message{ID: req.ID, Version: version})
 			continue
 		}
+		if req.Action == plugin.ActionDescribe {
+			d := plugin.Description{Title: "fake", Values: []plugin.ValueSpec{
+				{Name: "a", Type: plugin.ValueNumber, Precision: 1},
+				{Name: "b", Type: plugin.ValueText},
+				{Name: "bad", Type: plugin.ValueText},
+			}}
+			enc.Encode(plugin.Message{ID: req.ID, Version: version, Description: &d})
+			continue
+		}
 		appendFile(os.Getenv("FAKE_COUNT"))
+		if mode == "values" && req.Action == plugin.ActionValues {
+			msg := plugin.Message{ID: req.ID, Version: version, MaxAge: 60, Values: map[string]plugin.Value{}}
+			for _, name := range req.Values {
+				switch name {
+				case "a":
+					msg.Values[name] = plugin.NumberValue(12.5)
+				case "b":
+					msg.Values[name] = plugin.TextValue("text")
+				default:
+					msg.Values[name] = plugin.Value{}
+				}
+			}
+			enc.Encode(msg)
+			continue
+		}
 		if mode == "hang" {
 			continue
 		}
@@ -229,6 +253,37 @@ func TestHostConditionsAreCached(t *testing.T) {
 	h2 := newHost(t, f.spec("condfail"))
 	if _, err := h2.Conditions(context.Background(), "fake"); err == nil {
 		t.Error("a failing conditions answer must be an error")
+	}
+}
+
+func TestHostValues(t *testing.T) {
+	f := newFake(t)
+	h := newHost(t, f.spec("values"))
+	b := page.ValueBatch{Page: plugin.PageInfo{Title: "p"}, Values: []page.ValueRequest{
+		{Plugin: "fake", Name: "a"}, {Plugin: "fake", Name: "b"}}}
+	for range 2 {
+		out := h.FetchValues(context.Background(), b)
+		if len(out) != 2 || out[0].Err != nil || out[1].Err != nil {
+			t.Fatalf("values: %+v", out)
+		}
+		if out[0].Value == nil || out[0].Value.Number == nil || *out[0].Value.Number != 12.5 ||
+			out[0].Spec.Type != plugin.ValueNumber || out[0].Spec.Precision != 1 {
+			t.Fatalf("number: %+v %+v", out[0].Value, out[0].Spec)
+		}
+		if out[1].Value == nil || out[1].Value.Text == nil || *out[1].Value.Text != "text" {
+			t.Fatalf("text: %+v", out[1].Value)
+		}
+	}
+	if n := runs(f.count); n != 1 {
+		t.Errorf("plugin got %d values requests, want 1 (one batch, then cached)", n)
+	}
+	out := h.FetchValues(context.Background(), page.ValueBatch{Values: []page.ValueRequest{{Plugin: "fake", Name: "nope"}}})
+	if len(out) != 1 || out[0].Err == nil || !strings.Contains(out[0].Err.Error(), "does not declare") {
+		t.Fatalf("undeclared value: %+v", out)
+	}
+	out = h.FetchValues(context.Background(), page.ValueBatch{Values: []page.ValueRequest{{Plugin: "fake", Name: "bad"}}})
+	if len(out) != 1 || out[0].Err == nil || !strings.Contains(out[0].Err.Error(), "no number") {
+		t.Fatalf("empty value: %+v", out)
 	}
 }
 
