@@ -83,11 +83,15 @@ var (
 // request, so configure stays the request it always was and the state and the
 // blobs do not travel with every widget request (ADR 0081).
 func (p *process) configure(spec Spec, env Env) error {
+	// Read the stored state before the configure request: a plugin may answer
+	// configure with a state of its own, which would replace the files. The
+	// state still reaches the plugin only after configure, in the state
+	// request (ADR 0081).
+	state, blobs := p.loadState()
 	if _, err := p.request(context.Background(), plugin.Request{Version: plugin.Version, Action: plugin.ActionConfigure,
 		Language: env.Language, Timezone: env.Timezone, Now: time.Now(), Config: spec.Config}); err != nil {
 		return err
 	}
-	state, blobs := p.loadState()
 	_, err := p.request(context.Background(), plugin.Request{Version: plugin.Version, Action: plugin.ActionLoadState,
 		Language: env.Language, Timezone: env.Timezone, Now: time.Now(), State: state, Blobs: blobs})
 	return err

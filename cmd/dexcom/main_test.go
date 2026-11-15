@@ -145,6 +145,10 @@ func newTestDexcom(t *testing.T, now time.Time) (*dexcom, *fakeShare, *plugin.Re
 	d.mu.Lock()
 	d.api = &shareClient{base: srv.URL, appID: testAppID, http: srv.Client()}
 	d.mu.Unlock()
+	// The protocol hands the stored state over after configure (ADR 0081).
+	if err := d.LoadState(nil, nil); err != nil {
+		t.Fatal(err)
+	}
 	return d, f, req
 }
 
@@ -454,6 +458,31 @@ func TestIncrementalFetch(t *testing.T) {
 	}
 }
 
+// The first successful fetch tells Paperboy that the widgets changed, so a
+// cached "no data" result does not stay for the whole interval.
+func TestFirstFetchNotifies(t *testing.T) {
+	now := time.Now()
+	d, f, _ := newTestDexcom(t, now)
+	if err := d.LoadState(nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	changed := make(chan struct{}, 1)
+	d.Start(ctx, func(...string) { changed <- struct{}{} })
+	select {
+	case <-changed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no notify after the first fetch")
+	}
+	f.mu.Lock()
+	reads := f.reads
+	f.mu.Unlock()
+	if reads == 0 {
+		t.Fatal("no fetch")
+	}
+}
+
 // The stored state keeps the session and the readings, so a restart costs no
 // login and asks for the gap only.
 func TestStateRoundTrip(t *testing.T) {
@@ -492,6 +521,21 @@ func TestStateRoundTrip(t *testing.T) {
 	}
 	_ = req
 	_ = f
+}
+
+// The plugin has no state before Paperboy hands it back; an empty state there
+// would replace what was stored before the state request runs (ADR 0081).
+func TestNoStateBeforeLoad(t *testing.T) {
+	d := &dexcom{}
+	if state := d.State(); len(state) != 0 {
+		t.Fatalf("state before LoadState: %q", state)
+	}
+	if err := d.LoadState(nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if state := d.State(); len(state) == 0 {
+		t.Fatal("no state after LoadState")
+	}
 }
 
 // A state of another account or region is ignored.

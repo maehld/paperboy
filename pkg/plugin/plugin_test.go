@@ -7,6 +7,7 @@ import (
 	"errors"
 	"image"
 	"io"
+	"strings"
 	"testing"
 	"time"
 )
@@ -283,6 +284,56 @@ func (h *stateHandler) LoadState(state json.RawMessage, blobs map[string][]byte)
 }
 func (h *stateHandler) State() json.RawMessage   { return h.state }
 func (h *stateHandler) Blobs() map[string][]byte { return h.blobs }
+
+type stateStartHandler struct {
+	stateHandler
+	order []string
+}
+
+func (h *stateStartHandler) LoadState(state json.RawMessage, blobs map[string][]byte) error {
+	h.order = append(h.order, "load")
+	return h.stateHandler.LoadState(state, blobs)
+}
+
+func (h *stateStartHandler) Start(context.Context, func(...string)) {
+	h.order = append(h.order, "start")
+}
+
+// TestStartAfterState checks that a plugin with state starts its background
+// work only after the state request, so the work sees the restored state
+// (ADR 0081).
+func TestStartAfterState(t *testing.T) {
+	h := &stateStartHandler{}
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	go ServeIO(context.Background(), h, inR, outW)
+	enc := json.NewEncoder(inW)
+	dec := bufio.NewScanner(outR)
+	next := func() Message {
+		if !dec.Scan() {
+			t.Fatal("no answer")
+		}
+		var m Message
+		if err := json.Unmarshal(dec.Bytes(), &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	enc.Encode(Request{ID: "1", Action: ActionConfigure, Config: map[string]any{"name": "x"}})
+	if m := next(); m.Error != "" {
+		t.Fatalf("configure: %+v", m)
+	}
+	if len(h.order) != 0 {
+		t.Fatalf("started before the state request: %v", h.order)
+	}
+	enc.Encode(Request{ID: "2", Action: ActionLoadState, State: json.RawMessage(`{"n":1}`)})
+	if m := next(); m.Error != "" {
+		t.Fatalf("state: %+v", m)
+	}
+	if got := strings.Join(h.order, ","); got != "load,start" {
+		t.Fatalf("order = %s, want load,start", got)
+	}
+}
 
 // TestStateTravelsWithEveryAnswer checks the protocol fields of ADR 0081: the
 // state is its own field, a plugin answers with what should be stored, and a

@@ -58,6 +58,11 @@ func fakePlugin(mode string) {
 			if path := os.Getenv("FAKE_ENV"); path != "" {
 				os.WriteFile(path, []byte(os.Getenv("PAPERBOY_STATE_DIR")), 0o644)
 			}
+			if mode == "stateonconfigure" {
+				raw := json.RawMessage(`{"n":0}`)
+				enc.Encode(plugin.Message{ID: req.ID, Version: version, State: &raw})
+				continue
+			}
 			enc.Encode(plugin.Message{ID: req.ID, Version: version})
 			continue
 		}
@@ -105,7 +110,7 @@ func fakePlugin(mode string) {
 			msg.Widgets = append(msg.Widgets, plugin.Result{PNG: buf.Bytes()})
 		}
 		switch mode {
-		case "state":
+		case "state", "stateonconfigure":
 			raw := json.RawMessage(`{"n":1}`)
 			msg.State = &raw
 			msg.Blobs = map[string][]byte{"render.png": []byte("png")}
@@ -380,6 +385,33 @@ func TestHostKeepsPluginState(t *testing.T) {
 	}
 	if data, err := os.ReadFile(blobs); err != nil || string(data) != "render.png=png" {
 		t.Fatalf("blobs after the restart: %q (%v)", data, err)
+	}
+}
+
+func TestHostLoadsStoredStateBeforeConfigure(t *testing.T) {
+	f := newFake(t)
+	stateDir := filepath.Join(t.TempDir(), "state", "fake")
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stored := `{"n":1}`
+	if err := os.WriteFile(filepath.Join(stateDir, "state.json"), []byte(stored), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	seen := filepath.Join(t.TempDir(), "state")
+	specs := f.spec("stateonconfigure")
+	s := specs["fake"]
+	s.StateDir = stateDir
+	s.Env["FAKE_STATE"] = seen
+	specs["fake"] = s
+	h := newHost(t, specs)
+	if out := h.Fetch(context.Background(), batch(w("fake", "a", 10, 5))); out[0].Err != nil {
+		t.Fatal(out[0].Err)
+	}
+	// The configure answer must not replace the stored state before it is
+	// handed back in the state request (ADR 0081).
+	if data, err := os.ReadFile(seen); err != nil || string(data) != stored {
+		t.Fatalf("state passed to the plugin: %q (%v), want %q", data, err, stored)
 	}
 }
 

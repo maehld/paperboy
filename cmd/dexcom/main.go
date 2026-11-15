@@ -89,6 +89,7 @@ type dexcom struct {
 	lang        string
 
 	// state
+	loaded   bool // LoadState has run; before that there is nothing to store
 	session  string
 	resolved string // account ID the service answered for account_name
 	fetched  time.Time
@@ -306,9 +307,7 @@ func (d *dexcom) Start(ctx context.Context, notify func(widgets ...string)) {
 			d.mu.Unlock()
 			if err == nil && now != last {
 				last = now
-				if !first {
-					notify()
-				}
+				notify()
 			}
 			if first {
 				close(d.ready)
@@ -469,6 +468,9 @@ type storedState struct {
 // readings, so a restart costs no request and the first page has data. A state
 // of another account or region is ignored.
 func (d *dexcom) LoadState(state json.RawMessage, blobs map[string][]byte) error {
+	d.mu.Lock()
+	d.loaded = true
+	d.mu.Unlock()
 	if len(state) == 0 {
 		return nil
 	}
@@ -503,6 +505,12 @@ func (d *dexcom) LoadState(state json.RawMessage, blobs map[string][]byte) error
 func (d *dexcom) State() json.RawMessage {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	// Before LoadState the plugin has no state of its own; an empty answer here
+	// would replace what Paperboy stored before the state request hands it back
+	// (ADR 0081).
+	if !d.loaded {
+		return nil
+	}
 	account := d.accountName
 	if account == "" {
 		account = d.accountID

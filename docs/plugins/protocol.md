@@ -276,7 +276,9 @@ a plugin keeps in memory is lost then, and Paperboy's widget cache is no help
 because it holds drawn results, not data.
 
 State is part of the protocol ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)). Paperboy keeps it, a protocol 5
-plugin never writes a file:
+plugin never writes a file. Paperboy reads the stored state before `configure`,
+so an answer to `configure` cannot replace it. A plugin starts its background
+work after the `state` request and sees the restored state there.
 
 - **`state`** is a JSON object of at most 256 KiB. The `state` request carries
   the stored one; every answer and event may send a new one. A missing `state`

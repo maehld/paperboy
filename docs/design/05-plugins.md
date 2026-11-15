@@ -62,7 +62,7 @@ Conditions get their own cache of 10 seconds per plugin. A sync therefore never 
 
 ## State and blobs
 
-A plugin that needs to survive a restart sends its state with every answer ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)). Paperboy writes it to `state/plugins/<id>/state.json` and the blobs to `state/plugins/<id>/blobs/<name>`, atomically and readable by the owner only. After `configure`, every plugin gets them once in a `state` request, so it starts where it stopped.
+A plugin that needs to survive a restart sends its state with every answer ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)). Paperboy writes it to `state/plugins/<id>/state.json` and the blobs to `state/plugins/<id>/blobs/<name>`, atomically and readable by the owner only. Paperboy reads them before `configure` and sends them once in the `state` request that follows. A plugin's background work starts after that request, so it sees the restored state.
 
 The limits are 256 KiB per state, 1 MiB per blob and four blobs. A missing `state` means "unchanged" and `null` means "forget". An invalid name or an oversized value is logged and ignored; nothing is deleted automatically.
 

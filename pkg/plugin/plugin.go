@@ -451,6 +451,17 @@ func ServeIO(ctx context.Context, h Handler, in io.Reader, out io.Writer) error 
 		return enc.Encode(m)
 	}
 	started := false
+	start := func() {
+		if started {
+			return
+		}
+		started = true
+		if s, ok := h.(Starter); ok {
+			s.Start(ctx, func(widgets ...string) {
+				send(withState(h, Message{Version: Version, Event: EventChanged, Changed: widgets}))
+			})
+		}
+	}
 	sc := bufio.NewScanner(in)
 	sc.Buffer(make([]byte, 64<<10), 4<<20)
 	for sc.Scan() {
@@ -466,13 +477,15 @@ func ServeIO(ctx context.Context, h Handler, in io.Reader, out io.Writer) error 
 			continue
 		}
 		m := Handle(h, &req)
-		if req.Action == ActionConfigure && m.Error == "" && !started {
-			started = true
-			if s, ok := h.(Starter); ok {
-				s.Start(ctx, func(widgets ...string) {
-					send(withState(h, Message{Version: Version, Event: EventChanged, Changed: widgets}))
-				})
+		if req.Action == ActionConfigure && m.Error == "" {
+			// A plugin with state starts after the state request, so its
+			// background work sees the restored state (ADR 0081).
+			if _, ok := h.(Stater); !ok {
+				start()
 			}
+		}
+		if req.Action == ActionLoadState && m.Error == "" {
+			start()
 		}
 		if err := send(m); err != nil {
 			return err
