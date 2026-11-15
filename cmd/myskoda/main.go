@@ -10,7 +10,8 @@
 //   - "card": the vehicle render image with a compact state line,
 //   - "car": a compact overview for small cells.
 //
-// All widgets except "card" have text variants for character displays.
+// All widgets are for image displays; the values below give a text page the
+// same data.
 //
 // The API is rate-limited to 20 requests per hour per VIN and needs an API key
 // created in the MyŠkoda app. It is meant for personal use only. Besides the
@@ -321,7 +322,7 @@ type myskoda struct {
 }
 
 func (m *myskoda) Describe() plugin.Description {
-	both := []string{plugin.KindImage, plugin.KindText}
+	image := []string{plugin.KindImage}
 	return plugin.Description{
 		Title:   "MyŠkoda",
 		Version: version(),
@@ -331,28 +332,48 @@ func (m *myskoda) Describe() plugin.Description {
 			{Name: "charging", Title: "Charging", Args: chargingActionArgs, Confirm: &plugin.Confirm{Required: true}},
 			{Name: "climate", Title: "Air conditioning", Args: climateActionArgs, Confirm: &plugin.Confirm{Required: true}},
 		},
+		Values: []plugin.ValueSpec{
+			{Name: "battery_soc", Title: "State of charge", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+			{Name: "battery_range", Title: "Range", Type: plugin.ValueNumber, Unit: "km", Precision: 0},
+			{Name: "charge_state", Title: "Charging state", Type: plugin.ValueText},
+			{Name: "charge_power", Title: "Charge power", Type: plugin.ValueNumber, Unit: "kW", Precision: 1},
+			{Name: "charge_remaining", Title: "Time to full", Type: plugin.ValueDuration},
+			{Name: "charge_target", Title: "Target state of charge", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+			{Name: "car_name", Title: "Vehicle name", Type: plugin.ValueText},
+			{Name: "license_plate", Title: "License plate", Type: plugin.ValueText},
+			{Name: "lock_state", Title: "Lock state", Type: plugin.ValueText},
+			{Name: "odometer", Title: "Odometer", Type: plugin.ValueNumber, Unit: "km", Precision: 0},
+			{Name: "location", Title: "Parking position", Type: plugin.ValueText},
+			{Name: "latitude", Title: "Latitude", Type: plugin.ValueNumber, Unit: "°", Precision: 5},
+			{Name: "longitude", Title: "Longitude", Type: plugin.ValueNumber, Unit: "°", Precision: 5},
+			{Name: "climate_state", Title: "Air conditioning", Type: plugin.ValueText},
+			{Name: "climate_temperature", Title: "Target temperature", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
+			{Name: "climate_reach", Title: "Target temperature reached at", Type: plugin.ValueTimestamp},
+			{Name: "profiles", Title: "Charging profiles", Type: plugin.ValueText},
+			{Name: "captured", Title: "Data from", Type: plugin.ValueTimestamp},
+		},
 		Widgets: []plugin.WidgetInfo{
-			{Widget: "battery", Title: "Battery and range", Kinds: both, MinWidth: 160, MinHeight: 80,
+			{Widget: "battery", Title: "Battery and range", Kinds: image, MinWidth: 160, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 2}, {Columns: 2, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"range": {Type: "bool", Default: true, Description: "show the remaining range"},
 				}},
-			{Widget: "charging", Title: "Charging", Kinds: both, MinWidth: 200, MinHeight: 80,
+			{Widget: "charging", Title: "Charging", Kinds: image, MinWidth: 200, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"profile": {Type: "bool", Default: true, Description: "show the current charging profile"},
 				}},
-			{Widget: "profiles", Title: "Charging profiles", Kinds: both, MinWidth: 200, MinHeight: 100,
+			{Widget: "profiles", Title: "Charging profiles", Kinds: image, MinWidth: 200, MinHeight: 100,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 3}},
 				Args: map[string]plugin.Arg{
 					"max": {Type: "int", Default: 2, Description: "profiles to show, 1 to 5"},
 				}},
-			{Widget: "location", Title: "Parking position", Kinds: both, MinWidth: 160, MinHeight: 80,
+			{Widget: "location", Title: "Parking position", Kinds: image, MinWidth: 160, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"coords": {Type: "bool", Default: true, Description: "show the coordinates"},
 				}},
-			{Widget: "climate", Title: "Air conditioning", Kinds: both, MinWidth: 160, MinHeight: 80,
+			{Widget: "climate", Title: "Air conditioning", Kinds: image, MinWidth: 160, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 2}}},
 			{Widget: "card", Title: "Vehicle image", Kinds: []string{plugin.KindImage}, MinWidth: 200, MinHeight: 150,
 				Sizes: []plugin.Span{{Columns: 6, Rows: 4}, {Columns: 6, Rows: 8}, {Columns: 3, Rows: 4}},
@@ -360,7 +381,7 @@ func (m *myskoda) Describe() plugin.Description {
 					"name":  {Type: "bool", Default: true, Description: "show the vehicle name"},
 					"state": {Type: "bool", Default: true, Description: "show state of charge, range and charging state"},
 				}},
-			{Widget: "car", Title: "Vehicle overview", Kinds: both, MinWidth: 160, MinHeight: 80,
+			{Widget: "car", Title: "Vehicle overview", Kinds: image, MinWidth: 160, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 2, Rows: 2}, {Columns: 6, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"plate": {Type: "bool", Default: false, Description: "show the license plate"},
