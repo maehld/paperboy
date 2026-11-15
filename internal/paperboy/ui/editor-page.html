@@ -82,6 +82,9 @@ input[type=search] { margin-bottom: .4rem; }
 .panel.serves td.pick { white-space: nowrap; }
 .panel.serves td.pick select { width: 100%; min-width: 0; font-size: .78rem; padding: .05rem .1rem; }
 .panel.serves td.pick select.none { color: #888; background: #f4f4f4; }
+/* An action that belongs to a panel spans the card, with the same gap above it
+   as the panel padding leaves below it. */
+.panel > button { display: block; width: 100%; margin: .8rem 0 0; }
 .palette .plugin { border-top: 1px solid #eee; padding-top: .5rem; margin-top: .5rem; }
 .palette .plugin:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
 .palette .plugin-head { display: flex; align-items: center; gap: .3rem; margin: 0 0 .3rem; font-size: .85rem; color: #333; font-weight: 600; cursor: pointer; user-select: none; }
