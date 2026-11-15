@@ -7,7 +7,7 @@ Requires Go 1.27 or newer.
 ```powershell
 go test ./...
 go vet ./...
-.\scripts\build.ps1             # paperboy, odtest and the plugins for Linux amd64/arm64 and Windows into bin/
+.\scripts\build.ps1             # paperboy and the plugins for Linux amd64/arm64 and Windows into bin/
 ./scripts/package-plugins.sh dist  # the plugin zip for the host platform (GOOS/GOARCH select another)
 ```
 
@@ -31,7 +31,6 @@ cmd/myskoda/             MyŠkoda plugin: vehicle state and commands
 cmd/dexcom/              Dexcom plugin: glucose readings from the Share service
 cmd/pokedex/             Pokédex plugin: a Pokémon card from PokéAPI
 cmd/rss/                 RSS and Atom plugin: feed list and headline
-cmd/odtest/              Test program for OpenDisplay devices (TCP and Bluetooth)
 pkg/plugin/              Plugin protocol and Go helper (public API)
 pkg/render/              Fonts, palettes and drawing shared by Paperboy and plugins (public API)
 internal/paperboy/       YAML configuration, device API, plans, battery warning, dashboard
@@ -41,7 +40,6 @@ internal/builtin/        Built-in plugin "paperboy": header, text, clock
 internal/plan/           Display plans: time rules that select pages per device (ADR 0025)
 internal/download/       Release downloads and the verification against SHA256SUMS
 internal/semver/         Version grammar for plugin and firmware names (ADR 0089)
-internal/opendisplay/    OpenDisplay protocol; odble = Bluetooth transport
 firmware/esphome/        Paperboy firmware on ESPHome for Sticky and E1001 (ADR 0041)
 docs/design/             How the system works today, one document per area
 docs/glossary.md         The terms that all documents use

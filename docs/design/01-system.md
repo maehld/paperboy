@@ -116,7 +116,6 @@ The whole configuration reloads on change ([ADR 0047](../adr/0047-config-reload.
 | `internal/download/` | Release lists, archives and verification |
 | `internal/semver/` | Version grammar of programs and images |
 | `internal/stats/` | Timers, gauges and process numbers for the stats page |
-| `internal/opendisplay/` | OpenDisplay protocol and its Bluetooth transport |
 | `pkg/plugin/` | Public plugin protocol and its Go helper |
 | `pkg/render/` | Fonts, palettes and drawing shared by Paperboy and plugins |
 | `firmware/esphome/` | The firmware for Sticky, E1001, E1003 and the LCD2004 |

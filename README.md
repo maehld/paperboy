@@ -45,7 +45,6 @@ The README gives the overview and the quick start. The details are in these page
 | [Runtime](docs/runtime.md) | web UI, device API, intervals and power, battery warning, firmware updates, device logs and security |
 | [Plugins](docs/plugins/README.md) | the plugin host and protocol, and the shipped plugins |
 | [Releases and downloads](docs/releases.md) | release tags and assets, downloads, channels and cleanup |
-| [OpenDisplay](docs/opendisplay.md) | the OpenDisplay protocol and its test program |
 | [Design](docs/design/README.md) | how the system works today, one document per area |
 | [Development](docs/development.md) | build, versioning, workflows and the repository layout |
 | [Glossary](docs/glossary.md) | the terms that all documents use |

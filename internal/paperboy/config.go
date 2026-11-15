@@ -146,8 +146,6 @@ type Device struct {
 	ID      string
 	Type    string // protocol; only "paperboy" for now
 	MAC     string
-	Address string // reserved for OpenDisplay, which is not supported yet
-	Buttons bool
 	Profile string // display type
 	Refresh Duration
 	Battery *Battery // overrides the defaults
@@ -815,9 +813,6 @@ func (c *Config) normalizeDevice(d *Device) error {
 	switch d.Type {
 	case "", TypePaperboy:
 		d.Type = TypePaperboy
-		if d.Address != "" || d.Buttons {
-			return fmt.Errorf("device %s: address/buttons belong to protocol opendisplay, which is not supported yet", d.ID)
-		}
 		mac, err := net.ParseMAC(d.MAC)
 		if err != nil {
 			return fmt.Errorf("device %s: invalid MAC address", d.ID)
@@ -826,7 +821,7 @@ func (c *Config) normalizeDevice(d *Device) error {
 	case "trmnl":
 		return fmt.Errorf("device %s: protocol trmnl was removed (ADR 0042); flash the Paperboy firmware and set protocol: paperboy", d.ID)
 	case "opendisplay":
-		return fmt.Errorf("device %s: protocol opendisplay is not supported yet (TODO in README)", d.ID)
+		return fmt.Errorf("device %s: protocol opendisplay was removed (ADR 0119); set protocol: paperboy", d.ID)
 	case "text-http", "image-http":
 		return fmt.Errorf("device %s: protocol %q was replaced by the device API (ADR 0044); set protocol: paperboy", d.ID, d.Type)
 	default:

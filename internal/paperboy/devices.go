@@ -30,8 +30,6 @@ type deviceFile struct {
 	DisplayType string   `yaml:"display_type" json:"display_type"`
 	Protocol    string   `yaml:"protocol,omitempty" json:"protocol,omitempty"`
 	MAC         string   `yaml:"mac" json:"mac"`
-	Address     string   `yaml:"address,omitempty" json:"address,omitempty"`
-	Buttons     bool     `yaml:"buttons,omitempty" json:"buttons,omitempty"`
 	Plan        string   `yaml:"plan,omitempty" json:"plan,omitempty"`
 	Refresh     Duration `yaml:"refresh" json:"refresh,omitempty"`
 	Power       string   `yaml:"power,omitempty" json:"power,omitempty"`
@@ -79,8 +77,6 @@ func (f deviceFile) device(id string, defaults *Battery) Device {
 		ID:               id,
 		Type:             f.Protocol,
 		MAC:              f.MAC,
-		Address:          f.Address,
-		Buttons:          f.Buttons,
 		Profile:          f.DisplayType,
 		Refresh:          f.Refresh,
 		Battery:          copyBattery(defaults, f.Battery),
@@ -176,12 +172,6 @@ func encodeDeviceFile(f *deviceFile) ([]byte, error) {
 	set("display_type", plainScalar(f.DisplayType))
 	set("protocol", plainScalar(protocol))
 	set("mac", quotedScalar(f.MAC))
-	if f.Address != "" {
-		set("address", plainScalar(f.Address))
-	}
-	if f.Buttons {
-		set("buttons", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"})
-	}
 	if f.Plan != "" {
 		set("plan", plainScalar(f.Plan))
 	}

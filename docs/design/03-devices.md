@@ -28,7 +28,7 @@ A device is a file under `devices/<id>.yaml` ([ADR 0070](../adr/0070-devices-in-
 | Key | Meaning |
 |---|---|
 | `display_type` | Name of a file under `displays/` |
-| `protocol` | `paperboy`; OpenDisplay is not delivered yet |
+| `protocol` | `paperboy`, the only protocol |
 | `mac` | The MAC the device registers with; one device per MAC |
 | `plan` | Name of a file under `plans/` |
 | `refresh` | Seconds between syncs, down to 1 |
@@ -39,7 +39,6 @@ A device is a file under `devices/<id>.yaml` ([ADR 0070](../adr/0070-devices-in-
 | `rotation` | Overrides the display type's rotation ([ADR 0102](../adr/0102-rotate-pages-onto-the-panel.md)) |
 | `battery` | Thresholds of the battery warning |
 | `firmware` | `hold` keeps the device on its firmware |
-| `address`, `buttons` | Reserved for OpenDisplay |
 
 A device whose `display_type` is not configured still loads, with a `Problem` set ([ADR 0079](../adr/0079-rename-config-items.md)). Its sync and text poll answer 503 with the reason, never 401, so the firmware keeps its key and cannot loop through registration.
 
@@ -144,8 +143,6 @@ Facts from the hardware, kept because they cost time to find.
 **Sticky**: gray4 panel that bands luma at 32/96/160, so the firmware maps 0/85/170/255 into the bands. Touch needs `swap_xy`, `mirror_x`, `mirror_y` and rotation 180. Power latch on GPIO45/46 through deep sleep, BQ27220 gauge with currents and capacities ×10, BQ25616 `STAT` on GPIO40 reported as `charging`, charge enable GPIO39.
 
 **Battery readings** for calibration: the Sticky "Küche" reads 3.40 V after a long time without charging. The E1001 "Wohnzimmer" reads 3.75 V. Both fluctuate by about 0.02 V.
-
-**OpenDisplay** is reachable over TCP and Bluetooth (`internal/opendisplay`, `cmd/odtest`), but the service does not deliver to OpenDisplay devices yet. `cmd/odtest -buttons` polls the 16-byte status block (`0x0044`). Byte 5 holds the last pressed button (0 = top, 1 = page up, 2 = page down). Each button has its own 4-bit counter, so a short press often shows only as a counter change. Touch contacts 1–5 mean touched and 6 released. Flags 0b111 invert and swap the coordinates, whose range is not calibrated yet.
 
 ## Decisions
 

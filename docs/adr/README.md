@@ -93,6 +93,7 @@ Registration, sync, state and what a device receives. See [`03-devices.md`](../d
 | [0098](0098-the-device-shows-the-lockup-and-its-version.md) | The device shows the lockup and its firmware version | Accepted, implemented |
 | [0102](0102-rotate-pages-onto-the-panel.md) | Rotate pages onto the panel | Accepted, implemented (firmware not yet flashed); amends the display types of [ADR-0071](0071-display-types-in-files-of-their-own.md), the device files of [ADR-0070](0070-devices-in-their-own-files.md) and the sync answer of [ADR-0042](0042-device-protocol.md) |
 | [0109](0109-pair-a-display.md) | Pair a display instead of trusting its MAC address | Accepted, implemented (firmware not yet flashed); replaces the MAC rule of [ADR-0042](0042-device-protocol.md) and builds on the UI password of [ADR-0096](0096-a-password-for-the-operator-ui.md) |
+| [0119](0119-remove-opendisplay.md) | Remove OpenDisplay from Paperboy | Accepted, implemented; removes `internal/opendisplay`, `cmd/odtest` and the device keys `address`/`buttons`; supersedes [ADR-0016](0016-opendisplay-bluetooth.md), the delivery of [ADR-0018](0018-opendisplay-im-display-service.md) and the rest of [ADR-0012](0012-epaper-opendisplay.md) |
 
 ## Displays, panels and firmware
 
@@ -100,11 +101,11 @@ The hardware side: what a panel can do and how the firmware talks to it. See [`0
 
 | Nr. | Title | Status |
 |---|---|---|
-| [0012](0012-epaper-opendisplay.md) | ePaper-Anzeige über OpenDisplay im LAN | Teilweise abgelöst durch [ADR-0017](0017-display-service-trmnl.md) und [ADR-0018](0018-opendisplay-im-display-service.md) |
+| [0012](0012-epaper-opendisplay.md) | ePaper-Anzeige über OpenDisplay im LAN | Teilweise abgelöst durch [ADR-0017](0017-display-service-trmnl.md) und [ADR-0018](0018-opendisplay-im-display-service.md); der Rest entfällt mit [ADR-0119](0119-remove-opendisplay.md) |
 | [0014](0014-epaper-tastenbedienung.md) | Tastenbedienung der ePaper-Anzeigen | Teilweise abgelöst durch [ADR-0015](0015-tastenbedienung-per-schalter.md), [ADR-0017](0017-display-service-trmnl.md) und [ADR-0018](0018-opendisplay-im-display-service.md) |
 | [0015](0015-tastenbedienung-per-schalter.md) | Tastenbedienung nur per Schalter | Teilweise abgelöst durch [ADR-0017](0017-display-service-trmnl.md) und [ADR-0018](0018-opendisplay-im-display-service.md) |
-| [0016](0016-opendisplay-bluetooth.md) | OpenDisplay per Bluetooth über tinygo.org/x/bluetooth | Akzeptiert |
-| [0018](0018-opendisplay-im-display-service.md) | OpenDisplay im Display-Service | Teilweise abgelöst durch [ADR-0019](0019-epaper-aus-solarai-entfernen.md) |
+| [0016](0016-opendisplay-bluetooth.md) | OpenDisplay per Bluetooth über tinygo.org/x/bluetooth | Abgelöst durch [ADR-0119](0119-remove-opendisplay.md) |
+| [0018](0018-opendisplay-im-display-service.md) | OpenDisplay im Display-Service | Abgelöst durch [ADR-0119](0119-remove-opendisplay.md) |
 | [0041](0041-esphome-firmware.md) | Paperboy firmware built on ESPHome | Accepted, implemented (not yet flashed) |
 | [0086](0086-four-gray-levels-on-the-e1001.md) | Four gray levels on the E1001 | Accepted, implemented; supersedes the dithered grays of [ADR-0041](0041-esphome-firmware.md) for that hardware; the panel settings moved to the device in [ADR-0087](0087-panel-settings-live-on-the-device.md) |
 | [0087](0087-panel-settings-live-on-the-device.md) | Panel settings live on the device | Accepted, implemented; amends the substitution decision of [ADR-0086](0086-four-gray-levels-on-the-e1001.md) |

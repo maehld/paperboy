@@ -2,7 +2,7 @@
 
 ## Goal and communication
 
-Paperboy is a display service for ePaper and text displays (own firmware on ESPHome with deep sleep, ADR 0041; OpenDisplay is not supported by the service yet). Since v2 (ADR 0049) a page is a grid of widgets, and every widget comes from a plugin: a long-running program configured in `paperboy.yaml` that draws the widget in exactly the size of its cell. Paperboy composes the pages and delivers them according to a plan per device. Evolved from SolarAI's display service `displayd` (ADR 0028, 0029).
+Paperboy is a display service for ePaper and text displays (own firmware on ESPHome with deep sleep, ADR 0041). Since v2 (ADR 0049) a page is a grid of widgets, and every widget comes from a plugin: a long-running program configured in `paperboy.yaml` that draws the widget in exactly the size of its cell. Paperboy composes the pages and delivers them according to a plan per device. Evolved from SolarAI's display service `displayd` (ADR 0028, 0029).
 
 - Communicate with the user in German.
 - Everything in the software is English: identifiers, comments, log messages, error messages, CLI help texts, commit messages and documentation (README, AGENTS.md, new ADRs) (ADR 0031). Paperboy must support multiple languages and number/date formats; the global `language` reaches the plugins with every request, and the built-in image texts (battery warning, stale bar, notices) follow it. ADRs 0012–0030 stay German.
@@ -18,7 +18,7 @@ Each fact lives in exactly one place. Update the page that owns a behavior, not 
 | Where | Owns |
 |---|---|
 | `README.md` | Overview, quick start, documentation index, licence |
-| `docs/setup.md`, `docs/content.md`, `docs/runtime.md`, `docs/releases.md`, `docs/opendisplay.md` | What the operator does: instance, configuration, pages, plans, web UI, device API, downloads |
+| `docs/setup.md`, `docs/content.md`, `docs/runtime.md`, `docs/releases.md` | What the operator does: instance, configuration, pages, plans, web UI, device API, downloads |
 | `docs/design/01-system.md` | Parts and processes, instance directory, configuration, reload, data flow, code map |
 | `docs/design/02-content.md` | Pages, widgets, grid and style, text pages, plans, conditions, actions, the menu |
 | `docs/design/03-devices.md` | Display types, device files, device API, state, power, delivery, firmware, hardware findings |
@@ -49,7 +49,7 @@ Each fact lives in exactly one place. Update the page that owns a behavior, not 
 
 The structure is in `docs/design/`; these are the rules that a change must not break.
 
-- **Go 1.27 or newer.** Dependencies: `golang.org/x/image` **v0.24.0** (ADR 0013), `go.yaml.in/yaml/v3` **v3.0.5** (ADR 0024, 0026) and `tinygo.org/x/bluetooth` **v0.16.0** only in `internal/opendisplay/odble` (ADR 0016; the Paperboy binary does not contain it). Further dependencies only with their own ADR.
+- **Go 1.27 or newer.** Dependencies: `golang.org/x/image` **v0.24.0** (ADR 0013) and `go.yaml.in/yaml/v3` **v3.0.5** (ADR 0024, 0026). Further dependencies only with their own ADR.
 - **No data API and no token.** The operator UI has a password (`ui.password`, ADR 0096); the device API keeps its per-device key (ADR 0042). The two route tables `deviceRoutes` and `uiRoutes` in `Handler` keep them apart, and a test pins the prefix of the device routes.
 - **A device never gets an error page.** Without a plan, with a missing or broken page or a broken plan it gets a notice page; a failing widget only marks its own cell. A broken configuration file keeps the last valid one.
 - **A plugin request never runs under the state lock.** The configuration snapshot is taken before locking, the conditions are asked before locking, page selection happens under the lock, and composing, drawing and writing happen outside it. Interactions with `state/` are atomic, and state belongs to the MAC, not to a file name (ADR 0080).
@@ -70,7 +70,7 @@ Paperboy v2 (ADR 0049) replaced the data document (ADR 0024), the region model (
 
 Still in place from v1: the device API (ADR 0042) with text displays (ADR 0044, 0045), plans (ADR 0025), configuration reload (ADR 0047), device status and dashboard (ADR 0039, 0040), firmware distribution (ADR 0043) and the battery warning (ADR 0020). ADR 0041's firmware compiles for all four hardware types but is not yet flashed on every device; the rollback test with a deliberately broken image succeeded, so `firmware.update: auto` may be used on real devices. CalDAV against the real iCloud was tested on 2026-11-05 with the v1 provider; the plugin mode uses the same code but has not run against iCloud yet.
 
-Open: value lists (`for-each`) and the plugin migrations of ADR 0111; a SolarAI plugin (it talks to SolarAI over HTTP; SolarAI knows nothing about Paperboy), plans/delivery for OpenDisplay, push delivery to text displays and faster menu steps through partial e-paper updates for overlay screens (the Sticky can do black-and-white partial refreshes, the E1001 in grayscale mode cannot; issue #151).
+Open: value lists (`for-each`) and the plugin migrations of ADR 0111; a SolarAI plugin (it talks to SolarAI over HTTP; SolarAI knows nothing about Paperboy), push delivery to text displays and faster menu steps through partial e-paper updates for overlay screens (the Sticky can do black-and-white partial refreshes, the E1001 in grayscale mode cannot; issue #151).
 
 ## Startup and checks
 
@@ -78,7 +78,7 @@ Open: value lists (`for-each`) and the plugin migrations of ADR 0111; a SolarAI 
 go run ./cmd/paperboy -config . -listen :8090
 go test ./...
 go vet ./...
-.\scripts\build.ps1             # paperboy, odtest and the plugins into bin/<os>-<arch>/
+.\scripts\build.ps1             # paperboy and the plugins into bin/<os>-<arch>/
 ./scripts/package-plugins.sh dist  # plugin zip for the host platform
 ./scripts/check-docs.sh         # sentence length and filler words of the design documents
 npm install --no-save jsdom && node scripts/check-ui.mjs  # smoke-runs virtual.js in jsdom
