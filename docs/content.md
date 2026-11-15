@@ -61,7 +61,7 @@ rows:
 - Paperboy converts label, value and unit to the `charset` of the display type before it cuts or pads them. `ascii` transliterates (ä → ae, ° → o, € → EUR). `hd44780` keeps `ä ö ü ß ° µ` for the ROM mapping of the firmware, writes `Ä Ö Ü` as `A O U` (the ROM has no capital umlauts, and the width must stay) and transliterates the rest. Set `charset: hd44780` for HD44780 displays; with the default `utf8` the firmware has to guess.
 - A value no plugin declares shows `? …` in its cell. A stale value marks `!` in the last column of the first line; `notices: none` turns that off.
 - A text page fits a display when its rows fit the character grid: at most as many rows as the display has, and every row at most as wide as the display. Other sizes need a variant.
-- Text pages are hand-written for now: the page editor shows their rows read-only. Lists (`for-each`), scrolling rows and the text editor follow in later steps of ADR 0111.
+- The page editor edits the rows: add, remove and move a row, and add or remove cells. Per cell you pick the value from the declared values and set `label`, `unit`, `width` and `align`. The palette lists the values grouped by plugin. Lists (`for-each`) and scrolling rows follow in later steps of ADR 0111.
 
 The built-in plugin declares `paperboy/title`, `paperboy/time`, `paperboy/date` and `paperboy/now`, so a text page has data without another plugin. The shipped plugins declare values in a later protocol version; until then the 20 × 4 examples in `examples/pages` (`uebersicht.lcd2004`, `laden.lcd2004` and the others) use the built-in values. `uebersicht.yaml` and `laden.yaml` name their text variant in `variants`, and `examples/plans/standard.yaml` pages through the pages.
 

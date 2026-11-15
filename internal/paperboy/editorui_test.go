@@ -137,9 +137,9 @@ func TestEditorOrphanVariant(t *testing.T) {
 	}
 }
 
-// TestEditorTextRowsReadOnly opens a text page with rows: the editor gets the
-// rows and the list counts them (ADR 0111). The script shows them read-only.
-func TestEditorTextRowsReadOnly(t *testing.T) {
+// TestEditorTextRows opens a text page with rows: the editor gets the rows,
+// the list counts them and the no-JS view renders their fields (ADR 0111).
+func TestEditorTextRows(t *testing.T) {
 	s := editorServer(t)
 	writePage(t, s, "werte", "", textVariant)
 
@@ -152,15 +152,24 @@ func TestEditorTextRowsReadOnly(t *testing.T) {
 		t.Fatalf("text page rows: %+v", doc.Template)
 	}
 	body := request(t, s, http.MethodGet, "/ui/editor/page?name=werte&display=lcd", nil, nil).Body.String()
-	if !strings.Contains(body, `"kind":"text"`) {
-		t.Fatalf("text page editor lacks the kind:\n%s", body)
+	for _, want := range []string{
+		`"kind":"text"`,
+		`<noscript>`,
+		`<h3>Text rows</h3>`,
+		`value="paperboy/title" readonly`,
+		`value="20" readonly`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("text page editor lacks %q:\n%s", want, body)
+		}
 	}
 	list := request(t, s, http.MethodGet, "/ui/editor", nil, nil).Body.String()
 	if !strings.Contains(list, `<td class="num">4 rows</td>`) {
 		t.Fatalf("the pages list does not count the rows:\n%s", list)
 	}
-	if js := string(editorJS); !strings.Contains(js, "edited by hand") || !strings.Contains(js, "renderRowsInspector") {
-		t.Fatal("the editor script does not show text rows read-only")
+	if js := string(editorJS); !strings.Contains(js, "renderRowsEditor") || !strings.Contains(js, "renderValuePalette") ||
+		!strings.Contains(js, "textCellEditor") || !strings.Contains(js, "addTextRow") {
+		t.Fatal("the editor script does not edit text rows")
 	}
 }
 
@@ -774,10 +783,36 @@ func TestEditorScript(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "PUT", "pointerdown", "handle-xy", "firstWidget"} {
+	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "PUT", "pointerdown", "handle-xy", "firstWidget", "renderRowsEditor", "renderValuePalette", "textCellEditor", "addTextRow"} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("script lacks %q", want)
 		}
+	}
+}
+
+// TestTextPreviewFont serves the vendored pixel font and names it in the
+// shared stylesheet and the text board (ADR 0115).
+func TestTextPreviewFont(t *testing.T) {
+	s := editorServer(t)
+	rec := request(t, s, http.MethodGet, "/ui/fonts/silkscreen-latin.woff2", nil, nil)
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "font/woff2" {
+		t.Fatalf("font: %d %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	if body := rec.Body.Bytes(); len(body) < 1000 || string(body[:4]) != "wOF2" {
+		t.Fatalf("font body: %d bytes, not woff2", len(body))
+	}
+	css := request(t, s, http.MethodGet, "/ui/ui.css", nil, nil).Body.String()
+	if !strings.Contains(css, `@font-face`) || !strings.Contains(css, `/ui/fonts/silkscreen-latin.woff2`) ||
+		!strings.Contains(css, `font-family: "Silkscreen"`) {
+		t.Fatal("the stylesheet does not load the vendored font")
+	}
+	pageBody := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil).Body.String()
+	if !strings.Contains(pageBody, `font-family: "Silkscreen"`) {
+		t.Fatal("the board does not use the pixel font")
+	}
+	virtual := request(t, s, http.MethodGet, "/ui/virtual?plan=standard&display=lcd", nil, nil).Body.String()
+	if !strings.Contains(virtual, `data-cols="20"`) || !strings.Contains(virtual, `#text .cell`) {
+		t.Fatalf("the virtual display does not lay out one slot per character:\n%s", virtual)
 	}
 }
 

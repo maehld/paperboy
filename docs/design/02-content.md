@@ -103,7 +103,7 @@ Paperboy formats every value itself, so the same reading looks the same on every
 
 A text page fits a text display when its rows fit the character grid. It has no more rows than the display, and every row is at most as wide. Rows the page does not fill stay blank. Other text sizes need a variant ([ADR 0110](../adr/0110-pages-serve-their-kind-and-name-variants.md)).
 
-Lists (`for-each`), scrolling rows and the text editor arrive in later steps of ADR 0111. A page of values does not scroll yet.
+The page editor edits rows and value cells (ADR 0111). Lists (`for-each`) and scrolling rows arrive in later steps. A page of values does not scroll yet.
 
 ## Which page a device gets
 

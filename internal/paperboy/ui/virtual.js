@@ -42,11 +42,39 @@
     return parts.join(" · ");
   }
 
+  // paintText fills one character per slot, so the grid never reflows. It
+  // sizes the pixel font to the slot height (ADR 0115).
+  function paintText(lines) {
+    const cols = Number(text.dataset.cols) || (lines[0] || "").length;
+    const rows = Number(text.dataset.rows) || lines.length;
+    text.replaceChildren();
+    text.style.gridTemplateColumns = "repeat(" + cols + ", 1fr)";
+    text.style.gridTemplateRows = "repeat(" + rows + ", 1fr)";
+    text.style.aspectRatio = cols + " / " + rows;
+    for (let y = 0; y < rows; y++) {
+      const line = String(lines[y] || "").padEnd(cols, " ").slice(0, cols);
+      for (let x = 0; x < cols; x++) {
+        const cell = document.createElement("span");
+        cell.className = "cell";
+        cell.textContent = line[x] || " ";
+        text.appendChild(cell);
+      }
+    }
+    text.hidden = false;
+    sizeText();
+  }
+
+  function sizeText() {
+    const cell = text.querySelector(".cell");
+    if (!cell) return;
+    const h = cell.getBoundingClientRect().height;
+    if (h > 0) text.style.setProperty("--lcd-glyph", (h * 1.05) + "px");
+  }
+
   // paint shows the answer and reports the hash only once the panel has it.
   function paint(out) {
     if (out.text) {
-      text.textContent = (out.text.lines || []).join("\n");
-      text.hidden = false;
+      paintText(out.text.lines || []);
       image.hidden = true;
       shown = out.text.hash;
       return Promise.resolve();
@@ -161,6 +189,7 @@
     press(keys[event.key], held);
   });
   window.addEventListener("blur", () => { keyDownAt = 0; });
+  window.addEventListener("resize", sizeText);
 
   function toggleFull() {
     if (document.fullscreenElement) {

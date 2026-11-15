@@ -43,8 +43,8 @@
   };
 
   const text = () => state.kind === 'text';
-  // A text page is a layout of rows of values (ADR 0111). This iteration shows
-  // it read-only; the file is edited by hand.
+  // A text page is a layout of rows of values (ADR 0111). The palette offers
+  // the declared values, and the inspector edits rows and cells.
   const rowsPage = () => !state.widgetsPage && text();
   const hasRows = () => !!(state.template && Array.isArray(state.template.rows) && state.template.rows.length);
   const targetPath = () => 'pages/' + state.name + (state.file ? '.' + state.file : '') + '.yaml';
@@ -121,7 +121,7 @@
       return {
         title: state.file ? '' : state.name,
         kind: 'text',
-        rows: [[{ value: 'paperboy/title', label: '', unit: '', width: Math.max(1, state.width), align: 'left' }]],
+        rows: [[{ value: firstValueKey(), label: '', unit: '', width: Math.max(1, state.width), align: 'left' }]],
         style: {},
       };
     }
@@ -213,6 +213,98 @@
     return (p.description.widgets || []).find((w) => w.widget === widget) || null;
   }
 
+  // textValues flattens the value declarations of /api/plugins. A text cell
+  // shows one of them; protocol 7 answers single values only (ADR 0111).
+  function textValues() {
+    const out = [];
+    for (const p of state.plugins) {
+      for (const v of (p.description && p.description.values) || []) {
+        if (v.kind === 'list') continue;
+        out.push({ plugin: p.name, name: v.name, title: v.title || v.name, type: v.type || '', unit: v.unit || '' });
+      }
+    }
+    return out;
+  }
+
+  function valueKey(v) { return v.plugin + '/' + v.name; }
+
+  function valueInfo(key) {
+    return textValues().find((v) => valueKey(v) === key) || null;
+  }
+
+  function firstValueKey() {
+    const v = textValues()[0];
+    return v ? valueKey(v) : '';
+  }
+
+  // defaultTextCell is a new cell for a row; width stays within the display.
+  function defaultTextCell(width) {
+    return {
+      value: firstValueKey(),
+      label: '',
+      unit: '',
+      width: Math.max(1, Math.min(Math.round(width || 6), state.width)),
+      align: 'left',
+    };
+  }
+
+  function textRowWidth(row) {
+    return (row || []).reduce((sum, c) => sum + (Number(c.width) || 0), 0);
+  }
+
+  function addTextRow() {
+    if (!state.template) return;
+    state.template.rows = state.template.rows || [];
+    state.template.rows.push([defaultTextCell(state.width)]);
+    changed();
+  }
+
+  function addTextCell(rowIndex) {
+    const row = state.template && state.template.rows && state.template.rows[rowIndex];
+    if (!row) return;
+    const room = Math.max(1, state.width - textRowWidth(row));
+    row.push(defaultTextCell(Math.min(6, room)));
+    changed();
+  }
+
+  function removeTextRow(rowIndex) {
+    if (!state.template || !state.template.rows) return;
+    state.template.rows.splice(rowIndex, 1);
+    changed();
+  }
+
+  function moveTextRow(rowIndex, delta) {
+    const rows = state.template && state.template.rows;
+    if (!rows) return;
+    const to = rowIndex + delta;
+    if (to < 0 || to >= rows.length) return;
+    const [row] = rows.splice(rowIndex, 1);
+    rows.splice(to, 0, row);
+    changed();
+  }
+
+  function removeTextCell(rowIndex, cellIndex) {
+    const row = state.template && state.template.rows && state.template.rows[rowIndex];
+    if (!row) return;
+    row.splice(cellIndex, 1);
+    changed();
+  }
+
+  // addValueCell appends a palette value to the last row, or starts a row.
+  function addValueCell(plugin, name) {
+    if (!state.template) return;
+    state.template.rows = state.template.rows || [];
+    if (!state.template.rows.length || textRowWidth(state.template.rows[state.template.rows.length - 1]) >= state.width) {
+      state.template.rows.push([]);
+    }
+    const row = state.template.rows[state.template.rows.length - 1];
+    const room = Math.max(1, state.width - textRowWidth(row));
+    const cell = defaultTextCell(Math.min(6, room));
+    cell.value = plugin + '/' + name;
+    row.push(cell);
+    changed();
+  }
+
   function overlaps(x, y, w, h, skip) {
     return state.template.cells.some((c, i) => i !== skip &&
       x < c.at[0] + c.span[0] && c.at[0] < x + w &&
@@ -224,13 +316,13 @@
   function renderSettings() {
     if (state.widgetsPage) return;
     const t = state.template;
-    const off = !t || state.readOnly || rowsPage();
-    for (const id of ['title', 'cols', 'rows', 'padding', 'rule', 'text-size', 'divider', 'notices']) el(id).disabled = off;
+    const off = !t || state.readOnly;
+    for (const id of ['title', 'padding', 'rule', 'text-size', 'divider', 'notices']) el(id).disabled = off;
     el('title').disabled = off || state.file !== '';
     el('cols').disabled = off || text();
     el('rows').disabled = off || text();
     el('grid-note').textContent = rowsPage()
-      ? 'Text page: rows are edited by hand in ' + targetPath() + '.'
+      ? 'Text page: ' + state.width + '×' + state.height + ' characters, one slot per character. Edit the rows on the right.'
       : text()
         ? 'The grid is the character grid of the display and cannot be changed.'
         : 'Cells of the page; plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid.';
@@ -273,12 +365,79 @@
 
   // ---- palette ----
 
+  // renderValuePalette lists the values the plugins declare, grouped by
+  // plugin, so a text page picks data instead of widgets (ADR 0111).
+  function renderValuePalette(box) {
+    if (!state.plugins.length) {
+      box.innerHTML = '<p class="hint">No plugin answered.</p>';
+      return;
+    }
+    const filter = state.filter.trim().toLowerCase();
+    let shown = 0;
+    for (const p of state.plugins) {
+      const values = ((p.description && p.description.values) || []).filter((v) => v.kind !== 'list');
+      const matches = values.filter((v) => !filter ||
+        (p.name + ' ' + v.name + ' ' + (v.title || '')).toLowerCase().includes(filter));
+      if (!matches.length) continue;
+      const section = document.createElement('div');
+      section.className = 'plugin';
+      const head = document.createElement('div');
+      head.className = 'plugin-head';
+      head.title = 'Show or hide the values of this plugin';
+      const collapsed = state.collapsed.has(p.name);
+      const chev = document.createElement('span');
+      chev.className = 'chev';
+      chev.textContent = collapsed ? '▸' : '▾';
+      const name = document.createElement('span');
+      name.textContent = p.name + (p.description && p.description.title ? ' · ' + p.description.title : '');
+      const count = document.createElement('span');
+      count.className = 'count';
+      count.textContent = String(matches.length);
+      head.append(chev, name, count);
+      head.addEventListener('click', () => {
+        if (collapsed) state.collapsed.delete(p.name);
+        else state.collapsed.add(p.name);
+        renderPalette();
+      });
+      section.appendChild(head);
+      if (collapsed) {
+        box.appendChild(section);
+        continue;
+      }
+      if (p.error) {
+        const note = document.createElement('span');
+        note.className = 'note';
+        note.textContent = p.error;
+        section.appendChild(note);
+      }
+      for (const v of matches) {
+        shown++;
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'widget';
+        b.textContent = v.name + ' — ' + (v.title || v.name);
+        const note = document.createElement('span');
+        note.className = 'note';
+        note.textContent = [v.type, v.unit].filter(Boolean).join(' · ');
+        if (note.textContent) b.appendChild(note);
+        b.addEventListener('click', () => addValueCell(p.name, v.name));
+        section.appendChild(b);
+      }
+      box.appendChild(section);
+    }
+    if (!shown) {
+      const p = document.createElement('p');
+      p.className = 'hint';
+      p.textContent = filter ? 'No value matches “' + state.filter.trim() + '”.' : 'No plugin declares a value.';
+      box.appendChild(p);
+    }
+  }
+
   function renderPalette() {
     const box = el('palette');
     box.innerHTML = '';
     if (rowsPage()) {
-      box.innerHTML = '<p class="hint">A text page is a layout of rows and values. This version shows it read-only; edit ' +
-        targetPath() + ' by hand.</p>';
+      renderValuePalette(box);
       return;
     }
     if (state.readOnly || !state.template) {
@@ -731,6 +890,12 @@
         if (slot) slot.textContent = line[x] || '';
       }
     }
+    // The pixel font fills the glyph box of one slot (ADR 0115).
+    const cell = board.querySelector('.slot');
+    if (cell) {
+      const h = cell.getBoundingClientRect().height;
+      if (h > 0) board.style.setProperty('--lcd-glyph', (h * 1.05) + 'px');
+    }
   }
 
   function select(i) {
@@ -807,7 +972,7 @@
     head.textContent = rowsPage() ? 'Rows' : state.widgetsPage ? 'Widget' : 'Cell';
     box.appendChild(head);
     if (rowsPage()) {
-      renderRowsInspector(box);
+      renderRowsEditor(box);
       updateSave();
       return;
     }
@@ -1037,33 +1202,188 @@
     updateSave();
   }
 
-  // renderRowsInspector lists the rows of a text page read-only (ADR 0111).
-  function renderRowsInspector(box) {
-    const note = document.createElement('p');
-    note.className = 'hint';
-    note.textContent = 'Rows are read-only here. Edit ' + targetPath() + ' by hand.';
-    box.appendChild(note);
-    if (!hasRows()) {
-      const empty = document.createElement('p');
-      empty.className = 'empty';
-      empty.textContent = 'This page has no rows.';
-      box.appendChild(empty);
+  // renderRowsEditor edits the rows and cells of a text page (ADR 0111). The
+  // inputs keep their focus because changed('inspector') does not rebuild them.
+  function renderRowsEditor(box) {
+    const t = state.template;
+    if (!t) {
+      const broken = document.createElement('p');
+      broken.className = 'empty';
+      broken.textContent = 'The file does not read as a page; fix it by hand and reload.';
+      box.appendChild(broken);
       return;
     }
-    state.template.rows.forEach((row, y) => {
-      const head = document.createElement('h4');
-      head.textContent = 'Row ' + (y + 1);
-      box.appendChild(head);
-      for (const c of row) {
-        const line = document.createElement('p');
-        line.className = 'muted';
-        const parts = [c.value || '(no value)', c.width + ' chars', c.align || 'left'];
-        if (c.label) parts.push('label ' + c.label);
-        if (c.unit) parts.push('unit ' + c.unit);
-        line.textContent = parts.join(' · ');
-        box.appendChild(line);
-      }
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = 'One character per slot, ' + state.width + ' columns and ' + state.height + ' rows. A row may be shorter than the display.';
+    box.appendChild(hint);
+    if (!t.rows || !t.rows.length) {
+      const empty = document.createElement('p');
+      empty.className = 'empty';
+      empty.textContent = 'No rows yet.';
+      box.appendChild(empty);
+    }
+    const values = textValues();
+    t.rows.forEach((row, y) => {
+      const rowBox = document.createElement('div');
+      rowBox.className = 'row-editor';
+      const head = document.createElement('div');
+      head.className = 'row-head';
+      const title = document.createElement('strong');
+      title.textContent = 'Row ' + (y + 1);
+      const width = document.createElement('span');
+      width.className = 'muted' + (textRowWidth(row) > state.width ? ' over' : '');
+      width.textContent = textRowWidth(row) + '/' + state.width;
+      const spacer = document.createElement('span');
+      spacer.className = 'spacer';
+      head.append(title, width, spacer);
+      const up = document.createElement('button');
+      up.type = 'button';
+      up.textContent = '↑';
+      up.title = 'Move this row up';
+      up.disabled = y === 0;
+      up.addEventListener('click', () => moveTextRow(y, -1));
+      const down = document.createElement('button');
+      down.type = 'button';
+      down.textContent = '↓';
+      down.title = 'Move this row down';
+      down.disabled = y === t.rows.length - 1;
+      down.addEventListener('click', () => moveTextRow(y, 1));
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'danger';
+      remove.textContent = 'Remove row';
+      remove.addEventListener('click', () => removeTextRow(y));
+      head.append(up, down, remove);
+      rowBox.appendChild(head);
+      row.forEach((c, i) => rowBox.appendChild(textCellEditor(c, y, i, values)));
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.textContent = 'Add cell';
+      add.addEventListener('click', () => addTextCell(y));
+      rowBox.appendChild(add);
+      box.appendChild(rowBox);
     });
+    const addRow = document.createElement('button');
+    addRow.type = 'button';
+    addRow.className = 'primary';
+    addRow.textContent = 'Add row';
+    addRow.addEventListener('click', addTextRow);
+    box.appendChild(addRow);
+    if (!values.length) {
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = 'No plugin declares a value. Configure a plugin that speaks protocol 7 (ADR 0111).';
+      box.appendChild(note);
+    }
+  }
+
+  // textCellEditor is one editable cell: value, label, unit, width and align.
+  function textCellEditor(c, rowIndex, cellIndex, values) {
+    const wrap = document.createElement('div');
+    wrap.className = 'text-cell';
+    const head = document.createElement('div');
+    head.className = 'row-head';
+    const name = document.createElement('strong');
+    name.textContent = 'Cell ' + (cellIndex + 1);
+    const spacer = document.createElement('span');
+    spacer.className = 'spacer';
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'danger';
+    remove.textContent = 'Remove';
+    remove.addEventListener('click', () => removeTextCell(rowIndex, cellIndex));
+    head.append(name, spacer, remove);
+    wrap.appendChild(head);
+
+    const select = document.createElement('select');
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = values.length ? '— choose a value —' : '— no value declared —';
+    select.appendChild(none);
+    const groups = new Map();
+    for (const v of values) {
+      const key = valueKey(v);
+      if (!groups.has(v.plugin)) {
+        const plugin = state.plugins.find((p) => p.name === v.plugin) || {};
+        const group = document.createElement('optgroup');
+        group.label = v.plugin + (plugin.description && plugin.description.title ? ' · ' + plugin.description.title : '');
+        groups.set(v.plugin, group);
+        select.appendChild(group);
+      }
+      const option = document.createElement('option');
+      option.value = key;
+      option.textContent = v.name + ' — ' + v.title + (v.unit ? ' (' + v.unit + ')' : '');
+      groups.get(v.plugin).appendChild(option);
+    }
+    // A value a plugin no longer declares stays visible and is preserved.
+    if (c.value && !values.some((v) => valueKey(v) === c.value)) {
+      const option = document.createElement('option');
+      option.value = c.value;
+      option.textContent = c.value + ' — not declared';
+      select.appendChild(option);
+    }
+    select.value = c.value || '';
+    select.addEventListener('change', () => {
+      c.value = select.value;
+      changed();
+    });
+    wrap.appendChild(field('Value', select));
+    const info = valueInfo(c.value);
+    if (info) {
+      const note = document.createElement('span');
+      note.className = 'desc';
+      note.textContent = [info.type, info.unit].filter(Boolean).join(' · ');
+      wrap.appendChild(note);
+    }
+
+    const label = document.createElement('input');
+    label.type = 'text';
+    label.autocomplete = 'off';
+    label.value = c.label || '';
+    label.addEventListener('input', () => {
+      c.label = label.value;
+      changed('inspector');
+    });
+    wrap.appendChild(field('Label', label));
+
+    const unit = document.createElement('input');
+    unit.type = 'text';
+    unit.autocomplete = 'off';
+    unit.value = c.unit || '';
+    unit.placeholder = info && info.unit ? info.unit : '';
+    unit.addEventListener('input', () => {
+      c.unit = unit.value;
+      changed('inspector');
+    });
+    wrap.appendChild(field('Unit', unit));
+
+    const width = document.createElement('input');
+    width.type = 'number';
+    width.min = '1';
+    width.max = String(state.width);
+    width.value = String(c.width || 1);
+    width.addEventListener('change', () => {
+      c.width = Math.max(1, Math.min(state.width, Math.round(Number(width.value) || 1)));
+      width.value = String(c.width);
+      changed();
+    });
+    wrap.appendChild(field('Width', width));
+
+    const align = document.createElement('select');
+    for (const [value, text] of [['left', 'left'], ['right', 'right'], ['decimal', 'decimal']]) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = text;
+      align.appendChild(option);
+    }
+    align.value = c.align === 'right' || c.align === 'decimal' ? c.align : 'left';
+    align.addEventListener('change', () => {
+      c.align = align.value;
+      changed();
+    });
+    wrap.appendChild(field('Align', align));
+    return wrap;
   }
 
   function removeCell() {
@@ -1533,7 +1853,7 @@
     const kind = info.kind === 'text' ? 'text' : 'image';
     const grid = kind === 'text' ? [info.width, info.height] : state.reference.slice();
     const template = kind === 'text'
-      ? { kind: 'text', rows: [[{ value: 'paperboy/title', width: Math.max(1, info.width), align: 'left' }]], style: {} }
+      ? { kind: 'text', rows: [[{ value: firstValueKey(), width: Math.max(1, info.width), align: 'left' }]], style: {} }
       : { kind: kind, grid: grid, style: {}, cells: [blankCell(kind, grid)] };
     setStatus('creating the variant for ' + display + '…', '');
     let res;
@@ -1900,8 +2220,9 @@
   // the pointer, a dragged box moves there.
   on('board', 'dragover', (e) => e.preventDefault());
   on('board', 'drop', boardDrop);
+  window.addEventListener('resize', () => applyBoardPreview());
   on('title', 'input', () => {
-    if (!state.template || rowsPage()) return;
+    if (!state.template) return;
     state.template.title = el('title').value;
     changed();
   });

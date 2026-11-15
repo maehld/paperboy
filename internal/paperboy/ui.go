@@ -58,6 +58,19 @@ var uiLogo []byte
 //go:embed ui/favicon.svg
 var uiFavicon []byte
 
+// uiFont is the vendored pixel font of the text previews (ADR 0115). The
+// licence and the source sit next to the file in ui/fonts/.
+//
+//go:embed ui/fonts/silkscreen-latin.woff2
+var uiFont []byte
+
+// handleUIFont serves the pixel font of the text previews behind the password.
+func (s *Server) handleUIFont(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "font/woff2")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Write(uiFont)
+}
+
 // handleUILogo serves the lockup the header of every page shows.
 func (s *Server) handleUILogo(w http.ResponseWriter, r *http.Request) {
 	serveSVG(w, uiLogo)

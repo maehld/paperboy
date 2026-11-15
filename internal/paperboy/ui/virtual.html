@@ -9,7 +9,10 @@
 <style>
 .screen { display: flex; justify-content: center; align-items: center; background: #fff; border: 1px solid #ccc; border-radius: 8px; padding: 1rem; min-height: 8rem; }
 #image { display: block; max-width: 100%; height: auto; image-rendering: pixelated; }
-#text { margin: 0; padding: 1rem 1.2rem; background: #2d4a12; color: #d8f5a0; font: 1.1rem/1.35 ui-monospace, Consolas, monospace; white-space: pre; overflow: auto; border-radius: 4px; }
+/* The text panel is an LCD module: one glyph per slot, a thin gap between the
+   cells and the vendored pixel font (ADR 0115). */
+#text { display: grid; gap: 1px; width: min(100%, 64rem); padding: 6px; background: var(--lcd-panel-bg); border: 4px solid #081304; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--lcd-edge), 0 3px 12px rgba(0, 0, 0, .35); font-family: "Silkscreen", ui-monospace, Consolas, monospace; overflow: auto; }
+#text .cell { display: flex; align-items: center; justify-content: center; background: var(--lcd-cell-bg); color: var(--lcd-pixel); font-size: var(--lcd-glyph, 1rem); line-height: .95; overflow: hidden; text-shadow: 0 0 2px rgba(185, 243, 106, .35); }
 .controls { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; margin: .8rem 0 .4rem; }
 .controls button { min-width: 6.5rem; }
 .debug { margin: 0 0 .4rem; font: .85rem ui-monospace, Consolas, monospace; color: #333; word-break: break-word; }
@@ -39,7 +42,7 @@ body.show .screen { border: 0; padding: 0; }
 </div>
 <main class="screen" id="screen">
   <img id="image" alt="The page this display serves" width="{{.Width}}" height="{{.Height}}" hidden>
-  <pre id="text" hidden></pre>
+  <div id="text" data-cols="{{.Width}}" data-rows="{{.Height}}" hidden></div>
 </main>
 <div class="controls">
   <button data-role="previous" type="button">← Previous</button>

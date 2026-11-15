@@ -46,8 +46,10 @@ input[type=search] { margin-bottom: .4rem; }
 /* The board is the rendered page with the cell boxes on top (ADR 0074):
    the preview is the background, the boxes are the overlay. */
 #board { display: grid; background: #fff; background-size: 100% 100%; background-repeat: no-repeat; background-position: center; border: 1px solid #aaa; width: 100%; touch-action: manipulation; }
-#board.text { background: #2d4a12; }
-#board.text .slot { display: flex; align-items: center; justify-content: center; color: #d8f5a0; font: .8rem/1 ui-monospace, Consolas, monospace; border-color: rgba(216, 245, 160, .14); }
+/* A text page is an LCD module: dark green panel, one glyph per slot and a
+   thin gap between the character cells (ADR 0115). */
+#board.text { background: var(--lcd-panel-bg); gap: 1px; padding: 3px; border: 3px solid #081304; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--lcd-edge), 0 2px 8px rgba(0, 0, 0, .35); font-family: "Silkscreen", ui-monospace, Consolas, monospace; }
+#board.text .slot { display: flex; align-items: center; justify-content: center; background: var(--lcd-cell-bg); color: var(--lcd-pixel); font-size: var(--lcd-glyph, 1rem); line-height: .95; border: 0; text-shadow: 0 0 2px rgba(185, 243, 106, .35); }
 .slot { border: 1px dashed #e6e6e6; min-height: 0; min-width: 0; overflow: hidden; }
 #board.placing .slot { background: rgba(246, 250, 255, .8); cursor: copy; }
 .cell { position: relative; background: rgba(238, 243, 251, .55); border: 1px solid #b9c9e0; padding: .15rem .3rem; overflow: hidden; min-height: 0; min-width: 0; font-size: .72rem; line-height: 1.2; cursor: grab; user-select: none; touch-action: none; }
@@ -100,7 +102,7 @@ ul.variant-types { margin: 0; padding-left: 1.1rem; font-size: .85rem; }
 .palette .note { display: block; color: #888; font-size: .72rem; }
 .preview img { display: block; width: 100%; height: auto; border: 1px solid #ccc; background: #fff; image-rendering: pixelated; }
 .preview.single img { width: auto; max-width: 100%; }
-.lcd { margin: 0; padding: .5rem .6rem; background: #2d4a12; color: #d8f5a0; font: .95rem/1.25 ui-monospace, Consolas, monospace; white-space: pre; overflow-x: auto; border-radius: 4px; }
+.lcd { margin: 0; padding: .5rem .6rem; background: #142b0a; color: var(--lcd-pixel); font: .95rem/1.25 "Silkscreen", ui-monospace, Consolas, monospace; white-space: pre; overflow-x: auto; border-radius: 4px; }
 .inspector .empty { margin: 0; color: #888; font-size: .85rem; }
 .inspector .arg { margin-bottom: .35rem; }
 .inspector .arg .name { font-size: .78rem; color: #555; display: block; }
@@ -119,6 +121,16 @@ ul.variant-types { margin: 0; padding-left: 1.1rem; font-size: .85rem; }
 .inspector .arg .check span { min-width: 0; overflow-wrap: anywhere; }
 .inspector .row-buttons { display: flex; gap: .5rem; margin-top: .6rem; }
 .inspector .muted { margin: 0 0 .4rem; }
+/* The row editor of a text page (ADR 0111). */
+.row-editor { border-top: 1px solid #eee; margin-top: .7rem; padding-top: .5rem; }
+.row-editor:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
+.row-head { display: flex; align-items: center; gap: .35rem; margin: 0 0 .4rem; }
+.row-head .spacer { margin-left: auto; }
+.row-head .over { color: #b00; font-weight: 700; }
+.text-cell { background: #fafbfd; border: 1px solid #e3e8ef; border-radius: 6px; margin: .4rem 0; padding: .45rem .55rem; }
+.text-cell .desc { display: block; color: #888; font-size: .72rem; margin: -.15rem 0 .35rem; }
+.row-editor > button { margin-top: .35rem; }
+.noscript-rows .arg { border-top: 1px solid #f0f0f0; margin-top: .5rem; padding-top: .35rem; }
 .panel-head .muted, .panel-head button { margin-left: auto; }
 .snippet { margin: 0; padding: .4rem .6rem; background: #f6f6f6; border: 1px solid #ddd; border-radius: 4px; font: .85rem ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-word; user-select: all; }
 dialog { border: 1px solid #ccc; border-radius: 8px; padding: 1rem 1.1rem; width: min(22rem, 92vw); box-shadow: 0 8px 30px rgba(0, 0, 0, .18); }
@@ -222,6 +234,23 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     </section>{{end}}
   </div>
   <div class="col">
+    {{if .TextPage}}<noscript>
+    <section class="panel noscript-rows">
+      <h3>Text rows</h3>
+      <p class="hint">JavaScript is off. These fields show the page but do not save it. Edit {{.FilePath}} by hand.</p>
+      {{if .Rows}}{{range $y, $row := .Rows}}
+      <h4>Row {{inc $y}}</h4>
+      {{range $i, $c := $row}}
+      <div class="arg">
+        <label class="field"><span>Value</span><input value="{{$c.Value}}" readonly></label>
+        <label class="field"><span>Label</span><input value="{{$c.Label}}" readonly></label>
+        <label class="field"><span>Unit</span><input value="{{$c.Unit}}" readonly></label>
+        <label class="field"><span>Width</span><input type="number" value="{{$c.Width}}" readonly></label>
+        <label class="field"><span>Align</span><input value="{{$c.Align}}" readonly></label>
+      </div>
+      {{end}}{{end}}{{else}}<p class="empty">No rows yet.</p>{{end}}
+    </section>
+    </noscript>{{end}}
     <section class="panel inspector" id="inspector"></section>
     {{if .WidgetsPage}}<section class="panel">
       <div class="panel-head"><h3>Snippet</h3><button class="primary" id="copy-cell" type="button" disabled>Copy cell</button></div>
