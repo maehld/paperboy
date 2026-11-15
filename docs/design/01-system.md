@@ -45,7 +45,7 @@ Concurrency rule: a device request takes the configuration before it locks the s
 3. The plan selects a page: the first rule whose time window, weekdays and conditions match, else its fallback. A page that does not fit the device's display type is skipped ([ADR 0049](../adr/0049-plugin-widgets.md)).
 4. The page composes its cells. All widgets of an image page or all values of a text page go to the plugin host in one request per plugin. The render therefore costs one round trip per plugin, not one per cell.
 5. The plugin host answers from its cache. A missing or expired entry is drawn or answered by the plugin process.
-6. Paperboy quantizes every widget image to the gray levels of the display type, pastes it one to one into the page and hashes the pixels. A text page formats its values and lays them into its rows (ADR 0111).
+6. Paperboy quantizes every widget image to the gray levels of the display type, pastes it one to one into the page and hashes the pixels. A text page formats its values and lays them into its boxes (ADR 0118).
 7. The finished page is kept in memory as PNG and as its hash. A device downloads it from `/pages/{display type}/{page}/{hash}.png`, or as QOI with `?format=qoi` for the firmware ([ADR 0072](../adr/0072-pages-as-qoi.md)).
 8. The device paints the page, reports its battery and goes back to sleep, or stays awake for a menu.
 9. A page that cannot be composed becomes a notice page (`/hints/{hash}.png`), never an error.
