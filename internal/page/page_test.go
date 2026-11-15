@@ -264,6 +264,24 @@ rows:
 	}
 }
 
+func TestRenderTextEmptyRow(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader("kind: text\nrows:\n  - []\n  - [{ value: a/x, width: 10 }]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := plugin.TextValue("hi")
+	text, err := tmpl.RenderText(Display{Width: 10, Height: 2, Text: true},
+		Context{Values: func(ValueBatch) []Result {
+			return []Result{{Value: &v, Spec: plugin.ValueSpec{Type: plugin.ValueText}}}
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"          ", "hi        "}; strings.Join(text.Lines, "|") != strings.Join(want, "|") {
+		t.Fatalf("lines %q, want %q", text.Lines, want)
+	}
+}
+
 func TestRenderTextStaleAndMissingSource(t *testing.T) {
 	tmpl, err := Parse(strings.NewReader("kind: text\nrows:\n  - [{ value: a/x, width: 6 }]\n"))
 	if err != nil {
@@ -304,16 +322,15 @@ rows:
 		t.Fatalf("alignments: %+v", tmpl.Rows)
 	}
 	for name, bad := range map[string]string{
-		"grid":      "kind: text\ngrid: [2, 1]\nrows:\n  - [{ value: a/b, width: 2 }]\n",
-		"cells":     "kind: text\ncells: [{ widget: a/b }]\nrows:\n  - [{ value: a/b, width: 2 }]\n",
-		"no rows":   "kind: text\n",
-		"empty row": "kind: text\nrows:\n  - []\n",
-		"width":     "kind: text\nrows:\n  - [{ value: a/b, width: 0 }]\n",
-		"wide":      "kind: text\nrows:\n  - [{ value: a/b, width: 81 }]\n",
-		"align":     "kind: text\nrows:\n  - [{ value: a/b, width: 2, align: center }]\n",
-		"value":     "kind: text\nrows:\n  - [{ value: agenda, width: 2 }]\n",
-		"plugin":    "kind: text\nrows:\n  - [{ value: A/b, width: 2 }]\n",
-		"sum":       "kind: text\nrows:\n  - [{ value: a/b, width: 50 }, { value: a/c, width: 31 }]\n",
+		"grid":    "kind: text\ngrid: [2, 1]\nrows:\n  - [{ value: a/b, width: 2 }]\n",
+		"cells":   "kind: text\ncells: [{ widget: a/b }]\nrows:\n  - [{ value: a/b, width: 2 }]\n",
+		"no rows": "kind: text\n",
+		"width":   "kind: text\nrows:\n  - [{ value: a/b, width: 0 }]\n",
+		"wide":    "kind: text\nrows:\n  - [{ value: a/b, width: 81 }]\n",
+		"align":   "kind: text\nrows:\n  - [{ value: a/b, width: 2, align: center }]\n",
+		"value":   "kind: text\nrows:\n  - [{ value: agenda, width: 2 }]\n",
+		"plugin":  "kind: text\nrows:\n  - [{ value: A/b, width: 2 }]\n",
+		"sum":     "kind: text\nrows:\n  - [{ value: a/b, width: 50 }, { value: a/c, width: 31 }]\n",
 	} {
 		if _, err := Parse(strings.NewReader(bad)); err == nil {
 			t.Errorf("%s: accepted", name)
@@ -321,6 +338,15 @@ rows:
 	}
 	if _, err := Parse(strings.NewReader("kind: image\ngrid: [1, 1]\nrows:\n  - [{ value: a/b, width: 1 }]\ncells: [{ widget: a/b }]\n")); err == nil {
 		t.Error("an image page with rows was accepted")
+	}
+	// A row without cells stays a blank line; the editor can delete the last
+	// cell without making the page unreadable.
+	empty, err := Parse(strings.NewReader("kind: text\nrows:\n  - []\n  - [{ value: a/b, width: 2 }]\n"))
+	if err != nil {
+		t.Fatalf("empty row: %v", err)
+	}
+	if len(empty.Rows) != 2 || len(empty.Rows[0]) != 0 {
+		t.Fatalf("empty row parsed as %+v", empty.Rows)
 	}
 }
 
@@ -415,6 +441,7 @@ func TestEncodeTextRows(t *testing.T) {
 kind: text
 rows:
   - [{ value: a/one, label: L, unit: kW, width: 6, align: decimal }]
+  - []
   - [{ value: a/two, width: 4, align: right }]
 `))
 	if err != nil {

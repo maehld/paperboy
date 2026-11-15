@@ -161,18 +161,23 @@ func TestEditorTextRows(t *testing.T) {
 		`Click a value, then a slot, or drag it onto a row`,
 		`.cell.text`,
 		`.drop-marker`,
+		`id="rows-panel"`,
+		`Filter values…`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("text page editor lacks %q:\n%s", want, body)
 		}
 	}
+	if strings.Contains(body, "board-caption") {
+		t.Fatal("the editor still carries a caption below the board")
+	}
 	list := request(t, s, http.MethodGet, "/ui/editor", nil, nil).Body.String()
 	if !strings.Contains(list, `<td class="num">4 rows</td>`) {
 		t.Fatalf("the pages list does not count the rows:\n%s", list)
 	}
-	for _, want := range []string{"renderRowsEditor", "renderValuePalette", "textCellEditor", "addTextRow",
-		"renderTextBoxes", "pickValue", "insertValueAt", "moveTextCell", "startTextResize", "textBoardDrop",
-		"showDropMarker", "drop-marker", "b.draggable = true", "startTextCellDrag"} {
+	for _, want := range []string{"renderRowsPanel", "renderTextInspector", "textCellFields", "renderValuePalette",
+		"renderTextBoxes", "pickValue", "insertValueAt", "moveTextCell", "startTextResize", "startPaletteDrag",
+		"startTextCellDrag", "cellAtPointer", "setPointerCapture", "showDropMarker", "drop-marker", "removeTextCell"} {
 		if !strings.Contains(string(editorJS), want) {
 			t.Fatalf("the editor script lacks %q", want)
 		}
@@ -789,7 +794,7 @@ func TestEditorScript(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "PUT", "pointerdown", "handle-xy", "firstWidget", "renderRowsEditor", "renderValuePalette", "textCellEditor", "addTextRow", "renderTextBoxes", "textBoardDrop"} {
+	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "PUT", "pointerdown", "handle-xy", "firstWidget", "renderRowsPanel", "renderTextInspector", "textCellFields", "startPaletteDrag", "startTextCellDrag"} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("script lacks %q", want)
 		}

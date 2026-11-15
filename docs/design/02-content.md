@@ -79,7 +79,7 @@ rows:
   - [{ value: evcc/pv, label: PV, width: 10, align: decimal, unit: kW }]
 ```
 
-A cell names a `value` as `<plugin>/<key>`, the key a plugin declares in `describe.values`. Paperboy asks every plugin once for all keys of that page. It caches the answer like a widget, and a `changed` event drops it. The plugin answers data, never text: a number, a text, a duration in seconds, a timestamp or a direction. The shipped plugins declare their values in a later protocol version; until then a cell with such a key shows `? …`.
+A row may be empty: it stays a blank line, so deleting the last cell of a row does not break the page. A cell names a `value` as `<plugin>/<key>`, the key a plugin declares in `describe.values`. Paperboy asks every plugin once for all keys of that page. It caches the answer like a widget, and a `changed` event drops it. The plugin answers data, never text: a number, a text, a duration in seconds, a timestamp or a direction. The shipped plugins declare their values in a later protocol version; until then a cell with such a key shows `? …`.
 
 | Cell key | Meaning |
 |---|---|

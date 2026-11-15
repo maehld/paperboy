@@ -31,7 +31,6 @@
     selected: -1,
     textSelected: { row: -1, cell: -1 }, // selected value cell of a text page
     drag: null, // {kind, i, axis, grab, at, span, start, moved} while a box moves or resizes
-    dragText: '', // dataTransfer text of a value or a cell that is being dragged
     placing: null, // {plugin, widget} or {plugin, name, value: true} waiting for a cell
     filter: '', // text of the palette filter
     collapsed: new Set(), // plugins whose widgets the palette hides
@@ -44,12 +43,15 @@
     previewLines: [], // the text lines of a text display, one char per cell
   };
 
+  let suppressTextClick = false; // a finished cell drag must not select again
+  let suppressPaletteClick = false; // a finished palette drag must not toggle placing
+
   const text = () => state.kind === 'text';
   // A text page is a layout of rows of values (ADR 0111). The palette offers
   // the declared values, and the inspector edits rows and cells.
   const rowsPage = () => !state.widgetsPage && text();
   const hasRows = () => !!(state.template && Array.isArray(state.template.rows) && state.template.rows.length);
-  const textRowsValid = () => hasRows() && state.template.rows.every((row) => row.length && row.every((c) => c.value));
+  const textRowsValid = () => hasRows() && state.template.rows.every((row) => row.every((c) => c.value));
   const targetPath = () => 'pages/' + state.name + (state.file ? '.' + state.file : '') + '.yaml';
 
   // ---- status and where ----
@@ -113,7 +115,10 @@
     updateSave();
     renderBoard();
     if (origin === 'inspector') updateSnippet();
-    else renderInspector();
+    else {
+      renderInspector();
+      if (rowsPage()) renderRowsPanel();
+    }
     schedulePreview();
   }
 
@@ -263,14 +268,7 @@
     changed();
   }
 
-  function addTextCell(rowIndex) {
-    const row = state.template && state.template.rows && state.template.rows[rowIndex];
-    if (!row) return;
-    const room = Math.max(1, state.width - textRowWidth(row));
-    row.push(defaultTextCell(Math.min(6, room)));
-    state.textSelected = { row: rowIndex, cell: row.length - 1 };
-    changed();
-  }
+
 
   function removeTextRow(rowIndex) {
     if (!state.template || !state.template.rows) return;
@@ -297,8 +295,13 @@
     if (!row) return;
     row.splice(cellIndex, 1);
     if (state.textSelected.row === rowIndex) {
-      if (state.textSelected.cell === cellIndex) state.textSelected = { row: -1, cell: -1 };
-      else if (state.textSelected.cell > cellIndex) state.textSelected.cell -= 1;
+      if (state.textSelected.cell === cellIndex) {
+        state.textSelected = row.length
+          ? { row: rowIndex, cell: Math.min(cellIndex, row.length - 1) }
+          : { row: -1, cell: -1 };
+      } else if (state.textSelected.cell > cellIndex) {
+        state.textSelected.cell -= 1;
+      }
     }
     changed();
   }
@@ -451,10 +454,15 @@
       }
     }
     renderInspector();
+    renderRowsPanel();
   }
 
   // textSlotClick places a palette value at the slot or selects the cell there.
   function textSlotClick(x, y) {
+    if (suppressTextClick) {
+      suppressTextClick = false;
+      return;
+    }
     if (!state.template) return;
     if (state.placing && state.placing.value) {
       const p = state.placing;
@@ -469,6 +477,69 @@
       renderBoard();
       renderInspector();
     }
+  }
+
+  // startPaletteDrag drags a declared value from the palette onto a row with
+  // the pointer. A movement below 4 px stays the click of click-then-place.
+  function startPaletteDrag(e, button, plugin, name) {
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const pointerId = e.pointerId;
+    let active = false;
+    let pos = null;
+    let ghost = null;
+    let finished = false;
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!active && Math.abs(dx) + Math.abs(dy) < 4) return;
+      if (!active) {
+        active = true;
+        state.placing = null;
+        button.classList.add('dragging');
+        ghost = document.createElement('div');
+        ghost.className = 'palette-ghost';
+        ghost.textContent = plugin + '/' + name;
+        document.body.appendChild(ghost);
+      }
+      if (ev.cancelable) ev.preventDefault();
+      ghost.style.left = (ev.clientX + 12) + 'px';
+      ghost.style.top = (ev.clientY + 12) + 'px';
+      pos = cellAtPointer(ev);
+      if (pos) showDropMarker(pos.y, pos.x);
+      else clearDropMarker();
+    };
+    const finish = (ev, dropIt) => {
+      if (finished) return;
+      finished = true;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      button.classList.remove('dragging');
+      if (ghost) ghost.remove();
+      clearDropMarker();
+      if (button.hasPointerCapture && button.hasPointerCapture(pointerId)) {
+        try { button.releasePointerCapture(pointerId); } catch (err) { /* already gone */ }
+      }
+      if (!active) return;
+      suppressPaletteClick = true;
+      setTimeout(() => { suppressPaletteClick = false; }, 0);
+      if (dropIt) {
+        const at = cellAtPointer(ev);
+        if (at) {
+          insertValueAt(plugin, name, at.y, at.x);
+          renderPalette();
+          return;
+        }
+      }
+      renderPalette();
+    };
+    const up = (ev) => finish(ev, true);
+    const cancel = (ev) => finish(ev, false);
+    try { button.setPointerCapture && button.setPointerCapture(pointerId); } catch (err) { /* no capture */ }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
   }
 
   // pickValue toggles a palette value into click-then-place mode.
@@ -504,46 +575,27 @@
     for (const slot of board.querySelectorAll('.slot.drop')) slot.classList.remove('drop');
   }
 
-  // textBoardDragOver highlights the row under a value or cell drag.
-  function textBoardDragOver(e) {
-    if (!rowsPage() || !state.dragText) return;
-    const pos = cellAt(e);
-    if (!pos) return;
-    e.preventDefault();
-    if (e.dataTransfer) {
-      e.dataTransfer.dropEffect = state.dragText.indexOf('cell:') === 0 ? 'move' : 'copy';
-    }
-    showDropMarker(pos.y, pos.x);
+  // cellAtPointer maps the pointer to a slot only while it is over the board;
+  // a drop outside the board cancels.
+  function cellAtPointer(e) {
+    const board = el('board');
+    const t = state.template;
+    if (!board || !t) return null;
+    const r = board.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    if (e.clientX < r.left || e.clientX >= r.right || e.clientY < r.top || e.clientY >= r.bottom) return null;
+    return cellAt(e);
   }
 
-  // textBoardDrop inserts a value or moves a cell at the drop position.
-  function textBoardDrop(e) {
-    const pos = cellAt(e);
-    const data = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || state.dragText;
-    clearDropMarker();
-    state.dragText = '';
-    if (!pos || !data) return;
-    if (data.indexOf('value:') === 0) {
-      const [plugin, name] = data.slice(6).split('/');
-      if (plugin && name) {
-        insertValueAt(plugin, name, pos.y, pos.x);
-        renderPalette();
-      }
-      return;
-    }
-    if (data.indexOf('cell:') === 0) {
-      const parts = data.split(':');
-      moveTextCell(Number(parts[1]), Number(parts[2]), pos.y, pos.x);
-    }
-  }
-
-  // startTextCellDrag moves a box with the pointer and marks the row and slot
-  // where it will land.
+  // startTextCellDrag uses pointer capture, so the box follows the pointer even
+  // over the slots. A movement below 4 px stays a click.
   function startTextCellDrag(e, box, rowIndex, cellIndex) {
     const startX = e.clientX;
     const startY = e.clientY;
+    const pointerId = e.pointerId;
     let active = false;
     let pos = null;
+    let finished = false;
     const move = (ev) => {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
@@ -552,32 +604,39 @@
         active = true;
         box.classList.add('dragging');
         box.style.zIndex = '5';
-        box.style.pointerEvents = 'none';
       }
+      if (ev.cancelable) ev.preventDefault();
       box.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
-      pos = cellAt(ev);
+      pos = cellAtPointer(ev);
       if (pos) showDropMarker(pos.y, pos.x);
       else clearDropMarker();
     };
     const finish = (ev, moveIt) => {
-      document.removeEventListener('pointermove', move);
-      document.removeEventListener('pointerup', up);
-      document.removeEventListener('pointercancel', cancel);
+      if (finished) return;
+      finished = true;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
       box.style.transform = '';
       box.style.zIndex = '';
-      box.style.pointerEvents = '';
       box.classList.remove('dragging');
       clearDropMarker();
+      if (box.hasPointerCapture && box.hasPointerCapture(pointerId)) {
+        try { box.releasePointerCapture(pointerId); } catch (err) { /* already gone */ }
+      }
       if (moveIt && active) {
-        const at = cellAt(ev);
+        const at = cellAtPointer(ev);
         if (at) moveTextCell(rowIndex, cellIndex, at.y, at.x);
+        suppressTextClick = true;
+        setTimeout(() => { suppressTextClick = false; }, 0);
       }
     };
     const up = (ev) => finish(ev, true);
     const cancel = (ev) => finish(ev, false);
-    document.addEventListener('pointermove', move);
-    document.addEventListener('pointerup', up);
-    document.addEventListener('pointercancel', cancel);
+    try { box.setPointerCapture && box.setPointerCapture(pointerId); } catch (err) { /* no capture */ }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
   }
 
   // startTextResize changes one cell width by the slots the pointer crosses.
@@ -595,6 +654,8 @@
     const prefix = textCellStart(row, cellIndex);
     const suffix = textRowWidth(row) - prefix - c.width;
     const maxWidth = Math.max(1, state.width - prefix - suffix);
+    const handle = e.currentTarget;
+    const pointerId = e.pointerId;
     const move = (ev) => {
       const delta = Math.round((ev.clientX - startX) / slotWidth);
       c.width = Math.max(1, Math.min(maxWidth, startWidth + delta));
@@ -602,14 +663,18 @@
       schedulePreview();
     };
     const up = () => {
-      document.removeEventListener('pointermove', move);
-      document.removeEventListener('pointerup', up);
-      document.removeEventListener('pointercancel', up);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      if (handle && handle.hasPointerCapture && handle.hasPointerCapture(pointerId)) {
+        try { handle.releasePointerCapture(pointerId); } catch (err) { /* already gone */ }
+      }
       changed();
     };
-    document.addEventListener('pointermove', move);
-    document.addEventListener('pointerup', up);
-    document.addEventListener('pointercancel', up);
+    try { handle && handle.setPointerCapture && handle.setPointerCapture(pointerId); } catch (err) { /* no capture */ }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   }
 
   function overlaps(x, y, w, h, skip) {
@@ -728,20 +793,16 @@
         note.className = 'note';
         note.textContent = [v.type, v.unit].filter(Boolean).join(' · ');
         if (note.textContent) b.appendChild(note);
-        b.draggable = true;
-        b.addEventListener('click', () => pickValue(p.name, v.name));
-        b.addEventListener('dragstart', (e) => {
-          state.dragText = 'value:' + p.name + '/' + v.name;
-          state.placing = null;
-          if (e.dataTransfer) {
-            e.dataTransfer.setData('text/plain', state.dragText);
-            e.dataTransfer.effectAllowed = 'copy';
+        b.addEventListener('click', () => {
+          if (suppressPaletteClick) {
+            suppressPaletteClick = false;
+            return;
           }
+          pickValue(p.name, v.name);
         });
-        b.addEventListener('dragend', () => {
-          state.dragText = '';
-          clearDropMarker();
-          renderPalette();
+        b.addEventListener('pointerdown', (e) => {
+          if (e.button !== undefined && e.button !== 0) return;
+          startPaletteDrag(e, b, p.name, v.name);
         });
         section.appendChild(b);
       }
@@ -1074,21 +1135,12 @@
   // boardDragOver accepts a drag over the board and marks the drop position of
   // a text page.
   function boardDragOver(e) {
-    if (rowsPage()) {
-      textBoardDragOver(e);
-      return;
-    }
     e.preventDefault();
   }
 
-  // boardDrop places a widget that was dragged out of the palette, or inserts a
-  // value/moves a cell on a text page.
+  // boardDrop places a widget that was dragged out of the palette.
   function boardDrop(e) {
     e.preventDefault();
-    if (rowsPage()) {
-      textBoardDrop(e);
-      return;
-    }
     const t = state.template;
     if (!t) return;
     const pos = cellAt(e);
@@ -1359,10 +1411,10 @@
     const box = el('inspector');
     box.innerHTML = '';
     const head = document.createElement('h3');
-    head.textContent = rowsPage() ? 'Rows' : state.widgetsPage ? 'Widget' : 'Cell';
+    head.textContent = state.widgetsPage ? 'Widget' : 'Cell';
     box.appendChild(head);
     if (rowsPage()) {
-      renderRowsEditor(box);
+      renderTextInspector(box);
       updateSave();
       return;
     }
@@ -1592,9 +1644,24 @@
     updateSave();
   }
 
-  // renderRowsEditor edits the rows and cells of a text page (ADR 0111). The
-  // inputs keep their focus because changed('inspector') does not rebuild them.
-  function renderRowsEditor(box) {
+  // renderRowsPanel is the compact row list under the palette. It carries the
+  // structural controls; the inspector edits the selected cell only.
+  function renderRowsPanel() {
+    const box = el('rows-panel');
+    if (!box) return;
+    box.innerHTML = '';
+    const head = document.createElement('div');
+    head.className = 'panel-head';
+    const title = document.createElement('h3');
+    title.textContent = 'Rows';
+    const spacer = document.createElement('span');
+    spacer.className = 'spacer';
+    const addRow = document.createElement('button');
+    addRow.type = 'button';
+    addRow.textContent = 'Add row';
+    addRow.addEventListener('click', addTextRow);
+    head.append(title, spacer, addRow);
+    box.appendChild(head);
     const t = state.template;
     if (!t) {
       const broken = document.createElement('p');
@@ -1603,30 +1670,49 @@
       box.appendChild(broken);
       return;
     }
-    const hint = document.createElement('p');
-    hint.className = 'hint';
-    hint.textContent = 'One character per slot, ' + state.width + ' columns and ' + state.height + ' rows. A row may be shorter than the display.';
-    box.appendChild(hint);
     if (!t.rows || !t.rows.length) {
       const empty = document.createElement('p');
       empty.className = 'empty';
       empty.textContent = 'No rows yet.';
       box.appendChild(empty);
+      return;
     }
-    const values = textValues();
     t.rows.forEach((row, y) => {
-      const rowBox = document.createElement('div');
-      rowBox.className = 'row-editor';
-      const head = document.createElement('div');
-      head.className = 'row-head';
-      const title = document.createElement('strong');
-      title.textContent = 'Row ' + (y + 1);
-      const width = document.createElement('span');
-      width.className = 'muted' + (textRowWidth(row) > state.width ? ' over' : '');
-      width.textContent = textRowWidth(row) + '/' + state.width;
+      const line = document.createElement('div');
+      line.className = 'rows-line';
+      const name = document.createElement('strong');
+      name.textContent = 'Row ' + (y + 1);
+      const values = document.createElement('span');
+      values.className = 'rows-values';
+      row.forEach((c, i) => {
+        const selected = state.textSelected && state.textSelected.row === y && state.textSelected.cell === i;
+        const chip = document.createElement('span');
+        chip.className = 'value-chip' + (selected ? ' selected' : '');
+        const pick = document.createElement('button');
+        pick.type = 'button';
+        pick.className = 'value-pick';
+        pick.textContent = c.value || '(empty)';
+        const info = valueInfo(c.value);
+        pick.title = (c.value || 'no value') + (info && info.title ? ' · ' + info.title : '') +
+          ' · ' + c.width + ' chars · ' + (c.align || 'left');
+        pick.addEventListener('click', () => selectTextCell(y, i));
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'chip-remove';
+        remove.textContent = '×';
+        remove.title = 'Remove this cell';
+        remove.addEventListener('click', () => removeTextCell(y, i));
+        chip.append(pick, remove);
+        values.appendChild(chip);
+      });
+      if (!row.length) {
+        const empty = document.createElement('span');
+        empty.className = 'muted';
+        empty.textContent = 'empty';
+        values.appendChild(empty);
+      }
       const spacer = document.createElement('span');
       spacer.className = 'spacer';
-      head.append(title, width, spacer);
       const up = document.createElement('button');
       up.type = 'button';
       up.textContent = '↑';
@@ -1642,51 +1728,44 @@
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'danger';
-      remove.textContent = 'Remove row';
+      remove.textContent = '×';
+      remove.title = 'Remove this row';
       remove.addEventListener('click', () => removeTextRow(y));
-      head.append(up, down, remove);
-      rowBox.appendChild(head);
-      row.forEach((c, i) => rowBox.appendChild(textCellEditor(c, y, i, values)));
-      const add = document.createElement('button');
-      add.type = 'button';
-      add.textContent = 'Add cell';
-      add.addEventListener('click', () => addTextCell(y));
-      rowBox.appendChild(add);
-      box.appendChild(rowBox);
+      line.append(name, values, spacer, up, down, remove);
+      box.appendChild(line);
     });
-    const addRow = document.createElement('button');
-    addRow.type = 'button';
-    addRow.className = 'primary';
-    addRow.textContent = 'Add row';
-    addRow.addEventListener('click', addTextRow);
-    box.appendChild(addRow);
-    if (!values.length) {
-      const note = document.createElement('p');
-      note.className = 'hint';
-      note.textContent = 'No plugin declares a value. Configure a plugin that speaks protocol 7 (ADR 0111).';
-      box.appendChild(note);
-    }
   }
 
-  // textCellEditor is one editable cell: value, label, unit, width and align.
-  function textCellEditor(c, rowIndex, cellIndex, values) {
-    const wrap = document.createElement('div');
-    const selected = state.textSelected && state.textSelected.row === rowIndex && state.textSelected.cell === cellIndex;
-    wrap.className = 'text-cell' + (selected ? ' selected' : '');
-    const head = document.createElement('div');
-    head.className = 'row-head';
-    const name = document.createElement('strong');
-    name.textContent = 'Cell ' + (cellIndex + 1);
-    const spacer = document.createElement('span');
-    spacer.className = 'spacer';
+  // renderTextInspector shows the fields of the selected cell and its Delete
+  // button; the structural controls live in the Rows panel.
+  function renderTextInspector(box) {
+    const sel = state.textSelected;
+    const row = state.template && state.template.rows && state.template.rows[sel.row];
+    const c = row && row[sel.cell];
+    if (!c) {
+      const hint = document.createElement('p');
+      hint.className = 'empty';
+      hint.textContent = 'Select a cell on the board.';
+      box.appendChild(hint);
+      return;
+    }
+    box.appendChild(textCellFields(c));
+    const buttons = document.createElement('div');
+    buttons.className = 'row-buttons';
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'danger';
-    remove.textContent = 'Remove';
-    remove.addEventListener('click', () => removeTextCell(rowIndex, cellIndex));
-    head.append(name, spacer, remove);
-    wrap.appendChild(head);
+    remove.textContent = 'Delete';
+    remove.addEventListener('click', () => removeTextCell(sel.row, sel.cell));
+    buttons.appendChild(remove);
+    box.appendChild(buttons);
+  }
 
+  // textCellFields is one selected cell: value, label, unit, width and align.
+  function textCellFields(c) {
+    const wrap = document.createElement('div');
+    wrap.className = 'text-cell';
+    const values = textValues();
     const select = document.createElement('select');
     const none = document.createElement('option');
     none.value = '';
@@ -2511,6 +2590,7 @@
   function renderAll() {
     renderSettings();
     renderPalette();
+    renderRowsPanel();
     renderBoard();
     renderInspector();
     updateFile();
@@ -2615,9 +2695,6 @@
   // the pointer, a dragged box moves there.
   on('board', 'dragover', boardDragOver);
   on('board', 'drop', boardDrop);
-  on('board', 'dragleave', (e) => {
-    if (!el('board').contains(e.relatedTarget)) clearDropMarker();
-  });
   window.addEventListener('resize', () => applyBoardPreview());
   on('title', 'input', () => {
     if (!state.template) return;

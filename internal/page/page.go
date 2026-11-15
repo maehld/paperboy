@@ -320,9 +320,6 @@ func (t *Template) validateRows() error {
 		return fmt.Errorf("rows: at most %d rows", maxGrid)
 	}
 	for y, row := range t.Rows {
-		if len(row) == 0 {
-			return fmt.Errorf("row %d: no cells", y+1)
-		}
 		width := 0
 		for i := range row {
 			c := &row[i]
