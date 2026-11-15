@@ -4,9 +4,12 @@
 #pragma once
 
 #include "esphome.h"
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <esp_heap_caps.h>
@@ -811,30 +814,151 @@ template<typename D> inline bool pb_paint_qoi_dithered(D &it, const std::string 
 
 // Lines on the text display and the hash Paperboy gave them.
 static std::vector<std::string> pb_lines;
-// Rows that scroll, aligned with pb_lines: the full text of a row whose cell
-// has scroll: true, "" for a static row (ADR 0092). The server sends the first
-// window in pb_lines, so a firmware without scrolling still shows a line.
-static std::vector<std::string> pb_scroll;
-static int pb_scroll_offset = 0;
-static int pb_scroll_hold = 0;
 static std::string pb_text_hash;
+// True when pb_take_text replaced the text; the YAML then repaints and starts
+// or stops the marquee.
+static bool pb_text_changed = false;
+
+enum PbScrollDirection {
+  PB_SCROLL_HORIZONTAL = 0,
+  PB_SCROLL_VERTICAL = 1,
+  PB_SCROLL_BOTH = 2,
+};
+
+// One scrolling text box (ADR 0117). The server names its position and size in
+// characters, the full lines, the first window, the direction and the step.
+struct PbScrollBox {
+  int row = 0;
+  int col = 0;
+  int width = 0;
+  int height = 1;
+  int direction = PB_SCROLL_HORIZONTAL;
+  std::string align = "left";
+  uint32_t step_ms = 300;
+  uint32_t offset = 0;   // characters for horizontal, lines for vertical
+  uint32_t next_ms = 0;  // millis() of the next step
+  std::vector<std::string> lines;   // full content, not cut to the box
+  std::vector<std::string> window;  // first visible lines, aligned by the server
+};
+
+static std::vector<PbScrollBox> pb_text_boxes;
+
+inline int pb_columns(const std::string &s);
+
+inline std::string pb_json_text(JsonVariant v) {
+  const char *s = v.as<const char *>();
+  return s ? std::string(s) : std::string();
+}
+
+inline int pb_scroll_direction(const std::string &name) {
+  if (name == "vertical") return PB_SCROLL_VERTICAL;
+  if (name == "both") return PB_SCROLL_BOTH;
+  return PB_SCROLL_HORIZONTAL;
+}
+
+inline void pb_reset_scroll() {
+  uint32_t now = esphome::millis();
+  for (auto &box : pb_text_boxes) {
+    box.offset = 0;
+    box.next_ms = now + box.step_ms;
+  }
+}
 
 // Takes the text object of a sync or text poll answer; true when it changed.
+// scroll_changed keeps the running offsets when only other cells changed, and
+// resets them when the scrolling text itself changed (ADR 0117).
 inline bool pb_take_text(JsonObject text) {
   std::string hash = text["hash"] | "";
-  if (hash.empty() || hash == pb_text_hash) {
+  if (hash.empty()) {
+    return false;
+  }
+  bool scroll_changed = text["scroll_changed"] | false;
+  if (hash == pb_text_hash) {
+    if (scroll_changed && !pb_text_boxes.empty()) {
+      pb_reset_scroll();
+      return true;
+    }
     return false;
   }
   pb_lines.clear();
-  for (JsonVariant v : text["lines"].as<JsonArray>()) {
-    pb_lines.push_back(v.as<const char *>() ? v.as<const char *>() : "");
+  JsonArray lines = text["lines"].as<JsonArray>();
+  for (JsonVariant v : lines) {
+    pb_lines.push_back(pb_json_text(v));
   }
-  pb_scroll.clear();
-  for (JsonVariant v : text["scroll"].as<JsonArray>()) {
-    pb_scroll.push_back(v.as<const char *>() ? v.as<const char *>() : "");
+  std::vector<PbScrollBox> boxes;
+  JsonArray scrolls = text["scrolls"].as<JsonArray>();
+  if (!scrolls.isNull()) {
+    for (JsonVariant v : scrolls) {
+      JsonObject o = v.as<JsonObject>();
+      PbScrollBox box;
+      box.row = o["row"] | 0;
+      box.col = o["col"] | 0;
+      box.width = o["width"] | 0;
+      box.height = o["height"] | 1;
+      if (box.row < 0 || box.col < 0 || box.width < 1 || box.height < 1) {
+        continue;
+      }
+      box.step_ms = (uint32_t) std::max(50, (int) (o["step_ms"] | 300));
+      box.direction = pb_scroll_direction(o["direction"] | "horizontal");
+      box.align = o["align"] | "left";
+      JsonArray full = o["text"].as<JsonArray>();
+      for (JsonVariant line : full) {
+        box.lines.push_back(pb_json_text(line));
+      }
+      JsonArray window = o["window"].as<JsonArray>();
+      for (JsonVariant line : window) {
+        box.window.push_back(pb_json_text(line));
+      }
+      if (!box.lines.empty()) {
+        boxes.push_back(box);
+      }
+    }
+  } else {
+    // Older servers send one full line per scrolling row and no step (ADR 0092).
+    int row = 0;
+    JsonArray legacy = text["scroll"].as<JsonArray>();
+    for (JsonVariant v : legacy) {
+      std::string full = pb_json_text(v);
+      if (!full.empty()) {
+        PbScrollBox box;
+        box.row = row;
+        box.width = row < (int) pb_lines.size() ? std::max(1, pb_columns(pb_lines[row])) : std::max(1, pb_columns(full));
+        box.step_ms = 300;
+        box.direction = PB_SCROLL_HORIZONTAL;
+        box.lines.push_back(full);
+        if (row < (int) pb_lines.size()) {
+          box.window.push_back(pb_lines[row]);
+        }
+        boxes.push_back(box);
+      }
+      row++;
+    }
   }
-  pb_scroll_offset = 0;
-  pb_scroll_hold = 4;  // show the start of a new line for a moment
+  // The same boxes keep their offset and their phase; a moved or resized box
+  // starts over, like a changed scroll text.
+  bool same = boxes.size() == pb_text_boxes.size();
+  if (same) {
+    for (size_t i = 0; i < boxes.size(); i++) {
+      const PbScrollBox &old = pb_text_boxes[i];
+      if (old.row != boxes[i].row || old.col != boxes[i].col || old.width != boxes[i].width ||
+          old.height != boxes[i].height || old.direction != boxes[i].direction ||
+          old.lines.size() != boxes[i].lines.size()) {
+        same = false;
+        break;
+      }
+    }
+  }
+  uint32_t now = esphome::millis();
+  for (size_t i = 0; i < boxes.size(); i++) {
+    if (!scroll_changed && same) {
+      boxes[i].offset = pb_text_boxes[i].offset;
+      boxes[i].next_ms = pb_text_boxes[i].next_ms;
+    } else {
+      boxes[i].offset = 0;
+      boxes[i].next_ms = now + boxes[i].step_ms;
+    }
+  }
+  pb_text_boxes = std::move(boxes);
   pb_text_hash = hash;
   pb_remember(hash);
   return true;
@@ -852,9 +976,7 @@ inline void pb_show_message(const std::string &text) {
     }
     start = end + 1;
   }
-  pb_scroll.clear();
-  pb_scroll_offset = 0;
-  pb_scroll_hold = 0;
+  pb_text_boxes.clear();
   pb_text_hash.clear();
 }
 
@@ -892,50 +1014,109 @@ inline std::string pb_pad(const std::string &s, int cols) {
   return out;
 }
 
-// pb_scrolls reports whether any row is wider than the display.
-inline bool pb_scrolls(int cols) {
-  for (const auto &s : pb_scroll) {
-    if (pb_columns(s) > cols) return true;
+// pb_replace_columns writes text into a display row at a character column and
+// keeps the characters before and after the box.
+inline std::string pb_replace_columns(const std::string &line, int col, int width, const std::string &text) {
+  const int n = pb_columns(line);
+  std::string out = pb_mid(line, 0, col);
+  out += pb_pad(pb_mid(text, 0, width), width);
+  const int end = col + width;
+  if (end < n) {
+    out += pb_mid(line, end, n - end);
   }
-  return false;
+  return out;
 }
 
-// pb_row returns the cols characters a row shows now: the window of a
-// scrolling row, or the static line.
-inline std::string pb_row(int row, int cols) {
-  if (row >= 0 && row < (int) pb_scroll.size() && pb_columns(pb_scroll[row]) > cols) {
+// pb_align_to pads a line to the box width with the alignment the server sent;
+// a longer line is cut. Decimal alignment falls back to right for a line.
+inline std::string pb_align_to(const std::string &s, int width, const std::string &align) {
+  int n = pb_columns(s);
+  if (n >= width) {
+    return pb_mid(s, 0, width);
+  }
+  std::string gap(width - n, ' ');
+  return align == "right" || align == "decimal" ? gap + s : s + gap;
+}
+
+// pb_has_scroll reports whether the current page has a scrolling box.
+inline bool pb_has_scroll() { return !pb_text_boxes.empty(); }
+
+// pb_scroll_line returns the characters one line of a scrolling box shows now.
+// Horizontal moves the window over the line, vertical moves the window down by
+// lines, and both move vertically first and then horizontally (ADR 0117).
+inline std::string pb_scroll_line(const PbScrollBox &box, int y, int width) {
+  const int count = (int) box.lines.size();
+  int index = y;
+  if (box.direction != PB_SCROLL_HORIZONTAL && count > 0) {
+    index = (int) ((box.offset + (uint32_t) y) % (uint32_t) count);
+  }
+  std::string line = index >= 0 && index < count ? box.lines[index] : "";
+  const bool horizontal = box.direction == PB_SCROLL_HORIZONTAL || box.direction == PB_SCROLL_BOTH;
+  if (horizontal && pb_columns(line) > width) {
     // Two spaces separate the repetitions of the marquee.
-    std::string m = pb_scroll[row] + "  ";
-    int n = pb_columns(m);
-    std::string out = pb_mid(m, pb_scroll_offset % n, cols);
-    if (pb_columns(out) < cols) out += pb_mid(m, 0, cols - pb_columns(out));
+    std::string marquee = line + "  ";
+    const int length = std::max(1, pb_columns(marquee));
+    std::string out = pb_mid(marquee, (int) (box.offset % (uint32_t) length), width);
+    if (pb_columns(out) < width) {
+      out += pb_mid(marquee, 0, width - pb_columns(out));
+    }
     return out;
   }
-  return pb_pad(row >= 0 && row < (int) pb_lines.size() ? pb_lines[row] : "", cols);
+  if (box.direction == PB_SCROLL_HORIZONTAL && y < (int) box.window.size()) {
+    return pb_pad(pb_mid(box.window[y], 0, width), width);
+  }
+  return pb_align_to(line, width, box.align);
 }
 
-// pb_scroll_step moves every scrolling row by one character and reports
-// whether the display has to be repainted. The first window holds for a
-// moment, and the marquee starts over after its longest row (ADR 0092).
-inline bool pb_scroll_step(int cols) {
-  if (!pb_scrolls(cols)) {
+// pb_row returns the cols characters a row shows now: the static line with the
+// window of every scrolling box over it.
+inline std::string pb_row(int row, int cols) {
+  std::string line = row >= 0 && row < (int) pb_lines.size() ? pb_lines[row] : "";
+  for (const auto &box : pb_text_boxes) {
+    if (row < box.row || row >= box.row + box.height) {
+      continue;
+    }
+    line = pb_replace_columns(line, box.col, box.width, pb_scroll_line(box, row - box.row, box.width));
+  }
+  return pb_pad(pb_mid(line, 0, cols), cols);
+}
+
+// pb_scroll_wait_ms is the delay to the next due box, at least 1 ms.
+inline uint32_t pb_scroll_wait_ms() {
+  if (pb_text_boxes.empty()) {
+    return 1000;
+  }
+  const uint32_t now = esphome::millis();
+  uint32_t wait = 60000;
+  for (const auto &box : pb_text_boxes) {
+    const int32_t due = (int32_t) (box.next_ms - now);
+    if (due <= 0) {
+      return 1;
+    }
+    if ((uint32_t) due < wait) {
+      wait = (uint32_t) due;
+    }
+  }
+  return wait;
+}
+
+// pb_scroll_tick advances every box whose step is due and reports whether the
+// display has to be repainted. No loop here: the YAML script waits between
+// steps, so Wi-Fi and OTA keep running.
+inline bool pb_scroll_tick() {
+  if (pb_text_boxes.empty()) {
     return false;
   }
-  if (pb_scroll_hold > 0) {
-    pb_scroll_hold--;
-    return false;
+  const uint32_t now = esphome::millis();
+  bool moved = false;
+  for (auto &box : pb_text_boxes) {
+    if ((int32_t) (box.next_ms - now) <= 0) {
+      box.offset++;
+      box.next_ms = now + box.step_ms;
+      moved = true;
+    }
   }
-  int longest = 0;
-  for (const auto &s : pb_scroll) {
-    int n = pb_columns(s);
-    if (n > cols && n + 2 > longest) longest = n + 2;
-  }
-  pb_scroll_offset++;
-  if (pb_scroll_offset >= longest) {
-    pb_scroll_offset = 0;
-    pb_scroll_hold = 2;  // about a second at one step per 300 ms
-  }
-  return true;
+  return moved;
 }
 
 // Maps the UTF-8 characters Paperboy keeps for charset hd44780 to the codes

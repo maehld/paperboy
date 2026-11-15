@@ -270,13 +270,14 @@ func TestTextOverflow(t *testing.T) {
 		scroll bool
 		dir    string
 		full   []string
+		align  string
 	}{
-		{"strip", "text: abcdefgh, at: [0, 0], span: [4, 2]", 4, 2, []string{"abcd", "    "}, false, "", nil},
-		{"wrap", "text: \"one two three four\", at: [0, 0], span: [6, 3], overflow: wrap", 6, 3, []string{"one   ", "two   ", "three "}, false, "", nil},
-		{"right", "text: x, at: [0, 0], span: [4, 1], align: right", 4, 1, []string{"   x"}, false, "", nil},
-		{"horizontal", "text: abcdef, at: [0, 0], span: [4, 1], overflow: scroll", 4, 1, []string{"abcd"}, true, ScrollHorizontal, []string{"abcdef"}},
-		{"vertical", "text: \"a\\nb\\nc\", at: [0, 0], span: [4, 2], overflow: scroll", 4, 2, []string{"a   ", "b   "}, true, ScrollVertical, []string{"a", "b", "c"}},
-		{"both", "text: \"abcdef\\nghijkl\", at: [0, 0], span: [4, 1], overflow: scroll", 4, 1, []string{"abcd"}, true, ScrollBoth, []string{"abcdef", "ghijkl"}},
+		{"strip", "text: abcdefgh, at: [0, 0], span: [4, 2]", 4, 2, []string{"abcd", "    "}, false, "", nil, ""},
+		{"wrap", "text: \"one two three four\", at: [0, 0], span: [6, 3], overflow: wrap", 6, 3, []string{"one   ", "two   ", "three "}, false, "", nil, ""},
+		{"right", "text: x, at: [0, 0], span: [4, 1], align: right", 4, 1, []string{"   x"}, false, "", nil, ""},
+		{"horizontal", "text: abcdef, at: [0, 0], span: [4, 1], overflow: scroll", 4, 1, []string{"abcd"}, true, ScrollHorizontal, []string{"abcdef"}, "left"},
+		{"vertical", "text: \"a\\nb\\nc\", at: [0, 0], span: [4, 2], overflow: scroll, align: right", 4, 2, []string{"   a", "   b"}, true, ScrollVertical, []string{"a", "b", "c"}, "right"},
+		{"both", "text: \"abcdef\\nghijkl\", at: [0, 0], span: [4, 1], overflow: scroll", 4, 1, []string{"abcd"}, true, ScrollBoth, []string{"abcdef", "ghijkl"}, "left"},
 	}
 	for _, tc := range cases {
 		tmpl, err := Parse(strings.NewReader("kind: text\ncells:\n  - { " + tc.cell + " }\n"))
@@ -295,6 +296,8 @@ func TestTextOverflow(t *testing.T) {
 				t.Errorf("%s: scrolls %+v", tc.name, text.Scrolls)
 			} else if strings.Join(text.Scrolls[0].Lines, "|") != strings.Join(tc.full, "|") {
 				t.Errorf("%s: full %q, want %q", tc.name, text.Scrolls[0].Lines, tc.full)
+			} else if text.Scrolls[0].Align != tc.align {
+				t.Errorf("%s: align %q, want %q", tc.name, text.Scrolls[0].Align, tc.align)
 			}
 		} else if len(text.Scrolls) != 0 {
 			t.Errorf("%s: unexpected scrolls %+v", tc.name, text.Scrolls)

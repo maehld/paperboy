@@ -1,7 +1,9 @@
 # Shared part of the Paperboy firmware for text displays (ADR 0041, ADR 0044),
 # included as a package by the hardware files. The hardware file supplies the
-# board, the display (id text_display) whose lambda prints pb_lines, and the
-# substitution text_columns, the character width the marquee uses.
+# board, the display (id text_display) whose lambda prints pb_row, and the
+# substitution text_columns, the character width of a row. A sync answer names
+# the scrolling boxes, their direction, step and whether their text changed
+# (ADR 0117); text_scroll moves them without blocking Wi-Fi or OTA.
 #
 # Text displays run on mains power and never sleep (ADR 0044, ADR 0045,
 # ADR 0051); every sync reports power: mains, and the sleep field of the
@@ -194,18 +196,24 @@ interval:
                                   then:
                                     - script.execute: do_poll
 
-  # A row whose cell sets scroll: true is wider than the display; it moves one
-  # character per step (ADR 0092). pb_scroll_step reports false while nothing
-  # overflows, so a static page never repaints here.
-  - interval: 300ms
-    then:
-      - if:
-          condition:
-            lambda: "return pb_scroll_step(${text_columns});"
-          then:
-            - component.update: text_display
-
 script:
+  # The marquee of the current page (ADR 0117): every box waits its own step
+  # from the sync answer, so no fixed interval drives it. The delay yields, so
+  # Wi-Fi, the web server and OTA keep running while a line scrolls.
+  - id: text_scroll
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: "return pb_has_scroll();"
+          then:
+            - delay: !lambda "return pb_scroll_wait_ms();"
+            - if:
+                condition:
+                  lambda: "return pb_scroll_tick();"
+                then:
+                  - component.update: text_display
+
   - id: show_setup
     mode: single
     parameters:
@@ -329,6 +337,7 @@ script:
                     return;
                   }
                   id(wake_reason) = "timer";
+                  pb_text_changed = false;
                   bool changed = false;
                   json::parse_json(body, [&](JsonObject root) -> bool {
                     // refresh_s comes from the plan and paces the text poll;
@@ -348,9 +357,19 @@ script:
                   });
                   pb_sync_done();
                   id(setup_shown) = "";
-                  if (changed) {
-                    id(text_display).update();
-                  }
+                  pb_text_changed = changed;
+              - if:
+                  condition:
+                    lambda: "return pb_text_changed;"
+                  then:
+                    - if:
+                        condition:
+                          lambda: "return pb_has_scroll();"
+                        then:
+                          - script.execute: text_scroll
+                        else:
+                          - script.stop: text_scroll
+                    - component.update: text_display
           on_error:
             then:
               - lambda: 'pb_note_for_next_wake("sync request failed");'
@@ -404,14 +423,23 @@ script:
                     ESP_LOGW("paperboy", "text poll: HTTP %d", status);
                     return;
                   }
-                  bool changed = false;
+                  pb_text_changed = false;
                   json::parse_json(body, [&](JsonObject root) -> bool {
-                    changed = pb_take_text(root);
+                    pb_text_changed = pb_take_text(root);
                     return true;
                   });
-                  if (changed) {
-                    id(text_display).update();
-                  }
+              - if:
+                  condition:
+                    lambda: "return pb_text_changed;"
+                  then:
+                    - if:
+                        condition:
+                          lambda: "return pb_has_scroll();"
+                        then:
+                          - script.execute: text_scroll
+                        else:
+                          - script.stop: text_scroll
+                    - component.update: text_display
           on_error:
             then:
               - logger.log:

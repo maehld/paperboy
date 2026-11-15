@@ -103,7 +103,8 @@ type syncScroll struct {
 	Text      []string `json:"text"`   // full content, not cut to the box
 	Window    []string `json:"window"` // the first visible lines
 	StepMS    int      `json:"step_ms"`
-	Direction string   `json:"direction"` // horizontal, vertical or both
+	Direction string   `json:"direction"`       // horizontal, vertical or both
+	Align     string   `json:"align,omitempty"` // left, right or decimal
 }
 
 // textResponse builds the text part of a sync or poll answer. The scroll hash
@@ -119,6 +120,7 @@ func textResponse(served servedPage, p Profile, st *deviceState) *syncText {
 		out.Scrolls = append(out.Scrolls, syncScroll{
 			Row: box.At[1], Col: box.At[0], Width: box.Span[0], Height: box.Span[1],
 			Text: box.Lines, Window: box.Window, StepMS: int(step / time.Millisecond), Direction: box.Direction,
+			Align: box.Align,
 		})
 	}
 	if len(served.scrolls) > 0 {

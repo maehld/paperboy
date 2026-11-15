@@ -117,9 +117,10 @@
         if (box.direction === "vertical" || box.direction === "both") {
           line = full.length ? full[(offset + i) % full.length] : "";
         }
-        let visible = Array.from(String(line).padEnd(box.width, " "));
+        const right = box.align === "right" || box.align === "decimal";
+        let visible = Array.from(right ? String(line).padStart(box.width, " ") : String(line).padEnd(box.width, " "));
         if (box.direction === "horizontal" || box.direction === "both") {
-          visible = Array.from(String(line).padEnd(box.width, " "));
+          visible = Array.from(right ? String(line).padStart(box.width, " ") : String(line).padEnd(box.width, " "));
           const window = [];
           for (let x = 0; x < box.width; x++) window.push(visible[(offset + x) % visible.length]);
           visible = window;

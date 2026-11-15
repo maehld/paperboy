@@ -367,6 +367,7 @@ type ScrollBox struct {
 	Lines     []string // full content, not cut to the box
 	Window    []string // the first visible lines
 	Direction string   // horizontal, vertical or both
+	Align     string   // left, right or decimal; empty means left
 }
 
 // RenderText composes a text page from boxes of values and literal text. A
@@ -423,7 +424,7 @@ func (t *Template) RenderText(d Display, c Context) (Text, error) {
 			copy(lines[row*d.Width+cell.At[0]:], text)
 		}
 		if scrolling {
-			scrolls = append(scrolls, ScrollBox{At: cell.At, Span: cell.Span, Lines: full, Window: window, Direction: direction})
+			scrolls = append(scrolls, ScrollBox{At: cell.At, Span: cell.Span, Lines: full, Window: window, Direction: direction, Align: cell.Align})
 		}
 	}
 	out := make([]string, d.Height)

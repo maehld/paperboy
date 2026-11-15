@@ -60,7 +60,7 @@ cells:
 - Paperboy formats values with the global language and the declared precision. It converts label, value and text to the display charset. A missing value shows `? …`; a stale value marks `!` in the last column of line 1.
 - A text page fits a display when every box fits the character grid. Other text sizes need a variant.
 - The editor places and resizes boxes on the board. It hides the style in points, has no rows panel, and edits text or value, label, unit, align and overflow in the right inspector. The stale switch is *Stale values*.
-- A scrolling box gives the device its full text, its first window, a direction, the display type's `scroll.step` (default 300 ms) and a flag whether the scroll text changed. The virtual display animates it; the firmware will.
+- A scrolling box gives the device its full text, its first window, a direction, the display type's `scroll.step` (default 300 ms) and a flag whether the scroll text changed. The virtual display and the firmware animate it.
 
 The built-in plugin declares `paperboy/title`, `paperboy/time`, `paperboy/date`, `paperboy/now`, `paperboy/long` and `paperboy/block`. The shipped plugins declare values in a later protocol version; until then the `*.lcd2004` examples use the built-in values.
 

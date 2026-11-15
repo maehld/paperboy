@@ -272,3 +272,36 @@ func TestHashTextCoversScroll(t *testing.T) {
 		t.Error("a scrolling box must change the hash")
 	}
 }
+
+// TestTextResponseCarriesScrollFields pins the additive fields a text display
+// reads: the box geometry, its full lines and window, the direction, the step
+// and the alignment. scroll_changed stays false while that text is unchanged.
+func TestTextResponseCarriesScrollFields(t *testing.T) {
+	served := servedPage{
+		lines: []string{"abc     ", "def     "},
+		scrolls: []page.ScrollBox{{
+			At: [2]int{1, 0}, Span: [2]int{4, 2},
+			Lines: []string{"one", "two", "three"}, Window: []string{"1one", "2two"},
+			Direction: page.ScrollVertical, Align: "right",
+		}},
+		hash: "h1",
+	}
+	profile := Profile{Kind: kindText, Charset: "ascii", Width: 8, Height: 2, ScrollStep: 300 * time.Millisecond}
+	state := &deviceState{}
+	out := textResponse(served, profile, state)
+	if len(out.Scrolls) != 1 {
+		t.Fatalf("scrolls: %+v", out.Scrolls)
+	}
+	box := out.Scrolls[0]
+	if box.Row != 0 || box.Col != 1 || box.Width != 4 || box.Height != 2 ||
+		box.StepMS != 300 || box.Direction != page.ScrollVertical || box.Align != "right" ||
+		len(box.Text) != 3 || len(box.Window) != 2 {
+		t.Fatalf("scroll box: %+v", box)
+	}
+	if !out.ScrollChanged {
+		t.Fatal("the first answer must reset the offset")
+	}
+	if again := textResponse(served, profile, state); again.ScrollChanged {
+		t.Fatal("the same scroll text must keep the offset")
+	}
+}
