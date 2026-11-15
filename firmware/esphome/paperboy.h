@@ -115,6 +115,11 @@ static bool pb_paint_pending = false;
 // lambda draws it then, and no page may be painted meanwhile (ADR 0095).
 static bool pb_splash = false;
 
+// True while the device installs a firmware offer: the display lambda draws the
+// update screen then, because the panel stays quiet through the download and
+// the flash (ADR 0043).
+static bool pb_installing = false;
+
 // Battery reading of this wake; NAN = not measured. Set by the device file's
 // read_battery script before any decision uses it.
 static float pb_bat_volts = NAN;
@@ -547,6 +552,21 @@ void pb_draw_splash(D &it, W *wordmark, V *version_font, const std::string &vers
   pb_draw_lockup(it, it.get_width() / 2, y, mark, 84, wordmark);
   it.print(it.get_width() / 2, y + 195, version_font, esphome::Color::BLACK,
            esphome::display::TextAlign::BASELINE_CENTER, version.c_str(), esphome::Color::WHITE);
+}
+
+// The update screen: the lockup, the version the device installs and the
+// status, in the middle of the panel. A device installs a firmware offer in
+// place of a page, so the screen says why the panel stays quiet (ADR 0043).
+template<typename D, typename W, typename V, typename F>
+void pb_draw_update(D &it, W *wordmark, V *version_font, F *font, const std::string &version) {
+  const int mark = 132;     // the mark's height, with wordmark_large at 84 px
+  const int group = 280;    // mark, gap, version and status together
+  int y = (it.get_height() - group) / 2;
+  pb_draw_lockup(it, it.get_width() / 2, y, mark, 84, wordmark);
+  it.print(it.get_width() / 2, y + 195, version_font, esphome::Color::BLACK,
+           esphome::display::TextAlign::BASELINE_CENTER, version.c_str(), esphome::Color::WHITE);
+  it.print(it.get_width() / 2, y + 235, font, esphome::Color::BLACK,
+           esphome::display::TextAlign::TOP_CENTER, "Installing update…", esphome::Color::WHITE);
 }
 
 // The Wi-Fi and Paperboy URL screens: the lockup as a header (wordmark_small at

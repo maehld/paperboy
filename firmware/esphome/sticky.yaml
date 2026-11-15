@@ -5,7 +5,7 @@
 
 substitutions:
   hardware: sticky
-  fw_version: "2.9.0"
+  fw_version: "2.10.0"
   # The mounting this image is built for; a device adds its quarter turn to it
   # at runtime (ADR 0102).
   compiled_rotation: 180
@@ -178,7 +178,12 @@ display:
       // 0102). Re-applied here because every wake starts the component from
       // the compiled rotation.
       pb_rotate_display(it, ${compiled_rotation});
-      if (pb_splash) {
+      if (pb_installing) {
+        // The panel keeps this while the device downloads and flashes the
+        // image (ADR 0043).
+        it.fill(esphome::Color::WHITE);
+        pb_draw_update(it, id(wordmark_large), id(version_large), id(setup_font), "v" + id(fw_offered));
+      } else if (pb_splash) {
         pb_draw_splash(it, id(wordmark_large), id(version_large), "v${fw_version}");
       } else if (id(setup_mode)) {
         pb_draw_setup(it, id(setup_font), id(wordmark_small), id(version_small), "v${fw_version}",

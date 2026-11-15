@@ -702,11 +702,22 @@ script:
                   - script.stop: awake_limit
                   - lambda: |-
                       ESP_LOGI("paperboy", "firmware update ${fw_version} -> %s", id(fw_offered).c_str());
+                      // Say it on the panel: the device stays quiet through the
+                      // download and the flash, which looks like a dead device.
+                      // The panel shows the update screen, not the page, so a
+                      // failed flash has to paint the page again.
+                      pb_shown_hash[0] = 0;
+                      pb_installing = true;
+                  - component.update: epaper_display
+                  - delay: 100ms
+                  - script.execute: wait_paint
+                  - script.wait: wait_paint
                   - ota.http_request.flash:
                       url: !lambda "return pb_base(id(paperboy_url).state) + id(fw_path);"
                       md5: !lambda "return id(fw_md5);"
                   - lambda: |-
                       pb_note_for_next_wake("firmware update to " + id(fw_offered) + " failed");
+                      pb_installing = false;
                       id(fw_path) = "";
                   - script.execute: awake_limit
             - if:

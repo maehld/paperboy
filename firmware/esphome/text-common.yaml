@@ -363,7 +363,7 @@ script:
             # sync reports the result.
             - lambda: |-
                 ESP_LOGI("paperboy", "firmware update ${fw_version} -> %s", id(fw_offered).c_str());
-                pb_show_message("Firmware update\n" + id(fw_offered));
+                pb_show_message("Installing update\nv" + id(fw_offered));
             - component.update: text_display
             - ota.http_request.flash:
                 url: !lambda "return pb_base(id(paperboy_url).state) + id(fw_path);"

@@ -24,7 +24,7 @@
 
 substitutions:
   hardware: e1003
-  fw_version: "1.2.0"
+  fw_version: "1.3.0"
   # The mounting this image is built for; a device adds its quarter turn to it
   # at runtime (ADR 0102). Touch currently assumes this orientation.
   compiled_rotation: 0
@@ -210,7 +210,13 @@ display:
       // A device adds its quarter turn to the compiled orientation (ADR 0102);
       // re-applied here because each wake starts from the compiled rotation.
       pb_rotate_display(it, ${compiled_rotation});
-      if (pb_splash) {
+      if (pb_installing) {
+        // The panel keeps this while the device downloads and flashes the
+        // image (ADR 0043).
+        pb_panel_notice.clear();
+        it.fill(Color::WHITE);
+        pb_draw_update(it, id(wordmark_large), id(version_large), id(setup_font), "v" + id(fw_offered));
+      } else if (pb_splash) {
         pb_panel_notice.clear();
         it.fill(Color::WHITE);
         pb_draw_splash(it, id(wordmark_large), id(version_large), "v${fw_version}");

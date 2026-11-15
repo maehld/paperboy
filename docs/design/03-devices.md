@@ -129,7 +129,7 @@ A cycle runs one at a time; a second trigger is dropped, so it cannot move the p
 
 An `https://` Paperboy URL is verified against the ESP-IDF CA bundle, which contains the Let's Encrypt roots ([ADR 0108](../adr/0108-verify-the-tls-certificate.md)). `http://` in the LAN stays unencrypted. The check needs a clock. SNTP provides it after a power-on, the RTC keeps it across deep sleep, and the sync answer sets it from `time`. A device without a clock shows the setup screen with the reason.
 
-The only update path is `ota: http_request` with the offer from Paperboy. There is no native ESPHome OTA and no upload in the web UI; a rescue needs USB.
+The only update path is `ota: http_request` with the offer from Paperboy. There is no native ESPHome OTA and no upload in the web UI; a rescue needs USB. Before the flash the panel draws the update screen: the lockup, the offered version and *Installing update…*. A text display prints `Installing update` with the version in its lines. The device stays quiet until it reboots, so the screen says why.
 
 ## Hardware findings
 

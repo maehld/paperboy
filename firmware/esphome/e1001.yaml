@@ -17,7 +17,7 @@
 
 substitutions:
   hardware: e1001
-  fw_version: "2.10.0"
+  fw_version: "2.11.0"
   # The mounting this image is built for; a device adds its quarter turn to it
   # at runtime (ADR 0102).
   compiled_rotation: 0
@@ -162,7 +162,12 @@ display:
       id(epaper_display)->set_lut_mode(id(lut_mode_select)->current_option() == "custom"
                                            ? esphome::uc8179_gray4::LUT_MODE_CUSTOM
                                            : esphome::uc8179_gray4::LUT_MODE_OTP);
-      if (pb_splash) {
+      if (pb_installing) {
+        // The panel keeps this while the device downloads and flashes the
+        // image (ADR 0043).
+        it.fill(Color::WHITE);
+        pb_draw_update(it, id(wordmark_large), id(version_large), id(setup_font), "v" + id(fw_offered));
+      } else if (pb_splash) {
         it.fill(Color::WHITE);
         pb_draw_splash(it, id(wordmark_large), id(version_large), "v${fw_version}");
       } else if (id(setup_mode)) {
