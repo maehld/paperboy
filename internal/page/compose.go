@@ -354,7 +354,7 @@ func WithBanner(img *image.Paletted, texts ...string) *image.Paletted {
 
 // Text is a composed text page. Scrolls carry the full content and the first
 // window of every scrolling box, so the firmware and the virtual display can
-// animate without composing the page again (ADR 0117).
+// animate without composing the page again (ADR 0118).
 type Text struct {
 	Lines   []string
 	Scrolls []ScrollBox

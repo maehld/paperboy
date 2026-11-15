@@ -35,11 +35,11 @@ type displayFile struct {
 	MinRefresh Duration       `yaml:"min_refresh" json:"min_refresh,omitempty"`
 	Power      string         `yaml:"power" json:"power,omitempty"`
 	Rotation   int            `yaml:"rotation" json:"rotation,omitempty"`           // page → panel, ADR 0102
-	Scroll     *displayScroll `yaml:"scroll,omitempty" json:"scroll,omitempty"`     // text displays, ADR 0117
+	Scroll     *displayScroll `yaml:"scroll,omitempty" json:"scroll,omitempty"`     // text displays, ADR 0118
 	WidthMM    *int           `yaml:"width_mm,omitempty" json:"width_mm,omitempty"` // removed by ADR 0050, rejected with a hint
 }
 
-// displayScroll is the marquee timing of a text display (ADR 0117).
+// displayScroll is the marquee timing of a text display (ADR 0118).
 type displayScroll struct {
 	Step Duration `yaml:"step,omitempty" json:"step,omitempty"`
 }

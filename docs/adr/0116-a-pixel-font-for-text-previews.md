@@ -1,4 +1,4 @@
-# 0115: A pixel font for text previews
+# 0116: A pixel font for text previews
 
 - Status: Accepted
 - Date: 2026-11-15

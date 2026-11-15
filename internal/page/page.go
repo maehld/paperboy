@@ -39,7 +39,7 @@ type Template struct {
 	Style    Style             `yaml:"style" json:"style"`               // look passed to every widget
 	Notices  string            `yaml:"notices" json:"notices,omitempty"` // show (default) or none: stale widgets
 	// Overflow is the default of a text page: strip, wrap or scroll. A cell
-	// may override it (ADR 0117).
+	// may override it (ADR 0118).
 	Overflow string `yaml:"overflow" json:"overflow,omitempty"`
 	// Cells are boxes of an image page in grid cells, or boxes of a text page
 	// in character columns and rows (ADR 0111, 0117).
@@ -66,7 +66,7 @@ type Cell struct {
 	Args   map[string]any `yaml:"args,omitempty" json:"args,omitempty"`
 	Style  *Style         `yaml:"style,omitempty" json:"style,omitempty"`
 	// Text is literal text of a text page; Value is a declared value. Exactly
-	// one of them is set (ADR 0117). Multi-line text keeps its line breaks.
+	// one of them is set (ADR 0118). Multi-line text keeps its line breaks.
 	Text  string `yaml:"text,omitempty" json:"text,omitempty"`
 	Value string `yaml:"value,omitempty" json:"value,omitempty"`
 	Label string `yaml:"label,omitempty" json:"label,omitempty"`
@@ -92,7 +92,7 @@ const (
 	AlignDecimal = "decimal"
 )
 
-// Overflow policies of a text cell (ADR 0117).
+// Overflow policies of a text cell (ADR 0118).
 const (
 	OverflowStrip  = "strip"
 	OverflowWrap   = "wrap"
@@ -287,7 +287,7 @@ func (t *Template) validateGrid() error {
 		}
 		where := fmt.Sprintf("cell %d (%s)", i+1, c.Widget)
 		if c.Scroll {
-			return fmt.Errorf("%s: scroll is for text pages; ePaper cannot animate (ADR 0117)", where)
+			return fmt.Errorf("%s: scroll is for text pages; ePaper cannot animate (ADR 0118)", where)
 		}
 		if c.Text != "" || c.Value != "" || c.Label != "" || c.Unit != "" || c.Align != "" || c.Overflow != "" {
 			return fmt.Errorf("%s: text and value are for text pages (kind: text); use widget", where)
@@ -327,7 +327,7 @@ const (
 // type, so it uses the largest character grid; Fits checks the real one.
 func (t *Template) validateText() error {
 	if t.Grid != [2]int{} {
-		return fmt.Errorf("a text page has no grid: the character grid is the display's; use cells (ADR 0117)")
+		return fmt.Errorf("a text page has no grid: the character grid is the display's; use cells (ADR 0118)")
 	}
 	switch t.Overflow {
 	case "":
@@ -350,7 +350,7 @@ func (t *Template) validateText() error {
 			return fmt.Errorf("%s: widget, args and style are for image pages (kind: image)", where)
 		}
 		if c.Scroll {
-			return fmt.Errorf("%s: use overflow: scroll instead of scroll (ADR 0117)", where)
+			return fmt.Errorf("%s: use overflow: scroll instead of scroll (ADR 0118)", where)
 		}
 		if c.At[0] < 0 || c.At[1] < 0 || c.Span[0] < 1 || c.Span[1] < 1 ||
 			c.At[0]+c.Span[0] > maxTextColumns || c.At[1]+c.Span[1] > maxTextRows {

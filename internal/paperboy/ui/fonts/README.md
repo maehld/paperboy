@@ -1,7 +1,7 @@
 # Vendored UI font
 
 The editor board and the virtual display show text pages as a dot-matrix LCD
-module ([ADR 0115](../../../../docs/adr/0115-a-pixel-font-for-text-previews.md)).
+module ([ADR 0116](../../../../docs/adr/0116-a-pixel-font-for-text-previews.md)).
 The glyphs come from one vendored pixel font, so the preview keeps the exact
 character grid and no browser fetches a font from a third party.
 

@@ -12,7 +12,7 @@ installation, nothing installation-specific is compiled in.
 | `sticky.yaml` | reTerminal Sticky: pins, gray4 panel, touch, BQ27220 fuel gauge |
 | `e1001.yaml` | reTerminal E1001: pins, four-level UC8179 panel via `uc8179_gray4`, ADC battery |
 | `e1003.yaml` | reTerminal E1003: pins, 16-level IT8951 panel, GT911 touch, ADC battery, deep-sleep pin holds |
-| `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep; scrolling boxes move on the `step_ms` of the sync answer, horizontally, vertically or both ([ADR 0117](../../docs/adr/0117-text-boxes-and-overflow.md)) |
+| `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep; scrolling boxes move on the `step_ms` of the sync answer, horizontally, vertically or both ([ADR 0118](../../docs/adr/0118-text-boxes-and-overflow.md)) |
 | `lcd2004.yaml` | ESP32 dev board with a 20×4 HD44780 LCD behind a PCF8574 (I²C 0x27, SDA GPIO21, SCL GPIO22); prints every row through `pb_row`, so every scrolling box shows its window |
 | `fonts/` | Go Mono Bold as a subset, the face of the logo's wordmark and the firmware version ([ADR 0098](../../docs/adr/0098-the-device-shows-the-lockup-and-its-version.md)), with its licence |
 | `build.ps1` | Builds one hardware type with the pinned ESPHome version, optionally publishes it to an instance |

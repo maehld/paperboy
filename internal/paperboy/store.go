@@ -61,7 +61,7 @@ type deviceState struct {
 	LastPageKind string    `json:"last_page_kind,omitempty"` // "page", "notice" or "battery"
 	LastPageHash string    `json:"last_page_hash,omitempty"` // content hash, the same as the sync response's image hash
 	LastPages    int       `json:"last_pages,omitempty"`     // pages in the active rule, 0 when unknown
-	ScrollHash   string    `json:"scroll_hash,omitempty"`    // hash of the current scroll text (ADR 0117)
+	ScrollHash   string    `json:"scroll_hash,omitempty"`    // hash of the current scroll text (ADR 0118)
 	LastPageTime time.Time `json:"last_page_time,omitempty"`
 	LastRefresh  int       `json:"last_refresh,omitempty"`  // reported refresh in seconds
 	LastError    string    `json:"last_error,omitempty"`    // last render or plan error

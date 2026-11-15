@@ -33,7 +33,7 @@ type servedPage struct {
 	pages   int              // pages in the rule, for logging
 	hash    string           // content hash of the PNG or the lines; the device repaints when it changes
 	lines   []string         // text displays: the lines to show (ADR 0044)
-	scrolls []page.ScrollBox // text displays: boxes that scroll (ADR 0117)
+	scrolls []page.ScrollBox // text displays: boxes that scroll (ADR 0118)
 	err     error            // render error that turned the page into a notice
 }
 
@@ -120,7 +120,7 @@ func (s *Server) display(cfg *Config, p Profile) page.Display {
 
 // hashText is the content hash of a text page. The full text of scrolling
 // boxes is part of it, so a change behind the visible window still repaints the
-// display (ADR 0117).
+// display (ADR 0118).
 func hashText(lines []string, scrolls []page.ScrollBox) string {
 	data := strings.Join(lines, "\n")
 	if len(scrolls) > 0 {
@@ -131,7 +131,7 @@ func hashText(lines []string, scrolls []page.ScrollBox) string {
 }
 
 // legacyScroll fills the old per-row scroll list for horizontal, single-row
-// boxes, so an older firmware keeps working until it reads scrolls (ADR 0117).
+// boxes, so an older firmware keeps working until it reads scrolls (ADR 0118).
 func legacyScroll(scrolls []page.ScrollBox, height int) []string {
 	if len(scrolls) == 0 {
 		return nil

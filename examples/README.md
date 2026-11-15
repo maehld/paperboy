@@ -40,7 +40,7 @@ grid, the spans and the arguments.
   20×4.
 - `uebersicht.lcd2004.yaml` - boxes on a 20×4 character display with the
   built-in values `paperboy/title`, `paperboy/date`, `paperboy/time` and
-  `paperboy/now` ([ADR 0117](../docs/adr/0117-text-boxes-and-overflow.md)).
+  `paperboy/now` ([ADR 0118](../docs/adr/0118-text-boxes-and-overflow.md)).
 - `hinweise.yaml` - a text page with literal text and boxes of built-in values.
   The shipped plugins declare their own values in a later protocol version;
   until then the `*.lcd2004.yaml` variants show the built-in values too.

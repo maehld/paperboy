@@ -40,7 +40,7 @@ cells:
 
 ### Text pages
 
-A page for a text display ([ADR 0044](adr/0044-text-displays-on-the-device-api.md)) says `kind: text` and carries `cells`: boxes at a character column and row ([ADR 0117](adr/0117-text-boxes-and-overflow.md)). The display type supplies the character grid.
+A page for a text display ([ADR 0044](adr/0044-text-displays-on-the-device-api.md)) says `kind: text` and carries `cells`: boxes at a character column and row ([ADR 0118](adr/0118-text-boxes-and-overflow.md)). The display type supplies the character grid.
 
 ```yaml
 title: Werte

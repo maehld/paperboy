@@ -1110,7 +1110,7 @@
         if (slot) slot.textContent = line[x] || '';
       }
     }
-    // The pixel font fills the glyph box of one slot (ADR 0115).
+    // The pixel font fills the glyph box of one slot (ADR 0116).
     const cell = board.querySelector('.slot');
     if (cell) {
       const h = cell.getBoundingClientRect().height;

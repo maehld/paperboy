@@ -113,7 +113,7 @@ A composed page is served as `/pages/{display type}/{page}/{hash}.png`, or as QO
 
 Text displays poll instead: they fetch their lines every `refresh_s`, and an unchanged page answers 304 ([ADR 0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md)).
 
-A text page also carries `scrolls`: one entry per scrolling box. Each entry names `row`, `col`, `width`, `height`, the full `text`, the first `window`, `direction`, `step_ms` and `align`. `scroll_changed` says whether the scrolling text changed. The firmware keeps its offsets while it is false and starts at the first window when it is true ([ADR 0117](../adr/0117-text-boxes-and-overflow.md)). Horizontal moves a wider line by characters. Vertical moves extra lines down by one line per step. Both move vertically first. Static rows stay as they are. The step comes from the display type's `scroll.step`, not from the firmware. The legacy `scroll` rows remain for older firmware.
+A text page also carries `scrolls`: one entry per scrolling box. Each entry names `row`, `col`, `width`, `height`, the full `text`, the first `window`, `direction`, `step_ms` and `align`. `scroll_changed` says whether the scrolling text changed. The firmware keeps its offsets while it is false and starts at the first window when it is true ([ADR 0118](../adr/0118-text-boxes-and-overflow.md)). Horizontal moves a wider line by characters. Vertical moves extra lines down by one line per step. Both move vertically first. Static rows stay as they are. The step comes from the display type's `scroll.step`, not from the firmware. The legacy `scroll` rows remain for older firmware.
 
 ## Firmware
 

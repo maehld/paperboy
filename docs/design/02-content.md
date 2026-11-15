@@ -67,7 +67,7 @@ The built-in plugin draws text, lines and fills, so a page that is only text nee
 
 ## Text pages
 
-A text page has no pixels. Its file says `kind: text` and carries `cells`: boxes at a character column and row, with a span in columns and rows ([ADR 0117](../adr/0117-text-boxes-and-overflow.md)). The display type supplies the character grid; the parser rejects `grid` on a text page.
+A text page has no pixels. Its file says `kind: text` and carries `cells`: boxes at a character column and row, with a span in columns and rows ([ADR 0118](../adr/0118-text-boxes-and-overflow.md)). The display type supplies the character grid; the parser rejects `grid` on a text page.
 
 ```yaml
 title: Werte
@@ -102,7 +102,7 @@ Boxes must stay inside the character grid and must not overlap; `at + span` is c
 
 Paperboy formats every value itself: numbers follow the global `language` and the declared `precision`, durations and timestamps their compact forms, and directions their arrows. `RenderText` converts label, value and text to the charset before it measures, wraps or cuts. A stale value marks `!` in the last column of line 1. A missing value becomes a `? …` cell.
 
-A scrolling box adds its full lines, its first window and its direction to the render result. The device answer carries them with the display type's `scroll.step` (default 300 ms) and a flag whether the scroll text changed. A firmware or the virtual display keeps its offset while the flag is false and restarts at the first window when it is true. ePaper pages reject `scroll` and `overflow` with a hint (ADR 0117).
+A scrolling box adds its full lines, its first window and its direction to the render result. The device answer carries them with the display type's `scroll.step` (default 300 ms) and a flag whether the scroll text changed. A firmware or the virtual display keeps its offset while the flag is false and restarts at the first window when it is true. ePaper pages reject `scroll` and `overflow` with a hint (ADR 0118).
 
 The page editor places the same boxes on the board. Drag moves a box and its edges resize it. The inspector edits value or text, label, unit, align and overflow. Text pages have no style in points.
 

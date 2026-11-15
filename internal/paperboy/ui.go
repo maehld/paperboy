@@ -58,7 +58,7 @@ var uiLogo []byte
 //go:embed ui/favicon.svg
 var uiFavicon []byte
 
-// uiFont is the vendored pixel font of the text previews (ADR 0115). The
+// uiFont is the vendored pixel font of the text previews (ADR 0116). The
 // licence and the source sit next to the file in ui/fonts/.
 //
 //go:embed ui/fonts/dotgothic16-latin.woff2

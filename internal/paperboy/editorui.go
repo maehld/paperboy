@@ -241,7 +241,7 @@ type editorDisplayInfo struct {
 	Kind       string `json:"kind"`
 	Width      int    `json:"width"`
 	Height     int    `json:"height"`
-	ScrollStep int    `json:"scroll_step,omitempty"` // ms between marquee steps (ADR 0117)
+	ScrollStep int    `json:"scroll_step,omitempty"` // ms between marquee steps (ADR 0118)
 }
 
 // displayNames lists the configured display types alphabetically.

@@ -1,12 +1,12 @@
-# 0117: Text boxes and overflow
+# 0118: Text boxes and overflow
 
 - Status: Accepted
 - Date: 2026-11-15
-- Related: ADR 0044 (text displays), ADR 0045 (text poll interval), ADR 0085 (moving and resizing widgets), ADR 0111 (text pages from plugin values), ADR 0116 (text cell columns)
+- Related: ADR 0044 (text displays), ADR 0045 (text poll interval), ADR 0085 (moving and resizing widgets), ADR 0111 (text pages from plugin values), ADR 0117 (text cell columns)
 
 ## Context
 
-ADR 0116 gave every text cell its column, but a row was still a list of cells that had to keep their order. A cell could not own a rectangle: a tall value or a wrapped paragraph needed several rows, and a label next to a two-line block needed a second box. The next step is the image page model in characters: a box at a column and row with a width and height.
+ADR 0117 gave every text cell its column, but a row was still a list of cells that had to keep their order. A cell could not own a rectangle: a tall value or a wrapped paragraph needed several rows, and a label next to a two-line block needed a second box. The next step is the image page model in characters: a box at a column and row with a width and height.
 
 Text content is not one shape. A clock is one short line. A message is a paragraph that should wrap. A station name is a single line that is wider than the display. A scrolling marquee needs the full text and a window. The page must say which of those it wants, per box, with a useful default.
 
@@ -44,7 +44,7 @@ cells:
 ## Consequences
 
 - A text page and an image page share the box model; the editor can use the same drag and resize interaction.
-- Existing hand-written text pages migrate from `rows` to `cells` once; the flow of ADR 0116 is replaced by an explicit `at` and `span`.
+- Existing hand-written text pages migrate from `rows` to `cells` once; the flow of ADR 0117 is replaced by an explicit `at` and `span`.
 - The renderer must produce a window and may produce several full lines per box; the framing and memory limits need tests.
 - The firmware of a text display needs a scroll offset per box, a timer from `step_ms` and the `scroll_changed` flag. This ADR does not change the firmware.
 - The display type editor gains one optional field; an image display rejects it.

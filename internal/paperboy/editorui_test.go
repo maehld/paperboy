@@ -810,7 +810,7 @@ func TestEditorScript(t *testing.T) {
 }
 
 // TestTextPreviewFont serves the vendored pixel font and names it in the
-// shared stylesheet and the text board (ADR 0115).
+// shared stylesheet and the text board (ADR 0116).
 func TestTextPreviewFont(t *testing.T) {
 	s := editorServer(t)
 	rec := request(t, s, http.MethodGet, "/ui/fonts/dotgothic16-latin.woff2", nil, nil)

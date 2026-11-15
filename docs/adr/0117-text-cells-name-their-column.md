@@ -1,4 +1,4 @@
-# 0116: Text cells name their column
+# 0117: Text cells name their column
 
 - Status: Accepted
 - Date: 2026-11-15

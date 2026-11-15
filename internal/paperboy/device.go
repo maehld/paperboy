@@ -88,13 +88,13 @@ type syncText struct {
 	Lines  []string `json:"lines"`
 	Scroll []string `json:"scroll,omitempty"` // legacy single-row marquee (ADR 0092)
 	// Scrolls describe the scrolling text boxes with their full text, window,
-	// direction and step (ADR 0117).
+	// direction and step (ADR 0118).
 	Scrolls       []syncScroll `json:"scrolls,omitempty"`
 	ScrollChanged bool         `json:"scroll_changed,omitempty"`
 	Hash          string       `json:"hash"`
 }
 
-// syncScroll is one scrolling text box of a text page (ADR 0117).
+// syncScroll is one scrolling text box of a text page (ADR 0118).
 type syncScroll struct {
 	Row       int      `json:"row"`
 	Col       int      `json:"col"`

@@ -97,7 +97,7 @@ type Profile struct {
 	// 270; a device may override it for its mounting.
 	Rotation int `json:"rotation,omitempty"`
 	// ScrollStep is the time between two marquee steps of a text display
-	// (ADR 0117); 300 ms unless the display type sets scroll.step.
+	// (ADR 0118); 300 ms unless the display type sets scroll.step.
 	ScrollStep time.Duration `json:"scroll_step,omitempty"`
 }
 
@@ -128,7 +128,7 @@ const mainsImageMinRefresh = 10 * time.Second
 
 func validPower(p string) bool { return p == powerAuto || p == powerBattery || p == powerMains }
 
-// DefaultScrollStep is the marquee step of a text display (ADR 0117).
+// DefaultScrollStep is the marquee step of a text display (ADR 0118).
 const DefaultScrollStep = 300 * time.Millisecond
 
 const (

@@ -146,7 +146,7 @@ func wrap(s string, n int) []string {
 	return lines
 }
 
-// Scroll directions of a text box (ADR 0117).
+// Scroll directions of a text box (ADR 0118).
 const (
 	ScrollHorizontal = "horizontal"
 	ScrollVertical   = "vertical"
