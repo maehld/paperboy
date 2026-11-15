@@ -271,8 +271,9 @@ func editorDisplay(cfg *Config, requested string) string {
 }
 
 // groupPageFiles shows every page once, with the page file and the variant
-// files next to it (ADR 0110). A page whose page file is missing stays listed:
-// its variants are orphans, and the row offers to assign one as the page file.
+// files next to it (ADR 0110). A page whose page file is missing stays listed
+// in red; its variants are read-only until the operator creates the page file
+// (ADR 0112).
 func groupPageFiles(files []editorPageFile, displays map[string]Profile) []editorPageGroup {
 	order := []string{}
 	byName := map[string][]editorPageFile{}
