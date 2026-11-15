@@ -67,17 +67,6 @@ input[type=search] { margin-bottom: .4rem; }
 .hint { margin: .4rem 0 0; font-size: .8rem; color: #666; }
 .warn { margin: .5rem 0; padding: .5rem .6rem; background: #fff8e1; border-left: 3px solid #c90; font-size: .85rem; }
 .warn a { color: #134e9c; }
-.panel.layouts ul.file-list { list-style: none; margin: 0 0 .5rem; padding: 0; font-size: .8rem; }
-.panel.layouts li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .35rem; padding: .1rem 0; border-top: 1px solid #f0f0f0; }
-.panel.layouts li:first-child { border-top: 0; }
-.panel.layouts .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.panel.layouts .name a { color: #134e9c; text-decoration: none; }
-.panel.layouts .name a:hover { text-decoration: underline; }
-.panel.layouts li.open .name { font-weight: 600; }
-.panel.layouts .kind { color: #555; font-size: .72rem; }
-.panel.layouts .grid { color: #666; font-size: .72rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.panel.layouts .err { flex-basis: 100%; color: #b00; font-size: .72rem; line-height: 1.25; }
-.panel.layouts button { font-size: .78rem; padding: .12rem .5rem; }
 .panel.serves table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: .78rem; }
 .panel.serves th { text-align: left; color: #666; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; padding: 0 .3rem .15rem 0; }
 .panel.serves th:first-child { padding-left: 0; }
@@ -86,6 +75,7 @@ input[type=search] { margin-bottom: .4rem; }
 .panel.serves td { padding: .12rem .3rem .12rem 0; vertical-align: middle; border-top: 1px solid #f0f0f0; }
 .panel.serves td.type { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .panel.serves td.type a { color: #134e9c; text-decoration: none; }
+.panel.serves td.type a:hover { text-decoration: underline; }
 .panel.serves td.type a[aria-current="true"] { font-weight: 700; color: #111; }
 .panel.serves .open-link { font-size: .72rem; }
 .panel.serves .kind { display: inline-block; padding: 0 .22rem; border: 1px solid #dde3ec; border-radius: 3px; background: #f7f9fc; color: #445; font-size: .68rem; }
@@ -175,36 +165,22 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
       <h4>Stale widgets</h4>
       <select id="notices"><option value="show">show a bar</option><option value="none">do not show</option></select>
     </section>
-    <section class="panel layouts">
-      <h3>Layouts</h3>
-      {{if .NoPage}}<p class="hint">{{if .Orphan}}This page has no page file yet. Assign one in the pages list.{{else}}This page has no file yet; the first save writes it.{{end}}</p>{{end}}
-      <ul class="file-list">
-        {{range .Layouts}}
-        <li{{if .Open}} class="open"{{end}}>
-          <span class="name">{{if .URL}}<a href="{{.URL}}" title="{{.Path}}">{{.Name}}</a>{{else}}<span title="{{.Path}}">{{.Name}}</span>{{end}}</span>
-          <span class="kind">{{.Kind}}</span>
-          <span class="grid">{{.Grid}}</span>
-          {{if .Error}}<span class="err">{{.Error}}</span>{{end}}
-        </li>
-        {{end}}
-      </ul>
-      <button type="button" data-dialog="create-layout"{{if .NoPage}} disabled title="Create the page file first"{{end}}>Create layout…</button>
-    </section>
-    <section class="panel serves">
-      <h3>Served by</h3>
-      {{if .NoPage}}<p class="hint">The page file names the file that serves each display type.</p>{{else}}<table>
+    {{if .IsVariant}}{{if .ParentURL}}<p class="hint" id="parent">This variant belongs to <a href="{{.ParentURL}}">{{.ParentTitle}}</a>.</p>{{end}}{{else}}<section class="panel serves">
+      <h3>Variants</h3>
+      {{if .NoPage}}<p class="hint">{{if .Orphan}}This page has no page file yet. Assign one in the pages list.{{else}}This page has no file yet; the first save writes it.{{end}}</p>{{else}}<table>
         <thead><tr><th>Type</th><th>Kind</th><th>File</th></tr></thead>
         <tbody>
           {{range .Serves}}
           <tr>
-            <td class="type">{{if .PreviewURL}}<a href="{{.PreviewURL}}"{{if .Current}} aria-current="true"{{end}} title="Preview {{.Display}} with this file">{{.Display}}</a>{{else}}{{.Display}}{{if .OpenURL}} <a class="open-link" href="{{.OpenURL}}" title="Open {{.OpenTitle}}">Open</a>{{end}}{{end}}</td>
+            <td class="type">{{if .URL}}<a href="{{.URL}}"{{if .Current}} aria-current="true"{{end}} title="{{.URLTitle}}">{{.Display}}</a>{{else}}{{.Display}}{{end}}</td>
             <td><span class="kind">{{.Kind}}</span></td>
             <td class="pick">{{if .Reason}}<span class="mark" title="{{.Title}}">!</span>{{end}}<select data-serves="{{.Display}}" data-value="{{.Value}}" title="{{.Title}}" aria-label="File that serves {{.Display}}">{{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}{{if .Disabled}} disabled{{end}}>{{.Label}}</option>{{end}}</select></td>
           </tr>
           {{end}}
         </tbody>
-      </table>{{end}}
-    </section>{{end}}
+      </table>
+      <button type="button" data-dialog="create-variant">Create variant…</button>{{end}}
+    </section>{{end}}{{end}}
     <section class="panel palette">
       <h3>Widgets</h3>
       <input id="palette-filter" type="search" placeholder="Filter widgets…" autocomplete="off" aria-label="Filter widgets">
@@ -238,12 +214,12 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     </section>{{end}}
   </div>
 </main>
-{{if not .WidgetsPage}}<dialog id="create-layout">
-  <form data-create-layout>
-    <h3>Create layout</h3>
+{{if not .WidgetsPage}}<dialog id="create-variant">
+  <form data-create-variant>
+    <h3>Create variant</h3>
     <label>Display type <select name="display">{{range .CreateTypes}}<option value="{{.Name}}" data-label="{{.Label}}"{{if .Served}} disabled title="served by {{.Served}}"{{end}}>{{.Name}}</option>{{end}}</select></label>
     <label>File <input name="label" required pattern="[a-z0-9-]{1,40}" maxlength="40" size="16" value="{{.CreateLabel}}" title="lower case letters, digits and -"></label>
-    <p class="hint">{{if .CreateOK}}The layout starts from the display type: its kind and character grid come from it, never from the open file. The page names the new file.{{else}}Every display type is served by a file. Change it in Served by instead.{{end}}</p>
+    <p class="hint">{{if .CreateOK}}The variant starts from the display type: its kind and character grid come from it, never from the open file. The page names the new file.{{else}}Every display type is served by a file. Change it in the Variants select instead.{{end}}</p>
     <div class="dialog-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit"{{if not .CreateOK}} disabled{{end}}>Create</button></div>
   </form>
 </dialog>{{end}}

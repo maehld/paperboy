@@ -1476,15 +1476,15 @@
     renderAll();
   }
 
-  // createLayout writes the layout of a display type in one action (ADR 0110).
-  // The layout starts from the display type: kind and grid come from the type,
+  // createVariant writes the layout of a display type in one action (ADR 0110).
+  // The variant starts from the display type: kind and grid come from the type,
   // never from the open file, which is the defect of issue #238.
-  async function createLayout(display, label) {
+  async function createVariant(display, label) {
     const info = state.displays.find((d) => d.name === display) || {};
     const kind = info.kind === 'text' ? 'text' : 'image';
     const grid = kind === 'text' ? [info.width, info.height] : state.reference.slice();
     const template = { kind: kind, grid: grid, style: {}, cells: [blankCell(kind, grid)] };
-    setStatus('creating the layout for ' + display + '…', '');
+    setStatus('creating the variant for ' + display + '…', '');
     let res;
     try {
       res = await fetch('/api/pages/' + encodeURIComponent(state.name) + '/variant?display=' + encodeURIComponent(display) +
@@ -1494,7 +1494,7 @@
         body: JSON.stringify({ hash: state.pageHash, template: template }),
       });
     } catch (e) {
-      setStatus('creating the layout failed: ' + e, 'error');
+      setStatus('creating the variant failed: ' + e, 'error');
       return;
     }
     if (res.status === 401) {
@@ -1513,7 +1513,7 @@
       return;
     }
     if (!res.ok) {
-      setStatus(doc.error || 'creating the layout failed (' + res.status + ')', 'error');
+      setStatus(doc.error || 'creating the variant failed (' + res.status + ')', 'error');
       return;
     }
     state.dirty = false;
@@ -1682,30 +1682,30 @@
   on('reload', 'click', () => location.reload());
   on('delete', 'click', remove);
   on('rename', 'click', rename);
-  // The Served by table writes the page's variants map: the select names the
+  // The Variants table writes the page's variants map: the select names the
   // file of one display type (ADR 0110).
   for (const select of document.querySelectorAll('select[data-serves]')) {
     select.addEventListener('change', () => changeServes(select));
   }
-  // Create layout asks for a display type and a file label, then writes an empty
-  // layout that starts from the type (ADR 0110, issue #238).
-  const layoutForm = document.querySelector('form[data-create-layout]');
-  if (layoutForm) {
-    const types = layoutForm.querySelector('select[name=display]');
-    const label = layoutForm.querySelector('input[name=label]');
+  // Create variant asks for a display type and a file label, then writes an
+  // empty layout that starts from the type (ADR 0110, issue #238).
+  const variantForm = document.querySelector('form[data-create-variant]');
+  if (variantForm) {
+    const types = variantForm.querySelector('select[name=display]');
+    const label = variantForm.querySelector('input[name=label]');
     types.addEventListener('change', () => {
       const option = types.options[types.selectedIndex];
       if (option) label.value = option.dataset.label || option.value;
     });
-    layoutForm.addEventListener('submit', (e) => {
+    variantForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const display = types.value;
       const file = label.value.trim();
       if (!display || !file) return;
-      createLayout(display, file);
+      createVariant(display, file);
     });
   }
-  // The Create layout button opens its dialog; a click beside the form closes
+  // The Create variant button opens its dialog; a click beside the form closes
   // it again.
   for (const b of document.querySelectorAll('button[data-dialog]')) {
     b.addEventListener('click', () => {

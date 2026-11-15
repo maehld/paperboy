@@ -156,7 +156,7 @@ func TestEditorPageRows(t *testing.T) {
 		`class="rowlink" data-href="/ui/editor/page?display=small&amp;name=solar"`,
 		`title="pages/solar.hochkant.yaml — serves small"`,
 		`title="pages/solar.lcd.yaml — no display type names it"`,
-		// A variant no display type names stays a candidate in the Served by
+		// A variant no display type names stays a candidate in the Variants
 		// select, so it is only styled and offers no dialog of its own.
 		`class="chip unused" title="pages/solar.lcd.yaml — no display type names it"`,
 		// A page file of the text kind opens for the text type.
@@ -170,7 +170,7 @@ func TestEditorPageRows(t *testing.T) {
 		t.Fatalf("the pages tab still acts on files:\n%s", body)
 	}
 	// The page has a page file: no assign dialog, because the file is already
-	// under the page and the Served by select is the way to use it.
+	// under the page and the Variants select is the way to use it.
 	if strings.Contains(body, `data-dialog="assign-solar"`) {
 		t.Fatalf("an unused variant of an existing page offers to assign:\n%s", body)
 	}
@@ -183,48 +183,27 @@ func TestEditorPageRows(t *testing.T) {
 
 // TestEditorServesTable lists every configured display type with the files of
 // the page that fit it (ADR 0110). Only the file the editor shows gets a preview
-// link; a type served by another file offers to open that file instead.
-func TestEditorServesTable(t *testing.T) {
+// TestEditorVariantsPanel lists every display type of the page file with the
+// file that serves it; a variant shows its page instead (ADR 0110).
+func TestEditorVariantsPanel(t *testing.T) {
 	s := editorServer(t)
 	writePage(t, s, "solar", "", pageWithVariant)
 	writePage(t, s, "solar", "hochkant", variantPage)
 	writePage(t, s, "solar", "lcd", textVariant)
 
-	// The open variant serves small: the type is a link to that preview, marked
-	// as the current one, and the select names the variant.
-	body := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&file=hochkant", nil, nil).Body.String()
+	// The page file owns the table: small is served by the variant, so the type
+	// links to that file, the select names the variant and the preview belongs
+	// to the file that serves the type. Nothing serves the LCD: the fitting
+	// file is an option and the reason sits in the tooltip, not in a red block.
+	body := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil).Body.String()
 	for _, want := range []string{
-		`<h3>Layouts</h3>`,
-		`<h3>Served by</h3>`,
-		// One row per file of the page, each with kind and grid.
-		`title="pages/solar.yaml">page file</a>`,
-		`title="pages/solar.hochkant.yaml">hochkant</a>`,
-		`title="pages/solar.lcd.yaml">lcd</a>`,
-		`<li class="open">`,
-		`<span class="kind">text</span>`,
-		// The display type is the preview link of the open file.
-		`<a href="/ui/editor/page?display=small&amp;file=hochkant&amp;name=solar" aria-current="true" title="Preview small with this file">small</a>`,
+		`<h3>Variants</h3>`,
+		`<a href="/ui/editor/page?display=small&amp;file=hochkant&amp;name=solar" title="Edit pages/solar.hochkant.yaml for small">small</a>`,
 		`<select data-serves="small" data-value="hochkant" title="pages/solar.hochkant.yaml" aria-label="File that serves small"><option value="">page file</option><option value="hochkant" selected>hochkant</option></select>`,
-		// The LCD is not served: the fitting variant is an option, nothing is
-		// selected, and the reason sits in the tooltip, not in a red block.
 		`<option value="__none__" selected disabled>— none —</option><option value="lcd">lcd</option>`,
 		`title="page is for image displays (kind: image)"`,
-		// One dialog creates a layout; no table row carries its own button.
-		`data-dialog="create-layout"`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("open variant lacks %q:\n%s", want, body)
-		}
-	}
-
-	// The page file is open while small is served by the variant: the type is no
-	// preview link, the row opens the serving file and the notice stays short.
-	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil).Body.String()
-	for _, want := range []string{
-		`small <a class="open-link" href="/ui/editor/page?display=small&amp;file=hochkant&amp;name=solar" title="Open pages/solar.hochkant.yaml">Open</a>`,
-		`<select data-serves="small" data-value="hochkant"`,
-		`display type &#34;small&#34; is served by pages/solar.hochkant.yaml; this file is not used for it`,
-		`id="file-notice"`,
+		// One dialog creates a variant; no table row carries its own button.
+		`data-dialog="create-variant"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("page file lacks %q:\n%s", want, body)
@@ -234,6 +213,29 @@ func TestEditorServesTable(t *testing.T) {
 		t.Fatalf("the page file is not the layout for small:\n%s", body)
 	}
 
+	// A type the open file serves is its preview link, marked as current.
+	writePage(t, s, "clock", "", "title: Clock\nkind: text\ngrid: [20, 4]\ncells:\n  - { at: [0, 0], span: [20, 1], widget: paperboy/clock }\n")
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=clock&display=lcd", nil, nil).Body.String()
+	for _, want := range []string{
+		`<a href="/ui/editor/page?display=lcd&amp;name=clock" aria-current="true" title="Preview lcd with this file">lcd</a>`,
+		`<option value="" selected>page file</option>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("text page lacks %q:\n%s", want, body)
+		}
+	}
+
+	// A variant is a child page: it names its page file and shows no table.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&file=hochkant", nil, nil).Body.String()
+	if !strings.Contains(body, `This variant belongs to <a href="/ui/editor/page?display=small&amp;name=solar">pages/solar.yaml</a>.`) {
+		t.Fatalf("the variant misses its page link:\n%s", body)
+	}
+	for _, unwanted := range []string{`<h3>Variants</h3>`, `data-serves=`, `data-dialog="create-variant"`} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("the variant carries %q:\n%s", unwanted, body)
+		}
+	}
+
 	// A broken file opens read-only instead of being unlinked.
 	writePage(t, s, "broken", "klein", "nope: 1\n")
 	if rec := request(t, s, http.MethodGet, "/ui/editor/page?name=broken&display=small&file=klein", nil, nil); rec.Code != http.StatusOK {
@@ -241,17 +243,17 @@ func TestEditorServesTable(t *testing.T) {
 	}
 }
 
-// TestEditorCreateLayoutDialog offers the new layout in one dialog: display type
-// and file label, with a type that a file already serves disabled (ADR 0110).
-func TestEditorCreateLayoutDialog(t *testing.T) {
+// TestEditorCreateVariantDialog offers the new variant in one dialog: display
+// type and file label, with a type that a file already serves disabled (ADR 0110).
+func TestEditorCreateVariantDialog(t *testing.T) {
 	s := editorServer(t)
 	writePage(t, s, "solar", "", pageWithVariant)
 	writePage(t, s, "solar", "hochkant", variantPage)
 
 	body := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil).Body.String()
 	for _, want := range []string{
-		`<button type="button" data-dialog="create-layout">Create layout…</button>`,
-		`<dialog id="create-layout">`,
+		`<button type="button" data-dialog="create-variant">Create variant…</button>`,
+		`<dialog id="create-variant">`,
 		`<select name="display">`,
 		`<option value="lcd" data-label="lcd">lcd</option>`,
 		`<option value="small" data-label="small" disabled title="served by pages/solar.hochkant.yaml">small</option>`,
@@ -497,8 +499,8 @@ func TestEditorPage(t *testing.T) {
 		`id="show-cells" checked`, `id="render-hint"`, `id="preview-error"`,
 		// The panels list the files of the page and the file of every display
 		// type; one dialog creates a layout (ADR 0110).
-		`<h3>Layouts</h3>`, `<h3>Served by</h3>`, `pages/solar.yaml`,
-		`pages/solar.hochkant.yaml is missing`, `data-dialog="create-layout"`, `title-note`,
+		`<h3>Variants</h3>`, `pages/solar.hochkant.yaml is missing`,
+		`pages/solar.hochkant.yaml is missing`, `data-dialog="create-variant"`, `title-note`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("editor page lacks %q:\n%s", want, body)

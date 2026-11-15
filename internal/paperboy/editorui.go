@@ -139,56 +139,46 @@ type editorPageView struct {
 	Display     string // the preview type (ADR 0110)
 	Text        bool
 	Error       string
-	File        string         // the label of the open file; empty: the page file
-	FilePath    string         // pages/<name>[.<label>].yaml
-	Notice      string         // the preview type is not the file the editor shows
-	Orphan      bool           // the open variant has no page file
-	NoPage      bool           // the page has no page file
-	WidgetsPage bool           // the widgets page without a page (ADR 0055)
-	Displays    []displayLink  // display type switch of the widgets page
-	Layouts     []editorLayout // the files of the page (ADR 0110)
-	Serves      []servesRow    // each configured display type and its file
-	CreateTypes []layoutType   // the display types the create dialog offers
-	CreateLabel string         // the label the create dialog starts with
-	CreateOK    bool           // a display type waits for a layout
-	Data        template.JS    // the starting state of the script
+	File        string        // the label of the open file; empty: the page file
+	FilePath    string        // pages/<name>[.<label>].yaml
+	Notice      string        // the preview type is not the file the editor shows
+	Orphan      bool          // the open variant has no page file
+	NoPage      bool          // the page has no page file
+	IsVariant   bool          // a variant is open; the page file owns the map
+	ParentURL   string        // the page file of an open variant
+	ParentTitle string        // its path, for the link
+	WidgetsPage bool          // the widgets page without a page (ADR 0055)
+	Displays    []displayLink // display type switch of the widgets page
+	Serves      []servesRow   // each configured display type and its file
+	CreateTypes []variantType // the display types the create dialog offers
+	CreateLabel string        // the label the create dialog starts with
+	CreateOK    bool          // a display type waits for a variant
+	Data        template.JS   // the starting state of the script
 }
 
-// editorLayout is one file of the page in the Layouts panel: the page file or a
-// variant, with its kind, its grid and the way into its editor (ADR 0110).
-type editorLayout struct {
-	Name  string // "page file" or the label
-	Kind  string // image or text; em dash when the file does not parse
-	Grid  string // cells of an image page, characters of a text page
-	Path  string // pages/<name>[.<label>].yaml, as the tooltip
-	Error string // the file does not parse
-	URL   string // the editor of exactly this file; empty when no type can render it
-	Open  bool   // the file the editor shows
-}
-
-// servesRow is one configured display type in the Served by table: the file
+// servesRow is one configured display type in the Variants table: the file
 // that serves it, the files it could be sent to and the way to preview it with
 // the open file (ADR 0110).
 type servesRow struct {
-	Display    string
-	Kind       string
-	Value      string     // the file that serves the type: a label, or empty for the page file
-	PreviewURL string     // the open file serves the type: show it in the preview
-	Current    bool       // that preview is the type this view renders
-	OpenURL    string     // another file serves the type: open that file
-	OpenTitle  string     // its path, for the link
-	Options    []uiOption // the files of the page that fit the type
-	Title      string     // the file that serves the type, or why none does
-	Reason     bool       // the type is not served
+	Display  string
+	Kind     string
+	Value    string // the file that serves the type: a label, or empty for the page file
+	URL      string // preview with the open file, or open the file that serves the type
+	Preview  bool   // the URL previews the type with the open file
+	Current  bool   // that preview is the type this view renders
+	URLTitle string // what the link does, and for which file
+	Options  []uiOption
+	Title    string // the file that serves the type, or why none does
+	Reason   bool   // the type is not served
 }
 
-// layoutType is one entry of the display type select in the Create layout
+// variantType is one entry of the display type select in the Create variant
 // dialog. A type that a file already serves is disabled, because the select in
-// Served by is the place to change it (ADR 0110).
-type layoutType struct {
+// Variants is the place to change it (ADR 0110).
+type variantType struct {
 	Name   string // display type
 	Label  string // default label of the new file
-	Served string // path of the serving file; empty when a layout can be created
+	Served string // path of the serving file; empty when a variant can be created
 }
 
 // uiTab is one sub-tab of a view: the editor's object types.
@@ -375,7 +365,7 @@ func pageRow(name string, files []editorPageFile, displays map[string]Profile) e
 		g.Note = "No configured display type can render this file."
 	}
 	// Only a page without a page file needs the dialog; a variant that no
-	// display type names is chosen in the Served by select of the page.
+	// display type names is chosen in the Variants select of the page.
 	if page == nil {
 		g.Assign = assignDialogFor(name, files, displays)
 	}
@@ -488,36 +478,11 @@ func pageFileName(name, label string) string {
 // it is never sent, because the option is disabled.
 const noFile = "__none__"
 
-// layoutRows lists the files of one page for the Layouts panel: the page file
-// first, then the variants by label, each with the way into its own editor
-// (ADR 0110).
-func layoutRows(cfg *Config, name, label string, files []editorPageFile, variants map[string]string) []editorLayout {
-	rows := []editorLayout{}
-	for _, f := range files {
-		if f.Name != name {
-			continue
-		}
-		row := editorLayout{Name: f.Label, Kind: "—", Grid: "—", Error: f.Error,
-			Path: pageFileName(name, f.Label), Open: f.Label == label}
-		if row.Name == "" {
-			row.Name = "page file"
-		}
-		if f.Kind != "" {
-			row.Kind = f.Kind
-		}
-		if f.Grid != [2]int{} {
-			row.Grid = fmt.Sprintf("%d×%d", f.Grid[0], f.Grid[1])
-		}
-		row.URL, _ = pageEditURL(f, variants, cfg.Profiles, false)
-		rows = append(rows, row)
-	}
-	return rows
-}
-
 // servesTable lists every configured display type with the files of the page
 // that fit it (ADR 0110). The select writes the page's variants entry, so it
-// holds the file that serves the type. Only a row the open file serves gets a
-// preview link: the editor never renders another file in place of the open one.
+// holds the file that serves the type. The type opens its preview with the open
+// file, or the file that serves it: the editor never renders another file in
+// place of the open one.
 func servesTable(cfg *Config, name, label, preview string, files []editorPageFile, coverage []pageCoverageEntry, pageExists bool) []servesRow {
 	var pageFile *editorPageFile
 	var variants []editorPageFile
@@ -544,11 +509,12 @@ func servesTable(cfg *Config, name, label, preview string, files []editorPageFil
 				if label != "" {
 					params.Set("file", label)
 				}
-				row.PreviewURL = "/ui/editor/page?" + params.Encode()
-				row.Current = c.Display == preview
+				row.URL = "/ui/editor/page?" + params.Encode()
+				row.Preview, row.Current = true, c.Display == preview
+				row.URLTitle = "Preview " + c.Display + " with this file"
 			} else if c.File != label {
-				row.OpenURL, _ = pageEditURL(editorPageFile{Name: name, Label: c.File}, coverageVariants(coverage), cfg.Profiles, false)
-				row.OpenTitle = pageFileName(name, c.File)
+				row.URL, _ = pageEditURL(editorPageFile{Name: name, Label: c.File}, coverageVariants(coverage), cfg.Profiles, false)
+				row.URLTitle = "Edit " + pageFileName(name, c.File) + " for " + c.Display
 			}
 		case c.Error != "":
 			row.Value, row.Reason = noFile, true
@@ -557,8 +523,8 @@ func servesTable(cfg *Config, name, label, preview string, files []editorPageFil
 			row.Title = c.Error
 			if c.File != "" && !c.Missing {
 				row.Title = pageFileName(name, c.File) + ": " + c.Error
-				row.OpenURL, _ = pageEditURL(editorPageFile{Name: name, Label: c.File}, coverageVariants(coverage), cfg.Profiles, false)
-				row.OpenTitle = pageFileName(name, c.File)
+				row.URL, _ = pageEditURL(editorPageFile{Name: name, Label: c.File}, coverageVariants(coverage), cfg.Profiles, false)
+				row.URLTitle = "Edit " + pageFileName(name, c.File) + " for " + c.Display
 			}
 		}
 		// The options are the files of the page that fit the type; a broken file
@@ -590,13 +556,13 @@ func servesTable(cfg *Config, name, label, preview string, files []editorPageFil
 	return rows
 }
 
-// createLayoutTypes lists the display types the Create layout dialog offers.
-// A type that a file already serves is disabled: the select in Served by is the
+// createVariantTypes lists the display types the Create variant dialog offers.
+// A type that a file already serves is disabled: the select in Variants is the
 // place to change it, and a missing file keeps its label (ADR 0110).
-func createLayoutTypes(name string, coverage []pageCoverageEntry) []layoutType {
-	types := []layoutType{}
+func createVariantTypes(name string, coverage []pageCoverageEntry) []variantType {
+	types := []variantType{}
 	for _, c := range coverage {
-		t := layoutType{Name: c.Display, Label: c.Display}
+		t := variantType{Name: c.Display, Label: c.Display}
 		if !c.Missing && c.Error == "" {
 			t.Served = pageFileName(name, c.File) // the path, never empty when served
 		} else if c.File != "" {
@@ -948,18 +914,26 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	}
 	v.Display, v.Text = display, p.text()
 	v.FilePath = pageFileName(name, label)
-	// The panels list the files of the page and the file of every display type
-	// (ADR 0110); the display type switch belongs to the widgets page only.
-	v.Layouts = layoutRows(cfg, name, label, files, variants)
-	v.Serves = servesTable(cfg, name, label, display, files, coverage, pageExists)
-	v.CreateTypes = createLayoutTypes(name, coverage)
-	for _, t := range v.CreateTypes {
-		if t.Served != "" {
-			continue
+	// The page file owns the variants map, so only it lists the Variants table.
+	// A variant points back to its page (ADR 0110). The display type switch
+	// belongs to the widgets page only.
+	v.IsVariant = label != ""
+	if v.IsVariant {
+		if pageFile != nil {
+			v.ParentTitle = pageFileName(name, "")
+			v.ParentURL, _ = pageEditURL(*pageFile, variants, cfg.Profiles, false)
 		}
-		v.CreateOK = pageExists
-		if v.CreateLabel == "" {
-			v.CreateLabel = t.Label
+	} else {
+		v.Serves = servesTable(cfg, name, label, display, files, coverage, pageExists)
+		v.CreateTypes = createVariantTypes(name, coverage)
+		for _, t := range v.CreateTypes {
+			if t.Served != "" {
+				continue
+			}
+			v.CreateOK = pageExists
+			if v.CreateLabel == "" {
+				v.CreateLabel = t.Label
+			}
 		}
 	}
 	if q.Get("display") != "" && !missing {
