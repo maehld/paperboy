@@ -263,6 +263,43 @@ func TestEditorVariantsPanel(t *testing.T) {
 	}
 }
 
+// TestEditorUnusedEntry lists a variants entry whose display type is gone and
+// removes it on demand (ADR 0110).
+func TestEditorUnusedEntry(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "solar", "", "title: Solar\nkind: image\ngrid: [2, 2]\nvariants:\n  gone: alt\ncells:\n  - { at: [0, 0], span: [2, 2], widget: paperboy/text }\n")
+	writePage(t, s, "solar", "alt", variantPage)
+
+	body := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small", nil, nil).Body.String()
+	for _, want := range []string{
+		`<p class="types-label">Unused entries</p>`,
+		`gone &rarr; alt`,
+		`data-remove-serves="gone"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("editor lacks %q:\n%s", want, body)
+		}
+	}
+
+	var read editorPage
+	request(t, s, http.MethodGet, "/api/pages/solar", nil, &read)
+	// A file cannot be assigned to a type that is not configured.
+	if rec := request(t, s, http.MethodPost, "/api/pages/solar/serves?display=gone",
+		servesSave{Hash: read.Hash, File: "alt"}, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("assign to an unknown type: %d %s", rec.Code, rec.Body)
+	}
+	// Its entry can be removed.
+	if rec := request(t, s, http.MethodPost, "/api/pages/solar/serves?display=gone",
+		servesSave{Hash: read.Hash}, nil); rec.Code != http.StatusOK {
+		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
+	}
+	var after editorPage
+	request(t, s, http.MethodGet, "/api/pages/solar", nil, &after)
+	if _, ok := after.Variants["gone"]; ok {
+		t.Fatalf("the entry survived: %+v", after.Variants)
+	}
+}
+
 // TestEditorCreateVariantDialog offers the new variant in one dialog: every
 // configured display type and a file label (ADR 0110).
 func TestEditorCreateVariantDialog(t *testing.T) {
@@ -392,7 +429,7 @@ func TestPageServesAPI(t *testing.T) {
 	}{
 		{"unknown label", "/api/pages/solar/serves?display=small", servesSave{Hash: removed.Hash, File: "nope"}, http.StatusBadRequest, "is missing"},
 		{"wrong kind", "/api/pages/solar/serves?display=small", servesSave{Hash: removed.Hash, File: "lcd"}, http.StatusBadRequest, "text displays"},
-		{"unknown display type", "/api/pages/solar/serves?display=nope", servesSave{Hash: removed.Hash}, http.StatusBadRequest, "unknown display type"},
+		{"unknown display type", "/api/pages/solar/serves?display=nope", servesSave{Hash: removed.Hash, File: "lcd"}, http.StatusBadRequest, "unknown display type"},
 		{"stale hash", "/api/pages/solar/serves?display=small", servesSave{Hash: "stale"}, http.StatusConflict, "changed on disk"},
 	} {
 		rec := request(t, s, http.MethodPost, tc.path, tc.body, nil)

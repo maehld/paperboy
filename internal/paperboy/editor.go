@@ -553,14 +553,16 @@ func (s *Server) handleSetServes(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	name := r.PathValue("name")
 	display := r.URL.Query().Get("display")
-	p, ok := cfg.Profiles[display]
-	if !ok {
-		writeAPIError(w, http.StatusBadRequest, "unknown display type %q", display)
-		return
-	}
 	var body servesSave
 	if err := decodeBody(w, r, &body); err != nil {
 		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	// An entry for a type that is no longer configured can be removed, but no
+	// file can be assigned to it (ADR 0110).
+	p, ok := cfg.Profiles[display]
+	if !ok && body.File != "" {
+		writeAPIError(w, http.StatusBadRequest, "unknown display type %q", display)
 		return
 	}
 	pagePath, err := pageFilePath(cfg.Pages, name, "")

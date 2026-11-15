@@ -144,10 +144,19 @@ type editorPageView struct {
 	WidgetsPage  bool          // the widgets page without a page (ADR 0055)
 	Displays     []displayLink // display type switch of the widgets page
 	Serves       []servesRow   // each configured display type and its file
+	Unused       []unusedEntry // variants entries for display types that are not configured
 	CreateTypes  []variantType // the display types the create dialog offers
 	CreateLabel  string        // the label the create dialog starts with
 	CreateOK     bool          // a display type waits for a variant
 	Data         template.JS   // the starting state of the script
+}
+
+// unusedEntry is a variants entry whose display type is no longer configured.
+// It stays in the page file and can be removed there (ADR 0110).
+type unusedEntry struct {
+	Display string // the display type key
+	Label   string // the file label it names
+	Missing bool   // that file does not exist either
 }
 
 // servesRow is one configured display type in the Variants table: the file
@@ -534,6 +543,26 @@ func servesTable(cfg *Config, name, label, preview string, files []editorPageFil
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// unusedEntries lists the variants entries whose display type is no longer
+// configured, sorted by type. The entry keeps working when the type returns.
+func unusedEntries(cfg *Config, name string, variants map[string]string) []unusedEntry {
+	entries := []unusedEntry{}
+	for display, label := range variants {
+		if knownProfile(cfg.Profiles, display) {
+			continue
+		}
+		path, err := pageFilePath(cfg.Pages, name, label)
+		missing := err != nil
+		if err == nil {
+			_, err = os.Stat(path)
+			missing = errors.Is(err, fs.ErrNotExist)
+		}
+		entries = append(entries, unusedEntry{Display: display, Label: label, Missing: missing})
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Display < entries[j].Display })
+	return entries
 }
 
 // createVariantTypes lists the display types the Create variant dialog offers.
@@ -923,6 +952,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		v.Serves = servesTable(cfg, name, label, display, files, coverage, pageExists)
+		v.Unused = unusedEntries(cfg, name, variants)
 		v.CreateTypes = createVariantTypes(name, coverage)
 		// Every configured type is a candidate: the dialog creates the file and
 		// sends the type to it (ADR 0110).
