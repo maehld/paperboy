@@ -413,33 +413,65 @@
   }
 
   // moveTextCell reorders a cell inside its row or moves it to another row.
+  // A rightward drop lands after the cell under the pointer, a leftward drop
+  // before it; the old position of the dragged cell is not counted.
   function moveTextCell(fromRow, fromCell, toRow, x) {
     const rows = state.template && state.template.rows;
     const source = rows && rows[fromRow];
     if (!source || !source[fromCell]) return;
+    const moved = source[fromCell];
     const targetIndex = Math.max(0, toRow);
     let dest = rows[targetIndex] || null;
-    let index = dest ? textInsertIndex(targetIndex, x) : 0;
-    const moved = source[fromCell];
-    if (!dest || (dest !== source && textRowWidth(dest) + moved.width > state.width)) {
+    if (!dest) {
       if (rows.length >= state.height) {
         setStatus('The page has no room for another row; shorten or remove a cell first.', 'error');
         return;
       }
       dest = [];
       rows.push(dest);
-      index = 0;
+    }
+    let index;
+    if (dest === source) {
+      const hit = textCellAt(fromRow, x);
+      if (hit.cell === fromCell) return; // a drop on the cell itself does not move it
+      if (hit.cell < 0) index = dest.length;
+      else if (hit.cell > fromCell) index = hit.cell + 1;
+      else index = hit.cell;
+    } else {
+      const hit = textCellAt(targetIndex, x);
+      if (hit.cell < 0) index = dest.length;
+      else index = hit.cell + (x >= hit.start + dest[hit.cell].width / 2 ? 1 : 0);
+      if (textRowWidth(dest) + moved.width > state.width) {
+        if (rows.length >= state.height) {
+          setStatus('The page has no room for another row; shorten or remove a cell first.', 'error');
+          return;
+        }
+        dest = [];
+        rows.push(dest);
+        index = 0;
+      }
     }
     const [cell] = source.splice(fromCell, 1);
     if (dest === source && fromCell < index) index -= 1;
-    if (source.length === 0 && source !== dest) {
-      const at = rows.indexOf(source);
-      if (at >= 0) rows.splice(at, 1);
-    }
+    // The source row stays in place, even when its last cell moved away: an
+    // empty row is a blank line and remains a valid drop target.
     index = Math.max(0, Math.min(index, dest.length));
     dest.splice(index, 0, cell);
     state.textSelected = { row: rows.indexOf(dest), cell: index };
     changed();
+  }
+
+  // textMoveColumn is the slot where the drop marker of a cell move belongs.
+  function textMoveColumn(fromRow, fromCell, toRow, x) {
+    const rows = state.template && state.template.rows;
+    if (!rows || toRow >= rows.length) return 0;
+    if (toRow !== fromRow) return textInsertColumn(toRow, x);
+    const row = rows[fromRow];
+    const hit = textCellAt(fromRow, x);
+    if (hit.cell < 0) return Math.min(textRowWidth(row), state.width);
+    if (hit.cell === fromCell) return hit.start;
+    if (hit.cell > fromCell) return hit.start + row[hit.cell].width;
+    return hit.start;
   }
 
   // selectTextCell marks one box and refreshes the inspector without rebuilding
@@ -554,16 +586,18 @@
   }
 
   // showDropMarker draws the insertion line of a drag over the board.
-  function showDropMarker(y, x) {
+  function showDropMarker(y, x, source) {
     const board = el('board');
     if (!board || !state.template) return;
     clearDropMarker();
     const rows = state.template.rows || [];
     const row = Math.min(y, rows.length);
+    let col = row >= rows.length ? 0 : textInsertColumn(row, x);
+    if (source) col = textMoveColumn(source.row, source.cell, row, x);
+    const atEnd = col >= state.width;
     const marker = document.createElement('div');
-    marker.className = 'drop-marker';
-    const col = row >= rows.length ? 0 : textInsertColumn(row, x);
-    marker.style.gridArea = (row + 1) + ' / ' + (col + 1) + ' / span 1 / span 1';
+    marker.className = 'drop-marker' + (atEnd ? ' at-end' : '');
+    marker.style.gridArea = (row + 1) + ' / ' + ((atEnd ? state.width - 1 : col) + 1) + ' / span 1 / span 1';
     board.appendChild(marker);
     for (const slot of board.querySelectorAll('.slot[data-y="' + row + '"]')) slot.classList.add('drop');
   }
@@ -608,7 +642,7 @@
       if (ev.cancelable) ev.preventDefault();
       box.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
       pos = cellAtPointer(ev);
-      if (pos) showDropMarker(pos.y, pos.x);
+      if (pos) showDropMarker(pos.y, pos.x, { row: rowIndex, cell: cellIndex });
       else clearDropMarker();
     };
     const finish = (ev, moveIt) => {
