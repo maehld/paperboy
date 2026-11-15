@@ -230,10 +230,18 @@ func TestVersion(t *testing.T) {
 	}
 }
 
-type valueHandler struct{ testHandler }
+type valueHandler struct {
+	testHandler
+	prepared bool
+}
 
 func (valueHandler) Describe() Description {
 	return Description{Values: []ValueSpec{{Name: "pv", Title: "PV", Type: ValueNumber, Unit: "kW", Precision: 1}}}
+}
+
+func (h *valueHandler) Prepare(*Request) error {
+	h.prepared = true
+	return nil
 }
 
 func (valueHandler) Values(req *Request) (map[string]Value, error) {
@@ -256,6 +264,9 @@ func TestValuesAction(t *testing.T) {
 	v, ok := m.Values["pv"]
 	if !ok || v.Number == nil || *v.Number != 12.5 || v.Type() != ValueNumber {
 		t.Fatalf("value: %+v", v)
+	}
+	if !h.prepared {
+		t.Error("a values request did not prepare the plugin, so it read an old snapshot")
 	}
 	if m := Handle(h, &Request{Action: ActionValues}); m.Error == "" {
 		t.Error("a request without names was accepted")
