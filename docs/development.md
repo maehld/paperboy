@@ -43,5 +43,15 @@ internal/download/       Release downloads and the verification against SHA256SU
 internal/semver/         Version grammar for plugin and firmware names (ADR 0089)
 internal/opendisplay/    OpenDisplay protocol; odble = Bluetooth transport
 firmware/esphome/        Paperboy firmware on ESPHome for Sticky and E1001 (ADR 0041)
+docs/design/             How the system works today, one document per area
+docs/glossary.md         The terms that all documents use
 docs/adr/                Architecture decisions
 ```
+
+## Writing documentation
+
+English documents follow the rules of ASD-STE100 as the house style. This does not claim formal conformance to the standard. A sentence has at most 25 words, and the active voice and the present tense carry the text. Steps are imperative, one term stands for one concept, and a noun cluster has at most three words. The [glossary](glossary.md) fixes the terms; a new word for a known thing is a bug.
+
+`./scripts/check-docs.sh` checks the part that needs no dictionary: sentence length and filler words. It covers the design documents and the glossary by default and takes other files as arguments.
+
+Each fact lives in exactly one place. The [design documents](design/README.md) keep the structure and the reason; the topic pages keep the steps; the [ADRs](adr/README.md) keep the history and are not rewritten.
