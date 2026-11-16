@@ -171,7 +171,9 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 	var batteryIcon image.Rectangle
 	if a.Bool("battery", false) {
 		if dev := statusDevice(req, ""); dev != nil && dev.Battery != nil {
-			iconH := min(float64(h)*0.35, statusSize*0.9)
+			// The gauge is as high as a capital letter of the date, so it
+			// reads with the text on every display.
+			iconH := min(float64(h)*0.35, capHeight(statusSize))
 			iconW := int(iconH * 2)
 			gap := max(2, pad/2)
 			if iconW >= 4 && iconH >= 3 && b.Max.X-pad-iconW-gap > b.Min.X+pad {

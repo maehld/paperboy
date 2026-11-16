@@ -182,7 +182,7 @@ The built-in plugin `paperboy` needs no data and is never cached ([ADR 0049](../
 
 | Widget | Draws |
 |---|---|
-| `header` | Title or page title, page indicator, clock, date, subtitle, alignment; the date takes the longest of four forms that fits half the cell, or the free text columns, and is dropped when none fits; `battery: true` adds the gauge of this device at the right, without a number (a text display shows the percentage instead) |
+| `header` | Title or page title, page indicator, clock, date, subtitle, alignment; the date takes the longest of four forms that fits half the cell, or the free text columns, and is dropped when none fits; `battery: true` adds the gauge of this device at the right, as high as a capital letter of the date, without a number (a text display shows the percentage instead) |
 | `battery` | The battery of one device as a gauge with percentage or voltage; without `device` it shows the device that renders the page; `2x2` puts the value below the gauge, the horizontal spans beside it ([ADR 0121](../adr/0121-segmented-battery-gauge.md)) |
 | `device-status` | One row per device with battery, estimated runtime and the time since the last contact; `devices` selects ids, otherwise it shows the device that renders the page; the stalest row comes first |
 | `text` | Free text, on text displays an overlong line untrimmed when the cell scrolls |

@@ -316,6 +316,31 @@ func TestHeaderBatteryIconOnly(t *testing.T) {
 	}
 }
 
+// TestHeaderBatteryMatchesTheText keeps the gauge at the height of a capital
+// letter when the header cell is tall, as on the E1003.
+func TestHeaderBatteryMatchesTheText(t *testing.T) {
+	// The E1003's header: one row of 1404 / 8 px at 227 ppi.
+	style := plugin.Style{Padding: 14, Rule: 2, TextPx: 16 * 227.0 / 72}
+	req := &plugin.Request{Language: "de", Now: testStatusTime,
+		Page:         plugin.PageInfo{Title: "", Width: 1872, Height: 1404, PPI: 227},
+		ServerStatus: testStatus()}
+	w := plugin.WidgetRequest{Widget: "header", Width: 1872, Height: 1404 / 8, Style: style,
+		Args: map[string]any{"title": "", "clock": false, "battery": true}}
+	img := render.NewCanvas(w.Width, w.Height, 4)
+	if err := (Plugin{}).Render(req, w, img); err != nil {
+		t.Fatal(err)
+	}
+	box, ok := inkBox(img, image.Rect(0, 0, w.Width, w.Height-style.Rule))
+	if !ok {
+		t.Fatal("nothing drawn")
+	}
+	statusSize := min(float64(w.Height)*0.45, style.TextPx*1.1)
+	capH := int(render.Face(statusSize, false).Metrics().CapHeight.Round())
+	if box.Dy() > capH+1 {
+		t.Errorf("the gauge is %d px high, a capital letter is %d", box.Dy(), capH)
+	}
+}
+
 func TestBatterySpans(t *testing.T) {
 	want := []plugin.Span{{Columns: 1, Rows: 1}, {Columns: 2, Rows: 1}, {Columns: 3, Rows: 1}, {Columns: 2, Rows: 2}}
 	for _, d := range (Plugin{}).Describe().Widgets {

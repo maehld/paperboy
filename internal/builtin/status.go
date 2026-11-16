@@ -379,6 +379,16 @@ func anchorX(b image.Rectangle, al render.Align) int {
 	return b.Min.X
 }
 
+// capHeight is the height of a capital letter at size. The header sizes its
+// battery gauge by it, so the gauge matches the date on every display.
+func capHeight(size float64) float64 {
+	m := render.Face(size, false).Metrics()
+	if m.CapHeight <= 0 {
+		return size * 0.7
+	}
+	return float64(m.CapHeight) / 64
+}
+
 // fitSize reduces size by single pixels until s fits maxW, but not below
 // render.MinSize; render.Text shrinks by the same rule.
 func fitSize(s string, size float64, maxW int) float64 {
