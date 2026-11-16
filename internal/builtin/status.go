@@ -243,7 +243,7 @@ func seenText(req *plugin.Request, seconds int64) string {
 
 func runeLen(s string) int { return len([]rune(s)) }
 
-// battery draws the battery widget: an icon with the charge beside it.
+// battery draws the battery widget: a gauge with the charge beside or below it.
 func (Plugin) battery(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	a := w.Arg()
 	b := img.Rect.Inset(w.Style.Padding)
@@ -251,49 +251,161 @@ func (Plugin) battery(req *plugin.Request, w plugin.WidgetRequest, img *image.Pa
 		return plugin.TooSmall(w)
 	}
 	dev := statusDevice(req, a.String("device", ""))
-	label := a.String("label", "auto")
-	text := batteryText(req, dev, label)
-	size := min(float64(b.Dy())*0.65, req.TextPx(w)*1.1)
-	iconH := min(float64(b.Dy())*0.72, size*1.15)
-	iconW := int(iconH * 2)
-	if iconW < 4 || int(iconH) < 3 {
-		return plugin.TooSmall(w)
-	}
-	gap := max(2, int(size*0.3))
-	textW := 0
-	if text != "" {
-		textW = render.Measure(text, size, false)
-	}
-	if iconW+gap+textW > b.Dx() {
-		text, textW = "", 0
-	}
-	total := iconW + gap + textW
-	if total > b.Dx() {
-		iconW, iconH = b.Dx(), float64(b.Dx())/2
-		total = iconW
-	}
-	if iconW < 4 || int(iconH) < 3 {
-		return plugin.TooSmall(w)
-	}
-	x := b.Min.X
-	al := align(a.String("align", "center"), render.Center)
-	switch al {
-	case render.Center:
-		x = b.Min.X + (b.Dx()-total)/2
-	case render.Right:
-		x = b.Max.X - total
-	}
-	icon := image.Rect(x, b.Min.Y+(b.Dy()-int(iconH))/2, x+iconW, b.Min.Y+(b.Dy()+int(iconH))/2)
 	var status *plugin.BatteryStatus
 	if dev != nil {
 		status = dev.Battery
 	}
-	drawBattery(img, icon, status)
-	if text != "" {
-		render.Text(img, text, icon.Max.X+gap, b.Min.Y+b.Dy()/2+int(size*0.36),
-			render.Style{Size: size, Shrink: true}, b.Max.X-(icon.Max.X+gap), color.Black, render.Left)
+	bl := layoutBattery(b, batteryText(req, dev, a.String("label", "auto")),
+		align(a.String("align", "center"), render.Center))
+	if bl.icon.Empty() && bl.text == "" {
+		return plugin.TooSmall(w)
+	}
+	if !bl.icon.Empty() {
+		drawBattery(img, bl.icon, status)
+	}
+	if bl.text != "" {
+		render.Text(img, bl.text, bl.x, bl.baseline, render.Style{Size: bl.size, Shrink: true},
+			bl.maxW, color.Black, bl.align)
 	}
 	return nil
+}
+
+// batteryBlock is the placement of the gauge and the value in one cell.
+type batteryBlock struct {
+	icon     image.Rectangle // empty when the cell has no room for the gauge
+	text     string          // empty when the cell has no room for the value
+	size     float64         // font size of the value
+	x        int             // anchor of the value
+	baseline int
+	maxW     int
+	align    render.Align
+}
+
+// layoutBattery places the gauge and the value in the padded cell b. The value
+// sits beside the gauge in a wide cell and below it in a square or tall one.
+// The gauge follows the cell height and never grows beyond it. The value takes
+// its size from the gauge, shrinks before the gauge is dropped, and wins the
+// cell when both do not fit (ADR 0121).
+func layoutBattery(b image.Rectangle, text string, al render.Align) batteryBlock {
+	if b.Empty() {
+		return batteryBlock{}
+	}
+	w, h := b.Dx(), float64(b.Dy())
+	gap := max(2, int(h/10))
+	if text == "" {
+		// The gauge alone keeps its normal size and does not stretch to the
+		// cell width.
+		iconH := h
+		iconW := int(iconH * 2)
+		if iconW > w {
+			iconW, iconH = w, float64(w)/2
+		}
+		if iconW < 4 || int(iconH) < 3 {
+			return batteryBlock{}
+		}
+		return batteryBlock{icon: gaugeRect(b, iconW, int(iconH), offsetX(b, iconW, al), (b.Dy()-int(iconH))/2)}
+	}
+	if w < 3*b.Dy() {
+		// Square or tall cell: the gauge on top, the value below.
+		iconH := (h - float64(gap)) * 3 / 5
+		iconW := int(iconH * 2)
+		if iconW > w {
+			iconW, iconH = w, float64(w)/2
+		}
+		if iconW < 4 || int(iconH) < 3 {
+			return valueOnly(b, text, al)
+		}
+		top := b.Min.Y + int(iconH) + gap
+		valueH := float64(b.Max.Y - top)
+		size := max(render.MinSize, valueH*0.85)
+		return batteryBlock{
+			icon:     gaugeRect(b, iconW, int(iconH), offsetX(b, iconW, al), 0),
+			text:     text,
+			size:     size,
+			x:        anchorX(b, al),
+			baseline: top + int(valueH/2+size*0.36),
+			maxW:     w,
+			align:    al,
+		}
+	}
+	// Wide cell: the gauge on the left, the value on its right.
+	iconH := h
+	iconW := int(iconH * 2)
+	size := iconH * 0.8
+	avail := w - iconW - gap
+	if avail < render.Measure(text, render.MinSize, false) {
+		return valueOnly(b, text, al)
+	}
+	size = fitSize(text, size, avail)
+	textW := render.Measure(text, size, false)
+	total := iconW + gap + textW
+	x := b.Min.X + (w-total)/2
+	switch al {
+	case render.Left:
+		x = b.Min.X
+	case render.Right:
+		x = b.Max.X - total
+	}
+	return batteryBlock{
+		icon:     gaugeRect(b, iconW, int(iconH), x-b.Min.X, 0),
+		text:     text,
+		size:     size,
+		x:        x + iconW + gap,
+		baseline: b.Min.Y + b.Dy()/2 + int(size*0.36),
+		maxW:     b.Max.X - (x + iconW + gap),
+		align:    render.Left,
+	}
+}
+
+// valueOnly keeps the value and leaves the gauge out.
+func valueOnly(b image.Rectangle, text string, al render.Align) batteryBlock {
+	size := max(render.MinSize, float64(b.Dy())*0.8)
+	return batteryBlock{
+		text:     text,
+		size:     size,
+		x:        anchorX(b, al),
+		baseline: b.Min.Y + b.Dy()/2 + int(size*0.36),
+		maxW:     b.Dx(),
+		align:    al,
+	}
+}
+
+// gaugeRect places a gauge of iconW by iconH pixels in the padded cell b at
+// the given offset from the cell's top left corner.
+func gaugeRect(b image.Rectangle, iconW, iconH, dx, dy int) image.Rectangle {
+	x, y := b.Min.X+dx, b.Min.Y+dy
+	return image.Rect(x, y, x+iconW, y+iconH)
+}
+
+// offsetX is the left offset of a block of width w in b for an alignment.
+func offsetX(b image.Rectangle, w int, al render.Align) int {
+	switch al {
+	case render.Center:
+		return (b.Dx() - w) / 2
+	case render.Right:
+		return b.Dx() - w
+	}
+	return 0
+}
+
+// anchorX is the text anchor of an alignment in b.
+func anchorX(b image.Rectangle, al render.Align) int {
+	switch al {
+	case render.Center:
+		return b.Min.X + b.Dx()/2
+	case render.Right:
+		return b.Max.X
+	}
+	return b.Min.X
+}
+
+// fitSize reduces size by single pixels until s fits maxW, but not below
+// render.MinSize; render.Text shrinks by the same rule.
+func fitSize(s string, size float64, maxW int) float64 {
+	for size > render.MinSize && render.Measure(s, size, false) > maxW {
+		size--
+	}
+	return size
 }
 
 // deviceStatus draws one row per device: the name on the left, battery,
@@ -336,35 +448,151 @@ func (Plugin) deviceStatus(req *plugin.Request, w plugin.WidgetRequest, img *ima
 	return nil
 }
 
-// drawBattery draws an outline with a terminal, a charge fill and a charging
-// bolt. status nil or without a percentage leaves the outline empty.
+// batteryFrame returns the body of the gauge, the thickness of its outline and
+// the width of its terminal. The warning level thickens the outline, so the
+// level is visible without a number (ADR 0121).
+func batteryFrame(r image.Rectangle, status *plugin.BatteryStatus) (body image.Rectangle, line, nub int) {
+	line = max(1, r.Dy()/24)
+	if status != nil {
+		switch status.Level {
+		case "warn":
+			line++
+		case "critical":
+			line += 2
+		}
+	}
+	line = min(line, max(1, r.Dy()/6))
+	nub = max(2, r.Dx()/8)
+	return image.Rect(r.Min.X, r.Min.Y, r.Max.X-nub, r.Max.Y), line, nub
+}
+
+// batteryPercent is the charge in percent, false when the device reports none.
+func batteryPercent(status *plugin.BatteryStatus) (float64, bool) {
+	if status == nil || status.Percent == nil {
+		return 0, false
+	}
+	return max(0, min(100, *status.Percent)), true
+}
+
+// drawBattery draws the gauge of the battery widget and of the page header: an
+// outline with a terminal, the charge in four or five segments, a bolt while
+// charging and a slash for a missing reading (ADR 0121).
 func drawBattery(img *image.Paletted, r image.Rectangle, status *plugin.BatteryStatus) {
 	if r.Dx() < 4 || r.Dy() < 3 {
 		return
 	}
-	line := max(1, r.Dy()/10)
-	nub := max(2, r.Dx()/10)
-	body := image.Rect(r.Min.X, r.Min.Y, r.Max.X-nub, r.Max.Y)
+	body, line, _ := batteryFrame(r, status)
 	render.HLine(img, body.Min.X, body.Min.Y, body.Max.X, line)
 	render.HLine(img, body.Min.X, body.Max.Y-line, body.Max.X, line)
 	render.VLine(img, body.Min.X, body.Min.Y, body.Max.Y, line)
 	render.VLine(img, body.Max.X-line, body.Min.Y, body.Max.Y, line)
-	render.FillSolid(img, image.Rect(body.Max.X, body.Min.Y+r.Dy()/3, r.Max.X, body.Max.Y-r.Dy()/3))
+	nubH := r.Dy() / 2
+	render.FillSolid(img, image.Rect(body.Max.X, r.Min.Y+(r.Dy()-nubH)/2, r.Max.X, r.Min.Y+(r.Dy()+nubH)/2))
 	inner := body.Inset(line + 1)
 	if inner.Empty() {
 		return
 	}
-	if status != nil && status.Percent != nil {
-		percent := max(0, min(100, *status.Percent))
-		fill := inner
-		fill.Max.X = inner.Min.X + int(float64(inner.Dx())*percent/100)
-		render.FillSolid(img, fill)
+	percent, ok := batteryPercent(status)
+	if ok {
+		fillBattery(img, inner, line, percent)
 	}
-	if status != nil && status.Charging && inner.Dx() > 4 && inner.Dy() > 4 {
-		box := image.Rect(inner.Min.X+inner.Dx()/3, inner.Min.Y, inner.Min.X+inner.Dx()*2/3, inner.Max.Y)
-		render.FillColor(img, box, render.White)
-		cx := box.Min.X + box.Dx()/2
-		render.Segment(img, cx+box.Dx()/4, box.Min.Y+box.Dy()/6, cx-box.Dx()/4, box.Min.Y+box.Dy()/2, line, false)
-		render.Segment(img, cx-box.Dx()/4, box.Min.Y+box.Dy()/2, cx+box.Dx()/4, box.Max.Y-box.Dy()/6, line, false)
+	switch {
+	case !ok:
+		// A missing reading keeps the outline and adds a slash, so it does not
+		// look like an empty battery.
+		drawBatterySlash(img, inner, line)
+	case status.Charging:
+		drawBatteryBolt(img, inner)
+	}
+}
+
+// fillBattery draws the charge in five segments, each filled or empty. A step
+// is wider than one pixel, so 84 % and 100 % differ at a glance.
+func fillBattery(img *image.Paletted, inner image.Rectangle, line int, percent float64) {
+	segs := 5
+	if inner.Dx() < 20 {
+		segs = 4
+	}
+	if inner.Dx() < 8 {
+		segs = 1
+	}
+	gap := max(1, line)
+	if inner.Dx() < segs*3 {
+		gap = 0
+	}
+	filled := int(float64(segs)*percent/100 + 0.5)
+	if filled == 0 && percent > 0 {
+		filled = 1
+	}
+	segW := (inner.Dx() - (segs-1)*gap) / segs
+	if segW < 1 {
+		segs, filled, segW, gap = 1, 1, inner.Dx(), 0
+	}
+	for i := 0; i < filled; i++ {
+		x0 := inner.Min.X + i*(segW+gap)
+		x1 := x0 + segW
+		if i == segs-1 {
+			x1 = inner.Max.X
+		}
+		render.FillSolid(img, image.Rect(x0, inner.Min.Y, x1, inner.Max.Y))
+	}
+}
+
+// drawBatterySlash marks a gauge without a reading: one diagonal line inside
+// the outline.
+func drawBatterySlash(img *image.Paletted, inner image.Rectangle, line int) {
+	m := max(1, inner.Dx()/8)
+	render.Segment(img, inner.Min.X+m, inner.Max.Y-m-1, inner.Max.X-m-1, inner.Min.Y+m, line, false)
+}
+
+// boltShape is the charging mark as a polygon in a unit box: the usual
+// lightning shape, drawn over the fill instead of a band cut out of it.
+var boltShape = [6][2]float64{
+	{0.54, 0.03}, {0.12, 0.58}, {0.42, 0.58}, {0.36, 0.97}, {0.84, 0.42}, {0.54, 0.42},
+}
+
+// drawBatteryBolt knocks the charging mark out of the charge, white on the fill
+// and black on the empty part, so the mark stays visible on both.
+func drawBatteryBolt(img *image.Paletted, inner image.Rectangle) {
+	bw := inner.Dx() * 6 / 10
+	bh := inner.Dy()
+	if bw < 3 || bh < 4 {
+		return
+	}
+	x0 := inner.Min.X + (inner.Dx()-bw)/2
+	pts := make([]image.Point, len(boltShape))
+	for i, p := range boltShape {
+		pts[i] = image.Point{X: x0 + int(p[0]*float64(bw)), Y: inner.Min.Y + int(p[1]*float64(bh))}
+	}
+	for y := inner.Min.Y; y < inner.Max.Y; y++ {
+		yc := float64(y) + 0.5
+		var xs []float64
+		for i, p := range pts {
+			q := pts[(i+1)%len(pts)]
+			if p.Y == q.Y || yc < float64(min(p.Y, q.Y)) || yc >= float64(max(p.Y, q.Y)) {
+				continue
+			}
+			xs = append(xs, float64(p.X)+(yc-float64(p.Y))/float64(q.Y-p.Y)*float64(q.X-p.X))
+		}
+		sort.Float64s(xs)
+		for i := 0; i+1 < len(xs); i += 2 {
+			x1, x2 := int(xs[i]+0.5), int(xs[i+1]+0.5)
+			if x2 < x1+1 {
+				x2 = x1 + 1
+			}
+			invertRect(img, image.Rect(max(x1, inner.Min.X), y, min(x2, inner.Max.X), y+1))
+		}
+	}
+}
+
+// invertRect swaps the pixels of r between black and white.
+func invertRect(img *image.Paletted, r image.Rectangle) {
+	r = r.Intersect(img.Rect)
+	last := uint8(len(img.Palette) - 1)
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		for x := r.Min.X; x < r.Max.X; x++ {
+			i := img.PixOffset(x, y)
+			img.Pix[i] = last - img.Pix[i]
+		}
 	}
 }

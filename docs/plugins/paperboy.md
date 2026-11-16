@@ -24,8 +24,8 @@ cells:
 
 ## Widgets
 
-- `header`: page header. Args: `title` (default the page title), `subtitle`, `clock`, `date` (weekday and date before the clock, in the longest of four forms that fits, e.g. „Samstag, 7. November 2026“, „Sa, 7.11.2026“, „Sa, 7.11.“, „7.11.“; left out when none fits), `page_indicator`, `align` (`left`, `center` or `right`, default `left`) and `battery` (default `false`: an icon and the charge of this device at the right).
-- `battery`: the battery of one device as an icon with a label. Args: `device` (id; default the device that shows the page), `label` (`auto`, `percent`, `volts` or `none`, default `auto`: the percentage, otherwise the voltage) and `align` (`left`, `center` or `right`, default `center`). Without a reading the widget shows an empty outline and `-`. On text displays the widget shows the percentage or voltage without an icon.
+- `header`: page header. Args: `title` (default the page title), `subtitle`, `clock`, `date` (weekday and date before the clock, in the longest of four forms that fits, e.g. „Samstag, 7. November 2026“, „Sa, 7.11.2026“, „Sa, 7.11.“, „7.11.“; left out when none fits), `page_indicator`, `align` (`left`, `center` or `right`, default `left`) and `battery` (default `false`: the gauge of this device at the right, without a number; a text display shows the percentage instead).
+- `battery`: the battery of one device as a gauge with a label. Args: `device` (id; default the device that shows the page), `label` (`auto`, `percent`, `volts` or `none`, default `auto`: the percentage, otherwise the voltage) and `align` (`left`, `center` or `right`, default `center`). Spans: `1x1`, `2x1` and `3x1` put the value beside the gauge, `2x2` puts it below the gauge ([ADR 0121](../adr/0121-segmented-battery-gauge.md)). The gauge fills the cell height and draws the charge in four or five segments, so 84 % and 100 % differ at a glance. A bolt marks a charging battery. A slash marks a missing reading instead of an empty outline, and `-` replaces the value. A `warn` or `critical` level thickens the outline. The value shrinks to keep the gauge, and it wins when the cell is too narrow for both. On text displays the widget shows the percentage or voltage without a gauge.
 - `device-status`: one row per device with battery, estimated runtime and the time since the last contact. Args: `devices` (ids; default the device that shows the page), `battery`, `runtime` and `seen` (each `bool`, default `true`). A device that is overdue carries `!`; a device that never contacted Paperboy or has no device file carries `?`. The stalest device comes first. On text displays one device is one line.
 - `text`: fixed text. Args: `text` (with `\n` for line breaks), `align` (`left`, `center` or `right`, default `center`), `size`, `bold`.
 - `clock`: the current time. Args: `format` (`time`, `date` or `datetime`, default `time`).
@@ -36,6 +36,7 @@ cells:
 - { at: [0, 0], span: [6, 1], widget: paperboy/header, args: { battery: true } }
 - { at: [0, 1], span: [6, 2], widget: paperboy/device-status }
 - { at: [0, 3], span: [6, 2], widget: paperboy/device-status, args: { devices: [wohnzimmer, flur] } }
+- { at: [0, 5], span: [2, 2], widget: paperboy/battery }
 ```
 
 Arguments with a fixed set of values reject anything else ([ADR 0055](../adr/0055-allowed-arg-values-and-gallery-form.md)); the Playground offers them as choices.

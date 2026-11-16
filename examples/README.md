@@ -11,8 +11,9 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
 - `uebersicht.yaml` - weather, energy flow from evcc, agenda and a three-day
   forecast.
 - `status.yaml` - the battery of this device in the header, the status of this
-  device and of two devices from the device files, and the battery as a large
-  widget. Image displays only: a text page shows plugin values (ADR 0111).
+  device and of two devices from the device files, and two batteries as large
+  gauges with the clock beside them. Image displays only: a text page shows
+  plugin values (ADR 0111).
 - `kalender.yaml` - agenda next to a month grid.
 - `woche.yaml` - the next seven days as calendar columns.
 - `wetter.yaml` - current weather with clothing advice, five days and today's
