@@ -31,7 +31,7 @@ The result is data and requests for pages that no display shows. A device that s
 ## Consequences
 
 - The protocol gains one inbound event. Older plugins are not sent it; newer plugins ignore an event they do not know.
-- A protocol 9 plugin can run on an older Paperboy, which sends no schedule. It must keep its own timer then; the request's `version` says which host runs it. Myskoda is the reference: it uses `Demand` on version 9 and polls on its interval below that.
+- Version 9 is not backward compatible for a migrated plugin: it needs a Paperboy that sends the schedule. A host below 9 is refused with a clear error, because otherwise the plugin would idle forever. Paperboy 9 still accepts an older plugin, which ignores the event.
 - Every plugin binary changes and raises its version (ADR 0075, 0107) because `pkg/plugin` changed.
 - The prediction can be wrong: a late device, a button press or a rule switch by a condition. The effect is at most one sync with older data, never a missing page or a timeout, because the plugin answers from memory.
 - A plugin used only for a condition cannot be skipped, but it idles between contacts; otherwise the alert page never appears.

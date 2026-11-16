@@ -691,3 +691,14 @@ func TestValuesFollowFahrenheit(t *testing.T) {
 		t.Fatalf("climate-temperature = %+v", v)
 	}
 }
+
+func TestConfigureRequiresProtocolNine(t *testing.T) {
+	m := &myskoda{}
+	cfg := plugin.Values{"api_key": "secret", "vin": "TMBJB9NY5RF999999"}
+	if err := m.Configure(cfg, &plugin.Request{Version: 8}); err == nil || !strings.Contains(err.Error(), "protocol 9") {
+		t.Fatalf("an older Paperboy was accepted: %v", err)
+	}
+	if err := m.Configure(cfg, &plugin.Request{Version: 9}); err != nil {
+		t.Fatalf("protocol 9 was refused: %v", err)
+	}
+}

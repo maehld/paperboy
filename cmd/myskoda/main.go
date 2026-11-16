@@ -300,9 +300,6 @@ type myskoda struct {
 	vin     string
 	base    string
 	refresh time.Duration
-	// hostProto is the protocol the running Paperboy reports. Below 9 it sends
-	// no schedule, so the plugin keeps its own timer (ADR 0126).
-	hostProto int
 
 	readyOnce sync.Once
 
@@ -405,6 +402,9 @@ func (m *myskoda) Describe() plugin.Description {
 }
 
 func (m *myskoda) Configure(cfg plugin.Values, req *plugin.Request) error {
+	if req.Version != 0 && req.Version < 9 {
+		return fmt.Errorf("myskoda needs Paperboy protocol 9 or newer; this Paperboy reports %d", req.Version)
+	}
 	if err := cfg.Check(configKeys); err != nil {
 		return err
 	}
@@ -429,7 +429,6 @@ func (m *myskoda) Configure(cfg plugin.Values, req *plugin.Request) error {
 		refresh = minRefresh
 	}
 	m.base, m.refresh = base.String(), refresh
-	m.hostProto = req.Version
 	return nil
 }
 
@@ -624,21 +623,8 @@ func (m *myskoda) Start(ctx context.Context, notify func(widgets ...string)) {
 		}
 		m.signalReady()
 
-		waitForDemand := func() bool {
-			if m.hostProto >= 9 {
-				return m.Wait(ctx, 0)
-			}
-			// An older Paperboy sends no schedule: keep the plugin's timer.
-			select {
-			case <-ctx.Done():
-				return false
-			case <-time.After(m.refresh):
-				return true
-			}
-		}
-
 		for {
-			if !waitForDemand() {
+			if !m.Wait(ctx, 0) {
 				return
 			}
 			// The plugin's refresh interval or an API wait can be later than

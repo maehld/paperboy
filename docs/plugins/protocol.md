@@ -347,9 +347,10 @@ schedule ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)):
   `next_refresh` minus 30 seconds, wakes on a new schedule, and never returns
   earlier than `floor` after the call. A plugin calls it after each fetch, so
   the floor counts from the end of the fetch. With no demand it blocks.
-- On a Paperboy below 9 no schedule arrives, because Paperboy gates the event
-  on the plugin version. A plugin that migrates checks the request `version`
-  and keeps its own timer on an older host.
+- A plugin that uses the schedule requires Paperboy 9 or newer. It checks the
+  request `version` and refuses an older host; otherwise it would idle forever.
+  The reverse still works: Paperboy 9 accepts an older plugin, which ignores the
+  event.
 
 ## Arguments
 
