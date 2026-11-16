@@ -272,6 +272,14 @@ type historyRow struct {
 	from, to     string
 }
 
+// today is the date range of the request's day, from inclusive and to
+// exclusive: the widget and the daily values use the same range.
+func (e *evcc) today() (from, to string) {
+	now := e.req.Now.In(e.req.Location())
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	return date(day), date(day.AddDate(0, 0, 1))
+}
+
 func (e *evcc) historyRows() []historyRow {
 	now := e.req.Now.In(e.req.Location())
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
@@ -279,7 +287,7 @@ func (e *evcc) historyRows() []historyRow {
 	monday := day.AddDate(0, 0, -((int(day.Weekday()) + 6) % 7))
 	month := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 	year := time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
-	today, tomorrow := date(day), date(day.AddDate(0, 0, 1))
+	today, tomorrow := e.today()
 	return []historyRow{
 		{e.t("Heute", "Today"), e.t("Heute", "Today"), today, tomorrow},
 		{e.t("Gestern", "Yesterday"), e.t("Gestern", "Yesterday"), date(day.AddDate(0, 0, -1)), today},
@@ -370,6 +378,41 @@ func (e *evcc) historySum(list []energyPoint, row historyRow, metric string) flo
 		}
 	}
 	return sum
+}
+
+// historyToday adds today's bucket of one series, the day the history widget
+// shows as "Today". ok is false while the history has no such series: evcc has
+// no energy database or reports no meter for it. A series without a bucket for
+// today is zero, not missing.
+func (e *evcc) historyToday(key, metric string) (float64, bool) {
+	days, _, _ := e.historyData()
+	list, ok := days[key]
+	if !ok {
+		return 0, false
+	}
+	from, to := e.today()
+	return e.historySum(list, historyRow{from: from, to: to}, metric), true
+}
+
+// chargeToday is the energy charged today: one loadpoint with index, all
+// loadpoints of /api/state without it (ADR 0120). A loadpoint without a series
+// in the history is left out; without any series the answer is missing.
+func (e *evcc) chargeToday(index int, one bool) (float64, bool) {
+	if one {
+		if index < 0 || index >= len(e.cur.Loadpoints) {
+			return 0, false
+		}
+		return e.historyToday(loadpointKey(e.cur.Loadpoints[index].Title), "energy")
+	}
+	var sum float64
+	found := false
+	for _, lp := range e.cur.Loadpoints {
+		if v, ok := e.historyToday(loadpointKey(lp.Title), "energy"); ok {
+			sum += v
+			found = true
+		}
+	}
+	return sum, found
 }
 
 // kwh formats a value of the history: one decimal below 100 kWh, none above,

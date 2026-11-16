@@ -13,7 +13,7 @@
 //     charging point,
 //   - "chart": one of those series as bars over a day, week, month or year,
 //   - "values": the values of /api/state, such as meter readings, prices and
-//     evcc's charging statistics.
+//     evcc's charging statistics, and the energy of today.
 //
 // All widgets are for image displays; the values below give a text page the
 // same numbers.

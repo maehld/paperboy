@@ -1,9 +1,11 @@
-# evcc values without a graph: meter readings and charging statistics.
+# evcc values without a graph: today's energy next to meter readings and
+# charging statistics.
 title: Werte
 kind: image
 grid: [6, 8]
 style: { padding: 4.5, divider: 0.6 }
 cells:
   - { at: [0, 0], span: [6, 1], widget: paperboy/header }
-  - { at: [0, 1], span: [3, 7], widget: evcc/values, args: { values: [pv-energy, grid-import, grid-export, battery-charge, battery-discharge] } }
-  - { at: [3, 1], span: [3, 7], widget: evcc/values, args: { values: [charge-total, charge-total-solar, charge-total-price, charge-year, charge-year-solar, charge-year-price] } }
+  - { at: [0, 1], span: [3, 7], widget: evcc/values, args: { values: [pv-today, home-today, grid-import-today, grid-export-today, battery-charge-today, battery-discharge-today, charge-today] } }
+  - { at: [3, 1], span: [3, 4], widget: evcc/values, args: { values: [pv-energy, grid-import, grid-export, battery-charge, battery-discharge] } }
+  - { at: [3, 5], span: [3, 3], widget: evcc/values, args: { values: [charge-total, charge-total-solar, charge-total-price, charge-year, charge-year-solar, charge-year-price] } }

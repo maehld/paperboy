@@ -196,7 +196,10 @@ func TestHistoryErrors(t *testing.T) {
 	}
 }
 
-func TestHistoryWithoutEndpoint(t *testing.T) {
+// newStateOnlyPlugin starts a plugin against a server without the energy
+// history: an evcc without the energy database.
+func newStateOnlyPlugin(t *testing.T) (*evcc, *plugin.Request) {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/state" {
 			w.Write([]byte(stateJSON))
@@ -217,6 +220,11 @@ func TestHistoryWithoutEndpoint(t *testing.T) {
 	if err := e.Prepare(req); err != nil {
 		t.Fatal(err)
 	}
+	return e, req
+}
+
+func TestHistoryWithoutEndpoint(t *testing.T) {
+	e, req := newStateOnlyPlugin(t)
 	// An evcc without the history database leaves the other widgets alone.
 	img := render.NewCanvas(400, 200, 4)
 	if err := e.Render(req, plugin.WidgetRequest{Widget: "site", Width: 400, Height: 200,

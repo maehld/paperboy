@@ -18,7 +18,7 @@ Shows data from [evcc](https://evcc.io) over its REST API: live values from `/ap
 - `forecast`: solar forecast as an area and the grid price as steps for the next `hours` (default 24). Image only.
 - `history`: energy totals for today, yesterday, this week (from Monday), last week, this month, last month and this year. Args: `source` (`pv` default, `battery`, `loadpoint`, `grid` or `home`), `metric` (`energy` default, or `return` for the battery's discharge and the grid's export) and `index` (the loadpoint of `/api/state`, default 0). The values come from evcc's energy history (`/api/history/energy`, one request per group with day buckets), so a year is one request; the long periods drop first when the cell is too small. The battery and the grid show the charged or discharged, imported or exported energy, the loadpoint its charged energy.
 - `chart`: one series as bars, with the same `source`, `metric` and `index`. `period` selects what the bars are: `today` and `yesterday` one hour each, `week` and `last_week` one day each, `month` and `last_month` one day each, `year` (default) and `last_year` one month each. The heading names the series and the period, the value at the top right is the sum of the bars, the kWh axis stands on the right. Long labels thin out when the cell is narrow; a value dial is not drawn on the bars. Image only.
-- `values`: the values evcc reports in `/api/state`, one row each with a label and a value. `values` selects them (a list, one check box per entry in the editor), `columns` (`1` to `4`, default 1) puts several next to each other for a wide, flat cell. The entries that do not fit are left out.
+- `values`: the values evcc reports in `/api/state` and its energy history, one row each with a label and a value. `values` selects them (a list, one check box per entry in the editor), `columns` (`1` to `4`, default 1) puts several next to each other for a wide, flat cell. The entries that do not fit are left out.
 
 | `values` key | Shows |
 |---|---|
@@ -30,7 +30,11 @@ Shows data from [evcc](https://evcc.io) over its REST API: live values from `/ap
 | `battery-charge`, `battery-discharge` | charged and discharged energy since the installation |
 | `charge-total`, `charge-total-solar`, `charge-total-price` | evcc's charging statistics over all sessions: energy, solar share, average price |
 | `charge-year`, `charge-year-solar`, `charge-year-price` | the same for this year |
-| `solar-today`, `solar-tomorrow` | the solar forecast of today and tomorrow |
+| `pv-today`, `home-today` | PV yield and home consumption of today |
+| `grid-import-today`, `grid-export-today` | grid import and export of today |
+| `battery-charge-today`, `battery-discharge-today` | battery charged and discharged today |
+| `charge-today` | energy of the charging sessions of today, of all loadpoints |
+| `forecast-today`, `forecast-tomorrow` | the solar forecast of today and tomorrow |
 
 The values are exactly what evcc reports. Paperboy does not derive numbers of its own: autarky, savings and the self-consumed share that evcc's energy page shows are computed in evcc's web UI from the history and the tariffs and have no API of their own; CO₂ needs a CO₂ tariff.
 
@@ -51,7 +55,12 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 | `charge-total-solar` | number | % | 0 | solar share of all sessions |
 | `charge-total-price` | number | ct/kWh | 1 | average price of all sessions |
 | `charge-year`, `charge-year-solar`, `charge-year-price` | | | | the same for this year |
-| `solar-today`, `solar-tomorrow` | number | kWh | 1 | solar forecast of today and tomorrow |
+| `pv-today` | number | kWh | 1 | PV yield of today |
+| `home-today` | number | kWh | 1 | home consumption of today |
+| `grid-import-today`, `grid-export-today` | number | kWh | 1 | grid import and export of today |
+| `battery-charge-today`, `battery-discharge-today` | number | kWh | 1 | battery charged and discharged today |
+| `charge-today` | number | kWh | 1 | energy of the charging sessions of today |
+| `forecast-today`, `forecast-tomorrow` | number | kWh | 1 | solar forecast of today and tomorrow |
 | `loadpoint` | text | | | vehicle or name of the first loadpoint |
 | `loadpoint-mode` | text | | | its charge mode |
 | `loadpoint-status` | text | | | charging, connected or not connected |
@@ -65,7 +74,9 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 
 The loadpoint values read the argument `index`, the loadpoint counted from 0 (default 0), like the `loadpoint` widget. A `values` request carries one argument set, so the other values ignore it.
 
-The history needs an evcc with the energy database (the *Energie* page in evcc's UI). An older evcc leaves the other widgets working: the history cell shows the HTTP error instead of values.
+The daily values read the same cached energy history as the `history` widget, so a page and the widget agree. They are as current as the last `history_refresh` (15 minutes by default). That loop reports a change, so the page asks again after a refresh. `charge-today` follows the loadpoint values: it sums all loadpoints of `/api/state` without `index` and reports one with it. The history carries no solar share per day, so there is no `charge-today-solar`.
+
+The history needs an evcc with the energy database (the *Energie* page in evcc's UI). An older evcc leaves the other widgets working: the history cell shows the HTTP error instead of values, and the daily values answer `–`. That dash is never an error, and the instant values keep working.
 
 ```yaml
 cells:
