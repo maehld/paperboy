@@ -127,33 +127,35 @@ type editorPlanRow struct {
 // editorPageView is the shell of one page; the script reads the model, the
 // plugin list and the profiles from the API.
 type editorPageView struct {
-	Version       string
-	GoVersion     string
-	Name          string
-	Display       string // the preview type (ADR 0110)
-	Text          bool
-	Error         string
-	File          string        // the label of the open file; empty: the page file
-	FilePath      string        // pages/<name>[.<label>].yaml
-	Notice        string        // the preview type is not the file the editor shows
-	NoticeWarn    bool          // the notice is a warning, not a hint
-	Orphan        bool          // the open variant has no page file
-	NoPage        bool          // the page has no page file
-	IsVariant     bool          // a variant is open; the page file owns the map
-	VariantTypes  []string      // display types that name the open variant, read-only
-	PageTitle     string        // title of the page file, shown read-only on a variant
-	ParentURL     string        // the page file of an open variant
-	ParentTitle   string        // its path, for the link
-	WidgetsPage   bool          // the widgets page without a page (ADR 0055)
-	TextPage      bool          // a text page: rows are edited instead of cells
-	Cells         []page.Cell   // server-rendered boxes for the no-JS view
-	Displays      []displayLink // display type switch of the widgets page
-	Serves        []servesRow   // each configured display type and its file
-	CreateTypes   []variantType // the display types the create dialog offers
-	CreateLabel   string        // the label the create dialog starts with
-	CreateOK      bool          // a display type waits for a variant
-	ReassignPages []uiOption    // the other pages with a page file (ADR 0110)
-	Data          template.JS   // the starting state of the script
+	Version        string
+	GoVersion      string
+	Name           string
+	Display        string // the preview type (ADR 0110)
+	Text           bool
+	Error          string
+	File           string        // the label of the open file; empty: the page file
+	FilePath       string        // pages/<name>[.<label>].yaml
+	Notice         string        // the preview type is not the file the editor shows
+	NoticeWarn     bool          // the notice is a warning, not a hint
+	Orphan         bool          // the open variant has no page file
+	NoPage         bool          // the page has no page file
+	IsVariant      bool          // a variant is open; the page file owns the map
+	VariantTypes   []string      // display types that name the open variant, read-only
+	PageTitle      string        // title of the page file, shown read-only on a variant
+	ParentURL      string        // the page file of an open variant
+	ParentTitle    string        // its path, for the link
+	WidgetsPage    bool          // the widgets page without a page (ADR 0055)
+	TextFallback   bool          // the Playground fell back from a text display type (ADR 0124)
+	NoImageDisplay bool          // the Playground has no image display type to show (ADR 0124)
+	TextPage       bool          // a text page: rows are edited instead of cells
+	Cells          []page.Cell   // server-rendered boxes for the no-JS view
+	Displays       []displayLink // display type switch of the widgets page
+	Serves         []servesRow   // each configured display type and its file
+	CreateTypes    []variantType // the display types the create dialog offers
+	CreateLabel    string        // the label the create dialog starts with
+	CreateOK       bool          // a display type waits for a variant
+	ReassignPages  []uiOption    // the other pages with a page file (ADR 0110)
+	Data           template.JS   // the starting state of the script
 }
 
 // servesRow is one configured display type in the Variants table: the file
@@ -247,6 +249,19 @@ type editorDisplayInfo struct {
 // displayNames lists the configured display types alphabetically.
 func displayNames(cfg *Config) []string {
 	return sortedDisplays(cfg.Profiles)
+}
+
+// imageDisplayNames lists the configured image display types alphabetically.
+// The Playground offers only these: text pages are authored in the page editor
+// (ADR 0124).
+func imageDisplayNames(cfg *Config) []string {
+	names := []string{}
+	for _, n := range displayNames(cfg) {
+		if !cfg.Profiles[n].text() {
+			names = append(names, n)
+		}
+	}
+	return names
 }
 
 func sortedDisplays(displays map[string]Profile) []string {
@@ -1161,19 +1176,15 @@ func editorStateData(state editorState) template.JS {
 
 // widgetsStateData encodes the starting state of the widgets page: the display
 // type plus the widget, its size and its args when the link carries them. The
-// types of the args are read in the script, where the plugin schema is known.
+// page is always the image grid, because the Playground offers image display
+// types only (ADR 0124). The types of the args are read in the script, where the
+// plugin schema is known.
 func widgetsStateData(display string, p Profile, widget string, span [2]int, args map[string]string) template.JS {
 	state := editorState{Display: display, WidgetsPage: true, Widget: widget, Args: args,
-		Reference: defaultGrid, Width: p.Width, Height: p.Height}
+		Reference: defaultGrid, Width: p.Width, Height: p.Height,
+		Kind: page.KindImage, Grid: defaultGrid}
 	if span[0] > 0 && span[1] > 0 {
 		state.Span = &span
-	}
-	if p.text() {
-		state.Kind = page.KindText
-		state.Grid = [2]int{p.Width, p.Height}
-	} else {
-		state.Kind = page.KindImage
-		state.Grid = defaultGrid
 	}
 	data, err := json.Marshal(state)
 	if err != nil { // never expected: only strings and numbers

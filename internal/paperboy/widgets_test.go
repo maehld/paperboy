@@ -53,7 +53,8 @@ func TestWidgetEndpoint(t *testing.T) {
 
 // TestWidgetsPage is the widgets page: the palette and the inspector of the page
 // editor around one widget, with the cell to copy (ADR 0055). It is the whole
-// page — the gallery it once shared the page with is gone (ADR 0077).
+// page — the gallery it once shared the page with is gone (ADR 0077). The page
+// offers image display types only (ADR 0124).
 func TestWidgetsPage(t *testing.T) {
 	s, _ := testServer(t)
 	s.config().Profiles["lcd"] = Profile{Kind: kindText, Charset: "ascii", Width: 20, Height: 4}
@@ -61,7 +62,7 @@ func TestWidgetsPage(t *testing.T) {
 
 	body := preview(t, s, "/ui/plugins").Body.String()
 	for _, want := range []string{
-		`"widgets_page":true`, `"display":"small"`, `id="palette"`, `id="inspector"`, `id="snippet"`,
+		`"widgets_page":true`, `"display":"small"`, `"kind":"image"`, `id="palette"`, `id="inspector"`, `id="snippet"`,
 		`id="preview-img"`, "Copy cell",
 	} {
 		if !strings.Contains(body, want) {
@@ -77,7 +78,7 @@ func TestWidgetsPage(t *testing.T) {
 
 	// The link carries the widget, its size and its args, and the display type
 	// switch keeps them too, so a click opens the same cell on another type
-	// (issue #171).
+	// (issue #171). Text display types are not offered (ADR 0124).
 	body = preview(t, s, "/ui/plugins?display=small&widget=paperboy/clock&span=3x2&arg.format=date&arg.date=dd").Body.String()
 	for _, want := range []string{`"widget":"paperboy/clock"`, `"span":[3,2]`, `"format":"date"`} {
 		if !strings.Contains(body, want) {
@@ -89,20 +90,31 @@ func TestWidgetsPage(t *testing.T) {
 	switchBox = strings.ReplaceAll(switchBox, "&amp;", "&")
 	for _, want := range []string{
 		`data-display="small"`,
-		`data-display="lcd"`,
 		`href="/ui/plugins?arg.date=dd&arg.format=date&display=small&span=3x2&widget=paperboy%2Fclock"`,
-		`href="/ui/plugins?arg.date=dd&arg.format=date&display=lcd&span=3x2&widget=paperboy%2Fclock"`,
 	} {
 		if !strings.Contains(switchBox, want) {
 			t.Fatalf("display type switch misses %q: %s", want, switchBox)
 		}
 	}
+	for _, unwanted := range []string{`data-display="lcd"`, `display=lcd`} {
+		if strings.Contains(switchBox, unwanted) {
+			t.Fatalf("display type switch still offers the text type (%q): %s", unwanted, switchBox)
+		}
+	}
 
-	// A text display starts from its character grid.
-	body = preview(t, s, "/ui/plugins?display=lcd&widget=paperboy/text").Body.String()
-	for _, want := range []string{`"kind":"text"`, `"width":20`, `"height":4`, `"grid":[20,4]`} {
+	// A link with a text display type falls back to an image type and names the
+	// page editor, because a text page is a character grid of boxes and no cell
+	// the Playground makes is valid in it (ADR 0111, 0124).
+	body = preview(t, s, "/ui/plugins?display=lcd&widget=paperboy/text&span=20x4").Body.String()
+	for _, want := range []string{`"display":"small"`, `"kind":"image"`, `"grid":[6,8]`,
+		`id="playground-notice"`, `href="/ui/editor?tab=pages"`, "Text displays are edited under"} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("text widgets page misses %q: %s", want, body)
+			t.Fatalf("text display fallback misses %q: %s", want, body)
+		}
+	}
+	for _, unwanted := range []string{`"kind":"text"`, `"grid":[20,4]`, `"span":`, `data-display="lcd"`} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("text display fallback still shows %q: %s", unwanted, body)
 		}
 	}
 
@@ -112,5 +124,49 @@ func TestWidgetsPage(t *testing.T) {
 	}
 	if !strings.Contains(preview(t, s, "/ui").Body.String(), `href="/ui/plugins"`) {
 		t.Fatal("dashboard does not link the widgets page")
+	}
+}
+
+// TestWidgetsPageTextOnly is an instance with text display types only: the
+// Playground says where text pages are edited instead of failing (ADR 0124).
+// GET /api/widget still answers text widgets, because the protocol keeps the
+// text action for older plugins.
+func TestWidgetsPageTextOnly(t *testing.T) {
+	s, _ := testServer(t)
+	delete(s.config().Profiles, "small")
+	s.config().Profiles["lcd"] = Profile{Kind: kindText, Charset: "ascii", Width: 20, Height: 4}
+	s.config().Timezone = time.UTC
+
+	for _, path := range []string{"/ui/plugins", "/ui/plugins?display=lcd", "/ui/plugins?display=small"} {
+		rec := preview(t, s, path)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
+		}
+		body := rec.Body.String()
+		for _, want := range []string{`id="playground-notice"`, "Every configured display type is a text display",
+			`href="/ui/editor?tab=pages"`} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s misses %q: %s", path, want, body)
+			}
+		}
+		if strings.Contains(body, `id="palette"`) {
+			t.Fatalf("%s still renders the image palette: %s", path, body)
+		}
+	}
+
+	rec := preview(t, s, "/api/widget/paperboy/text?display=lcd&arg.text=Hi")
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/plain; charset=utf-8" {
+		t.Fatalf("text widget with a text-only instance: %d %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	lines := strings.Split(strings.TrimRight(rec.Body.String(), "\n"), "\n")
+	if len(lines) != 4 || strings.TrimSpace(lines[0]) != "Hi" || len(lines[0]) != 20 {
+		t.Fatalf("text widget lines: %q", rec.Body.String())
+	}
+
+	// No display type at all is a configuration error, not a text-only instance.
+	delete(s.config().Profiles, "lcd")
+	if rec := preview(t, s, "/ui/plugins"); rec.Code != http.StatusBadRequest ||
+		!strings.Contains(rec.Body.String(), "no display type is configured") {
+		t.Fatalf("no display type: %d %s", rec.Code, rec.Body)
 	}
 }

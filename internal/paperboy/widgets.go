@@ -179,24 +179,39 @@ func firstLine(s string) string {
 // handleWidgetsPage is the widgets page: the page editor without a page — the
 // palette and the inspector of the editor around one widget, its rendered
 // preview and the cell to paste into a page (ADR 0055, 0068). The link keeps
-// the widget, its size and its args, so a view can be shared.
+// the widget, its size and its args, so a view can be shared. The page offers
+// image display types only; text pages are authored in the page editor
+// (ADR 0124).
 func (s *Server) handleWidgetsPage(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	q := r.URL.Query()
-	display := editorDisplay(cfg, q.Get("display"))
 	version, goVersion := editorVersion(cfg)
-	v := editorPageView{Version: version, GoVersion: goVersion, Display: display, WidgetsPage: true}
-	p, ok := cfg.Profiles[display]
-	if !ok {
+	v := editorPageView{Version: version, GoVersion: goVersion, WidgetsPage: true}
+	display, fellBack := playgroundDisplay(cfg, q.Get("display"))
+	switch {
+	case display == "" && len(displayNames(cfg)) == 0:
 		v.Error = "no display type is configured; add one under displays/"
 		renderEditorPage(w, v, http.StatusBadRequest)
 		return
+	case display == "":
+		// Every configured display type is a text display: the Playground has
+		// no widgets to offer (ADR 0124).
+		v.NoImageDisplay = true
+		renderEditorPage(w, v, http.StatusOK)
+		return
 	}
-	v.Text = p.text()
+	v.Display = display
+	v.TextFallback = fellBack
+	if fellBack {
+		// A text span counts characters, not cells of the reference grid, so the
+		// fallback starts from the default size instead (ADR 0124).
+		q.Del("span")
+	}
+	p := cfg.Profiles[display]
 	// The display type switch keeps the widget, its size and its args, so
 	// changing the display type does not drop the cell (issue #171).
 	link := widgetLinkParams(q)
-	for _, n := range displayNames(cfg) {
+	for _, n := range imageDisplayNames(cfg) {
 		link.Set("display", n)
 		v.Displays = append(v.Displays, displayLink{Name: n, Selected: n == display,
 			URL: "/ui/plugins?" + link.Encode()})
@@ -207,6 +222,23 @@ func (s *Server) handleWidgetsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	v.Data = widgetsStateData(display, p, q.Get("widget"), span, widgetArgValues(q))
 	renderEditorPage(w, v, http.StatusOK)
+}
+
+// playgroundDisplay picks the display type of the Playground: the requested
+// image type, else the first image type. A requested text type falls back and
+// asks for the notice that names the page editor (ADR 0124).
+func playgroundDisplay(cfg *Config, requested string) (name string, fellBack bool) {
+	if p, ok := cfg.Profiles[requested]; ok && !p.text() {
+		return requested, false
+	}
+	names := imageDisplayNames(cfg)
+	if len(names) == 0 {
+		return "", false
+	}
+	if p, ok := cfg.Profiles[requested]; ok && p.text() {
+		fellBack = true
+	}
+	return names[0], fellBack
 }
 
 // widgetArgValues reads the non-empty arg.<name> values the operator chose for

@@ -613,25 +613,11 @@
       box.innerHTML = '<p class="hint">No plugin answered.</p>';
       return;
     }
-    const kind = text() ? 'text' : 'image';
+    // A text page returns above; the Playground shows image display types only
+    // (ADR 0124), so this palette lists image widgets and no text entry.
+    const kind = 'image';
     const filter = state.filter.trim().toLowerCase();
     let shown = 0;
-    if (!filter || 'text literal'.includes(filter)) {
-      const textButton = document.createElement('button');
-      textButton.type = 'button';
-      textButton.className = 'widget' + (state.placing && state.placing.literal ? ' active' : '');
-      textButton.textContent = 'Text — literal text';
-      const note = document.createElement('span');
-      note.className = 'note';
-      note.textContent = 'a plain label';
-      textButton.appendChild(note);
-      textButton.addEventListener('click', () => {
-        if (suppressPaletteClick) { suppressPaletteClick = false; return; }
-        pickTextLiteral();
-      });
-      box.appendChild(textButton);
-      shown++;
-    }
     for (const p of state.plugins) {
       const widgets = (p.description && p.description.widgets) || [];
       const fitting = widgets.filter((w) => !w.kinds || !w.kinds.length || w.kinds.includes(kind));
@@ -720,12 +706,10 @@
   }
 
   // setWidget puts one widget into the widgets page's single cell, at the first
-  // size its plugin declares (the whole display for text).
+  // size its plugin declares.
   function setWidget(plugin, widget) {
     const info = widgetInfo(plugin, widget);
-    let span = text()
-      ? [state.width, state.height]
-      : (info && info.sizes && info.sizes.length ? [info.sizes[0].columns, info.sizes[0].rows] : [2, 1]);
+    let span = info && info.sizes && info.sizes.length ? [info.sizes[0].columns, info.sizes[0].rows] : [2, 1];
     const grid = state.template.grid;
     span = [Math.max(1, Math.min(span[0], grid[0])), Math.max(1, Math.min(span[1], grid[1]))];
     state.template.cells = [{ at: [0, 0], span: span, widget: plugin + '/' + widget, args: {}, style: {} }];
@@ -2018,7 +2002,8 @@
         }
       }
     } else {
-      const first = firstWidget(text() ? 'text' : 'image');
+      // The Playground offers image display types only (ADR 0124).
+      const first = firstWidget('image');
       if (first) setWidget(first.plugin, first.widget);
     }
     renderAll();
