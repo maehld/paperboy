@@ -10,6 +10,8 @@ Shows data from [evcc](https://evcc.io) over its REST API: live values from `/ap
 | `refresh` | Poll interval for `/api/state`, default `30s`, at least `10s` |
 | `history_refresh` | Interval for the energy history, default `15m`, at least `1m` |
 
+**Demand:** Paperboy names the next moment a display needs evcc's data and the plugin reads then ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)). `refresh` and `history_refresh` are the minimum intervals; a page that no display shows costs no request. The plugin requires Paperboy protocol 9.
+
 ## Widgets
 
 - `site`: PV, home, grid with import/export, home battery or grid price. Args: `columns` (`2` or `4`, default 2).

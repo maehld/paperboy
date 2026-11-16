@@ -18,6 +18,8 @@ import (
 
 // calendarPlugin draws the calendar widgets "agenda", "month" and "week".
 type calendarPlugin struct {
+	plugin.Demand
+
 	opts options
 	loc  *time.Location
 	lang string
@@ -42,7 +44,21 @@ func (p *calendarPlugin) Start(ctx context.Context, notify func(widgets ...strin
 	go func() {
 		first := true
 		var last string
+		var next time.Time
 		for {
+			if !next.IsZero() {
+				if !p.Wait(ctx, 0) {
+					return
+				}
+				if wait := time.Until(next); wait > 0 {
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(wait):
+					}
+					continue
+				}
+			}
 			b, err := p.load(ctx)
 			p.mu.Lock()
 			if err != nil {
@@ -63,11 +79,7 @@ func (p *calendarPlugin) Start(ctx context.Context, notify func(widgets ...strin
 				close(p.ready)
 				first = false
 			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(p.opts.refresh):
-			}
+			next = time.Now().Add(p.opts.refresh)
 		}
 	}()
 }
@@ -215,6 +227,9 @@ func (p *calendarPlugin) calendarChoices() []any {
 
 // Configure reads the config section; the calendars load in Start.
 func (p *calendarPlugin) Configure(cfg plugin.Values, req *plugin.Request) error {
+	if req.Version != 0 && req.Version < 9 {
+		return fmt.Errorf("calendar needs Paperboy protocol 9 or newer; this Paperboy reports %d", req.Version)
+	}
 	o, err := parseConfig(cfg, req.Lang(), req.Location())
 	if err != nil {
 		return err

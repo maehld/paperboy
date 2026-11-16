@@ -131,6 +131,8 @@ var configKeys = map[string]plugin.Arg{
 
 // xkcd is the plugin.
 type xkcd struct {
+	plugin.Demand
+
 	mode    string // "latest", "random" or "number"
 	number  int
 	refresh time.Duration
@@ -168,6 +170,9 @@ func (x *xkcd) Describe() plugin.Description {
 }
 
 func (x *xkcd) Configure(cfg plugin.Values, req *plugin.Request) error {
+	if req.Version != 0 && req.Version < 9 {
+		return fmt.Errorf("xkcd needs Paperboy protocol 9 or newer; this Paperboy reports %d", req.Version)
+	}
 	if err := cfg.Check(configKeys); err != nil {
 		return err
 	}
@@ -239,7 +244,21 @@ func (x *xkcd) Start(ctx context.Context, notify func(widgets ...string)) {
 	x.ready = make(chan struct{})
 	go func() {
 		first := true
+		var next time.Time
 		for {
+			if !next.IsZero() {
+				if !x.Wait(ctx, 0) {
+					return
+				}
+				if wait := time.Until(next); wait > 0 {
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(wait):
+					}
+					continue
+				}
+			}
 			c, err := x.load(ctx)
 			wait := x.refresh
 			x.mu.Lock()
@@ -260,11 +279,7 @@ func (x *xkcd) Start(ctx context.Context, notify func(widgets ...string)) {
 				close(x.ready)
 				first = false
 			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(wait):
-			}
+			next = time.Now().Add(wait)
 		}
 	}()
 }

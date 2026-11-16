@@ -62,6 +62,8 @@ var timeModes = []any{"relative", "clock", "none"}
 
 // rss is the plugin.
 type rss struct {
+	plugin.Demand
+
 	client  *http.Client
 	refresh time.Duration
 	feeds   []feedSpec
@@ -164,7 +166,10 @@ func (p *rss) Describe() plugin.Description {
 	}
 }
 
-func (p *rss) Configure(cfg plugin.Values, _ *plugin.Request) error {
+func (p *rss) Configure(cfg plugin.Values, req *plugin.Request) error {
+	if req.Version != 0 && req.Version < 9 {
+		return fmt.Errorf("rss needs Paperboy protocol 9 or newer; this Paperboy reports %d", req.Version)
+	}
 	if err := cfg.Check(configKeys); err != nil {
 		return err
 	}
@@ -246,7 +251,21 @@ func (p *rss) Start(ctx context.Context, notify func(widgets ...string)) {
 	p.ready = make(chan struct{})
 	go func() {
 		first := true
+		var next time.Time
 		for {
+			if !next.IsZero() {
+				if !p.Wait(ctx, 0) {
+					return
+				}
+				if wait := time.Until(next); wait > 0 {
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(wait):
+					}
+					continue
+				}
+			}
 			changed, failed := p.reload(ctx)
 			if changed && !first {
 				notify()
@@ -259,11 +278,7 @@ func (p *rss) Start(ctx context.Context, notify func(widgets ...string)) {
 			if failed {
 				wait = min(wait, retryOnErrors)
 			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(wait):
-			}
+			next = time.Now().Add(wait)
 		}
 	}()
 }

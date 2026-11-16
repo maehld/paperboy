@@ -59,6 +59,8 @@ var configKeys = map[string]plugin.Arg{
 // weather is the plugin. The forecast is fetched with the configured
 // language, so the condition texts follow the global language.
 type weather struct {
+	plugin.Demand
+
 	lat, lon float64
 	base     string
 	refresh  time.Duration
@@ -119,6 +121,9 @@ func (w *weather) Describe() plugin.Description {
 }
 
 func (w *weather) Configure(cfg plugin.Values, req *plugin.Request) error {
+	if req.Version != 0 && req.Version < 9 {
+		return fmt.Errorf("weather needs Paperboy protocol 9 or newer; this Paperboy reports %d", req.Version)
+	}
 	if err := cfg.Check(configKeys); err != nil {
 		return err
 	}
@@ -145,7 +150,21 @@ func (w *weather) Start(ctx context.Context, notify func(widgets ...string)) {
 	go func() {
 		first := true
 		var last string
+		var next time.Time
 		for {
+			if !next.IsZero() {
+				if !w.Wait(ctx, 0) {
+					return
+				}
+				if wait := time.Until(next); wait > 0 {
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(wait):
+					}
+					continue
+				}
+			}
 			b, err := w.load(ctx)
 			w.mu.Lock()
 			if err != nil {
@@ -166,11 +185,7 @@ func (w *weather) Start(ctx context.Context, notify func(widgets ...string)) {
 				close(w.ready)
 				first = false
 			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(w.refresh):
-			}
+			next = time.Now().Add(w.refresh)
 		}
 	}()
 }

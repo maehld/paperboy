@@ -118,6 +118,8 @@ func (d departure) delay() int {
 }
 
 type departures struct {
+	plugin.Demand
+
 	client  *http.Client
 	base    string
 	stops   []*stop
@@ -189,7 +191,10 @@ func (p *departures) valueArgs() map[string]plugin.Arg {
 	}
 }
 
-func (p *departures) Configure(cfg plugin.Values, _ *plugin.Request) error {
+func (p *departures) Configure(cfg plugin.Values, req *plugin.Request) error {
+	if req.Version != 0 && req.Version < 9 {
+		return fmt.Errorf("departures needs Paperboy protocol 9 or newer; this Paperboy reports %d", req.Version)
+	}
 	if _, ok := cfg["stop"]; ok {
 		return errors.New("stop is no longer a config key, list it under stops: stops: [{name: \"<name>\", stop: \"<stop>\"}]")
 	}
@@ -274,7 +279,21 @@ func (p *departures) Start(ctx context.Context, notify func(widgets ...string)) 
 	go func() {
 		first := true
 		last := make(map[string]string, len(p.stops))
+		var next time.Time
 		for {
+			if !next.IsZero() {
+				if !p.Wait(ctx, 0) {
+					return
+				}
+				if wait := time.Until(next); wait > 0 {
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(wait):
+					}
+					continue
+				}
+			}
 			var wg sync.WaitGroup
 			for _, s := range p.stops {
 				wg.Add(1)
@@ -300,11 +319,7 @@ func (p *departures) Start(ctx context.Context, notify func(widgets ...string)) 
 				close(p.ready)
 				first = false
 			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(p.refresh):
-			}
+			next = time.Now().Add(p.refresh)
 		}
 	}()
 }

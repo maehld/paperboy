@@ -9,6 +9,8 @@ RSS 2.0, RSS 1.0 (RDF) and Atom feeds as widgets. Every configured feed is fetch
 | `feeds` | Required: a list of `{name, url}` entries. The name is what the widgets select; a plain URL uses its host as the name |
 | `refresh` | How often every feed is fetched, default `15m`, at least `5m` |
 
+**Demand:** Paperboy names the next moment a display needs the feeds and the plugin fetches then, never more often than `refresh` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)). A page that no display shows costs no request. The plugin requires Paperboy protocol 9.
+
 ```yaml
 plugins:
   rss:
