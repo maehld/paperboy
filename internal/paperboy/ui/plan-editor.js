@@ -303,7 +303,9 @@
       renderRules();
     });
     conds.appendChild(addCond);
-    grid.appendChild(field('Conditions', conds));
+    const condField = field('Conditions', conds);
+    condField.classList.add('wide');
+    grid.appendChild(condField);
     card.appendChild(grid);
 
     const pages = document.createElement('div');
