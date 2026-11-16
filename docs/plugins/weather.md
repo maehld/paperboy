@@ -10,6 +10,8 @@ Weather from [Open-Meteo](https://open-meteo.com/), no API key needed.
 | `refresh` | Default `15m` |
 | `base` | Another Open-Meteo address |
 
+**Demand:** Paperboy names the next moment a display needs the forecast and the plugin reads then, never more often than `refresh` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)). A page that no display shows costs no request. The plugin requires Paperboy protocol 9.
+
 ## Widgets
 
 All widgets are for image displays.

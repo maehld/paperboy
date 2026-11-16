@@ -12,6 +12,8 @@ Pokémon from [PokéAPI](https://pokeapi.co), no API key needed.
 | `generations` | List of generations 1 to 9, e.g. `[1, 2, 3]`; limits the random pick |
 | `base` | Another PokéAPI address |
 
+**Demand:** Paperboy names the next moment a display needs the card and the plugin loads it then ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)). `rotate` still decides when a random Pokémon changes; a page that no display shows costs no request. The plugin requires Paperboy protocol 9.
+
 ## Widget `card`
 
 The card is for image displays. It shows the artwork, the name in the request language (from the species names, with English as fallback), the number, types, height and weight, the six base stats as bars and the flavor text in the request language.

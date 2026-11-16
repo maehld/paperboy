@@ -10,6 +10,8 @@ Real-time public transport departures from an EFA installation ([ADR 0053](../ad
 | `lines`, `directions` | Filters; `directions` matches words in the destination |
 | `max` | Number of departures per stop, default 8 |
 | `refresh` | Default `60s`, at least `30s` |
+
+**Demand:** Paperboy names the next moment a display needs the departures and the plugin polls then, never more often than `refresh` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)). A page that no display polls costs no request. The plugin requires Paperboy protocol 9.
 | `walk_minutes` | Hide departures you can no longer reach |
 | `base` | Another EFA installation, e.g. `https://efa.vrr.de/standard` |
 | `backend` | Only `efa` |

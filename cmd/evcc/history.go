@@ -213,7 +213,21 @@ func historyFingerprint(days map[string][]energyPoint) string {
 // state poll.
 func (e *evcc) watchHistory(ctx context.Context, notify func(widgets ...string)) {
 	var last string
+	var next time.Time
 	for {
+		if !next.IsZero() {
+			if !e.histDemand.Wait(ctx, 0) {
+				return
+			}
+			if wait := time.Until(next); wait > 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(wait):
+				}
+				continue
+			}
+		}
 		days, hours, err := e.fetchHistory(ctx)
 		e.mu.Lock()
 		if err != nil {
@@ -250,11 +264,7 @@ func (e *evcc) watchHistory(ctx context.Context, notify func(widgets ...string))
 		default:
 			close(e.histReady)
 		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(e.historyRefresh):
-		}
+		next = time.Now().Add(e.historyRefresh)
 	}
 }
 

@@ -84,6 +84,8 @@ type loaded struct {
 }
 
 type pokedex struct {
+	plugin.Demand
+
 	client *http.Client
 	now    func() time.Time
 	gap    time.Duration
@@ -143,6 +145,9 @@ func (p *pokedex) Describe() plugin.Description {
 }
 
 func (p *pokedex) Configure(cfg plugin.Values, req *plugin.Request) error {
+	if req.Version != 0 && req.Version < 9 {
+		return fmt.Errorf("pokedex needs Paperboy protocol 9 or newer; this Paperboy reports %d", req.Version)
+	}
 	if err := cfg.Check(configKeys); err != nil {
 		return err
 	}
@@ -252,18 +257,28 @@ func seedOf(w plugin.WidgetRequest) (string, error) {
 func (p *pokedex) Start(ctx context.Context, notify func(widgets ...string)) {
 	go func() {
 		first := true
+		var next time.Time
 		for {
+			if !next.IsZero() {
+				if !p.Wait(ctx, 0) {
+					return
+				}
+				if wait := time.Until(next); wait > 0 {
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(wait):
+					}
+					continue
+				}
+			}
 			t := p.now()
 			if _, err := p.load(ctx, p.key(t, "")); err != nil {
 				if ctx.Err() != nil {
 					return
 				}
 				fmt.Fprintln(os.Stderr, "pokedex:", err)
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(time.Minute):
-				}
+				next = time.Now().Add(time.Minute)
 				continue
 			}
 			if !first {
@@ -273,11 +288,7 @@ func (p *pokedex) Start(ctx context.Context, notify func(widgets ...string)) {
 			if p.fixed != "" {
 				return
 			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(time.Until(p.nextRotation(t)) + time.Second):
-			}
+			next = p.nextRotation(t).Add(time.Second)
 		}
 	}()
 }

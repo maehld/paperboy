@@ -189,6 +189,8 @@ func TestChangedEvent(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 	}
 	current.Store("n8.json")
+	now := time.Now()
+	x.Event(plugin.Event{Event: plugin.EventSchedule, NextRefresh: &now})
 	select {
 	case <-changed:
 	case <-time.After(3 * time.Second):

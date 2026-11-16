@@ -75,6 +75,8 @@ var configKeys = map[string]plugin.Arg{
 
 // dexcom holds the configuration and what the service answered last.
 type dexcom struct {
+	plugin.Demand
+
 	mu  sync.Mutex
 	api *shareClient
 
@@ -166,6 +168,9 @@ func (d *dexcom) Describe() plugin.Description {
 }
 
 func (d *dexcom) Configure(cfg plugin.Values, req *plugin.Request) error {
+	if req.Version != 0 && req.Version < 9 {
+		return fmt.Errorf("dexcom needs Paperboy protocol 9 or newer; this Paperboy reports %d", req.Version)
+	}
 	if err := cfg.Check(configKeys); err != nil {
 		return err
 	}
@@ -289,23 +294,34 @@ func (d *dexcom) Conditions(req *plugin.Request) (map[string]bool, error) {
 func (d *dexcom) Start(ctx context.Context, notify func(widgets ...string)) {
 	d.mu.Lock()
 	d.ready = make(chan struct{})
-	// A restart within the interval costs no request.
-	wait := time.Duration(0)
+	// A restart with readings waits for the interval and for demand; without
+	// readings the first fetch happens at once, so a request has something.
+	readyClosed := len(d.readings) > 0
+	var next time.Time
 	if !d.fetched.IsZero() {
-		if rest := d.refresh - time.Since(d.fetched); rest > 0 {
-			wait = rest
-		}
+		next = d.fetched.Add(d.refresh)
 	}
 	last := d.fingerprint()
 	d.mu.Unlock()
+	if readyClosed {
+		close(d.ready)
+	}
 
 	go func() {
-		first := true
 		for {
-			if wait > 0 && !d.wait(ctx, wait) {
-				return
+			if !next.IsZero() {
+				if !d.Wait(ctx, 0) {
+					return
+				}
+				if wait := time.Until(next); wait > 0 {
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(wait):
+					}
+					continue
+				}
 			}
-			wait = d.refresh
 			err := d.update(ctx)
 			d.mu.Lock()
 			if err != nil {
@@ -322,22 +338,13 @@ func (d *dexcom) Start(ctx context.Context, notify func(widgets ...string)) {
 				last = now
 				notify()
 			}
-			if first {
+			if !readyClosed {
 				close(d.ready)
-				first = false
+				readyClosed = true
 			}
+			next = time.Now().Add(d.refresh)
 		}
 	}()
-}
-
-// wait sleeps for d and reports whether the context is still alive.
-func (d *dexcom) wait(ctx context.Context, dur time.Duration) bool {
-	select {
-	case <-ctx.Done():
-		return false
-	case <-time.After(dur):
-		return true
-	}
 }
 
 // update reads the readings, logging in first when there is no session.

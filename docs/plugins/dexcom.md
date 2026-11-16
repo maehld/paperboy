@@ -19,6 +19,8 @@ Share has to be switched on in the app (Connections → Share). Nothing reaches 
 | `low`, `high` | The target band, default 80 and 280 mg/dL or 4.4 and 15.5 mmol/L |
 | `min`, `max` | The scale of the chart, default 40 and 300 mg/dL or 2.2 and 16.7 mmol/L |
 
+**Demand:** Paperboy names the next moment a display needs the readings and the plugin reads then, never more often than `refresh` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)). Conditions count as demand, because the plan asks them at every sync. The plugin requires Paperboy protocol 9.
+
 The defaults are the numbers of the Dexcom app. Thresholds are read in the unit of the account, so a mmol/L account sets `low: 4.4` rather than `80`.
 
 ```yaml

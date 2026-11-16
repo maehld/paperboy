@@ -131,6 +131,9 @@ func (s *state) gridPower() float64 {
 }
 
 type evcc struct {
+	plugin.Demand
+	histDemand plugin.Demand
+
 	client  *http.Client
 	base    string
 	refresh time.Duration
@@ -207,6 +210,9 @@ func (e *evcc) Describe() plugin.Description {
 }
 
 func (e *evcc) Configure(cfg plugin.Values, req *plugin.Request) error {
+	if req.Version != 0 && req.Version < 9 {
+		return fmt.Errorf("evcc needs Paperboy protocol 9 or newer; this Paperboy reports %d", req.Version)
+	}
 	if err := cfg.Check(configKeys); err != nil {
 		return err
 	}
@@ -238,6 +244,12 @@ func (e *evcc) Configure(cfg plugin.Values, req *plugin.Request) error {
 // Start polls evcc and reports a change when a displayed value moved. The
 // energy history has its own loop: a year of day buckets must not delay the
 // state poll.
+// Event forwards a schedule to both loops: the state poll and the history.
+func (e *evcc) Event(ev plugin.Event) {
+	e.Demand.Event(ev)
+	e.histDemand.Event(ev)
+}
+
 func (e *evcc) Start(ctx context.Context, notify func(widgets ...string)) {
 	e.ready = make(chan struct{})
 	e.histReady = make(chan struct{})
@@ -245,7 +257,21 @@ func (e *evcc) Start(ctx context.Context, notify func(widgets ...string)) {
 	go func() {
 		first := true
 		var last string
+		var next time.Time
 		for {
+			if !next.IsZero() {
+				if !e.Wait(ctx, 0) {
+					return
+				}
+				if wait := time.Until(next); wait > 0 {
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(wait):
+					}
+					continue
+				}
+			}
 			s, err := e.fetch(ctx)
 			e.mu.Lock()
 			if err != nil {
@@ -268,11 +294,7 @@ func (e *evcc) Start(ctx context.Context, notify func(widgets ...string)) {
 				close(e.ready)
 				first = false
 			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(e.refresh):
-			}
+			next = time.Now().Add(e.refresh)
 		}
 	}()
 }

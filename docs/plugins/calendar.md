@@ -16,6 +16,8 @@ Calendars from CalDAV and iCalendar, plus contact birthdays from CardDAV ([ADR 0
 | `max_events` | Maximum number of events |
 | `refresh` | Default `15m` |
 
+**Demand:** Paperboy names the next moment a display needs the calendars and the plugin reads then, never more often than `refresh` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)). A page that no display shows costs no request. The plugin requires Paperboy protocol 9.
+
 `calendars` filters at load time and applies to every display. Each widget can narrow the loaded set further with its own `calendars` argument; an empty list shows all loaded calendars. The editors offer the loaded names as check boxes, and an unknown name is an error that lists the available calendars. Before the first successful load the configured names are offered instead; if those are empty too, the editors keep a comma-separated text field.
 
 For iCloud, create an app-specific password at [account.apple.com](https://account.apple.com) and use your Apple ID as `user`. Nextcloud works with an address like `https://cloud.example.org/remote.php/dav`.

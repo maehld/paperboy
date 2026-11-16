@@ -11,6 +11,8 @@ Comics from [xkcd](https://xkcd.com) through its JSON API (`info.0.json`). The p
 | `rotate` | How often `random` picks a new comic, default `24h` |
 | `base` | Another xkcd address |
 
+**Demand:** Paperboy names the next moment a display needs the comic and the plugin fetches then, never more often than `refresh` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)). Removing the page from every plan stops the checks. The plugin requires Paperboy protocol 9.
+
 ## Widget `comic`
 
 The widget is for image displays. The comic is scaled to fit the cell with its aspect ratio kept (Catmull-Rom on gray values, transparent areas turn white) and then reduced to the display's gray levels. Very wide strips and very tall comics only get smaller. Text sizes follow the page's base text.
