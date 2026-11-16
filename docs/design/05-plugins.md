@@ -71,7 +71,20 @@ A plugin that needs to survive a restart sends its state with every answer ([ADR
 
 The limits are 256 KiB per state, 1 MiB per blob and four blobs. A missing `state` means "unchanged" and `null` means "forget". An invalid name or an oversized value is logged and ignored; nothing is deleted automatically.
 
-The Dexcom plugin keeps its session and the readings of the last day this way. The MyŠkoda plugin keeps its last fetch. A restart within the interval therefore costs no request.
+### What a plugin keeps
+
+A plugin keeps state only for what a restart must not lose **and** cannot rebuild cheaply. All four conditions must hold:
+
+- A restart would lose a quota, a session, a token or a long history.
+- The restored value stays a cache that the plugin refreshes, not a live reading.
+- A restored state can only make a page older, never wrong.
+- The state is a cache bound to the config: it carries a version or a fingerprint, and a changed config discards it.
+
+State must not hold live data. A restored departure view would claim trips that already left. A stateless plugin keeps nothing, because every input is an argument. The state must not hold a secret that the config does not already hold. A value that one cheap request rebuilds belongs in memory, not on disk. A blob is the exception: it holds what a fetch cannot rebuild.
+
+Only [`dexcom`](../plugins/dexcom.md) and [`myskoda`](../plugins/myskoda.md) keep state today. `dexcom` keeps the session and the readings of the last day. The login and the readings are quota-limited, and the trend and the graph need the history. `myskoda` keeps the last vehicle fetch, its fetch times and the render blob. The API has a quota, and the render image is not cheap. No other shipped plugin keeps state, because one fetch or a short refresh rebuilds its data. A restart within the refresh interval therefore costs no request.
+
+The readings of Dexcom in `state/` are acceptable: the operator owns the directory and can delete it. Paperboy exposes no age of a restored state, because `max_age` and the `changed` event set the refresh. No shared helper checks the config fingerprint; each plugin compares its own. An e-paper device polls every 5 to 10 minutes, so a restart rarely shows a gap on the page. That argues against broad state use.
 
 ## Versions
 
