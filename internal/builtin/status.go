@@ -79,26 +79,6 @@ func staleness(d plugin.DeviceStatus) int64 {
 	return d.SeenS
 }
 
-// statusLines is the text-display form of device-status: one device per line.
-func statusLines(req *plugin.Request, a plugin.Values, width int) []string {
-	devices := statusDevices(req, a)
-	if len(devices) == 0 {
-		return []string{noDeviceText(req)}
-	}
-	out := make([]string, 0, len(devices))
-	for _, d := range devices {
-		left := statusName(d)
-		parts := statusParts(req, d, a)
-		right := strings.Join(parts, " ")
-		for len(parts) > 0 && runeLen(left)+1+runeLen(right) > width {
-			parts = parts[:len(parts)-1]
-			right = strings.Join(parts, " ")
-		}
-		out = append(out, plugin.Columns(left, right, width))
-	}
-	return out
-}
-
 // statusLineImage is one row of the image form.
 func statusLineImage(req *plugin.Request, d plugin.DeviceStatus, a plugin.Values) (string, string) {
 	return statusName(d), statusRight(req, d, a, " · ")

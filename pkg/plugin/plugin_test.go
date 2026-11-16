@@ -25,9 +25,6 @@ func (h *testHandler) Render(_ *Request, w WidgetRequest, img *image.Paletted) e
 	}
 	return nil
 }
-func (h *testHandler) Text(_ *Request, w WidgetRequest) ([]string, error) {
-	return []string{Columns(w.Widget, "1", w.Width)}, nil
-}
 func (h *testHandler) Start(_ context.Context, notify func(...string)) { h.started <- notify }
 func (h *testHandler) MaxAge(*Request) time.Duration                   { return time.Minute }
 
@@ -62,9 +59,9 @@ func TestServeIO(t *testing.T) {
 	if m.ID != "3" || len(m.Widgets) != 2 || len(m.Widgets[0].PNG) == 0 || m.Widgets[1].Error != "bad widget" || m.MaxAge != 60 {
 		t.Fatalf("render: %+v", m)
 	}
-	enc.Encode(Request{ID: "4", Action: ActionText, Widgets: []WidgetRequest{{Widget: "pv", Width: 6, Height: 1}}})
-	if m := next(); len(m.Widgets) != 1 || m.Widgets[0].Lines[0] != "pv   1" {
-		t.Fatalf("text: %+v", m)
+	enc.Encode(Request{ID: "4", Action: "text", Widgets: []WidgetRequest{{Widget: "pv", Width: 6, Height: 1}}})
+	if m := next(); m.Error == "" {
+		t.Fatalf("a removed text action was accepted: %+v", m)
 	}
 	go notify("agenda")
 	if m := next(); m.Event != EventChanged || m.Changed[0] != "agenda" {
@@ -225,7 +222,7 @@ func (actionFewerStates) Actions(*Request) ([]ActionState, error) {
 }
 
 func TestVersion(t *testing.T) {
-	if Version != 7 {
+	if Version != 8 {
 		t.Fatalf("protocol version = %d", Version)
 	}
 }

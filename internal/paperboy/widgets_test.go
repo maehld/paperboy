@@ -27,8 +27,8 @@ func TestWidgetEndpoint(t *testing.T) {
 		t.Fatalf("span size: %d", rec.Code)
 	}
 	rec = preview(t, s, "/api/widget/paperboy/text?display=lcd&arg.text=Grüße")
-	if rec.Body.String() != "Gruesse   \n          \n" {
-		t.Fatalf("text widget: %q", rec.Body)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "no widgets") {
+		t.Fatalf("text display: %d %q", rec.Code, rec.Body)
 	}
 	rec = preview(t, s, "/api/widget/nope/x?display=small")
 	if rec.Code != http.StatusOK || rec.Header().Get("X-Widget-Error") == "" {
@@ -129,8 +129,8 @@ func TestWidgetsPage(t *testing.T) {
 
 // TestWidgetsPageTextOnly is an instance with text display types only: the
 // Playground says where text pages are edited instead of failing (ADR 0124).
-// GET /api/widget still answers text widgets, because the protocol keeps the
-// text action for older plugins.
+// GET /api/widget rejects a text display, because its pages are built from
+// values and not from widgets (ADR 0125).
 func TestWidgetsPageTextOnly(t *testing.T) {
 	s, _ := testServer(t)
 	delete(s.config().Profiles, "small")
@@ -155,12 +155,8 @@ func TestWidgetsPageTextOnly(t *testing.T) {
 	}
 
 	rec := preview(t, s, "/api/widget/paperboy/text?display=lcd&arg.text=Hi")
-	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/plain; charset=utf-8" {
-		t.Fatalf("text widget with a text-only instance: %d %q", rec.Code, rec.Header().Get("Content-Type"))
-	}
-	lines := strings.Split(strings.TrimRight(rec.Body.String(), "\n"), "\n")
-	if len(lines) != 4 || strings.TrimSpace(lines[0]) != "Hi" || len(lines[0]) != 20 {
-		t.Fatalf("text widget lines: %q", rec.Body.String())
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "no widgets") {
+		t.Fatalf("text widget with a text-only instance: %d %q", rec.Code, rec.Body)
 	}
 
 	// No display type at all is a configuration error, not a text-only instance.

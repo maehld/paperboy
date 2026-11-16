@@ -83,8 +83,7 @@ type Context struct {
 
 // Batch asks for all widgets of one page.
 type Batch struct {
-	Text         bool // text display: lines instead of images
-	Levels       int  // gray levels of an image display
+	Levels       int // gray levels of an image display
 	Charset      string
 	Page         plugin.PageInfo
 	Widgets      []WidgetRequest
@@ -96,16 +95,14 @@ type WidgetRequest struct {
 	Plugin string
 	Widget string
 	Args   map[string]any
-	Width  int  // pixels or columns
-	Height int  // pixels or rows
-	Scroll bool // text displays: the widget may answer lines wider than Width (ADR 0092)
+	Width  int // pixels
+	Height int // pixels
 	Style  plugin.Style
 }
 
 // Result is the answer for one WidgetRequest.
 type Result struct {
 	Image image.Image // image displays
-	Lines []string    // text displays
 	Value *plugin.Value
 	Spec  plugin.ValueSpec // the declaration of a value
 	Err   error
@@ -482,22 +479,4 @@ func WidgetImage(r Result, width, height, levels int, label string) *image.Palet
 		return NoticeImage(width, height, levels, label, fmt.Sprintf("wrong size %dx%d instead of %dx%d", b.Dx(), b.Dy(), width, height))
 	}
 	return render.Quantize(r.Image, levels)
-}
-
-// TextLines fits widget lines to a cell of a text display like a page did:
-// converted to the charset, cut and padded; an error becomes wrapped lines.
-func TextLines(r Result, charset string, width, height int) []string {
-	lines := r.Lines
-	if r.Err != nil && lines == nil {
-		lines = wrap("? "+r.Err.Error(), width)
-	}
-	out := make([]string, height)
-	for i := range out {
-		if i < len(lines) {
-			out[i] = fit(Convert(charset, lines[i]), width)
-		} else {
-			out[i] = fit("", width)
-		}
-	}
-	return out
 }
