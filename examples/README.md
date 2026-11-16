@@ -26,8 +26,8 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
 - `energie.yaml` - evcc energy flow with site values and the charging point.
 - `ertrag.yaml` - evcc energy history: PV yield, battery discharge and the
   first loadpoint for today, yesterday, the week, the month and the year.
-- `werte.yaml` - evcc values: meter readings and charging statistics as a
-  list, without a graph.
+- `werte.yaml` - evcc values: today's energy, meter readings and charging
+  statistics as lists, without a graph.
 - `abfahrten.yaml` - real-time departures; `abfahrten.lcd2004.yaml` lists the
   stop and the departures with clock times on 20×4.
 - `glukose.yaml` - the glucose reading next to the day with the numbers of the

@@ -38,8 +38,54 @@ var stateValues = []stateValue{
 	{"charge-year", "Geladen dieses Jahr", "Charged this year", "kWh", 1},
 	{"charge-year-solar", "Solaranteil dieses Jahr", "Solar share this year", "%", 0},
 	{"charge-year-price", "Ø Ladepreis dieses Jahr", "Avg. charging price this year", "ct/kWh", 1},
-	{"solar-today", "Prognose heute", "Forecast today", "kWh", 1},
-	{"solar-tomorrow", "Prognose morgen", "Forecast tomorrow", "kWh", 1},
+	{"pv-today", "PV heute", "PV today", "kWh", 1},
+	{"home-today", "Haus heute", "Home today", "kWh", 1},
+	{"grid-import-today", "Netzbezug heute", "Grid import today", "kWh", 1},
+	{"grid-export-today", "Einspeisung heute", "Grid export today", "kWh", 1},
+	{"battery-charge-today", "Akku geladen heute", "Battery charged today", "kWh", 1},
+	{"battery-discharge-today", "Akku entladen heute", "Battery discharged today", "kWh", 1},
+	{"charge-today", "Geladen heute", "Charged today", "kWh", 1},
+	{"forecast-today", "Prognose heute", "Forecast today", "kWh", 1},
+	{"forecast-tomorrow", "Prognose morgen", "Forecast tomorrow", "kWh", 1},
+}
+
+// dailyValue names the history series behind a daily value and the energy of
+// that series it shows: return is what went out (grid export, battery
+// discharge). The values read the cached history, so they are as current as
+// the last history refresh.
+type dailyValue struct {
+	source, metric string
+}
+
+// dailyValues are the daily values of the energy history. charge-today is not
+// one series: it sums the loadpoints of /api/state.
+var dailyValues = map[string]dailyValue{
+	"pv-today":                {"pv", "energy"},
+	"home-today":              {"home", "energy"},
+	"grid-import-today":       {"grid", "energy"},
+	"grid-export-today":       {"grid", "return"},
+	"battery-charge-today":    {"battery", "energy"},
+	"battery-discharge-today": {"battery", "return"},
+}
+
+// isDailyValue reports whether name reads the day buckets of the history.
+func isDailyValue(name string) bool {
+	_, ok := dailyValues[name]
+	return ok || name == "charge-today"
+}
+
+// dailyNumber resolves one daily value: today's bucket of its series, or the
+// loadpoint of charge-today when one is asked. ok is false while the history
+// has no such series or the loadpoint does not exist, which becomes a dash.
+func (e *evcc) dailyNumber(name string, one bool, index int) (float64, bool) {
+	if name == "charge-today" {
+		return e.chargeToday(index, one)
+	}
+	d, ok := dailyValues[name]
+	if !ok {
+		return 0, false
+	}
+	return e.historyToday(d.source, d.metric)
 }
 
 var stateValueByKey = func() map[string]stateValue {
@@ -84,6 +130,14 @@ func (e *evcc) valueLabel(v stateValue) string {
 // valueText formats one value of the last /api/state; a value evcc does not
 // report becomes a dash.
 func (e *evcc) valueText(key string) string {
+	// The daily values come from the energy history, not from /api/state; the
+	// widget sums the loadpoints of charge-today.
+	if isDailyValue(key) {
+		if v, ok := e.dailyNumber(key, false, 0); ok {
+			return e.kwh(v)
+		}
+		return "–"
+	}
 	s := e.cur
 	stats := func(window string) (statistics, bool) {
 		st, ok := s.Statistics[window]
@@ -153,12 +207,12 @@ func (e *evcc) valueText(key string) string {
 			return "–"
 		}
 		return e.chargeValue(key, st)
-	case "solar-today":
+	case "forecast-today":
 		if s.Forecast == nil || s.Forecast.Solar == nil {
 			return "–"
 		}
 		return e.energy(s.Forecast.Solar.Today.Energy)
-	case "solar-tomorrow":
+	case "forecast-tomorrow":
 		if s.Forecast == nil || s.Forecast.Solar == nil {
 			return "–"
 		}
@@ -201,7 +255,13 @@ var loadpointArg = plugin.Arg{Type: "int", Default: 0, Description: "loadpoint, 
 func valueSpecs() []plugin.ValueSpec {
 	out := make([]plugin.ValueSpec, 0, len(stateValues)+10)
 	for _, v := range stateValues {
-		out = append(out, plugin.ValueSpec{Name: v.key, Title: v.en, Type: plugin.ValueNumber, Unit: v.unit, Precision: v.precision})
+		spec := plugin.ValueSpec{Name: v.key, Title: v.en, Type: plugin.ValueNumber, Unit: v.unit, Precision: v.precision}
+		// charge-today follows the other loadpoint values and reads the index
+		// of the loadpoint (ADR 0120); the other values take no argument.
+		if v.key == "charge-today" {
+			spec.Args = map[string]plugin.Arg{"index": loadpointArg}
+		}
+		out = append(out, spec)
 	}
 	lp := map[string]plugin.Arg{"index": loadpointArg}
 	return append(out, []plugin.ValueSpec{
@@ -297,6 +357,20 @@ func (e *evcc) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 			}
 			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
 		}
+		if isDailyValue(name) {
+			// charge-today reads index like the other loadpoint values and
+			// sums all loadpoints without it (ADR 0120).
+			index, one := req.ValueArgs.Int("index", 0), false
+			if name == "charge-today" {
+				_, one = req.ValueArgs["index"]
+			}
+			if v, ok := e.dailyNumber(name, one, index); ok {
+				out[name] = plugin.NumberValue(v)
+				continue
+			}
+			out[name] = dash
+			continue
+		}
 		if v, ok := e.stateNumber(name); ok {
 			out[name] = plugin.NumberValue(v)
 			continue
@@ -380,12 +454,12 @@ func (e *evcc) stateNumber(key string) (float64, bool) {
 	case "charge-year", "charge-year-solar", "charge-year-price":
 		st, ok := s.Statistics["thisYear"]
 		return chargeNumber(key, st, ok)
-	case "solar-today":
+	case "forecast-today":
 		if s.Forecast == nil || s.Forecast.Solar == nil {
 			return 0, false
 		}
 		return s.Forecast.Solar.Today.Energy, true
-	case "solar-tomorrow":
+	case "forecast-tomorrow":
 		if s.Forecast == nil || s.Forecast.Solar == nil {
 			return 0, false
 		}
