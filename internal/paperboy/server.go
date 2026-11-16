@@ -139,6 +139,7 @@ func New(cfg *Config) (*Server, error) {
 		}
 	}
 	s.widgets.Now = func() time.Time { return s.now() }
+	s.widgets.Demand = s.pluginDemand
 	s.configurePlugins(cfg)
 	return s, nil
 }

@@ -33,6 +33,7 @@ type process struct {
 	mu      sync.Mutex
 	writeMu sync.Mutex
 	next    int
+	proto   int // protocol version of the last answer, for events
 	pending map[string]chan plugin.Message
 	done    chan struct{} // closed when the process has exited
 	stderr  *tailBuffer
@@ -133,6 +134,9 @@ func (p *process) request(ctx context.Context, req plugin.Request) (plugin.Messa
 	defer timer.Stop()
 	select {
 	case m := <-ch:
+		p.mu.Lock()
+		p.proto = m.Version
+		p.mu.Unlock()
 		if err := m.CheckVersion(); err != nil {
 			p.warnVersion(err)
 			return m, err
@@ -151,6 +155,27 @@ func (p *process) request(ctx context.Context, req plugin.Request) (plugin.Messa
 	}
 }
 
+func (p *process) protocol() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.proto
+}
+
+// sendEvent writes one line to the plugin without a request id; no answer
+// follows. The caller checks the protocol version first (ADR 0126).
+func (p *process) sendEvent(ev plugin.Event) error {
+	line, err := json.Marshal(ev)
+	if err != nil {
+		return err
+	}
+	p.writeMu.Lock()
+	defer p.writeMu.Unlock()
+	if _, err := p.stdin.Write(append(line, '\n')); err != nil {
+		return fmt.Errorf("%w: %w", errWrite, p.exitError(err))
+	}
+	return nil
+}
+
 // process returns the running process of a plugin or starts one.
 func (h *Host) process(spec Spec) (*process, error) {
 	h.mu.Lock()
@@ -161,6 +186,7 @@ func (h *Host) process(spec Spec) (*process, error) {
 		}
 		go p.stop()
 		delete(h.procs, spec.Name)
+		delete(h.sent, spec.Name)
 	}
 	base := h.ctx
 	if base == nil {

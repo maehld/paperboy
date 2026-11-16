@@ -90,6 +90,10 @@ type Host struct {
 	Builtin map[string]plugin.Handler
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
+	// Demand names the next moment each plugin is needed (ADR 0126). Nil means
+	// Paperboy does not know: the background loop then refreshes every due
+	// entry as before and sends no schedule.
+	Demand func() map[string]time.Time
 
 	mu       sync.Mutex
 	ctx      context.Context // ends all plugin processes; nil = never
@@ -97,6 +101,7 @@ type Host struct {
 	env      Env
 	cache    map[string]*entry
 	procs    map[string]*process
+	sent     map[string]*time.Time  // plugin -> last schedule; nil = cleared
 	running  map[string]*sync.Mutex // one request per plugin at a time
 	failing  map[string]time.Time   // plugin -> no new request before
 	changes  map[string]int         // plugin -> number of "changed" events
@@ -231,6 +236,7 @@ func (h *Host) Configure(specs map[string]Spec, env Env) {
 			}
 		}
 		delete(h.conds, name)
+		delete(h.sent, name)
 	}
 	h.mu.Unlock()
 	for _, p := range stop {
@@ -840,6 +846,10 @@ func (h *Host) spec(name string) (Spec, error) {
 // use and expire soon or were marked changed.
 func (h *Host) maintain(ctx context.Context) {
 	now := h.now()
+	var demand map[string]time.Time
+	if h.Demand != nil {
+		demand = h.Demand()
+	}
 	h.mu.Lock()
 	env, specs := h.env, h.specs
 	var due []job
@@ -848,7 +858,7 @@ func (h *Host) maintain(ctx context.Context) {
 			delete(h.cache, k)
 			continue
 		}
-		if e.expires.Sub(now) < refreshAhead && !now.Before(h.failing[e.job.plugin]) {
+		if e.expires.Sub(now) < refreshAhead && !now.Before(h.failing[e.job.plugin]) && h.needed(e.job.plugin, demand, now) {
 			due = append(due, e.job)
 		}
 	}
@@ -866,6 +876,77 @@ func (h *Host) maintain(ctx context.Context) {
 		if _, err := h.run(ctx, spec, env, jobs); err != nil {
 			slog.Debug("background refresh failed", "plugin", name, "error", err)
 		}
+	}
+	h.pushSchedules(demand)
+}
+
+// needed reports whether the background loop may refresh a plugin's entry now:
+// only when Paperboy needs the plugin within refreshAhead. Without demand
+// information (nil) it keeps the behavior before ADR 0126 and refreshes every
+// due entry.
+func (h *Host) needed(plugin string, demand map[string]time.Time, now time.Time) bool {
+	if demand == nil {
+		return true
+	}
+	at, ok := demand[plugin]
+	return ok && !at.After(now.Add(refreshAhead))
+}
+
+// pushSchedules tells every running protocol 9 plugin when its data is next
+// needed, and clears the demand when nobody needs it. It sends only when the
+// moment changes by more than a minute, so the 5-second loop stays quiet.
+func (h *Host) pushSchedules(demand map[string]time.Time) {
+	if demand == nil {
+		return
+	}
+	h.mu.Lock()
+	procs := make(map[string]*process, len(h.procs))
+	for name, p := range h.procs {
+		procs[name] = p
+	}
+	sent := make(map[string]*time.Time, len(h.sent))
+	for name, at := range h.sent {
+		sent[name] = at
+	}
+	h.mu.Unlock()
+
+	for name, p := range procs {
+		if p.protocol() < 9 {
+			continue
+		}
+		at, has := demand[name]
+		old, was := sent[name]
+		if was {
+			if !has && old == nil {
+				continue
+			}
+			if has && old != nil && old.Sub(at).Abs() < time.Minute {
+				continue
+			}
+		}
+		ev := plugin.Event{Event: plugin.EventSchedule}
+		if has {
+			next := at
+			ev.NextRefresh = &next
+		}
+		if err := p.sendEvent(ev); err != nil {
+			slog.Debug("schedule event failed", "plugin", name, "error", err)
+			h.drop(p)
+			continue
+		}
+		h.mu.Lock()
+		if h.procs[name] == p {
+			if h.sent == nil {
+				h.sent = map[string]*time.Time{}
+			}
+			if has {
+				next := at
+				h.sent[name] = &next
+			} else {
+				h.sent[name] = nil
+			}
+		}
+		h.mu.Unlock()
 	}
 }
 

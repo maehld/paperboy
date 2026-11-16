@@ -158,7 +158,7 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0081](0081-plugin-state-over-the-protocol.md) | Plugin state and blobs over the protocol | Accepted, implemented; supersedes [ADR-0065](0065-plugin-state-directory.md), amends the exact version match of [ADR-0058](0058-plugin-protocol-version-check.md) (newer versions are accepted) |
 | [0099](0099-glucose-readings-from-the-dexcom-share-service.md) | Glucose readings from the Dexcom Share service | Accepted, implemented |
 | [0100](0100-one-stop-per-departures-widget.md) | One stop per departures widget | Accepted, implemented; replaces the single `stop` of [ADR-0053](0053-departures-from-efa.md) |
-| [0126](0126-a-schedule-event-for-plugin-demand.md) | A schedule event for plugin demand | Accepted; protocol 9 and the `Demand` helper implemented, the host demand computation and the cache gate follow |
+| [0126](0126-a-schedule-event-for-plugin-demand.md) | A schedule event for plugin demand | Accepted; protocol 9, the `Demand` helper, the host demand and the cache gate implemented; the plugin migrations follow |
 
 ## Delivery and releases
 
