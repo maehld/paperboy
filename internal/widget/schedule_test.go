@@ -114,13 +114,6 @@ func TestMaintainRefreshesOnlyWithDemand(t *testing.T) {
 	if n := runs(f.count); n != 1 {
 		t.Fatalf("first fetch: %d requests", n)
 	}
-	// Keep the fake hand-written plugin off the schedule path: it would count
-	// the event as a request.
-	for _, p := range h.procs {
-		p.mu.Lock()
-		p.proto = 8
-		p.mu.Unlock()
-	}
 	for _, e := range h.cache {
 		e.expires = time.Now()
 		e.lastUsed = time.Now()

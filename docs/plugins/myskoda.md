@@ -19,10 +19,12 @@ plugins:
 |---|---|
 | `api_key` | Required. API key created in the MyŠkoda app, bound to the vehicle. |
 | `vin` | Required. Vehicle identification number, 17 characters. The API has no vehicle list. |
-| `refresh` | Poll interval, default `1h`, at least `10m`; shorter values are raised to `10m` with one log line. |
+| `refresh` | Shortest interval between reads, default `1h`, at least `10m`; shorter values are raised to `10m` with one log line. The plugin reads only when a display needs the data ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)). |
 | `base` | API base URL, default `https://public.api.connect.skoda-auto.cz`. |
 
 **Rate limit:** the API allows 20 requests per hour and vehicle, commands included. The default of one request per hour leaves almost the whole quota free; a `429` is answered by waiting for `Retry-After` or `RateLimit-Reset`, and the last data stays on screen. A failing request is retried at the next interval, not in a loop.
+
+**Demand:** Paperboy names the next moment a device needs the vehicle data and the plugin reads then, never more often than `refresh` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)). Between those moments it idles and answers every request from the last state. A device that syncs every 30 minutes therefore still costs one read per hour, and a page that no display shows costs none. The plugin requires Paperboy protocol 9; an older host is refused with a clear error.
 
 **Key expiry:** every answer carries `X-API-Key-Expires-At`. The plugin logs one line when less than seven days are left; an expired key (`401`, `api-key-expired`) fails the widgets with a notice that names the MyŠkoda app, because a key can only be created there — there is no refresh flow. A `403` (`api-key-not-authorized`) means the key does not cover this VIN.
 

@@ -293,6 +293,8 @@ type storedState struct {
 
 // myskoda is the plugin.
 type myskoda struct {
+	plugin.Demand
+
 	client  *http.Client
 	apiKey  string
 	vin     string
@@ -320,6 +322,8 @@ type myskoda struct {
 	loc  *time.Location
 	lang string
 }
+
+var _ plugin.Eventer = (*myskoda)(nil)
 
 func (m *myskoda) Describe() plugin.Description {
 	image := []string{plugin.KindImage}
@@ -398,6 +402,9 @@ func (m *myskoda) Describe() plugin.Description {
 }
 
 func (m *myskoda) Configure(cfg plugin.Values, req *plugin.Request) error {
+	if req.Version != 0 && req.Version < 9 {
+		return fmt.Errorf("myskoda needs Paperboy protocol 9 or newer; this Paperboy reports %d", req.Version)
+	}
 	if err := cfg.Check(configKeys); err != nil {
 		return err
 	}
@@ -537,26 +544,17 @@ func (m *myskoda) queueImage(img image.Image) {
 	m.mu.Unlock()
 }
 
-// Start loads the vehicle state when it is due and then every refresh, and
-// reports a change when the displayed data moved. A state left by the last run
-// decides the first attempt, so a restart within the interval or during a wait
-// the API asked for costs no request (ADR 0065).
+// Start loads the vehicle state when Paperboy needs it, never more often than
+// refresh, and reports a change when the displayed data moved. A state left by
+// the last run decides the first attempt, so a restart within the interval or
+// during a wait the API asked for costs no request (ADR 0065, 0126).
 func (m *myskoda) Start(ctx context.Context, notify func(widgets ...string)) {
 	m.ready = make(chan struct{})
 	go func() {
 		var last string
 		var have bool
 		var warned time.Time
-		for {
-			if wait := time.Until(m.due()); wait > 0 {
-				m.signalReady()
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(wait):
-				}
-				continue
-			}
+		fetch := func() {
 			ans, err := m.fetch(ctx)
 			wait := m.refresh
 			var needImage string
@@ -616,12 +614,31 @@ func (m *myskoda) Start(ctx context.Context, notify func(widgets ...string)) {
 			if needImage != "" && image != nil && image.err == nil {
 				m.queueImage(image.img)
 			}
-			m.signalReady()
-			select {
-			case <-ctx.Done():
+		}
+
+		// A due state is the first fetch; a restart within the interval or
+		// during an API wait keeps the stored state without a request.
+		if !time.Now().Before(m.due()) {
+			fetch()
+		}
+		m.signalReady()
+
+		for {
+			if !m.Wait(ctx, 0) {
 				return
-			case <-time.After(wait):
 			}
+			// The plugin's refresh interval or an API wait can be later than
+			// the demand. Sleep it out, then wait for demand again so a cleared
+			// demand does not cause a request.
+			if wait := time.Until(m.due()); wait > 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(wait):
+				}
+				continue
+			}
+			fetch()
 		}
 	}()
 }

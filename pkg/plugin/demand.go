@@ -69,14 +69,18 @@ func (d *Demand) Event(ev Event) {
 }
 
 // Wait blocks until Paperboy needs the plugin's data: the named next_refresh
-// minus DemandLead. A new schedule wakes it, and it never returns earlier than
-// floor after the previous return, so the plugin's own minimum interval wins
-// over a demand that comes sooner. With no demand it blocks until a schedule
-// arrives or ctx ends. Wait returns false when ctx ends.
+// minus DemandLead. A new schedule wakes it. It returns no earlier than floor
+// after this call, so the plugin's own minimum interval wins over a demand
+// that comes sooner. With no demand it blocks until a schedule arrives or ctx
+// ends. Wait returns false when ctx ends.
 //
-// Call Wait after each fetch; the floor counts from the previous return, not
-// from the end of the fetch.
+// Call Wait after each fetch: the floor then counts from the end of the fetch,
+// not from the previous return.
 func (d *Demand) Wait(ctx context.Context, floor time.Duration) bool {
+	d.mu.Lock()
+	// The caller asks for the next fetch now, after the previous one.
+	d.last = time.Now()
+	d.mu.Unlock()
 	for {
 		d.mu.Lock()
 		if d.wake == nil {
@@ -106,7 +110,6 @@ func (d *Demand) Wait(ctx context.Context, floor time.Duration) bool {
 			// A schedule that arrived while the lock was open wins: loop and
 			// compute with the new moment instead of returning on the old one.
 			if d.wake == wake {
-				d.last = now
 				d.mu.Unlock()
 				return true
 			}
