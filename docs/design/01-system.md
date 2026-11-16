@@ -36,13 +36,13 @@ Background loops keep the service warm:
 - The widget host renders cached widgets again before they expire and after a plugin reports a change ([ADR 0049](../adr/0049-plugin-widgets.md)).
 - The download check runs at startup and then once per `download.interval` ([ADR 0060](../adr/0060-download-from-releases.md)).
 
-Concurrency rule: a device request takes the configuration before it locks the state. It selects the page under the lock, and it renders, draws and writes without it. A plan condition is asked before the lock too ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)). A plugin request therefore never runs while the state lock is held, and a slow plugin cannot block the other devices.
+Concurrency rule: a device request takes the configuration before it locks the state. It selects the page under the lock, and it renders, draws and writes without it. The values of a plan condition are read before the lock too ([ADR 0127](../adr/0127-plan-conditions-are-values.md)). A plugin request therefore never runs while the state lock is held, and a slow plugin cannot block the other devices.
 
 ## Data flow
 
 1. A device wakes and calls `POST /api/device/sync`. The operator UI can ask the same questions for a plan preview or for the virtual display instead.
-2. Paperboy asks the plan's conditions: one `conditions` call per plugin that a rule names. The widget host answers from a cache of 10 seconds.
-3. The plan selects a page: the first rule whose time window, weekdays and conditions match, else its fallback. A page that does not fit the device's display type is skipped ([ADR 0049](../adr/0049-plugin-widgets.md)).
+2. Paperboy reads the values that the plan's conditions name, one request per plugin, and keys them by `plugin/value`. The normal value cache answers a poll that repeats them.
+3. The plan selects a page: the first rule whose time window, weekdays and value conditions match, else its fallback. A page that does not fit the device's display type is skipped ([ADR 0049](../adr/0049-plugin-widgets.md)).
 4. The page composes its cells. All widgets of an image page or all values of a text page go to the plugin host in one request per plugin. The render therefore costs one round trip per plugin, not one per cell.
 5. The plugin host answers from its cache. A missing or expired entry is drawn or answered by the plugin process.
 6. Paperboy quantizes every widget image to the gray levels of the display type, pastes it one to one into the page and hashes the pixels. A text page formats its values and lays them into its boxes (ADR 0118).
@@ -111,7 +111,7 @@ The whole configuration reloads on change ([ADR 0047](../adr/0047-config-reload.
 | `internal/paperboy/` | Configuration, device API, plans, state, operator UI, downloads |
 | `internal/page/` | Page parsing and composition from widgets and values |
 | `internal/plan/` | Time rules that select pages |
-| `internal/widget/` | Plugin processes, widget and value cache, background refresh, conditions |
+| `internal/widget/` | Plugin processes, widget and value cache, background refresh |
 | `internal/builtin/` | Built-in plugin `paperboy`: header, text, clock, logo, battery, device status, values |
 | `internal/download/` | Release lists, archives and verification |
 | `internal/semver/` | Version grammar of programs and images |
@@ -123,4 +123,4 @@ The whole configuration reloads on change ([ADR 0047](../adr/0047-config-reload.
 
 ## Decisions
 
-[ADR 0028](../adr/0028-paperboy-eigenes-repository.md), [0029](../adr/0029-repository-trennung-umgesetzt.md) (own repository) · [0031](../adr/0031-everything-in-english.md) (English) · [0033](../adr/0033-global-language-and-timezone.md) (language and timezone) · [0037](../adr/0037-instance-directory-layout.md) (instance directory) · [0047](../adr/0047-config-reload.md) (reload) · [0049](../adr/0049-plugin-widgets.md) (v2 and plugin widgets) · [0056](../adr/0056-repository-layout-and-release-trains.md) (repository and release trains) · [0070](../adr/0070-devices-in-their-own-files.md), [0071](../adr/0071-display-types-in-files-of-their-own.md) (device and display type files) · [0079](../adr/0079-rename-config-items.md) (renaming) · [0096](../adr/0096-a-password-for-the-operator-ui.md) (UI password) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions)
+[ADR 0028](../adr/0028-paperboy-eigenes-repository.md), [0029](../adr/0029-repository-trennung-umgesetzt.md) (own repository) · [0031](../adr/0031-everything-in-english.md) (English) · [0033](../adr/0033-global-language-and-timezone.md) (language and timezone) · [0037](../adr/0037-instance-directory-layout.md) (instance directory) · [0047](../adr/0047-config-reload.md) (reload) · [0049](../adr/0049-plugin-widgets.md) (v2 and plugin widgets) · [0056](../adr/0056-repository-layout-and-release-trains.md) (repository and release trains) · [0070](../adr/0070-devices-in-their-own-files.md), [0071](../adr/0071-display-types-in-files-of-their-own.md) (device and display type files) · [0079](../adr/0079-rename-config-items.md) (renaming) · [0096](../adr/0096-a-password-for-the-operator-ui.md) (UI password) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values)

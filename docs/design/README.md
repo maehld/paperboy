@@ -9,10 +9,10 @@ Each document ends with a list of the decisions it carries. The [ADRs](../adr/RE
 | Document | Content |
 |---|---|
 | [`01-system.md`](01-system.md) | Goals, parts and processes, instance directory, configuration, reload, data flow |
-| [`02-content.md`](02-content.md) | Pages, widgets, grid and style, text pages, plans, conditions, actions, the device menu |
+| [`02-content.md`](02-content.md) | Pages, widgets, grid and style, text pages, plans, value conditions, actions, the device menu |
 | [`03-devices.md`](03-devices.md) | Device API, device state, power model, page delivery, firmware, hardware findings |
 | [`04-operator-ui.md`](04-operator-ui.md) | Dashboard, plan preview, virtual display, editors, page and plan API, password |
-| [`05-plugins.md`](05-plugins.md) | Plugin protocol, plugin host, versions, state and blobs, conditions, the shipped plugins |
+| [`05-plugins.md`](05-plugins.md) | Plugin protocol, plugin host, versions, state and blobs, value conditions, the shipped plugins |
 | [`06-delivery.md`](06-delivery.md) | Release trains, assets, workflows, the download client, channels, cache, inventory |
 
 [`../glossary.md`](../glossary.md) fixes the terms that all documents use.

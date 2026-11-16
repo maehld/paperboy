@@ -6,10 +6,11 @@ format; the Go types live in [`pkg/plugin`](../../pkg/plugin/plugin.go).
 
 - Current version: **9** ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md) added version 3, [ADR 0057](../adr/0057-plugin-actions-from-the-plan.md) added
   actions, [ADR 0081](../adr/0081-plugin-state-over-the-protocol.md) added plugin state and blobs and made 5 the minimum,
-  [ADR 0103](../adr/0103-plugin-conditions-in-plans.md) added conditions, [ADR 0111](../adr/0111-text-pages-from-plugin-values.md) added values,
+  [ADR 0111](../adr/0111-text-pages-from-plugin-values.md) added values,
   [ADR 0125](../adr/0125-remove-the-text-widget-path.md) removed the text action,
-  [ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md) added the schedule event).
-  From version 5 on the protocol grew additively until version 8 removed the text action. Version 9 adds an inbound event. Paperboy keeps the floor at 5: a plugin below 8 that still has text widgets is accepted, because nothing asks it for text.
+  [ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md) added the schedule event,
+  [ADR 0127](../adr/0127-plan-conditions-are-values.md) added the `enum` value type and removed conditions).
+  From version 5 on the protocol grew additively until version 8 removed the text action. Version 9 adds an inbound event and the `enum` value type, and removes the conditions of version 6; it has not shipped yet. Paperboy keeps the floor at 5: a plugin below 8 that still has text widgets is accepted, because nothing asks it for text.
   `server_status` is additive and keeps version 6
   ([ADR 0115](../adr/0115-device-status-in-a-widget.md)).
 - Paperboy starts a plugin on first use and keeps it running.
@@ -28,7 +29,7 @@ Every request carries:
 |---|---|
 | `id` | Request identifier; the answer repeats it |
 | `version` | Protocol version, currently `9` |
-| `action` | `configure`, `state`, `describe`, `render`, `values`, `actions`, `action` or `conditions` |
+| `action` | `configure`, `state`, `describe`, `render`, `values`, `actions` or `action` |
 | `language` | `"de"` or `"en"` |
 | `timezone` | IANA name such as `Europe/Berlin` |
 | `now` | Time of the request, RFC 3339 |
@@ -109,9 +110,6 @@ the plan's action validation.
       }
     ],
     "config": {"url": {"type": "string", "required": true}},
-    "conditions": [
-      {"name": "low", "title": "Low", "description": "the reading is below the low threshold"}
-    ],
     "blobs": ["render.png"]
   }
 }
@@ -119,7 +117,9 @@ the plan's action validation.
 
 - `widgets[].kinds` is `image`. A widget is for an image display; text pages read values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [ADR 0125](../adr/0125-remove-the-text-widget-path.md)).
 - `values[]` declares the data a text page can lay out ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md), [0122](../adr/0122-hide-and-progress-a-unit.md)): `name`, `title`, `type`, `unit`, `precision`, `progression`, `kind` and `args`.
-  `type` is `number`, `text`, `duration`, `timestamp` or `direction`. `unit` is the base unit the plugin answers a number in, and `precision` its number of decimals.
+  `type` is `number`, `text`, `duration`, `timestamp`, `direction` or `enum`. `unit` is the base unit the plugin answers a number in, and `precision` its number of decimals.
+  An `enum` value declares its allowed keys in `enum`, e.g. `["normal", "low", "high", "urgent"]`; the plugin answers one key and Paperboy rejects any other. The declaration carries no labels: a text cell labels the keys it shows ([ADR 0127](../adr/0127-plan-conditions-are-values.md)).
+  A plan condition names an enum value and its matching keys. Paperboy sends an ordinary values request before it selects a page; the plugin does not see the plan.
   `progression` names the larger units Paperboy may use, each with its `factor` to the base unit and its `precision`; an empty or missing list keeps the base unit. The plugin always answers in the base unit.
   `kind` is `value` (default) or `list`; protocol 7 answers only single values. A value is data, not text: the plugin never pads or formats it.
   `args` uses the same [argument schema](#arguments) as a widget; an empty or missing map means the value reads none.
@@ -131,33 +131,9 @@ the plan's action validation.
 - `confirm` is optional. `required: true` makes the device ask before running
   the action; `text` overrides Paperboy's generic confirmation text.
 - A plugin without actions omits `actions` or sends an empty list.
-- `conditions[].name` is the condition name without the plugin prefix. A plan
-  depends on it as `plugin/name` ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)). The plugin decides what makes the
-  condition active; thresholds and units stay in its configuration.
 - `blobs` names the files the plugin keeps besides its state, such as a
   downloaded image ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)). Paperboy logs files below `blobs/` that the
   plugin does not declare.
-
-### `conditions`
-
-Reports every declared condition and whether it is active now.
-
-```json
-{"id":"6","version":6,"action":"conditions","language":"de","timezone":"Europe/Berlin","now":"2026-11-07T12:00:00+01:00"}
-```
-
-```json
-{"id":"6","conditions":{"urgent":false,"low":true,"high":false}}
-```
-
-- A missing name, an empty answer and an error answer all count as inactive.
-  Paperboy never turns missing data into an alarm page.
-- The plugin decides what "active" means; a stale value should be reported as
-  inactive, because the page would otherwise show a warning about old data.
-- Paperboy caches the answer for a few seconds and drops it on a `changed`
-  event, so a plugin should send `changed` when a condition may have flipped.
-- A plugin without conditions answers with an error; plans that name one of
-  its conditions never match.
 
 ### `render`
 
@@ -205,7 +181,8 @@ Answers the values of a text page ([ADR 0111](../adr/0111-text-pages-from-plugin
 ```
 
 - The answer is a map from the requested name to one value. Exactly one field carries the value:
-  `{"number": 12.5}`, `{"text": "…"}`, `{"duration": 3600}` in seconds, `{"timestamp": "2026-11-15T12:00:00+01:00"}` in RFC 3339, or `{"direction": 1}` with 1 up, 0 flat and -1 down.
+  `{"number": 12.5}`, `{"text": "…"}`, `{"duration": 3600}` in seconds, `{"timestamp": "2026-11-15T12:00:00+01:00"}` in RFC 3339, `{"direction": 1}` with 1 up, 0 flat and -1 down, or `{"enum": "low"}` with one key of the declaration.
+- An enum value may answer an empty object, `{}`, when it has no key now, such as a stale reading. A plan condition does not match then, and a text cell shows `?`.
 - A missing name is an error for that cell; Paperboy shows a `? …` cell. The other values still reach the page.
 - `value_args` holds the arguments of every name in `values`; a value without arguments omits the field. The plugin checks them with `plugin.Values.Check`, like a widget's arguments.
 - Paperboy sends one request per plugin and argument set, so two boxes with different arguments are two requests. The cache holds them separately.
@@ -300,7 +277,7 @@ Runs exactly one concrete action. Paperboy sends one `actions` entry.
 ## Answers and events
 
 An answer carries `id`, its `version` and optionally `error`, plus the payload
-for its request: `widgets`, `values`, `actions`, `result`, `conditions`, `description`
+for its request: `widgets`, `values`, `actions`, `result`, `description`
 or `max_age`.
 `Handle` fills `version` with the protocol version the plugin was built
 against, in every answer and in the `changed` event. Paperboy calls
@@ -464,14 +441,15 @@ until Paperboy sends one; a request is still answered from memory.
 | 3 | `page.ppi` and `style.text_px` in pixels; `style.text_size` removed ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md)) |
 | 4 | Actions: `describe.actions`, `actions`, `action`, `actions`/`result` answers, `device` ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md)) |
 | 5 | Plugin state and blobs: the `state` request, `answer.state`/`answer.blobs`, `describe.blobs`; `PAPERBOY_STATE_DIR` removed ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)) |
-| 6 | Conditions: `describe.conditions`, the `conditions` request and `answer.conditions` ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)) |
+| 6 | Conditions: `describe.conditions`, the `conditions` request and `answer.conditions` ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)); removed in version 9 ([ADR 0127](../adr/0127-plan-conditions-are-values.md)) |
 | 7 | Values: `describe.values` with `args` and `progression`, the `values` request with `value_args` and `answer.values` ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md), [0122](../adr/0122-hide-and-progress-a-unit.md)) |
 | 8 | The text action is removed: `text`, `Texter`, `answer.widgets[].lines`, `widgets[].scroll` and the `text` widget kind ([ADR 0125](../adr/0125-remove-the-text-widget-path.md)) |
-| 9 | The inbound `schedule` event and `pkg/plugin.Demand` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)) |
+| 9 | The inbound `schedule` event and `pkg/plugin.Demand` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)); the `enum` value type with `ValueSpec.enum` and `Value.enum`, and the removal of conditions ([ADR 0127](../adr/0127-plan-conditions-are-values.md)) |
 
 A plugin is used as a whole or not at all ([ADR 0058](../adr/0058-plugin-protocol-version-check.md)). The check is a floor,
 not equality: Paperboy requires at least version 5 and accepts newer ones.
-Version 8 removed the text action and version 9 adds the schedule event. A
-plugin below 8 that still has text widgets is accepted, because nothing asks it
-for text; a plugin below 9 never receives a schedule. That version is the only
+Version 8 removed the text action; version 9 adds the schedule event and the
+`enum` value type and removes conditions. A plugin below 8 that still has text
+widgets is accepted, because nothing asks it for text; a plugin below 9 never
+receives a schedule and cannot declare an enum value. That version is the only
 thing a plugin has to announce; there is no separate capability list.

@@ -60,7 +60,7 @@ The content model: what a page is, what draws in it and when it is shown. See [`
 | [0082](0082-menu-tap-controls-in-a-strip.md) | The menu's tap controls are their own strip | Accepted, implemented |
 | [0092](0092-scrolling-text-lines.md) | Scrolling lines on text displays | Accepted, implemented |
 | [0095](0095-the-logo-on-pages-and-devices.md) | The Paperboy logo on pages and on the device | Accepted, implemented |
-| [0103](0103-plugin-conditions-in-plans.md) | Show a page while a plugin condition is active | Accepted, implemented; replaces the unimplemented `when.data` of [ADR-0025](0025-plaene-je-display.md) with conditions from plugins |
+| [0103](0103-plugin-conditions-in-plans.md) | Show a page while a plugin condition is active | Superseded by [ADR-0127](0127-plan-conditions-are-values.md); replaced the unimplemented `when.data` of [ADR-0025](0025-plaene-je-display.md) with conditions from plugins |
 | [0110](0110-pages-serve-their-kind-and-name-variants.md) | Pages serve their kind and name their variants | Accepted, implemented; replaces the implicit variant/shared precedence of [ADR-0049](0049-plugin-widgets.md) and the file handling of [ADR-0068](0068-page-editor-ui.md), [ADR-0073](0073-edit-creates-and-deletes.md), [ADR-0079](0079-rename-config-items.md) (page part), [ADR-0093](0093-every-page-file-is-addressable.md) and [ADR-0094](0094-the-pages-list-is-a-list.md) with an explicit variant list; a page rename moves the variants ([ADR-0113](0113-a-page-rename-moves-its-variants.md)) |
 | [0111](0111-text-pages-from-plugin-values.md) | Text pages from plugin values | Accepted, partly implemented (values, text boxes, overflow policies, editor and preview); plugin migrations open, lists (`for-each`) deferred to the first list plugin; builds on [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md), replaces the text widget of [ADR-0049](0049-plugin-widgets.md) in stages; the text action is removed by [ADR-0125](0125-remove-the-text-widget-path.md) |
 | [0112](0112-a-missing-page-file.md) | A missing page file is created by hand | Accepted, implemented; removes the assign dialog and `POST /api/pages/{name}/assign` of [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md); a variant without a page file is read-only; a page rename moves its variants ([ADR-0113](0113-a-page-rename-moves-its-variants.md)) |
@@ -159,6 +159,7 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0099](0099-glucose-readings-from-the-dexcom-share-service.md) | Glucose readings from the Dexcom Share service | Accepted, implemented |
 | [0100](0100-one-stop-per-departures-widget.md) | One stop per departures widget | Accepted, implemented; replaces the single `stop` of [ADR-0053](0053-departures-from-efa.md) |
 | [0126](0126-a-schedule-event-for-plugin-demand.md) | A schedule event for plugin demand | Accepted; protocol 9, the `Demand` helper, the host demand and the cache gate implemented; the plugin migrations follow |
+| [0127](0127-plan-conditions-are-values.md) | Plan conditions are values | Accepted, implemented; supersedes the conditions of [ADR-0103](0103-plugin-conditions-in-plans.md), adds the `enum` value type to [ADR-0111](0111-text-pages-from-plugin-values.md) and the per-cell labels to those values; amends protocol 9 before it ships |
 
 ## Delivery and releases
 

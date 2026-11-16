@@ -6,6 +6,7 @@
 package plan
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -156,21 +157,136 @@ type When struct {
 	From *Clock `yaml:"from" json:"from,omitempty"`
 	To   *Clock `yaml:"to" json:"to,omitempty"`
 	Days []Day  `yaml:"days" json:"days,omitempty"`
-	// Conditions are named plugin states that must all be active, written as
-	// "plugin/condition" (ADR 0103). A missing or failing plugin, an unknown
-	// name and a stale value all count as inactive, so a rule that warns
-	// about missing data never fires.
-	Conditions []string `yaml:"conditions" json:"conditions,omitempty"`
+	// Conditions are value conditions: a plugin value must answer one of the
+	// listed keys (ADR 0127). Every entry must match; the keys within one
+	// entry are alternatives. A missing value, a failing plugin and an
+	// unknown key all count as no match, so a rule that warns about missing
+	// data never fires.
+	Conditions []Condition `yaml:"conditions" json:"conditions,omitempty"`
 	// Data conditions from ADR 0025 pointed into a shared data document that
 	// no longer exists (ADR 0049). Rejecting them keeps operators from relying
 	// on something that is ignored.
 	Data []any `yaml:"data" json:"data,omitempty"`
 }
 
-// Conditions says whether a condition is active now, keyed by
-// "plugin/condition". A plan without conditions ignores it, and a nil map
-// means nothing is active.
-type Conditions map[string]bool
+// Condition names one value and the keys that match it. A text cell may show
+// the key with its own label, but a plan condition has no label: the file and
+// the view keep the key (ADR 0127).
+type Condition struct {
+	Value string   `yaml:"value" json:"value"`
+	Is    []string `yaml:"is" json:"is"`
+}
+
+// UnmarshalYAML accepts a mapping with value and is. The old string form names
+// a condition and is rejected with a hint that shows the new shape.
+func (c *Condition) UnmarshalYAML(v *yaml.Node) error {
+	if v.Kind == yaml.ScalarNode {
+		var ref string
+		if err := v.Decode(&ref); err == nil {
+			return fmt.Errorf("line %d: %q is no longer a condition; write { value: plugin/value, is: [key] } (ADR 0127)",
+				v.Line, ref)
+		}
+	}
+	if v.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: expected a condition as { value: plugin/value, is: [key] }", v.Line)
+	}
+	c.Value, c.Is = "", nil
+	for i := 0; i+1 < len(v.Content); i += 2 {
+		key, val := v.Content[i], v.Content[i+1]
+		switch key.Value {
+		case "value":
+			if err := val.Decode(&c.Value); err != nil {
+				return fmt.Errorf("line %d: value: expected a name", val.Line)
+			}
+		case "is":
+			switch val.Kind {
+			case yaml.ScalarNode:
+				var one string
+				if err := val.Decode(&one); err != nil {
+					return fmt.Errorf("line %d: is: expected a key or a list of keys", val.Line)
+				}
+				c.Is = []string{one}
+			case yaml.SequenceNode:
+				if err := val.Decode(&c.Is); err != nil {
+					return fmt.Errorf("line %d: is: expected a key or a list of keys", val.Line)
+				}
+			default:
+				return fmt.Errorf("line %d: is: expected a key or a list of keys", val.Line)
+			}
+		default:
+			return fmt.Errorf("line %d: field %s not found in type plan.Condition", key.Line, key.Value)
+		}
+	}
+	return nil
+}
+
+// MarshalYAML writes one key as a scalar and several as a list.
+func (c Condition) MarshalYAML() (any, error) {
+	return struct {
+		Value string `yaml:"value"`
+		Is    any    `yaml:"is"`
+	}{c.Value, c.isValue()}, nil
+}
+
+// UnmarshalJSON accepts the same shape as the YAML decoder, rejects unknown
+// fields and rejects the old string form with the same hint.
+func (c *Condition) UnmarshalJSON(b []byte) error {
+	if len(bytes.TrimSpace(b)) > 0 && bytes.TrimSpace(b)[0] == '"' {
+		var ref string
+		_ = json.Unmarshal(b, &ref)
+		return fmt.Errorf("%q is no longer a condition; write {\"value\": \"plugin/value\", \"is\": [\"key\"]} (ADR 0127)", ref)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	c.Value, c.Is = "", nil
+	for key := range raw {
+		switch key {
+		case "value", "is":
+		default:
+			return fmt.Errorf("field %s not found in type plan.Condition", key)
+		}
+	}
+	if v, ok := raw["value"]; ok {
+		if err := json.Unmarshal(v, &c.Value); err != nil {
+			return fmt.Errorf("value: expected a name")
+		}
+	}
+	is, ok := raw["is"]
+	if !ok || len(is) == 0 {
+		return nil
+	}
+	var one string
+	if err := json.Unmarshal(is, &one); err == nil {
+		c.Is = []string{one}
+		return nil
+	}
+	if err := json.Unmarshal(is, &c.Is); err != nil {
+		return fmt.Errorf("is: expected a key or a list of keys")
+	}
+	return nil
+}
+
+// MarshalJSON writes one key as a scalar and several as a list.
+func (c Condition) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Value string `json:"value"`
+		Is    any    `json:"is"`
+	}{c.Value, c.isValue()})
+}
+
+func (c Condition) isValue() any {
+	if len(c.Is) == 1 {
+		return c.Is[0]
+	}
+	return c.Is
+}
+
+// Values is the evaluated plan values keyed by "plugin/value" (ADR 0127). A
+// missing key means the value answered nothing or failed, so its condition
+// does not match.
+type Values map[string]string
 
 // Selection is the evaluated rule.
 type Selection struct {
@@ -201,12 +317,12 @@ func Parse(r io.Reader, loc *time.Location) (*Plan, error) {
 }
 
 // Select returns the first matching rule, otherwise the fallback rule. ok is
-// false when neither matches. conds is the current state of the plan's
-// conditions; nil means none is active.
-func (p *Plan) Select(now time.Time, conds Conditions) (Selection, bool) {
+// false when neither matches. values holds the current plan values keyed by
+// "plugin/value"; nil means no value answered.
+func (p *Plan) Select(now time.Time, values Values) (Selection, bool) {
 	local := now.In(p.loc)
 	for i := range p.Rules {
-		if p.Rules[i].When.matches(local, conds) {
+		if p.Rules[i].When.matches(local, values) {
 			return p.selectRule(i), true
 		}
 	}
@@ -227,13 +343,13 @@ func (p *Plan) selectRule(i int) Selection {
 }
 
 // Matches reports whether rule i matches now, without the fallback. It lets a
-// viewer tell a matching rule from the fallback. Time windows only; conditions
-// are evaluated with conds as well.
-func (p *Plan) Matches(i int, now time.Time, conds Conditions) bool {
+// viewer tell a matching rule from the fallback. Time windows only; values
+// are evaluated as well.
+func (p *Plan) Matches(i int, now time.Time, values Values) bool {
 	if i < 0 || i >= len(p.Rules) {
 		return false
 	}
-	return p.Rules[i].When.matches(now.In(p.loc), conds)
+	return p.Rules[i].When.matches(now.In(p.loc), values)
 }
 
 // UntilNextBoundary returns the time until the next window starts or ends, so
@@ -294,9 +410,20 @@ func (w *When) dayAllowed(d time.Weekday) bool {
 	return false
 }
 
-func (w *When) matches(t time.Time, conds Conditions) bool {
-	for _, ref := range w.Conditions {
-		if !conds[ref] {
+func (w *When) matches(t time.Time, values Values) bool {
+	for _, cond := range w.Conditions {
+		key, ok := values[cond.Value]
+		if !ok {
+			return false
+		}
+		found := false
+		for _, want := range cond.Is {
+			if key == want {
+				found = true
+				break
+			}
+		}
+		if !found {
 			return false
 		}
 	}
@@ -415,17 +542,20 @@ func (r *Rule) validate() error {
 	}
 	w := &r.When
 	if len(w.Data) > 0 {
-		return fmt.Errorf("when.data: there is no shared data document any more; name a plugin condition in when.conditions (ADR 0103)")
+		return fmt.Errorf("when.data: there is no shared data document any more; name a value and its keys in when.conditions (ADR 0127)")
 	}
 	refs := map[string]bool{}
-	for _, ref := range w.Conditions {
-		if !validRef(ref) {
-			return fmt.Errorf("condition %q: expected plugin/condition", ref)
+	for _, cond := range w.Conditions {
+		if !validRef(cond.Value) {
+			return fmt.Errorf("condition value %q: expected plugin/value", cond.Value)
 		}
-		if refs[ref] {
-			return fmt.Errorf("duplicate condition %q", ref)
+		if len(cond.Is) == 0 {
+			return fmt.Errorf("condition %s: is missing", cond.Value)
 		}
-		refs[ref] = true
+		if refs[cond.Value] {
+			return fmt.Errorf("duplicate condition %q", cond.Value)
+		}
+		refs[cond.Value] = true
 	}
 	if (w.From == nil) != (w.To == nil) {
 		return fmt.Errorf("when: from and to must be given together")

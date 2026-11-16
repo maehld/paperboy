@@ -19,8 +19,6 @@
 //   - "actions": report the current state of concrete actions, one answer per
 //     requested action (ADR 0057).
 //   - "action": run exactly one concrete action and report the outcome.
-//   - "conditions": report the state of the named conditions a plan may
-//     depend on (ADR 0103).
 //   - "values": the declared values a text page lays out (ADR 0111).
 //
 // Events: Paperboy sends {"event":"schedule","next_refresh":"..."} to tell a
@@ -45,10 +43,11 @@
 // base64-coded. Paperboy stores both itself.
 //
 // Compatibility: the protocol changes only with a version and an ADR. Version
-// 8 removed the text action; version 9 adds the schedule event. Otherwise it
-// grows additively. Paperboy accepts every plugin that speaks at least
-// MinVersion, ignores fields it does not know, and a new version may add
-// fields and actions without changing the meaning of the existing ones.
+// 8 removed the text action; version 9 adds the schedule event, the enum value
+// type and removes plan conditions. Otherwise it grows additively. Paperboy
+// accepts every plugin that speaks at least MinVersion, ignores fields it does
+// not know, and a new version may add fields and actions without changing the
+// meaning of the existing ones.
 //
 // Environment: a plugin process sees PAPERBOY_LANGUAGE and PAPERBOY_TIMEZONE,
 // and it runs in the plugins directory.
@@ -78,16 +77,18 @@ import (
 // (ADR 0057) added actions: describe.actions, the actions and action requests,
 // and action results. Version 5 (ADR 0081) added the plugin state and blobs:
 // the state request, Message.state, describe.blobs and the blobs of answers.
-// Version 6 (ADR 0103) added conditions: describe.conditions, the conditions
-// request and Message.conditions. Version 7 (ADR 0111) added values:
+// Version 6 (ADR 0103) added conditions, which version 9 removes again in
+// favour of enum values (ADR 0127). Version 7 (ADR 0111) added values:
 // describe.values, the values request and Message.values, with arguments per
 // value and the request's value_args (ADR 0120), and the unit progression of
 // a value (ADR 0122). Version 8 (ADR 0125) removed the text action:
 // ActionText, the Texter interface, Result.lines, WidgetRequest.scroll and the
-// text display kind of a widget are gone. Version 9 (ADR 0126) adds the
-// inbound schedule event and the Demand helper. A plugin below 8 is still
-// accepted while it serves values, because nothing asks it for text; Paperboy
-// sends a schedule only to a plugin that reports version 9 or newer.
+// text display kind of a widget are gone. Version 9 (ADR 0126, 0127) adds the
+// inbound schedule event, the enum value type and the labels a text cell may
+// carry, and removes the conditions request and describe.conditions. A plugin
+// below 8 is still accepted while it serves values, because nothing asks it
+// for text; Paperboy sends a schedule only to a plugin that reports version 9
+// or newer.
 // Plugins report the version in every answer (Message.Version); Paperboy
 // refuses a plugin that speaks less than MinVersion (ADR 0081).
 const Version = 9
@@ -105,9 +106,6 @@ const (
 	ActionRender    = "render"
 	ActionList      = "actions" // states of concrete actions
 	ActionInvoke    = "action"  // run one concrete action
-	// ActionConditions asks for the state of the named conditions a plan may
-	// depend on (ADR 0103).
-	ActionConditions = "conditions"
 	// ActionValues asks for declared values a text page lays out (ADR 0111).
 	ActionValues = "values"
 )
@@ -262,10 +260,6 @@ type Message struct {
 	Widgets []Result       `json:"widgets,omitempty"`
 	Actions []ActionState  `json:"actions,omitempty"` // answers to an actions request, in request order
 	Result  *ActionOutcome `json:"result,omitempty"`  // answer to an action request
-	// Conditions is the answer to a conditions request: every declared
-	// condition of the plugin, true while it is active (ADR 0103). A missing
-	// name counts as inactive.
-	Conditions map[string]bool `json:"conditions,omitempty"`
 	// Values is the answer to a values request, keyed by the requested name
 	// (ADR 0111). A missing name is an error for that cell.
 	Values      map[string]Value `json:"values,omitempty"`
@@ -296,12 +290,9 @@ type Description struct {
 	Widgets []WidgetInfo `json:"widgets"`
 	// Values are the data keys a text page may lay out (ADR 0111). A page
 	// asks for them with the values request.
-	Values  []ValueSpec  `json:"values,omitempty"`
-	Actions []ActionSpec `json:"actions,omitempty"` // actions a plan may list (ADR 0057)
-	// Conditions are the named states a plan may depend on (ADR 0103). A
-	// plugin reports them on the conditions request.
-	Conditions []ConditionSpec `json:"conditions,omitempty"`
-	Config     map[string]Arg  `json:"config,omitempty"` // keys of the plugin's config section
+	Values  []ValueSpec    `json:"values,omitempty"`
+	Actions []ActionSpec   `json:"actions,omitempty"` // actions a plan may list (ADR 0057)
+	Config  map[string]Arg `json:"config,omitempty"`  // keys of the plugin's config section
 	// Blobs names the files the plugin keeps besides its state, e.g.
 	// "render.png" (ADR 0081). Paperboy stores them under blobs/ of the
 	// plugin's directory and logs files it does not expect.
@@ -342,6 +333,7 @@ const (
 	ValueDuration  = "duration" // seconds
 	ValueTimestamp = "timestamp"
 	ValueDirection = "direction" // 1 up, 0 flat, -1 down
+	ValueEnum      = "enum"      // one key of ValueSpec.Enum (ADR 0127)
 )
 
 // Kinds of a value declaration. Only single values exist in protocol 7; list
@@ -355,8 +347,12 @@ const (
 type ValueSpec struct {
 	Name  string `json:"name"`  // the key in a page and in the values answer
 	Title string `json:"title"` // display name for editors
-	// Type is number, text, duration, timestamp or direction.
+	// Type is number, text, duration, timestamp, direction or enum.
 	Type string `json:"type"`
+	// Enum lists the allowed keys of an enum value (ADR 0127). Paperboy
+	// rejects an answer that names another key. The keys carry no labels
+	// here: a text cell shows its own label per key.
+	Enum []string `json:"enum,omitempty"`
 	// Unit is the base unit a plugin answers a number in, e.g. "W". A page
 	// may override the text or hide it with "none" (ADR 0122).
 	Unit string `json:"unit,omitempty"`
@@ -391,6 +387,7 @@ type Value struct {
 	Duration  *int64   `json:"duration,omitempty"`  // seconds
 	Timestamp *string  `json:"timestamp,omitempty"` // RFC 3339
 	Direction *int     `json:"direction,omitempty"` // 1 up, 0 flat, -1 down
+	Enum      *string  `json:"enum,omitempty"`      // one key of ValueSpec.Enum
 }
 
 // NumberValue returns a value of type number.
@@ -414,6 +411,9 @@ func TimestampValue(t time.Time) Value {
 // DirectionValue returns a trend direction: 1 up, 0 flat, -1 down.
 func DirectionValue(d int) Value { return Value{Direction: &d} }
 
+// EnumValue returns a value of type enum, one key of the declaration's Enum.
+func EnumValue(key string) Value { return Value{Enum: &key} }
+
 // Type names the field a value carries, or "" when it carries none.
 func (v Value) Type() string {
 	switch {
@@ -427,6 +427,8 @@ func (v Value) Type() string {
 		return ValueTimestamp
 	case v.Direction != nil:
 		return ValueDirection
+	case v.Enum != nil:
+		return ValueEnum
 	}
 	return ""
 }
@@ -455,15 +457,6 @@ type ActionSpec struct {
 	Title   string         `json:"title"`
 	Args    map[string]Arg `json:"args,omitempty"` // the same schema as widget args
 	Confirm *Confirm       `json:"confirm,omitempty"`
-}
-
-// ConditionSpec describes one named condition a plugin reports (ADR 0103).
-// Plans refer to it as "plugin/name"; the plugin decides what makes it active,
-// so thresholds and units stay in its configuration.
-type ConditionSpec struct {
-	Name        string `json:"name"`
-	Title       string `json:"title"`
-	Description string `json:"description,omitempty"`
 }
 
 // Confirm says whether an action needs a confirmation before it runs and which
@@ -579,14 +572,6 @@ type Valuer interface {
 type Actioner interface {
 	Actions(req *Request) ([]ActionState, error)
 	Invoke(req *Request, call ActionCall) (ActionOutcome, error)
-}
-
-// Conditioner is implemented by plugins whose named conditions a plan may
-// depend on (ADR 0103). Conditions answers every condition of Describe, true
-// while it is active now. A plugin without it has no conditions, so plans that
-// name one of its conditions never match.
-type Conditioner interface {
-	Conditions(req *Request) (map[string]bool, error)
 }
 
 // Preparer is implemented by plugins that set up shared state once per
@@ -747,8 +732,6 @@ func Handle(h Handler, req *Request) (m Message) {
 		}
 	case ActionList, ActionInvoke:
 		handleActions(h, req, &m)
-	case ActionConditions:
-		handleConditions(h, req, &m)
 	case ActionValues:
 		handleValues(h, req, &m)
 	default:
@@ -858,23 +841,6 @@ func handleActions(h Handler, req *Request, m *Message) {
 	if ag, ok := h.(Ager); ok {
 		m.MaxAge = int(ag.MaxAge(req) / time.Second)
 	}
-}
-
-// handleConditions answers a conditions request. A plugin without the
-// Conditioner interface has none; Paperboy treats such an answer as an error
-// and every condition as inactive (ADR 0103).
-func handleConditions(h Handler, req *Request, m *Message) {
-	c, ok := h.(Conditioner)
-	if !ok {
-		m.Error = "this plugin has no conditions"
-		return
-	}
-	active, err := c.Conditions(req)
-	if err != nil {
-		m.Error = err.Error()
-		return
-	}
-	m.Conditions = active
 }
 
 // handleValues answers a values request (ADR 0111). A plugin without the

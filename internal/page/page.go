@@ -72,6 +72,10 @@ type Cell struct {
 	Text  string `yaml:"text,omitempty" json:"text,omitempty"`
 	Value string `yaml:"value,omitempty" json:"value,omitempty"`
 	Label string `yaml:"label,omitempty" json:"label,omitempty"`
+	// Labels names an enum key of the cell's value, so the page shows readable
+	// text instead of the key (ADR 0127). The stored key stays in Value and in
+	// the file; only an enum value cell may carry labels.
+	Labels map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
 	// Unit overrides the unit text of a value: a label, or "none" to hide the
 	// unit. Empty shows the declared unit (ADR 0122).
 	Unit string `yaml:"unit,omitempty" json:"unit,omitempty"`
@@ -303,8 +307,8 @@ func (t *Template) validateGrid() error {
 		if c.Scroll {
 			return fmt.Errorf("%s: scroll is for text pages; ePaper cannot animate (ADR 0118)", where)
 		}
-		if c.Text != "" || c.Value != "" || c.Label != "" || c.Unit != "" || c.Scale != "" || c.Align != "" || c.Overflow != "" {
-			return fmt.Errorf("%s: text, value, label, unit and scale are for text pages (kind: text); use widget", where)
+		if c.Text != "" || c.Value != "" || c.Label != "" || len(c.Labels) > 0 || c.Unit != "" || c.Scale != "" || c.Align != "" || c.Overflow != "" {
+			return fmt.Errorf("%s: text, value, label, labels, unit and scale are for text pages (kind: text); use widget", where)
 		}
 		plugin, widget, ok := strings.Cut(c.Widget, "/")
 		if !ok || !ValidName(plugin) || !ValidName(widget) {
@@ -378,8 +382,8 @@ func (t *Template) validateText() error {
 			if !ok || !ValidName(plugin) || !ValidName(key) {
 				return fmt.Errorf("%s: value %q: expected plugin/value with a-z, 0-9 and -", where, c.Value)
 			}
-		} else if c.Label != "" || c.Unit != "" || c.Scale != "" || len(c.Args) > 0 {
-			return fmt.Errorf("%s: a literal text cell has no label, unit, scale or args", where)
+		} else if c.Label != "" || len(c.Labels) > 0 || c.Unit != "" || c.Scale != "" || len(c.Args) > 0 {
+			return fmt.Errorf("%s: a literal text cell has no label, labels, unit, scale or args", where)
 		}
 		switch c.Align {
 		case "":

@@ -352,7 +352,7 @@ type planChoice struct {
 // config access happens under the state lock (ADR 0047). Rendering happens
 // later in renderPlan. paused freezes paging while the device menu is open
 // (ADR 0057): the page stays and rotation waits.
-func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now time.Time, conds plan.Conditions, firstContact bool, buttons []string, pageTimeout time.Duration, paused, quiet bool) planChoice {
+func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now time.Time, values plan.Values, firstContact bool, buttons []string, pageTimeout time.Duration, paused, quiet bool) planChoice {
 	p, err := s.plans.get(cfg.Plans, d.Plan, cfg.Timezone)
 	if p == nil {
 		if !quiet {
@@ -367,7 +367,7 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 	if err != nil && !quiet {
 		slog.Warn("plan invalid, using the last valid version", "device", d.ID, "plan", d.Plan, "error", err)
 	}
-	sel, ok := p.Select(now, conds)
+	sel, ok := p.Select(now, values)
 	if !ok {
 		title, text := cfg.texts().noSelection()
 		return planChoice{title: title, text: text}

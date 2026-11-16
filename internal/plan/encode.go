@@ -81,9 +81,21 @@ func whenNode(w *When) *yaml.Node {
 		add(n, "days", days)
 	}
 	if len(w.Conditions) > 0 {
-		conds := newSeq(true)
-		for _, ref := range w.Conditions {
-			conds.Content = append(conds.Content, str(ref))
+		conds := newSeq(false)
+		for _, cond := range w.Conditions {
+			n := newMap()
+			n.Style = yaml.FlowStyle
+			add(n, "value", str(cond.Value))
+			if len(cond.Is) == 1 {
+				add(n, "is", str(cond.Is[0]))
+			} else {
+				is := newSeq(true)
+				for _, key := range cond.Is {
+					is.Content = append(is.Content, str(key))
+				}
+				add(n, "is", is)
+			}
+			conds.Content = append(conds.Content, n)
 		}
 		add(n, "conditions", conds)
 	}

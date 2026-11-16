@@ -33,7 +33,7 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
   stop and the departures with clock times on 20×4.
 - `glukose.yaml` - the glucose reading next to the day with the numbers of the
   day below; `glukose.lcd2004.yaml` puts the reading, the trend, the change,
-  the age and the target band on 20×4.
+  the age and the labelled state on 20×4.
 - `nachrichten.yaml` - two RSS feeds: headlines with summaries and a mixed
   list of all sources.
 - `unterwegs.yaml` - current weather with clothing advice and the next
@@ -69,9 +69,10 @@ switch a loadpoint's charge mode from the device menu, one "now" and one "PV
 only" entry per loadpoint; uncomment the ones you need.
 
 `plans/tour.yaml` rotates through every example page and so through all
-shipped plugins: on weekday mornings weather, departures, the week and the
-energy flow every 5 minutes, during the day all pages every 10 minutes, at
-night only the overview.
+shipped plugins: it shows the glucose page while `dexcom/state` is out of its
+band, on weekday mornings weather, departures, the week and the energy flow
+every 5 minutes, during the day all pages every 10 minutes, at night only the
+overview.
 
 `displays/e1001.yaml`, `displays/sticky.yaml`, `displays/e1003.yaml` and
 `displays/lcd2004.yaml` are four display types ([ADR 0071](../docs/adr/0071-display-types-in-files-of-their-own.md)): an 800 x 480 ePaper

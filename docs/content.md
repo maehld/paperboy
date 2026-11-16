@@ -96,12 +96,12 @@ fallback: nacht
 
 ### Conditions
 
-A rule can depend on **conditions** that plugins declare, such as "the glucose reading is low" ([ADR 0103](adr/0103-plugin-conditions-in-plans.md)). The condition names are `plugin/condition`; a plugin declares them in its `describe` answer, and the plugin configuration holds the thresholds, so the page switch and the widget's colouring always agree.
+A rule can depend on a **value condition**, such as "the glucose state is low or urgent" ([ADR 0127](adr/0127-plan-conditions-are-values.md)). A plugin declares an `enum` value with its keys in `describe.values`, and the plugin configuration holds the thresholds, so the page switch and the widget's colouring always agree.
 
 ```yaml
 rules:
   - name: unterzucker
-    when: { conditions: [dexcom/low] }
+    when: { conditions: [{ value: dexcom/state, is: [low, urgent] }] }
     pages: [zucker]
   - name: tag
     when: { from: "07:00", to: "22:00" }
@@ -109,13 +109,13 @@ rules:
 fallback: tag
 ```
 
-- Conditions combine with `from`/`to`/`days` as AND, and the first matching rule wins. A rule with only conditions matches whenever they are active.
-- A plugin that is not configured, a name it does not declare, a failing answer and a stale value all count as **inactive**, so missing data never raises an alarm page; the plan falls through to its next rule.
-- Paperboy asks the plugins named in a plan before it selects the page and caches the answer briefly. A change reaches a device at its next wake, so the `refresh` of the rule that shows the normal page sets how quickly.
-- The plan editor offers the declared conditions as check boxes per rule, and the plan view shows each condition as active or inactive (`if dexcom/low`). The plan view evaluates conditions at the current moment, even when you preview another time.
-- `when.data` from [ADR 0025](adr/0025-plaene-je-display.md) is rejected with a hint, because the shared data document no longer exists.
+- Every condition entry must match, and `from`/`to`/`days` combine with it as AND. The first matching rule wins. Within one entry, `is` may name one key or a list; the keys are alternatives.
+- A plugin that is not configured, a value it does not declare, a failing answer, an empty answer and an unknown key all count as **no match**, so missing data never raises an alarm page; the plan falls through to its next rule.
+- Paperboy reads the named values before it selects the page and uses the normal value cache. A change reaches a device at its next wake, so the `refresh` of the rule that shows the normal page sets how quickly.
+- The plan editor offers the enum values of the configured plugins and a check box per key. The plan view shows the key each value answers now, even when you preview another time. A plan condition has no label, because it is not a text cell.
+- The old condition string `when.conditions: [dexcom/low]` is rejected with a hint. `when.data` from [ADR 0025](adr/0025-plaene-je-display.md) is rejected too, because the shared data document no longer exists.
 
-Dexcom offers `urgent`, `low` (including the urgent range) and `high`, following its configured thresholds and inactive while the reading is older than 15 minutes; see [the dexcom page](plugins/dexcom.md) for an example plan.
+Dexcom declares the value `state` with the keys `normal`, `low`, `high` and `urgent`, following its configured thresholds. It answers no key while the reading is older than 15 minutes; see [the dexcom page](plugins/dexcom.md) for an example plan and a labelled text cell.
 
 ### Actions
 

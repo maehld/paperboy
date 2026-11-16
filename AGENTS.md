@@ -20,10 +20,10 @@ Each fact lives in exactly one place. Update the page that owns a behavior, not 
 | `README.md` | Overview, quick start, documentation index, licence |
 | `docs/setup.md`, `docs/content.md`, `docs/runtime.md`, `docs/releases.md` | What the operator does: instance, configuration, pages, plans, web UI, device API, downloads |
 | `docs/design/01-system.md` | Parts and processes, instance directory, configuration, reload, data flow, code map |
-| `docs/design/02-content.md` | Pages, widgets, grid and style, text pages, plans, conditions, actions, the menu |
+| `docs/design/02-content.md` | Pages, widgets, grid and style, text pages, plans, value conditions, actions, the menu |
 | `docs/design/03-devices.md` | Display types, device files, device API, state, power, delivery, firmware, hardware findings |
 | `docs/design/04-operator-ui.md` | Dashboard, stats, downloads, previews, virtual display, editors, page and plan API, password |
-| `docs/design/05-plugins.md` | Protocol, plugin host, versions, state and blobs, conditions, the shipped plugins |
+| `docs/design/05-plugins.md` | Protocol, plugin host, versions, state and blobs, value conditions, the shipped plugins |
 | `docs/design/06-delivery.md` | Release trains, assets, workflows, the download client, cache, inventory |
 | `docs/glossary.md` | The terms. One term per thing; a second word for a known thing is a bug |
 | `docs/plugins/<plugin>.md` | One shipped plugin: config, widgets, args, data source |
@@ -52,11 +52,11 @@ The structure is in `docs/design/`; these are the rules that a change must not b
 - **Go 1.27 or newer.** Dependencies: `golang.org/x/image` **v0.24.0** (ADR 0013) and `go.yaml.in/yaml/v3` **v3.0.5** (ADR 0024, 0026). Further dependencies only with their own ADR.
 - **No data API and no token.** The operator UI has a password (`ui.password`, ADR 0096); the device API keeps its per-device key (ADR 0042). The two route tables `deviceRoutes` and `uiRoutes` in `Handler` keep them apart, and a test pins the prefix of the device routes.
 - **A device never gets an error page.** Without a plan, with a missing or broken page or a broken plan it gets a notice page; a failing widget only marks its own cell. A broken configuration file keeps the last valid one.
-- **A plugin request never runs under the state lock.** The configuration snapshot is taken before locking, the conditions are asked before locking, page selection happens under the lock, and composing, drawing and writing happen outside it. Interactions with `state/` are atomic, and state belongs to the MAC, not to a file name (ADR 0080).
+- **A plugin request never runs under the state lock.** The configuration snapshot is taken before locking, the plan values are read before locking, page selection happens under the lock, and composing, drawing and writing happen outside it. Interactions with `state/` are atomic, and state belongs to the MAC, not to a file name (ADR 0080).
 - **The instance directory is the configuration.** Files are parsed strictly with a hint for every rejected key, and the same parser validates the runtime and the editor API.
 - **A page is a grid of widgets on a 6 × 8 reference grid.** Sizes are physical (points, `ppi`), a widget draws exactly its cell, and a widget that cannot draw there answers `ErrTooSmall` instead of leaving the cell empty.
-- **A text page is a character grid of boxes (ADR 0111, 0118, 0120).** It has no pixel `grid`; every box names `at`, `span` and either a declared plugin value with its `args` or literal text, and an `overflow` of strip, wrap or scroll. Paperboy formats, aligns and maps the content to the charset. The protocol has no text action; text pages read values (ADR 0125). The editor and the virtual display draw the text grid with the vendored pixel font (ADR 0116).
-- **Every plugin is a separate program** with its own version in `cmd/<plugin>/VERSION`; the protocol is public in `pkg/plugin` and changes only with a version and an ADR (additive where possible; version 8 removed the text action, version 9 adds the schedule event).
+- **A text page is a character grid of boxes (ADR 0111, 0118, 0120).** It has no pixel `grid`; every box names `at`, `span` and either a declared plugin value with its `args` or literal text, and an `overflow` of strip, wrap or scroll. An enum value cell may carry `labels` per key. Paperboy formats, aligns and maps the content to the charset. The protocol has no text action; text pages read values (ADR 0125). The editor and the virtual display draw the text grid with the vendored pixel font (ADR 0116).
+- **Every plugin is a separate program** with its own version in `cmd/<plugin>/VERSION`; the protocol is public in `pkg/plugin` and changes only with a version and an ADR (additive where possible; version 8 removed the text action, version 9 adds the schedule event and enum values and removes plan conditions).
 
 ## Essential rules for devices
 

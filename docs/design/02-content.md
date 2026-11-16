@@ -80,7 +80,7 @@ cells:
   - { at: [0, 3], span: [12, 1], value: paperboy/long, overflow: scroll }
 ```
 
-A box carries exactly one of `text` and `value`. `text` is literal text and may span lines; a literal text cell has no label, unit, scale or args. A value cell names `<plugin>/<key>`, the key a plugin declares in `describe.values`. Paperboy asks every plugin once for all keys of the page and argument set. The value reads the box's `args`, the arguments the plugin declares for it ([ADR 0120](../adr/0120-arguments-for-values.md)). Two boxes with the same value and different arguments are two requests. Paperboy caches the answer like a widget and drops it on a `changed` event. The plugin answers data, never text. A text value may carry several lines, one per record. The box shows them like literal text; the label opens the first line and the unit closes the last.
+A box carries exactly one of `text` and `value`. `text` is literal text and may span lines; a literal text cell has no label, labels, unit, scale or args. A value cell names `<plugin>/<key>`, the key a plugin declares in `describe.values`. Paperboy asks every plugin once for all keys of the page and argument set. The value reads the box's `args`, the arguments the plugin declares for it ([ADR 0120](../adr/0120-arguments-for-values.md)). Two boxes with the same value and different arguments are two requests. Paperboy caches the answer like a widget and drops it on a `changed` event. The plugin answers data, never text. A text value may carry several lines, one per record. The box shows them like literal text; the label opens the first line and the unit closes the last.
 
 | Cell key | Meaning |
 |---|---|
@@ -90,6 +90,7 @@ A box carries exactly one of `text` and `value`. `text` is literal text and may 
 | `value` | `<plugin>/<key>` of the declared value |
 | `args` | value cells only: the arguments of the declared value |
 | `label` | value cells only: text in front of the value |
+| `labels` | enum value cells only: display text per enum key |
 | `unit` | value cells only: text behind the value; `none` hides it; default the declared unit |
 | `scale` | value cells only: `auto` (default) or a declared unit step, e.g. `W` |
 | `align` | `left` (default), `right` or `decimal` |
@@ -102,26 +103,30 @@ A box carries exactly one of `text` and `value`. `text` is literal text and may 
 
 Boxes must stay inside the character grid and must not overlap; `at + span` is checked against the display in `Fits`. A box that is not filled stays blank, so a page can leave rows and columns free.
 
+An `enum` value answers one key of its declaration ([ADR 0127](../adr/0127-plan-conditions-are-values.md)). A value cell may label its keys in `labels`, one text per key. Paperboy shows the label when it is not empty and the key otherwise. Only an enum value cell may carry labels. A plugin and a plan condition carry none, because the text belongs to the page and its language.
+
 Paperboy formats every value itself: numbers follow the global `language` and the declared `precision`, durations and timestamps their compact forms, and directions their arrows. A number with a declared progression takes the largest step whose rounded absolute value is at least 1. Zero and small values stay in the base unit ([ADR 0122](../adr/0122-hide-and-progress-a-unit.md)). The cell's `scale` forces a step, and its `unit` overrides or hides the unit text. `RenderText` converts label, value and text to the charset before it measures, wraps or cuts. Lines of a multi-line value follow the cell's `align` and `overflow` like literal text. A stale value marks `!` in the last column of line 1. A missing value becomes a `? …` cell.
 
 A scrolling box adds its full lines, its first window and its direction to the render result. The device answer carries them with the display type's `scroll.step` (default 300 ms) and a flag whether the scroll text changed. A firmware or the virtual display keeps its offset while the flag is false and restarts at the first window when it is true. ePaper pages reject `scroll` and `overflow` with a hint (ADR 0118).
 
-The page editor places the same boxes on the board. Drag moves a box and its edges resize it. The inspector edits value or text, label, unit, scale, align and overflow. Text pages have no style in points.
+The page editor places the same boxes on the board. Drag moves a box and its edges resize it. The inspector edits value or text, label, labels, unit, scale, align and overflow. It shows one label input per declared enum key. Text pages have no style in points.
 
 ## Which page a device gets
 
-A plan is `plans/<name>.yaml` ([ADR 0025](../adr/0025-plaene-je-display.md), [0103](../adr/0103-plugin-conditions-in-plans.md)):
+A plan is `plans/<name>.yaml` ([ADR 0025](../adr/0025-plaene-je-display.md), [0127](../adr/0127-plan-conditions-are-values.md)):
 
 ```yaml
 rules:
-  - from: "06:00"
-    to: "22:00"
-    days: [mo, tu, we, th, fr]
-    conditions: [dexcom/low]
+  - name: tag
+    when:
+      from: "06:00"
+      to: "22:00"
+      days: [mo, tu, we, th, fr]
+      conditions: [{ value: dexcom/state, is: [low, urgent] }]
     pages: [morning, work]
-    rotate: 30
-    refresh: 300
-fallback: [night]
+    rotate: true
+    refresh: 30m
+fallback: nacht
 actions:
   - action: evcc/mode
     args: {loadpoint: 1, mode: pv}
@@ -131,7 +136,8 @@ Rules are tried in order and the first match wins:
 
 - `from` is inclusive, `to` is exclusive. A window that crosses midnight belongs to its start day.
 - `days` accepts German and English day names.
-- `conditions` must all be active (AND). A condition is `plugin/condition`, an answer of the plugin's `conditions` action. A missing or inactive condition does not match, and a condition never creates a boundary: only time windows do.
+- `conditions` entries all match (AND). Each entry names a value `plugin/value` and `is`, one key or a list of keys. The keys within one entry are alternatives (OR). A missing value, a failing plugin and an unknown key do not match. A condition never creates a boundary: only time windows do ([ADR 0127](../adr/0127-plan-conditions-are-values.md)).
+- The old condition string `plugin/condition` is rejected with a hint that shows the value form.
 - `timezone` inside a plan is rejected; the global `timezone` applies ([ADR 0033](../adr/0033-global-language-and-timezone.md)). `when.data` of version 1 is rejected with a hint that names `when.conditions`.
 
 A rule lists `pages`, `rotate` (seconds until the next page of the rule) and `refresh` (seconds until the next sync). `UntilNextBoundary` caps the refresh at the next rule change. `fallback` holds the pages of a device whose no rule matches.
@@ -193,4 +199,4 @@ On a text page the built-in plugin provides four values. `title` is the page tit
 
 ## Decisions
 
-[ADR 0025](../adr/0025-plaene-je-display.md) (plans) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md) (the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge)
+[ADR 0025](../adr/0025-plaene-je-display.md) (plans) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md) (the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge)

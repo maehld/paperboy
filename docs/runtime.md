@@ -24,7 +24,7 @@ The plugin table has one row per plugin — the built-in one included. It names 
 
 The widget cache follows: entries, images, bytes, stale entries, entries past their expiry, evictions and the age of the oldest entry, then one row per age range (under a minute, five minutes, an hour, a day, older) with entries, images and bytes. Below it Paperboy counts its own caches: rendered pages and notice pages with count, bytes and age, and the parsed page and plan files.
 
-*Timings* lists named operations with count, last, average, p50, p95 and maximum: the sync as a whole, the configuration snapshot, the wait for the state lock, the plugin conditions, plan selection, the page render split into waiting for plugins and PNG encoding, running a menu action, writing the state file, every page render and the text poll. Percentiles come from the last 256 samples of an operation. *Syncs and polls* finally has one row per device: its syncs with last, average, p95 and maximum duration, and the text polls separately, because a text display asks every second and would otherwise dominate the numbers.
+*Timings* lists named operations with count, last, average, p50, p95 and maximum: the sync as a whole, the configuration snapshot, the wait for the state lock, the plan values, plan selection, the page render split into waiting for plugins and PNG encoding, running a menu action, writing the state file, every page render and the text poll. Percentiles come from the last 256 samples of an operation. *Syncs and polls* finally has one row per device: its syncs with last, average, p95 and maximum duration, and the text polls separately, because a text display asks every second and would otherwise dominate the numbers.
 
 ### Plan preview
 

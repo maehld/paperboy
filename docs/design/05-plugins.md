@@ -18,28 +18,27 @@ The resolved path is part of the plugin's specification, so installing a new ver
 
 ## The protocol
 
-Paperboy and the plugin exchange one JSON object per line: a request on stdin, an answer on stdout with the same `id`. The protocol version is 9 ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0125](../adr/0125-remove-the-text-widget-path.md), [0126](../adr/0126-a-schedule-event-for-plugin-demand.md)). Paperboy requires at least version 5 and accepts newer ones. The protocol grew additively until version 8. Version 8 removed the text action; version 9 adds an inbound schedule event. A plugin below 8 that still has text widgets is accepted, because nothing asks it for text; a plugin below 9 never receives a schedule. `Message.CheckVersion` runs on every answer; a wrong version fails that plugin with one clear log line instead of a broken page ([ADR 0058](../adr/0058-plugin-protocol-version-check.md), [0081](../adr/0081-plugin-state-over-the-protocol.md)).
+Paperboy and the plugin exchange one JSON object per line: a request on stdin, an answer on stdout with the same `id`. The protocol version is 9 ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0125](../adr/0125-remove-the-text-widget-path.md), [0126](../adr/0126-a-schedule-event-for-plugin-demand.md), [0127](../adr/0127-plan-conditions-are-values.md)). Paperboy requires at least version 5 and accepts newer ones. The protocol grew additively until version 8. Version 8 removed the text action; version 9 adds an inbound schedule event and the `enum` value type, and removes conditions. A plugin below 8 that still has text widgets is accepted, because nothing asks it for text. A plugin below 9 never receives a schedule and cannot declare an enum value. `Message.CheckVersion` runs on every answer; a wrong version fails that plugin with one clear log line instead of a broken page ([ADR 0058](../adr/0058-plugin-protocol-version-check.md), [0081](../adr/0081-plugin-state-over-the-protocol.md)).
 
 Besides answers, Paperboy may send a line without `id`: the schedule event names when it next needs the plugin's data. An event without `next_refresh` means no demand now. It goes only to a plugin that reports version 9 or newer. A plugin that relies on the schedule requires version 9 and refuses an older host. A plugin ignores events it does not know. `pkg/plugin.Demand` receives the event. `Wait(ctx, floor)` sleeps until the named moment minus 30 seconds, wakes on a new schedule, and never returns earlier than `floor` after the call. A plugin calls it after each fetch, so the floor counts from the end of the fetch. The event format is `{"event":"schedule","next_refresh":"…"}`.
 
-Paperboy computes the demand per plugin from the configured devices. It takes the expected contact (`last_seen + refresh` of the last sync). It also takes the pages of the rule the device is on that fit its display type, and the plan's conditions. Actions do not count; they are resolved when the menu opens. A device that is late or never seen adds no demand until it contacts again, so a powered-off device cannot keep a plugin polling. Previews and the virtual display add no demand either.
+Paperboy computes the demand per plugin from the configured devices. It takes the expected contact (`last_seen + refresh` of the last sync). It also takes the pages of the rule the device is on that fit its display type, and the values of the plan's conditions. Actions do not count; they are resolved when the menu opens. A device that is late or never seen adds no demand until it contacts again, so a powered-off device cannot keep a plugin polling. Previews and the virtual display add no demand either.
 
 | Action | Request carries | Answer carries |
 |---|---|---|
 | `configure` | The plugin's `config`, `env`, `language`, `timezone` | Nothing, or an error |
 | `state` | The stored state and the declared blobs | New state and changed blobs |
-| `describe` | – | Widgets, values, actions, conditions, config keys, blob names, version |
+| `describe` | – | Widgets, values, actions, config keys, blob names, version |
 | `render` | Widgets with pixel `width`/`height`, `args`, `style` | One base64 PNG per widget |
 | `values` | The value keys a text page needs and `value_args`, the arguments of that set | `values` per key |
 | `actions` | Concrete plan actions, the device | State per action: title, `disabled` reason, `confirm` |
 | `action` | One action with its args, the device | `result` with `ok`, `message`, `changed` |
-| `conditions` | – | A map of the declared conditions, true while active |
 
 Every request carries `language`, `timezone`, `now` and `levels`, the tone count of the display. `levels` is 1 to 256; a canvas falls back to 2, 4 or 16 tones when it cannot draw the value ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)). The request also carries the `page` with title, number, count and display size, and `ppi` for image displays. A widget also gets `style` with `padding`, `rule` and `text_px` in pixels.
 
 `server_status` is Paperboy's own view of the devices (ADR 0115). It holds `current_device_status`, the device the page is rendered for, and `selected_devices_status`, a map of only the devices the page names in its widget arguments. A status names the id, display type, plan, hardware and firmware. It also names the contact state, last contact, power source, signal and battery reading. The estimated runtime and the last page or error follow. It carries no key, MAC or address. A preview without a device gets the sample device `preview` with fixed values ([ADR 0123](../adr/0123-a-sample-device-in-previews.md)). Only the built-in plugin receives the object; a plugin process would cache stale rows.
 
-A plugin answers with `version`, optionally `state`, `blobs`, `widgets`, `actions`, `result`, `conditions`, `max_age`, `description`, or a `changed` event.
+A plugin answers with `version`, optionally `state`, `blobs`, `widgets`, `actions`, `result`, `max_age`, `description`, or a `changed` event.
 
 ## What a plugin declares
 
@@ -47,8 +46,7 @@ A plugin answers with `version`, optionally `state`, `blobs`, `widgets`, `action
 
 - **Widgets** with their sizes as spans of the 6 × 8 reference grid, and the arguments of each widget.
 - **Actions** with name, title, arguments, whether they need a confirmation, and the conditions under which they are offered.
-- **Conditions** with name, title and description, for the rules of a plan ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)).
-- **Values** with name, title, type, unit, precision, progression, kind and args, for the cells of a text page ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md), [0122](../adr/0122-hide-and-progress-a-unit.md)). The unit is the base unit the plugin answers in; the progression names the larger steps Paperboy may use.
+- **Values** with name, title, type, unit, precision, progression, kind, enum keys and args. A text cell and a plan condition read them ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md), [0122](../adr/0122-hide-and-progress-a-unit.md), [0127](../adr/0127-plan-conditions-are-values.md)). The unit is the base unit the plugin answers in; the progression names the larger steps Paperboy may use. An `enum` value declares its allowed keys. Paperboy rejects an answer outside them. The declaration carries no labels; a text cell labels the keys it shows.
 - **Config keys**, the **blob names** that Paperboy stores for it, and its own **version**.
 
 An argument declares its type, default, whether it is required and its description. It can also declare an `enum` of allowed values with `enum_labels` for the display text ([ADR 0055](../adr/0055-allowed-arg-values-and-gallery-form.md)). The stored value is the key; an editor without a label shows the key. `plugin.Values.Check` rejects a value outside the declared set, so a typo in a page fails loudly instead of drawing something unexpected. Paperboy fills the `enum` of `paperboy/battery.device` and `paperboy/device-status.devices` with the configured device ids on every `/api/plugins` answer. An empty `enum_labels` key names the empty value for the editor. The built-in `Describe` stays enum-free, so a page that names a removed device still renders ([ADR 0123](../adr/0123-a-sample-device-in-previews.md)).
@@ -66,7 +64,7 @@ A widget that cannot draw anything in its cell reports `ErrTooSmall` with the ce
 - The built-in plugin runs in process and is never cached.
 - Values get the same cache and the same `changed` event as widgets. A describe answer lives for five minutes, because it carries the declarations a text page uses to format a value.
 
-Conditions get their own cache of 10 seconds per plugin. A sync therefore never waits, and a text display that polls every second does not ask every time. A `changed` event or a changed specification drops the answer. A plugin that fails answers with an error, and then every condition counts as inactive.
+The values of a plan's conditions use the normal value cache. Paperboy reads them before it selects a page, outside the state lock, and omits a missing or failing answer, so the condition does not match. A text display that polls every second and a condition that names the same value share that entry.
 
 ## State and blobs
 
@@ -110,7 +108,7 @@ Every plugin has its own version in `cmd/<plugin>/VERSION`, embedded in the prog
 | [`evcc`](../plugins/evcc.md) | evcc `/api/state` and its energy history | `site`, `flow`, `loadpoint`, `forecast`, `history`, `chart`, `values`, action `mode` |
 | [`departures`](../plugins/departures.md) | EFA rapidJSON | `departures` |
 | [`myskoda`](../plugins/myskoda.md) | MyŠkoda Public API | `battery`, `charging`, `profiles`, `location`, `climate`, `card`, `car`, actions `charging` and `climate` |
-| [`dexcom`](../plugins/dexcom.md) | Dexcom Share | `glucose`, `graph`, `values`, conditions `urgent`, `low`, `high` |
+| [`dexcom`](../plugins/dexcom.md) | Dexcom Share | `glucose`, `graph`, `values`, value `state` with the keys `normal`, `low`, `high`, `urgent` |
 | [`rss`](../plugins/rss.md) | RSS 2.0, RSS 1.0 and Atom | `feed`, `headline` |
 | [`xkcd`](../plugins/xkcd.md) | xkcd | `comic` |
 | [`countdown`](../plugins/countdown.md) | none, every date is an argument | `countdown` |
@@ -120,4 +118,4 @@ Every widget is for an image display. A plugin with data for a text page declare
 
 ## Decisions
 
-[ADR 0048](../adr/0048-calendar-provider-and-agenda.md) (calendar) · [0049](../adr/0049-plugin-widgets.md) (plugin widgets) · [0111](../adr/0111-text-pages-from-plugin-values.md) (values for text pages, amended by [ADR-0118](0118-text-boxes-and-overflow.md), arguments by [ADR-0120](0120-arguments-for-values.md), units by [ADR-0122](0122-hide-and-progress-a-unit.md), the text action removed by [ADR-0125](0125-remove-the-text-widget-path.md)) · [0053](../adr/0053-departures-from-efa.md), [0100](../adr/0100-one-stop-per-departures-widget.md) (departures) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0058](../adr/0058-plugin-protocol-version-check.md) (protocol version check) · [0065](../adr/0065-plugin-state-directory.md) → [0081](../adr/0081-plugin-state-over-the-protocol.md) (state) · [0075](../adr/0075-plugin-versions.md), [0107](../adr/0107-plugin-builds-reach-installations.md) (a version per plugin) · [0099](../adr/0099-glucose-readings-from-the-dexcom-share-service.md) (Dexcom) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions) · [0123](../adr/0123-a-sample-device-in-previews.md) (device ids as choices) · [0126](../adr/0126-a-schedule-event-for-plugin-demand.md) (schedule event)
+[ADR 0048](../adr/0048-calendar-provider-and-agenda.md) (calendar) · [0049](../adr/0049-plugin-widgets.md) (plugin widgets) · [0111](../adr/0111-text-pages-from-plugin-values.md) (values for text pages, amended by [ADR-0118](0118-text-boxes-and-overflow.md), arguments by [ADR-0120](0120-arguments-for-values.md), units by [ADR-0122](0122-hide-and-progress-a-unit.md), the text action removed by [ADR-0125](0125-remove-the-text-widget-path.md)) · [0053](../adr/0053-departures-from-efa.md), [0100](../adr/0100-one-stop-per-departures-widget.md) (departures) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0058](../adr/0058-plugin-protocol-version-check.md) (protocol version check) · [0065](../adr/0065-plugin-state-directory.md) → [0081](../adr/0081-plugin-state-over-the-protocol.md) (state) · [0075](../adr/0075-plugin-versions.md), [0107](../adr/0107-plugin-builds-reach-installations.md) (a version per plugin) · [0099](../adr/0099-glucose-readings-from-the-dexcom-share-service.md) (Dexcom) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0123](../adr/0123-a-sample-device-in-previews.md) (device ids as choices) · [0126](../adr/0126-a-schedule-event-for-plugin-demand.md) (schedule event)

@@ -535,6 +535,24 @@ func (d *dexcom) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 	out := make(map[string]plugin.Value, len(req.Values))
 	for _, name := range req.Values {
 		switch name {
+		case "state":
+			// No key while the newest reading is missing or stale, so a plan
+			// condition does not match and a page can show a question mark
+			// (ADR 0127).
+			if !has || req.Now.Sub(last.at) > staleAfter {
+				out[name] = plugin.Value{}
+				continue
+			}
+			switch level(last.value, l) {
+			case "urgent":
+				out[name] = plugin.EnumValue("urgent")
+			case "low":
+				out[name] = plugin.EnumValue("low")
+			case "high":
+				out[name] = plugin.EnumValue("high")
+			default:
+				out[name] = plugin.EnumValue("normal")
+			}
 		case "glucose":
 			if !has {
 				out[name] = dash
