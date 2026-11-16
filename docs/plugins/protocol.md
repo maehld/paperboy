@@ -4,10 +4,12 @@ Paperboy and its plugins talk over standard input and standard output, one
 JSON object per line ([ADR 0049](../adr/0049-plugin-widgets.md)). This document is the reference for the wire
 format; the Go types live in [`pkg/plugin`](../../pkg/plugin/plugin.go).
 
-- Current version: **7** ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md) added version 3, [ADR 0057](../adr/0057-plugin-actions-from-the-plan.md) added
+- Current version: **8** ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md) added version 3, [ADR 0057](../adr/0057-plugin-actions-from-the-plan.md) added
   actions, [ADR 0081](../adr/0081-plugin-state-over-the-protocol.md) added plugin state and blobs and made 5 the minimum,
-  [ADR 0103](../adr/0103-plugin-conditions-in-plans.md) added conditions, [ADR 0111](../adr/0111-text-pages-from-plugin-values.md) added values).
-  From version 5 on the protocol only grows additively. `server_status` is additive and keeps version 6
+  [ADR 0103](../adr/0103-plugin-conditions-in-plans.md) added conditions, [ADR 0111](../adr/0111-text-pages-from-plugin-values.md) added values,
+  [ADR 0125](../adr/0125-remove-the-text-widget-path.md) removed the text action).
+  From version 5 on the protocol grew additively until version 8 removed the text action. Paperboy keeps the floor at 5: a plugin below 8 that still has text widgets is accepted, because nothing asks it for text.
+  `server_status` is additive and keeps version 6
   ([ADR 0115](../adr/0115-device-status-in-a-widget.md)).
 - Paperboy starts a plugin on first use and keeps it running.
 - Paperboy writes one request line; the plugin writes exactly one answer line
@@ -24,17 +26,17 @@ Every request carries:
 | Field | Meaning |
 |---|---|
 | `id` | Request identifier; the answer repeats it |
-| `version` | Protocol version, currently `7` |
-| `action` | `configure`, `state`, `describe`, `render`, `text`, `values`, `actions`, `action` or `conditions` |
+| `version` | Protocol version, currently `8` |
+| `action` | `configure`, `state`, `describe`, `render`, `values`, `actions`, `action` or `conditions` |
 | `language` | `"de"` or `"en"` |
 | `timezone` | IANA name such as `Europe/Berlin` |
 | `now` | Time of the request, RFC 3339 |
 | `page` | `title`, `number` (1-based), `count`, display `width`/`height`, and `ppi` for image displays |
-| `widgets` | For `render` and `text`: the widgets to draw |
+| `widgets` | For `render`: the widgets to draw |
 | `values` | For `values`: the declared value keys the page needs |
 | `actions` | For `actions` and `action`: the concrete actions |
 | `device` | For `actions`, `action` and `values`: `id`, `name`, `hardware`; absent for a preview |
-| `server_status` | For `render` and `text`, built-in plugin only: `current_device_status` and `selected_devices_status` (ADR 0115) |
+| `server_status` | For `render`, built-in plugin only: `current_device_status` and `selected_devices_status` (ADR 0115) |
 | `levels` | For `render`: gray levels of the display, 1–256; the canvas falls back to 2, 4 or 16 tones |
 | `config` | For `configure`: the plugin's section of `paperboy.yaml` |
 | `state` | For `state`: the JSON object the plugin stored last time; missing when there is none ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)) |
@@ -79,7 +81,7 @@ the plan's action validation.
       {
         "widget": "site",
         "title": "Site",
-        "kinds": ["image", "text"],
+        "kinds": ["image"],
         "sizes": [{"columns": 3, "rows": 3}],
         "args": {"short": {"type": "bool", "default": false}}
       }
@@ -114,7 +116,7 @@ the plan's action validation.
 }
 ```
 
-- `widgets[].kinds` is `image`, `text` or both.
+- `widgets[].kinds` is `image`. A widget is for an image display; text pages read values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [ADR 0125](../adr/0125-remove-the-text-widget-path.md)).
 - `values[]` declares the data a text page can lay out ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md), [0122](../adr/0122-hide-and-progress-a-unit.md)): `name`, `title`, `type`, `unit`, `precision`, `progression`, `kind` and `args`.
   `type` is `number`, `text`, `duration`, `timestamp` or `direction`. `unit` is the base unit the plugin answers a number in, and `precision` its number of decimals.
   `progression` names the larger units Paperboy may use, each with its `factor` to the base unit and its `precision`; an empty or missing list keeps the base unit. The plugin always answers in the base unit.
@@ -156,14 +158,12 @@ Reports every declared condition and whether it is active now.
 - A plugin without conditions answers with an error; plans that name one of
   its conditions never match.
 
-### `render` and `text`
+### `render`
 
 `render` draws each widget on a canvas of exactly `width` × `height` pixels
-with `levels` gray levels and returns a PNG. `text` fills each widget with
-`width` columns and `height` lines and returns `lines`. A text page of values
-no longer uses `text` ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)); the action stays in the protocol for
-older plugins, and the built-in plugin still answers text widgets for the
-widgets page. A later protocol version may remove it. Widgets get their
+with `levels` gray levels and returns a PNG. A text page of values does not use
+widgets ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)); version 8 removed the text action
+([ADR 0125](../adr/0125-remove-the-text-widget-path.md)). Widgets get their
 arguments in `args` and the page's look in `style`:
 
 | `style` field | Meaning |
@@ -173,14 +173,7 @@ arguments in `args` and the page's look in `style`:
 | `text_px` | Base text height in pixels |
 
 Paperboy converts the page's points to pixels with the display's `ppi`
-([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md)). Text displays get no `style` and no `ppi`; a widget sizes its text
-from `lines`/`columns` instead.
-
-A text widget in a cell with `scroll: true` gets `scroll: true` and may then
-answer lines longer than `width`: Paperboy shows the first `width` columns and
-the display scrolls the rest ([ADR 0092](../adr/0092-scrolling-text-lines.md)). Without the field a line is cut at
-`width`, which is what every widget did before; a plugin that ignores the flag
-simply keeps its lines that fit.
+([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md)). A widget never draws on a text display; text pages read values instead.
 
 ```json
 {"id":"3","version":5,"action":"render","levels":4,"page":{"title":"Overview","number":1,"count":3,"width":800,"height":480,"ppi":125},"widgets":[{"widget":"site","width":400,"height":240,"args":{"short":true},"style":{"padding":8,"rule":1,"text_px":28}}]}
@@ -402,7 +395,6 @@ Optional interfaces:
 
 | Interface | Purpose |
 |---|---|
-| `Texter` | `Text(req, widget) ([]string, error)` for text displays |
 | `Valuer` | `Values(req) (map[string]Value, error)` for the declared values of a text page |
 | `Preparer` | `Prepare(req) error` once per request, before its widgets |
 | `Starter` | `Start(ctx, notify)` for background work; `notify` sends `changed` |
@@ -423,10 +415,11 @@ widgets use the same fonts, gray levels and scalings as Paperboy's own.
 | 5 | Plugin state and blobs: the `state` request, `answer.state`/`answer.blobs`, `describe.blobs`; `PAPERBOY_STATE_DIR` removed ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)) |
 | 6 | Conditions: `describe.conditions`, the `conditions` request and `answer.conditions` ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)) |
 | 7 | Values: `describe.values` with `args` and `progression`, the `values` request with `value_args` and `answer.values` ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md), [0122](../adr/0122-hide-and-progress-a-unit.md)) |
+| 8 | The text action is removed: `text`, `Texter`, `answer.widgets[].lines`, `widgets[].scroll` and the `text` widget kind ([ADR 0125](../adr/0125-remove-the-text-widget-path.md)) |
 
 A plugin is used as a whole or not at all ([ADR 0058](../adr/0058-plugin-protocol-version-check.md)). The check is a floor,
-not equality: Paperboy requires at least version 5 and accepts newer ones,
-because the protocol only grows additively – unknown fields are ignored,
-existing fields keep their meaning, and Paperboy gates an optional feature on
-the version a plugin reports. That version is the only thing a plugin has to
-announce; there is no separate capability list.
+not equality: Paperboy requires at least version 5 and accepts newer ones.
+Version 8 removed the text action for the first time; a plugin below 8 that
+still has text widgets is accepted, because nothing asks it for text. That
+version is the only thing a plugin has to announce; there is no separate
+capability list.

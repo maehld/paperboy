@@ -18,17 +18,16 @@ import (
 // Name is the plugin name pages use, e.g. paperboy/header.
 const Name = "paperboy"
 
-// Plugin implements plugin.Handler and plugin.Texter.
+// Plugin implements plugin.Handler and plugin.Valuer.
 type Plugin struct{}
 
 var (
 	_ plugin.Handler = Plugin{}
-	_ plugin.Texter  = Plugin{}
 	_ plugin.Valuer  = Plugin{}
 )
 
 func (Plugin) Describe() plugin.Description {
-	both := []string{plugin.KindImage, plugin.KindText}
+	image := []string{plugin.KindImage}
 	return plugin.Description{
 		Title: "Paperboy",
 		// Values need no data source: a text page can show its title and the
@@ -42,7 +41,7 @@ func (Plugin) Describe() plugin.Description {
 			{Name: "block", Title: "Text block", Type: plugin.ValueText},
 		},
 		Widgets: []plugin.WidgetInfo{
-			{Widget: "header", Title: "Page header", Kinds: both, Sizes: []plugin.Span{{Columns: 6, Rows: 1}, {Columns: 4, Rows: 1}},
+			{Widget: "header", Title: "Page header", Kinds: image, Sizes: []plugin.Span{{Columns: 6, Rows: 1}, {Columns: 4, Rows: 1}},
 				Args: map[string]plugin.Arg{
 					"title":          {Type: "string", Description: "title; default the page title"},
 					"subtitle":       {Type: "string"},
@@ -52,27 +51,27 @@ func (Plugin) Describe() plugin.Description {
 					"align":          {Type: "string", Default: "left", Description: "left, center or right", Enum: []any{"left", "center", "right"}},
 					"battery":        {Type: "bool", Default: false, Description: "battery charge of this device at the right"},
 				}},
-			{Widget: "battery", Title: "Battery", Kinds: both, Sizes: []plugin.Span{{Columns: 1, Rows: 1}, {Columns: 2, Rows: 1}, {Columns: 3, Rows: 1}, {Columns: 2, Rows: 2}},
+			{Widget: "battery", Title: "Battery", Kinds: image, Sizes: []plugin.Span{{Columns: 1, Rows: 1}, {Columns: 2, Rows: 1}, {Columns: 3, Rows: 1}, {Columns: 2, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"device": {Type: "string", Description: "device id; default the device that shows the page"},
 					"label":  {Type: "string", Default: "auto", Description: "auto, percent, volts or none", Enum: []any{"auto", "percent", "volts", "none"}},
 					"align":  {Type: "string", Default: "center", Description: "left, center or right", Enum: []any{"left", "center", "right"}},
 				}},
-			{Widget: "device-status", Title: "Device status", Kinds: both, Sizes: []plugin.Span{{Columns: 2, Rows: 2}, {Columns: 3, Rows: 2}, {Columns: 6, Rows: 1}, {Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}},
+			{Widget: "device-status", Title: "Device status", Kinds: image, Sizes: []plugin.Span{{Columns: 2, Rows: 2}, {Columns: 3, Rows: 2}, {Columns: 6, Rows: 1}, {Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}},
 				Args: map[string]plugin.Arg{
 					"devices": {Type: "list", Description: "device ids; default the device that shows the page"},
 					"battery": {Type: "bool", Default: true, Description: "battery charge"},
 					"runtime": {Type: "bool", Default: true, Description: "estimated battery runtime"},
 					"seen":    {Type: "bool", Default: true, Description: "time since the last contact"},
 				}},
-			{Widget: "text", Title: "Text", Kinds: both, Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 6, Rows: 1}},
+			{Widget: "text", Title: "Text", Kinds: image, Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 6, Rows: 1}},
 				Args: map[string]plugin.Arg{
 					"text":  {Type: "string", Required: true, Description: "lines separated by \\n"},
 					"align": {Type: "string", Default: "center", Enum: []any{"left", "center", "right"}},
 					"size":  {Type: "float", Default: 0.5, Description: "text height as a fraction of the line height"},
 					"bold":  {Type: "bool", Default: false},
 				}},
-			{Widget: "clock", Title: "Clock", Kinds: both, Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 3, Rows: 2}, {Columns: 6, Rows: 2}},
+			{Widget: "clock", Title: "Clock", Kinds: image, Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 3, Rows: 2}, {Columns: 6, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"format": {Type: "string", Default: "time", Description: "time, date or datetime", Enum: []any{"time", "date", "datetime"}},
 				}},
@@ -155,7 +154,7 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 	base := req.TextPx(w)
 	titleSize := min(float64(h)*0.5, base*1.4)
 	statusSize := min(float64(h)*0.45, base*1.1)
-	status := headerStatus(req, a, "", func(s string) bool {
+	status := headerStatus(req, a, func(s string) bool {
 		return render.Measure(s, statusSize, false) <= b.Dx()/2-2*pad
 	})
 	right := b.Max.X - pad
@@ -259,30 +258,15 @@ func dateForms(req *plugin.Request) []string {
 	}
 }
 
-// headerStatus builds the right side of the header: the date (arg date,
-// in the longest form that fits), the time (arg clock) and, on a text display,
-// the battery text. When even the shortest date does not fit, the date is left
-// out; the battery follows the clock when there is room for it.
-func headerStatus(req *plugin.Request, a plugin.Values, battery string, fits func(string) bool) string {
+// headerStatus builds the right side of the header: the date (arg date, in
+// the longest form that fits) and the time (arg clock). When even the shortest
+// date does not fit, the date is left out.
+func headerStatus(req *plugin.Request, a plugin.Values, fits func(string) bool) string {
 	clock := ""
 	if a.Bool("clock", true) {
 		clock = req.Now.In(req.Location()).Format("15:04")
 	}
-	withBattery := func(s string) string {
-		if battery == "" {
-			return s
-		}
-		if s == "" {
-			return battery
-		}
-		return s + "  " + battery
-	}
 	if !a.Bool("date", false) {
-		if battery != "" {
-			if s := withBattery(clock); fits(s) {
-				return s
-			}
-		}
 		return clock
 	}
 	for _, d := range dateForms(req) {
@@ -290,12 +274,7 @@ func headerStatus(req *plugin.Request, a plugin.Values, battery string, fits fun
 		if clock != "" {
 			s += "  " + clock
 		}
-		if fits(withBattery(s)) {
-			return withBattery(s)
-		}
-	}
-	if clock != "" && battery != "" {
-		if s := withBattery(clock); fits(s) {
+		if fits(s) {
 			return s
 		}
 	}
@@ -329,48 +308,4 @@ func (Plugin) clock(req *plugin.Request, w plugin.WidgetRequest, img *image.Pale
 	render.Text(img, s, b.Min.X+b.Dx()/2, b.Min.Y+b.Dy()/2+int(size*0.36), render.Style{Size: size, Bold: true, Shrink: true},
 		b.Dx(), color.Black, render.Center)
 	return nil
-}
-
-// Text fills the widgets of a text display.
-func (Plugin) Text(req *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
-	a := w.Arg()
-	switch w.Widget {
-	case "header":
-		title := a.String("title", req.Page.Title)
-		if a.Bool("page_indicator", true) && req.Page.Count > 1 {
-			title += fmt.Sprintf(" %d/%d", req.Page.Number, req.Page.Count)
-		}
-		room := w.Width - len([]rune(title)) - 1
-		battery := ""
-		if a.Bool("battery", false) {
-			if dev := statusDevice(req, ""); dev != nil && dev.Battery != nil {
-				battery = batteryText(req, dev, "auto")
-			}
-		}
-		status := headerStatus(req, a, battery, func(s string) bool { return len([]rune(s)) <= room })
-		if status == "" {
-			return []string{title}, nil
-		}
-		return []string{plugin.Columns(title, status, w.Width)}, nil
-	case "text":
-		align := a.String("align", "left")
-		var out []string
-		for _, l := range strings.Split(a.String("text", ""), "\n") {
-			// A scrolling cell gets the whole line: Paperboy cuts the first
-			// window and the display scrolls the rest (ADR 0092).
-			if w.Scroll && len([]rune(l)) > w.Width {
-				out = append(out, l)
-				continue
-			}
-			out = append(out, plugin.Align(l, w.Width, align))
-		}
-		return out, nil
-	case "clock":
-		return []string{plugin.Align(clockText(req, a.String("format", "time")), w.Width, "center")}, nil
-	case "battery":
-		return []string{plugin.Align(batteryText(req, statusDevice(req, a.String("device", "")), a.String("label", "auto")), w.Width, "center")}, nil
-	case "device-status":
-		return statusLines(req, w.Arg(), w.Width), nil
-	}
-	return nil, fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 }

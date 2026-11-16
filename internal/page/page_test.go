@@ -172,7 +172,7 @@ func TestRenderImageComposesCells(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Levels != 4 || got.Text || got.Page.Number != 2 || got.Page.Count != 3 || got.Page.Title != "Test" || got.Page.PPI != 72 {
+	if got.Levels != 4 || got.Page.Number != 2 || got.Page.Count != 3 || got.Page.Title != "Test" || got.Page.PPI != 72 {
 		t.Fatalf("batch header: %+v", got)
 	}
 	w := got.Widgets

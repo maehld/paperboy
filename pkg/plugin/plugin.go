@@ -79,11 +79,13 @@ import (
 // request and Message.conditions. Version 7 (ADR 0111) added values:
 // describe.values, the values request and Message.values, with arguments per
 // value and the request's value_args (ADR 0120), and the unit progression of
-// a value (ADR 0122). Version 7 has not shipped yet, so it carries all of
-// them.
+// a value (ADR 0122). Version 8 (ADR 0125) removed the text action:
+// ActionText, the Texter interface, Result.lines, WidgetRequest.scroll and the
+// text display kind of a widget are gone. A plugin below 8 is still accepted
+// while it serves values, because nothing asks it for text.
 // Plugins report the version in every answer (Message.Version); Paperboy
 // refuses a plugin that speaks less than MinVersion (ADR 0081).
-const Version = 7
+const Version = 8
 
 // MinVersion is the oldest protocol Paperboy accepts. Version 5 is the cut
 // that introduced state and blobs; from here on the protocol grows additively,
@@ -96,7 +98,6 @@ const (
 	ActionLoadState = "state" // the stored state and blobs, once after configure (protocol 5)
 	ActionDescribe  = "describe"
 	ActionRender    = "render"
-	ActionText      = "text"
 	ActionList      = "actions" // states of concrete actions
 	ActionInvoke    = "action"  // run one concrete action
 	// ActionConditions asks for the state of the named conditions a plan may
@@ -221,15 +222,11 @@ type PageInfo struct {
 	PPI    float64 `json:"ppi,omitempty"` // pixels per inch; set for image displays, omitted for text displays
 }
 
-// WidgetRequest asks for one widget in an exact size: pixels for render,
-// columns and rows for text.
+// WidgetRequest asks for one widget in an exact size in pixels.
 type WidgetRequest struct {
-	Widget string `json:"widget"`
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
-	// Scroll asks a text widget for lines that may be wider than Width: the
-	// page scrolls the overflow instead of cutting it (ADR 0092).
-	Scroll bool           `json:"scroll,omitempty"`
+	Widget string         `json:"widget"`
+	Width  int            `json:"width"`
+	Height int            `json:"height"`
 	Args   map[string]any `json:"args,omitempty"`
 	Style  Style          `json:"style"`
 }
@@ -274,11 +271,10 @@ type Message struct {
 	Blobs map[string][]byte `json:"blobs,omitempty"`
 }
 
-// Result is one widget: a PNG for render, lines for text, or an error.
+// Result is one widget: a PNG, or an error.
 type Result struct {
-	PNG   []byte   `json:"png,omitempty"` // base64 in JSON
-	Lines []string `json:"lines,omitempty"`
-	Error string   `json:"error,omitempty"`
+	PNG   []byte `json:"png,omitempty"` // base64 in JSON
+	Error string `json:"error,omitempty"`
 }
 
 // Description is the answer to describe.
@@ -303,17 +299,17 @@ type Description struct {
 	Blobs []string `json:"blobs,omitempty"`
 }
 
-// Kinds of displays a widget supports.
+// Kinds of displays a widget supports. Every widget is for an image display;
+// a text page is built from values (ADR 0111, 0125).
 const (
 	KindImage = "image"
-	KindText  = "text"
 )
 
 // WidgetInfo describes one widget.
 type WidgetInfo struct {
 	Widget string   `json:"widget"`
 	Title  string   `json:"title"`
-	Kinds  []string `json:"kinds"` // image, text
+	Kinds  []string `json:"kinds"` // image
 	// Sizes are the grid spans the widget is designed for, as columns x
 	// rows of the reference grid of 6 x 8 cells. They are hints for an
 	// editor and the widget gallery; Paperboy enforces none of it.
@@ -560,12 +556,6 @@ type Handler interface {
 	Render(req *Request, w WidgetRequest, canvas *image.Paletted) error
 }
 
-// Texter is implemented by plugins with widgets for text displays. The
-// result may be shorter than the requested size; Paperboy pads and cuts.
-type Texter interface {
-	Text(req *Request, w WidgetRequest) ([]string, error)
-}
-
 // Valuer is implemented by plugins whose values a text page lays out
 // (ADR 0111). Values answers every name in req.Values; a name the plugin does
 // not declare is an error. A value that declares args reads req.ValueArgs and
@@ -716,7 +706,7 @@ func Handle(h Handler, req *Request) (m Message) {
 	case ActionDescribe:
 		d := h.Describe()
 		m.Description = &d
-	case ActionRender, ActionText:
+	case ActionRender:
 		results, err := handleWidgets(h, req)
 		if err != nil {
 			m.Error = err.Error()
@@ -776,12 +766,8 @@ func handleWidgets(h Handler, req *Request) ([]Result, error) {
 	// Any tone count is accepted: render.NewCanvas falls back to the next
 	// supported palette, so a display type with another count cannot fail a
 	// plugin that was built before it (ADR 0107).
-	if req.Action == ActionRender && (req.Levels < 1 || req.Levels > 256) {
+	if req.Levels < 1 || req.Levels > 256 {
 		return nil, fmt.Errorf("levels %d: expected 1 to 256", req.Levels)
-	}
-	t, isTexter := h.(Texter)
-	if req.Action == ActionText && !isTexter {
-		return nil, errors.New("this plugin has no text widgets")
 	}
 	if p, ok := h.(Preparer); ok {
 		if err := p.Prepare(req); err != nil {
@@ -796,8 +782,6 @@ func handleWidgets(h Handler, req *Request) ([]Result, error) {
 	for _, w := range req.Widgets {
 		if err := w.Arg().CheckEnums(args[w.Widget]); err != nil {
 			out = append(out, Result{Error: err.Error()})
-		} else if req.Action == ActionText {
-			out = append(out, textOne(t, req, w))
 		} else {
 			out = append(out, renderOne(h, req, w))
 		}
@@ -916,25 +900,6 @@ func renderOne(h Handler, req *Request, w WidgetRequest) (res Result) {
 		return Result{Error: err.Error()}
 	}
 	return Result{PNG: buf.Bytes()}
-}
-
-func textOne(t Texter, req *Request, w WidgetRequest) (res Result) {
-	defer func() {
-		if r := recover(); r != nil {
-			res = Result{Error: fmt.Sprintf("panic: %v", r)}
-		}
-	}()
-	if w.Width < 1 || w.Height < 1 || w.Width > 200 || w.Height > 100 {
-		return Result{Error: "invalid size"}
-	}
-	lines, err := t.Text(req, w)
-	if err != nil {
-		return Result{Error: err.Error()}
-	}
-	if lines == nil {
-		lines = []string{}
-	}
-	return Result{Lines: lines}
 }
 
 // ErrUnknownWidget is returned for a widget name the plugin does not know.
@@ -1089,35 +1054,4 @@ func (v Values) Check(known map[string]Arg) error {
 		}
 	}
 	return v.CheckEnums(known)
-}
-
-// Columns puts left and right into one line of width characters; the left
-// part is cut when both do not fit.
-func Columns(left, right string, width int) string {
-	r := []rune(right)
-	room := width - len(r) - 1
-	if room < 1 {
-		return string([]rune(right)[:min(len(r), width)])
-	}
-	l := []rune(left)
-	if len(l) > room {
-		l = l[:room]
-	}
-	return string(l) + strings.Repeat(" ", width-len(l)-len(r)) + right
-}
-
-// Align places s in a line of width characters.
-func Align(s string, width int, mode string) string {
-	r := []rune(s)
-	if len(r) >= width {
-		return string(r[:width])
-	}
-	gap := width - len(r)
-	switch mode {
-	case "right":
-		return strings.Repeat(" ", gap) + s
-	case "center":
-		return strings.Repeat(" ", gap/2) + s
-	}
-	return s
 }

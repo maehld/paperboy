@@ -99,13 +99,10 @@ func TestStatsListsBuiltin(t *testing.T) {
 }
 
 // TestEntryBytes checks the memory a cached widget is charged with: the pixel
-// buffer of an image, the bytes of its lines.
+// buffer of an image.
 func TestEntryBytes(t *testing.T) {
 	img := image.NewGray(image.Rect(0, 0, 10, 10))
 	if got := entryBytes(&entry{img: img}); got != int64(len(img.Pix)) {
 		t.Fatalf("image bytes = %d, want %d", got, len(img.Pix))
-	}
-	if got := entryBytes(&entry{lines: []string{"abc", "de"}}); got != 5 {
-		t.Fatalf("line bytes = %d, want 5", got)
 	}
 }

@@ -3,7 +3,6 @@ package builtin
 import (
 	"image"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -49,29 +48,6 @@ func TestBatteryTextFollowsLanguage(t *testing.T) {
 	}
 }
 
-func TestDeviceStatusText(t *testing.T) {
-	req := &plugin.Request{Language: "de", ServerStatus: testStatus()}
-	lines := statusLines(req, plugin.Values{}, 20)
-	if len(lines) != 1 || !strings.Contains(lines[0], "kueche") || !strings.Contains(lines[0], "84 %") {
-		t.Fatalf("current device line: %q", lines)
-	}
-	if !strings.Contains(lines[0], "~12 d") || strings.Contains(lines[0], "jetzt") {
-		t.Errorf("20 columns keep the runtime and drop the age: %q", lines[0])
-	}
-
-	lines = statusLines(req, plugin.Values{"devices": []any{"wohnzimmer", "flur", "fehlt"}}, 24)
-	if len(lines) != 3 {
-		t.Fatalf("selected lines: %q", lines)
-	}
-	// Unknown and never-seen devices sort before the last contact.
-	if !strings.HasPrefix(lines[0], "? ") || !strings.HasPrefix(lines[1], "? ") {
-		t.Errorf("stale and unknown first: %q", lines)
-	}
-	if !strings.Contains(lines[2], "wohnzimmer") || !strings.Contains(lines[2], "21 %") {
-		t.Errorf("selected device line: %q", lines[2])
-	}
-}
-
 func TestDeviceStatusAndBatteryDraw(t *testing.T) {
 	for _, c := range []struct {
 		name   string
@@ -101,22 +77,6 @@ func TestDeviceStatusAndBatteryDraw(t *testing.T) {
 		if !ink {
 			t.Errorf("%s: nothing drawn", c.name)
 		}
-	}
-}
-
-func TestHeaderBattery(t *testing.T) {
-	req := &plugin.Request{Language: "de", Now: testStatusTime, Page: plugin.PageInfo{Title: "Seite"}, ServerStatus: testStatus()}
-	with := plugin.WidgetRequest{Widget: "header", Width: 40, Args: map[string]any{"clock": false, "battery": true}}
-	lines, err := (Plugin{}).Text(req, with)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(lines[0], "84 %") {
-		t.Errorf("header without battery: %q", lines[0])
-	}
-	without := plugin.WidgetRequest{Widget: "header", Width: 40, Args: map[string]any{"clock": false}}
-	if lines, _ := (Plugin{}).Text(req, without); strings.Contains(lines[0], "84 %") {
-		t.Errorf("header without the flag shows the battery: %q", lines[0])
 	}
 }
 

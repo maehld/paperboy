@@ -63,9 +63,9 @@ func widgetArgs(q url.Values) map[string]any {
 	return args
 }
 
-// parseWidgetQuery resolves display, size and arguments. Image displays take
-// span (default 3x2) on grid (default 6x8) or width and height in pixels;
-// text displays take span in characters, by default the whole display.
+// parseWidgetQuery resolves display, size and arguments. Displays take span
+// (default 3x2) on grid (default 6x8) or width and height in pixels. A text
+// display has no widgets; its pages are built from values (ADR 0111, 0125).
 func (s *Server) parseWidgetQuery(cfg *Config, pluginName, widgetName string, q url.Values) (widgetQuery, error) {
 	var wq widgetQuery
 	if !page.ValidName(pluginName) || !page.ValidName(widgetName) {
@@ -76,18 +76,12 @@ func (s *Server) parseWidgetQuery(cfg *Config, pluginName, widgetName string, q 
 	if !ok {
 		return wq, fmt.Errorf("unknown display type %q", wq.profile)
 	}
+	if p.text() {
+		return wq, errors.New("a text display has no widgets; a text page is built from values")
+	}
 	wq.p = p
 	w, h := 0, 0
 	switch {
-	case p.text():
-		w, h = p.Width, p.Height
-		if v := q.Get("span"); v != "" {
-			size, err := parseSize(v)
-			if err != nil {
-				return wq, fmt.Errorf("span %w", err)
-			}
-			w, h = min(size[0], p.Width), min(size[1], p.Height)
-		}
 	case q.Get("width") != "" || q.Get("height") != "":
 		var err1, err2 error
 		w, err1 = strconv.Atoi(q.Get("width"))
@@ -114,9 +108,7 @@ func (s *Server) parseWidgetQuery(cfg *Config, pluginName, widgetName string, q 
 		w, h = spanPixels(p, span, grid)
 	}
 	wq.req = page.WidgetRequest{Plugin: pluginName, Widget: widgetName, Args: widgetArgs(q), Width: w, Height: h}
-	if !p.text() {
-		wq.req.Style = page.DefaultStyle(s.display(cfg, p))
-	}
+	wq.req.Style = page.DefaultStyle(s.display(cfg, p))
 	return wq, nil
 }
 
@@ -127,21 +119,17 @@ func (s *Server) fetchWidget(ctx context.Context, cfg *Config, wq widgetQuery) p
 	if levels < 2 {
 		levels = 2
 	}
-	b := page.Batch{Text: d.Text, Levels: levels, Charset: d.Charset, Widgets: []page.WidgetRequest{wq.req},
-		Page:         plugin.PageInfo{Title: wq.req.Plugin + "/" + wq.req.Widget, Number: 1, Count: 1, Width: d.Width, Height: d.Height},
+	b := page.Batch{Levels: levels, Charset: d.Charset, Widgets: []page.WidgetRequest{wq.req},
+		Page:         plugin.PageInfo{Title: wq.req.Plugin + "/" + wq.req.Widget, Number: 1, Count: 1, Width: d.Width, Height: d.Height, PPI: d.PPI},
 		ServerStatus: s.statusSnapshot(cfg, wq.profile, "", selectedDeviceIDsFor(wq.req.Plugin, wq.req.Widget, wq.req.Args), s.now())}
-	if !d.Text {
-		b.Page.PPI = d.PPI
-	}
 	if out := s.widgets.Fetch(ctx, b); len(out) == 1 {
 		return out[0]
 	}
 	return page.Result{Err: errors.New("no result")}
 }
 
-// handleWidget renders one widget of a plugin on its own: a PNG for image
-// displays, text/plain for text displays. A failing widget is answered with
-// the same notice a page shows in its cell.
+// handleWidget renders one widget of a plugin on its own as a PNG. A failing
+// widget is answered with the same notice a page shows in its cell.
 func (s *Server) handleWidget(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	wq, err := s.parseWidgetQuery(cfg, r.PathValue("plugin"), r.PathValue("widget"), r.URL.Query())
@@ -155,11 +143,6 @@ func (s *Server) handleWidget(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Widget-Error", firstLine(res.Err.Error()))
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	if wq.p.text() {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write([]byte(strings.Join(page.TextLines(res, wq.p.Charset, wq.req.Width, wq.req.Height), "\n") + "\n"))
-		return
-	}
 	levels := wq.p.Levels
 	if levels < 2 {
 		levels = 2

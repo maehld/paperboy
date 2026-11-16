@@ -125,10 +125,6 @@ func fakePlugin(mode string) {
 		}
 		msg := plugin.Message{ID: req.ID, Version: version, MaxAge: 60}
 		for _, w := range req.Widgets {
-			if req.Action == plugin.ActionText {
-				msg.Widgets = append(msg.Widgets, plugin.Result{Lines: []string{w.Widget}})
-				continue
-			}
 			width := w.Width
 			if mode == "wrongsize" {
 				width++
@@ -357,32 +353,19 @@ func (builtinStub) Configure(plugin.Values, *plugin.Request) error { return nil 
 
 func (builtinStub) Render(*plugin.Request, plugin.WidgetRequest, *image.Paletted) error { return nil }
 
-func (builtinStub) Text(_ *plugin.Request, w plugin.WidgetRequest) ([]string, error) {
-	return []string{"builtin " + w.Widget}, nil
-}
-
 func TestHostBuiltinAfterPlugin(t *testing.T) {
 	f := newFake(t)
 	h := newHost(t, f.spec("ok"))
 	h.Builtin = map[string]plugin.Handler{"paperboy": builtinStub{}}
-	out := h.Fetch(context.Background(), page.Batch{Text: true, Widgets: []page.WidgetRequest{
+	out := h.Fetch(context.Background(), page.Batch{Levels: 2, Widgets: []page.WidgetRequest{
 		{Plugin: "fake", Widget: "a", Width: 10, Height: 1},
 		{Plugin: "paperboy", Widget: "header", Width: 10, Height: 1},
 	}})
-	if len(out) != 2 || out[0].Err != nil || len(out[0].Lines) != 1 || out[0].Lines[0] != "a" {
+	if len(out) != 2 || out[0].Err != nil || out[0].Image == nil {
 		t.Fatalf("fake widget: %+v", out[0])
 	}
-	if out[1].Err != nil || len(out[1].Lines) != 1 || out[1].Lines[0] != "builtin header" {
+	if out[1].Err != nil || out[1].Image == nil {
 		t.Fatalf("builtin widget: %+v", out[1])
-	}
-}
-
-func TestHostText(t *testing.T) {
-	f := newFake(t)
-	h := newHost(t, f.spec("ok"))
-	out := h.Fetch(context.Background(), page.Batch{Text: true, Widgets: []page.WidgetRequest{w("fake", "agenda", 20, 3)}})
-	if len(out[0].Lines) != 1 || out[0].Lines[0] != "agenda" {
-		t.Fatalf("text: %+v", out[0])
 	}
 }
 
@@ -704,9 +687,6 @@ func TestHostBuiltin(t *testing.T) {
 	}
 	if d, err := h.Describe(context.Background(), "b"); err != nil || d.Title != "b" {
 		t.Fatalf("describe: %v %v", d, err)
-	}
-	if out := h.Fetch(context.Background(), page.Batch{Text: true, Widgets: []page.WidgetRequest{w("b", "x", 3, 2)}}); out[0].Err == nil {
-		t.Fatal("a plugin without text widgets must fail on text displays")
 	}
 }
 

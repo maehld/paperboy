@@ -175,14 +175,11 @@ func ageBucketIndex(age time.Duration) int {
 	return len(ageBounds)
 }
 
-// entryBytes is the memory one cached widget holds: its image or its lines.
+// entryBytes is the memory one cached widget holds: its image.
 func entryBytes(e *entry) int64 {
 	var n int64
 	if e.img != nil {
 		n += imageBytes(e.img)
-	}
-	for _, line := range e.lines {
-		n += int64(len(line))
 	}
 	return n
 }

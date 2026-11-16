@@ -18,7 +18,7 @@ The resolved path is part of the plugin's specification, so installing a new ver
 
 ## The protocol
 
-Paperboy and the plugin exchange one JSON object per line: a request on stdin, an answer on stdout with the same `id`. The protocol version is 7 ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). Paperboy requires at least version 5 and accepts newer ones, because the protocol only grows additively. `Message.CheckVersion` runs on every answer; a wrong version fails that plugin with one clear log line instead of a broken page ([ADR 0058](../adr/0058-plugin-protocol-version-check.md), [0081](../adr/0081-plugin-state-over-the-protocol.md)).
+Paperboy and the plugin exchange one JSON object per line: a request on stdin, an answer on stdout with the same `id`. The protocol version is 8 ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0125](../adr/0125-remove-the-text-widget-path.md)). Paperboy requires at least version 5 and accepts newer ones. The protocol grew additively until version 8. Version 8 removed the text action. A plugin below 8 that still has text widgets is accepted, because nothing asks it for text. `Message.CheckVersion` runs on every answer; a wrong version fails that plugin with one clear log line instead of a broken page ([ADR 0058](../adr/0058-plugin-protocol-version-check.md), [0081](../adr/0081-plugin-state-over-the-protocol.md)).
 
 | Action | Request carries | Answer carries |
 |---|---|---|
@@ -26,13 +26,12 @@ Paperboy and the plugin exchange one JSON object per line: a request on stdin, a
 | `state` | The stored state and the declared blobs | New state and changed blobs |
 | `describe` | – | Widgets, values, actions, conditions, config keys, blob names, version |
 | `render` | Widgets with pixel `width`/`height`, `args`, `style` | One base64 PNG per widget |
-| `text` | The same in characters | `lines` per widget |
 | `values` | The value keys a text page needs and `value_args`, the arguments of that set | `values` per key |
 | `actions` | Concrete plan actions, the device | State per action: title, `disabled` reason, `confirm` |
 | `action` | One action with its args, the device | `result` with `ok`, `message`, `changed` |
 | `conditions` | – | A map of the declared conditions, true while active |
 
-Every request carries `language`, `timezone`, `now` and `levels`, the tone count of the display. `levels` is 1 to 256; a canvas falls back to 2, 4 or 16 tones when it cannot draw the value ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)). The request also carries the `page` with title, number, count and display size, and `ppi` for image displays. A widget also gets `style` with `padding`, `rule` and `text_px` in pixels, and `scroll` on a text display.
+Every request carries `language`, `timezone`, `now` and `levels`, the tone count of the display. `levels` is 1 to 256; a canvas falls back to 2, 4 or 16 tones when it cannot draw the value ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)). The request also carries the `page` with title, number, count and display size, and `ppi` for image displays. A widget also gets `style` with `padding`, `rule` and `text_px` in pixels.
 
 `server_status` is Paperboy's own view of the devices (ADR 0115). It holds `current_device_status`, the device the page is rendered for, and `selected_devices_status`, a map of only the devices the page names in its widget arguments. A status names the id, display type, plan, hardware and firmware. It also names the contact state, last contact, power source, signal and battery reading. The estimated runtime and the last page or error follow. It carries no key, MAC or address. A preview without a device gets the sample device `preview` with fixed values ([ADR 0123](../adr/0123-a-sample-device-in-previews.md)). Only the built-in plugin receives the object; a plugin process would cache stale rows.
 
@@ -57,7 +56,7 @@ A widget that cannot draw anything in its cell reports `ErrTooSmall` with the ce
 `internal/widget` owns the processes ([ADR 0049](../adr/0049-plugin-widgets.md)).
 
 - A plugin starts on first use. After an exit, after its `timeout` (default 30 seconds, killed) and after a change of its specification it is started again. Removed plugins drop their cached results.
-- The cache is keyed by plugin, widget, arguments, size, gray levels or text, style, page, language, timezone and device. An entry lives until the plugin's `max_age` (default 5 minutes).
+- The cache is keyed by plugin, widget, arguments, size, gray levels, style, page, language, timezone and device. An entry lives until the plugin's `max_age` (default 5 minutes).
 - A background loop every 5 seconds renders entries that were used within the last hour again before they expire, or after a `changed` event. Entries idle for an hour are evicted, and the cache holds at most 1000 entries.
 - A failing plugin serves its stale results and is not asked again for a minute.
 - The built-in plugin runs in process and is never cached.
@@ -96,7 +95,7 @@ Every plugin has its own version in `cmd/<plugin>/VERSION`, embedded in the prog
 
 ## The built-in plugin
 
-`internal/builtin` provides the plugin `paperboy`: `header`, `text`, `clock`, `logo`, `battery` and `device-status`, for image and text displays ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md), [0115](../adr/0115-device-status-in-a-widget.md)). It draws from `pkg/render` and needs no data source, so it is always available and never cached. Its values `title`, `time`, `now`, `date`, `long` and `block` give a text page data without another plugin ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). It is the only plugin that receives `server_status`; a page that shows its own device is cached per device.
+`internal/builtin` provides the plugin `paperboy`: `header`, `text`, `clock`, `logo`, `battery` and `device-status` for image displays ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md), [0115](../adr/0115-device-status-in-a-widget.md)). It draws from `pkg/render` and needs no data source, so it is always available and never cached. Its values `title`, `time`, `now`, `date`, `long` and `block` give a text page data without another plugin ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). It is the only plugin that receives `server_status`; a page that shows its own device is cached per device.
 
 ## The shipped plugins
 
@@ -117,4 +116,4 @@ Every widget is for an image display. A plugin with data for a text page declare
 
 ## Decisions
 
-[ADR 0048](../adr/0048-calendar-provider-and-agenda.md) (calendar) · [0049](../adr/0049-plugin-widgets.md) (plugin widgets) · [0111](../adr/0111-text-pages-from-plugin-values.md) (values for text pages, amended by [ADR-0118](0118-text-boxes-and-overflow.md), arguments by [ADR-0120](0120-arguments-for-values.md), units by [ADR-0122](0122-hide-and-progress-a-unit.md)) · [0053](../adr/0053-departures-from-efa.md), [0100](../adr/0100-one-stop-per-departures-widget.md) (departures) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0058](../adr/0058-plugin-protocol-version-check.md) (protocol version check) · [0065](../adr/0065-plugin-state-directory.md) → [0081](../adr/0081-plugin-state-over-the-protocol.md) (state) · [0075](../adr/0075-plugin-versions.md), [0107](../adr/0107-plugin-builds-reach-installations.md) (a version per plugin) · [0099](../adr/0099-glucose-readings-from-the-dexcom-share-service.md) (Dexcom) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions) · [0123](../adr/0123-a-sample-device-in-previews.md) (device ids as choices)
+[ADR 0048](../adr/0048-calendar-provider-and-agenda.md) (calendar) · [0049](../adr/0049-plugin-widgets.md) (plugin widgets) · [0111](../adr/0111-text-pages-from-plugin-values.md) (values for text pages, amended by [ADR-0118](0118-text-boxes-and-overflow.md), arguments by [ADR-0120](0120-arguments-for-values.md), units by [ADR-0122](0122-hide-and-progress-a-unit.md), the text action removed by [ADR-0125](0125-remove-the-text-widget-path.md)) · [0053](../adr/0053-departures-from-efa.md), [0100](../adr/0100-one-stop-per-departures-widget.md) (departures) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0058](../adr/0058-plugin-protocol-version-check.md) (protocol version check) · [0065](../adr/0065-plugin-state-directory.md) → [0081](../adr/0081-plugin-state-over-the-protocol.md) (state) · [0075](../adr/0075-plugin-versions.md), [0107](../adr/0107-plugin-builds-reach-installations.md) (a version per plugin) · [0099](../adr/0099-glucose-readings-from-the-dexcom-share-service.md) (Dexcom) · [0103](../adr/0103-plugin-conditions-in-plans.md) (conditions) · [0123](../adr/0123-a-sample-device-in-previews.md) (device ids as choices)

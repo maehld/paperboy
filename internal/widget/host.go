@@ -134,7 +134,6 @@ type descEntry struct {
 type entry struct {
 	job      job
 	img      image.Image
-	lines    []string
 	value    *plugin.Value
 	spec     plugin.ValueSpec
 	stale    bool
@@ -159,8 +158,8 @@ func (j job) key(env Env) string {
 	style, _ := json.Marshal(j.widget.Style)
 	page, _ := json.Marshal(j.page)
 	device, _ := json.Marshal(j.device)
-	return fmt.Sprintf("%s|%s|%s|%d|%dx%d|%t|%s|%s|%s|%s|%s|%s", j.plugin, j.widget.Widget, j.action, j.levels,
-		j.widget.Width, j.widget.Height, j.widget.Scroll, args, style, page, env.Language, env.Timezone, device)
+	return fmt.Sprintf("%s|%s|%s|%d|%dx%d|%s|%s|%s|%s|%s|%s", j.plugin, j.widget.Widget, j.action, j.levels,
+		j.widget.Width, j.widget.Height, args, style, page, env.Language, env.Timezone, device)
 }
 
 // group is the batching key: the request header without the widgets. A
@@ -247,9 +246,6 @@ func (h *Host) Fetch(ctx context.Context, b page.Batch) []page.Result {
 	specs, env := h.specs, h.env
 	h.mu.Unlock()
 	action, levels := plugin.ActionRender, b.Levels
-	if b.Text {
-		action, levels = plugin.ActionText, 0
-	}
 	out := make([]page.Result, len(b.Widgets))
 	byPlugin := map[string][]int{}
 	for i, w := range b.Widgets {
@@ -266,7 +262,7 @@ func (h *Host) Fetch(ctx context.Context, b page.Batch) []page.Result {
 		for _, i := range idx {
 			w := b.Widgets[i]
 			jobs = append(jobs, job{plugin: w.Plugin, action: action, levels: levels, page: b.Page,
-				widget: plugin.WidgetRequest{Widget: w.Widget, Width: w.Width, Height: w.Height, Scroll: w.Scroll, Args: w.Args, Style: w.Style}})
+				widget: plugin.WidgetRequest{Widget: w.Widget, Width: w.Width, Height: w.Height, Args: w.Args, Style: w.Style}})
 		}
 		if handler, ok := h.Builtin[name]; ok {
 			// Only the built-in plugin gets Paperboy's device status: its
@@ -423,7 +419,7 @@ func (h *Host) fetchPlugin(ctx context.Context, spec Spec, env Env, jobs []job, 
 }
 
 func (e *entry) result(stale bool) page.Result {
-	return page.Result{Image: e.img, Lines: e.lines, Value: e.value, Spec: e.spec, Stale: stale || e.stale}
+	return page.Result{Image: e.img, Value: e.value, Spec: e.spec, Stale: stale || e.stale}
 }
 
 // run sends the jobs of one plugin and request header group, stores the
@@ -501,7 +497,7 @@ func (h *Host) run(ctx context.Context, spec Spec, env Env, jobs []job) ([]page.
 				continue
 			}
 			out[i] = r
-			h.store(j, env, &entry{job: j, img: r.Image, lines: r.Lines, value: r.Value, spec: j.spec,
+			h.store(j, env, &entry{job: j, img: r.Image, value: r.Value, spec: j.spec,
 				created: now, expires: expires, lastUsed: now})
 		}
 		if failed != nil {
@@ -523,12 +519,6 @@ func cmp(a, b error) error {
 func decode(j job, r plugin.Result) (page.Result, error) {
 	if r.Error != "" {
 		return page.Result{}, errors.New(r.Error)
-	}
-	if j.action == plugin.ActionText {
-		if r.Lines == nil {
-			return page.Result{}, errors.New("no lines")
-		}
-		return page.Result{Lines: r.Lines}, nil
 	}
 	if len(r.PNG) == 0 {
 		return page.Result{}, errors.New("no image")
