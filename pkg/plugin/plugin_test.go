@@ -13,7 +13,10 @@ import (
 	"time"
 )
 
-type testHandler struct{ started chan func(...string) }
+type testHandler struct {
+	started chan func(...string)
+	events  chan Event
+}
 
 func (h *testHandler) Describe() Description { return Description{Title: "t"} }
 func (h *testHandler) Configure(cfg Values, _ *Request) error {
@@ -25,11 +28,16 @@ func (h *testHandler) Render(_ *Request, w WidgetRequest, img *image.Paletted) e
 	}
 	return nil
 }
+func (h *testHandler) Event(ev Event) {
+	if h.events != nil {
+		h.events <- ev
+	}
+}
 func (h *testHandler) Start(_ context.Context, notify func(...string)) { h.started <- notify }
 func (h *testHandler) MaxAge(*Request) time.Duration                   { return time.Minute }
 
 func TestServeIO(t *testing.T) {
-	h := &testHandler{started: make(chan func(...string), 1)}
+	h := &testHandler{started: make(chan func(...string), 1), events: make(chan Event, 1)}
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	go ServeIO(context.Background(), h, inR, outW)
@@ -62,6 +70,17 @@ func TestServeIO(t *testing.T) {
 	enc.Encode(Request{ID: "4", Action: "text", Widgets: []WidgetRequest{{Widget: "pv", Width: 6, Height: 1}}})
 	if m := next(); m.Error == "" {
 		t.Fatalf("a removed text action was accepted: %+v", m)
+	}
+	// A schedule event carries no id and gets no answer. The next answer is
+	// the describe request that follows it.
+	nextAt := time.Date(2026, 11, 16, 18, 0, 0, 0, time.UTC)
+	enc.Encode(Event{Event: EventSchedule, NextRefresh: &nextAt})
+	enc.Encode(Request{ID: "5", Action: ActionDescribe})
+	if m := next(); m.ID != "5" || m.Error != "" || m.Description == nil {
+		t.Fatalf("describe after a schedule: %+v", m)
+	}
+	if ev := <-h.events; ev.Event != EventSchedule || ev.NextRefresh == nil || !ev.NextRefresh.Equal(nextAt) {
+		t.Fatalf("schedule event: %+v", ev)
 	}
 	go notify("agenda")
 	if m := next(); m.Event != EventChanged || m.Changed[0] != "agenda" {
@@ -222,7 +241,7 @@ func (actionFewerStates) Actions(*Request) ([]ActionState, error) {
 }
 
 func TestVersion(t *testing.T) {
-	if Version != 8 {
+	if Version != 9 {
 		t.Fatalf("protocol version = %d", Version)
 	}
 }

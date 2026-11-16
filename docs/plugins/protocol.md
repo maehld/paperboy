@@ -4,11 +4,12 @@ Paperboy and its plugins talk over standard input and standard output, one
 JSON object per line ([ADR 0049](../adr/0049-plugin-widgets.md)). This document is the reference for the wire
 format; the Go types live in [`pkg/plugin`](../../pkg/plugin/plugin.go).
 
-- Current version: **8** ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md) added version 3, [ADR 0057](../adr/0057-plugin-actions-from-the-plan.md) added
+- Current version: **9** ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md) added version 3, [ADR 0057](../adr/0057-plugin-actions-from-the-plan.md) added
   actions, [ADR 0081](../adr/0081-plugin-state-over-the-protocol.md) added plugin state and blobs and made 5 the minimum,
   [ADR 0103](../adr/0103-plugin-conditions-in-plans.md) added conditions, [ADR 0111](../adr/0111-text-pages-from-plugin-values.md) added values,
-  [ADR 0125](../adr/0125-remove-the-text-widget-path.md) removed the text action).
-  From version 5 on the protocol grew additively until version 8 removed the text action. Paperboy keeps the floor at 5: a plugin below 8 that still has text widgets is accepted, because nothing asks it for text.
+  [ADR 0125](../adr/0125-remove-the-text-widget-path.md) removed the text action,
+  [ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md) added the schedule event).
+  From version 5 on the protocol grew additively until version 8 removed the text action. Version 9 adds an inbound event. Paperboy keeps the floor at 5: a plugin below 8 that still has text widgets is accepted, because nothing asks it for text.
   `server_status` is additive and keeps version 6
   ([ADR 0115](../adr/0115-device-status-in-a-widget.md)).
 - Paperboy starts a plugin on first use and keeps it running.
@@ -26,7 +27,7 @@ Every request carries:
 | Field | Meaning |
 |---|---|
 | `id` | Request identifier; the answer repeats it |
-| `version` | Protocol version, currently `8` |
+| `version` | Protocol version, currently `9` |
 | `action` | `configure`, `state`, `describe`, `render`, `values`, `actions`, `action` or `conditions` |
 | `language` | `"de"` or `"en"` |
 | `timezone` | IANA name such as `Europe/Berlin` |
@@ -325,6 +326,27 @@ changes; for widgets with actions, a threshold on a number is not enough.
 An event may carry `state` and `blobs` as well, and a line with only `state`
 stores it without touching the widget cache.
 
+## Events from Paperboy
+
+Paperboy may send a line without `id` to a running plugin. Version 9 adds the
+schedule ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)):
+
+```json
+{"event":"schedule","next_refresh":"2026-11-16T18:00:00+01:00"}
+{"event":"schedule"}
+```
+
+- `next_refresh` names the next moment Paperboy needs the plugin's data.
+  Missing or null means no display needs it now.
+- Paperboy sends the event when the plugin starts and when the moment changes
+  by more than about a minute.
+- It sends it only to a plugin that reports version 9 or newer, so an older
+  plugin never sees a line it does not understand.
+- A plugin ignores events it does not know.
+- `pkg/plugin.Demand` receives the event. `Wait(ctx, floor)` sleeps until
+  `next_refresh` minus 30 seconds, wakes on a new schedule, and never returns
+  earlier than `floor` after the previous return. With no demand it blocks.
+
 ## Arguments
 
 `Arg` describes one widget argument, action argument or configuration key:
@@ -396,6 +418,7 @@ Optional interfaces:
 | Interface | Purpose |
 |---|---|
 | `Valuer` | `Values(req) (map[string]Value, error)` for the declared values of a text page |
+| `Eventer` | `Event(Event)` receives a schedule; embed `Demand` instead of writing it |
 | `Preparer` | `Prepare(req) error` once per request, before its widgets |
 | `Starter` | `Start(ctx, notify)` for background work; `notify` sends `changed` |
 | `Ager` | `MaxAge(req) time.Duration` for widget and action caching |
@@ -405,6 +428,29 @@ Optional interfaces:
 
 A plugin calls `plugin.Serve(handler)` and draws with `pkg/render`, so its
 widgets use the same fonts, gray levels and scalings as Paperboy's own.
+
+A plugin with background work embeds `plugin.Demand` and calls `Wait` in its
+`Start` loop:
+
+```go
+type weather struct{ plugin.Demand }
+
+func (w *weather) Start(ctx context.Context, notify func(...string)) {
+    for {
+        if !w.Wait(ctx, w.refresh) {
+            return
+        }
+        if err := w.fetch(ctx); err != nil {
+            continue
+        }
+        notify()
+    }
+}
+```
+
+`Demand` implements `Eventer`, so `ServeIO` feeds it the schedule event. The
+`refresh` argument is the plugin's own floor. With no demand `Wait` blocks
+until Paperboy sends one; a request is still answered from memory.
 
 ## Version history
 
@@ -416,10 +462,11 @@ widgets use the same fonts, gray levels and scalings as Paperboy's own.
 | 6 | Conditions: `describe.conditions`, the `conditions` request and `answer.conditions` ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)) |
 | 7 | Values: `describe.values` with `args` and `progression`, the `values` request with `value_args` and `answer.values` ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md), [0122](../adr/0122-hide-and-progress-a-unit.md)) |
 | 8 | The text action is removed: `text`, `Texter`, `answer.widgets[].lines`, `widgets[].scroll` and the `text` widget kind ([ADR 0125](../adr/0125-remove-the-text-widget-path.md)) |
+| 9 | The inbound `schedule` event and `pkg/plugin.Demand` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)) |
 
 A plugin is used as a whole or not at all ([ADR 0058](../adr/0058-plugin-protocol-version-check.md)). The check is a floor,
 not equality: Paperboy requires at least version 5 and accepts newer ones.
-Version 8 removed the text action for the first time; a plugin below 8 that
-still has text widgets is accepted, because nothing asks it for text. That
-version is the only thing a plugin has to announce; there is no separate
-capability list.
+Version 8 removed the text action and version 9 adds the schedule event. A
+plugin below 8 that still has text widgets is accepted, because nothing asks it
+for text; a plugin below 9 never receives a schedule. That version is the only
+thing a plugin has to announce; there is no separate capability list.

@@ -16,14 +16,16 @@
 //     their arguments and the plugin's configuration keys, for an editor.
 //   - "render": draw widgets for an image display, each in exactly the given
 //     pixel size and number of gray levels, returned as PNG.
-//   - "text": fill widgets of a text display, each with exactly the given
-//     number of lines and columns.
 //   - "actions": report the current state of concrete actions, one answer per
 //     requested action (ADR 0057).
 //   - "action": run exactly one concrete action and report the outcome.
 //   - "conditions": report the state of the named conditions a plan may
 //     depend on (ADR 0103).
 //   - "values": the declared values a text page lays out (ADR 0111).
+//
+// Events: Paperboy sends {"event":"schedule","next_refresh":"..."} to tell a
+// plugin when its data is next needed (ADR 0126). A plugin embeds Demand to
+// receive the event and Wait to sleep until then.
 //
 // Plugins written in Go implement Handler, call Serve and draw with
 // pkg/render, so widgets share the fonts and gray levels of Paperboy.
@@ -42,10 +44,11 @@
 // Message.Blobs. Large values are declared in Description.Blobs and travel
 // base64-coded. Paperboy stores both itself.
 //
-// Compatibility: from version 5 on the protocol only grows additively.
-// Paperboy accepts every plugin that speaks at least MinVersion, ignores
-// fields it does not know, and a new version may add fields and actions
-// without changing the meaning of the existing ones.
+// Compatibility: the protocol changes only with a version and an ADR. Version
+// 8 removed the text action; version 9 adds the schedule event. Otherwise it
+// grows additively. Paperboy accepts every plugin that speaks at least
+// MinVersion, ignores fields it does not know, and a new version may add
+// fields and actions without changing the meaning of the existing ones.
 //
 // Environment: a plugin process sees PAPERBOY_LANGUAGE and PAPERBOY_TIMEZONE,
 // and it runs in the plugins directory.
@@ -81,11 +84,13 @@ import (
 // value and the request's value_args (ADR 0120), and the unit progression of
 // a value (ADR 0122). Version 8 (ADR 0125) removed the text action:
 // ActionText, the Texter interface, Result.lines, WidgetRequest.scroll and the
-// text display kind of a widget are gone. A plugin below 8 is still accepted
-// while it serves values, because nothing asks it for text.
+// text display kind of a widget are gone. Version 9 (ADR 0126) adds the
+// inbound schedule event and the Demand helper. A plugin below 8 is still
+// accepted while it serves values, because nothing asks it for text; Paperboy
+// sends a schedule only to a plugin that reports version 9 or newer.
 // Plugins report the version in every answer (Message.Version); Paperboy
 // refuses a plugin that speaks less than MinVersion (ADR 0081).
-const Version = 8
+const Version = 9
 
 // MinVersion is the oldest protocol Paperboy accepts. Version 5 is the cut
 // that introduced state and blobs; from here on the protocol grows additively,
@@ -109,6 +114,10 @@ const (
 
 // EventChanged tells Paperboy that widgets are out of date.
 const EventChanged = "changed"
+
+// EventSchedule tells a plugin when Paperboy next needs its data (ADR 0126).
+// Paperboy sends it only to a plugin that reports protocol 9 or newer.
+const EventSchedule = "schedule"
 
 // Request is one line Paperboy writes to standard input.
 type Request struct {
@@ -654,6 +663,26 @@ func ServeIO(ctx context.Context, h Handler, in io.Reader, out io.Writer) error 
 	for sc.Scan() {
 		line := sc.Bytes()
 		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var head struct {
+			ID    string `json:"id"`
+			Event string `json:"event"`
+		}
+		if err := json.Unmarshal(line, &head); err != nil {
+			if err := send(Message{Version: Version, Error: "invalid request: " + err.Error()}); err != nil {
+				return err
+			}
+			continue
+		}
+		if head.ID == "" && head.Event != "" {
+			var ev Event
+			if err := json.Unmarshal(line, &ev); err != nil {
+				continue // no id, so no answer; a broken event is ignored
+			}
+			if e, ok := h.(Eventer); ok {
+				e.Event(ev)
+			}
 			continue
 		}
 		var req Request
