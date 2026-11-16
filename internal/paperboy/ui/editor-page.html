@@ -175,6 +175,9 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 {{if .Error}}
 <p class="error">{{.Error}}</p>
 <p><a href="{{if .WidgetsPage}}/ui/plugins{{else}}/ui/editor?tab=pages{{end}}">← {{if .WidgetsPage}}Playground{{else}}Pages{{end}}</a></p>
+{{else if .NoImageDisplay}}
+<p class="warn" id="playground-notice">The Playground shows image widgets only. Every configured display type is a text display. Edit text pages under <a href="/ui/editor?tab=pages">Configuration → Pages</a>.</p>
+<p><a href="/ui">← Dashboard</a></p>
 {{else}}
 {{if not .WidgetsPage}}<div class="bar">
   <a href="/ui/editor?tab=pages">← Pages</a>
@@ -193,6 +196,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   {{range .Displays}}<a href="{{.URL}}" data-display="{{.Name}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
   {{if .WidgetsPage}}<span class="status" id="status"></span>{{end}}
 </div>{{end}}
+{{if .TextFallback}}<p class="hint" id="playground-notice">The Playground shows image widgets only. Text displays are edited under <a href="/ui/editor?tab=pages">Configuration → Pages</a>.</p>{{end}}
 <main>
   <div class="col">
     {{if not .WidgetsPage}}<section class="panel">
