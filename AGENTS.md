@@ -56,7 +56,7 @@ The structure is in `docs/design/`; these are the rules that a change must not b
 - **The instance directory is the configuration.** Files are parsed strictly with a hint for every rejected key, and the same parser validates the runtime and the editor API.
 - **A page is a grid of widgets on a 6 × 8 reference grid.** Sizes are physical (points, `ppi`), a widget draws exactly its cell, and a widget that cannot draw there answers `ErrTooSmall` instead of leaving the cell empty.
 - **A text page is a character grid of boxes (ADR 0111, 0118, 0120).** It has no pixel `grid`; every box names `at`, `span` and either a declared plugin value with its `args` or literal text, and an `overflow` of strip, wrap or scroll. Paperboy formats, aligns and maps the content to the charset. The protocol has no text action; text pages read values (ADR 0125). The editor and the virtual display draw the text grid with the vendored pixel font (ADR 0116).
-- **Every plugin is a separate program** with its own version in `cmd/<plugin>/VERSION`; the protocol is public in `pkg/plugin` and only grows additively.
+- **Every plugin is a separate program** with its own version in `cmd/<plugin>/VERSION`; the protocol is public in `pkg/plugin` and changes only with a version and an ADR (additive where possible; version 8 removed the text action, version 9 adds the schedule event).
 
 ## Essential rules for devices
 
