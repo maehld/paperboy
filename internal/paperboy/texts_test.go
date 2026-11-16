@@ -50,4 +50,12 @@ func TestTexts(t *testing.T) {
 	if title, text := en.noPlan(); title != "No plan configured" || text == "" {
 		t.Fatalf("english no plan: %q %q", title, text)
 	}
+	// The editor labels the empty device argument in the configured language
+	// (ADR 0123).
+	if got := de.deviceThatShows(); got != "das Gerät, das die Seite zeigt" {
+		t.Fatalf("german empty device label: %q", got)
+	}
+	if got := en.deviceThatShows(); got != "the device that shows the page" {
+		t.Fatalf("english empty device label: %q", got)
+	}
 }

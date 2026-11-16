@@ -243,7 +243,8 @@ func downloadTime(t time.Time, loc *time.Location) string {
 
 // imageText picks what the card shows for an image display. Rendered pages
 // live in memory only, so after a restart the last served image is gone; a
-// page then shows through its live preview, anything else as a placeholder.
+// page then shows through its live preview, which names the device so its
+// status widgets show this device (ADR 0123). Anything else is a placeholder.
 func imageText(d deviceInfo, text bool) (image, waiting string) {
 	switch {
 	case text && len(d.LastText) > 0:
@@ -251,7 +252,8 @@ func imageText(d deviceInfo, text bool) (image, waiting string) {
 	case d.LastPageURL != "":
 		return pageImageURL(d.LastPageURL, d.LastPageHash), ""
 	case !text && d.LastPageKind == "page" && d.LastPage != "":
-		return "/api/preview/" + url.PathEscape(d.Profile) + "/" + url.PathEscape(d.LastPage), ""
+		q := url.Values{"device": {d.ID}}
+		return "/api/preview/" + url.PathEscape(d.Profile) + "/" + url.PathEscape(d.LastPage) + "?" + q.Encode(), ""
 	case d.LastPageHash != "" || d.LastPageKind != "":
 		return "", "No image yet – waiting for the next sync"
 	}

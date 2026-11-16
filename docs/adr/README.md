@@ -138,6 +138,7 @@ The web UI: what the operator sees and how content is edited. See [`04-operator-
 | [0104](0104-runtime-stats-in-the-web-ui.md) | Runtime stats in the web UI | Accepted, implemented |
 | [0106](0106-self-updating-pages-with-htmx.md) | Self-updating operator pages with htmx | Accepted, implemented; replaces the `<meta http-equiv="refresh">` of [ADR-0040](0040-operator-dashboard.md) for the dashboard, the stats page and the downloads page |
 | [0116](0116-a-pixel-font-for-text-previews.md) | A pixel font for text previews | Accepted, implemented; builds on the board of [ADR-0074](0074-editor-board-shows-the-preview.md), the one stylesheet of [ADR-0076](0076-one-stylesheet-and-one-navigation.md), the virtual display of [ADR-0091](0091-virtual-display.md) and the text pages of [ADR-0111](0111-text-pages-from-plugin-values.md) |
+| [0123](0123-a-sample-device-in-previews.md) | A sample device in previews | Accepted, implemented; builds on the device status of [ADR-0115](0115-device-status-in-a-widget.md) and adds a computed `enum` to the argument values of [ADR-0055](0055-allowed-arg-values-and-gallery-form.md) |
 | [0124](0124-the-playground-shows-image-display-types.md) | The Playground shows image display types only | Accepted, implemented; supersedes the sentence about the LCD block in [ADR-0074](0074-editor-board-shows-the-preview.md), keeps the `text` action of [ADR-0111](0111-text-pages-from-plugin-values.md) in the protocol |
 
 ## Plugins

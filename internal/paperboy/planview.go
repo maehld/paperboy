@@ -163,7 +163,7 @@ func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 			vr.Refresh = refreshText(int(time.Duration(rule.Refresh) / time.Second))
 		}
 		for _, name := range rule.Pages {
-			vr.Pages = append(vr.Pages, s.planViewPage(cfg, dev.Profile, name, text, at))
+			vr.Pages = append(vr.Pages, s.planViewPage(cfg, dev.ID, dev.Profile, name, text, at))
 		}
 		view.Rules = append(view.Rules, vr)
 	}
@@ -171,8 +171,9 @@ func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 }
 
 // planViewPage resolves one page of a rule the way the device would: skipped
-// when it does not fit the display type, a notice when it is broken.
-func (s *Server) planViewPage(cfg *Config, profile, name string, text bool, at time.Time) planViewPage {
+// when it does not fit the display type, a notice when it is broken. id names
+// the device, so a preview shows its status widgets (ADR 0123).
+func (s *Server) planViewPage(cfg *Config, id, profile, name string, text bool, at time.Time) planViewPage {
 	vp := planViewPage{Name: name}
 	if err := s.fits(cfg, profile, name); err != nil {
 		vp.Skipped = err.Error()
@@ -183,7 +184,7 @@ func (s *Server) planViewPage(cfg *Config, profile, name string, text bool, at t
 		return vp
 	}
 	if text {
-		text, err := s.renderText(cfg, profile, name, at, pagePosition{index: 0, count: 1}, "", nil)
+		text, err := s.renderText(cfg, profile, name, at, pagePosition{index: 0, count: 1}, id, nil)
 		if err != nil {
 			vp.Error = shortError(err)
 			return vp
@@ -192,7 +193,8 @@ func (s *Server) planViewPage(cfg *Config, profile, name string, text bool, at t
 		return vp
 	}
 	p := cfg.Profiles[profile]
-	vp.ImageURL = "/api/preview/" + url.PathEscape(profile) + "/" + url.PathEscape(name) + "?at=" + url.QueryEscape(at.Format(atLayout))
+	q := url.Values{"at": {at.Format(atLayout)}, "device": {id}}
+	vp.ImageURL = "/api/preview/" + url.PathEscape(profile) + "/" + url.PathEscape(name) + "?" + q.Encode()
 	vp.Width, vp.Height = p.Width, p.Height
 	return vp
 }
