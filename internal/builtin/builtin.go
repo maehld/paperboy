@@ -159,8 +159,15 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 		return render.Measure(s, statusSize, false) <= b.Dx()/2-2*pad
 	})
 	right := b.Max.X - pad
+	bottom := b.Max.Y - rule - pad
+	baseline := bottom
+	sub := a.String("subtitle", "")
+	if sub != "" {
+		baseline = b.Min.Y + pad + (bottom-b.Min.Y-pad)*45/100
+	}
 	// The battery gauge sits at the far right. It carries the level alone, so
 	// the date and clock move left by the gauge and the gap only (ADR 0121).
+	// Its bottom sits on the text baseline, so gauge and text read as one line.
 	var batteryStatus *plugin.BatteryStatus
 	var batteryIcon image.Rectangle
 	if a.Bool("battery", false) {
@@ -170,7 +177,7 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 			gap := max(2, pad/2)
 			if iconW >= 4 && iconH >= 3 && b.Max.X-pad-iconW-gap > b.Min.X+pad {
 				batteryStatus = dev.Battery
-				iy := b.Min.Y + (h-int(iconH))/2
+				iy := baseline - int(iconH)
 				batteryIcon = image.Rect(b.Max.X-pad-iconW, iy, b.Max.X-pad, iy+int(iconH))
 				right -= iconW + gap
 			}
@@ -188,12 +195,6 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 		x = left + (right-left)/2
 	case render.Right:
 		x = right
-	}
-	bottom := b.Max.Y - rule - pad
-	baseline := bottom
-	sub := a.String("subtitle", "")
-	if sub != "" {
-		baseline = b.Min.Y + pad + (bottom-b.Min.Y-pad)*45/100
 	}
 	render.Text(img, title, x, baseline, render.Style{Size: titleSize, Bold: true, Shrink: true}, right-left, color.Black, al)
 	if sub != "" {

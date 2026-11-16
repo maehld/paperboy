@@ -20,7 +20,7 @@ ADR 0115 point 5 asks for "an icon and percentage" in the header. The percentage
 4. **The charging mark is a bolt over the fill.** Paperboy inverts the pixels of a bolt-shaped polygon. The mark is white on the charge and black on the empty part, and it keeps the fill around it.
 5. **A missing reading is marked.** A gauge without a percentage carries a diagonal slash inside the outline, so it does not look like 0 %.
 6. **The warning level thickens the outline.** `warn` adds one pixel to the outline, `critical` adds two. The level is visible without a number and without a new argument.
-7. **The header draws the gauge only.** On an image display, `battery: true` draws the gauge at the far right and no percentage or voltage. The date and the clock move left by the gauge width and the gap only. A text display has no gauge and keeps the number (`84 %`), because the flag would otherwise show nothing. This supersedes ADR 0115 point 5.
+7. **The header draws the gauge only.** On an image display, `battery: true` draws the gauge at the far right and no percentage or voltage. The gauge sits on the text baseline, so the gauge and the date read as one line. The date and the clock move left by the gauge width and the gap only. A text display has no gauge and keeps the number (`84 %`), because the flag would otherwise show nothing. This supersedes ADR 0115 point 5.
 8. **`paperboy/battery` declares a square span.** `2x2` gives the gauge above a large value. `1x1`, `2x1` and `3x1` keep the inline form beside the value. A cell that is wider than three times its height is inline.
 
 ## Alternatives

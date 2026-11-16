@@ -348,6 +348,9 @@ func TestHeaderBatteryIconOnly(t *testing.T) {
 	if box.Max.X != w.Width {
 		t.Errorf("the gauge does not reach the right edge: %v", box)
 	}
+	if box.Max.Y != w.Height-1 {
+		t.Errorf("the gauge does not sit on the text baseline: %v", box)
+	}
 	if box.Dx() > 2*box.Dy()+2 {
 		t.Errorf("the header draws a value beside the gauge: ink %v", box)
 	}
