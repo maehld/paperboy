@@ -434,6 +434,9 @@ func (w *weather) Start(ctx context.Context, notify func(...string)) {
 `refresh` argument is the plugin's own floor. With no demand `Wait` blocks
 until Paperboy sends one; a request is still answered from memory.
 
+Call `notify` without the plugin's own mutex. The host answers the callback
+with `State` and `Blobs`, so a held lock deadlocks the plugin.
+
 ## Version history
 
 | Version | Change |

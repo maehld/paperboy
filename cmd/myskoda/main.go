@@ -558,6 +558,7 @@ func (m *myskoda) Start(ctx context.Context, notify func(widgets ...string)) {
 			ans, err := m.fetch(ctx)
 			wait := m.refresh
 			var needImage string
+			var changed bool
 			m.mu.Lock()
 			if err != nil {
 				if m.loadErr == nil || err.Error() != m.loadErr.Error() {
@@ -571,9 +572,7 @@ func (m *myskoda) Start(ctx context.Context, notify func(widgets ...string)) {
 					m.expires = ans.expires
 				}
 				sum, _ := json.Marshal(ans.vehicle)
-				if have && string(sum) != last {
-					notify()
-				}
+				changed = have && string(sum) != last
 				last, have = string(sum), true
 				if ans.vehicle.RenderURL != "" && (m.image == nil || m.image.url != ans.vehicle.RenderURL || m.image.img == nil) {
 					// The download happens outside the lock; a failed one is
@@ -613,6 +612,11 @@ func (m *myskoda) Start(ctx context.Context, notify func(widgets ...string)) {
 			m.mu.Unlock()
 			if needImage != "" && image != nil && image.err == nil {
 				m.queueImage(image.img)
+			}
+			// The callback must not run under m.mu: ServeIO answers it with
+			// State and Blobs, which take the same lock.
+			if changed {
+				notify()
 			}
 		}
 

@@ -506,6 +506,62 @@ func TestProtocolWithoutData(t *testing.T) {
 	}
 }
 
+// The notify callback must not run under m.mu: ServeIO answers it with State
+// and Blobs, which take the same lock. A callback called under the lock froze
+// the plugin as soon as the displayed data moved.
+func TestNotifyRunsWithoutTheStateLock(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("testdata", "enyaq.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/render.png" {
+			png.Encode(w, image.NewGray(image.Rect(0, 0, 60, 30)))
+			return
+		}
+		var vr vehicleResponse
+		if err := json.Unmarshal(body, &vr); err != nil {
+			t.Error(err)
+			return
+		}
+		// A different charge on every answer makes the second fetch a change.
+		soc := 70 + int(calls.Add(1))
+		vr.Vehicle.Charging.Status.Battery.SoC = &soc
+		vr.Vehicle.RenderURL = "http://" + r.Host + "/render.png"
+		if err := json.NewEncoder(w).Encode(vr); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer srv.Close()
+
+	m := &myskoda{client: srv.Client()}
+	if msg := plugin.Handle(m, &plugin.Request{Action: plugin.ActionConfigure,
+		Config: map[string]any{"api_key": "secret", "vin": "TMBJB9NY5RF999999", "base": srv.URL}}); msg.Error != "" {
+		t.Fatal(msg.Error)
+	}
+	m.refresh = 10 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	now := time.Now()
+	m.Event(plugin.Event{Event: plugin.EventSchedule, NextRefresh: &now})
+	notified := make(chan struct{}, 4)
+	m.Start(ctx, func(...string) {
+		m.State()
+		m.Blobs()
+		select {
+		case notified <- struct{}{}:
+		default:
+		}
+	})
+	select {
+	case <-notified:
+	case <-time.After(5 * time.Second):
+		t.Fatal("notify did not return: the callback ran under the state lock")
+	}
+}
+
 func waitFor(t *testing.T, cond func() bool, what string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
