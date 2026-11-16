@@ -72,7 +72,12 @@ type Cell struct {
 	Text  string `yaml:"text,omitempty" json:"text,omitempty"`
 	Value string `yaml:"value,omitempty" json:"value,omitempty"`
 	Label string `yaml:"label,omitempty" json:"label,omitempty"`
-	Unit  string `yaml:"unit,omitempty" json:"unit,omitempty"`
+	// Unit overrides the unit text of a value: a label, or "none" to hide the
+	// unit. Empty shows the declared unit (ADR 0122).
+	Unit string `yaml:"unit,omitempty" json:"unit,omitempty"`
+	// Scale forces a step of the value's unit progression: "auto" (default)
+	// or the unit of a declared step (ADR 0122).
+	Scale string `yaml:"scale,omitempty" json:"scale,omitempty"`
 	// Align is left, right or decimal; empty means left.
 	Align string `yaml:"align,omitempty" json:"align,omitempty"`
 	// Overflow overrides the page's strip, wrap or scroll.
@@ -100,6 +105,13 @@ const (
 	OverflowWrap   = "wrap"
 	OverflowScroll = "scroll"
 )
+
+// UnitNone hides the unit of a text cell (ADR 0122).
+const UnitNone = "none"
+
+// ScaleAuto lets Paperboy choose the step of a value's unit progression
+// (ADR 0122). An empty scale means the same.
+const ScaleAuto = "auto"
 
 // Plugin and value name of a value cell.
 func (c Cell) ValuePlugin() string { p, _, _ := strings.Cut(c.Value, "/"); return p }
@@ -291,8 +303,8 @@ func (t *Template) validateGrid() error {
 		if c.Scroll {
 			return fmt.Errorf("%s: scroll is for text pages; ePaper cannot animate (ADR 0118)", where)
 		}
-		if c.Text != "" || c.Value != "" || c.Label != "" || c.Unit != "" || c.Align != "" || c.Overflow != "" {
-			return fmt.Errorf("%s: text and value are for text pages (kind: text); use widget", where)
+		if c.Text != "" || c.Value != "" || c.Label != "" || c.Unit != "" || c.Scale != "" || c.Align != "" || c.Overflow != "" {
+			return fmt.Errorf("%s: text, value, label, unit and scale are for text pages (kind: text); use widget", where)
 		}
 		plugin, widget, ok := strings.Cut(c.Widget, "/")
 		if !ok || !ValidName(plugin) || !ValidName(widget) {
@@ -366,8 +378,8 @@ func (t *Template) validateText() error {
 			if !ok || !ValidName(plugin) || !ValidName(key) {
 				return fmt.Errorf("%s: value %q: expected plugin/value with a-z, 0-9 and -", where, c.Value)
 			}
-		} else if c.Label != "" || c.Unit != "" || len(c.Args) > 0 {
-			return fmt.Errorf("%s: a literal text cell has no label, unit or args", where)
+		} else if c.Label != "" || c.Unit != "" || c.Scale != "" || len(c.Args) > 0 {
+			return fmt.Errorf("%s: a literal text cell has no label, unit, scale or args", where)
 		}
 		switch c.Align {
 		case "":

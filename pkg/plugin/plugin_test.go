@@ -292,6 +292,21 @@ func TestValuesAction(t *testing.T) {
 	}
 }
 
+// A value declaration carries the progression of its unit, and protocol 7
+// grows additively (ADR 0122).
+func TestValueSpecProgressionJSON(t *testing.T) {
+	spec := ValueSpec{Name: "pv", Title: "PV", Type: ValueNumber, Unit: "W",
+		Progression: []UnitStep{{Unit: "kW", Factor: 1000, Precision: 1}}}
+	data, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"name":"pv","title":"PV","type":"number","unit":"W","progression":[{"unit":"kW","factor":1000,"precision":1}]}`
+	if string(data) != want {
+		t.Fatalf("spec: %s, want %s", data, want)
+	}
+}
+
 func TestValueJSON(t *testing.T) {
 	cases := map[string]Value{
 		`{"number":0}`:      NumberValue(0),

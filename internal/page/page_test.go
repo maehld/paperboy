@@ -260,6 +260,75 @@ cells:
 	}
 }
 
+// TestTextUnitProgression covers the step choice and the unit text of a value
+// (ADR 0122).
+func TestTextUnitProgression(t *testing.T) {
+	pv := plugin.ValueSpec{Name: "pv", Type: plugin.ValueNumber, Unit: "W", Precision: 0,
+		Progression: []plugin.UnitStep{
+			{Unit: "kW", Factor: 1000, Precision: 1},
+			{Unit: "MW", Factor: 1000000, Precision: 2},
+		}}
+	plain := plugin.ValueSpec{Name: "pv", Type: plugin.ValueNumber, Unit: "W", Precision: 0}
+	cases := []struct {
+		name  string
+		cell  string
+		spec  plugin.ValueSpec
+		value float64
+		want  string
+	}{
+		{"rounds 999.6 W up into kW", "value: a/pv", pv, 999.6, "1,0 kW"},
+		{"zero stays in the base unit", "value: a/pv", pv, 0, "0 W"},
+		{"a negative chooses by magnitude", "value: a/pv", pv, -4200, "-4,2 kW"},
+		{"a small value stays in the base unit", "value: a/pv", pv, 420, "420 W"},
+		{"a forced base step", "value: a/pv, scale: W", pv, 4200, "4200 W"},
+		{"a forced larger step", "value: a/pv, scale: MW", pv, 2500000, "2,50 MW"},
+		{"a hidden unit", "value: a/pv, unit: none", pv, 4200, "4,2"},
+		{"a label over the chosen step", "value: a/pv, unit: kWp", pv, 4200, "4,2 kWp"},
+		{"no progression stays in the base unit", "value: a/pv", plain, 4200, "4200 W"},
+	}
+	for _, tc := range cases {
+		tmpl, err := Parse(strings.NewReader("kind: text\ncells:\n  - { at: [0, 0], span: [14, 1], " + tc.cell + " }\n"))
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		src := valueSource(map[string]ValueResult{
+			"a/pv": {Value: plugin.NumberValue(tc.value), Spec: tc.spec},
+		})
+		text, err := tmpl.RenderText(Display{Width: 14, Height: 1, Text: true, Language: "de", Timezone: time.UTC}, Context{Values: src})
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if got := strings.TrimRight(text.Lines[0], " "); got != tc.want {
+			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// An unknown scale marks its cell with an error, like an unknown argument.
+func TestTextUnknownScale(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader(`
+kind: text
+cells:
+  - { at: [0, 0], span: [30, 1], value: a/pv, scale: hp }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := plugin.ValueSpec{Name: "pv", Type: plugin.ValueNumber, Unit: "W", Precision: 0,
+		Progression: []plugin.UnitStep{{Unit: "kW", Factor: 1000, Precision: 1}}}
+	src := valueSource(map[string]ValueResult{
+		"a/pv": {Value: plugin.NumberValue(4200), Spec: spec},
+	})
+	text, err := tmpl.RenderText(Display{Width: 30, Height: 1, Text: true, Language: "de"}, Context{Values: src})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `? unknown scale "hp"`
+	if got := strings.TrimRight(text.Lines[0], " "); got != want {
+		t.Fatalf("line %q, want %q", got, want)
+	}
+}
+
 func TestTextValueLines(t *testing.T) {
 	tmpl, err := Parse(strings.NewReader(`
 kind: text
@@ -325,7 +394,7 @@ kind: text
 cells:
   - { at: [0, 0], span: [10, 1], text: hello, args: { n: 1 } }
 `))
-	if err == nil || !strings.Contains(err.Error(), "literal text cell has no label, unit or args") {
+	if err == nil || !strings.Contains(err.Error(), "literal text cell has no label, unit, scale or args") {
 		t.Fatalf("literal text with args: %v", err)
 	}
 }
@@ -381,7 +450,7 @@ kind: text
 overflow: wrap
 cells:
   - { at: [0, 0], span: [4, 1], text: "Hallo" }
-  - { at: [4, 0], span: [6, 2], value: a/b, label: L, unit: kW, align: right, overflow: scroll }
+  - { at: [4, 0], span: [6, 2], value: a/b, label: L, unit: kW, scale: auto, align: right, overflow: scroll }
 `
 	tmpl, err := Parse(strings.NewReader(valid))
 	if err != nil {
@@ -399,6 +468,7 @@ cells:
 		"both":       "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, value: a/b }\n",
 		"widget":     "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, widget: a/b }\n",
 		"label text": "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, label: L }\n",
+		"scale text": "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, scale: auto }\n",
 		"outside":    "kind: text\ncells:\n  - { at: [79, 0], span: [2, 1], text: x }\n",
 		"overlap":    "kind: text\ncells:\n  - { at: [0, 0], span: [2, 2], text: x }\n  - { at: [1, 1], span: [2, 1], text: y }\n",
 		"align":      "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, align: center }\n",
@@ -414,6 +484,9 @@ cells:
 	}
 	if _, err := Parse(strings.NewReader("kind: image\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 1], widget: a/b, scroll: true }\n")); err == nil {
 		t.Error("an image page with scroll was accepted")
+	}
+	if _, err := Parse(strings.NewReader("kind: image\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 1], widget: a/b, scale: auto }\n")); err == nil {
+		t.Error("an image page with scale was accepted")
 	}
 }
 

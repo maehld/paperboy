@@ -1,8 +1,9 @@
+# The PV power picks its unit; the house power stays in watts.
 kind: text
 cells:
   - { at: [0, 0], span: [20, 1], value: paperboy/title }
   - { at: [0, 1], span: [10, 1], value: weather/temperature }
   - { at: [10, 1], span: [10, 1], value: weather/condition, align: right }
   - { at: [0, 2], span: [9, 1], value: evcc/pv, label: PV }
-  - { at: [9, 2], span: [11, 1], value: evcc/home, label: Haus, align: right }
+  - { at: [9, 2], span: [11, 1], value: evcc/home, label: Haus, scale: W, align: right }
   - { at: [0, 3], span: [20, 1], value: calendar/next }

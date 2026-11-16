@@ -15,38 +15,52 @@ import (
 // show. The keys are what a page selects; evcc's own numbers stay as they are.
 type stateValue struct {
 	key, de, en string
-	unit        string
+	unit        string // base unit the text page receives
 	precision   int
+	progression []plugin.UnitStep
 }
 
+// powerSteps and energySteps are the larger units Paperboy uses for powers and
+// energies; the base units are W and Wh (ADR 0122).
+var (
+	powerSteps = []plugin.UnitStep{
+		{Unit: "kW", Factor: 1000, Precision: 1},
+		{Unit: "MW", Factor: 1000000, Precision: 2},
+	}
+	energySteps = []plugin.UnitStep{
+		{Unit: "kWh", Factor: 1000, Precision: 1},
+		{Unit: "MWh", Factor: 1000000, Precision: 2},
+	}
+)
+
 var stateValues = []stateValue{
-	{"pv", "PV", "PV", "kW", 1},
-	{"home", "Haus", "Home", "kW", 1},
-	{"grid", "Netz", "Grid", "kW", 1},
-	{"battery", "Akku", "Battery", "%", 0},
-	{"battery-power", "Akku-Leistung", "Battery power", "kW", 1},
-	{"grid-price", "Strompreis", "Grid price", "ct/kWh", 1},
-	{"feedin-price", "Einspeisevergütung", "Feed-in price", "ct/kWh", 1},
-	{"pv-energy", "PV gesamt", "PV total", "kWh", 1},
-	{"grid-import", "Netzbezug gesamt", "Grid import total", "kWh", 1},
-	{"grid-export", "Einspeisung gesamt", "Grid export total", "kWh", 1},
-	{"battery-charge", "Akku geladen", "Battery charged", "kWh", 1},
-	{"battery-discharge", "Akku entladen", "Battery discharged", "kWh", 1},
-	{"charge-total", "Geladen gesamt", "Charged total", "kWh", 1},
-	{"charge-total-solar", "Solaranteil gesamt", "Solar share total", "%", 0},
-	{"charge-total-price", "Ø Ladepreis gesamt", "Avg. charging price total", "ct/kWh", 1},
-	{"charge-year", "Geladen dieses Jahr", "Charged this year", "kWh", 1},
-	{"charge-year-solar", "Solaranteil dieses Jahr", "Solar share this year", "%", 0},
-	{"charge-year-price", "Ø Ladepreis dieses Jahr", "Avg. charging price this year", "ct/kWh", 1},
-	{"pv-today", "PV heute", "PV today", "kWh", 1},
-	{"home-today", "Haus heute", "Home today", "kWh", 1},
-	{"grid-import-today", "Netzbezug heute", "Grid import today", "kWh", 1},
-	{"grid-export-today", "Einspeisung heute", "Grid export today", "kWh", 1},
-	{"battery-charge-today", "Akku geladen heute", "Battery charged today", "kWh", 1},
-	{"battery-discharge-today", "Akku entladen heute", "Battery discharged today", "kWh", 1},
-	{"charge-today", "Geladen heute", "Charged today", "kWh", 1},
-	{"forecast-today", "Prognose heute", "Forecast today", "kWh", 1},
-	{"forecast-tomorrow", "Prognose morgen", "Forecast tomorrow", "kWh", 1},
+	{"pv", "PV", "PV", "W", 0, powerSteps},
+	{"home", "Haus", "Home", "W", 0, powerSteps},
+	{"grid", "Netz", "Grid", "W", 0, powerSteps},
+	{"battery", "Akku", "Battery", "%", 0, nil},
+	{"battery-power", "Akku-Leistung", "Battery power", "W", 0, powerSteps},
+	{"grid-price", "Strompreis", "Grid price", "ct/kWh", 1, nil},
+	{"feedin-price", "Einspeisevergütung", "Feed-in price", "ct/kWh", 1, nil},
+	{"pv-energy", "PV gesamt", "PV total", "Wh", 0, energySteps},
+	{"grid-import", "Netzbezug gesamt", "Grid import total", "Wh", 0, energySteps},
+	{"grid-export", "Einspeisung gesamt", "Grid export total", "Wh", 0, energySteps},
+	{"battery-charge", "Akku geladen", "Battery charged", "Wh", 0, energySteps},
+	{"battery-discharge", "Akku entladen", "Battery discharged", "Wh", 0, energySteps},
+	{"charge-total", "Geladen gesamt", "Charged total", "Wh", 0, energySteps},
+	{"charge-total-solar", "Solaranteil gesamt", "Solar share total", "%", 0, nil},
+	{"charge-total-price", "Ø Ladepreis gesamt", "Avg. charging price total", "ct/kWh", 1, nil},
+	{"charge-year", "Geladen dieses Jahr", "Charged this year", "Wh", 0, energySteps},
+	{"charge-year-solar", "Solaranteil dieses Jahr", "Solar share this year", "%", 0, nil},
+	{"charge-year-price", "Ø Ladepreis dieses Jahr", "Avg. charging price this year", "ct/kWh", 1, nil},
+	{"pv-today", "PV heute", "PV today", "Wh", 0, energySteps},
+	{"home-today", "Haus heute", "Home today", "Wh", 0, energySteps},
+	{"grid-import-today", "Netzbezug heute", "Grid import today", "Wh", 0, energySteps},
+	{"grid-export-today", "Einspeisung heute", "Grid export today", "Wh", 0, energySteps},
+	{"battery-charge-today", "Akku geladen heute", "Battery charged today", "Wh", 0, energySteps},
+	{"battery-discharge-today", "Akku entladen heute", "Battery discharged today", "Wh", 0, energySteps},
+	{"charge-today", "Geladen heute", "Charged today", "Wh", 0, energySteps},
+	{"forecast-today", "Prognose heute", "Forecast today", "Wh", 0, energySteps},
+	{"forecast-tomorrow", "Prognose morgen", "Forecast tomorrow", "Wh", 0, energySteps},
 }
 
 // dailyValue names the history series behind a daily value and the energy of
@@ -255,7 +269,8 @@ var loadpointArg = plugin.Arg{Type: "int", Default: 0, Description: "loadpoint, 
 func valueSpecs() []plugin.ValueSpec {
 	out := make([]plugin.ValueSpec, 0, len(stateValues)+10)
 	for _, v := range stateValues {
-		spec := plugin.ValueSpec{Name: v.key, Title: v.en, Type: plugin.ValueNumber, Unit: v.unit, Precision: v.precision}
+		spec := plugin.ValueSpec{Name: v.key, Title: v.en, Type: plugin.ValueNumber,
+			Unit: v.unit, Precision: v.precision, Progression: v.progression}
 		// charge-today follows the other loadpoint values and reads the index
 		// of the loadpoint (ADR 0120); the other values take no argument.
 		if v.key == "charge-today" {
@@ -271,8 +286,8 @@ func valueSpecs() []plugin.ValueSpec {
 		{Name: "loadpoint-soc", Title: "State of charge", Type: plugin.ValueNumber, Unit: "%", Precision: 0, Args: lp},
 		{Name: "loadpoint-limit", Title: "Charge limit", Type: plugin.ValueNumber, Unit: "%", Precision: 0, Args: lp},
 		{Name: "loadpoint-range", Title: "Range", Type: plugin.ValueNumber, Unit: "km", Precision: 0, Args: lp},
-		{Name: "loadpoint-power", Title: "Charge power", Type: plugin.ValueNumber, Unit: "kW", Precision: 1, Args: lp},
-		{Name: "session-energy", Title: "Session energy", Type: plugin.ValueNumber, Unit: "kWh", Precision: 1, Args: lp},
+		{Name: "loadpoint-power", Title: "Charge power", Type: plugin.ValueNumber, Unit: "W", Precision: 0, Progression: powerSteps, Args: lp},
+		{Name: "session-energy", Title: "Session energy", Type: plugin.ValueNumber, Unit: "Wh", Precision: 0, Progression: energySteps, Args: lp},
 		{Name: "session-solar", Title: "Solar share of the session", Type: plugin.ValueNumber, Unit: "%", Precision: 0, Args: lp},
 		{Name: "remaining", Title: "Remaining charge time", Type: plugin.ValueDuration, Args: lp},
 	}...)
@@ -325,14 +340,14 @@ func (e *evcc) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 				out[name] = plugin.NumberValue(lp.VehicleRange)
 				continue
 			case "loadpoint-power":
-				out[name] = plugin.NumberValue(lp.ChargePower / 1000)
+				out[name] = plugin.NumberValue(lp.ChargePower)
 				continue
 			case "session-energy":
 				if lp.SessionEnergy <= 0 {
 					out[name] = dash
 					continue
 				}
-				out[name] = plugin.NumberValue(lp.SessionEnergy / 1000)
+				out[name] = plugin.NumberValue(lp.SessionEnergy)
 				continue
 			case "session-solar":
 				if lp.SessionEnergy <= 0 || lp.SessionSolarPercentage <= 0 {
@@ -365,7 +380,8 @@ func (e *evcc) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 				_, one = req.ValueArgs["index"]
 			}
 			if v, ok := e.dailyNumber(name, one, index); ok {
-				out[name] = plugin.NumberValue(v)
+				// The history counts kWh; the values declare Wh (ADR 0122).
+				out[name] = plugin.NumberValue(v * 1000)
 				continue
 			}
 			out[name] = dash
@@ -390,22 +406,20 @@ func isLoadpointValue(name string) bool {
 	return false
 }
 
-// stateNumber is one value of /api/state as a number in the declared unit:
-// power in kW, prices in ct/kWh and the rest as evcc reports it.
-// stateNumber is one value of /api/state as a number in the declared unit:
-// power in kW, prices in ct/kWh and the rest as evcc reports it.
+// stateNumber is one value of /api/state in the declared base unit: power in
+// W, energy in Wh, prices in ct/kWh and the rest as evcc reports it (ADR 0122).
 func (e *evcc) stateNumber(key string) (float64, bool) {
 	s := e.cur
 	switch key {
 	case "pv":
-		return s.PVPower / 1000, true
+		return s.PVPower, true
 	case "home":
-		return s.HomePower / 1000, true
+		return s.HomePower, true
 	case "grid":
 		if s.Grid == nil && s.GridPowerLegacy == nil {
 			return 0, false
 		}
-		return s.gridPower() / 1000, true
+		return s.gridPower(), true
 	case "battery":
 		if s.Battery == nil {
 			return 0, false
@@ -415,7 +429,7 @@ func (e *evcc) stateNumber(key string) (float64, bool) {
 		if s.Battery == nil {
 			return 0, false
 		}
-		return s.Battery.Power / 1000, true
+		return s.Battery.Power, true
 	case "grid-price":
 		if s.TariffGrid == nil {
 			return 0, false
@@ -427,27 +441,27 @@ func (e *evcc) stateNumber(key string) (float64, bool) {
 		}
 		return *s.TariffFeedIn * 100, true
 	case "pv-energy":
-		return s.PVEnergy, true
+		return s.PVEnergy * 1000, true
 	case "grid-import":
 		if s.Grid == nil {
 			return 0, false
 		}
-		return s.Grid.Energy, true
+		return s.Grid.Energy * 1000, true
 	case "grid-export":
 		if s.Grid == nil {
 			return 0, false
 		}
-		return s.Grid.ReturnEnergy, true
+		return s.Grid.ReturnEnergy * 1000, true
 	case "battery-charge":
 		if s.Battery == nil {
 			return 0, false
 		}
-		return s.Battery.Energy, true
+		return s.Battery.Energy * 1000, true
 	case "battery-discharge":
 		if s.Battery == nil {
 			return 0, false
 		}
-		return s.Battery.ReturnEnergy, true
+		return s.Battery.ReturnEnergy * 1000, true
 	case "charge-total", "charge-total-solar", "charge-total-price":
 		st, ok := s.Statistics["total"]
 		return chargeNumber(key, st, ok)
@@ -479,7 +493,7 @@ func chargeNumber(key string, st statistics, ok bool) (float64, bool) {
 	case "charge-total-price", "charge-year-price":
 		return st.AvgPrice * 100, true
 	}
-	return st.ChargedKWh, true
+	return st.ChargedKWh * 1000, true
 }
 
 // between the rows. "columns" puts several of them next to each other for a

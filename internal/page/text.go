@@ -2,6 +2,7 @@ package page
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -255,22 +256,107 @@ func textCellLines(r Result, cell Cell, charset, lang string, now time.Time, loc
 	return window, nil, "", false
 }
 
-// textValueParts formats one value and resolves its unit.
+// textValueParts formats one value and resolves its unit. The cell's scale
+// chooses a step of the declared progression, and its unit overrides or hides
+// the unit text (ADR 0122).
 func textValueParts(r Result, cell Cell, charset, lang string, now time.Time, loc *time.Location) (value, unit string) {
-	value, unit = "", cell.Unit
 	if r.Err != nil || r.Value == nil {
 		msg := "no value"
 		if r.Err != nil {
 			msg = firstLine(r.Err.Error())
 		}
-		value = "? " + msg
-	} else {
-		value = formatValue(r.Spec, *r.Value, lang, now, loc)
-		if unit == "" && r.Spec.Type == plugin.ValueNumber {
-			unit = r.Spec.Unit
-		}
+		return convertLines(charset, "? "+msg), clean(Convert(charset, unitText(cell.Unit, "")))
 	}
-	return convertLines(charset, value), clean(Convert(charset, unit))
+	if r.Value.Type() == plugin.ValueNumber && r.Spec.Type == plugin.ValueNumber {
+		number, step, err := scaledNumber(r.Spec, *r.Value.Number, cell.Scale)
+		if err != nil {
+			return convertLines(charset, "? "+err.Error()), ""
+		}
+		return convertLines(charset, formatNumber(number, step.precision, lang)),
+			clean(Convert(charset, unitText(cell.Unit, step.unit)))
+	}
+	value = formatValue(r.Spec, *r.Value, lang, now, loc)
+	return convertLines(charset, value), clean(Convert(charset, unitText(cell.Unit, "")))
+}
+
+// valueStep is the unit and precision a number is written in.
+type valueStep struct {
+	unit      string
+	factor    float64 // to the base unit
+	precision int
+}
+
+// scaledNumber writes a number in the unit its cell asks for (ADR 0122). A
+// step rounds the value with its precision, so the displayed number is the one
+// the step choice compared with 1. A value in its base unit stays as it is.
+func scaledNumber(spec plugin.ValueSpec, value float64, scale string) (float64, valueStep, error) {
+	step, err := chooseStep(spec, value, scale)
+	if err != nil {
+		return 0, valueStep{}, err
+	}
+	if step.factor == 1 && step.unit == spec.Unit {
+		return value, step, nil
+	}
+	return roundStep(value/step.factor, step.precision), step, nil
+}
+
+// chooseStep picks the unit of a number (ADR 0122): zero and small values stay
+// in the base unit, a larger value takes the largest declared step whose
+// absolute value, rounded with the step's precision, is at least 1. A negative
+// value chooses by its absolute value. A named scale forces one step; an
+// unknown name is an error like an unknown argument.
+func chooseStep(spec plugin.ValueSpec, value float64, scale string) (valueStep, error) {
+	base := valueStep{unit: spec.Unit, factor: 1, precision: spec.Precision}
+	switch scale {
+	case "", ScaleAuto:
+		chosen := base
+		abs := math.Abs(value)
+		for _, step := range spec.Progression {
+			if step.Factor <= 0 {
+				continue
+			}
+			if roundStep(abs/step.Factor, step.Precision) < 1 {
+				continue
+			}
+			if step.Factor > chosen.factor {
+				chosen = valueStep{unit: step.Unit, factor: step.Factor, precision: step.Precision}
+			}
+		}
+		return chosen, nil
+	case spec.Unit:
+		return base, nil
+	}
+	for _, step := range spec.Progression {
+		if step.Unit != scale {
+			continue
+		}
+		if step.Factor <= 0 {
+			return valueStep{}, fmt.Errorf("unit step %q: factor must be positive", step.Unit)
+		}
+		return valueStep{unit: step.Unit, factor: step.Factor, precision: step.Precision}, nil
+	}
+	return valueStep{}, fmt.Errorf("unknown scale %q", scale)
+}
+
+// roundStep rounds f to precision decimals, so Paperboy can compare a value
+// with 1 in a step (ADR 0122).
+func roundStep(f float64, precision int) float64 {
+	precision = max(precision, 0)
+	p := math.Pow(10, float64(precision))
+	return math.Round(f*p) / p
+}
+
+// unitText resolves the unit text a cell shows: the cell's override wins,
+// "none" hides the unit and an absent override shows the declared unit
+// (ADR 0122).
+func unitText(override, declared string) string {
+	switch override {
+	case UnitNone:
+		return ""
+	case "":
+		return declared
+	}
+	return override
 }
 
 // convertLines maps a text value to the charset and cleans each of its lines,
@@ -318,11 +404,7 @@ func formatValue(spec plugin.ValueSpec, v plugin.Value, lang string, now time.Ti
 		if spec.Type == plugin.ValueNumber {
 			precision = spec.Precision
 		}
-		s := strconv.FormatFloat(*v.Number, 'f', precision, 64)
-		if lang == "de" {
-			s = strings.Replace(s, ".", ",", 1)
-		}
-		return s
+		return formatNumber(*v.Number, precision, lang)
 	case plugin.ValueText:
 		return *v.Text
 	case plugin.ValueDuration:
@@ -337,6 +419,16 @@ func formatValue(spec plugin.ValueSpec, v plugin.Value, lang string, now time.Ti
 		return formatDirection(*v.Direction)
 	}
 	return "?"
+}
+
+// formatNumber writes a number with precision decimals and the decimal
+// separator of the language.
+func formatNumber(f float64, precision int, lang string) string {
+	s := strconv.FormatFloat(f, 'f', precision, 64)
+	if lang == "de" {
+		s = strings.Replace(s, ".", ",", 1)
+	}
+	return s
 }
 
 // formatDuration writes a duration of seconds compactly: 45s, 12min, 3h 20min,

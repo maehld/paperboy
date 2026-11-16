@@ -78,8 +78,9 @@ import (
 // Version 6 (ADR 0103) added conditions: describe.conditions, the conditions
 // request and Message.conditions. Version 7 (ADR 0111) added values:
 // describe.values, the values request and Message.values, with arguments per
-// value and the request's value_args ([ADR 0120]). Version 7 has not shipped
-// yet, so it carries both.
+// value and the request's value_args (ADR 0120), and the unit progression of
+// a value (ADR 0122). Version 7 has not shipped yet, so it carries all of
+// them.
 // Plugins report the version in every answer (Message.Version); Paperboy
 // refuses a plugin that speaks less than MinVersion (ADR 0081).
 const Version = 7
@@ -338,7 +339,7 @@ const (
 	ValueDirection = "direction" // 1 up, 0 flat, -1 down
 )
 
-// Kinds of a value declaration. Only single values exist in protocol 8; list
+// Kinds of a value declaration. Only single values exist in protocol 7; list
 // is reserved for the records of a later version (ADR 0111).
 const (
 	ValueKindValue = "value"
@@ -351,15 +352,29 @@ type ValueSpec struct {
 	Title string `json:"title"` // display name for editors
 	// Type is number, text, duration, timestamp or direction.
 	Type string `json:"type"`
-	// Unit is appended to a number, e.g. "kW"; a page may override it.
+	// Unit is the base unit a plugin answers a number in, e.g. "W". A page
+	// may override the text or hide it with "none" (ADR 0122).
 	Unit string `json:"unit,omitempty"`
-	// Precision is the number of decimals Paperboy writes for a number.
+	// Precision is the number of decimals of the base unit.
 	Precision int `json:"precision,omitempty"`
-	// Kind is value (default) or list; protocol 8 only answers values.
+	// Progression are the larger units Paperboy may show the value in, in
+	// order, e.g. kW and MW for a base unit of W (ADR 0122). Paperboy rounds
+	// the value with a step's precision and takes the largest step whose
+	// rounded absolute value is at least 1. Empty means the value always
+	// stays in its base unit.
+	Progression []UnitStep `json:"progression,omitempty"`
+	// Kind is value (default) or list; protocol 7 only answers values.
 	Kind string `json:"kind,omitempty"`
 	// Args are the arguments the value reads, with the same shape as a
 	// widget's arguments (ADR 0055, 0120). Empty means the value takes none.
 	Args map[string]Arg `json:"args,omitempty"`
+}
+
+// UnitStep is one larger unit of a value's progression (ADR 0122).
+type UnitStep struct {
+	Unit      string  `json:"unit"`      // e.g. "kW"
+	Factor    float64 `json:"factor"`    // to the base unit, e.g. 1000
+	Precision int     `json:"precision"` // decimals in this step
 }
 
 // Value is one answer of a values request. Exactly one field is set; the
