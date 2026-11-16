@@ -356,7 +356,7 @@ func (d *dexcom) update(ctx context.Context) error {
 		fresh, err := d.api.readings(session, minutes, count)
 		if err != nil {
 			if isSessionGone(err) && attempt == 0 {
-				// The service forgot the session; one new login.
+				// The service does not accept the session; one new login.
 				d.mu.Lock()
 				d.session = ""
 				d.mu.Unlock()

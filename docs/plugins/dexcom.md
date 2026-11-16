@@ -103,7 +103,7 @@ Set `low`, `high` and `urgent` in the plugin configuration; they colour the widg
 
 The service keeps one day. The first read takes the whole day; after that the plugin asks for the readings it missed since the last poll (`maxCount` = the missed five-minute values plus one for context, at most 288) and merges them into the stored series, dropping duplicates and anything older than 24 hours. A poll therefore moves a handful of values instead of a day.
 
-The plugin state ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md), [what a plugin keeps](../design/05-plugins.md#what-a-plugin-keeps)) holds the account ID, the session, the time of the last read and the readings of the day, so a restart costs neither a login nor a read, and the first page after a restart has data. A session the service forgot costs one new login; the session is not renewed on every request.
+The plugin state ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md), [what a plugin keeps](../design/05-plugins.md#what-a-plugin-keeps)) holds the account ID, the session, the time of the last read and the readings of the day, so a restart costs neither a login nor a read, and the first page after a restart has data. A session the service forgot or timed out (`SessionIdNotFound`, `SessionNotValid`) costs one new login; the session is not renewed on every request.
 
 There is no week or month view: the service does not answer more than a day, and the plugin does not keep its own history. Nightscout or Juggluco would be the source for that.
 
