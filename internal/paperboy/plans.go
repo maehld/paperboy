@@ -82,7 +82,7 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	if err != nil {
 		return nil, err
 	}
-	status := s.statusSnapshot(cfg, self, selectedDeviceIDs(tmpl), now)
+	status := s.statusSnapshot(cfg, profile, self, selectedDeviceIDs(tmpl), now)
 	img, err := tmpl.RenderImage(s.display(cfg, p), page.Context{Now: now, Page: pos.index + 1, Pages: pos.count,
 		Banners: banners, Widgets: s.widgetSource(), ServerStatus: status})
 	if err != nil {
@@ -174,7 +174,7 @@ func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, po
 	if err != nil {
 		return page.Text{}, err
 	}
-	status := s.statusSnapshot(cfg, self, selectedDeviceIDs(tmpl), now)
+	status := s.statusSnapshot(cfg, profile, self, selectedDeviceIDs(tmpl), now)
 	return tmpl.RenderText(s.display(cfg, p), page.Context{Now: now, Page: pos.index + 1, Pages: pos.count,
 		Values: s.valueSource(), Device: device, ServerStatus: status})
 }

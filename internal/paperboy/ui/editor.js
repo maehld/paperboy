@@ -1314,7 +1314,10 @@
         control = document.createElement('select');
         const none = document.createElement('option');
         none.value = '';
-        none.textContent = arg.default === undefined || arg.default === null ? 'default' : 'default (' + arg.default + ')';
+        // An argument may label its empty value, e.g. the device that shows
+        // the page (ADR 0123).
+        none.textContent = enumLabel(arg, '') ||
+          (arg.default === undefined || arg.default === null ? 'default' : 'default (' + arg.default + ')');
         control.appendChild(none);
         for (const value of arg.enum) {
           const option = document.createElement('option');
@@ -1322,7 +1325,16 @@
           option.textContent = enumLabel(arg, value);
           control.appendChild(option);
         }
-        control.value = current === undefined ? '' : String(current);
+        // A stored value that is no longer configured stays visible, so the
+        // select does not show the empty value for a page that names it.
+        const stored = current === undefined || current === null ? '' : String(current);
+        if (stored !== '' && !arg.enum.some((v) => String(v) === stored)) {
+          const option = document.createElement('option');
+          option.value = stored;
+          option.textContent = stored + ' (not configured)';
+          control.appendChild(option);
+        }
+        control.value = stored;
         control.addEventListener('change', () => {
           if (control.value === '') setArg(c, name, '', arg);
           else {
@@ -1339,11 +1351,17 @@
         control.setAttribute('role', 'group');
         control.setAttribute('aria-label', name);
         const chosen = (Array.isArray(current) ? current : Array.isArray(arg.default) ? arg.default : []).map(String);
+        // A stored value that is no longer configured keeps its box, so the
+        // page does not lose it unnoticed (ADR 0123).
+        const choices = arg.enum.map(String);
+        for (const value of chosen) {
+          if (value !== '' && !choices.includes(value)) choices.push(value);
+        }
         const grid = document.createElement('div');
         grid.className = 'checks-grid';
         const boxes = [];
         let count = null;
-        for (const value of arg.enum) {
+        for (const value of choices) {
           const item = document.createElement('label');
           item.className = 'check';
           const box = document.createElement('input');
@@ -1352,6 +1370,7 @@
           box.checked = chosen.includes(String(value));
           const text = document.createElement('span');
           text.textContent = enumLabel(arg, value);
+          if (!arg.enum.some((v) => String(v) === String(value))) text.textContent += ' (not configured)';
           text.title = String(value);
           item.append(box, text);
           grid.appendChild(item);
@@ -1369,12 +1388,12 @@
           }
           setArg(c, name, picked, arg);
         };
-        if (arg.enum.length > 3) {
+        if (choices.length > 3) {
           const bar = document.createElement('div');
           bar.className = 'checks-bar';
           count = document.createElement('span');
           count.className = 'checks-count';
-          count.textContent = chosen.length + ' of ' + arg.enum.length;
+          count.textContent = chosen.length + ' of ' + choices.length;
           const actions = document.createElement('span');
           actions.className = 'checks-actions';
           for (const [label, title, on] of [['All', 'Select all values', true], ['None', 'Clear the selection', false]]) {
@@ -1392,6 +1411,14 @@
           control.appendChild(bar);
         }
         control.appendChild(grid);
+        // No checked box means the device that shows the page; the plugin's
+        // label for the empty value says so (ADR 0123).
+        if (arg.enum_labels && arg.enum_labels['']) {
+          const note = document.createElement('span');
+          note.className = 'desc';
+          note.textContent = 'none: ' + arg.enum_labels[''];
+          control.appendChild(note);
+        }
         for (const box of boxes) box.addEventListener('change', pick);
       } else {
         control = document.createElement('input');

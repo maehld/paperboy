@@ -1,6 +1,7 @@
 package paperboy
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -43,7 +44,7 @@ func TestStatusSnapshot(t *testing.T) {
 		},
 	}}
 
-	got := s.statusSnapshot(cfg, "kueche", []string{"wohnzimmer", "fehlt"}, now)
+	got := s.statusSnapshot(cfg, "small", "kueche", []string{"wohnzimmer", "fehlt"}, now)
 	if got.CurrentDeviceStatus == nil || got.CurrentDeviceStatus.ID != "kueche" {
 		t.Fatalf("current: %+v", got.CurrentDeviceStatus)
 	}
@@ -65,6 +66,46 @@ func TestStatusSnapshot(t *testing.T) {
 	}
 	if dev := got.SelectedDevicesStatus["fehlt"]; dev.Status != "unknown" || dev.SeenS != -1 {
 		t.Errorf("unknown device: %+v", dev)
+	}
+}
+
+// TestPreviewDevice checks the sample device a preview without a device shows
+// (ADR 0123): it is deterministic, reads no state and names the preview's
+// display type. A preview that names an unknown id gets no current device.
+func TestPreviewDevice(t *testing.T) {
+	now := time.Date(2026, 11, 15, 9, 5, 0, 0, time.UTC)
+	cfg := statusTestConfig()
+	s := &Server{state: map[string]*deviceState{}}
+
+	got := s.statusSnapshot(cfg, "small", "", nil, now)
+	dev := got.CurrentDeviceStatus
+	if dev == nil || dev.ID != "preview" || dev.Status != "ok" || dev.SeenS != 0 {
+		t.Fatalf("preview device: %+v", dev)
+	}
+	if dev.Display != "small" || dev.Power != powerBattery {
+		t.Errorf("display and power: %+v", dev)
+	}
+	if dev.Battery == nil || dev.Battery.Percent == nil || *dev.Battery.Percent != 78 ||
+		dev.Battery.Volts != 4.05 || dev.Battery.Charging {
+		t.Errorf("preview battery: %+v", dev.Battery)
+	}
+	if dev.RuntimeS != 12*24*3600 {
+		t.Errorf("preview runtime: %d", dev.RuntimeS)
+	}
+	// It is the same on every preview, and it does not touch the state.
+	if again := s.statusSnapshot(cfg, "small", "", nil, now).CurrentDeviceStatus; !reflect.DeepEqual(again, dev) {
+		t.Errorf("preview device is not deterministic: %+v", again)
+	}
+	if len(s.state) != 0 {
+		t.Errorf("the preview device wrote state: %v", s.state)
+	}
+
+	// An id that names no device keeps the page without a status, so a page
+	// that names an unknown device keeps its unknown row.
+	if got := s.statusSnapshot(cfg, "small", "fehlt", []string{"fehlt"}, now); got.CurrentDeviceStatus != nil {
+		t.Errorf("unknown device became the current one: %+v", got.CurrentDeviceStatus)
+	} else if dev := got.SelectedDevicesStatus["fehlt"]; dev.Status != "unknown" {
+		t.Errorf("unknown selected device: %+v", dev)
 	}
 }
 

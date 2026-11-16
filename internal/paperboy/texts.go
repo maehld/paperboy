@@ -32,6 +32,12 @@ func (t texts) planMissing() string {
 	return t.variant("Plan fehlt", "Plan missing")
 }
 
+// deviceThatShows is the editor's label for an empty device argument: the
+// widget then shows the device that renders the page (ADR 0123).
+func (t texts) deviceThatShows() string {
+	return t.variant("das Gerät, das die Seite zeigt", "the device that shows the page")
+}
+
 func (t texts) noSelection() (string, string) {
 	return t.variant(
 			"Keine Seite festgelegt",

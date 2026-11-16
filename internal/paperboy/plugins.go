@@ -46,6 +46,42 @@ type pluginInfo struct {
 	Error       string              `json:"error,omitempty"`
 }
 
+// deviceArgWidgets names the built-in widgets whose arguments take device ids.
+// The editor offers the configured ids for them (ADR 0123).
+var deviceArgWidgets = map[string][]string{
+	"battery":       {"device"},
+	"device-status": {"devices"},
+}
+
+// deviceChoices fills the enum of the built-in device arguments with the
+// configured ids. An empty value is labelled as the device that shows the page.
+// The built-in Describe stays enum-free, so a page that names a removed device
+// still renders (ADR 0115, 0123).
+func deviceChoices(d *plugin.Description, cfg *Config) {
+	ids := make([]string, 0, len(cfg.Devices))
+	for _, dev := range cfg.Devices {
+		ids = append(ids, dev.ID)
+	}
+	sort.Strings(ids)
+	enum := make([]any, len(ids))
+	for i, id := range ids {
+		enum[i] = id
+	}
+	labels := map[string]string{"": texts{language: cfg.Language}.deviceThatShows()}
+	for i := range d.Widgets {
+		w := &d.Widgets[i]
+		for _, name := range deviceArgWidgets[w.Widget] {
+			arg, ok := w.Args[name]
+			if !ok {
+				continue
+			}
+			arg.Enum = enum
+			arg.EnumLabels = labels
+			w.Args[name] = arg
+		}
+	}
+}
+
 // handlePlugins lists the plugins with the widgets they offer, the data an
 // editor builds pages from.
 func (s *Server) handlePlugins(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +105,9 @@ func (s *Server) handlePlugins(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			info.Error = err.Error()
 		} else {
+			if name == builtin.Name {
+				deviceChoices(d, cfg)
+			}
 			info.Description = d
 		}
 		list = append(list, info)

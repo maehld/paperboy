@@ -528,12 +528,15 @@ func newAPIKey() string {
 }
 
 // handlePreview composes a page as PNG (or text for text displays), so a
-// layout can be checked without a device.
+// layout can be checked without a device. An optional device=<id> names the
+// device the page is drawn for, so its status widgets show real values; without
+// it a preview shows the sample device of ADR 0123.
 func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 	// The preview shows a page of the instance (ADR 0096): no shared cache may
 	// keep it.
 	w.Header().Set("Cache-Control", "no-store")
 	display, name := r.PathValue("display"), r.PathValue("page")
+	self := r.URL.Query().Get("device")
 	cfg := s.config()
 	p, ok := cfg.Profiles[display]
 	if !ok {
@@ -554,7 +557,7 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		now = t
 	}
 	if p.text() {
-		text, err := s.renderText(cfg, display, name, now, pagePosition{index: 0, count: 1}, "", nil)
+		text, err := s.renderText(cfg, display, name, now, pagePosition{index: 0, count: 1}, self, nil)
 		if errors.Is(err, page.ErrNotFound) {
 			http.NotFound(w, r)
 			return
@@ -568,7 +571,7 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(strings.Join(text.Lines, "\n") + "\n"))
 		return
 	}
-	rp, err := s.renderPage(cfg, display, name, now, pagePosition{index: 0, count: 1}, "")
+	rp, err := s.renderPage(cfg, display, name, now, pagePosition{index: 0, count: 1}, self)
 	if errors.Is(err, page.ErrNotFound) {
 		http.NotFound(w, r)
 		return

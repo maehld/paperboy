@@ -115,8 +115,8 @@ func TestDashboardAfterRestart(t *testing.T) {
 		}
 	}
 	body := htmlRequest(t, s, "/ui").Body.String()
-	if strings.Contains(body, served) || !strings.Contains(body, `src="/api/preview/`) {
-		t.Fatalf("page must fall back to the preview: %s", body)
+	if strings.Contains(body, served) || !strings.Contains(body, `src="/api/preview/small/eins?device=test"`) {
+		t.Fatalf("page must fall back to the preview of its device: %s", body)
 	}
 
 	s.mu.Lock()

@@ -8,12 +8,35 @@ import (
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
-// statusSnapshot collects the device status a page may show (ADR 0115). self
-// names the device the page is rendered for; empty means a preview without a
-// device. selected lists the ids the page's widgets name. The state lock is
-// held only while the values are read, so composing and drawing still happen
-// outside it.
-func (s *Server) statusSnapshot(cfg *Config, self string, selected []string, now time.Time) *plugin.ServerStatus {
+// previewDeviceID is the id of the sample device a preview without a device
+// shows (ADR 0123). It names sample values, so the operator sees what a widget
+// draws.
+const previewDeviceID = "preview"
+
+// previewDeviceStatus is the deterministic status of a preview that names no
+// device (ADR 0123). It reads no state file, so every preview shows the same
+// row: ok, 78 %, 4.05 V, not charging and a runtime of about 12 days.
+func previewDeviceStatus(display string) plugin.DeviceStatus {
+	percent, runtime := 78.0, int64(12*24*time.Hour/time.Second)
+	return plugin.DeviceStatus{
+		ID:           previewDeviceID,
+		Display:      display,
+		Status:       "ok",
+		SeenS:        0,
+		Power:        powerBattery,
+		Battery:      &plugin.BatteryStatus{Percent: &percent, Volts: 4.05},
+		RuntimeS:     runtime,
+		RuntimeSpanS: runtime,
+	}
+}
+
+// statusSnapshot collects the device status a page may show (ADR 0115). display
+// names the display type the preview draws for. self names the device the page
+// is rendered for; empty means a preview without a device, which gets the
+// sample device of ADR 0123. selected lists the ids the page's widgets name.
+// The state lock is held only while the values are read, so composing and
+// drawing still happen outside it.
+func (s *Server) statusSnapshot(cfg *Config, display, self string, selected []string, now time.Time) *plugin.ServerStatus {
 	out := &plugin.ServerStatus{}
 	byID := map[string]plugin.DeviceStatus{}
 	s.mu.Lock()
@@ -27,6 +50,9 @@ func (s *Server) statusSnapshot(cfg *Config, self string, selected []string, now
 	}
 	s.mu.Unlock()
 	if sd, ok := byID[self]; ok {
+		out.CurrentDeviceStatus = &sd
+	} else if self == "" {
+		sd := previewDeviceStatus(display)
 		out.CurrentDeviceStatus = &sd
 	}
 	for _, id := range selected {

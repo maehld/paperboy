@@ -39,8 +39,8 @@ cells:
 - { at: [0, 5], span: [2, 2], widget: paperboy/battery }
 ```
 
-Arguments with a fixed set of values reject anything else ([ADR 0055](../adr/0055-allowed-arg-values-and-gallery-form.md)); the Playground offers them as choices.
+Arguments with a fixed set of values reject anything else ([ADR 0055](../adr/0055-allowed-arg-values-and-gallery-form.md)); the Playground offers them as choices. The page editor offers the configured device ids for `battery.device` and `device-status.devices`, and names the empty choice *the device that shows the page* ([ADR 0123](../adr/0123-a-sample-device-in-previews.md)).
 
-The battery, `device-status` and the header's battery read `server_status` from the request (ADR 0115). Only the built-in plugin gets this object; Paperboy keeps no key, MAC or address in it. The page that shows its own device is rendered once per device, so two displays of the same type keep their own status.
+The battery, `device-status` and the header's battery read `server_status` from the request (ADR 0115). Only the built-in plugin gets this object; Paperboy keeps no key, MAC or address in it. The page that shows its own device is rendered once per device, so two displays of the same type keep their own status. A preview without a device shows the sample device `preview` with fixed values, 78 %, 4.05 V, not charging and a runtime of about 12 days ([ADR 0123](../adr/0123-a-sample-device-in-previews.md)).
 
 A text page shows these values, not widgets ([ADR 0118](../adr/0118-text-boxes-and-overflow.md)). A box that scrolls takes its content from a value and moves it with the display type's `scroll.step`; a box that wraps or strips cuts it instead.

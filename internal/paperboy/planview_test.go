@@ -28,7 +28,7 @@ func TestPlanViewShowsActiveRule(t *testing.T) {
 		"rule <strong>morgen</strong>",
 		`<section class="rule active">` + "\n  <h2>morgen",
 		"next change Wed 09:00 → tag",
-		"/api/preview/small/eins?at=2026-10-21T08%3A00",
+		"/api/preview/small/eins?at=2026-10-21T08%3A00&amp;device=test",
 		"07:00–09:00",
 	} {
 		if !strings.Contains(body, want) {

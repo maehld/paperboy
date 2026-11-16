@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/maehld/paperboy/internal/builtin"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
@@ -95,6 +96,28 @@ func TestPreviewBrokenTemplate(t *testing.T) {
 	}
 }
 
+// TestPreviewNamesADevice checks the optional device parameter of a page
+// preview (ADR 0123): without it the page shows the same sample device on every
+// request, with it the named device. The device-status row differs, so the
+// pictures differ too.
+func TestPreviewNamesADevice(t *testing.T) {
+	s := editorServer(t)
+	writePage(t, s, "status", "", `
+kind: image
+grid: [1, 1]
+cells:
+  - { at: [0, 0], span: [1, 1], widget: paperboy/device-status }
+`)
+	sample := preview(t, s, "/api/preview/small/status").Body.Bytes()
+	if again := preview(t, s, "/api/preview/small/status").Body.Bytes(); !bytes.Equal(sample, again) {
+		t.Fatal("the sample device is not deterministic")
+	}
+	named := preview(t, s, "/api/preview/small/status?device=test").Body.Bytes()
+	if bytes.Equal(sample, named) {
+		t.Fatal("the preview did not switch from the sample device to the named one")
+	}
+}
+
 // TestPluginsListsBuiltin verifies that /api/plugins describes the built-in
 // plugin, the input of a page editor.
 func TestPluginsListsBuiltin(t *testing.T) {
@@ -114,6 +137,55 @@ func TestPluginsListsBuiltin(t *testing.T) {
 	for _, w := range out.Plugins[0].Description.Widgets {
 		if w.Widget == "logo" && (len(w.Kinds) != 1 || w.Kinds[0] != plugin.KindImage) {
 			t.Errorf("logo kinds: %v", w.Kinds)
+		}
+	}
+}
+
+// TestPluginsOfferDeviceIDs checks that the plugins answer offers the
+// configured device ids for the two built-in device arguments (ADR 0123). The
+// built-in Describe stays enum-free, so an old page still renders.
+func TestPluginsOfferDeviceIDs(t *testing.T) {
+	s := editorServer(t)
+	rec := preview(t, s, "/api/plugins")
+	var out struct {
+		Plugins []pluginInfo `json:"plugins"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Plugins) != 1 || out.Plugins[0].Description == nil {
+		t.Fatalf("plugins: %s", rec.Body)
+	}
+	seen := map[string]bool{}
+	for _, w := range out.Plugins[0].Description.Widgets {
+		for _, name := range deviceArgWidgets[w.Widget] {
+			seen[w.Widget] = true
+			arg, ok := w.Args[name]
+			if !ok {
+				t.Fatalf("%s misses the argument %q", w.Widget, name)
+			}
+			if len(arg.Enum) != 1 || arg.Enum[0] != "test" {
+				t.Errorf("%s.%s enum: %v", w.Widget, name, arg.Enum)
+			}
+			if arg.EnumLabels[""] == "" {
+				t.Errorf("%s.%s has no label for the empty value", w.Widget, name)
+			}
+			if !arg.Allows("test") {
+				t.Errorf("%s.%s rejects a configured id", w.Widget, name)
+			}
+			if arg.Allows("fehlt") {
+				t.Errorf("%s.%s allows a removed id", w.Widget, name)
+			}
+		}
+	}
+	if len(seen) != len(deviceArgWidgets) {
+		t.Fatalf("device arguments of the plugins answer: %v", seen)
+	}
+	for _, w := range (builtin.Plugin{}).Describe().Widgets {
+		for _, name := range deviceArgWidgets[w.Widget] {
+			if len(w.Args[name].Enum) != 0 {
+				t.Errorf("the built-in %s.%s describes an enum; a page with a removed id would fail", w.Widget, name)
+			}
 		}
 	}
 }
