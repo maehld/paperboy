@@ -22,6 +22,8 @@ Paperboy and the plugin exchange one JSON object per line: a request on stdin, a
 
 Besides answers, Paperboy may send a line without `id`: the schedule event names when it next needs the plugin's data. An event without `next_refresh` means no demand now. It goes only to a plugin that reports version 9 or newer. A plugin ignores events it does not know. `pkg/plugin.Demand` receives the event. `Wait(ctx, floor)` sleeps until the named moment minus 30 seconds, wakes on a new schedule, and never returns earlier than `floor` after the previous return. The event format is `{"event":"schedule","next_refresh":"…"}`.
 
+Paperboy computes the demand per plugin from the configured devices. It takes the expected contact (`last_seen + refresh` of the last sync). It also takes the pages of the rule the device is on that fit its display type, and the plan's conditions. Actions do not count; they are resolved when the menu opens. A device that is late or never seen adds no demand until it contacts again, so a powered-off device cannot keep a plugin polling. Previews and the virtual display add no demand either.
+
 | Action | Request carries | Answer carries |
 |---|---|---|
 | `configure` | The plugin's `config`, `env`, `language`, `timezone` | Nothing, or an error |
@@ -59,7 +61,7 @@ A widget that cannot draw anything in its cell reports `ErrTooSmall` with the ce
 
 - A plugin starts on first use. After an exit, after its `timeout` (default 30 seconds, killed) and after a change of its specification it is started again. Removed plugins drop their cached results.
 - The cache is keyed by plugin, widget, arguments, size, gray levels, style, page, language, timezone and device. An entry lives until the plugin's `max_age` (default 5 minutes).
-- A background loop every 5 seconds renders entries that were used within the last hour again before they expire, or after a `changed` event. Entries idle for an hour are evicted, and the cache holds at most 1000 entries.
+- A background loop every 5 seconds renders an entry again only when the plugin's demand is within 30 seconds. Otherwise the entry stays expired until a device asks; the plugin answers from memory, so no device waits. The loop also sends the schedule event when the demand changes by more than a minute. Entries idle for an hour are evicted, and the cache holds at most 1000 entries.
 - A failing plugin serves its stale results and is not asked again for a minute.
 - The built-in plugin runs in process and is never cached.
 - Values get the same cache and the same `changed` event as widgets. A describe answer lives for five minutes, because it carries the declarations a text page uses to format a value.

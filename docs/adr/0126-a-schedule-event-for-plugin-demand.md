@@ -1,6 +1,6 @@
 # 0126: A schedule event for plugin demand
 
-- Status: Accepted; protocol 9 and the helper are implemented, the demand computation follows
+- Status: Accepted; protocol 9, the helper, the host demand and the cache gate are implemented, the plugin migrations follow
 - Date: 2026-11-16
 - Related: ADR 0045 (the text poll), ADR 0049 (plugins), ADR 0057 (actions), ADR 0058 (the protocol version check), ADR 0080 (device state), ADR 0103 (plan conditions), ADR 0107 (plugin builds), issue #276
 - Amends: ADR 0058 (the protocol can add an inbound event; Paperboy gates it on the version)
@@ -35,3 +35,4 @@ The result is data and requests for pages that no display shows. A device that s
 - The prediction can be wrong: a late device, a button press or a rule switch by a condition. The effect is at most one sync with older data, never a missing page or a timeout, because the plugin answers from memory.
 - A plugin used only for a condition cannot be skipped, but it idles between contacts; otherwise the alert page never appears.
 - The host demand computation and the cache gate follow in separate commits. This ADR records the target for both.
+- The host demand and the cache gate are implemented; the plugin migrations follow.
