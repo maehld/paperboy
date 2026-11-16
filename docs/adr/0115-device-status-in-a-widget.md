@@ -1,6 +1,6 @@
 # 0115: Device status in a widget
 
-- Status: Accepted
+- Status: Accepted; point 5 superseded by [ADR-0121](0121-segmented-battery-gauge.md)
 - Date: 2026-11-15
 - Related: ADR 0020 (battery warning), ADR 0039 (device status), ADR 0049 (plugins), ADR 0051 (power source), ADR 0080 (state per MAC), ADR 0107 (plugin builds), issue #210
 

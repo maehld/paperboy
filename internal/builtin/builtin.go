@@ -52,7 +52,7 @@ func (Plugin) Describe() plugin.Description {
 					"align":          {Type: "string", Default: "left", Description: "left, center or right", Enum: []any{"left", "center", "right"}},
 					"battery":        {Type: "bool", Default: false, Description: "battery charge of this device at the right"},
 				}},
-			{Widget: "battery", Title: "Battery", Kinds: both, Sizes: []plugin.Span{{Columns: 1, Rows: 1}, {Columns: 2, Rows: 1}, {Columns: 3, Rows: 1}},
+			{Widget: "battery", Title: "Battery", Kinds: both, Sizes: []plugin.Span{{Columns: 1, Rows: 1}, {Columns: 2, Rows: 1}, {Columns: 3, Rows: 1}, {Columns: 2, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"device": {Type: "string", Description: "device id; default the device that shows the page"},
 					"label":  {Type: "string", Default: "auto", Description: "auto, percent, volts or none", Enum: []any{"auto", "percent", "volts", "none"}},
@@ -159,25 +159,27 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 		return render.Measure(s, statusSize, false) <= b.Dx()/2-2*pad
 	})
 	right := b.Max.X - pad
-	// The battery sits right of the date and clock, with a small icon and the
-	// charge; it is left out when the cell or the device has no room for it.
-	var battery string
-	var batteryDev *plugin.DeviceStatus
+	bottom := b.Max.Y - rule - pad
+	baseline := bottom
+	sub := a.String("subtitle", "")
+	if sub != "" {
+		baseline = b.Min.Y + pad + (bottom-b.Min.Y-pad)*45/100
+	}
+	// The battery gauge sits at the far right. It carries the level alone, so
+	// the date and clock move left by the gauge and the gap only (ADR 0121).
+	// Its bottom sits on the text baseline, so gauge and text read as one line.
+	var batteryStatus *plugin.BatteryStatus
 	var batteryIcon image.Rectangle
 	if a.Bool("battery", false) {
 		if dev := statusDevice(req, ""); dev != nil && dev.Battery != nil {
-			batteryDev = dev
-			battery = batteryText(req, dev, "auto")
 			iconH := min(float64(h)*0.35, statusSize*0.9)
 			iconW := int(iconH * 2)
 			gap := max(2, pad/2)
-			width := iconW + gap + render.Measure(battery, statusSize, false)
-			if width > 0 && b.Max.X-pad-width > b.Min.X+pad {
-				x := b.Max.X - pad - width
-				batteryIcon = image.Rect(x, b.Min.Y+h/2-int(iconH/2), x+iconW, b.Min.Y+h/2+int(iconH/2))
-				right -= width + 2*pad
-			} else {
-				battery = ""
+			if iconW >= 4 && iconH >= 3 && b.Max.X-pad-iconW-gap > b.Min.X+pad {
+				batteryStatus = dev.Battery
+				iy := baseline - int(iconH)
+				batteryIcon = image.Rect(b.Max.X-pad-iconW, iy, b.Max.X-pad, iy+int(iconH))
+				right -= iconW + gap
 			}
 		}
 	}
@@ -194,12 +196,6 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 	case render.Right:
 		x = right
 	}
-	bottom := b.Max.Y - rule - pad
-	baseline := bottom
-	sub := a.String("subtitle", "")
-	if sub != "" {
-		baseline = b.Min.Y + pad + (bottom-b.Min.Y-pad)*45/100
-	}
 	render.Text(img, title, x, baseline, render.Style{Size: titleSize, Bold: true, Shrink: true}, right-left, color.Black, al)
 	if sub != "" {
 		render.Text(img, sub, x, bottom, render.Style{Size: min(float64(h)*0.22, base*0.7), Shrink: true}, right-left, color.Black, al)
@@ -207,10 +203,8 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 	if status != "" {
 		render.Text(img, status, statusRight, baseline, render.Style{Size: statusSize, Shrink: true}, b.Dx()/2, color.Black, render.Right)
 	}
-	if battery != "" {
-		drawBattery(img, batteryIcon, batteryDev.Battery)
-		render.Text(img, battery, b.Max.X-pad, baseline, render.Style{Size: statusSize, Shrink: true},
-			b.Dx()/2, color.Black, render.Right)
+	if !batteryIcon.Empty() {
+		drawBattery(img, batteryIcon, batteryStatus)
 	}
 	render.HLine(img, b.Min.X, b.Max.Y-rule, b.Max.X, rule)
 }
@@ -266,9 +260,9 @@ func dateForms(req *plugin.Request) []string {
 }
 
 // headerStatus builds the right side of the header: the date (arg date,
-// in the longest form that fits), the time (arg clock) and the battery text.
-// When even the shortest date does not fit, the date is left out; the battery
-// follows the clock when there is room for it.
+// in the longest form that fits), the time (arg clock) and, on a text display,
+// the battery text. When even the shortest date does not fit, the date is left
+// out; the battery follows the clock when there is room for it.
 func headerStatus(req *plugin.Request, a plugin.Values, battery string, fits func(string) bool) string {
 	clock := ""
 	if a.Bool("clock", true) {
