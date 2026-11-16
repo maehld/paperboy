@@ -345,7 +345,11 @@ schedule ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)):
 - A plugin ignores events it does not know.
 - `pkg/plugin.Demand` receives the event. `Wait(ctx, floor)` sleeps until
   `next_refresh` minus 30 seconds, wakes on a new schedule, and never returns
-  earlier than `floor` after the previous return. With no demand it blocks.
+  earlier than `floor` after the call. A plugin calls it after each fetch, so
+  the floor counts from the end of the fetch. With no demand it blocks.
+- On a Paperboy below 9 no schedule arrives, because Paperboy gates the event
+  on the plugin version. A plugin that migrates checks the request `version`
+  and keeps its own timer on an older host.
 
 ## Arguments
 

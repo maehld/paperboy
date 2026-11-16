@@ -49,6 +49,14 @@ func fakePlugin(mode string) {
 	enc := json.NewEncoder(os.Stdout)
 	sc := bufio.NewScanner(os.Stdin)
 	for sc.Scan() {
+		var head struct {
+			ID    string `json:"id"`
+			Event string `json:"event"`
+		}
+		json.Unmarshal(sc.Bytes(), &head)
+		if head.ID == "" && head.Event != "" {
+			continue // inbound events need no answer
+		}
 		var req plugin.Request
 		json.Unmarshal(sc.Bytes(), &req)
 		if req.Action == plugin.ActionConfigure {

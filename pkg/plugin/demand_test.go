@@ -127,3 +127,21 @@ func TestDemandIgnoresOtherEvents(t *testing.T) {
 		t.Fatal("Wait returned true after the context ended")
 	}
 }
+
+func TestDemandFloorStartsAtCall(t *testing.T) {
+	var d Demand
+	ctx := context.Background()
+	d.Event(Event{Event: EventSchedule, NextRefresh: past()})
+	if !d.Wait(ctx, 0) {
+		t.Fatal("first Wait failed")
+	}
+	time.Sleep(60 * time.Millisecond) // a fetch between the two calls
+	d.Event(Event{Event: EventSchedule, NextRefresh: past()})
+	start := time.Now()
+	if !d.Wait(ctx, 100*time.Millisecond) {
+		t.Fatal("second Wait failed")
+	}
+	if elapsed := time.Since(start); elapsed < 80*time.Millisecond {
+		t.Fatalf("the floor started at the previous return: %s", elapsed)
+	}
+}
