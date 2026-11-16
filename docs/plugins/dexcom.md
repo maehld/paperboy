@@ -19,7 +19,7 @@ Share has to be switched on in the app (Connections → Share). Nothing reaches 
 | `low`, `high` | The target band, default 80 and 280 mg/dL or 4.4 and 15.5 mmol/L |
 | `min`, `max` | The scale of the chart, default 40 and 300 mg/dL or 2.2 and 16.7 mmol/L |
 
-**Demand:** Paperboy names the next moment a display needs the readings and the plugin reads then, never more often than `refresh` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)). Conditions count as demand, because the plan asks them at every sync. The plugin requires Paperboy protocol 9.
+**Demand:** Paperboy names the next moment a display needs the readings and the plugin reads then, never more often than `refresh` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)). The `state` value counts as demand while a plan condition names it, because Paperboy reads it before every sync. The plugin requires Paperboy protocol 9.
 
 The defaults are the numbers of the Dexcom app. Thresholds are read in the unit of the account, so a mmol/L account sets `low: 4.4` rather than `80`.
 
@@ -68,10 +68,11 @@ Without `values` all entries are shown; `columns` sets one or two columns. Rows 
 
 ## Values
 
-A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)); a value without a reading becomes a dash:
+A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)); a value without a reading becomes a dash, except `state`, which answers nothing:
 
 | Value | Type | Unit | Precision | Meaning |
 |---|---|---|---|---|
+| `state` | enum | | | `normal`, `low`, `high` or `urgent`; no key while the newest reading is older than 15 minutes |
 | `glucose` | number | mg/dL or mmol/L | 0 or 1 | the newest reading |
 | `trend` | direction | | | 1 up, 0 flat, -1 down, doubled for the double arrows |
 | `delta` | number | mg/dL or mmol/L | 0 or 1 | change over the last 15 minutes |
@@ -84,14 +85,14 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 
 The unit and the precision follow the configuration or the unit the account reports.
 
-## Conditions in a plan
+## The state value in a plan
 
-A plan can switch to a page while the reading is out of its band ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)). The plugin declares three conditions, named after its thresholds: `urgent`, `low` (including the urgent range) and `high`. A condition is active only while the newest reading is current; an older reading than 15 minutes makes all of them inactive, so the device never shows an alarm page for data that is gone.
+A plan can switch to a page while the reading is out of its band ([ADR 0127](../adr/0127-plan-conditions-are-values.md)). The plugin declares one enum value, `state`, with the keys `normal`, `low`, `high` and `urgent`. The urgent range wins over low and high. A missing or stale reading answers no key, so the device never shows an alarm page for data that is gone.
 
 ```yaml
 rules:
   - name: unterzucker
-    when: { conditions: [dexcom/low] }
+    when: { conditions: [{ value: dexcom/state, is: [low, urgent] }] }
     pages: [glukose]
   - name: tag
     when: { from: "07:00", to: "22:00" }
@@ -99,7 +100,15 @@ rules:
 fallback: tag
 ```
 
-Set `low`, `high` and `urgent` in the plugin configuration; they colour the widget and steer the page switch alike. The device reacts at its next wake, so the `refresh` of the rule that shows the normal page decides how quickly it notices. A plugin that is down or has no data leaves the conditions inactive and the plan falls through to that rule.
+Set `low`, `high` and `urgent` in the plugin configuration; they colour the widget and steer the page switch alike. The device reacts at its next wake, so the `refresh` of the rule that shows the normal page decides how quickly it notices. A plugin that is down or has no data answers no key, and the plan falls through to that rule.
+
+A text cell may label the keys, so the display shows a sentence instead of the key. The label belongs to the page, not to the plugin or the plan:
+
+```yaml
+cells:
+  - { at: [0, 3], span: [20, 1], value: dexcom/state,
+      labels: { normal: Normal, low: Niedrig, high: Hoch, urgent: Dringend } }
+```
 
 ## Data and state
 

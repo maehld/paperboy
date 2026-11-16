@@ -89,8 +89,9 @@ func (s *Server) pluginDemand() map[string]time.Time {
 				}
 			}
 		}
-		for _, ref := range rule.When.Conditions {
-			if plugin, _, ok := strings.Cut(ref, "/"); ok && plugin != "" && plugin != builtin.Name {
+		for _, cond := range rule.When.Conditions {
+			plugin, _, ok := strings.Cut(cond.Value, "/")
+			if ok && plugin != "" && plugin != builtin.Name {
 				needed[plugin] = true
 			}
 		}

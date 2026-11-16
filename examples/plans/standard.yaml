@@ -9,6 +9,15 @@ rules:
     refresh: 30m
 fallback: tag
 
+# A rule can require a plugin value, e.g. the glucose state of the dexcom
+# plugin (ADR 0127). This rule shows a glucose page while the reading is low or
+# urgent and otherwise falls through; it needs the dexcom plugin and a page
+# named glukose.
+#  - name: glucose
+#    when: { conditions: [{ value: dexcom/state, is: [low, urgent] }] }
+#    pages: [glukose]
+#    refresh: 5m
+
 # Actions the device menu offers (ADR 0057). They belong to the plan, so every
 # page above offers them. evcc's "mode" action switches the charge mode of one
 # loadpoint; see docs/plugins/evcc.md. Uncomment one "now" and one "PV only"

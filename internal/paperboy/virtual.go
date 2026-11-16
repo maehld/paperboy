@@ -191,10 +191,11 @@ func (s *Server) handleVirtualSync(w http.ResponseWriter, r *http.Request) {
 	}
 	optDevice := opt.device()
 	st := s.virtualState(opt)
+	values := s.planValues(r.Context(), cfg, opt.plan, opt.profile, optDevice)
 	resp := s.serveSync(cfg, optDevice, st, &req, now, syncOptions{
 		pageTimeout: opt.pageTimeout,
 		virtual:     true,
-		conditions:  s.planConditions(r.Context(), cfg, opt.plan),
+		values:      values,
 	})
 	if resp.Image != nil {
 		// The browser has no device key, so the page fetches its picture

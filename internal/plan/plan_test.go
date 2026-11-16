@@ -252,63 +252,87 @@ fallback: notfall
 	}
 }
 
-// TestSelectConditions checks that a rule with conditions only matches while
-// they are active, together with its time window (ADR 0103).
+// TestSelectConditions checks that a rule with value conditions only matches
+// while a value answers one of its keys, together with its time window
+// (ADR 0127).
 func TestSelectConditions(t *testing.T) {
 	p := parse(t, `
 rules:
   - name: unterzucker
-    when: { conditions: [dexcom/low] }
+    when: { conditions: [{value: dexcom/state, is: [low, urgent]}] }
     pages: [zucker]
   - name: tag
     when: { from: "07:00", to: "22:00" }
     pages: [uebersicht]
 `)
 	now := at(t, 2026, time.October, 21, 12, 0)
-	if sel, ok := p.Select(now, Conditions{"dexcom/low": true}); !ok || sel.Rule != "unterzucker" {
-		t.Fatalf("active condition: %+v %v", sel, ok)
+	if sel, ok := p.Select(now, Values{"dexcom/state": "low"}); !ok || sel.Rule != "unterzucker" {
+		t.Fatalf("matching key: %+v %v", sel, ok)
 	}
-	if sel, ok := p.Select(now, Conditions{"dexcom/low": false}); !ok || sel.Rule != "tag" {
-		t.Fatalf("inactive condition: %+v %v", sel, ok)
+	if sel, ok := p.Select(now, Values{"dexcom/state": "urgent"}); !ok || sel.Rule != "unterzucker" {
+		t.Fatalf("second matching key: %+v %v", sel, ok)
 	}
-	// A missing answer counts as inactive, never as a warning page.
+	if sel, ok := p.Select(now, Values{"dexcom/state": "normal"}); !ok || sel.Rule != "tag" {
+		t.Fatalf("other key: %+v %v", sel, ok)
+	}
+	// A missing value counts as no match, never as a warning page.
 	if sel, ok := p.Select(now, nil); !ok || sel.Rule != "tag" {
-		t.Fatalf("nil conditions: %+v %v", sel, ok)
+		t.Fatalf("nil values: %+v %v", sel, ok)
 	}
-	if p.Matches(0, now, Conditions{"dexcom/low": true}) != true || p.Matches(0, now, nil) {
-		t.Fatal("Matches must consider conditions")
+	if p.Matches(0, now, Values{"dexcom/state": "low"}) != true || p.Matches(0, now, nil) {
+		t.Fatal("Matches must consider values")
 	}
 
 	// Conditions combine with the time window as AND.
 	p = parse(t, `
 rules:
   - name: nachts
-    when: { from: "22:00", to: "06:00", conditions: [dexcom/low] }
+    when: { from: "22:00", to: "06:00", conditions: [{value: dexcom/state, is: low}] }
     pages: [zucker]
 `)
-	if _, ok := p.Select(at(t, 2026, time.October, 21, 12, 0), Conditions{"dexcom/low": true}); ok {
+	if _, ok := p.Select(at(t, 2026, time.October, 21, 12, 0), Values{"dexcom/state": "low"}); ok {
 		t.Fatal("conditions must not override the time window")
 	}
 	if _, ok := p.Select(at(t, 2026, time.October, 21, 23, 0), nil); ok {
-		t.Fatal("an inactive condition must not match")
+		t.Fatal("a missing value must not match")
+	}
+	// A scalar is is one key; several entries combine as AND.
+	p = parse(t, `
+rules:
+  - name: a
+    when: { conditions: [{value: dexcom/state, is: low}, {value: weather/sky, is: [rain, snow]}] }
+    pages: [x]
+`)
+	if _, ok := p.Select(now, Values{"dexcom/state": "low", "weather/sky": "rain"}); !ok {
+		t.Fatal("both conditions must match")
+	}
+	if _, ok := p.Select(now, Values{"dexcom/state": "low", "weather/sky": "sun"}); ok {
+		t.Fatal("an unmatched second condition must not match")
 	}
 }
 
 func TestConditionErrors(t *testing.T) {
 	cases := map[string]string{
-		"data":           `rules: [{name: a, pages: [x], when: {data: [{path: a}]}}]`,
-		"missing plugin": `rules: [{name: a, pages: [x], when: {conditions: [low]}}]`,
-		"bad name":       `rules: [{name: a, pages: [x], when: {conditions: [dexcom/Low]}}]`,
-		"duplicate":      `rules: [{name: a, pages: [x], when: {conditions: [dexcom/low, dexcom/low]}}]`,
+		"data":            `rules: [{name: a, pages: [x], when: {data: [{path: a}]}}]`,
+		"old string":      `rules: [{name: a, pages: [x], when: {conditions: [dexcom/low]}}]`,
+		"missing plugin":  `rules: [{name: a, pages: [x], when: {conditions: [{value: low, is: a}]}}]`,
+		"bad name":        `rules: [{name: a, pages: [x], when: {conditions: [{value: dexcom/Low, is: a}]}}]`,
+		"missing key":     `rules: [{name: a, pages: [x], when: {conditions: [{value: dexcom/state}]}}]`,
+		"empty key list":  `rules: [{name: a, pages: [x], when: {conditions: [{value: dexcom/state, is: []}]}}]`,
+		"duplicate value": `rules: [{name: a, pages: [x], when: {conditions: [{value: dexcom/state, is: low}, {value: dexcom/state, is: high}]}}]`,
+		"unknown field":   `rules: [{name: a, pages: [x], when: {conditions: [{value: dexcom/state, is: low, label: Low}]}}]`,
 	}
 	for name, yaml := range cases {
 		if _, err := Parse(strings.NewReader(yaml), berlin(t)); err == nil {
 			t.Fatalf("%s: expected an error", name)
 		}
 	}
-	// The hint for when.data names the replacement.
+	// The hints name the replacement.
 	if _, err := Parse(strings.NewReader(cases["data"]), berlin(t)); err == nil || !strings.Contains(err.Error(), "when.conditions") {
 		t.Fatalf("data hint: %v", err)
+	}
+	if _, err := Parse(strings.NewReader(cases["old string"]), berlin(t)); err == nil || !strings.Contains(err.Error(), "no longer a condition") {
+		t.Fatalf("old condition hint: %v", err)
 	}
 }
 

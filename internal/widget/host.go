@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,14 +46,6 @@ const (
 	maxEntries = 1000
 	// refreshAhead renders a result again this long before it expires.
 	refreshAhead = 30 * time.Second
-	// conditionTTL keeps a conditions answer this long. Devices ask on every
-	// sync and a text display every second, while a plugin's data moves
-	// slower; a "changed" event drops the answer (ADR 0103).
-	conditionTTL = 10 * time.Second
-	// conditionTimeout bounds one conditions request, so a hanging plugin
-	// delays a sync less than its widget request would. The plugin is marked
-	// as failing, which also skips its widgets for a minute.
-	conditionTimeout = 5 * time.Second
 	// describeTTL keeps a describe answer for the value declarations of a
 	// text page, so a poll every second does not ask the plugin every time.
 	describeTTL = 5 * time.Minute
@@ -107,7 +100,6 @@ type Host struct {
 	changes  map[string]int         // plugin -> number of "changed" events
 	mismatch map[string]bool        // plugin -> version mismatch already logged
 	blobNote map[string]bool        // plugin -> undeclared blobs already logged
-	conds    map[string]condition   // plugin -> last condition answer (ADR 0103)
 	descs    map[string]descEntry   // plugin -> last describe answer, for values
 	builtMu  sync.Mutex
 	builtCfg map[string]bool
@@ -120,12 +112,6 @@ type Host struct {
 	lastErr  map[string]string
 	starts   map[string]int
 	evicted  int64
-}
-
-// condition is the cached answer to a conditions request.
-type condition struct {
-	active map[string]bool
-	at     time.Time
 }
 
 // descEntry is a cached describe answer. It carries the value declarations a
@@ -235,7 +221,6 @@ func (h *Host) Configure(specs map[string]Spec, env Env) {
 				delete(h.cache, k)
 			}
 		}
-		delete(h.conds, name)
 		delete(h.sent, name)
 	}
 	h.mu.Unlock()
@@ -541,13 +526,29 @@ func decode(j job, r plugin.Result) (page.Result, error) {
 
 // decodeValue reads one answer of a values request. A missing name is an
 // error for that cell, so a plugin can rarely fail one value without the page.
+// An enum answer may be empty, which means the plugin has no key now; a key
+// outside the declaration is an error (ADR 0127).
 func decodeValue(j job, values map[string]plugin.Value) (page.Result, error) {
 	v, ok := values[j.widget.Widget]
 	if !ok {
 		return page.Result{}, errors.New("no value")
 	}
 	if v.Type() == "" {
+		if j.spec.Type == plugin.ValueEnum {
+			return page.Result{Value: &v, Spec: j.spec}, nil
+		}
 		return page.Result{}, errors.New("value carries no number, text, duration, timestamp or direction")
+	}
+	if j.spec.Type == plugin.ValueEnum {
+		if v.Type() != plugin.ValueEnum {
+			return page.Result{}, fmt.Errorf("value is %s, declared enum", v.Type())
+		}
+		for _, key := range j.spec.Enum {
+			if key == *v.Enum {
+				return page.Result{Value: &v, Spec: j.spec}, nil
+			}
+		}
+		return page.Result{}, fmt.Errorf("key %q is not one of %s", *v.Enum, strings.Join(j.spec.Enum, ", "))
 	}
 	return page.Result{Value: &v, Spec: j.spec}, nil
 }
@@ -727,66 +728,6 @@ func (h *Host) Actions(ctx context.Context, name string, req plugin.Request) ([]
 	}
 	h.recover(name)
 	return msg.Actions, nil
-}
-
-// Conditions asks a plugin which of its declared conditions are active now
-// (ADR 0103). The answer is cached for conditionTTL, because a device asks on
-// every sync; a "changed" event drops it. A failing plugin answers with an
-// error and Paperboy treats every condition as inactive.
-func (h *Host) Conditions(ctx context.Context, name string) (map[string]bool, error) {
-	h.mu.Lock()
-	if c, ok := h.conds[name]; ok && h.now().Sub(c.at) < conditionTTL {
-		active := make(map[string]bool, len(c.active))
-		for k, v := range c.active {
-			active[k] = v
-		}
-		h.mu.Unlock()
-		return active, nil
-	}
-	env := h.env
-	blocked := h.now().Before(h.failing[name])
-	h.mu.Unlock()
-	if blocked {
-		return nil, errors.New("failed recently, retrying later")
-	}
-	req := plugin.Request{Version: plugin.Version, Action: plugin.ActionConditions,
-		Language: env.Language, Timezone: env.Timezone, Now: h.now()}
-	if handler, ok := h.Builtin[name]; ok {
-		h.builtMu.Lock()
-		msg := plugin.Handle(handler, &req)
-		h.builtMu.Unlock()
-		if msg.Error != "" {
-			return nil, errors.New(msg.Error)
-		}
-		return msg.Conditions, nil
-	}
-	spec, err := h.spec(name)
-	if err != nil {
-		return nil, err
-	}
-	defer h.slot(name)()
-	ctx, cancel := context.WithTimeout(ctx, conditionTimeout)
-	defer cancel()
-	msg, err := h.call(ctx, spec, req)
-	if err == nil && msg.Error != "" {
-		err = errors.New(msg.Error)
-	}
-	if err != nil {
-		h.fail(name, err)
-		return nil, err
-	}
-	h.recover(name)
-	h.mu.Lock()
-	if h.conds == nil {
-		h.conds = map[string]condition{}
-	}
-	stored := make(map[string]bool, len(msg.Conditions))
-	for k, v := range msg.Conditions {
-		stored[k] = v
-	}
-	h.conds[name] = condition{active: stored, at: h.now()}
-	h.mu.Unlock()
-	return msg.Conditions, nil
 }
 
 // Invoke runs one concrete action (ADR 0057). The plugin decides whether it
@@ -1000,8 +941,6 @@ func (h *Host) expire(name string, widgets []string) {
 		}
 		e.expires = time.Time{}
 	}
-	// The plugin's data moved, so its condition answer is out of date too.
-	delete(h.conds, name)
 }
 
 func contains(list []string, s string) bool {

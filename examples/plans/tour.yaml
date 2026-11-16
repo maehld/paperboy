@@ -1,7 +1,13 @@
 # Tour through all shipped plugins. During the day the device turns to the
 # next page with every refresh; on weekday mornings it shows what matters
-# before leaving the house, and at night it stays on the overview.
+# before leaving the house, and at night it stays on the overview. The first
+# rule shows the glucose page while the dexcom state is out of its band; a
+# missing value never matches, so the tour continues.
 rules:
+  - name: glucose
+    when: { conditions: [{ value: dexcom/state, is: [low, urgent, high] }] }
+    pages: [glukose]
+    refresh: 5m
   - name: morning
     when: { from: "06:00", to: "09:00", days: [mon, tue, wed, thu, fri] }
     pages: [unterwegs, uebersicht, woche, energie]

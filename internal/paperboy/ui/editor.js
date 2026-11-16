@@ -171,6 +171,7 @@
           text: c.text || '',
           value: c.value || '',
           label: c.label || '',
+          labels: c.labels && typeof c.labels === 'object' ? c.labels : {},
           unit: c.unit || '',
           scale: typeof c.scale === 'string' ? c.scale : '',
           align: c.align === 'right' || c.align === 'decimal' ? c.align : 'left',
@@ -223,6 +224,7 @@
         else {
           cell.value = c.value;
           if (c.label) cell.label = c.label;
+          if (c.labels && Object.keys(c.labels).length) cell.labels = c.labels;
           if (c.unit) cell.unit = c.unit;
           if (c.scale) cell.scale = c.scale;
         }
@@ -261,7 +263,7 @@
       for (const v of (p.description && p.description.values) || []) {
         if (v.kind === 'list') continue;
         out.push({ plugin: p.name, name: v.name, title: v.title || v.name, type: v.type || '', unit: v.unit || '',
-          precision: v.precision || 0, progression: v.progression || [],
+          precision: v.precision || 0, progression: v.progression || [], enum: v.enum || [],
           args: v.args || {} });
       }
     }
@@ -411,7 +413,7 @@
     t.cells.push({
       at: [x, y], span: [w, 1],
       text: literal ? 'Text' : '', value: literal ? '' : plugin + '/' + name,
-      label: '', unit: '', scale: '', args: {},
+      label: '', labels: {}, unit: '', scale: '', args: {},
       align: !literal && info && info.type === 'number' ? 'decimal' : 'left',
       overflow: '',
     });
@@ -1528,6 +1530,7 @@
         c.text = c.text || 'Text';
         c.value = '';
         c.label = '';
+        c.labels = {};
         c.unit = '';
         c.scale = '';
       } else {
@@ -1578,10 +1581,11 @@
       select.value = c.value || '';
       select.addEventListener('change', () => {
         c.value = select.value;
-        // the arguments and the scale belong to the value, so a new one
-        // starts without them
+        // the arguments, the scale and the enum labels belong to the value, so
+        // a new one starts without them
         c.args = {};
         c.scale = '';
+        c.labels = {};
         changed();
       });
       box.appendChild(field('Value', select));
@@ -1605,6 +1609,29 @@
         changed('inspector');
       });
       box.appendChild(field('Label', label));
+
+      // An enum value shows readable text per key; the file keeps the key
+      // (ADR 0127). One input per declared key, empty means the key itself.
+      const enumKeys = (info && info.type === 'enum' && Array.isArray(info.enum)) ? info.enum : [];
+      if (enumKeys.length) {
+        const heading = document.createElement('h4');
+        heading.textContent = 'Labels';
+        box.appendChild(heading);
+        for (const key of enumKeys) {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.autocomplete = 'off';
+          input.placeholder = key;
+          input.value = (c.labels && c.labels[key]) || '';
+          input.addEventListener('input', () => {
+            c.labels = c.labels || {};
+            if (input.value === '') delete c.labels[key];
+            else c.labels[key] = input.value;
+            changed('inspector');
+          });
+          box.appendChild(field(key, input));
+        }
+      }
 
       // The unit is a choice of declared, none and custom, because an empty
       // text field cannot tell "declared" from "none" (ADR 0122).

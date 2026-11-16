@@ -98,20 +98,21 @@ func TestEncodeRejectsInvalidPlan(t *testing.T) {
 
 func clock(minutes int) *Clock { c := Clock(minutes); return &c }
 
-// TestEncodeConditions verifies the written form and the JSON model of
-// conditions (ADR 0103).
+// TestEncodeConditions verifies the written form and the JSON model of value
+// conditions (ADR 0127): one key as a scalar, several as a list.
 func TestEncodeConditions(t *testing.T) {
 	p := parse(t, `
 rules:
   - name: zucker
-    when: { conditions: [dexcom/low, dexcom/high] }
+    when: { conditions: [{value: dexcom/state, is: [low, urgent]}, {value: weather/sky, is: rain}] }
     pages: [zucker]
 `)
 	data, err := Encode(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), `when: {conditions: [dexcom/low, dexcom/high]}`) {
+	if !strings.Contains(string(data), `{value: dexcom/state, is: [low, urgent]}`) ||
+		!strings.Contains(string(data), `{value: weather/sky, is: rain}`) {
 		t.Fatalf("layout:\n%s", data)
 	}
 	again, err := Parse(bytes.NewReader(data), nil)
@@ -122,8 +123,17 @@ rules:
 		t.Fatalf("round trip changed the plan\nwant %+v\ngot  %+v", p.Rules, again.Rules)
 	}
 	j, err := json.Marshal(p)
-	if err != nil || !strings.Contains(string(j), `"conditions":["dexcom/low","dexcom/high"]`) {
+	if err != nil || !strings.Contains(string(j), `"conditions":[{"value":"dexcom/state","is":["low","urgent"]},{"value":"weather/sky","is":"rain"}]`) {
 		t.Fatalf("json: %s %v", j, err)
+	}
+	// The editor API accepts both shapes back.
+	var back Plan
+	if err := json.Unmarshal([]byte(`{"rules":[{"name":"a","pages":["x"],"when":{"conditions":[{"value":"d/s","is":"low"},{"value":"w/s","is":["rain","snow"]}]}}]}`), &back); err != nil {
+		t.Fatal(err)
+	}
+	if len(back.Rules[0].When.Conditions) != 2 || len(back.Rules[0].When.Conditions[0].Is) != 1 ||
+		len(back.Rules[0].When.Conditions[1].Is) != 2 {
+		t.Fatalf("json conditions: %+v", back.Rules[0].When.Conditions)
 	}
 }
 

@@ -1,6 +1,6 @@
 # 0103: Show a page while a plugin condition is active
 
-- Status: Accepted
+- Status: Superseded by ADR 0127
 - Date: 2026-11-13
 - Related: ADR 0025 (plans), ADR 0049 (plugins instead of a data document), ADR 0057 (actions from the plan), ADR 0081 (plugin state), ADR 0099 (dexcom)
 

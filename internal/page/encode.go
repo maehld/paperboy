@@ -95,6 +95,9 @@ func textCellNode(c Cell) *yaml.Node {
 		if len(c.Args) > 0 {
 			add(n, "args", valueNode(c.Args))
 		}
+		if len(c.Labels) > 0 {
+			add(n, "labels", stringMapNode(c.Labels))
+		}
 	}
 	if c.Align != "" && c.Align != AlignLeft {
 		add(n, "align", str(c.Align))
@@ -220,6 +223,22 @@ func intSeq(values ...int) *yaml.Node {
 	n := newSeq(true)
 	for _, v := range values {
 		n.Content = append(n.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(v)})
+	}
+	return n
+}
+
+// stringMapNode writes a string map sorted and in flow style, so a cell stays
+// one line.
+func stringMapNode(m map[string]string) *yaml.Node {
+	n := newMap()
+	n.Style = yaml.FlowStyle
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		add(n, k, str(m[k]))
 	}
 	return n
 }

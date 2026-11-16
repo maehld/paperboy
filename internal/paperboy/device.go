@@ -356,14 +356,14 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Unlock()
-	conditionsDone := s.stats.Start("sync.conditions")
-	conds := s.planConditions(r.Context(), cfg, d.Plan)
-	conditionsDone()
+	valuesDone := s.stats.Start("sync.values")
+	values := s.planValues(r.Context(), cfg, d.Plan, d.Profile, d)
+	valuesDone()
 	resp := s.serveSync(cfg, d, st, &req, now, syncOptions{
 		firmware:    img,
 		pageTimeout: time.Duration(cfg.PageTimeout),
 		clientIP:    clientIP(r),
-		conditions:  conds,
+		values:      values,
 	})
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -371,14 +371,14 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 // syncOptions is what a wake needs beyond the request itself: the firmware
 // image a device may be offered and the page timeout in force. virtual marks a
 // display without hardware (ADR 0091): it gets no firmware offer, does not run
-// its actions and writes no state file. conditions is the plan's condition
-// state, asked before the state lock (ADR 0103).
+// its actions and writes no state file. values is the plan's evaluated value
+// state, asked before the state lock (ADR 0127).
 type syncOptions struct {
 	firmware    *firmwareImage
 	pageTimeout time.Duration
 	virtual     bool
 	clientIP    string // source address of the contact, empty for a virtual display
-	conditions  plan.Conditions
+	values      plan.Values
 }
 
 // chargerState names what the charger does for the journal: the hardware's own
@@ -520,7 +520,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		}
 		var acts []plan.PlanAction
 		if p, _ := s.plans.get(cfg.Plans, d.Plan, cfg.Timezone); p != nil {
-			if sel, ok := p.Select(now, opt.conditions); ok {
+			if sel, ok := p.Select(now, opt.values); ok {
 				acts = sel.Actions
 			}
 		}
@@ -563,7 +563,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		st.Page = 0
 	case d.Plan != "":
 		planDone := s.stats.Start("sync.plan")
-		choice = s.choosePlanPage(cfg, d, st, now, opt.conditions, firstContact, pageButtons, pageTimeout, menuSync, false)
+		choice = s.choosePlanPage(cfg, d, st, now, opt.values, firstContact, pageButtons, pageTimeout, menuSync, false)
 		planDone()
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
@@ -823,12 +823,12 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not a text display", http.StatusConflict)
 		return
 	}
-	// Conditions are asked outside the state lock (ADR 0103). The device is
+	// Plan values are asked outside the state lock (ADR 0127). The device is
 	// resolved again afterwards, because a sync may have written its state in
 	// between; the configuration snapshot stays the same.
-	planName := d.Plan
+	planName, profile := d.Plan, d.Profile
 	s.mu.Unlock()
-	conds := s.planConditions(r.Context(), cfg, planName)
+	values := s.planValues(r.Context(), cfg, planName, profile, d)
 	s.lock("poll.lock")
 	d, st = s.deviceByKeyLocked(r, cfg)
 	if d == nil {
@@ -848,7 +848,7 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 		// A copy keeps the cursor: a rule change or page timeout only shows here
 		// and is stored by the next sync.
 		peek := *st
-		choice = s.choosePlanPage(cfg, d, &peek, now, conds, true, nil, time.Duration(cfg.PageTimeout), false, true)
+		choice = s.choosePlanPage(cfg, d, &peek, now, values, true, nil, time.Duration(cfg.PageTimeout), false, true)
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
 	}

@@ -260,6 +260,43 @@ cells:
 	}
 }
 
+// TestTextEnumLabels shows the label of the answered enum key, with the key as
+// the fallback (ADR 0127).
+func TestTextEnumLabels(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader(`
+kind: text
+cells:
+  - { at: [0, 0], span: [20, 1], value: dexcom/state, labels: { low: "The reading is low", urgent: "Urgent" } }
+  - { at: [0, 1], span: [20, 1], value: dexcom/state }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := plugin.ValueSpec{Name: "state", Type: plugin.ValueEnum, Enum: []string{"normal", "low", "urgent"}}
+	src := valueSource(map[string]ValueResult{
+		"dexcom/state": {Value: plugin.EnumValue("low"), Spec: spec},
+	})
+	text, err := tmpl.RenderText(Display{Width: 20, Height: 2, Text: true, Language: "en"}, Context{Values: src})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimRight(text.Lines[0], " "); got != "The reading is low" {
+		t.Errorf("labelled key = %q", got)
+	}
+	if got := strings.TrimRight(text.Lines[1], " "); got != "low" {
+		t.Errorf("key without a label = %q", got)
+	}
+	// An empty answer leaves the cell as a question mark.
+	src = valueSource(map[string]ValueResult{"dexcom/state": {Value: plugin.Value{}, Spec: spec}})
+	text, err = tmpl.RenderText(Display{Width: 20, Height: 2, Text: true}, Context{Values: src})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimRight(text.Lines[0], " "); got != "?" {
+		t.Errorf("empty enum = %q", got)
+	}
+}
+
 // TestTextUnitProgression covers the step choice and the unit text of a value
 // (ADR 0122).
 func TestTextUnitProgression(t *testing.T) {
@@ -394,7 +431,7 @@ kind: text
 cells:
   - { at: [0, 0], span: [10, 1], text: hello, args: { n: 1 } }
 `))
-	if err == nil || !strings.Contains(err.Error(), "literal text cell has no label, unit, scale or args") {
+	if err == nil || !strings.Contains(err.Error(), "literal text cell has no label, labels, unit, scale or args") {
 		t.Fatalf("literal text with args: %v", err)
 	}
 }
@@ -461,19 +498,20 @@ cells:
 		t.Fatalf("parsed: %+v", tmpl)
 	}
 	for name, bad := range map[string]string{
-		"grid":       "kind: text\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 1], text: x }\n",
-		"rows":       "kind: text\nrows:\n  - [{ value: a/b, width: 2 }]\n",
-		"no cells":   "kind: text\n",
-		"neither":    "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1] }\n",
-		"both":       "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, value: a/b }\n",
-		"widget":     "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, widget: a/b }\n",
-		"label text": "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, label: L }\n",
-		"scale text": "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, scale: auto }\n",
-		"outside":    "kind: text\ncells:\n  - { at: [79, 0], span: [2, 1], text: x }\n",
-		"overlap":    "kind: text\ncells:\n  - { at: [0, 0], span: [2, 2], text: x }\n  - { at: [1, 1], span: [2, 1], text: y }\n",
-		"align":      "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, align: center }\n",
-		"overflow":   "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, overflow: zoom }\n",
-		"scroll key": "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, scroll: true }\n",
+		"grid":        "kind: text\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 1], text: x }\n",
+		"rows":        "kind: text\nrows:\n  - [{ value: a/b, width: 2 }]\n",
+		"no cells":    "kind: text\n",
+		"neither":     "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1] }\n",
+		"both":        "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, value: a/b }\n",
+		"widget":      "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, widget: a/b }\n",
+		"label text":  "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, label: L }\n",
+		"labels text": "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, labels: { low: Low } }\n",
+		"scale text":  "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, scale: auto }\n",
+		"outside":     "kind: text\ncells:\n  - { at: [79, 0], span: [2, 1], text: x }\n",
+		"overlap":     "kind: text\ncells:\n  - { at: [0, 0], span: [2, 2], text: x }\n  - { at: [1, 1], span: [2, 1], text: y }\n",
+		"align":       "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, align: center }\n",
+		"overflow":    "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, overflow: zoom }\n",
+		"scroll key":  "kind: text\ncells:\n  - { at: [0, 0], span: [2, 1], text: x, scroll: true }\n",
 	} {
 		if _, err := Parse(strings.NewReader(bad)); err == nil {
 			t.Errorf("%s: accepted", name)
@@ -487,6 +525,9 @@ cells:
 	}
 	if _, err := Parse(strings.NewReader("kind: image\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 1], widget: a/b, scale: auto }\n")); err == nil {
 		t.Error("an image page with scale was accepted")
+	}
+	if _, err := Parse(strings.NewReader("kind: image\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 1], widget: a/b, labels: { low: Low } }\n")); err == nil {
+		t.Error("an image page with labels was accepted")
 	}
 }
 
@@ -549,7 +590,7 @@ kind: text
 overflow: wrap
 cells:
   - { at: [0, 0], span: [6, 1], text: "a\nb", align: right }
-  - { at: [6, 1], span: [4, 2], value: a/one, label: L, unit: kW, overflow: scroll }
+  - { at: [6, 1], span: [4, 2], value: a/one, label: L, labels: { low: "Low", urgent: "Urgent" }, unit: kW, overflow: scroll }
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -561,6 +602,9 @@ cells:
 	if !strings.Contains(string(data), "overflow: wrap") || !strings.Contains(string(data), "text: |-") {
 		// Multi-line literal text is written as a block scalar or a quoted line;
 		// both must read back.
+	}
+	if !strings.Contains(string(data), `labels: {low: Low, urgent: Urgent}`) {
+		t.Fatalf("labels missing from the file:\n%s", data)
 	}
 	back, err := Parse(bytes.NewReader(data))
 	if err != nil {

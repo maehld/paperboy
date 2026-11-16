@@ -276,6 +276,11 @@ func textValueParts(r Result, cell Cell, charset, lang string, now time.Time, lo
 			clean(Convert(charset, unitText(cell.Unit, step.unit)))
 	}
 	value = formatValue(r.Spec, *r.Value, lang, now, loc)
+	if r.Spec.Type == plugin.ValueEnum && r.Value.Type() == plugin.ValueEnum {
+		if label := cell.Labels[*r.Value.Enum]; label != "" {
+			value = label
+		}
+	}
 	return convertLines(charset, value), clean(Convert(charset, unitText(cell.Unit, "")))
 }
 
@@ -417,6 +422,8 @@ func formatValue(spec plugin.ValueSpec, v plugin.Value, lang string, now time.Ti
 		return formatTimestamp(t, lang, now, loc)
 	case plugin.ValueDirection:
 		return formatDirection(*v.Direction)
+	case plugin.ValueEnum:
+		return *v.Enum
 	}
 	return "?"
 }

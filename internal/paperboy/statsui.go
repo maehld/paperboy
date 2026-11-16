@@ -97,7 +97,7 @@ type statsView struct {
 // timingOrder lists the operations in the order a sync runs them; everything
 // else follows sorted by name.
 var timingOrder = []string{
-	"sync.total", "sync.config", "sync.lock", "sync.conditions", "sync.plan",
+	"sync.total", "sync.config", "sync.lock", "sync.values", "sync.plan",
 	"sync.render", "render.widgets", "render.encode", "sync.action",
 	"sync.state_write", "render.page", "poll.total",
 }
@@ -107,7 +107,7 @@ var timingLabels = map[string]string{
 	"sync.total":       "Sync, whole request",
 	"sync.config":      "Configuration snapshot",
 	"sync.lock":        "Waiting for the state lock",
-	"sync.conditions":  "Plugin conditions",
+	"sync.values":      "Plan values",
 	"sync.plan":        "Plan selection (state lock held)",
 	"sync.render":      "Page render",
 	"render.widgets":   "… waiting for plugins",

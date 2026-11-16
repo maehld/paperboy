@@ -13,6 +13,8 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **cell** | One box of a page: a widget on an image page, a value or literal text on a text page | tile, slot |
 | **text cell** | One box of a text page: a value or literal text with a column, span, alignment and overflow | row, line, label |
 | **value** | One piece of data a plugin declares by name, for example `evcc/pv`; a text cell shows it | reading, datum, key |
+| **enum value** | A value that answers one declared key, e.g. `dexcom/state` with `normal`, `low`, `high` and `urgent` | state, choice |
+| **enum label** | The display text of one enum key on a text cell (`labels`); without it the key shows | key text, caption |
 | **overflow** | A text box policy: `strip`, `wrap` or `scroll` | clip, fitting |
 | **page** | An image grid of widgets or a text grid of value and text boxes, with a size from its display type | screen, template, view |
 | **page file** | `pages/<page>.yaml`: the layout for its kind and the `variants` map. It serves every display type of its kind. | shared page, main page, base page |
@@ -21,9 +23,9 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **orphan** | A variant whose page file is missing, and a page that exists only as variants | stray file, leftover |
 | **device** | One panel with Paperboy's firmware, identified by MAC and one file under `devices/` | display, node, client, target |
 | **plan** | The rules that select the pages of one device over time | playlist, schedule |
-| **rule** | One entry of a plan: time window, days, conditions, pages, rotation, refresh | plan, entry |
+| **rule** | One entry of a plan: time window, days, value conditions, pages, rotation, refresh | plan, entry |
 | **fallback** | The pages of a device whose no rule matches | default, base |
-| **condition** | A named state of a plugin, written `plugin/condition`, that a rule needs | predicate, expression, data blocker |
+| **condition** | A value condition of a rule: a `plugin/value` must answer one of the keys in `is` | predicate, expression, data blocker |
 | **action** | Something a plugin can do on request, offered in the device menu | command, task, operation |
 | **menu** | The action overlay on a device, opened with `home` | overlay, dialog |
 | **notice page** | A full-screen page that tells the device why it got no page | hint, error page, message page |
@@ -31,7 +33,7 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **levels** | The number of gray levels a display type draws: 1, 4 or 16 | gray, grayscale, bpp |
 | **device key** | The secret a device gets at registration and sends as bearer token | token, password |
 | **operator UI** | The web pages for the operator, behind `ui.password` | dashboard (only `GET /ui`), admin UI, frontend |
-| **plugin host** | The part of Paperboy that starts plugins, caches their widgets and asks their conditions | widget host, plugin manager |
+| **plugin host** | The part of Paperboy that starts plugins and caches their widgets and values | widget host, plugin manager |
 | **release train** | One of `v<version>`, `plugins-v<version>`, `firmware-v<version>` | release channel |
 | **channel** | `stable` or `latest`: which releases an instance installs | train |
 | **bundle** | `paperboy-firmware.zip`, the archive with the image of every hardware type | package |

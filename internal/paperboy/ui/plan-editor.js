@@ -72,7 +72,10 @@
           from: w.from || '',
           to: w.to || '',
           days: (w.days || []).filter((d) => DAYS.includes(d)),
-          conditions: (w.conditions || []).slice(),
+          conditions: (w.conditions || []).map((c) => ({
+            value: c && typeof c === 'object' ? (c.value || '') : '',
+            is: c && typeof c === 'object' ? (Array.isArray(c.is) ? c.is.slice() : c.is ? [c.is] : []) : [],
+          })),
         },
         pages: (r.pages || []).slice(),
         rotate: !!r.rotate,
@@ -277,34 +280,29 @@
     });
     grid.appendChild(field('Rotate', rotate));
 
-    // Conditions are named plugin states, e.g. dexcom/low (ADR 0103). A
-    // condition a configured plugin does not declare stays visible so that a
-    // plan written by hand is not silently broken.
-    const conds = document.createElement('span');
-    conds.className = 'days';
-    const offered = allConditions();
-    const known = new Set(offered.map((c) => c.value));
-    const values = offered.map((c) => c.value).concat(rule.when.conditions.filter((v) => !known.has(v)));
-    if (!values.length) {
+    // Conditions are value keys, e.g. dexcom/state is low (ADR 0127). Every
+    // entry must match; the keys of one entry are alternatives. A value or key
+    // a configured plugin does not declare stays visible so that a plan written
+    // by hand is not silently broken.
+    const conds = document.createElement('div');
+    conds.className = 'conditions';
+    if (!rule.when.conditions.length) {
       const note = document.createElement('span');
       note.className = 'muted';
-      note.textContent = 'no plugin declares conditions';
+      note.textContent = allValues().length ? 'no condition' : 'no plugin declares an enum value';
       conds.appendChild(note);
     }
-    for (const value of values) {
-      const label = document.createElement('label');
-      const box = document.createElement('input');
-      box.type = 'checkbox';
-      box.checked = rule.when.conditions.includes(value);
-      box.addEventListener('change', () => {
-        rule.when.conditions = values.filter((v) => (v === value ? box.checked : rule.when.conditions.includes(v)));
-        changed();
-      });
-      const text = document.createElement('span');
-      text.textContent = known.has(value) ? value : value + ' (not offered)';
-      label.append(box, text);
-      conds.appendChild(label);
-    }
+    rule.when.conditions.forEach((cond) => conds.appendChild(conditionRow(rule, cond)));
+    const addCond = document.createElement('button');
+    addCond.type = 'button';
+    addCond.textContent = 'Add condition';
+    addCond.addEventListener('click', () => {
+      const first = allValues()[0];
+      rule.when.conditions.push({ value: first ? first.value : '', is: [] });
+      changed();
+      renderRules();
+    });
+    conds.appendChild(addCond);
     grid.appendChild(field('Conditions', conds));
     card.appendChild(grid);
 
@@ -409,8 +407,12 @@
     return !w.from && !w.to && !w.days.length && !w.conditions.length;
   }
 
+  function conditionKey(w) {
+    return w.conditions.map((c) => c.value + '=' + c.is.slice().sort().join('+')).sort().join(';');
+  }
+
   function windowKey(w) {
-    return w.from + '|' + w.to + '|' + DAYS.filter((d) => w.days.includes(d)).join(',') + '|' + w.conditions.slice().sort().join(',');
+    return w.from + '|' + w.to + '|' + DAYS.filter((d) => w.days.includes(d)).join(',') + '|' + conditionKey(w);
   }
 
   // shadowReason names the earlier rule that keeps a rule from ever matching:
@@ -439,9 +441,23 @@
       const { from, to } = rule.when;
       if ((from && !to) || (!from && to)) messages.push('from and to must be given together');
       if (from && to && from === to) messages.push('from and to must differ');
-      const offered = allConditions().map((c) => c.value);
-      for (const ref of rule.when.conditions) {
-        if (!offered.includes(ref)) messages.push(ref + ': no plugin declares this condition');
+      const seenConds = {};
+      for (const cond of rule.when.conditions) {
+        if (!cond.value) {
+          messages.push('condition: choose a value');
+          continue;
+        }
+        if (seenConds[cond.value]) messages.push('duplicate condition ' + cond.value);
+        seenConds[cond.value] = true;
+        const spec = valueSpec(cond.value);
+        if (!spec) messages.push(cond.value + ': no plugin declares this value');
+        else if (spec.type !== 'enum') messages.push(cond.value + ': not an enum value');
+        if (!cond.is.length) messages.push(cond.value + ': choose at least one key');
+        for (const key of cond.is) {
+          if (spec && Array.isArray(spec.enum) && !spec.enum.includes(key)) {
+            messages.push(cond.value + ': no key ' + key);
+          }
+        }
       }
       if (!rule.pages.length) messages.push('no pages');
       for (const page of new Set(rule.pages)) {
@@ -491,14 +507,95 @@
 
   // ---- actions ----
 
-  function allConditions() {
+  // allValues lists the enum values a rule condition may name.
+  function allValues() {
     const out = [];
     for (const plugin of state.plugins) {
-      for (const c of (plugin.description && plugin.description.conditions) || []) {
-        out.push({ value: plugin.name + '/' + c.name, spec: c });
+      for (const v of (plugin.description && plugin.description.values) || []) {
+        if (v.type !== 'enum') continue;
+        out.push({ value: plugin.name + '/' + v.name, spec: v });
       }
     }
     return out.sort((a, b) => a.value.localeCompare(b.value));
+  }
+
+  function valueSpec(value) {
+    const found = allValues().find((v) => v.value === value);
+    return found ? found.spec : null;
+  }
+
+  function conditionKeys(value) {
+    const spec = valueSpec(value);
+    return spec && Array.isArray(spec.enum) ? spec.enum.slice() : [];
+  }
+
+  // conditionRow edits one value condition: the value to read and the keys it
+  // must answer. Stored unknown keys stay visible as their key.
+  function conditionRow(rule, cond) {
+    const row = document.createElement('div');
+    row.className = 'condition';
+    const select = document.createElement('select');
+    const offered = allValues();
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = offered.length ? 'choose a value…' : 'no enum value declared';
+    select.appendChild(none);
+    for (const v of offered) {
+      const option = document.createElement('option');
+      option.value = v.value;
+      option.textContent = v.value;
+      select.appendChild(option);
+    }
+    if (cond.value && !offered.some((v) => v.value === cond.value)) {
+      const option = document.createElement('option');
+      option.value = cond.value;
+      option.textContent = cond.value + ' (not declared)';
+      select.appendChild(option);
+    }
+    select.value = cond.value || '';
+    select.addEventListener('change', () => {
+      cond.value = select.value;
+      cond.is = cond.is.filter((key) => conditionKeys(cond.value).includes(key));
+      changed();
+      renderRules();
+    });
+    const keys = document.createElement('span');
+    keys.className = 'keys';
+    const declared = conditionKeys(cond.value);
+    const all = declared.concat(cond.is.filter((key) => !declared.includes(key)));
+    if (!all.length) {
+      const note = document.createElement('span');
+      note.className = 'muted';
+      note.textContent = cond.value ? 'this value declares no keys' : 'choose a value first';
+      keys.appendChild(note);
+    }
+    for (const key of all) {
+      const label = document.createElement('label');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = cond.is.includes(key);
+      box.addEventListener('change', () => {
+        cond.is = all.filter((k) => (k === key ? box.checked : cond.is.includes(k)));
+        changed();
+      });
+      const text = document.createElement('span');
+      text.textContent = declared.includes(key) ? key : key + ' (not declared)';
+      label.append(box, text);
+      keys.appendChild(label);
+    }
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'remove';
+    remove.title = 'Remove this condition';
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      const i = rule.when.conditions.indexOf(cond);
+      if (i >= 0) rule.when.conditions.splice(i, 1);
+      changed();
+      renderRules();
+    });
+    row.append(select, keys, remove);
+    return row;
   }
 
   function allActions() {

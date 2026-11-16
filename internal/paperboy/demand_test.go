@@ -6,12 +6,12 @@ import (
 )
 
 // demandFixture writes a plan with one rule and an image page that uses
-// weather and the built-in header, plus a dexcom condition.
+// weather and the built-in header, plus a dexcom value condition.
 func demandFixture(t *testing.T, s *Server) {
 	t.Helper()
 	writePlan(t, s, "plan", `rules:
   - name: tag
-    when: { conditions: [dexcom/low] }
+    when: { conditions: [{value: dexcom/state, is: low}] }
     pages: [seite]
   - name: nacht
     pages: [seite]

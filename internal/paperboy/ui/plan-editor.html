@@ -31,6 +31,12 @@ input[type=checkbox] { width: auto; }
 .rule-head .badge { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: .05rem .4rem; border-radius: 999px; border: 1px solid #b80; color: #8a5a00; }
 .rule-head .buttons { margin-left: auto; display: flex; gap: .3rem; }
 .rule-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: .4rem .8rem; }
+.conditions { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.condition { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr) auto; gap: .3rem .5rem; align-items: center; }
+.condition .keys { display: flex; flex-wrap: wrap; gap: .15rem .5rem; align-items: center; }
+.condition .keys label { display: inline-flex; gap: .2rem; align-items: center; font-size: .8rem; }
+.condition .remove { padding: .05rem .4rem; border: 1px solid #d8c0c0; border-radius: 4px; background: #fff7f7; color: #a33; cursor: pointer; }
+.conditions > button { align-self: flex-start; }
 .days { display: flex; flex-wrap: wrap; gap: .35rem; font-size: .82rem; }
 .days label { display: flex; gap: .15rem; align-items: center; }
 .pages { margin: .5rem 0 0; display: flex; flex-direction: column; gap: .2rem; }
@@ -97,7 +103,7 @@ input[type=checkbox] { width: auto; }
         <h3>Rules</h3>
         <button id="add-rule" type="button">Add rule</button>
       </div>
-      <p class="hint">The first matching rule wins; a rule without from/to matches at any time. Pages are shown in this order, times are in {{.Timezone}}.</p>
+      <p class="hint">The first matching rule wins; a rule without from/to matches at any time. Pages are shown in this order, times are in {{.Timezone}}. A condition reads an enum value, e.g. dexcom/state is low; several keys are alternatives, several conditions must all match.</p>
       <div id="rules"></div>
     </section>
     <section class="panel">

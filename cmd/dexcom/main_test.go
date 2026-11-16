@@ -612,39 +612,44 @@ func TestRefusedCredentials(t *testing.T) {
 	}
 }
 
-// Conditions are the plan's input (ADR 0103): a band is active only while the
-// newest reading is current, and the urgent range also counts as low.
-func TestConditions(t *testing.T) {
+// The state value is the plan's input (ADR 0127): it answers one key only
+// while the newest reading is current, and urgent wins over low and high.
+func TestStateValue(t *testing.T) {
 	now := time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC)
-	req := &plugin.Request{Now: now}
+	req := &plugin.Request{Now: now, Values: []string{"state"}}
 	d := &dexcom{unit: unitMGDL, set: map[string]float64{"low": 100}}
-	check := func(want map[string]bool, what string) {
+	check := func(want string, what string) {
 		t.Helper()
-		got, err := d.Conditions(req)
+		got, err := d.Values(req)
 		if err != nil {
 			t.Fatalf("%s: %v", what, err)
 		}
-		for name, on := range got {
-			if on != want[name] {
-				t.Fatalf("%s: %s = %v, want %v (%v)", what, name, on, want[name], got)
+		v := got["state"]
+		if want == "" {
+			if v.Type() != "" {
+				t.Fatalf("%s: %s, want no value", what, *v.Enum)
 			}
+			return
+		}
+		if v.Type() != plugin.ValueEnum || v.Enum == nil || *v.Enum != want {
+			t.Fatalf("%s: %+v, want %q", what, v, want)
 		}
 	}
-	// No reading yet: nothing is active.
-	check(map[string]bool{}, "no readings")
+	// No reading yet: no state.
+	check("", "no readings")
 	// A low reading of 5 minutes ago.
 	d.readings = []reading{{at: now.Add(-5 * time.Minute), value: 95}}
-	check(map[string]bool{"low": true}, "low")
-	// The urgent range is below the low threshold too.
+	check("low", "low")
+	// The urgent range wins over low and high.
 	d.readings = []reading{{at: now.Add(-5 * time.Minute), value: 50}}
-	check(map[string]bool{"urgent": true, "low": true}, "urgent")
+	check("urgent", "urgent")
 	d.readings = []reading{{at: now.Add(-5 * time.Minute), value: 300}}
-	check(map[string]bool{"high": true}, "high")
+	check("high", "high")
 	d.readings = []reading{{at: now.Add(-5 * time.Minute), value: 120}}
-	check(map[string]bool{}, "in band")
-	// A stale reading does not switch a page, even when it is low.
+	check("normal", "in band")
+	// A stale reading has no state, even when it is low.
 	d.readings = []reading{{at: now.Add(-staleAfter - time.Minute), value: 60}}
-	check(map[string]bool{}, "stale")
+	check("", "stale")
 }
 
 // The plugin as the widget host talks to it: describe, configure, render and

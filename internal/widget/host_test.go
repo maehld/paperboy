@@ -98,6 +98,9 @@ func fakePlugin(mode string) {
 				{Name: "b", Type: plugin.ValueText},
 				{Name: "bad", Type: plugin.ValueText},
 				{Name: "echo", Type: plugin.ValueText},
+				{Name: "state", Type: plugin.ValueEnum, Enum: []string{"normal", "low", "high"}},
+				{Name: "badenum", Type: plugin.ValueEnum, Enum: []string{"normal", "low"}},
+				{Name: "emptyenum", Type: plugin.ValueEnum, Enum: []string{"normal", "low"}},
 			}}
 			enc.Encode(plugin.Message{ID: req.ID, Version: version, Description: &d})
 			continue
@@ -113,6 +116,12 @@ func fakePlugin(mode string) {
 					msg.Values[name] = plugin.TextValue("text")
 				case "echo":
 					msg.Values[name] = plugin.TextValue(fmt.Sprint(req.ValueArgs))
+				case "state":
+					msg.Values[name] = plugin.EnumValue("low")
+				case "badenum":
+					msg.Values[name] = plugin.EnumValue("nope")
+				case "emptyenum":
+					msg.Values[name] = plugin.Value{}
 				default:
 					msg.Values[name] = plugin.Value{}
 				}
@@ -121,14 +130,6 @@ func fakePlugin(mode string) {
 			continue
 		}
 		if mode == "hang" {
-			continue
-		}
-		if req.Action == plugin.ActionConditions {
-			msg := plugin.Message{ID: req.ID, Version: version, Conditions: map[string]bool{"low": true}}
-			if mode == "condfail" {
-				msg.Error = "no data"
-			}
-			enc.Encode(msg)
 			continue
 		}
 		msg := plugin.Message{ID: req.ID, Version: version, MaxAge: 60}
@@ -233,37 +234,6 @@ func TestHostCachesAndBatches(t *testing.T) {
 	}
 }
 
-func TestHostConditionsAreCached(t *testing.T) {
-	f := newFake(t)
-	h := newHost(t, f.spec("ok"))
-	active, err := h.Conditions(context.Background(), "fake")
-	if err != nil || !active["low"] || active["high"] {
-		t.Fatalf("conditions: %v %v", active, err)
-	}
-	if _, err := h.Conditions(context.Background(), "fake"); err != nil {
-		t.Fatal(err)
-	}
-	if n := runs(f.count); n != 1 {
-		t.Errorf("plugin got %d conditions requests, want 1 (cached)", n)
-	}
-	// A changed event makes the next sync ask again (ADR 0103).
-	h.expire("fake", nil)
-	if _, err := h.Conditions(context.Background(), "fake"); err != nil {
-		t.Fatal(err)
-	}
-	if n := runs(f.count); n != 2 {
-		t.Errorf("plugin got %d conditions requests after changed, want 2", n)
-	}
-	if _, err := h.Conditions(context.Background(), "nope"); err == nil {
-		t.Error("an unknown plugin must answer with an error")
-	}
-	// A failing plugin yields an error, so its conditions count as inactive.
-	h2 := newHost(t, f.spec("condfail"))
-	if _, err := h2.Conditions(context.Background(), "fake"); err == nil {
-		t.Error("a failing conditions answer must be an error")
-	}
-}
-
 func TestHostValues(t *testing.T) {
 	f := newFake(t)
 	h := newHost(t, f.spec("values"))
@@ -292,6 +262,31 @@ func TestHostValues(t *testing.T) {
 	out = h.FetchValues(context.Background(), page.ValueBatch{Values: []page.ValueRequest{{Plugin: "fake", Name: "bad"}}})
 	if len(out) != 1 || out[0].Err == nil || !strings.Contains(out[0].Err.Error(), "no number") {
 		t.Fatalf("empty value: %+v", out)
+	}
+}
+
+// TestHostEnumValues checks the answer of an enum value (ADR 0127): a declared
+// key passes, an empty answer stays empty for a missing key, and a key outside
+// the declaration is an error for that cell.
+func TestHostEnumValues(t *testing.T) {
+	f := newFake(t)
+	h := newHost(t, f.spec("values"))
+	out := h.FetchValues(context.Background(), page.ValueBatch{Values: []page.ValueRequest{
+		{Plugin: "fake", Name: "state"},
+		{Plugin: "fake", Name: "badenum"},
+		{Plugin: "fake", Name: "emptyenum"},
+	}})
+	if len(out) != 3 {
+		t.Fatalf("results: %+v", out)
+	}
+	if out[0].Err != nil || out[0].Value == nil || out[0].Value.Type() != plugin.ValueEnum || *out[0].Value.Enum != "low" {
+		t.Fatalf("declared key: %+v %+v", out[0].Value, out[0].Err)
+	}
+	if out[1].Err == nil || !strings.Contains(out[1].Err.Error(), "not one of") {
+		t.Fatalf("an undeclared key must be an error: %+v", out[1])
+	}
+	if out[2].Err != nil || out[2].Value == nil || out[2].Value.Type() != "" {
+		t.Fatalf("an empty enum answer must stay empty: %+v %+v", out[2].Value, out[2].Err)
 	}
 }
 

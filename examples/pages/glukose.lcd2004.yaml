@@ -5,4 +5,4 @@ cells:
   - { at: [15, 1], span: [5, 1], value: dexcom/trend, align: right }
   - { at: [0, 2], span: [10, 1], value: dexcom/delta }
   - { at: [10, 2], span: [10, 1], value: dexcom/age, align: right }
-  - { at: [0, 3], span: [20, 1], value: dexcom/band, label: Ziel }
+  - { at: [0, 3], span: [20, 1], value: dexcom/state, labels: {normal: Normal, low: Niedrig, high: Hoch, urgent: Dringend} }
