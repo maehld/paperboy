@@ -90,8 +90,8 @@ func TestWidgets(t *testing.T) {
 	if v := values["loadpoint"]; v.Text == nil || *v.Text != "Octavia" {
 		t.Errorf("loadpoint = %+v", v)
 	}
-	for key, want := range map[string]float64{"loadpoint-soc": 64, "loadpoint-power": 3.7,
-		"session-energy": 5.4, "session-solar": 90, "grid": -2.1, "pv": 4.2, "battery": 81, "battery-power": -1.3} {
+	for key, want := range map[string]float64{"loadpoint-soc": 64, "loadpoint-power": 3700,
+		"session-energy": 5400, "session-solar": 90, "grid": -2100, "pv": 4200, "battery": 81, "battery-power": -1300} {
 		if v := values[key]; v.Number == nil || *v.Number != want {
 			t.Errorf("%s = %+v, want %v", key, v, want)
 		}

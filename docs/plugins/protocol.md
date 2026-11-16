@@ -89,8 +89,12 @@ the plan's action validation.
         "name": "pv",
         "title": "PV power",
         "type": "number",
-        "unit": "kW",
-        "precision": 1
+        "unit": "W",
+        "precision": 0,
+        "progression": [
+          {"unit": "kW", "factor": 1000, "precision": 1},
+          {"unit": "MW", "factor": 1000000, "precision": 2}
+        ]
       }
     ],
     "actions": [
@@ -111,8 +115,9 @@ the plan's action validation.
 ```
 
 - `widgets[].kinds` is `image`, `text` or both.
-- `values[]` declares the data a text page can lay out ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md)): `name`, `title`, `type`, `unit`, `precision`, `kind` and `args`.
-  `type` is `number`, `text`, `duration`, `timestamp` or `direction`. `precision` is the number of decimals Paperboy writes for a number.
+- `values[]` declares the data a text page can lay out ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md), [0122](../adr/0122-hide-and-progress-a-unit.md)): `name`, `title`, `type`, `unit`, `precision`, `progression`, `kind` and `args`.
+  `type` is `number`, `text`, `duration`, `timestamp` or `direction`. `unit` is the base unit the plugin answers a number in, and `precision` its number of decimals.
+  `progression` names the larger units Paperboy may use, each with its `factor` to the base unit and its `precision`; an empty or missing list keeps the base unit. The plugin always answers in the base unit.
   `kind` is `value` (default) or `list`; protocol 7 answers only single values. A value is data, not text: the plugin never pads or formats it.
   `args` uses the same [argument schema](#arguments) as a widget; an empty or missing map means the value reads none.
 - `version` is the plugin's own version, matching the `-v<version>` of its program name ([ADR 0075](../adr/0075-plugin-versions.md)). It is optional; Paperboy compares it with the file name and logs one warning when they differ.
@@ -212,7 +217,7 @@ Answers the values of a text page ([ADR 0111](../adr/0111-text-pages-from-plugin
 - Paperboy sends one request per plugin and argument set, so two boxes with different arguments are two requests. The cache holds them separately.
 - `max_age` works like for widgets: it tells Paperboy how long it may reuse the answer, and a `changed` event drops it.
 - A plugin that does not declare a requested name is not asked; the cell shows the error instead.
-- Paperboy formats the value: a number with the declared precision and the global language, a duration, a timestamp or a direction. The plugin decides neither width nor alignment.
+- Paperboy formats the value: a number with the precision of its chosen step and the global language, a duration, a timestamp or a direction. A number with a progression takes the largest step whose rounded absolute value is at least 1, unless the cell forces a step. The plugin decides neither width nor alignment.
 - A text value may carry several lines, one per record, such as an agenda or a list of departures. Paperboy shows them line by line; the label opens the first line and the unit closes the last. List values with named fields arrive in a later version.
 
 ### `server_status`
@@ -417,7 +422,7 @@ widgets use the same fonts, gray levels and scalings as Paperboy's own.
 | 4 | Actions: `describe.actions`, `actions`, `action`, `actions`/`result` answers, `device` ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md)) |
 | 5 | Plugin state and blobs: the `state` request, `answer.state`/`answer.blobs`, `describe.blobs`; `PAPERBOY_STATE_DIR` removed ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)) |
 | 6 | Conditions: `describe.conditions`, the `conditions` request and `answer.conditions` ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)) |
-| 7 | Values: `describe.values` with `args`, the `values` request with `value_args` and `answer.values` ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md)) |
+| 7 | Values: `describe.values` with `args` and `progression`, the `values` request with `value_args` and `answer.values` ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md), [0122](../adr/0122-hide-and-progress-a-unit.md)) |
 
 A plugin is used as a whole or not at all ([ADR 0058](../adr/0058-plugin-protocol-version-check.md)). The check is a floor,
 not equality: Paperboy requires at least version 5 and accepts newer ones,

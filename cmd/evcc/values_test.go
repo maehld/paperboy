@@ -15,11 +15,11 @@ func TestStateValues(t *testing.T) {
 		key  string
 		want float64
 	}{
-		{"pv", 4.2}, {"home", 0.8}, {"grid", -2.1}, {"battery", 81}, {"battery-power", -1.3},
-		{"grid-price", 27}, {"pv-energy", 26009.5}, {"grid-import", 9697.5}, {"grid-export", 11141.6},
-		{"battery-charge", 6013.7}, {"battery-discharge", 6362.4},
-		{"charge-total", 1234.5}, {"charge-total-solar", 54.8}, {"charge-total-price", 17.05},
-		{"charge-year", 145.3}, {"charge-year-solar", 55.1}, {"charge-year-price", 16.39},
+		{"pv", 4200}, {"home", 800}, {"grid", -2100}, {"battery", 81}, {"battery-power", -1300},
+		{"grid-price", 27}, {"pv-energy", 26009500}, {"grid-import", 9697500}, {"grid-export", 11141600},
+		{"battery-charge", 6013700}, {"battery-discharge", 6362400},
+		{"charge-total", 1234500}, {"charge-total-solar", 54.8}, {"charge-total-price", 17.05},
+		{"charge-year", 145300}, {"charge-year-solar", 55.1}, {"charge-year-price", 16.39},
 		{"forecast-today", 12000}, {"forecast-tomorrow", 8600},
 	}
 	names := make([]string, len(cases))
@@ -49,6 +49,33 @@ func TestStateValues(t *testing.T) {
 	}
 }
 
+// The text values carry their base unit and the larger steps Paperboy may use
+// (ADR 0122); shares and prices stay in one unit.
+func TestValueSpecProgression(t *testing.T) {
+	byName := map[string]plugin.ValueSpec{}
+	for _, spec := range valueSpecs() {
+		byName[spec.Name] = spec
+	}
+	for _, name := range []string{"pv", "home", "grid", "battery-power", "loadpoint-power"} {
+		spec := byName[name]
+		if spec.Unit != "W" || spec.Precision != 0 || len(spec.Progression) != 2 || spec.Progression[0].Unit != "kW" {
+			t.Errorf("%s = %+v, want W with kW and MW", name, spec)
+		}
+	}
+	for _, name := range []string{"pv-energy", "grid-import", "grid-export", "battery-charge",
+		"charge-total", "charge-year", "forecast-today", "pv-today", "home-today", "charge-today", "session-energy"} {
+		spec := byName[name]
+		if spec.Unit != "Wh" || spec.Precision != 0 || len(spec.Progression) != 2 || spec.Progression[0].Unit != "kWh" {
+			t.Errorf("%s = %+v, want Wh with kWh and MWh", name, spec)
+		}
+	}
+	for _, name := range []string{"battery", "charge-total-solar", "charge-total-price"} {
+		if spec := byName[name]; len(spec.Progression) != 0 {
+			t.Errorf("%s = %+v, want no progression", name, spec)
+		}
+	}
+}
+
 // An explicit empty list is the editor's "None": it shows nothing, unlike an
 // absent arg, which keeps the default set.
 func TestValuesExplicitEmpty(t *testing.T) {
@@ -68,11 +95,11 @@ func TestValuesExplicitEmpty(t *testing.T) {
 func TestDailyValues(t *testing.T) {
 	e, _ := newHistoryPlugin(t)
 	cases := map[string]float64{
-		"pv-today": 5, "home-today": 20, "grid-import-today": 10, "grid-export-today": 2,
-		"battery-charge-today": 1, "battery-discharge-today": 4,
+		"pv-today": 5000, "home-today": 20000, "grid-import-today": 10000, "grid-export-today": 2000,
+		"battery-charge-today": 1000, "battery-discharge-today": 4000,
 		// All loadpoints of /api/state: the history also carries a series of a
 		// loadpoint that evcc no longer has, which does not count.
-		"charge-today": 1.5,
+		"charge-today": 1500,
 	}
 	names := make([]string, 0, len(cases))
 	for name := range cases {
@@ -93,8 +120,8 @@ func TestDailyValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v := one["charge-today"]; v.Number == nil || *v.Number != 1.5 {
-		t.Errorf("charge-today index 0 = %+v, want 1.5", v)
+	if v := one["charge-today"]; v.Number == nil || *v.Number != 1500 {
+		t.Errorf("charge-today index 0 = %+v, want 1500", v)
 	}
 	values, err = e.Values(&plugin.Request{Values: []string{"charge-today"}, ValueArgs: map[string]any{"index": 1}})
 	if err != nil {
@@ -129,14 +156,14 @@ func TestChargeToday(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v := values["charge-today"]; v.Number == nil || *v.Number != 5.5 {
-		t.Errorf("sum = %+v, want 5.5", v)
+	if v := values["charge-today"]; v.Number == nil || *v.Number != 5500 {
+		t.Errorf("sum = %+v, want 5500", v)
 	}
 	for _, c := range []struct {
 		index int
 		want  float64 // -1 means a dash
 	}{
-		{0, 2}, {1, 3.5}, {2, 0}, {3, -1}, {4, -1},
+		{0, 2000}, {1, 3500}, {2, 0}, {3, -1}, {4, -1},
 	} {
 		values, err := e.Values(&plugin.Request{Values: []string{"charge-today"}, ValueArgs: map[string]any{"index": c.index}})
 		if err != nil {
@@ -183,8 +210,8 @@ func TestDailyValuesWithoutHistory(t *testing.T) {
 			t.Errorf("valueText(%s) = %q, want a dash", name, got)
 		}
 	}
-	if v := values["pv"]; v.Number == nil || *v.Number != 4.2 {
-		t.Errorf("pv = %+v, want 4.2", v)
+	if v := values["pv"]; v.Number == nil || *v.Number != 4200 {
+		t.Errorf("pv = %+v, want 4200", v)
 	}
 }
 

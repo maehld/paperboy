@@ -172,6 +172,7 @@
           value: c.value || '',
           label: c.label || '',
           unit: c.unit || '',
+          scale: typeof c.scale === 'string' ? c.scale : '',
           align: c.align === 'right' || c.align === 'decimal' ? c.align : 'left',
           overflow: c.overflow === 'wrap' || c.overflow === 'scroll' ? c.overflow : '',
           args: c.args || {},
@@ -223,6 +224,7 @@
           cell.value = c.value;
           if (c.label) cell.label = c.label;
           if (c.unit) cell.unit = c.unit;
+          if (c.scale) cell.scale = c.scale;
         }
         if (c.align && c.align !== 'left') cell.align = c.align;
         if (c.overflow) cell.overflow = c.overflow;
@@ -259,6 +261,7 @@
       for (const v of (p.description && p.description.values) || []) {
         if (v.kind === 'list') continue;
         out.push({ plugin: p.name, name: v.name, title: v.title || v.name, type: v.type || '', unit: v.unit || '',
+          precision: v.precision || 0, progression: v.progression || [],
           args: v.args || {} });
       }
     }
@@ -276,19 +279,30 @@
     return v ? valueKey(v) : '';
   }
 
-  // defaultValueWidth leaves room for a sample of the value and its unit.
+  // defaultValueWidth leaves room for a sample of the value and its unit; a
+  // progression offers several units (ADR 0122).
   function defaultValueWidth(info) {
     let sample = 'Text';
+    let unit = '';
     if (info) {
       switch (info.type) {
-        case 'number': sample = info.precision > 0 ? '0,' + '0'.repeat(info.precision) : '0'; break;
+        case 'number': {
+          let best = '0';
+          for (const step of [{ unit: info.unit, precision: info.precision || 0 }].concat(info.progression || [])) {
+            const n = step.precision > 0 ? '0,' + '0'.repeat(step.precision) : '0';
+            const text = step.unit ? n + ' ' + step.unit : n;
+            if (text.length > best.length) best = text;
+          }
+          sample = best;
+          break;
+        }
         case 'duration': sample = '00min'; break;
         case 'timestamp': sample = '00:00'; break;
         case 'direction': sample = '^'; break;
         default: sample = (info.title || info.name || 'Text').slice(0, 4);
       }
+      if (info.type !== 'number') unit = info.unit ? ' ' + info.unit : '';
     }
-    const unit = info && info.unit ? ' ' + info.unit : '';
     return Math.max(5, Math.min(state.width, (sample + unit).length));
   }
 
@@ -397,7 +411,7 @@
     t.cells.push({
       at: [x, y], span: [w, 1],
       text: literal ? 'Text' : '', value: literal ? '' : plugin + '/' + name,
-      label: '', unit: '', args: {},
+      label: '', unit: '', scale: '', args: {},
       align: !literal && info && info.type === 'number' ? 'decimal' : 'left',
       overflow: '',
     });
@@ -1515,6 +1529,7 @@
         c.value = '';
         c.label = '';
         c.unit = '';
+        c.scale = '';
       } else {
         c.value = c.value || firstValueKey();
         c.text = '';
@@ -1563,8 +1578,10 @@
       select.value = c.value || '';
       select.addEventListener('change', () => {
         c.value = select.value;
-        // the arguments belong to the value, so a new one starts without
+        // the arguments and the scale belong to the value, so a new one
+        // starts without them
         c.args = {};
+        c.scale = '';
         changed();
       });
       box.appendChild(field('Value', select));
@@ -1572,7 +1589,10 @@
       if (info) {
         const note = document.createElement('span');
         note.className = 'desc';
-        note.textContent = [info.type, info.unit].filter(Boolean).join(' · ');
+        const units = info.progression && info.progression.length
+          ? (info.unit ? info.unit + ' → ' : '') + info.progression.map((s) => s.unit).join(', ')
+          : info.unit;
+        note.textContent = [info.type, units].filter(Boolean).join(' · ');
         box.appendChild(note);
       }
 
@@ -1586,16 +1606,81 @@
       });
       box.appendChild(field('Label', label));
 
-      const unit = document.createElement('input');
-      unit.type = 'text';
-      unit.autocomplete = 'off';
-      unit.value = c.unit || '';
-      unit.placeholder = info && info.unit ? info.unit : '';
-      unit.addEventListener('input', () => {
-        c.unit = unit.value;
+      // The unit is a choice of declared, none and custom, because an empty
+      // text field cannot tell "declared" from "none" (ADR 0122).
+      const unitChoice = document.createElement('select');
+      for (const [value, text] of [['', 'declared'], ['none', 'none'], ['custom', 'custom']]) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = text;
+        unitChoice.appendChild(option);
+      }
+      const customUnit = document.createElement('input');
+      customUnit.type = 'text';
+      customUnit.autocomplete = 'off';
+      customUnit.placeholder = info && info.unit ? info.unit : '';
+      const isCustom = c.unit !== '' && c.unit !== 'none';
+      customUnit.value = isCustom ? c.unit : '';
+      customUnit.hidden = !isCustom;
+      unitChoice.value = c.unit === 'none' ? 'none' : isCustom ? 'custom' : '';
+      unitChoice.addEventListener('change', () => {
+        if (unitChoice.value === 'none') {
+          c.unit = 'none';
+        } else if (unitChoice.value === 'custom') {
+          if (!customUnit.value) customUnit.value = (info && info.unit) || '';
+          c.unit = customUnit.value;
+        } else {
+          c.unit = '';
+        }
+        customUnit.hidden = unitChoice.value !== 'custom';
+        changed('inspector');
+        if (unitChoice.value === 'custom') customUnit.focus();
+      });
+      customUnit.addEventListener('input', () => {
+        c.unit = customUnit.value;
         changed('inspector');
       });
-      box.appendChild(field('Unit', unit));
+      const unitWrap = document.createElement('span');
+      unitWrap.style.display = 'flex';
+      unitWrap.style.gap = '.4rem';
+      customUnit.style.width = '6rem';
+      unitWrap.append(unitChoice, customUnit);
+      box.appendChild(field('Unit', unitWrap));
+
+      // A value with a progression lets the page force one of its steps; auto
+      // lets Paperboy choose it from the value (ADR 0122).
+      const steps = (info && info.progression) || [];
+      if (steps.length || (c.scale && c.scale !== 'auto')) {
+        const scale = document.createElement('select');
+        const auto = document.createElement('option');
+        auto.value = 'auto';
+        auto.textContent = 'auto';
+        scale.appendChild(auto);
+        if (info && info.unit) {
+          const base = document.createElement('option');
+          base.value = info.unit;
+          base.textContent = info.unit + ' (base)';
+          scale.appendChild(base);
+        }
+        for (const step of steps) {
+          const option = document.createElement('option');
+          option.value = step.unit;
+          option.textContent = step.unit;
+          scale.appendChild(option);
+        }
+        if (c.scale && c.scale !== 'auto' && !steps.some((s) => s.unit === c.scale) && c.scale !== (info && info.unit)) {
+          const option = document.createElement('option');
+          option.value = c.scale;
+          option.textContent = c.scale + ' (not declared)';
+          scale.appendChild(option);
+        }
+        scale.value = c.scale || 'auto';
+        scale.addEventListener('change', () => {
+          c.scale = scale.value === 'auto' ? '' : scale.value;
+          changed();
+        });
+        box.appendChild(field('Scale', scale));
+      }
 
       renderArgFields(box, c, (info && info.args) || {});
     }

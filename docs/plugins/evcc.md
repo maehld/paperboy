@@ -42,35 +42,44 @@ The values are exactly what evcc reports. Paperboy does not derive numbers of it
 
 A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)); a value evcc does not report becomes `–`:
 
-| Value | Type | Unit | Precision | Meaning |
+| Value | Type | Base unit | Progression | Meaning |
 |---|---|---|---|---|
-| `pv`, `home`, `grid` | number | kW | 1 | power; the grid with + for import and - for export |
-| `battery` | number | % | 0 | state of charge of the home battery |
-| `battery-power` | number | kW | 1 | battery power; + for discharge, - for charge |
-| `grid-price`, `feedin-price` | number | ct/kWh | 1 | the tariffs evcc uses |
-| `pv-energy` | number | kWh | 1 | PV energy since the installation |
-| `grid-import`, `grid-export` | number | kWh | 1 | imported and exported energy since the installation |
-| `battery-charge`, `battery-discharge` | number | kWh | 1 | charged and discharged energy since the installation |
-| `charge-total` | number | kWh | 1 | energy of all charging sessions |
-| `charge-total-solar` | number | % | 0 | solar share of all sessions |
-| `charge-total-price` | number | ct/kWh | 1 | average price of all sessions |
+| `pv`, `home`, `grid` | number | W | kW (1), MW (2) | power; the grid with + for import and - for export |
+| `battery` | number | % | | state of charge of the home battery |
+| `battery-power` | number | W | kW (1), MW (2) | battery power; + for discharge, - for charge |
+| `grid-price`, `feedin-price` | number | ct/kWh | | the tariffs evcc uses |
+| `pv-energy` | number | Wh | kWh (1), MWh (2) | PV energy since the installation |
+| `grid-import`, `grid-export` | number | Wh | kWh (1), MWh (2) | imported and exported energy since the installation |
+| `battery-charge`, `battery-discharge` | number | Wh | kWh (1), MWh (2) | charged and discharged energy since the installation |
+| `charge-total` | number | Wh | kWh (1), MWh (2) | energy of all charging sessions |
+| `charge-total-solar` | number | % | | solar share of all sessions |
+| `charge-total-price` | number | ct/kWh | | average price of all sessions |
 | `charge-year`, `charge-year-solar`, `charge-year-price` | | | | the same for this year |
-| `pv-today` | number | kWh | 1 | PV yield of today |
-| `home-today` | number | kWh | 1 | home consumption of today |
-| `grid-import-today`, `grid-export-today` | number | kWh | 1 | grid import and export of today |
-| `battery-charge-today`, `battery-discharge-today` | number | kWh | 1 | battery charged and discharged today |
-| `charge-today` | number | kWh | 1 | energy of the charging sessions of today |
-| `forecast-today`, `forecast-tomorrow` | number | kWh | 1 | solar forecast of today and tomorrow |
+| `pv-today` | number | Wh | kWh (1), MWh (2) | PV yield of today |
+| `home-today` | number | Wh | kWh (1), MWh (2) | home consumption of today |
+| `grid-import-today`, `grid-export-today` | number | Wh | kWh (1), MWh (2) | grid import and export of today |
+| `battery-charge-today`, `battery-discharge-today` | number | Wh | kWh (1), MWh (2) | battery charged and discharged today |
+| `charge-today` | number | Wh | kWh (1), MWh (2) | energy of the charging sessions of today |
+| `forecast-today`, `forecast-tomorrow` | number | Wh | kWh (1), MWh (2) | solar forecast of today and tomorrow |
 | `loadpoint` | text | | | vehicle or name of the first loadpoint |
 | `loadpoint-mode` | text | | | its charge mode |
 | `loadpoint-status` | text | | | charging, connected or not connected |
-| `loadpoint-soc` | number | % | 0 | its state of charge |
-| `loadpoint-limit` | number | % | 0 | its charge limit |
-| `loadpoint-range` | number | km | 0 | its range |
-| `loadpoint-power` | number | kW | 1 | its charge power |
-| `session-energy` | number | kWh | 1 | energy of its session |
-| `session-solar` | number | % | 0 | solar share of its session |
+| `loadpoint-soc` | number | % | | its state of charge |
+| `loadpoint-limit` | number | % | | its charge limit |
+| `loadpoint-range` | number | km | | its range |
+| `loadpoint-power` | number | W | kW (1), MW (2) | its charge power |
+| `session-energy` | number | Wh | kWh (1), MWh (2) | energy of its session |
+| `session-solar` | number | % | | solar share of its session |
 | `remaining` | duration | | | time until it is full |
+
+The table names the base unit the plugin answers in and the larger steps Paperboy may use. Paperboy writes a value in the largest step whose rounded absolute value is at least 1 ([ADR 0122](../adr/0122-hide-and-progress-a-unit.md)). A cell's `scale` forces a step, and `unit: none` hides the unit text.
+
+```yaml
+cells:
+  - { at: [0, 2], span: [9, 1], value: evcc/pv, label: PV }
+  - { at: [9, 2], span: [11, 1], value: evcc/pv, scale: W, align: right }
+  - { at: [0, 3], span: [20, 1], value: evcc/pv-energy, unit: none }
+```
 
 The loadpoint values read the argument `index`, the loadpoint counted from 0 (default 0), like the `loadpoint` widget. A `values` request carries one argument set, so the other values ignore it.
 

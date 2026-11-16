@@ -89,6 +89,9 @@ func textCellNode(c Cell) *yaml.Node {
 		if c.Unit != "" {
 			add(n, "unit", str(c.Unit))
 		}
+		if c.Scale != "" {
+			add(n, "scale", str(c.Scale))
+		}
 		if len(c.Args) > 0 {
 			add(n, "args", valueNode(c.Args))
 		}

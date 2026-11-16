@@ -28,14 +28,14 @@ func flowFixture(t *testing.T, name string) *evcc {
 
 func TestFlowValues(t *testing.T) {
 	want := map[string][3]float64{
-		"flow_export":              {6.2, 0.4, -2.1},
-		"flow_import":              {0, 1.5, 5.2},
-		"flow_battery_charging":    {3.7, 0.7, 0},
-		"flow_battery_discharging": {0, 1.2, 0},
-		"flow_no_battery":          {4.6, 0.8, -0.1},
-		"flow_no_loadpoint":        {2.0, 0.9, -1.1},
-		"flow_two_loadpoints":      {5.0, 0.6, 0.5},
-		"flow_discharge_export":    {0, 0.8, -2.2},
+		"flow_export":              {6200, 400, -2100},
+		"flow_import":              {0, 1500, 5200},
+		"flow_battery_charging":    {3700, 700, 0},
+		"flow_battery_discharging": {0, 1200, 0},
+		"flow_no_battery":          {4600, 800, -100},
+		"flow_no_loadpoint":        {2000, 900, -1100},
+		"flow_two_loadpoints":      {5000, 600, 500},
+		"flow_discharge_export":    {0, 800, -2200},
 	}
 	for name, exp := range want {
 		e := flowFixture(t, name)
