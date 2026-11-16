@@ -32,7 +32,7 @@ type fakeShare struct {
 	mu        sync.Mutex
 	values    []reading // oldest first
 	refuse    bool
-	expire    bool // answer SessionIdNotFound once
+	expire    string // fault code to answer once, empty for none
 	auths     int
 	logins    int
 	reads     int
@@ -65,10 +65,11 @@ func (f *fakeShare) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		count, _ := strconv.Atoi(r.URL.Query().Get("maxCount"))
 		minutes, _ := strconv.Atoi(r.URL.Query().Get("minutes"))
 		f.lastCount, f.lastMin = count, minutes
-		if f.expire {
-			f.expire = false
+		if f.expire != "" {
+			code := f.expire
+			f.expire = ""
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"Code":"SessionIdNotFound","Message":"Failed to find session object."}`))
+			fmt.Fprintf(w, `{"Code":%q,"Message":"the session is gone"}`, code)
 			return
 		}
 		if r.URL.Query().Get("sessionId") != testSession {
@@ -574,22 +575,26 @@ func TestStateOfAnotherAccount(t *testing.T) {
 	}
 }
 
-// A session the service forgot costs one new login, not a restart.
+// A session the service forgot or timed out costs one new login, not a restart.
 func TestExpiredSession(t *testing.T) {
-	now := time.Now()
-	d, f, _ := newTestDexcom(t, now)
-	if err := d.update(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if f.logins != 1 {
-		t.Fatalf("%d logins", f.logins)
-	}
-	f.expire = true
-	if err := d.update(context.Background()); err != nil {
-		t.Fatalf("the expired session was not renewed: %v", err)
-	}
-	if f.logins != 2 {
-		t.Errorf("%d logins after the expiry, want 2", f.logins)
+	for _, code := range []string{"SessionIdNotFound", "SessionNotValid", "SessionNotFound"} {
+		t.Run(code, func(t *testing.T) {
+			now := time.Now()
+			d, f, _ := newTestDexcom(t, now)
+			if err := d.update(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if f.logins != 1 {
+				t.Fatalf("%d logins", f.logins)
+			}
+			f.expire = code
+			if err := d.update(context.Background()); err != nil {
+				t.Fatalf("the expired session was not renewed: %v", err)
+			}
+			if f.logins != 2 {
+				t.Errorf("%d logins after the expiry, want 2", f.logins)
+			}
+		})
 	}
 }
 

@@ -28,6 +28,12 @@ var shareRegions = map[string]string{
 // null.
 var errRefused = errors.New("the credentials were refused")
 
+// errSession means the service did not accept the session of a reading. A
+// session it never had answers SessionIdNotFound, a timed-out one
+// SessionNotValid, and some deployments say SessionNotFound; each costs one new
+// login.
+var errSession = errors.New("the service does not accept the session")
+
 // shareClient speaks the parts of the Share service this plugin needs.
 type shareClient struct {
 	base  string
@@ -134,35 +140,47 @@ func (c *shareClient) post(path string, query url.Values, body []byte) ([]byte, 
 		return nil, err
 	}
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return nil, fmt.Errorf("%s", faultText(ans, res.StatusCode))
+		code, text := faultOf(ans, res.StatusCode)
+		if isSessionFault(code) {
+			return nil, fmt.Errorf("%s: %w", text, errSession)
+		}
+		return nil, errors.New(text)
 	}
 	return ans, nil
 }
 
-// faultText names the reason of a failed call. The service answers a JSON
-// object with Code and Message; anything else is cut.
-func faultText(body []byte, status int) string {
+// faultOf names the reason of a failed call. The service answers a JSON object
+// with Code and Message; anything else is cut.
+func faultOf(body []byte, status int) (code, text string) {
 	var f struct {
 		Code    string `json:"Code"`
 		Message string `json:"Message"`
 	}
 	if err := json.Unmarshal(bytes.TrimSpace(body), &f); err == nil && f.Code != "" {
 		if f.Message != "" {
-			return f.Code + ": " + f.Message
+			return f.Code, f.Code + ": " + f.Message
 		}
-		return f.Code
+		return f.Code, f.Code
 	}
-	text := strings.Trim(strings.TrimSpace(string(body)), `"`)
+	text = strings.Trim(strings.TrimSpace(string(body)), `"`)
 	if text == "" {
-		return fmt.Sprintf("HTTP %d", status)
+		return "", fmt.Sprintf("HTTP %d", status)
 	}
-	return fmt.Sprintf("HTTP %d: %s", status, truncate(text, 200))
+	return "", fmt.Sprintf("HTTP %d: %s", status, truncate(text, 200))
 }
 
-// isSessionGone reports whether the service forgot the session, which costs
-// one new login.
+// isSessionFault reports a fault that names a session the service does not
+// accept. The service says SessionIdNotFound for a session it never had,
+// SessionNotValid for one that timed out and, on some deployments,
+// SessionNotFound.
+func isSessionFault(code string) bool {
+	return strings.Contains(code, "Session") && strings.Contains(code, "Not")
+}
+
+// isSessionGone reports whether the service did not accept the session, which
+// costs one new login.
 func isSessionGone(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "SessionIdNotFound")
+	return errors.Is(err, errSession)
 }
 
 // parseReadings reads the answer of the readings call: a JSON array, or the
