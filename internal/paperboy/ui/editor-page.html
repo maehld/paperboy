@@ -107,6 +107,9 @@ input[type=search] { margin-bottom: .4rem; }
 .panel.serves td.pick select.none { color: #888; background: #f4f4f4; }
 .types-label { margin: .55rem 0 .15rem; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: #666; font-weight: 600; }
 ul.variant-types { margin: 0; padding-left: 1.1rem; font-size: .85rem; }
+ul.variant-types a { color: #134e9c; text-decoration: none; }
+ul.variant-types a:hover { text-decoration: underline; }
+ul.variant-types a.active { font-weight: 700; color: #111; }
 /* The two actions of a variant sit side by side under its display types. */
 .variant-actions { display: flex; gap: .5rem; margin-top: .8rem; }
 .variant-actions button { flex: 1 1 0; }
@@ -227,7 +230,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     {{if .IsVariant}}<section class="panel">
       <h3>Variant</h3>
       <p class="types-label">Assigned display types</p>
-      {{if .VariantTypes}}<ul class="variant-types">{{range .VariantTypes}}<li>{{.}}</li>{{end}}</ul>{{else}}<p class="hint">none</p>{{end}}
+      {{if .VariantTypes}}<ul class="variant-types">{{range .VariantTypes}}<li>{{if .URL}}<a href="{{.URL}}"{{if .Selected}} class="active" aria-current="true"{{end}}>{{.Name}}</a>{{else}}{{.Name}}{{end}}</li>{{end}}</ul>{{else}}<p class="hint">none</p>{{end}}
       {{if not .Orphan}}<div class="variant-actions">
         <button type="button" data-dialog="rename-variant">Rename…</button>
         <button type="button" data-dialog="reassign"{{if not .ReassignPages}} disabled title="No other page has a page file yet"{{end}}>Reassign…</button>

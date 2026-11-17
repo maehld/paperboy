@@ -277,7 +277,7 @@ func TestEditorVariantsPanel(t *testing.T) {
 		`"page_title":"Solar"`,
 		`<h3>Variant</h3>`,
 		`<p class="types-label">Assigned display types</p>`,
-		`<ul class="variant-types"><li>small</li></ul>`,
+		`<ul class="variant-types"><li><a href="/ui/editor/page?display=small&amp;file=hochkant&amp;name=solar" class="active" aria-current="true">small</a></li></ul>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the variant misses %q:\n%s", want, body)
@@ -725,6 +725,46 @@ func TestEditorPage(t *testing.T) {
 	}
 	if rec := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&file=nope", nil, nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("missing variant: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// TestVariantPreviewSwitch checks that a variant which several display types
+// name lists each type as a preview link and marks the type the board renders
+// (ADR 0110).
+func TestVariantPreviewSwitch(t *testing.T) {
+	s := editorServer(t)
+	s.config().Profiles["wide"] = Profile{Width: 80, Height: 20, PPI: 125, Levels: 4}
+	writePage(t, s, "solar", "", `
+title: Solar
+kind: image
+grid: [2, 2]
+variants:
+  small: hochkant
+  wide: hochkant
+cells:
+  - { at: [0, 0], span: [2, 1], widget: paperboy/header }
+`)
+	writePage(t, s, "solar", "hochkant", variantPage)
+
+	body := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&file=hochkant", nil, nil).Body.String()
+	for _, want := range []string{
+		`<li><a href="/ui/editor/page?display=small&amp;file=hochkant&amp;name=solar" class="active" aria-current="true">small</a></li>`,
+		`<li><a href="/ui/editor/page?display=wide&amp;file=hochkant&amp;name=solar">wide</a></li>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the variant lacks %q:\n%s", want, body)
+		}
+	}
+
+	// The other type renders the same file, so the board follows the link.
+	body = request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=wide&file=hochkant", nil, nil).Body.String()
+	for _, want := range []string{
+		`<li><a href="/ui/editor/page?display=small&amp;file=hochkant&amp;name=solar">small</a></li>`,
+		`<li><a href="/ui/editor/page?display=wide&amp;file=hochkant&amp;name=solar" class="active" aria-current="true">wide</a></li>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the switched variant lacks %q:\n%s", want, body)
+		}
 	}
 }
 
