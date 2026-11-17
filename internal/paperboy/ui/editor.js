@@ -40,7 +40,8 @@
     signedOut: false, // the UI password changed: stop previews until the page reloads (ADR 0096)
     previewKind: '', // '' none, 'image' or 'text'
     previewLines: [], // the text lines of a text display, one char per cell
-    gridLock: false, // keep the page cells square on the preview display type (ADR 0128)
+    gridLock: false, // keep the grid ratio when one axis changes (ADR 0128)
+    gridRatio: null, // [columns, rows] the lock derives from, captured when it is switched on
   };
 
   let suppressPaletteClick = false; // a finished palette drag must not toggle placing
@@ -504,6 +505,7 @@
       el('grid-note').textContent = '';
       return;
     }
+    if (state.gridLock && !state.gridRatio) state.gridRatio = t.grid.slice();
     const s = t.style || {};
     el('title').value = t.title || state.page_title || '';
     el('cols').value = rowsPage() ? state.width : t.grid[0];
@@ -526,14 +528,16 @@
   }
 
   // gridFromInputs reads both fields. While the lock is on, the axis the
-  // operator did not change follows the display's page size, so the cells stay
-  // square; the other axis keeps the chosen density (ADR 0128).
+  // operator did not change follows the ratio the lock was switched on with,
+  // rounded up: 6 × 8 gives 3 × 4, and 2 × 3 as well (ADR 0128). The ratio is
+  // the base, not the rounded result, so repeated changes do not drift.
   function gridFromInputs(t, source) {
     const cols = clampCells(Number(el('cols').value) || t.grid[0]);
     const rows = clampCells(Number(el('rows').value) || t.grid[1]);
-    if (!state.gridLock || !(state.width > 0 && state.height > 0)) return [cols, rows];
-    if (source === 'rows') return [clampCells(rows * state.width / state.height), rows];
-    return [cols, clampCells(cols * state.height / state.width)];
+    const r = state.gridLock ? state.gridRatio : null;
+    if (!r || !(r[0] > 0 && r[1] > 0)) return [cols, rows];
+    if (source === 'rows') return [clampCells(Math.ceil(rows * r[0] / r[1])), rows];
+    return [cols, clampCells(Math.ceil(cols * r[1] / r[0]))];
   }
 
   // cellSizeText names the pixels of one cell and how far they are from
@@ -553,19 +557,22 @@
   function renderGridLock(off) {
     const b = el('grid-lock');
     if (!b) return;
-    b.hidden = rowsPage() || text() || !state.template;
-    b.disabled = off === undefined ? !state.template || state.readOnly : off;
+    const t = state.template;
+    b.hidden = rowsPage() || text() || !t;
+    b.disabled = off === undefined ? !t || state.readOnly : off;
     b.setAttribute('aria-pressed', state.gridLock ? 'true' : 'false');
+    const ratio = state.gridRatio ? state.gridRatio[0] + ' × ' + state.gridRatio[1] : '';
     b.title = state.gridLock
-      ? 'Cells stay square on ' + state.display + '; click to unlock'
-      : 'Keep the cells square on ' + state.display;
+      ? 'The grid keeps ' + ratio + ' when one axis changes; click to release'
+      : 'Keep the grid ratio when one axis changes';
   }
 
-  // setGridLock remembers the lock. It changes nothing by itself: like the
-  // chain of an image editor it applies to the next change of an axis, so a
-  // page with cells near its edge keeps its grid.
+  // setGridLock remembers the lock and the ratio it holds. The lock changes
+  // nothing by itself: like the chain of an image editor it applies to the next
+  // change of an axis, so a page keeps its grid and the ratio does not drift.
   function setGridLock(on) {
     state.gridLock = !!on;
+    state.gridRatio = state.gridLock && state.template ? state.template.grid.slice() : null;
     try {
       localStorage.setItem('paperboy.editor.gridlock', state.gridLock ? '1' : '0');
     } catch (e) {
@@ -2150,6 +2157,7 @@
 
   async function load() {
     setStatus('');
+    state.gridRatio = null;
     if (state.widgetsPage) {
       loadWidgetsPage();
       return;
