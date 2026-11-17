@@ -124,7 +124,7 @@ the plan's action validation.
   `kind` is `value` (default) or `list`; protocol 7 answers only single values. A value is data, not text: the plugin never pads or formats it.
   `args` uses the same [argument schema](#arguments) as a widget; an empty or missing map means the value reads none.
 - `version` is the plugin's own version, matching the `-v<version>` of its program name ([ADR 0075](../adr/0075-plugin-versions.md)). It is optional; Paperboy compares it with the file name and logs one warning when they differ.
-- `widgets[].sizes` are spans of the 6 × 8 reference grid, hints for an editor.
+- `widgets[].sizes` are spans of the 6 × 8 reference grid, hints for an editor. Paperboy maps them onto the page grid when it places a cell ([ADR 0128](../adr/0128-a-default-grid-per-display-type.md)).
 - `args` use the same [argument schema](#arguments) as configuration keys.
 - `actions[].name` is the action name without the plugin prefix. A plan
   references it as `plugin/name`.

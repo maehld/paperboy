@@ -99,6 +99,10 @@ type Profile struct {
 	// ScrollStep is the time between two marquee steps of a text display
 	// (ADR 0118); 300 ms unless the display type sets scroll.step.
 	ScrollStep time.Duration `json:"scroll_step,omitempty"`
+	// Grid is the default grid of a new image page of this type (ADR 0128):
+	// six by eight unless the display type names another one. A page owns its
+	// own grid, so this only decides where the editor starts. Nil for text.
+	Grid *[2]int `json:"grid,omitempty"`
 }
 
 // validRotation reports whether n is one of the quarter turns a device and a
@@ -755,6 +759,14 @@ func validateProfile(name string, p *Profile) error {
 		}
 		if p.Levels != 2 && p.Levels != 4 && p.Levels != 16 {
 			return fmt.Errorf("display type %s: gray_levels must be 1, 4 or 16", name)
+		}
+		if p.Grid == nil {
+			g := defaultGrid
+			p.Grid = &g
+		}
+		if p.Grid[0] < 1 || p.Grid[1] < 1 || p.Grid[0] > maxGrid || p.Grid[1] > maxGrid {
+			return fmt.Errorf("display type %s: grid [%d, %d]: expected [columns, rows] between 1 and %d",
+				name, p.Grid[0], p.Grid[1], maxGrid)
 		}
 	}
 	if !validRotation(p.Rotation) {

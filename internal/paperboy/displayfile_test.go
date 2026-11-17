@@ -34,6 +34,7 @@ ppi: 125
 min_refresh: 1m
 power: mains
 rotation: 90
+grid: [10, 6]
 `
 	f, err := parseDisplayFile([]byte(src))
 	if err != nil {
@@ -44,7 +45,7 @@ rotation: 90
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(data), "min_refresh: 1m\n") || !strings.Contains(string(data), "size: [800, 480]\n") ||
-		!strings.Contains(string(data), "rotation: 90\n") {
+		!strings.Contains(string(data), "rotation: 90\n") || !strings.Contains(string(data), "grid: [10, 6]\n") {
 		t.Fatalf("layout:\n%s", data)
 	}
 	again, err := parseDisplayFile(data)
@@ -85,6 +86,19 @@ func TestDisplayFileValidation(t *testing.T) {
 	if p.Power != powerAuto || p.Kind != kindImage || p.Levels != 2 || p.Width != 800 {
 		t.Fatalf("image defaults: %+v", p)
 	}
+	// The grid of a new page: six by eight unless the display type names one
+	// (ADR 0128), and never on a text type.
+	if g := gridOf(p); g != [2]int{6, 8} {
+		t.Fatalf("default grid: %v", g)
+	}
+	wide := displayFile{Kind: kindImage, Size: [2]int{800, 480}, PPI: 125, Grid: &[2]int{10, 6}}
+	wp := wide.profile()
+	if err := validateProfile("wide", &wp); err != nil {
+		t.Fatal(err)
+	}
+	if g := gridOf(wp); g != [2]int{10, 6} {
+		t.Fatalf("named grid: %v", g)
+	}
 	text := displayFile{Kind: kindText, Size: [2]int{20, 4}}
 	tp := text.profile()
 	if err := validateProfile("lcd", &tp); err != nil || tp.Charset != "utf8" {
@@ -107,6 +121,8 @@ func TestDisplayFileValidation(t *testing.T) {
 		{"name", displayFile{Size: [2]int{800, 480}, PPI: 125}, "only a-z"},
 		{"kind", displayFile{Kind: "led", Size: [2]int{800, 480}, PPI: 125}, "unknown kind"},
 		{"missing ppi", displayFile{Size: [2]int{800, 480}}, "ppi is required"},
+		{"grid on a text type", displayFile{Kind: kindText, Size: [2]int{20, 4}, Grid: &[2]int{8, 6}}, "only applies to kind image"},
+		{"grid without rows", displayFile{Kind: kindImage, Size: [2]int{800, 480}, PPI: 125, Grid: &[2]int{0, 6}}, "expected [columns, rows]"},
 		{"low ppi", displayFile{Size: [2]int{800, 480}, PPI: 19}, "ppi is required"},
 		{"high ppi", displayFile{Size: [2]int{800, 480}, PPI: 1001}, "ppi is required"},
 		{"charset on image", displayFile{Size: [2]int{800, 480}, PPI: 125, Charset: "ascii"}, "charset only applies"},
@@ -153,7 +169,8 @@ func TestDisplayAPI(t *testing.T) {
 	if rec := request(t, s, http.MethodGet, "/api/displays/kueche", nil, nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("missing display type: %d", rec.Code)
 	}
-	model := &displayFile{Kind: kindImage, Size: [2]int{800, 480}, GrayLevels: 4, PPI: 125, MinRefresh: Duration(time.Minute)}
+	model := &displayFile{Kind: kindImage, Size: [2]int{800, 480}, GrayLevels: 4, PPI: 125, MinRefresh: Duration(time.Minute),
+		Grid: &[2]int{10, 6}}
 	var created editorDisplayType
 	rec := request(t, s, http.MethodPut, "/api/displays/kueche", displaySave{Display: model}, &created)
 	if rec.Code != http.StatusOK {
@@ -166,13 +183,15 @@ func TestDisplayAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "size: [800, 480]") || !strings.Contains(string(data), "min_refresh: 1m") {
+	if !strings.Contains(string(data), "size: [800, 480]") || !strings.Contains(string(data), "min_refresh: 1m") ||
+		!strings.Contains(string(data), "grid: [10, 6]") {
 		t.Fatalf("file:\n%s", data)
 	}
 
 	var read editorDisplayType
 	if rec := request(t, s, http.MethodGet, "/api/displays/kueche", nil, &read); rec.Code != http.StatusOK ||
-		read.Hash != created.Hash || read.Display == nil || read.Display.GrayLevels != 4 {
+		read.Hash != created.Hash || read.Display == nil || read.Display.GrayLevels != 4 ||
+		read.Display.Grid == nil || *read.Display.Grid != [2]int{10, 6} {
 		t.Fatalf("read: %d %+v %s", rec.Code, read, rec.Body)
 	}
 

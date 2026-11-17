@@ -149,7 +149,7 @@
         style: {},
       };
     }
-    const grid = text() ? [state.width, state.height] : (state.widgetsPage ? state.reference.slice() : state.grid.slice());
+    const grid = text() ? [state.width, state.height] : state.grid.slice();
     return { title: state.file ? '' : state.name, kind: state.kind, grid: grid, style: {}, cells: [] };
   }
 
@@ -193,6 +193,20 @@
       style: c.style || {},
     }));
     return t;
+  }
+
+  // mapSpan turns a span of the 6×8 reference grid into the page grid, so a
+  // widget that asks for half the width keeps half the width on 8×6 or 10×6
+  // as well (ADR 0128). It rounds and clamps to the grid.
+  function mapSpan(span, grid) {
+    const axis = (cells, want, of) => Math.max(1, Math.min(want, Math.round(cells * want / of)));
+    return [axis(span[0], grid[0], 6), axis(span[1], grid[1], 8)];
+  }
+
+  // cellGrid is the grid the cells are placed on: the open file's, or the
+  // display type's on the widgets page.
+  function cellGrid() {
+    return state.template && state.template.grid ? state.template.grid : state.grid;
   }
 
   function num(value) {
@@ -689,7 +703,7 @@
         if (w.sizes && w.sizes.length) {
           const s = document.createElement('span');
           s.className = 'note';
-          s.textContent = w.sizes.map((size) => size.columns + '×' + size.rows).join(', ');
+          s.textContent = w.sizes.map((size) => mapSpan([size.columns, size.rows], cellGrid()).join('×')).join(', ');
           b.appendChild(s);
         }
         b.addEventListener('click', () => pick(p.name, w.widget));
@@ -734,9 +748,9 @@
   // size its plugin declares.
   function setWidget(plugin, widget) {
     const info = widgetInfo(plugin, widget);
-    let span = info && info.sizes && info.sizes.length ? [info.sizes[0].columns, info.sizes[0].rows] : [2, 1];
+    const ref = info && info.sizes && info.sizes.length ? [info.sizes[0].columns, info.sizes[0].rows] : [2, 1];
     const grid = state.template.grid;
-    span = [Math.max(1, Math.min(span[0], grid[0])), Math.max(1, Math.min(span[1], grid[1]))];
+    const span = mapSpan(ref, grid);
     state.template.cells = [{ at: [0, 0], span: span, widget: plugin + '/' + widget, args: {}, style: {} }];
     state.selected = 0;
   }
@@ -766,7 +780,8 @@
     const t = state.template;
     if (!t) return;
     const info = widgetInfo(plugin, widget);
-    let span = info && info.sizes && info.sizes.length ? [info.sizes[0].columns, info.sizes[0].rows] : [1, 1];
+    const ref = info && info.sizes && info.sizes.length ? [info.sizes[0].columns, info.sizes[0].rows] : [1, 1];
+    let span = mapSpan(ref, t.grid);
     span = [Math.max(1, Math.min(span[0], t.grid[0] - x)), Math.max(1, Math.min(span[1], t.grid[1] - y))];
     if (overlaps(x, y, span[0], span[1], -1)) {
       span = [1, 1];
@@ -1834,6 +1849,8 @@
     if (!c) return params;
     params.set('widget', c.widget);
     params.set('span', c.span[0] + 'x' + c.span[1]);
+    const grid = cellGrid();
+    params.set('grid', grid[0] + 'x' + grid[1]);
     for (const [name, value] of Object.entries(c.args || {})) {
       params.set('arg.' + name, Array.isArray(value) ? value.join(', ') : String(value));
     }
@@ -2044,7 +2061,9 @@
     const error = el('preview-error');
     const c = state.template.cells[0];
     const [plugin, widget] = c.widget.split('/');
-    const params = new URLSearchParams({ display: state.display, span: c.span[0] + 'x' + c.span[1] });
+    const grid = state.template.grid;
+    const params = new URLSearchParams({ display: state.display, span: c.span[0] + 'x' + c.span[1],
+      grid: grid[0] + 'x' + grid[1] });
     for (const [name, value] of Object.entries(c.args || {})) params.set('arg.' + name, JSON.stringify(value));
     let res;
     try {
@@ -2216,7 +2235,8 @@
   async function createVariant(display, label) {
     const info = state.displays.find((d) => d.name === display) || {};
     const kind = info.kind === 'text' ? 'text' : 'image';
-    const grid = kind === 'text' ? [info.width, info.height] : state.reference.slice();
+    const grid = kind === 'text' ? [info.width, info.height]
+      : (info.grid && info.grid.length ? info.grid.slice() : state.reference.slice());
     const template = kind === 'text'
       ? { kind: 'text', overflow: 'strip', cells: [{ at: [0, 0], span: [Math.max(1, info.width), 1], text: 'Text' }], style: {} }
       : { kind: kind, grid: grid, style: {}, cells: [blankCell(kind, grid)] };

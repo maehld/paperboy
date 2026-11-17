@@ -71,6 +71,7 @@ The content model: what a page is, what draws in it and when it is shown. See [`
 | [0120](0120-arguments-for-values.md) | Arguments for values | Accepted, implemented; extends the values of [ADR-0111](0111-text-pages-from-plugin-values.md) with arguments per value, like widgets have them ([ADR-0055](0055-allowed-arg-values-and-gallery-form.md)) |
 | [0121](0121-segmented-battery-gauge.md) | A segmented gauge for the battery | Accepted, implemented; replaces the drawing and the sizes of the `battery` widget of [ADR-0115](0115-device-status-in-a-widget.md) and supersedes its point 5 (the header shows an icon and a percentage) |
 | [0122](0122-hide-and-progress-a-unit.md) | Hide and progress a text value's unit | Accepted, implemented; extends the units of [ADR-0111](0111-text-pages-from-plugin-values.md) with `unit: none`, a declared progression and the cell key `scale` |
+| [0128](0128-a-default-grid-per-display-type.md) | A default grid per display type | Accepted, implemented; keeps the reference grid of [ADR-0049](0049-plugin-widgets.md) for declarations, adds `grid` to a display type as the start for new pages, and leaves the variant rule of [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md) alone |
 
 ## Devices and the device protocol
 

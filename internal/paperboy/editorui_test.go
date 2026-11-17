@@ -1,6 +1,8 @@
 package paperboy
 
 import (
+	"bytes"
+	"image/png"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -665,7 +667,7 @@ func TestEditorPage(t *testing.T) {
 	for _, want := range []string{
 		`"name":"solar","display":"small","file":"","kind":"image","width":40,"height":20,"new":false,"grid":[2,2],"reference":[6,8],"page_hash":`,
 		`"page_exists":true`,
-		`"displays":[{"name":"lcd","kind":"text","width":20,"height":4,"scroll_step":300},{"name":"small","kind":"image","width":40,"height":20}]`,
+		`"displays":[{"name":"lcd","kind":"text","width":20,"height":4,"scroll_step":300},{"name":"small","kind":"image","width":40,"height":20,"grid":[6,8]}]`,
 		// The preview type is the served one; the file is not a link there.
 		`data-serves="small"`,
 		`"rename":{"url":"/api/pages/solar/rename"}`,
@@ -723,6 +725,49 @@ func TestEditorPage(t *testing.T) {
 	}
 	if rec := request(t, s, http.MethodGet, "/ui/editor/page?name=solar&display=small&file=nope", nil, nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("missing variant: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// TestEditorGridFromDisplayType checks the default grid of a display type
+// (ADR 0128): a new page starts there, the Playground previews a cell at the
+// page's grid, and the widget endpoint divides the page by it.
+func TestEditorGridFromDisplayType(t *testing.T) {
+	s := editorServer(t)
+	grid := [2]int{10, 6}
+	s.config().Profiles["wide"] = Profile{Width: 800, Height: 480, PPI: 125, Levels: 2, Grid: &grid}
+
+	// A new image page starts at the type's grid; the reference grid stays
+	// 6 × 8, because plugins declare their sizes on it.
+	body := request(t, s, http.MethodGet, "/ui/editor/page?name=neu&kind=image&display=wide&new=1", nil, nil).Body.String()
+	for _, want := range []string{`"kind":"image","width":800,"height":480,"new":true`, `"grid":[10,6]`, `"reference":[6,8]`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("new page on the wide type lacks %q:\n%s", want, body)
+		}
+	}
+	// The type list names the grid, so a new variant starts from it too.
+	if !strings.Contains(body, `"name":"wide","kind":"image","width":800,"height":480,"grid":[10,6]`) {
+		t.Fatalf("the type list lacks the grid:\n%s", body)
+	}
+
+	// A Playground link from a page carries the page's grid, so the state and
+	// the preview use the cell the widget really gets.
+	body = request(t, s, http.MethodGet, "/ui/plugins?display=wide&widget=paperboy/clock&span=5x3&grid=10x6", nil, nil).Body.String()
+	for _, want := range []string{`"display":"wide"`, `"span":[5,3]`, `"grid":[10,6]`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the widgets page lacks %q:\n%s", want, body)
+		}
+	}
+
+	// The endpoint divides the page by the grid: 5×3 of 10×6 on 800×480.
+	rec := preview(t, s, "/api/widget/paperboy/clock?display=wide&span=5x3&grid=10x6")
+	img, err := png.Decode(bytes.NewReader(rec.Body.Bytes()))
+	if err != nil || img.Bounds().Dx() != 400 || img.Bounds().Dy() != 240 {
+		t.Fatalf("cell of the page grid: %v %v", img.Bounds(), err)
+	}
+	// Without a span the preview is half of the type's default grid.
+	rec = preview(t, s, "/api/widget/paperboy/clock?display=wide")
+	if img, err := png.Decode(bytes.NewReader(rec.Body.Bytes())); err != nil || img.Bounds().Dx() != 400 || img.Bounds().Dy() != 240 {
+		t.Fatalf("default cell: %v %v", img.Bounds(), err)
 	}
 }
 
@@ -793,7 +838,7 @@ func TestEditorScript(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "previewBody()", "PUT", "pointerdown", "handle-xy", "firstWidget",
+	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "previewBody()", "mapSpan(", "PUT", "pointerdown", "handle-xy", "firstWidget",
 		"renderTextInspector", "textCellFields(box, c)", "where.className = 'muted'", "placeTextAt", "startPaletteDrag"} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("script lacks %q", want)

@@ -89,7 +89,7 @@ func TestDisplayEditorScript(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	for _, want := range []string{"/api/displays/", "PUT", "displays/", "Math.hypot", "25.4"} {
+	for _, want := range []string{"/api/displays/", "PUT", "displays/", "Math.hypot", "25.4", "grid-cols", "suggestedGrid"} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("script lacks %q", want)
 		}
