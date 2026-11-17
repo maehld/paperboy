@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -101,6 +102,7 @@ type Host struct {
 	mismatch map[string]bool        // plugin -> version mismatch already logged
 	blobNote map[string]bool        // plugin -> undeclared blobs already logged
 	descs    map[string]descEntry   // plugin -> last describe answer, for values
+	declGen  map[string]int         // plugin -> generation of its declaration; cached values of an older one are stale
 	builtMu  sync.Mutex
 	builtCfg map[string]bool
 
@@ -121,12 +123,21 @@ type descEntry struct {
 	at   time.Time
 }
 
+// declaration is a describe answer and the generation of its declaration. A
+// value entry is only valid while its generation is current: a program that
+// changed declares its values anew (issue #285).
+type declaration struct {
+	desc *plugin.Description
+	gen  int
+}
+
 // entry is one cached widget or value and what is needed to render it again.
 type entry struct {
 	job      job
 	img      image.Image
 	value    *plugin.Value
 	spec     plugin.ValueSpec
+	declGen  int // generation of spec; values only
 	stale    bool
 	created  time.Time // when the plugin drew it; the runtime page ages the cache by it (ADR 0104)
 	expires  time.Time
@@ -135,13 +146,14 @@ type entry struct {
 
 // job is one widget request with its request header.
 type job struct {
-	plugin string
-	action string
-	levels int
-	page   plugin.PageInfo
-	widget plugin.WidgetRequest
-	spec   plugin.ValueSpec   // action values: the declaration of the value
-	device *plugin.DeviceInfo // action values: the display the page is for
+	plugin  string
+	action  string
+	levels  int
+	page    plugin.PageInfo
+	widget  plugin.WidgetRequest
+	spec    plugin.ValueSpec   // action values: the declaration of the value
+	declGen int                // action values: the generation of that declaration
+	device  *plugin.DeviceInfo // action values: the display the page is for
 }
 
 func (j job) key(env Env) string {
@@ -216,6 +228,7 @@ func (h *Host) Configure(specs map[string]Spec, env Env) {
 		if now, ok := specs[name]; ok && sameSpec(now, spec) {
 			continue
 		}
+		h.nextDeclarations(name)
 		for k, e := range h.cache {
 			if e.job.plugin == name {
 				delete(h.cache, k)
@@ -295,15 +308,15 @@ func (h *Host) FetchValues(ctx context.Context, b page.ValueBatch) []page.Result
 	sort.Strings(names)
 	for _, name := range names {
 		idx := byPlugin[name]
-		desc, err := h.description(ctx, name)
+		decl, err := h.description(ctx, name)
 		if err != nil {
 			for _, i := range idx {
 				out[i] = page.Result{Err: err}
 			}
 			continue
 		}
-		known := make(map[string]plugin.ValueSpec, len(desc.Values))
-		for _, v := range desc.Values {
+		known := make(map[string]plugin.ValueSpec, len(decl.desc.Values))
+		for _, v := range decl.desc.Values {
 			known[v.Name] = v
 		}
 		var jobs []job
@@ -315,8 +328,8 @@ func (h *Host) FetchValues(ctx context.Context, b page.ValueBatch) []page.Result
 				out[i] = page.Result{Err: fmt.Errorf("plugin %q does not declare value %q", name, v.Name)}
 				continue
 			}
-			jobs = append(jobs, job{plugin: name, action: plugin.ActionValues, page: b.Page, spec: spec, device: b.Device,
-				widget: plugin.WidgetRequest{Widget: v.Name, Args: v.Args}})
+			jobs = append(jobs, job{plugin: name, action: plugin.ActionValues, page: b.Page, spec: spec, declGen: decl.gen,
+				device: b.Device, widget: plugin.WidgetRequest{Widget: v.Name, Args: v.Args}})
 			jobIdx = append(jobIdx, i)
 		}
 		if len(jobs) == 0 {
@@ -342,24 +355,43 @@ func (h *Host) FetchValues(ctx context.Context, b page.ValueBatch) []page.Result
 
 // description returns a cached describe answer, so a text page that polls
 // every second does not ask the plugin for its value declarations every time.
-func (h *Host) description(ctx context.Context, name string) (*plugin.Description, error) {
+func (h *Host) description(ctx context.Context, name string) (declaration, error) {
 	h.mu.Lock()
 	if e, ok := h.descs[name]; ok && h.now().Sub(e.at) < describeTTL {
+		d := declaration{desc: e.desc, gen: h.declGen[name]}
 		h.mu.Unlock()
-		return e.desc, nil
+		return d, nil
 	}
 	h.mu.Unlock()
 	d, err := h.Describe(ctx, name)
 	if err != nil {
-		return nil, err
+		return declaration{}, err
 	}
 	h.mu.Lock()
 	if h.descs == nil {
 		h.descs = map[string]descEntry{}
 	}
+	gen := h.declGen[name]
+	// A different declaration means the cached values were formatted by an
+	// older program or an older answer: drop them (issue #285).
+	if old, ok := h.descs[name]; ok && !reflect.DeepEqual(old.desc.Values, d.Values) {
+		gen = h.nextDeclarations(name)
+	}
 	h.descs[name] = descEntry{desc: d, at: h.now()}
 	h.mu.Unlock()
-	return d, nil
+	return declaration{desc: d, gen: gen}, nil
+}
+
+// nextDeclarations drops a plugin's describe answer and marks the values it
+// cached as stale, because the program or its declaration changed. Callers
+// hold h.mu. It returns the new generation.
+func (h *Host) nextDeclarations(name string) int {
+	delete(h.descs, name)
+	if h.declGen == nil {
+		h.declGen = map[string]int{}
+	}
+	h.declGen[name]++
+	return h.declGen[name]
 }
 
 // fetchPlugin answers the jobs of one plugin; jobs[n] belongs to the batch
@@ -376,7 +408,11 @@ func (h *Host) fetchPlugin(ctx context.Context, spec Spec, env Env, jobs []job, 
 		for n, i := range idx {
 			if e, ok := h.cache[jobs[n].key(env)]; ok {
 				e.lastUsed = now
-				if now.Before(e.expires) {
+				if e.job.action == plugin.ActionValues && e.declGen != h.declGen[jobs[n].plugin] {
+					// The declaration changed after this value was made: its
+					// unit and precision are outdated (issue #285).
+					delete(h.cache, jobs[n].key(env))
+				} else if now.Before(e.expires) {
 					out[i] = e.result(false)
 					continue
 				}
@@ -799,6 +835,10 @@ func (h *Host) maintain(ctx context.Context) {
 			delete(h.cache, k)
 			continue
 		}
+		if e.job.action == plugin.ActionValues && e.declGen != h.declGen[e.job.plugin] {
+			delete(h.cache, k) // formatted with an outdated declaration (issue #285)
+			continue
+		}
 		if e.expires.Sub(now) < refreshAhead && !now.Before(h.failing[e.job.plugin]) && h.needed(e.job.plugin, demand, now) {
 			due = append(due, e.job)
 		}
@@ -914,6 +954,12 @@ func (h *Host) evict() {
 func (h *Host) store(j job, env Env, e *entry) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if j.action == plugin.ActionValues {
+		if j.declGen != h.declGen[j.plugin] {
+			return // the declaration changed while the plugin answered
+		}
+		e.declGen = j.declGen
+	}
 	if h.cache == nil {
 		h.cache = map[string]*entry{}
 	}

@@ -57,12 +57,12 @@ A widget that cannot draw anything in its cell reports `ErrTooSmall` with the ce
 
 `internal/widget` owns the processes ([ADR 0049](../adr/0049-plugin-widgets.md)).
 
-- A plugin starts on first use. After an exit, after its `timeout` (default 30 seconds, killed) and after a change of its specification it is started again. Removed plugins drop their cached results.
+- A plugin starts on first use. After an exit, after its `timeout` (default 30 seconds, killed) and after a change of its specification it is started again. A new process may be another program, so it drops the describe answer and the cached results of the plugin. Removed plugins drop their cached results.
 - The cache is keyed by plugin, widget, arguments, size, gray levels, style, page, language, timezone and device. An entry lives until the plugin's `max_age` (default 5 minutes).
 - A background loop every 5 seconds renders an entry again only when the plugin's demand is within 30 seconds. Otherwise the entry stays expired until a device asks; the plugin answers from memory, so no device waits. The loop also sends the schedule event when the demand changes by more than a minute. Entries idle for an hour are evicted, and the cache holds at most 1000 entries.
 - A failing plugin serves its stale results and is not asked again for a minute.
 - The built-in plugin runs in process and is never cached.
-- Values get the same cache and the same `changed` event as widgets. A describe answer lives for five minutes, because it carries the declarations a text page uses to format a value.
+- Values get the same cache and the same `changed` event as widgets. A describe answer lives for five minutes, because it carries the declarations a text page uses to format a value. A cached value belongs to the declaration it was made with. A describe answer with different values drops the cached values of that plugin, so a unit never comes from an older program.
 
 The values of a plan's conditions use the normal value cache. Paperboy reads them before it selects a page, outside the state lock, and omits a missing or failing answer, so the condition does not match. A text display that polls every second and a condition that names the same value share that entry.
 

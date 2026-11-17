@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -102,12 +103,20 @@ func fakePlugin(mode string) {
 				{Name: "badenum", Type: plugin.ValueEnum, Enum: []string{"normal", "low"}},
 				{Name: "emptyenum", Type: plugin.ValueEnum, Enum: []string{"normal", "low"}},
 			}}
+			// FAKE_DECL names a file with "new": the fake declares "a" with
+			// another unit and precision, as a replaced program would (issue
+			// #285).
+			if path := os.Getenv("FAKE_DECL"); path != "" {
+				if b, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(b)) == "new" {
+					d.Values[0] = plugin.ValueSpec{Name: "a", Type: plugin.ValueNumber, Unit: "W"}
+				}
+			}
 			enc.Encode(plugin.Message{ID: req.ID, Version: version, Description: &d})
 			continue
 		}
 		appendFile(os.Getenv("FAKE_COUNT"))
 		if mode == "values" && req.Action == plugin.ActionValues {
-			msg := plugin.Message{ID: req.ID, Version: version, MaxAge: 60, Values: map[string]plugin.Value{}}
+			msg := plugin.Message{ID: req.ID, Version: version, MaxAge: maxAge(), Values: map[string]plugin.Value{}}
 			for _, name := range req.Values {
 				switch name {
 				case "a":
@@ -159,6 +168,15 @@ func fakePlugin(mode string) {
 			enc.Encode(plugin.Message{Version: version, Event: plugin.EventChanged, Changed: []string{"a"}})
 		}
 	}
+}
+
+// maxAge is the max_age the fake sends; FAKE_MAXAGE keeps a value valid longer
+// than describeTTL for the declaration tests.
+func maxAge() int {
+	if v, err := strconv.Atoi(os.Getenv("FAKE_MAXAGE")); err == nil && v > 0 {
+		return v
+	}
+	return 60
 }
 
 func appendFile(path string) {
@@ -262,6 +280,88 @@ func TestHostValues(t *testing.T) {
 	out = h.FetchValues(context.Background(), page.ValueBatch{Values: []page.ValueRequest{{Plugin: "fake", Name: "bad"}}})
 	if len(out) != 1 || out[0].Err == nil || !strings.Contains(out[0].Err.Error(), "no number") {
 		t.Fatalf("empty value: %+v", out)
+	}
+}
+
+// declSpecs configures the fake with a declaration file: while it holds "new",
+// the fake declares the value "a" with another unit and precision, as a
+// replaced program would (issue #285).
+func declSpecs(t *testing.T, mode string) (map[string]Spec, string) {
+	t.Helper()
+	f := newFake(t)
+	specs := f.spec(mode)
+	path := filepath.Join(t.TempDir(), "decl")
+	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	spec := specs["fake"]
+	spec.Env["FAKE_DECL"] = path
+	specs["fake"] = spec
+	return specs, path
+}
+
+func fetchValue(t *testing.T, h *Host, name string) page.Result {
+	t.Helper()
+	out := h.FetchValues(context.Background(), page.ValueBatch{Values: []page.ValueRequest{{Plugin: "fake", Name: name}}})
+	if len(out) != 1 || out[0].Err != nil {
+		t.Fatalf("value %s: %+v", name, out)
+	}
+	return out[0]
+}
+
+// TestHostDropsDeclarationsOnRestart checks that a plugin started again after
+// a crash uses the declaration of the new program for a value it cached before
+// (issue #285).
+func TestHostDropsDeclarationsOnRestart(t *testing.T) {
+	specs, decl := declSpecs(t, "values")
+	h := newHost(t, specs)
+	if r := fetchValue(t, h, "a"); r.Spec.Unit != "" || r.Spec.Precision != 1 {
+		t.Fatalf("old declaration: %+v", r.Spec)
+	}
+
+	// The program file is replaced and the process crashes; the same command
+	// starts the new program on the next request.
+	if err := os.WriteFile(decl, []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.mu.Lock()
+	for name, p := range h.procs {
+		delete(h.procs, name)
+		go p.stop()
+	}
+	h.mu.Unlock()
+
+	// Another value starts the new process; its declarations and the results
+	// of the old program go away, so the cached "a" is made again.
+	fetchValue(t, h, "b")
+	if r := fetchValue(t, h, "a"); r.Spec.Unit != "W" || r.Spec.Precision != 0 {
+		t.Errorf("cached value kept the declaration of the old program: %+v", r.Spec)
+	}
+}
+
+// TestHostDropsValuesWhenDeclarationChanges checks that a cached value is made
+// again when the plugin answers describe with another declaration, before its
+// max_age runs out (issue #285).
+func TestHostDropsValuesWhenDeclarationChanges(t *testing.T) {
+	specs, decl := declSpecs(t, "values")
+	spec := specs["fake"]
+	spec.Env["FAKE_MAXAGE"] = "3600"
+	specs["fake"] = spec
+	h := newHost(t, specs)
+	base := time.Now()
+	h.Now = func() time.Time { return base }
+	if r := fetchValue(t, h, "a"); r.Spec.Unit != "" || r.Spec.Precision != 1 {
+		t.Fatalf("old declaration: %+v", r.Spec)
+	}
+
+	// The value stays cached, but the describe answer is read again after its
+	// TTL and differs.
+	if err := os.WriteFile(decl, []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.Now = func() time.Time { return base.Add(describeTTL + time.Second) }
+	if r := fetchValue(t, h, "a"); r.Spec.Unit != "W" || r.Spec.Precision != 0 {
+		t.Errorf("cached value kept an outdated declaration: %+v", r.Spec)
 	}
 }
 

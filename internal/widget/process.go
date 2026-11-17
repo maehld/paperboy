@@ -203,6 +203,15 @@ func (h *Host) process(spec Spec) (*process, error) {
 		go p.stop()
 		return nil, fmt.Errorf("configure: %w", err)
 	}
+	// A new process may be another program, after a crash, a timeout or a
+	// replaced file: its declarations and the results the old one cached do
+	// not belong together (issue #285). Callers hold h.mu.
+	h.nextDeclarations(spec.Name)
+	for k, e := range h.cache {
+		if e.job.plugin == spec.Name {
+			delete(h.cache, k)
+		}
+	}
 	if h.procs == nil {
 		h.procs = map[string]*process{}
 	}
