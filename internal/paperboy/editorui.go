@@ -140,7 +140,7 @@ type editorPageView struct {
 	Orphan         bool          // the open variant has no page file
 	NoPage         bool          // the page has no page file
 	IsVariant      bool          // a variant is open; the page file owns the map
-	VariantTypes   []string      // display types that name the open variant, read-only
+	VariantTypes   []displayLink // display types that name the open variant
 	PageTitle      string        // title of the page file, shown read-only on a variant
 	WidgetsPage    bool          // the widgets page without a page (ADR 0055)
 	TextFallback   bool          // the Playground fell back from a text display type (ADR 0124)
@@ -191,7 +191,8 @@ type uiTab struct {
 	Selected bool
 }
 
-// displayLink is one entry of the display type switch of the widgets page.
+// displayLink is one entry of a display type switch: the widgets page for the
+// playground and the variant block for a file that several types serve.
 type displayLink struct {
 	Name     string
 	URL      string
@@ -400,6 +401,24 @@ func servesTypes(variants map[string]string, label string) []string {
 		}
 	}
 	sort.Strings(out)
+	return out
+}
+
+// variantTypeLinks lists the display types that name a variant, each as the
+// preview of the open file. The type supplies the kind, pixels and ppi, so a
+// type the file cannot render stays a name without a link (ADR 0110).
+func variantTypeLinks(cfg *Config, name, label, preview string, open *editorPageFile, variants map[string]string) []displayLink {
+	var out []displayLink
+	for _, display := range servesTypes(variants, label) {
+		link := displayLink{Name: display, Selected: display == preview}
+		if open != nil {
+			if p, ok := cfg.Profiles[display]; ok && fileFits(*open, p) {
+				params := url.Values{"name": {name}, "file": {label}, "display": {display}}
+				link.URL = "/ui/editor/page?" + params.Encode()
+			}
+		}
+		out = append(out, link)
+	}
 	return out
 }
 
@@ -1033,7 +1052,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	// belongs to the widgets page only.
 	v.IsVariant = label != ""
 	if v.IsVariant {
-		v.VariantTypes = servesTypes(variants, label)
+		v.VariantTypes = variantTypeLinks(cfg, name, label, display, open, variants)
 		v.PageTitle = name
 		if pageFile != nil && pageFile.Title != "" {
 			v.PageTitle = pageFile.Title
