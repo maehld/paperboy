@@ -249,6 +249,15 @@
     return out;
   }
 
+  // previewBody builds the body of POST /api/preview. Unlike serialize it also
+  // carries the inherited title of a variant (ADR 0110), because the header
+  // widget shows it on the device as well.
+  function previewBody() {
+    const out = serialize();
+    if (state.file) out.title = state.page_title || '';
+    return out;
+  }
+
   function widgetInfo(plugin, widget) {
     const p = state.plugins.find((x) => x.name === plugin);
     if (!p || !p.description) return null;
@@ -1991,7 +2000,7 @@
       res = await fetch('/api/preview/' + encodeURIComponent(state.display), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ template: serialize() }),
+        body: JSON.stringify({ template: previewBody() }),
         cache: 'no-store',
       });
     } catch (e) {

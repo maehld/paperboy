@@ -274,7 +274,6 @@ func TestEditorVariantsPanel(t *testing.T) {
 	for _, want := range []string{
 		`"page_title":"Solar"`,
 		`<h3>Variant</h3>`,
-		`This is a variant for <a href="/ui/editor/page?display=small&amp;name=solar">Solar</a>`,
 		`<p class="types-label">Assigned display types</p>`,
 		`<ul class="variant-types"><li>small</li></ul>`,
 	} {
@@ -282,7 +281,7 @@ func TestEditorVariantsPanel(t *testing.T) {
 			t.Fatalf("the variant misses %q:\n%s", want, body)
 		}
 	}
-	for _, unwanted := range []string{`<h3>Variants</h3>`, `data-serves=`, `data-dialog="create-variant"`} {
+	for _, unwanted := range []string{`<h3>Variants</h3>`, `data-serves=`, `data-dialog="create-variant"`, `This is a variant for`} {
 		if strings.Contains(body, unwanted) {
 			t.Fatalf("the variant carries %q:\n%s", unwanted, body)
 		}
@@ -794,7 +793,7 @@ func TestEditorScript(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "PUT", "pointerdown", "handle-xy", "firstWidget",
+	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "previewBody()", "PUT", "pointerdown", "handle-xy", "firstWidget",
 		"renderTextInspector", "textCellFields(box, c)", "where.className = 'muted'", "placeTextAt", "startPaletteDrag"} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("script lacks %q", want)

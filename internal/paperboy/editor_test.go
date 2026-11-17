@@ -597,6 +597,17 @@ func TestDraftPreview(t *testing.T) {
 	if lines := strings.Count(rec.Body.String(), "\n"); lines != 4 {
 		t.Fatalf("draft text lines: %d (%q)", lines, rec.Body)
 	}
+	// A variant carries no title of its own, so the editor sends the title of
+	// its page file with the draft. The title value and the header then show it
+	// in the preview as on the device (ADR 0110).
+	titled, err := page.Parse(strings.NewReader("title: Solar\nkind: text\ncells:\n  - { at: [0, 0], span: [20, 1], value: paperboy/title }\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec = request(t, s, http.MethodPost, "/api/preview/lcd", map[string]any{"template": titled}, nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Solar") {
+		t.Fatalf("draft title: %d %q", rec.Code, rec.Body)
+	}
 	// A text page does not fit an image display.
 	if rec := request(t, s, http.MethodPost, "/api/preview/small", map[string]any{"template": text}, nil); rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("wrong display kind: %d %s", rec.Code, rec.Body)
