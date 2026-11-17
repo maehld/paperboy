@@ -161,6 +161,7 @@ func (p *departures) Describe() plugin.Description {
 				Args: map[string]plugin.Arg{
 					"stop":           stopArg,
 					"header":         {Type: "bool", Default: false, Description: "show the stop name above the departures"},
+					"count":          {Type: "int", Default: 0, Description: "departures to show: fewer rows make the text bigger; 0 fills the cell at the page's text size"},
 					"time":           timeArg,
 					"locality":       localityArg,
 					"locality_order": orderArg,

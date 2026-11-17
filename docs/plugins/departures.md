@@ -57,6 +57,8 @@ The arg `locality` decides whether a destination shows its town at all:
 
 `locality_order: none` suppresses the town in every destination, whatever `locality` says. The widget and the values follow the same rules, and `directions` still matches the full name including the town. On image displays all destinations of a widget share one font size: the smallest size any of them needs to fit, but not below 0.8 of the base text. Destinations still too long at that size end with an ellipsis; line, delay and time keep their size.
 
+On image displays the rows use a text of 0.6 of the page's base text, the share the calendar agenda uses ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md)). The widget shows as many departures as fit. The arg `count` shows that many rows instead and sizes their text to the cell. Fewer rows make the text bigger, up to the base text; the configured `max` caps the rows.
+
 ## Values
 
 A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md)). The value arguments pick the stop and the format like the widget's arguments: `stop` (one of the configured stops by name, default the first), `time`, `locality` and `locality_order`. Without `stop` they describe the first configured stop.

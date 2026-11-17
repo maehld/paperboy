@@ -34,21 +34,26 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 	b := img.Bounds()
 	pad := w.Style.Padding
 	rule := max(w.Style.Rule, 1)
-	size := max(req.TextPx(w), render.MinSize)
-	small := max(size*0.8, req.PtPx(5.8), render.MinSize)
-	rowH := int(size*1.4) + rule
+	base := max(req.TextPx(w), render.MinSize)
+	// A row's text takes rowShare of the base text by default, the share the
+	// calendar agenda uses. The count argument shows that many rows instead
+	// and sizes their text to them, so fewer rows get a bigger text.
+	headSize := max(base*rowShare, render.MinSize)
 	top := b.Min.Y + pad
 	left, right := b.Min.X+pad, b.Max.X-pad
 
 	if w.Arg().Bool("header", false) && v.name != "" {
-		render.Text(img, v.header(order), left, top+int(size), render.Style{Size: size, Bold: true, Shrink: true}, right-left, color.Black, render.Left)
-		top += rowH
-		render.HLine(img, left, top-rule-int(size*0.2), right, rule)
+		render.Text(img, v.header(order), left, top+int(headSize), render.Style{Size: headSize, Bold: true, Shrink: true}, right-left, color.Black, render.Left)
+		top += rowPitch(headSize, rule)
+		render.HLine(img, left, top-rule-int(headSize*0.2), right, rule)
 	}
-	rows := (b.Max.Y - pad - top) / rowH
-	if rows < 1 {
+	avail := b.Max.Y - pad - top
+	if avail < rowPitch(render.MinSize, rule) {
 		return plugin.TooSmall(w)
 	}
+	count := min(max(w.Arg().Int("count", 0), 0), p.max)
+	rows, rowH, size := rowLayout(avail, base, rule, count)
+	small := max(size*0.8, req.PtPx(5.8), render.MinSize)
 	deps := v.list
 	if len(deps) > rows {
 		deps = deps[:rows]
@@ -87,18 +92,20 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 	destSize := destinationSize(names, size, destW)
 	for i, d := range deps {
 		y := top + i*rowH
-		base := y + int(size)
-		render.Text(img, d.Line, left, base, render.Style{Size: size, Bold: true, Shrink: true}, lineW, color.Black, render.Left)
+		// The text sits in the middle of its row, so rows of different heights
+		// read as one list.
+		baseline := y + (rowH-rule)/2 + int(size*0.36)
+		render.Text(img, d.Line, left, baseline, render.Style{Size: size, Bold: true, Shrink: true}, lineW, color.Black, render.Left)
 		dest := render.Ellipsize(names[i], destSize, false, destW)
-		render.TextAt(img, dest, destX, base, destSize, false, color.Black, render.Left)
+		render.TextAt(img, dest, destX, baseline, destSize, false, color.Black, render.Left)
 		if d.Cancelled {
 			tw := min(render.Measure(dest, destSize, false), destW)
-			render.HLine(img, destX, base-int(size*0.3), destX+tw, rule)
+			render.HLine(img, destX, baseline-int(size*0.3), destX+tw, rule)
 		}
 		if dl := delayText(d); dl != "" && !d.Cancelled {
-			render.Text(img, dl, delayX-gap/2, base, render.Style{Size: small, Bold: true}, delayW, color.Black, render.Right)
+			render.Text(img, dl, delayX-gap/2, baseline, render.Style{Size: small, Bold: true}, delayW, color.Black, render.Right)
 		}
-		render.Text(img, times[i], timeX, base, render.Style{Size: size, Bold: true, Shrink: true}, timeW, color.Black, render.Right)
+		render.Text(img, times[i], timeX, baseline, render.Style{Size: size, Bold: true, Shrink: true}, timeW, color.Black, render.Right)
 		if i < len(deps)-1 {
 			render.HLine(img, left, y+rowH-rule, right, rule)
 		}
@@ -204,8 +211,35 @@ func (v *stopView) destination(d departure, mode, order string) string {
 	return stop + ", " + city
 }
 
-// minDestScale is how far a destination may shrink before it is ellipsized.
-const minDestScale = 0.8
+const (
+	// minDestScale is how far a destination may shrink before it is
+	// ellipsized.
+	minDestScale = 0.8
+	// rowShare is the text height of a list row relative to the base text,
+	// the share the calendar agenda uses.
+	rowShare = 0.6
+	// rowLead is the row pitch in text heights: the text plus air for
+	// descenders and the rule between rows.
+	rowLead = 1.4
+)
+
+// rowPitch is the height of a row with this text size.
+func rowPitch(size float64, rule int) int { return int(rowLead*size) + rule }
+
+// rowLayout returns the rows, the row pitch and the text size of a departures
+// list of avail pixels. Without count the list fills the cell with rows at
+// rowShare of the base text. With count it shows that many rows: their text
+// grows up to the base text, and rows that do not fit are dropped.
+func rowLayout(avail int, base float64, rule, count int) (rows, rowH int, size float64) {
+	if count <= 0 {
+		size = max(min(rowShare*base, (float64(avail)-float64(rule))/rowLead), render.MinSize)
+		rowH = rowPitch(size, rule)
+		return max(avail/rowH, 1), rowH, size
+	}
+	rows = min(count, max(avail/rowPitch(render.MinSize, rule), 1))
+	size = min(base, max((float64(avail)/float64(rows)-float64(rule))/rowLead, render.MinSize))
+	return rows, rowPitch(size, rule), size
+}
 
 // destinationSize is the one font size for all destinations of a widget: the
 // smallest any of them needs to fit width, but not below minDestScale of
