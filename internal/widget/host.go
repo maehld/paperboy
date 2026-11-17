@@ -102,6 +102,7 @@ type Host struct {
 	mismatch map[string]bool        // plugin -> version mismatch already logged
 	blobNote map[string]bool        // plugin -> undeclared blobs already logged
 	descs    map[string]descEntry   // plugin -> last describe answer, for values
+	lastExit map[string]ExitInfo    // plugin -> how its last process ended (issue #306)
 	declGen  map[string]int         // plugin -> generation of its declaration; cached values of an older one are stale
 	builtMu  sync.Mutex
 	builtCfg map[string]bool
@@ -178,6 +179,20 @@ func (j job) group() string {
 		args = "|" + string(a)
 	}
 	return fmt.Sprintf("%s|%s|%d|%s|%s%s", j.plugin, j.action, j.levels, page, device, args)
+}
+
+// recordExit keeps how a plugin process ended, so the runtime page can say why
+// it is gone (issue #306). The stderr tail travels with it, because the process
+// object is dropped afterwards.
+func (h *Host) recordExit(p *process, err error) {
+	info := exitInfo(err, h.now())
+	info.Stderr = p.stderr.lines(stderrLines)
+	h.mu.Lock()
+	if h.lastExit == nil {
+		h.lastExit = map[string]ExitInfo{}
+	}
+	h.lastExit[p.spec.Name] = info
+	h.mu.Unlock()
 }
 
 func (h *Host) now() time.Time {

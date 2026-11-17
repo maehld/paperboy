@@ -472,6 +472,38 @@ func TestHostBuiltinAfterPlugin(t *testing.T) {
 	}
 }
 
+// TestHostRecordsExitAndStderr checks that the runtime page can say how a
+// plugin ended and show its last error output (issue #306).
+func TestHostRecordsExitAndStderr(t *testing.T) {
+	f := newFake(t)
+	h := newHost(t, f.spec("fail"))
+	if out := h.Fetch(context.Background(), batch(w("fake", "a", 1, 1))); out[0].Err == nil {
+		t.Fatalf("a broken plugin must fail: %+v", out[0])
+	}
+	var row PluginStat
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		rows, _ := h.Stats(time.Now())
+		if len(rows) == 1 && rows[0].LastExit != nil {
+			row = rows[0]
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if row.LastExit == nil {
+		t.Fatal("no exit recorded")
+	}
+	if row.LastExit.Code != 1 {
+		t.Errorf("exit code = %d, want 1", row.LastExit.Code)
+	}
+	if row.Running {
+		t.Error("the plugin is still marked running")
+	}
+	if got := strings.Join(row.Stderr, "\n"); !strings.Contains(got, "broken") {
+		t.Errorf("stderr = %q, want the plugin's error output", got)
+	}
+}
+
 func TestHostFailureKeepsStaleResult(t *testing.T) {
 	f := newFake(t)
 	h := newHost(t, f.spec("ok"))
