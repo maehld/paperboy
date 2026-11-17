@@ -14,9 +14,21 @@ import (
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
-// defaultGrid is the reference grid of the widget preview: the spans plugins
-// declare are cells of it, like on the example pages.
+// defaultGrid is the reference grid: the spans plugins declare are cells of
+// it, and a page that does not name another one uses it too (ADR 0049, 0128).
 var defaultGrid = [2]int{6, 8}
+
+// maxGrid bounds a grid: more cells make cells smaller than a glyph.
+const maxGrid = 80
+
+// gridOf is the default grid of a display type, six by eight when it names
+// none (ADR 0128).
+func gridOf(p Profile) [2]int {
+	if p.Grid == nil {
+		return defaultGrid
+	}
+	return *p.Grid
+}
 
 // widgetQuery is one widget preview request, resolved against a display type.
 type widgetQuery struct {
@@ -30,14 +42,14 @@ func parseSize(s string) ([2]int, error) {
 	a, b, ok := strings.Cut(s, "x")
 	x, err1 := strconv.Atoi(a)
 	y, err2 := strconv.Atoi(b)
-	if !ok || err1 != nil || err2 != nil || x < 1 || y < 1 || x > 80 || y > 80 {
+	if !ok || err1 != nil || err2 != nil || x < 1 || y < 1 || x > maxGrid || y > maxGrid {
 		return [2]int{}, fmt.Errorf("%q: expected <columns>x<rows>, e.g. 3x2", s)
 	}
 	return [2]int{x, y}, nil
 }
 
-// spanPixels turns a span on the reference grid into the pixel size it has
-// on a page, using the same division as the page composer.
+// spanPixels turns a span of a page grid into the pixel size it has on that
+// display type, using the same division as the page composer.
 func spanPixels(p Profile, span, grid [2]int) (int, int) {
 	return p.Width * span[0] / grid[0], p.Height * span[1] / grid[1]
 }
@@ -64,8 +76,9 @@ func widgetArgs(q url.Values) map[string]any {
 }
 
 // parseWidgetQuery resolves display, size and arguments. Displays take span
-// (default 3x2) on grid (default 6x8) or width and height in pixels. A text
-// display has no widgets; its pages are built from values (ADR 0111, 0125).
+// on grid or width and height in pixels; without them the span is half of the
+// display type's default grid (ADR 0128). A text display has no widgets; its
+// pages are built from values (ADR 0111, 0125).
 func (s *Server) parseWidgetQuery(cfg *Config, pluginName, widgetName string, q url.Values) (widgetQuery, error) {
 	var wq widgetQuery
 	if !page.ValidName(pluginName) || !page.ValidName(widgetName) {
@@ -90,7 +103,8 @@ func (s *Server) parseWidgetQuery(cfg *Config, pluginName, widgetName string, q 
 			return wq, fmt.Errorf("width and height must be within the display (%dx%d)", p.Width, p.Height)
 		}
 	default:
-		span, grid := [2]int{3, 2}, defaultGrid
+		grid := gridOf(p)
+		span := [2]int{max(1, grid[0]/2), max(1, grid[1]/2)}
 		var err error
 		if v := q.Get("span"); v != "" {
 			if span, err = parseSize(v); err != nil {
@@ -199,11 +213,16 @@ func (s *Server) handleWidgetsPage(w http.ResponseWriter, r *http.Request) {
 		v.Displays = append(v.Displays, displayLink{Name: n, Selected: n == display,
 			URL: "/ui/plugins?" + link.Encode()})
 	}
-	var span [2]int
+	var span, grid [2]int
 	if sz, err := parseSize(q.Get("span")); err == nil {
 		span = sz
 	}
-	v.Data = widgetsStateData(display, p, q.Get("widget"), span, widgetArgValues(q))
+	// A cell of a page carries its page's grid, so the Playground previews the
+	// size the widget gets there (ADR 0128).
+	if sz, err := parseSize(q.Get("grid")); err == nil {
+		grid = sz
+	}
+	v.Data = widgetsStateData(display, p, q.Get("widget"), span, grid, widgetArgValues(q))
 	renderEditorPage(w, v, http.StatusOK)
 }
 

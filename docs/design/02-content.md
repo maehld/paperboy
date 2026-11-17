@@ -37,7 +37,7 @@ A variant file carries `kind`, `grid`, `style`, `notices` and `cells`. It inheri
 |---|---|
 | `title` | Name on the dashboard, in the plan preview and for the header widget. The page file only. |
 | `kind` | `image` or `text`: required, the kind of the display types the file serves |
-| `grid` | Columns and rows of an image page. The reference grid is 6 × 8 cells. |
+| `grid` | Columns and rows of an image page, 1 to 80 each. The display type suggests one, 6 × 8 by default ([ADR 0128](../adr/0128-a-default-grid-per-display-type.md)). |
 | `variants` | Display type to file label. The page file only. |
 | `style.padding` | Space around the grid in points, default 4.5 |
 | `style.rule` | Gap between cells in points, default 0.6 and at least one pixel |
@@ -50,7 +50,9 @@ A variant file carries `kind`, `grid`, `style`, `notices` and `cells`. It inheri
 
 Parsing is strict and cells must not overlap. Sizes are in points since [ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md). A fraction such as `0.06` is rejected with a hint: points are physical, and the display type's `ppi` converts them into pixels.
 
-A widget declares its sizes as spans of the 6 × 8 reference grid, so an author places cells without knowing the panel.
+A widget declares its sizes as spans of the 6 × 8 reference grid, so an author places cells without knowing the panel. That reference grid is a fraction vocabulary, not a density. A span of 3 × 4 means half the width and half the height, and the shipped plugins use halves and quarters.
+
+The page's own grid divides the pixels. It is independent of the reference grid. The editor maps a declared span onto it. Half the width then stays half the width on a page with 8 × 6 or 10 × 6 cells. A display type names the grid a new page starts with ([ADR 0128](../adr/0128-a-default-grid-per-display-type.md)). The page file keeps its own grid afterwards.
 
 ## Image pages
 

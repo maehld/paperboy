@@ -36,8 +36,17 @@ label.field > span:first-child { color: #555; }
 input, select { font: inherit; padding: .15rem .3rem; min-width: 0; width: 100%; }
 input[type=checkbox] { width: auto; }
 input[type=search] { margin-bottom: .4rem; }
-.grid2 { display: flex; gap: .4rem; }
+.grid2 { display: flex; gap: .4rem; align-items: center; }
 .grid2 input { width: 4.5rem; }
+.grid2 .times { color: #666; font-size: .85rem; }
+.lock { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 1.9rem; height: 1.9rem;
+  padding: 0; border: 1px solid #cdd5e1; border-radius: 6px; background: #fff; color: #555; cursor: pointer; }
+.lock:hover { border-color: #9aa8bb; }
+.lock:focus-visible { outline: 2px solid #134e9c; outline-offset: 1px; }
+.lock[aria-pressed="true"] { border-color: #134e9c; background: #eef3fb; color: #134e9c; }
+.lock svg { display: block; flex: none; width: 19px; height: 19px; }
+.lock[aria-pressed="true"] .lock-open { display: none; }
+.lock[aria-pressed="false"] .lock-closed { display: none; }
 .board-panel { padding: .6rem; }
 .board-panel .panel-head { margin-bottom: .45rem; }
 .board-panel .panel-head .muted { font-size: .78rem; }
@@ -202,7 +211,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     {{if not .WidgetsPage}}<section class="panel">
       <h3>Page</h3>
       <label class="field"><span>Title</span><input id="title" autocomplete="off"></label>
-      <label class="field"><span>Grid</span><span class="grid2"><input id="cols" type="number" min="1" max="80" title="columns"><input id="rows" type="number" min="1" max="80" title="rows"></span></label>
+      <label class="field"><span>Grid</span><span class="grid2"><input id="cols" type="number" min="1" max="80" title="columns"><span class="times">×</span><input id="rows" type="number" min="1" max="80" title="rows"><button type="button" id="grid-lock" class="lock" aria-pressed="false" aria-label="Keep the grid ratio" title="Keep the grid ratio when one axis changes"><svg class="lock-open" viewBox="0 0 16 16" width="19" height="19" aria-hidden="true" focusable="false"><path d="M4.5 7.5V5a3.5 3.5 0 0 1 6.4-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="2.5" y="7.5" width="11" height="6" rx="1.3" fill="currentColor"/></svg><svg class="lock-closed" viewBox="0 0 16 16" width="19" height="19" aria-hidden="true" focusable="false"><path d="M4.5 7.5V5a3.5 3.5 0 0 1 7 0v2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="2.5" y="7.5" width="11" height="6" rx="1.3" fill="currentColor"/></svg></button></span></label>
       <p class="hint" id="grid-note"></p>
       <div id="style-fields"{{if .TextPage}} hidden{{end}}>
         <h4>Style (pt)</h4>

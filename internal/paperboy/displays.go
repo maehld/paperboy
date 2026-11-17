@@ -36,6 +36,7 @@ type displayFile struct {
 	Power      string         `yaml:"power" json:"power,omitempty"`
 	Rotation   int            `yaml:"rotation" json:"rotation,omitempty"`           // page → panel, ADR 0102
 	Scroll     *displayScroll `yaml:"scroll,omitempty" json:"scroll,omitempty"`     // text displays, ADR 0118
+	Grid       *[2]int        `yaml:"grid,omitempty" json:"grid,omitempty"`         // default grid of a new page, ADR 0128
 	WidthMM    *int           `yaml:"width_mm,omitempty" json:"width_mm,omitempty"` // removed by ADR 0050, rejected with a hint
 }
 
@@ -82,6 +83,15 @@ func (f displayFile) check(name string) error {
 			return fmt.Errorf("display type %s: scroll.step must not be negative", name)
 		}
 	}
+	if f.Grid != nil {
+		if f.Kind == kindText {
+			return fmt.Errorf("display type %s: grid only applies to kind image; a text page uses the character grid", name)
+		}
+		if f.Grid[0] < 1 || f.Grid[1] < 1 || f.Grid[0] > maxGrid || f.Grid[1] > maxGrid {
+			return fmt.Errorf("display type %s: grid [%d, %d]: expected [columns, rows] between 1 and %d",
+				name, f.Grid[0], f.Grid[1], maxGrid)
+		}
+	}
 	return nil
 }
 
@@ -98,7 +108,7 @@ func (f displayFile) profile() Profile {
 			step = time.Duration(f.Scroll.Step)
 		}
 	}
-	return Profile{
+	p := Profile{
 		Kind:       f.Kind,
 		Charset:    f.Charset,
 		Width:      f.Size[0],
@@ -110,6 +120,8 @@ func (f displayFile) profile() Profile {
 		Rotation:   f.Rotation,
 		ScrollStep: step,
 	}
+	p.Grid = f.Grid
+	return p
 }
 
 // displayFileNames lists the display type files of a directory; a missing
@@ -203,6 +215,11 @@ func encodeDisplayFile(f *displayFile) ([]byte, error) {
 	}
 	if f.Rotation != 0 {
 		set("rotation", intScalar(f.Rotation))
+	}
+	if f.Grid != nil {
+		grid := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Style: yaml.FlowStyle,
+			Content: []*yaml.Node{intScalar(f.Grid[0]), intScalar(f.Grid[1])}}
+		set("grid", grid)
 	}
 	return marshalFile(root)
 }

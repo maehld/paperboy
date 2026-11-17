@@ -23,8 +23,8 @@
 
   function empty(kind) {
     return kind === 'text'
-      ? { kind: 'text', size: [20, 4], gray_levels: 0, ppi: 0, charset: 'utf8', min_refresh: '', power: '', rotation: 0 }
-      : { kind: 'image', size: [800, 480], gray_levels: 4, ppi: 125, charset: '', min_refresh: '', power: '', rotation: 0 };
+      ? { kind: 'text', size: [20, 4], gray_levels: 0, ppi: 0, charset: 'utf8', min_refresh: '', power: '', rotation: 0, grid: [0, 0] }
+      : { kind: 'image', size: [800, 480], gray_levels: 4, ppi: 125, charset: '', min_refresh: '', power: '', rotation: 0, grid: [0, 0] };
   }
 
   // ---- status ----
@@ -111,6 +111,8 @@
     el('min_refresh').value = d.min_refresh || '';
     el('power').value = d.power || '';
     el('rotation').value = String(d.rotation || 0);
+    el('grid-cols').value = d.grid && d.grid[0] ? d.grid[0] : '';
+    el('grid-rows').value = d.grid && d.grid[1] ? d.grid[1] : '';
     el('yaml').textContent = state.yaml || '(no file yet)';
     el('delete').hidden = state.isNew;
     el('rename').hidden = state.isNew || !state.rename;
@@ -131,6 +133,7 @@
       ? 'A text display grid of at most 80 columns × 24 rows.'
       : 'The page in pixels, as Paperboy composes it; rotation maps it onto the panel.';
     updatePPI();
+    updateGrid();
   }
 
   // updatePPI names the physical size behind the pixel density, because ppi
@@ -146,6 +149,60 @@
           (Math.hypot(w, h) / ppi).toFixed(2) + ' in. ppi = pixels × 25.4 / mm.'
         : 'Pixels per inch of the active area, 20–1000: ppi = pixels × 25.4 / mm.';
     updatePanelHint();
+  }
+
+  // ---- grid ----
+  //
+  // A page is a grid of cells, so an operator places widgets without pixels.
+  // Cells of the suggested grid are square, and an even number of rows and
+  // columns keeps half cells exact (ADR 0128). The grid is only a default:
+  // a page owns its own grid, and the operator may override this one.
+
+  // suggestedGrid names the coarsest grid whose cells are within 3 % of
+  // square, even counts first so half cells stay exact. A ratio without such a
+  // grid gets the closest one.
+  function suggestedGrid(w, h) {
+    if (!(w > 0 && h > 0)) return null;
+    const near = (c) => (c.err <= 0.03 ? 0 : 1);
+    const cands = [];
+    for (let rows = 6; rows <= 12; rows++) {
+      const cols = Math.round(w * rows / h);
+      if (cols < 2 || cols > 40) continue;
+      cands.push({ cols: cols, rows: rows, err: Math.abs((w / cols) / (h / rows) - 1),
+        odd: cols % 2 || rows % 2 ? 1 : 0 });
+    }
+    cands.sort((a, b) => near(a) - near(b) || a.odd - b.odd ||
+      a.cols * a.rows - b.cols * b.rows || Math.abs(a.rows - 6) - Math.abs(b.rows - 6) || a.err - b.err);
+    return cands[0] || null;
+  }
+
+  // updateGrid names the cell size of the entered grid and suggests the square
+  // one, so an operator can see what a page will look like.
+  function updateGrid() {
+    const d = state.display;
+    const note = el('grid-note');
+    const use = el('use-grid');
+    const w = Number(d.size[0]);
+    const h = Number(d.size[1]);
+    const s = suggestedGrid(w, h);
+    if (d.kind === 'text' || !s) {
+      note.textContent = d.kind === 'text' ? '' : 'Enter the size to see a grid.';
+      use.hidden = true;
+      return;
+    }
+    const cols = Number(el('grid-cols').value) || 0;
+    const rows = Number(el('grid-rows').value) || 0;
+    const square = 'Square cells: ' + s.cols + ' × ' + s.rows +
+      ' (' + Math.round(w / s.cols) + ' × ' + Math.round(h / s.rows) + ' px).';
+    let cells = '';
+    if (cols > 0 && rows > 0) {
+      const dev = Math.round(Math.abs((w / cols) / (h / rows) - 1) * 100);
+      cells = 'Cells ' + Math.round(w / cols) + ' × ' + Math.round(h / rows) + ' px' +
+        (dev > 1 ? ', ' + dev + ' % ' + (w / cols > h / rows ? 'wider' : 'taller') : ', square') + '. ';
+    }
+    note.textContent = cells + square + ' Empty keeps 6 × 8.';
+    use.hidden = cols === s.cols && rows === s.rows;
+    use.textContent = 'use ' + s.cols + ' × ' + s.rows;
   }
 
   // ---- panel size → ppi ----
@@ -230,6 +287,7 @@
       if (d.gray_levels) out.gray_levels = Number(d.gray_levels);
       if (d.ppi) out.ppi = Number(d.ppi);
       if (d.rotation) out.rotation = Number(d.rotation);
+      if (d.grid && d.grid[0] > 0 && d.grid[1] > 0) out.grid = [Number(d.grid[0]), Number(d.grid[1])];
     }
     if (d.min_refresh) out.min_refresh = d.min_refresh;
     if (d.power) out.power = d.power;
@@ -247,6 +305,8 @@
     d.min_refresh = d.min_refresh || '';
     d.power = d.power || '';
     d.rotation = Number(d.rotation) || 0;
+    d.grid = Array.isArray(d.grid) && d.grid.length === 2 && d.grid[0] > 0 && d.grid[1] > 0
+      ? [Number(d.grid[0]) || 0, Number(d.grid[1]) || 0] : [0, 0];
     return d;
   }
 
@@ -417,6 +477,9 @@
       if (w > 4096 || h > 4096) return 'the size is too large';
       const ppi = Number(d.ppi);
       if (!(ppi >= 20 && ppi <= 1000)) return 'an image display needs a pixel density between 20 and 1000 ppi';
+      if (d.grid && d.grid[0] > 0 && (d.grid[0] > 80 || d.grid[1] > 80)) {
+        return 'the grid is at most 80 × 80 cells';
+      }
     }
     if (d.min_refresh && !/^\d+(\.\d+)?(ns|us|µs|ms|s|m|h)(\d+(\.\d+)?(ns|us|µs|ms|s|m|h))*$/.test(d.min_refresh)) {
       return 'min_refresh is written like 60s or 1m' + (d.min_refresh ? ' (got ' + d.min_refresh + ')' : '');
@@ -431,6 +494,7 @@
       if (state.readOnly) return;
       state.display.size = [Number(el('width').value) || 0, Number(el('height').value) || 0];
       updatePPI();
+      updateGrid();
       changed();
     };
     el('width').addEventListener('input', set);
@@ -508,9 +572,33 @@
     state.display.rotation = Number(el('rotation').value) || 0;
     changed();
   });
+  // onGrid keeps the optional grid: both fields empty means the default 6 × 8.
+  function onGrid() {
+    const set = () => {
+      if (state.readOnly) return;
+      const cols = Number(el('grid-cols').value) || 0;
+      const rows = Number(el('grid-rows').value) || 0;
+      state.display.grid = cols > 0 && rows > 0 ? [cols, rows] : [0, 0];
+      updateGrid();
+      changed();
+    };
+    el('grid-cols').addEventListener('input', set);
+    el('grid-rows').addEventListener('input', set);
+    el('use-grid').addEventListener('click', () => {
+      if (state.readOnly) return;
+      const s = suggestedGrid(Number(state.display.size[0]), Number(state.display.size[1]));
+      if (!s) return;
+      state.display.grid = [s.cols, s.rows];
+      el('grid-cols').value = s.cols;
+      el('grid-rows').value = s.rows;
+      updateGrid();
+      changed();
+    });
+  }
   onSize();
   onPPI();
   onPanel();
+  onGrid();
   window.addEventListener('beforeunload', (e) => {
     if (!state.dirty) return;
     e.preventDefault();

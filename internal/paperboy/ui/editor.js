@@ -40,6 +40,8 @@
     signedOut: false, // the UI password changed: stop previews until the page reloads (ADR 0096)
     previewKind: '', // '' none, 'image' or 'text'
     previewLines: [], // the text lines of a text display, one char per cell
+    gridLock: false, // keep the grid ratio when one axis changes (ADR 0128)
+    gridRatio: null, // [columns, rows] the lock derives from, captured when it is switched on
   };
 
   let suppressPaletteClick = false; // a finished palette drag must not toggle placing
@@ -149,7 +151,7 @@
         style: {},
       };
     }
-    const grid = text() ? [state.width, state.height] : (state.widgetsPage ? state.reference.slice() : state.grid.slice());
+    const grid = text() ? [state.width, state.height] : state.grid.slice();
     return { title: state.file ? '' : state.name, kind: state.kind, grid: grid, style: {}, cells: [] };
   }
 
@@ -193,6 +195,20 @@
       style: c.style || {},
     }));
     return t;
+  }
+
+  // mapSpan turns a span of the 6×8 reference grid into the page grid, so a
+  // widget that asks for half the width keeps half the width on 8×6 or 10×6
+  // as well (ADR 0128). It rounds and clamps to the grid.
+  function mapSpan(span, grid) {
+    const axis = (cells, want, of) => Math.max(1, Math.min(want, Math.round(cells * want / of)));
+    return [axis(span[0], grid[0], 6), axis(span[1], grid[1], 8)];
+  }
+
+  // cellGrid is the grid the cells are placed on: the open file's, or the
+  // display type's on the widgets page.
+  function cellGrid() {
+    return state.template && state.template.grid ? state.template.grid : state.grid;
   }
 
   function num(value) {
@@ -483,19 +499,22 @@
     el('title').disabled = off || state.file !== '';
     el('cols').disabled = off || text();
     el('rows').disabled = off || text();
-    el('grid-note').textContent = rowsPage()
-      ? 'Text page: ' + state.width + '×' + state.height + ' characters. Drag a box to move it; its edges resize it.'
-      : text()
-        ? 'The grid is the character grid of the display and cannot be changed.'
-        : 'Cells of the page; plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid.';
+    renderGridLock(off);
     if (!t) {
       for (const id of ['title', 'cols', 'rows', 'padding', 'rule', 'text-size', 'divider']) el(id).value = '';
+      el('grid-note').textContent = '';
       return;
     }
+    if (state.gridLock && !state.gridRatio) state.gridRatio = t.grid.slice();
     const s = t.style || {};
     el('title').value = t.title || state.page_title || '';
     el('cols').value = rowsPage() ? state.width : t.grid[0];
     el('rows').value = rowsPage() ? state.height : t.grid[1];
+    el('grid-note').textContent = rowsPage()
+      ? 'Text page: ' + state.width + '×' + state.height + ' characters. Drag a box to move it; its edges resize it.'
+      : text()
+        ? 'The grid is the character grid of the display and cannot be changed.'
+        : cellSizeText(t) + 'Plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid, Paperboy maps them.';
     el('padding').value = s.padding === undefined || s.padding === null ? '' : s.padding;
     el('rule').value = s.rule || '';
     el('text-size').value = s.text_size || '';
@@ -504,26 +523,86 @@
     if (el('overflow')) el('overflow').value = t.overflow || 'strip';
   }
 
-  function applyGrid() {
+  function clampCells(n) {
+    return Math.max(1, Math.min(80, Math.round(n)));
+  }
+
+  // gridFromInputs reads both fields. While the lock is on, the axis the
+  // operator did not change follows the ratio the lock was switched on with,
+  // rounded up: 6 × 8 gives 3 × 4, and 2 × 3 as well (ADR 0128). The ratio is
+  // the base, not the rounded result, so repeated changes do not drift.
+  function gridFromInputs(t, source) {
+    const cols = clampCells(Number(el('cols').value) || t.grid[0]);
+    const rows = clampCells(Number(el('rows').value) || t.grid[1]);
+    const r = state.gridLock ? state.gridRatio : null;
+    if (!r || !(r[0] > 0 && r[1] > 0)) return [cols, rows];
+    if (source === 'rows') return [clampCells(Math.ceil(rows * r[0] / r[1])), rows];
+    return [cols, clampCells(Math.ceil(cols * r[1] / r[0]))];
+  }
+
+  // cellSizeText names the pixels of one cell and how far they are from
+  // square, because a lock cannot make every density square.
+  function cellSizeText(t) {
+    if (!t || text() || !(state.width > 0 && state.height > 0)) return '';
+    const cols = Number(el('cols').value) || t.grid[0];
+    const rows = Number(el('rows').value) || t.grid[1];
+    if (!(cols > 0 && rows > 0)) return '';
+    const w = state.width / cols;
+    const h = state.height / rows;
+    const dev = Math.round(Math.abs(w / h - 1) * 100);
+    const shape = dev <= 1 ? ', square' : ', ' + dev + ' % ' + (w > h ? 'wider than tall' : 'taller than wide');
+    return 'Cells ' + Math.round(w) + ' × ' + Math.round(h) + ' px on ' + state.display + shape + '. ';
+  }
+
+  function renderGridLock(off) {
+    const b = el('grid-lock');
+    if (!b) return;
+    const t = state.template;
+    b.hidden = rowsPage() || text() || !t;
+    b.disabled = off === undefined ? !t || state.readOnly : off;
+    b.setAttribute('aria-pressed', state.gridLock ? 'true' : 'false');
+    const ratio = state.gridRatio ? state.gridRatio[0] + ' × ' + state.gridRatio[1] : '';
+    b.title = state.gridLock
+      ? 'The grid keeps ' + ratio + ' when one axis changes; click to release'
+      : 'Keep the grid ratio when one axis changes';
+  }
+
+  // setGridLock remembers the lock and the ratio it holds. The lock changes
+  // nothing by itself: like the chain of an image editor it applies to the next
+  // change of an axis, so a page keeps its grid and the ratio does not drift.
+  function setGridLock(on) {
+    state.gridLock = !!on;
+    state.gridRatio = state.gridLock && state.template ? state.template.grid.slice() : null;
+    try {
+      localStorage.setItem('paperboy.editor.gridlock', state.gridLock ? '1' : '0');
+    } catch (e) {
+      // storage may be off; the choice then lasts for this visit
+    }
+    renderGridLock();
+    renderSettings();
+  }
+
+  function applyGrid(source) {
     const t = state.template;
     if (!t || text()) return;
-    const cols = Math.max(1, Math.min(80, Math.round(num(el('cols').value) || t.grid[0])));
-    const rows = Math.max(1, Math.min(80, Math.round(num(el('rows').value) || t.grid[1])));
+    const [cols, rows] = gridFromInputs(t, source);
     for (const c of t.cells) {
       if (c.at[0] + c.span[0] > cols || c.at[1] + c.span[1] > rows) {
         setStatus('a widget leaves the ' + cols + '×' + rows + ' grid; move or delete it first', 'error');
         el('cols').value = t.grid[0];
         el('rows').value = t.grid[1];
-        return;
+        renderSettings();
+        return false;
       }
     }
-    if (cols === t.grid[0] && rows === t.grid[1]) {
-      el('cols').value = cols;
-      el('rows').value = rows;
-      return;
+    el('cols').value = cols;
+    el('rows').value = rows;
+    if (cols !== t.grid[0] || rows !== t.grid[1]) {
+      t.grid = [cols, rows];
+      changed();
     }
-    t.grid = [cols, rows];
-    changed();
+    renderSettings();
+    return true;
   }
 
   // ---- palette ----
@@ -689,7 +768,7 @@
         if (w.sizes && w.sizes.length) {
           const s = document.createElement('span');
           s.className = 'note';
-          s.textContent = w.sizes.map((size) => size.columns + '×' + size.rows).join(', ');
+          s.textContent = w.sizes.map((size) => mapSpan([size.columns, size.rows], cellGrid()).join('×')).join(', ');
           b.appendChild(s);
         }
         b.addEventListener('click', () => pick(p.name, w.widget));
@@ -734,9 +813,9 @@
   // size its plugin declares.
   function setWidget(plugin, widget) {
     const info = widgetInfo(plugin, widget);
-    let span = info && info.sizes && info.sizes.length ? [info.sizes[0].columns, info.sizes[0].rows] : [2, 1];
+    const ref = info && info.sizes && info.sizes.length ? [info.sizes[0].columns, info.sizes[0].rows] : [2, 1];
     const grid = state.template.grid;
-    span = [Math.max(1, Math.min(span[0], grid[0])), Math.max(1, Math.min(span[1], grid[1]))];
+    const span = mapSpan(ref, grid);
     state.template.cells = [{ at: [0, 0], span: span, widget: plugin + '/' + widget, args: {}, style: {} }];
     state.selected = 0;
   }
@@ -766,7 +845,8 @@
     const t = state.template;
     if (!t) return;
     const info = widgetInfo(plugin, widget);
-    let span = info && info.sizes && info.sizes.length ? [info.sizes[0].columns, info.sizes[0].rows] : [1, 1];
+    const ref = info && info.sizes && info.sizes.length ? [info.sizes[0].columns, info.sizes[0].rows] : [1, 1];
+    let span = mapSpan(ref, t.grid);
     span = [Math.max(1, Math.min(span[0], t.grid[0] - x)), Math.max(1, Math.min(span[1], t.grid[1] - y))];
     if (overlaps(x, y, span[0], span[1], -1)) {
       span = [1, 1];
@@ -1834,6 +1914,8 @@
     if (!c) return params;
     params.set('widget', c.widget);
     params.set('span', c.span[0] + 'x' + c.span[1]);
+    const grid = cellGrid();
+    params.set('grid', grid[0] + 'x' + grid[1]);
     for (const [name, value] of Object.entries(c.args || {})) {
       params.set('arg.' + name, Array.isArray(value) ? value.join(', ') : String(value));
     }
@@ -2044,7 +2126,9 @@
     const error = el('preview-error');
     const c = state.template.cells[0];
     const [plugin, widget] = c.widget.split('/');
-    const params = new URLSearchParams({ display: state.display, span: c.span[0] + 'x' + c.span[1] });
+    const grid = state.template.grid;
+    const params = new URLSearchParams({ display: state.display, span: c.span[0] + 'x' + c.span[1],
+      grid: grid[0] + 'x' + grid[1] });
     for (const [name, value] of Object.entries(c.args || {})) params.set('arg.' + name, JSON.stringify(value));
     let res;
     try {
@@ -2073,6 +2157,7 @@
 
   async function load() {
     setStatus('');
+    state.gridRatio = null;
     if (state.widgetsPage) {
       loadWidgetsPage();
       return;
@@ -2216,7 +2301,8 @@
   async function createVariant(display, label) {
     const info = state.displays.find((d) => d.name === display) || {};
     const kind = info.kind === 'text' ? 'text' : 'image';
-    const grid = kind === 'text' ? [info.width, info.height] : state.reference.slice();
+    const grid = kind === 'text' ? [info.width, info.height]
+      : (info.grid && info.grid.length ? info.grid.slice() : state.reference.slice());
     const template = kind === 'text'
       ? { kind: 'text', overflow: 'strip', cells: [{ at: [0, 0], span: [Math.max(1, info.width), 1], text: 'Text' }], style: {} }
       : { kind: kind, grid: grid, style: {}, cells: [blankCell(kind, grid)] };
@@ -2591,7 +2677,18 @@
     state.template.title = el('title').value;
     changed();
   });
-  for (const id of ['cols', 'rows']) on(id, 'change', applyGrid);
+  on('cols', 'change', () => applyGrid('cols'));
+  on('rows', 'change', () => applyGrid('rows'));
+  // The grid lock is a preference like the Cells switch; it is not part of the
+  // page file (ADR 0128).
+  if (el('grid-lock')) {
+    try {
+      state.gridLock = localStorage.getItem('paperboy.editor.gridlock') === '1';
+    } catch (e) {
+      state.gridLock = false;
+    }
+    on('grid-lock', 'click', () => setGridLock(!state.gridLock));
+  }
   for (const [id, key] of [['padding', 'padding'], ['rule', 'rule'], ['text-size', 'text_size'], ['divider', 'divider']]) {
     on(id, 'input', () => {
       if (!state.template) return;

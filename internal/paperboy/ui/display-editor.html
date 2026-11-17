@@ -25,6 +25,9 @@ input, select { font: inherit; padding: .15rem .3rem; min-width: 0; width: 100%;
 .from-panel .unit { color: #666; }
 .from-panel button { font-size: .78rem; padding: .1rem .45rem; }
 .from-panel .hint { margin: .35rem 0 0; font-size: .78rem; }
+.grid-field { display: grid; grid-template-columns: 8.5rem 4rem 1rem 4rem auto; gap: .3rem; align-items: center; font-size: .85rem; margin-bottom: .4rem; }
+.grid-field span:first-child { color: #555; }
+.grid-field button { font-size: .78rem; padding: .1rem .45rem; }
 pre.file { margin: 0; padding: .5rem .6rem; background: #f7f9fc; border: 1px solid #e1e7f0; border-radius: 6px; font: .8rem/1.35 ui-monospace, Consolas, monospace; overflow-x: auto; white-space: pre; }
 #pages a, #devices a { display: block; font-size: .88rem; padding: .1rem 0; }
 #pages .empty, #devices .empty { color: #888; font-size: .85rem; margin: 0; }
@@ -88,6 +91,14 @@ pre.file { margin: 0; padding: .5rem .6rem; background: #f7f9fc; border: 1px sol
       <p class="hint">auto follows what the firmware reports and falls back to battery (ADR 0051).</p>
       <label class="field image-only"><span>rotation</span><select id="rotation"></select></label>
       <p class="hint image-only">Turns composed pages clockwise before the firmware paints them (ADR 0102). A portrait page on a landscape panel needs 90 or 270; a device may override this for its mounting.</p>
+      <div class="grid-field image-only">
+        <span>grid</span>
+        <input id="grid-cols" type="number" min="1" max="80" step="1" placeholder="6" aria-label="Grid columns">
+        <span>×</span>
+        <input id="grid-rows" type="number" min="1" max="80" step="1" placeholder="8" aria-label="Grid rows">
+        <button type="button" id="use-grid" hidden>use</button>
+      </div>
+      <p class="hint image-only" id="grid-note"></p>
     </section>
   </div>
   <div class="col">

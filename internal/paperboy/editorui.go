@@ -237,11 +237,12 @@ type editorState struct {
 // display type, so it starts a new variant from the type and never from the
 // open file (ADR 0110, issue #238).
 type editorDisplayInfo struct {
-	Name       string `json:"name"`
-	Kind       string `json:"kind"`
-	Width      int    `json:"width"`
-	Height     int    `json:"height"`
-	ScrollStep int    `json:"scroll_step,omitempty"` // ms between marquee steps (ADR 0118)
+	Name       string  `json:"name"`
+	Kind       string  `json:"kind"`
+	Width      int     `json:"width"`
+	Height     int     `json:"height"`
+	Grid       *[2]int `json:"grid,omitempty"`        // default grid of a new page (ADR 0128)
+	ScrollStep int     `json:"scroll_step,omitempty"` // ms between marquee steps (ADR 0118)
 }
 
 // displayNames lists the configured display types alphabetically.
@@ -900,10 +901,11 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if newPage && kindParam != "" {
-		// The new-page dialog asks for the kind; only a text page takes a
-		// character grid from a display type (ADR 0110).
-		if kindParam == page.KindText && display != "" && cfg.Profiles[display].text() {
-			// keep the chosen character grid
+		// The new-page dialog asks for the kind; the chosen display type keeps
+		// the grid a new page starts with, its character grid for a text page
+		// and its default grid for an image page (ADR 0110, 0128).
+		if display != "" && cfg.Profiles[display].text() == (kindParam == page.KindText) {
+			// keep the chosen display type and its grid
 		} else {
 			display = displayOfKind(cfg.Profiles, kindParam)
 			if display == "" {
@@ -1118,7 +1120,8 @@ func openOrBlank(open *editorPageFile, name, label string) *editorPageFile {
 }
 
 // pageGrid is the grid a new page starts with: the character grid of a text
-// display, else the reference grid.
+// display, else the grid of the open file or the display type's default
+// (ADR 0128).
 func pageGrid(kind string, p Profile, open editorPageFile) [2]int {
 	if kind == page.KindText {
 		return [2]int{p.Width, p.Height}
@@ -1126,7 +1129,7 @@ func pageGrid(kind string, p Profile, open editorPageFile) [2]int {
 	if open.Grid != [2]int{} {
 		return open.Grid
 	}
-	return defaultGrid
+	return gridOf(p)
 }
 
 // displayInfos lists the configured display types with the kind and character
@@ -1142,6 +1145,9 @@ func displayInfos(cfg *Config) []editorDisplayInfo {
 		info := editorDisplayInfo{Name: name, Kind: kind, Width: p.Width, Height: p.Height}
 		if p.text() {
 			info.ScrollStep = int(p.ScrollStep / time.Millisecond)
+		} else {
+			g := gridOf(p)
+			info.Grid = &g
 		}
 		out = append(out, info)
 	}
@@ -1173,10 +1179,14 @@ func editorStateData(state editorState) template.JS {
 // page is always the image grid, because the Playground offers image display
 // types only (ADR 0124). The types of the args are read in the script, where the
 // plugin schema is known.
-func widgetsStateData(display string, p Profile, widget string, span [2]int, args map[string]string) template.JS {
+func widgetsStateData(display string, p Profile, widget string, span, grid [2]int, args map[string]string) template.JS {
+	g := gridOf(p)
+	if grid != [2]int{} {
+		g = grid // a page's grid, so the preview matches its cell
+	}
 	state := editorState{Display: display, WidgetsPage: true, Widget: widget, Args: args,
 		Reference: defaultGrid, Width: p.Width, Height: p.Height,
-		Kind: page.KindImage, Grid: defaultGrid}
+		Kind: page.KindImage, Grid: g}
 	if span[0] > 0 && span[1] > 0 {
 		state.Span = &span
 	}
