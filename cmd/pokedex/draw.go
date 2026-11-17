@@ -91,9 +91,12 @@ func drawCard(m *mon, req *plugin.Request, lang string, w plugin.WidgetRequest, 
 	stats := w.Arg().Bool("stats", true)
 	flavor := w.Arg().Bool("flavor", true)
 	if !stats {
-		// Without the stat bars the card carries a short header and a big
-		// picture: both stack, so a wide cell does not leave an empty half.
-		return drawStacked(m, lang, w, img, inner, base, gap, rule, flavor)
+		// Without the stat bars the header is two short rows: a wide cell puts
+		// the artwork beside them at full height, else it stacks.
+		if besideFits(inner, m, lang, base, gap) {
+			return drawBeside(m, lang, img, inner, base, gap, rule, flavor)
+		}
+		return drawStacked(m, lang, img, inner, base, gap, rule, flavor)
 	}
 	// Artwork left of the text on wide cells, above it on tall ones.
 	art, col := inner, inner
@@ -109,7 +112,7 @@ func drawCard(m *mon, req *plugin.Request, lang string, w plugin.WidgetRequest, 
 	if m.art != nil {
 		drawArt(img, art, m.art)
 	}
-	bottom, s := drawText(img, col, m, lang, base, gap, rule, stats)
+	bottom, s := drawText(img, col, m, lang, base, gap, rule, stats, 1.2)
 	if !flavor || s < base*0.99 {
 		return nil // switched off or squeezed: no flavor text
 	}
@@ -124,12 +127,12 @@ func drawCard(m *mon, req *plugin.Request, lang string, w plugin.WidgetRequest, 
 	return nil
 }
 
-// drawStacked draws the card without the stats: the header spans the full
-// width, the artwork follows underneath, centered, and the flavor text closes
-// the card. It keeps a wide cell from showing a small picture on the left and
-// an empty half on the right.
-func drawStacked(m *mon, lang string, w plugin.WidgetRequest, img *image.Paletted, inner image.Rectangle, base float64, gap, rule int, flavor bool) error {
-	bottom, s := drawText(img, inner, m, lang, base, gap, rule, false)
+// drawStacked draws the card without the stats on a tall cell: the header
+// spans the full width, the artwork follows underneath, centered, and the
+// flavor text closes the card. The header never grows beyond the base text
+// size, so it does not eat the room the artwork gains.
+func drawStacked(m *mon, lang string, img *image.Paletted, inner image.Rectangle, base float64, gap, rule int, flavor bool) error {
+	bottom, s := drawText(img, inner, m, lang, base, gap, rule, false, 1)
 	free := image.Rect(inner.Min.X, bottom+gap, inner.Max.X, inner.Max.Y)
 	if flavor {
 		// The flavor text keeps room at the bottom, but the artwork stays the
@@ -156,6 +159,54 @@ func drawStacked(m *mon, lang string, w plugin.WidgetRequest, img *image.Palette
 	return nil
 }
 
+// besideFits tells whether the artwork can fill the cell's height beside a
+// column that still shows the types and the size at a readable size. The
+// column gets what the square artwork leaves, so a cell that is only a little
+// wider than tall stacks instead.
+func besideFits(inner image.Rectangle, m *mon, lang string, base float64, gap int) bool {
+	if inner.Dx() < inner.Dy()*11/10 {
+		return false
+	}
+	col := inner.Dx() - inner.Dy() - gap*2
+	if col < 1 {
+		return false
+	}
+	s := textSize(inner.Dy(), base, gap, 0, 1)
+	_, rows := infoRows(col, m, lang, s, gap)
+	return rows > 0
+}
+
+// drawBeside draws the card without the stats on a wide cell: the artwork
+// fills the cell's height on the left, the header and the flavor text take the
+// column on the right. The text block sits in the middle of the column when it
+// does not fill it, so a card without the flavor text does not look like an
+// empty half.
+func drawBeside(m *mon, lang string, img *image.Paletted, inner image.Rectangle, base float64, gap, rule int, flavor bool) error {
+	side := inner.Dy()
+	art := image.Rect(inner.Min.X, inner.Min.Y, inner.Min.X+side, inner.Min.Y+side)
+	col := image.Rect(art.Max.X+gap*2, inner.Min.Y, inner.Max.X, inner.Max.Y)
+
+	s := textSize(col.Dy(), base, gap, 0, 1)
+	_, rows := infoRows(col.Dx(), m, lang, s, gap)
+	head := headerHeight(s, gap, rows == 2)
+	block, lines := head, 0
+	fs := max(s*0.62, render.MinSize)
+	if flavor {
+		lineH := int(fs * 1.2)
+		lines = min(len(wrap(m.flavorText(lang), fs, col.Dx())), max((col.Dy()-head-gap)/lineH, 0))
+		if lines > 0 {
+			block += gap + lines*lineH
+		}
+	}
+	top := col.Min.Y + max((col.Dy()-block)/2, 0)
+	drawHeader(img, image.Rect(col.Min.X, top, col.Max.X, top+block), m, lang, s, gap, rule, true)
+	if lines > 0 {
+		drawFlavor(img, image.Rect(col.Min.X, top+head+gap, col.Max.X, top+block), m.flavorText(lang), fs)
+	}
+	drawArt(img, art, m.art)
+	return nil
+}
+
 // drawFlavor wraps text into r and cuts it with an ellipsis where the height
 // ends.
 func drawFlavor(img *image.Paletted, r image.Rectangle, text string, fs float64) {
@@ -174,43 +225,97 @@ func drawFlavor(img *image.Paletted, r image.Rectangle, text string, fs float64)
 	}
 }
 
-// drawText draws name, number, types, size and, when stats is set, the six
-// base stats into col. It returns the bottom edge and the text size used. When
-// the column is too short everything shrinks down to half the base size.
-func drawText(img *image.Paletted, col image.Rectangle, m *mon, lang string, base float64, gap, rule int, stats bool) (bottom int, used float64) {
-	// Heights in units of the text size s: name 1.45, info 1.0, six stat rows 0.9.
-	// Roomy columns grow the text a little; short ones shrink it; without the
-	// stats their rows are free.
-	statsRows := 6 * 0.9
-	if !stats {
-		statsRows = 0
-	}
-	s := max(min((float64(col.Dy())-3*float64(gap))/(1.45+1.0+statsRows), base*1.2), base*0.5)
-	y := col.Min.Y
+// Header rows in units of the text size: the name row and the info row.
+const (
+	nameRow = 1.45
+	infoRow = 1.0
+)
 
+// textSize is the text size of a column of the given height with room for rows
+// more rows: a roomy column grows a little, a short one shrinks, and grow caps
+// the size relative to the base text.
+func textSize(height int, base float64, gap int, rows, grow float64) float64 {
+	return max(min((float64(height)-3*float64(gap))/(nameRow+infoRow+rows), base*grow), base*0.5)
+}
+
+// headerHeight is the height drawHeader needs for the text size s, with one or
+// two rows for the types and the size.
+func headerHeight(s float64, gap int, twoRows bool) int {
+	h := int(s*nameRow) + gap + int(s*infoRow)
+	if twoRows {
+		h += int(s * infoRow)
+	}
+	return h
+}
+
+// infoRows is the size of the types and the size in a column of the given
+// width and how many rows they need: one row when both fit next to each other,
+// two rows when the column only holds one of them, and 0 when it holds
+// neither. The size shrinks down to 0.55 of the text size.
+func infoRows(width int, m *mon, lang string, s float64, gap int) (info float64, rows int) {
+	info = s * 0.75
+	types, dims := m.typesText(lang, " · "), m.sizeText(lang)
+	measure := func() (int, int) { return render.Measure(dims, info, false), render.Measure(types, info, true) }
+	sizeW, typesW := measure()
+	for sizeW+typesW+gap*2 > width && info > s*0.55 {
+		info--
+		sizeW, typesW = measure()
+	}
+	switch {
+	case sizeW+typesW+gap*2 <= width:
+		return info, 1
+	case max(sizeW, typesW) <= width:
+		return info, 2
+	}
+	return info, 0
+}
+
+// drawHeader draws name, number, types and size into col and returns the
+// bottom edge. twoRows lets a narrow column put the size below the types.
+func drawHeader(img *image.Paletted, col image.Rectangle, m *mon, lang string, s float64, gap, rule int, twoRows bool) int {
 	// Name and number.
 	nameSize := s * 1.2
 	numSize := s * 0.8
 	numW := render.Measure(m.number(), numSize, false)
-	render.TextAt(img, m.number(), col.Max.X, y+int(nameSize*1.05), numSize, false, color.Black, render.Right)
-	render.Text(img, m.displayName(lang), col.Min.X, y+int(nameSize*1.05), render.Style{Size: nameSize, Bold: true, Shrink: true},
+	render.TextAt(img, m.number(), col.Max.X, col.Min.Y+int(nameSize*1.05), numSize, false, color.Black, render.Right)
+	render.Text(img, m.displayName(lang), col.Min.X, col.Min.Y+int(nameSize*1.05), render.Style{Size: nameSize, Bold: true, Shrink: true},
 		col.Dx()-numW-gap*2, color.Black, render.Left)
-	y += int(s * 1.45)
+	y := col.Min.Y + int(s*nameRow)
 	render.HLine(img, col.Min.X, y-gap/2-rule/2, col.Max.X, rule)
 	y += gap
 
 	// Types and size.
-	info := s * 0.75
-	types := m.typesText(lang, " · ")
-	size := m.sizeText(lang)
-	sizeW := render.Measure(size, info, false)
-	for sizeW+render.Measure(types, info, true)+gap*2 > col.Dx() && info > s*0.55 {
-		info--
-		sizeW = render.Measure(size, info, false)
+	info, rows := infoRows(col.Dx(), m, lang, s, gap)
+	if rows == 2 && !twoRows {
+		rows = 1 // one row that ellipsizes, as before without the room for two
 	}
-	render.TextAt(img, size, col.Max.X, y+int(info), info, false, color.Black, render.Right)
-	render.TextAt(img, render.Ellipsize(types, info, true, col.Dx()-sizeW-gap*2), col.Min.X, y+int(info), info, true, color.Black, render.Left)
-	y += int(s * 1.0)
+	types, size := m.typesText(lang, " · "), m.sizeText(lang)
+	switch rows {
+	case 2:
+		render.TextAt(img, render.Ellipsize(types, info, true, col.Dx()), col.Min.X, y+int(info), info, true, color.Black, render.Left)
+		y += int(s * infoRow)
+		render.TextAt(img, size, col.Max.X, y+int(info), info, false, color.Black, render.Right)
+	default:
+		sizeW := render.Measure(size, info, false)
+		render.TextAt(img, size, col.Max.X, y+int(info), info, false, color.Black, render.Right)
+		render.TextAt(img, render.Ellipsize(types, info, true, col.Dx()-sizeW-gap*2), col.Min.X, y+int(info), info, true, color.Black, render.Left)
+	}
+	return y + int(s*infoRow)
+}
+
+// drawText draws the header and, when stats is set, the six base stats into
+// col. It returns the bottom edge and the text size used. When the column is
+// too short everything shrinks down to half the base size.
+func drawText(img *image.Paletted, col image.Rectangle, m *mon, lang string, base float64, gap, rule int, stats bool, grow float64) (bottom int, used float64) {
+	// Heights in units of the text size s: name 1.45, info 1.0, six stat rows
+	// 0.9. Roomy columns grow the text a little; short ones shrink it; without
+	// the stats their rows are free.
+	statsRows := 6 * 0.9
+	if !stats {
+		statsRows = 0
+	}
+	s := textSize(col.Dy(), base, gap, statsRows, grow)
+	y := drawHeader(img, col, m, lang, s, gap, rule, false)
 
 	if !stats {
 		return y, s
