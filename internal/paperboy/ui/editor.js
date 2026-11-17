@@ -561,12 +561,11 @@
       : 'Keep the cells square on ' + state.display;
   }
 
-  // setGridLock remembers the lock and squares the current grid when it is
-  // switched on. A density whose square grid would cut off a widget leaves the
-  // lock off, so a closed lock always means square cells.
+  // setGridLock remembers the lock. It changes nothing by itself: like the
+  // chain of an image editor it applies to the next change of an axis, so a
+  // page with cells near its edge keeps its grid.
   function setGridLock(on) {
     state.gridLock = !!on;
-    if (state.gridLock && !applyGrid('cols')) state.gridLock = false;
     try {
       localStorage.setItem('paperboy.editor.gridlock', state.gridLock ? '1' : '0');
     } catch (e) {
