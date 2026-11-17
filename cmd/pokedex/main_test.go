@@ -420,17 +420,32 @@ func TestCardSwitches(t *testing.T) {
 		t.Fatal(err)
 	}
 	col := image.Rect(0, 0, 200, 100)
-	_, withStats := drawText(render.NewCanvas(200, 100, 4), col, m, "en", 16, 2, 1, true)
-	_, without := drawText(render.NewCanvas(200, 100, 4), col, m, "en", 16, 2, 1, false)
+	_, withStats := drawText(render.NewCanvas(200, 100, 4), col, m, "en", 16, 2, 1, true, 1.2)
+	_, without := drawText(render.NewCanvas(200, 100, 4), col, m, "en", 16, 2, 1, false, 1.2)
 	if without < withStats {
 		t.Errorf("a card without stats shrank its text: %.1f < %.1f", without, withStats)
 	}
 }
 
-// TestStackedCardCentersTheArtwork checks the card without stats: the header
-// spans the width and the artwork follows underneath, centered, so a wide cell
-// does not keep a small picture on the left and an empty half on the right.
-func TestStackedCardCentersTheArtwork(t *testing.T) {
+// TestTextSizeDoesNotGrow checks the size of a text column: a roomy column
+// grows only when the caller allows it, a short one shrinks to half the base
+// text.
+func TestTextSizeDoesNotGrow(t *testing.T) {
+	if s := textSize(400, 20, 4, 0, 1); s != 20 {
+		t.Errorf("a roomy column with grow 1 = %.1f, want the base 20", s)
+	}
+	if s := textSize(400, 20, 4, 0, 1.2); s != 24 {
+		t.Errorf("a roomy column with grow 1.2 = %.1f, want 24", s)
+	}
+	if s := textSize(40, 20, 4, 5.4, 1.2); s != 10 {
+		t.Errorf("a short column = %.1f, want the base text's half 10", s)
+	}
+}
+
+// TestBesideCardFillsTheHeight checks the card without stats on a wide cell:
+// the artwork fills the cell's height on the left and the header sits beside
+// it, centered in the column when the flavor text is off.
+func TestBesideCardFillsTheHeight(t *testing.T) {
 	p, _ := configured(t, map[string]any{"pokemon": "25"})
 	req, w := request("en", 400, 240, 125)
 	w.Args = plugin.Values{"stats": false, "flavor": false}
@@ -444,45 +459,61 @@ func TestStackedCardCentersTheArtwork(t *testing.T) {
 		t.Fatal(err)
 	}
 	white := uint8(len(img.Palette) - 1)
-	left, right := 400, -1
-	for y := 100; y < 240; y++ { // below the header
-		for x := 0; x < 400; x++ {
-			if img.Pix[y*img.Stride+x] == white {
-				continue
-			}
-			if x < left {
-				left = x
-			}
-			if x > right {
-				right = x
+	ink := func(x0, x1, y0, y1 int) (top, bottom int) {
+		top, bottom = y1, y0
+		for y := y0; y < y1; y++ {
+			for x := x0; x < x1; x++ {
+				if img.Pix[y*img.Stride+x] == white {
+					continue
+				}
+				top, bottom = min(top, y), max(bottom, y)
 			}
 		}
-	}
-	if right < 0 || right-left < 100 {
-		t.Fatalf("no artwork below the header: %d..%d", left, right)
-	}
-	if d := (left) - (399 - right); d > 4 || d < -4 {
-		t.Errorf("artwork is not centered: %d left, %d right", left, 399-right)
+		return top, bottom
 	}
 
-	// The header keeps the full width: the rule under the name reaches both
-	// edges, so a wider cell has a wider header band.
-	req, w = request("en", 800, 240, 125)
+	// The artwork takes the cell's height: the circle of the fixture is about
+	// 185 px across in a 222 px square, not the 128 px of a stacked card.
+	top, bottom := ink(0, 230, 0, 240)
+	if bottom < top {
+		t.Fatal("no artwork on the left")
+	}
+	if h := bottom - top; h < 150 {
+		t.Errorf("artwork is %d px high, want nearly the cell's inner height", h)
+	}
+
+	// The header is in the right column and its middle is the column's middle.
+	top, bottom = ink(238, 392, 0, 240)
+	if bottom < top {
+		t.Fatal("no header beside the artwork")
+	}
+	if c := (top + bottom) / 2; c < 105 || c > 135 {
+		t.Errorf("header center at %d, want the column's center 120", c)
+	}
+}
+
+// TestStackedCardOnATallCell checks the card without stats on a tall cell: the
+// header spans the width and the artwork follows underneath, centered.
+func TestStackedCardOnATallCell(t *testing.T) {
+	p, _ := configured(t, map[string]any{"pokemon": "25"})
+	req, w := request("en", 240, 400, 125)
 	w.Args = plugin.Values{"stats": false, "flavor": false}
 	req.Levels = 2
 	req.Widgets = []plugin.WidgetRequest{w}
 	if err := p.Prepare(req); err != nil {
 		t.Fatal(err)
 	}
-	wide := render.NewCanvas(800, 240, 2)
-	if err := p.Render(req, w, wide); err != nil {
+	img := render.NewCanvas(240, 400, 2)
+	if err := p.Render(req, w, img); err != nil {
 		t.Fatal(err)
 	}
-	rule, count := 0, -1
-	for y := 0; y < 100; y++ {
+	white := uint8(len(img.Palette) - 1)
+
+	rule, count := -1, 0
+	for y := 0; y < 400; y++ {
 		dark := 0
-		for x := 0; x < 800; x++ {
-			if wide.Pix[y*wide.Stride+x] != white {
+		for x := 0; x < 240; x++ {
+			if img.Pix[y*img.Stride+x] != white {
 				dark++
 			}
 		}
@@ -490,8 +521,24 @@ func TestStackedCardCentersTheArtwork(t *testing.T) {
 			rule, count = y, dark
 		}
 	}
-	if count < 700 {
-		t.Errorf("the header rule spans %d px of 800 in row %d", count, rule)
+	if count < 200 {
+		t.Errorf("the header rule spans %d px of 240 in row %d", count, rule)
+	}
+
+	left, right := 240, -1
+	for y := 200; y < 300; y++ { // the artwork's middle, below the header
+		for x := 0; x < 240; x++ {
+			if img.Pix[y*img.Stride+x] == white {
+				continue
+			}
+			left, right = min(left, x), max(right, x)
+		}
+	}
+	if right < 0 {
+		t.Fatal("no artwork below the header")
+	}
+	if d := left - (239 - right); d > 4 || d < -4 {
+		t.Errorf("artwork is not centered: %d left, %d right", left, 239-right)
 	}
 }
 
