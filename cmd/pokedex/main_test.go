@@ -427,6 +427,74 @@ func TestCardSwitches(t *testing.T) {
 	}
 }
 
+// TestStackedCardCentersTheArtwork checks the card without stats: the header
+// spans the width and the artwork follows underneath, centered, so a wide cell
+// does not keep a small picture on the left and an empty half on the right.
+func TestStackedCardCentersTheArtwork(t *testing.T) {
+	p, _ := configured(t, map[string]any{"pokemon": "25"})
+	req, w := request("en", 400, 240, 125)
+	w.Args = plugin.Values{"stats": false, "flavor": false}
+	req.Levels = 2
+	req.Widgets = []plugin.WidgetRequest{w}
+	if err := p.Prepare(req); err != nil {
+		t.Fatal(err)
+	}
+	img := render.NewCanvas(400, 240, 2)
+	if err := p.Render(req, w, img); err != nil {
+		t.Fatal(err)
+	}
+	white := uint8(len(img.Palette) - 1)
+	left, right := 400, -1
+	for y := 100; y < 240; y++ { // below the header
+		for x := 0; x < 400; x++ {
+			if img.Pix[y*img.Stride+x] == white {
+				continue
+			}
+			if x < left {
+				left = x
+			}
+			if x > right {
+				right = x
+			}
+		}
+	}
+	if right < 0 || right-left < 100 {
+		t.Fatalf("no artwork below the header: %d..%d", left, right)
+	}
+	if d := (left) - (399 - right); d > 4 || d < -4 {
+		t.Errorf("artwork is not centered: %d left, %d right", left, 399-right)
+	}
+
+	// The header keeps the full width: the rule under the name reaches both
+	// edges, so a wider cell has a wider header band.
+	req, w = request("en", 800, 240, 125)
+	w.Args = plugin.Values{"stats": false, "flavor": false}
+	req.Levels = 2
+	req.Widgets = []plugin.WidgetRequest{w}
+	if err := p.Prepare(req); err != nil {
+		t.Fatal(err)
+	}
+	wide := render.NewCanvas(800, 240, 2)
+	if err := p.Render(req, w, wide); err != nil {
+		t.Fatal(err)
+	}
+	rule, count := 0, -1
+	for y := 0; y < 100; y++ {
+		dark := 0
+		for x := 0; x < 800; x++ {
+			if wide.Pix[y*wide.Stride+x] != white {
+				dark++
+			}
+		}
+		if dark > count {
+			rule, count = y, dark
+		}
+	}
+	if count < 700 {
+		t.Errorf("the header rule spans %d px of 800 in row %d", count, rule)
+	}
+}
+
 func TestStartLoadsAhead(t *testing.T) {
 	p, calls := configured(t, map[string]any{"pokemon": "25"})
 	ctx, cancel := context.WithCancel(context.Background())

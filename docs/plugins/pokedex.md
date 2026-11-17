@@ -16,7 +16,7 @@ Pokémon from [PokéAPI](https://pokeapi.co), no API key needed.
 
 ## Widget `card`
 
-The card is for image displays. It shows the artwork, the name in the request language (from the species names, with English as fallback), the number, types, height and weight, the six base stats as bars and the flavor text in the request language. Two arguments leave the stats or the flavor text out. A card without stats keeps its text size and gives the freed rows to the flavor text.
+The card is for image displays. It shows the artwork, the name in the request language (from the species names, with English as fallback), the number, types, height and weight, the six base stats as bars and the flavor text in the request language. Two arguments leave the stats or the flavor text out. A card without stats keeps its text size and gives the freed rows to the flavor text. It also stacks: the header spans the width and the artwork follows underneath, centered, so a wide cell does not keep a small picture on the left and an empty half on the right. The artwork stays the main part; on a short cell the flavor text gives back a line.
 
 Arguments:
 

@@ -88,6 +88,13 @@ func drawCard(m *mon, req *plugin.Request, lang string, w plugin.WidgetRequest, 
 		return plugin.TooSmall(w)
 	}
 
+	stats := w.Arg().Bool("stats", true)
+	flavor := w.Arg().Bool("flavor", true)
+	if !stats {
+		// Without the stat bars the card carries a short header and a big
+		// picture: both stack, so a wide cell does not leave an empty half.
+		return drawStacked(m, lang, w, img, inner, base, gap, rule, flavor)
+	}
 	// Artwork left of the text on wide cells, above it on tall ones.
 	art, col := inner, inner
 	if inner.Dx() >= inner.Dy()*11/10 {
@@ -102,8 +109,8 @@ func drawCard(m *mon, req *plugin.Request, lang string, w plugin.WidgetRequest, 
 	if m.art != nil {
 		drawArt(img, art, m.art)
 	}
-	bottom, s := drawText(img, col, m, lang, base, gap, rule, w.Arg().Bool("stats", true))
-	if !w.Arg().Bool("flavor", true) || s < base*0.99 {
+	bottom, s := drawText(img, col, m, lang, base, gap, rule, stats)
+	if !flavor || s < base*0.99 {
 		return nil // switched off or squeezed: no flavor text
 	}
 	// The flavor text goes below the artwork when there is room for two
@@ -114,6 +121,38 @@ func drawCard(m *mon, req *plugin.Request, lang string, w plugin.WidgetRequest, 
 		rect = below
 	}
 	drawFlavor(img, rect, m.flavorText(lang), fs)
+	return nil
+}
+
+// drawStacked draws the card without the stats: the header spans the full
+// width, the artwork follows underneath, centered, and the flavor text closes
+// the card. It keeps a wide cell from showing a small picture on the left and
+// an empty half on the right.
+func drawStacked(m *mon, lang string, w plugin.WidgetRequest, img *image.Paletted, inner image.Rectangle, base float64, gap, rule int, flavor bool) error {
+	bottom, s := drawText(img, inner, m, lang, base, gap, rule, false)
+	free := image.Rect(inner.Min.X, bottom+gap, inner.Max.X, inner.Max.Y)
+	if flavor {
+		// The flavor text keeps room at the bottom, but the artwork stays the
+		// main thing: on a short cell it gives back a line.
+		fs := max(s*0.62, render.MinSize)
+		lineH := int(fs * 1.2)
+		room := min(2, (free.Dy()-gap)/lineH)
+		if room > 1 && free.Dy()-room*lineH-gap < inner.Dy()*2/5 {
+			room = 1
+		}
+		if room > 0 && free.Dy()-room*lineH-gap >= 24 {
+			free.Max.Y -= room*lineH + gap
+		}
+	}
+	side := min(free.Dx(), free.Dy())
+	if side >= 24 && m.art != nil {
+		x := free.Min.X + (free.Dx()-side)/2
+		drawArt(img, image.Rect(x, free.Min.Y, x+side, free.Min.Y+side), m.art)
+	}
+	if flavor {
+		fs := max(s*0.62, render.MinSize)
+		drawFlavor(img, image.Rect(inner.Min.X, free.Max.Y+gap, inner.Max.X, inner.Max.Y), m.flavorText(lang), fs)
+	}
 	return nil
 }
 
