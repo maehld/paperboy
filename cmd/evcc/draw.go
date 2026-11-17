@@ -249,7 +249,7 @@ func (e *evcc) drawLoadpoint(w plugin.WidgetRequest, lp *loadpoint, img *image.P
 			status += fmt.Sprintf(" (%dp)", lp.PhasesActive)
 		}
 		if lp.ChargeRemainingDuration > 0 {
-			status += " · " + e.t("noch ", "") + duration(time.Duration(lp.ChargeRemainingDuration), e.lang)
+			status += " · " + e.t("noch ", "") + duration(seconds(lp.ChargeRemainingDuration), e.lang)
 		}
 	}
 	y += int(text * 1.5)

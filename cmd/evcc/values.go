@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"time"
 
 	"github.com/maehld/paperboy/pkg/plugin"
 	"github.com/maehld/paperboy/pkg/render"
@@ -361,7 +360,7 @@ func (e *evcc) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 					out[name] = dash
 					continue
 				}
-				out[name] = plugin.DurationValue(time.Duration(lp.ChargeRemainingDuration))
+				out[name] = plugin.DurationValue(seconds(lp.ChargeRemainingDuration))
 				continue
 			}
 		}

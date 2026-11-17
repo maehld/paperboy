@@ -21,7 +21,7 @@ const stateJSON = `{"siteTitle":"Home","pvPower":4200,"homePower":800,"pvEnergy"
 "total":{"avgPrice":0.1705,"chargedKWh":1234.5,"solarPercentage":54.8}},
 "loadpoints":[{"title":"Garage","mode":"pv","vehicleTitle":"Octavia","vehicleSoc":64,"vehicleRange":180,
 "effectiveLimitSoc":80,"chargePower":3700,"sessionEnergy":5400,"sessionSolarPercentage":90,"charging":true,
-"connected":true,"phasesActive":1,"chargeRemainingDuration":2400000000000}],
+"connected":true,"phasesActive":1,"chargeRemainingDuration":2400}],
 "forecast":{"grid":[[1794002400,1794006000,0.25],[1794006000,1794009600,0.31]],
 "solar":{"timeseries":[[1794002400,1000],[1794006000,3000],[1794009600,0]],"today":{"energy":12000},"tomorrow":{"energy":8600}}}}`
 

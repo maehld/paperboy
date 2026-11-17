@@ -102,9 +102,13 @@ type loadpoint struct {
 	SessionSolarPercentage  float64 `json:"sessionSolarPercentage"`
 	Charging                bool    `json:"charging"`
 	Connected               bool    `json:"connected"`
-	ChargeRemainingDuration float64 `json:"chargeRemainingDuration"` // nanoseconds
+	ChargeRemainingDuration float64 `json:"chargeRemainingDuration"` // seconds since evcc 0.127.0
 	PhasesActive            int     `json:"phasesActive"`
 }
+
+// seconds converts evcc's duration fields. They are seconds since evcc 0.127.0
+// and were nanoseconds before, so a value of 12159 is about 3 h 23 min.
+func seconds(v float64) time.Duration { return time.Duration(v * float64(time.Second)) }
 
 type forecast struct {
 	Grid  [][3]float64 `json:"grid"` // [from, to, price] in unix seconds
