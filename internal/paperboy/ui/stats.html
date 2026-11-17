@@ -25,6 +25,14 @@ td.program { font-family: ui-monospace, Consolas, monospace; font-size: .82rem; 
 tr.error td { border-top: 0; padding-top: 0; color: #b00; font-size: .82rem; white-space: normal; word-break: break-word; }
 .empty { margin: 0; padding: 1.2rem 1rem; text-align: center; color: #888; border: 1px dashed #ccc; border-radius: 6px; }
 .hint { margin: .6rem 0 0; font-size: .8rem; color: #666; }
+.obs { border-top: 1px solid #eee; padding-top: .55rem; margin-top: .55rem; }
+.obs:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+.obs h3 { font-size: .9rem; margin: 0 0 .35rem; display: flex; gap: .5rem; align-items: baseline; }
+.obs h3 .muted { font-weight: 400; font-size: .8rem; }
+.obs ul { margin: 0; padding: 0; list-style: none; }
+.obs li { font-family: ui-monospace, Consolas, monospace; font-size: .78rem; white-space: normal; word-break: break-all; }
+.obs .label { margin: .45rem 0 .15rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: #666; }
+.obs pre { margin: 0; padding: .45rem .5rem; background: #f7f9fc; border: 1px solid #e1e7f0; border-radius: 6px; font: .76rem/1.35 ui-monospace, Consolas, monospace; max-height: 10rem; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 </style>
 </head>
 <body>
@@ -78,6 +86,29 @@ tr.error td { border-top: 0; padding-top: 0; color: #b00; font-size: .82rem; whi
   <p class="empty">No plugins configured.</p>
   {{end}}
   <p class="hint">Answer is how long the plugin took, wait is how long a request waited for another request of the same plugin. Memory and CPU come from the operating system; they stay empty where it does not report them.</p>
+</section>
+
+<section class="card">
+  <h2>What the plugins open <span class="muted">{{len .Observed}}</span></h2>
+  {{if .Observed}}
+  {{range .Observed}}
+  <div class="obs">
+    <h3>{{.Name}} <span class="muted">{{.State}}</span></h3>
+    <dl>
+      <dt>Disk</dt><dd>{{.Disk}}</dd>
+      <dt>Last exit</dt><dd>{{.LastExit}}</dd>
+      {{if .Files}}<dt>Open files</dt><dd><ul>{{range .Files}}<li>{{.}}</li>{{end}}{{if .FilesMore}}<li class="muted">+ {{.FilesMore}} more</li>{{end}}</ul></dd>{{end}}
+      {{if .Conns}}<dt>Connections</dt><dd><ul>{{range .Conns}}<li>{{.}}</li>{{end}}{{if .ConnsMore}}<li class="muted">+ {{.ConnsMore}} more</li>{{end}}</ul></dd>{{end}}
+    </dl>
+    {{if .Note}}<p class="hint">{{.Note}}</p>{{end}}
+    {{if .Stderr}}<p class="label">stderr</p><pre>{{range .Stderr}}{{.}}
+{{end}}</pre>{{end}}
+  </div>
+  {{end}}
+  {{else}}
+  <p class="empty">No plugin is configured.</p>
+  {{end}}
+  <p class="hint">Open files, connections, disk traffic and the exit state come from the operating system. Connections name the peer, not the traffic. Windows does not report them yet.</p>
 </section>
 
 <section class="card">

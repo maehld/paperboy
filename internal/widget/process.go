@@ -195,7 +195,7 @@ func (h *Host) process(spec Spec) (*process, error) {
 	if base.Err() != nil {
 		return nil, base.Err()
 	}
-	p, err := startProcess(base, spec, h.expire)
+	p, err := startProcess(base, spec, h.expire, h.recordExit)
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +232,7 @@ func (h *Host) drop(p *process) {
 	}
 }
 
-func startProcess(base context.Context, spec Spec, changed func(string, []string)) (*process, error) {
+func startProcess(base context.Context, spec Spec, changed func(string, []string), onExit func(*process, error)) (*process, error) {
 	if len(spec.Command) == 0 {
 		return nil, errors.New("no command configured")
 	}
@@ -273,7 +273,11 @@ func startProcess(base context.Context, spec Spec, changed func(string, []string
 		return nil, err
 	}
 	slog.Info("plugin started", "plugin", spec.Name, "pid", cmd.Process.Pid)
-	go p.read(stdout, changed)
+	go func() {
+		if err := p.read(stdout, changed); onExit != nil {
+			onExit(p, err)
+		}
+	}()
 	return p, nil
 }
 
@@ -439,7 +443,7 @@ func writeStateFile(path string, data []byte) error {
 
 // read dispatches the plugin's lines: answers to their request, events to
 // the cache.
-func (p *process) read(stdout io.Reader, changed func(string, []string)) {
+func (p *process) read(stdout io.Reader, changed func(string, []string)) error {
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 64<<10), maxOutput)
 	for sc.Scan() {
@@ -473,6 +477,7 @@ func (p *process) read(stdout io.Reader, changed func(string, []string)) {
 	err := p.cmd.Wait()
 	slog.Info("plugin exited", "plugin", p.spec.Name, "error", p.exitError(err))
 	close(p.done)
+	return err
 }
 
 // warnVersion logs a protocol mismatch once per process: the cells fail with
@@ -524,6 +529,10 @@ func (p *process) exitError(err error) error {
 	return fmt.Errorf("%w: %s", err, msg)
 }
 
+// stderrLines is how many lines of a plugin's error output the runtime page
+// shows (issue #306).
+const stderrLines = 50
+
 // tailBuffer keeps the last limit bytes of the plugin's error output.
 type tailBuffer struct {
 	mu    sync.Mutex
@@ -539,6 +548,21 @@ func (b *tailBuffer) Write(p []byte) (int, error) {
 		b.buf = b.buf[len(b.buf)-b.limit:]
 	}
 	return len(p), nil
+}
+
+// lines returns the last n complete lines of the buffer.
+func (b *tailBuffer) lines(n int) []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	text := strings.TrimRight(string(b.buf), "\n")
+	if text == "" {
+		return nil
+	}
+	all := strings.Split(text, "\n")
+	if len(all) > n {
+		all = all[len(all)-n:]
+	}
+	return all
 }
 
 func (b *tailBuffer) String() string {

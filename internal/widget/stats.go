@@ -47,6 +47,21 @@ type PluginStat struct {
 	Proc         stats.Proc // what the operating system reports, zero where it cannot
 	Wait         stats.Timing
 	Answer       stats.Timing
+
+	// Stage 0 of issue #306: what the plugin opened and where it talks to.
+	// Stderr is the tail of the running process, or of the last one that ended.
+	Stderr   []string  // at most stderrLines lines
+	LastExit *ExitInfo // how the last process of this plugin ended
+}
+
+// ExitInfo is how one plugin process ended (issue #306). Signal names a
+// signal that killed it; SIGSYS means the kernel denied a system call.
+type ExitInfo struct {
+	Code   int       // exit code; -1 when a signal ended the process
+	Signal string    // signal name, empty for a normal exit
+	At     time.Time // when the process ended
+	Error  string    // the error text, e.g. "exit status 1"
+	Stderr []string  // the last stderrLines lines of that process
 }
 
 // CacheStat is the widget cache as a whole.
@@ -91,6 +106,10 @@ func (h *Host) Stats(now time.Time) ([]PluginStat, CacheStat) {
 	failing := make(map[string]time.Time, len(h.failing))
 	for name, at := range h.failing {
 		failing[name] = at
+	}
+	exits := make(map[string]ExitInfo, len(h.lastExit))
+	for name, info := range h.lastExit {
+		exits[name] = info
 	}
 	cache := CacheStat{Evicted: h.evicted, Ages: make([]AgeBucket, len(ageBounds)+1)}
 	for i, within := range ageBounds {
@@ -149,6 +168,16 @@ func (h *Host) Stats(now time.Time) ([]PluginStat, CacheStat) {
 			row.PID = p.cmd.Process.Pid
 			row.Running = !p.exited()
 			row.Started = p.started
+			if row.Running {
+				row.Stderr = p.stderr.lines(stderrLines)
+			}
+		}
+		if info, ok := exits[name]; ok {
+			exit := info
+			row.LastExit = &exit
+			if !row.Running {
+				row.Stderr = exit.Stderr
+			}
 		}
 		row.Wait = h.registry().Timing("plugin." + name + ".wait")
 		row.Answer = h.registry().Timing("plugin." + name + ".answer")

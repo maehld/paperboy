@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maehld/paperboy/internal/stats"
 	"github.com/maehld/paperboy/internal/widget"
 )
 
@@ -28,6 +29,10 @@ func TestStatsPage(t *testing.T) {
 		"Plugins",
 		`<td class="name">paperboy</td>`,
 		"built-in",
+		"What the plugins open",
+		"Last exit",
+		"Disk",
+		"runs in the Paperboy process",
 		"Widget cache",
 		"Age",
 		"Paperboy caches",
@@ -53,6 +58,44 @@ func TestStatsPage(t *testing.T) {
 	}
 	if got := s.stats.Timing("render.page"); got.Count == 0 {
 		t.Fatalf("render.page was not measured: %+v", got)
+	}
+}
+
+// TestPluginObservation covers the observation rows of the runtime page
+// (stage 0 of issue #306): the lists are cut, the exit names its signal and the
+// stderr tail travels along.
+func TestPluginObservation(t *testing.T) {
+	now := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	files := []string{"/a", "/b", "/c", "/d", "/e", "/f", "/g", "/h", "/i", "/j"}
+	p := widget.PluginStat{
+		Name: "evcc", Running: true, Proc: stats.Proc{Files: files, ReadBytes: 2048, WriteBytes: 4096},
+		Stderr: []string{"one", "two"},
+	}
+	obs := pluginObservation(p, now)
+	if obs.State != "running" || obs.Disk != "read 2.0 KiB · wrote 4.0 KiB" {
+		t.Fatalf("observation: %+v", obs)
+	}
+	if len(obs.Files) != obsFiles || obs.FilesMore != len(files)-obsFiles {
+		t.Fatalf("files = %d, more = %d", len(obs.Files), obs.FilesMore)
+	}
+	if obs.LastExit != "–" || obs.Note != "" {
+		t.Fatalf("a running plugin without an exit: %+v", obs)
+	}
+	if got := strings.Join(obs.Stderr, ","); got != "one,two" {
+		t.Fatalf("stderr = %q", got)
+	}
+
+	p.LastExit = &widget.ExitInfo{Code: -1, Signal: "SIGSYS", At: now.Add(-2 * time.Minute), Stderr: []string{"denied"}}
+	obs = pluginObservation(p, now)
+	if obs.LastExit != "SIGSYS · 2 min ago" {
+		t.Fatalf("last exit = %q", obs.LastExit)
+	}
+
+	// A stopped plugin without system numbers says why the block is empty.
+	p = widget.PluginStat{Name: "old", Proc: stats.Proc{}, Running: false}
+	obs = pluginObservation(p, now)
+	if obs.State != "stopped" || obs.Files != nil || obs.Conns != nil {
+		t.Fatalf("stopped plugin: %+v", obs)
 	}
 }
 

@@ -80,6 +80,28 @@ type statsSync struct {
 	PollAvg string
 }
 
+// statsPluginObs is what one plugin opened and where it talks to (stage 0 of
+// issue #306). The lists are cut to keep the page readable; More names what is
+// left out.
+type statsPluginObs struct {
+	Name      string
+	State     string // running, stopped or built-in
+	Disk      string // disk bytes read and written
+	LastExit  string // code or signal with the time
+	Files     []string
+	FilesMore int
+	Conns     []string
+	ConnsMore int
+	Stderr    []string // at most widget.StderrLines lines
+	Note      string   // why there is nothing to show
+}
+
+// How many entries of one list the page shows before it counts the rest.
+const (
+	obsFiles = 8
+	obsConns = 6
+)
+
 // statsView is the whole page.
 type statsView struct {
 	Version   string
@@ -87,6 +109,7 @@ type statsView struct {
 	Platform  string
 	Paperboy  []statsFact
 	Plugins   []statsPlugin
+	Observed  []statsPluginObs
 	Cache     []statsFact
 	Ages      []statsAge
 	PageCache []statsFact
@@ -142,7 +165,7 @@ func (s *Server) statsView(now time.Time, loc *time.Location) statsView {
 		Platform:  runtime.GOOS + "/" + runtime.GOARCH,
 	}
 	view.Paperboy = s.paperboyFacts(now, loc)
-	view.Plugins, view.Cache, view.Ages = s.pluginFacts(now, loc)
+	view.Plugins, view.Observed, view.Cache, view.Ages = s.pluginFacts(now, loc)
 	view.PageCache = s.pageCacheFacts(now)
 	view.Timings, view.Syncs = s.timingFacts()
 	return view
@@ -213,11 +236,13 @@ func (s *Server) pluginCPUPercent(pid int, cpu float64, now time.Time) (float64,
 }
 
 // pluginFacts builds the plugin table, the cache totals and the age buckets.
-func (s *Server) pluginFacts(now time.Time, loc *time.Location) ([]statsPlugin, []statsFact, []statsAge) {
+func (s *Server) pluginFacts(now time.Time, loc *time.Location) ([]statsPlugin, []statsPluginObs, []statsFact, []statsAge) {
 	rows, cache := s.widgets.Stats(now)
 	plugins := make([]statsPlugin, 0, len(rows))
+	observed := make([]statsPluginObs, 0, len(rows))
 	live := map[int]bool{}
 	for _, p := range rows {
+		observed = append(observed, pluginObservation(p, now))
 		row := statsPlugin{
 			Name:      p.Name,
 			Program:   programText(p.Version, p.Program),
@@ -288,7 +313,49 @@ func (s *Server) pluginFacts(now time.Time, loc *time.Location) ([]statsPlugin, 
 			Bytes:   bytesText(b.Bytes),
 		})
 	}
-	return plugins, facts, ages
+	return plugins, observed, facts, ages
+}
+
+// pluginObservation turns the numbers of one plugin into the observation rows
+// of the page (stage 0 of issue #306).
+func pluginObservation(p widget.PluginStat, now time.Time) statsPluginObs {
+	obs := statsPluginObs{Name: p.Name}
+	switch {
+	case p.Builtin:
+		obs.State = "built-in"
+		obs.Note = "runs in the Paperboy process"
+	case p.Running:
+		obs.State = "running"
+	default:
+		obs.State = "stopped"
+	}
+	obs.Disk = "–"
+	if p.Proc.ReadBytes > 0 || p.Proc.WriteBytes > 0 {
+		obs.Disk = "read " + bytesText(int64(p.Proc.ReadBytes)) + " · wrote " + bytesText(int64(p.Proc.WriteBytes))
+	}
+	obs.LastExit = "–"
+	if e := p.LastExit; e != nil {
+		state := "code " + strconv.Itoa(e.Code)
+		if e.Signal != "" {
+			state = e.Signal
+		}
+		obs.LastExit = state + " · " + agoText(e.At, now)
+	}
+	obs.Files, obs.FilesMore = firstEntries(p.Proc.Files, obsFiles)
+	obs.Conns, obs.ConnsMore = firstEntries(p.Proc.Conns, obsConns)
+	obs.Stderr = p.Stderr
+	if !p.Builtin && p.Running && len(obs.Files) == 0 && len(obs.Conns) == 0 && p.Proc.RSS == 0 {
+		obs.Note = "not reported on " + runtime.GOOS
+	}
+	return obs
+}
+
+// firstEntries cuts a list to the first n entries and says how many remain.
+func firstEntries(list []string, n int) ([]string, int) {
+	if len(list) <= n {
+		return list, 0
+	}
+	return list[:n], len(list) - n
 }
 
 // ageRange names the age bucket of row i: its upper bound and the bound of the
