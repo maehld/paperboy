@@ -217,7 +217,6 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     </section>
     {{if .IsVariant}}<section class="panel">
       <h3>Variant</h3>
-      <p class="hint">This is a variant for {{if .ParentURL}}<a href="{{.ParentURL}}">{{.PageTitle}}</a>{{else}}{{.PageTitle}}{{end}}</p>
       <p class="types-label">Assigned display types</p>
       {{if .VariantTypes}}<ul class="variant-types">{{range .VariantTypes}}<li>{{.}}</li>{{end}}</ul>{{else}}<p class="hint">none</p>{{end}}
       {{if not .Orphan}}<div class="variant-actions">

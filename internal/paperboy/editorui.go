@@ -142,8 +142,6 @@ type editorPageView struct {
 	IsVariant      bool          // a variant is open; the page file owns the map
 	VariantTypes   []string      // display types that name the open variant, read-only
 	PageTitle      string        // title of the page file, shown read-only on a variant
-	ParentURL      string        // the page file of an open variant
-	ParentTitle    string        // its path, for the link
 	WidgetsPage    bool          // the widgets page without a page (ADR 0055)
 	TextFallback   bool          // the Playground fell back from a text display type (ADR 0124)
 	NoImageDisplay bool          // the Playground has no image display type to show (ADR 0124)
@@ -1035,12 +1033,8 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	if v.IsVariant {
 		v.VariantTypes = servesTypes(variants, label)
 		v.PageTitle = name
-		if pageFile != nil {
-			v.ParentTitle = pageFileName(name, "")
-			v.ParentURL, _ = pageEditURL(*pageFile, variants, cfg.Profiles, false)
-			if pageFile.Title != "" {
-				v.PageTitle = pageFile.Title
-			}
+		if pageFile != nil && pageFile.Title != "" {
+			v.PageTitle = pageFile.Title
 		}
 		// A variant of a page can change its label or move to another page; a
 		// file without a page file stays read-only (ADR 0110, 0112).
