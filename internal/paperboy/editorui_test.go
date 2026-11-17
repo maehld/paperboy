@@ -672,7 +672,7 @@ func TestEditorPage(t *testing.T) {
 		`data-serves="small"`,
 		`"rename":{"url":"/api/pages/solar/rename"}`,
 		`<script src="/ui/editor.js"></script>`, `id="board"`, `id="palette"`, `id="palette-filter"`, `id="inspector"`,
-		`id="show-cells" checked`, `id="render-hint"`, `id="preview-error"`,
+		`id="show-cells" checked`, `id="render-hint"`, `id="preview-error"`, `id="grid-lock"`,
 		// The panels list the files of the page and the file of every display
 		// type; one dialog creates a layout (ADR 0110).
 		`<h3>Variants</h3>`, `pages/solar.hochkant.yaml is missing`,
@@ -838,7 +838,7 @@ func TestEditorScript(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "previewBody()", "mapSpan(", "PUT", "pointerdown", "handle-xy", "firstWidget",
+	for _, want := range []string{"/api/pages/", "/api/plugins", "/api/preview/", "previewBody()", "mapSpan(", "grid-lock", "gridFromInputs", "PUT", "pointerdown", "handle-xy", "firstWidget",
 		"renderTextInspector", "textCellFields(box, c)", "where.className = 'muted'", "placeTextAt", "startPaletteDrag"} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("script lacks %q", want)

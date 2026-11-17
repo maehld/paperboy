@@ -36,8 +36,14 @@ label.field > span:first-child { color: #555; }
 input, select { font: inherit; padding: .15rem .3rem; min-width: 0; width: 100%; }
 input[type=checkbox] { width: auto; }
 input[type=search] { margin-bottom: .4rem; }
-.grid2 { display: flex; gap: .4rem; }
+.grid2 { display: flex; gap: .4rem; align-items: center; }
 .grid2 input { width: 4.5rem; }
+.grid2 .times { color: #666; font-size: .85rem; }
+.lock { display: inline-flex; align-items: center; justify-content: center; padding: .1rem .3rem; color: #555; }
+.lock svg { display: block; }
+.lock[aria-pressed="true"] .lock-open { display: none; }
+.lock[aria-pressed="false"] .lock-closed { display: none; }
+.lock[aria-pressed="true"] { color: #134e9c; }
 .board-panel { padding: .6rem; }
 .board-panel .panel-head { margin-bottom: .45rem; }
 .board-panel .panel-head .muted { font-size: .78rem; }
@@ -202,7 +208,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     {{if not .WidgetsPage}}<section class="panel">
       <h3>Page</h3>
       <label class="field"><span>Title</span><input id="title" autocomplete="off"></label>
-      <label class="field"><span>Grid</span><span class="grid2"><input id="cols" type="number" min="1" max="80" title="columns"><input id="rows" type="number" min="1" max="80" title="rows"></span></label>
+      <label class="field"><span>Grid</span><span class="grid2"><input id="cols" type="number" min="1" max="80" title="columns"><span class="times">×</span><input id="rows" type="number" min="1" max="80" title="rows"><button type="button" id="grid-lock" class="lock" aria-pressed="false" title="Keep the cells square on the preview display type"><svg class="lock-open" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false"><path d="M4 7V4.5a3.5 3.5 0 0 1 6.7-1.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><rect x="2.5" y="7" width="11" height="6.5" rx="1.2" fill="currentColor"/></svg><svg class="lock-closed" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false"><path d="M4.5 7V4.8a3.5 3.5 0 0 1 7 0V7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><rect x="2.5" y="7" width="11" height="6.5" rx="1.2" fill="currentColor"/></svg></button></span></label>
       <p class="hint" id="grid-note"></p>
       <div id="style-fields"{{if .TextPage}} hidden{{end}}>
         <h4>Style (pt)</h4>

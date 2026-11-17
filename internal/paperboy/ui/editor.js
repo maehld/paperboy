@@ -40,6 +40,7 @@
     signedOut: false, // the UI password changed: stop previews until the page reloads (ADR 0096)
     previewKind: '', // '' none, 'image' or 'text'
     previewLines: [], // the text lines of a text display, one char per cell
+    gridLock: false, // keep the page cells square on the preview display type (ADR 0128)
   };
 
   let suppressPaletteClick = false; // a finished palette drag must not toggle placing
@@ -497,19 +498,21 @@
     el('title').disabled = off || state.file !== '';
     el('cols').disabled = off || text();
     el('rows').disabled = off || text();
-    el('grid-note').textContent = rowsPage()
-      ? 'Text page: ' + state.width + '×' + state.height + ' characters. Drag a box to move it; its edges resize it.'
-      : text()
-        ? 'The grid is the character grid of the display and cannot be changed.'
-        : 'Cells of the page; plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid.';
+    renderGridLock(off);
     if (!t) {
       for (const id of ['title', 'cols', 'rows', 'padding', 'rule', 'text-size', 'divider']) el(id).value = '';
+      el('grid-note').textContent = '';
       return;
     }
     const s = t.style || {};
     el('title').value = t.title || state.page_title || '';
     el('cols').value = rowsPage() ? state.width : t.grid[0];
     el('rows').value = rowsPage() ? state.height : t.grid[1];
+    el('grid-note').textContent = rowsPage()
+      ? 'Text page: ' + state.width + '×' + state.height + ' characters. Drag a box to move it; its edges resize it.'
+      : text()
+        ? 'The grid is the character grid of the display and cannot be changed.'
+        : cellSizeText(t) + 'Plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid, Paperboy maps them.';
     el('padding').value = s.padding === undefined || s.padding === null ? '' : s.padding;
     el('rule').value = s.rule || '';
     el('text-size').value = s.text_size || '';
@@ -518,26 +521,82 @@
     if (el('overflow')) el('overflow').value = t.overflow || 'strip';
   }
 
-  function applyGrid() {
+  function clampCells(n) {
+    return Math.max(1, Math.min(80, Math.round(n)));
+  }
+
+  // gridFromInputs reads both fields. While the lock is on, the axis the
+  // operator did not change follows the display's page size, so the cells stay
+  // square; the other axis keeps the chosen density (ADR 0128).
+  function gridFromInputs(t, source) {
+    const cols = clampCells(Number(el('cols').value) || t.grid[0]);
+    const rows = clampCells(Number(el('rows').value) || t.grid[1]);
+    if (!state.gridLock || !(state.width > 0 && state.height > 0)) return [cols, rows];
+    if (source === 'rows') return [clampCells(rows * state.width / state.height), rows];
+    return [cols, clampCells(cols * state.height / state.width)];
+  }
+
+  // cellSizeText names the pixels of one cell and how far they are from
+  // square, because a lock cannot make every density square.
+  function cellSizeText(t) {
+    if (!t || text() || !(state.width > 0 && state.height > 0)) return '';
+    const cols = Number(el('cols').value) || t.grid[0];
+    const rows = Number(el('rows').value) || t.grid[1];
+    if (!(cols > 0 && rows > 0)) return '';
+    const w = state.width / cols;
+    const h = state.height / rows;
+    const dev = Math.round(Math.abs(w / h - 1) * 100);
+    const shape = dev <= 1 ? ', square' : ', ' + dev + ' % ' + (w > h ? 'wider than tall' : 'taller than wide');
+    return 'Cells ' + Math.round(w) + ' × ' + Math.round(h) + ' px on ' + state.display + shape + '. ';
+  }
+
+  function renderGridLock(off) {
+    const b = el('grid-lock');
+    if (!b) return;
+    b.hidden = rowsPage() || text() || !state.template;
+    b.disabled = off === undefined ? !state.template || state.readOnly : off;
+    b.setAttribute('aria-pressed', state.gridLock ? 'true' : 'false');
+    b.title = state.gridLock
+      ? 'Cells stay square on ' + state.display + '; click to unlock'
+      : 'Keep the cells square on ' + state.display;
+  }
+
+  // setGridLock remembers the lock and squares the current grid when it is
+  // switched on. A density whose square grid would cut off a widget leaves the
+  // lock off, so a closed lock always means square cells.
+  function setGridLock(on) {
+    state.gridLock = !!on;
+    if (state.gridLock && !applyGrid('cols')) state.gridLock = false;
+    try {
+      localStorage.setItem('paperboy.editor.gridlock', state.gridLock ? '1' : '0');
+    } catch (e) {
+      // storage may be off; the choice then lasts for this visit
+    }
+    renderGridLock();
+    renderSettings();
+  }
+
+  function applyGrid(source) {
     const t = state.template;
     if (!t || text()) return;
-    const cols = Math.max(1, Math.min(80, Math.round(num(el('cols').value) || t.grid[0])));
-    const rows = Math.max(1, Math.min(80, Math.round(num(el('rows').value) || t.grid[1])));
+    const [cols, rows] = gridFromInputs(t, source);
     for (const c of t.cells) {
       if (c.at[0] + c.span[0] > cols || c.at[1] + c.span[1] > rows) {
         setStatus('a widget leaves the ' + cols + '×' + rows + ' grid; move or delete it first', 'error');
         el('cols').value = t.grid[0];
         el('rows').value = t.grid[1];
-        return;
+        renderSettings();
+        return false;
       }
     }
-    if (cols === t.grid[0] && rows === t.grid[1]) {
-      el('cols').value = cols;
-      el('rows').value = rows;
-      return;
+    el('cols').value = cols;
+    el('rows').value = rows;
+    if (cols !== t.grid[0] || rows !== t.grid[1]) {
+      t.grid = [cols, rows];
+      changed();
     }
-    t.grid = [cols, rows];
-    changed();
+    renderSettings();
+    return true;
   }
 
   // ---- palette ----
@@ -2611,7 +2670,18 @@
     state.template.title = el('title').value;
     changed();
   });
-  for (const id of ['cols', 'rows']) on(id, 'change', applyGrid);
+  on('cols', 'change', () => applyGrid('cols'));
+  on('rows', 'change', () => applyGrid('rows'));
+  // The grid lock is a preference like the Cells switch; it is not part of the
+  // page file (ADR 0128).
+  if (el('grid-lock')) {
+    try {
+      state.gridLock = localStorage.getItem('paperboy.editor.gridlock') === '1';
+    } catch (e) {
+      state.gridLock = false;
+    }
+    on('grid-lock', 'click', () => setGridLock(!state.gridLock));
+  }
   for (const [id, key] of [['padding', 'padding'], ['rule', 'rule'], ['text-size', 'text_size'], ['divider', 'divider']]) {
     on(id, 'input', () => {
       if (!state.template) return;

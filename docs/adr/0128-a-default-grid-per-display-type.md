@@ -18,7 +18,7 @@ On a landscape panel that vocabulary gives flat cells: 2.2:1 on 800 × 480 and 1
 1. `displays/<name>.yaml` gains `grid: [columns, rows]` for `kind: image`: 1 to 80 per axis, default 6 × 8. A text type rejects it, like `rotation` ([ADR 0102](0102-rotate-pages-onto-the-panel.md)).
 2. The grid belongs to the page. The display type only supplies the default for a new page and a new variant. A page file keeps its own grid, and a change to the display type never rewrites a page.
 3. The reference grid stays 6 × 8, and the plugin protocol stays unchanged. The editor maps a declared span onto the page grid when it places a cell: half the width stays half the width on 8 × 6 and on 10 × 6.
-4. The display type editor suggests the coarsest grid whose cells are within 3 % of square, with even columns and rows so half cells stay exact. 4:3 becomes 8 × 6, 5:3 becomes 10 × 6, 3:4 becomes 6 × 10. The operator may override it, and the editor then names the cell size and the deviation.
+4. The display type editor suggests the coarsest grid whose cells are within 3 % of square, with even columns and rows so half cells stay exact. 4:3 becomes 8 × 6, 5:3 becomes 10 × 6, 3:4 becomes 6 × 10. The operator may override it, and the editor then names the cell size and the deviation. The page editor offers the same arithmetic behind a lock: a change to one axis derives the other from the display's page size.
 5. The Playground previews a real cell. A link from a page carries the page's grid, and the widget endpoint divides by the display type's grid unless the request names one.
 6. A page is not bound to an aspect ratio. A page file still serves every display type of its kind ([ADR 0110](0110-pages-serve-their-kind-and-name-variants.md)); widgets see pixels and adapt.
 
