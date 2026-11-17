@@ -108,7 +108,7 @@ type dashboardDevice struct {
 	Width       int
 	Height      int
 	Text        []string // text displays: the last served lines
-	Refresh     string   // "every 10 min", empty when unknown
+	Refresh     string   // "every 10 min · next in 4 min", empty when unknown
 	SeenAgo     string   // last contact, "never" when unknown
 	Address     string   // source address of the last contact, empty when unknown (ADR 0083)
 	ServedAgo   string   // age of the last served page
@@ -173,7 +173,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			Width:       profiles[d.Profile].Width,
 			Height:      profiles[d.Profile].Height,
 			Text:        d.LastText,
-			Refresh:     refreshText(d.LastRefresh),
+			Refresh:     refreshText(d.deviceState, now, profiles[d.Profile].text()),
 			SeenAgo:     agoText(d.LastSeen, now),
 			Address:     d.ClientIP,
 			ServedAgo:   agoText(d.LastPageTime, now),
@@ -375,17 +375,63 @@ func agoText(t, now time.Time) string {
 	return fmt.Sprintf("%d d ago", int(d.Hours()/24))
 }
 
-// refreshText turns a reported refresh in seconds into "every 10 min".
-func refreshText(seconds int) string {
+// intervalText turns a regular interval in seconds into "every 10 min".
+func intervalText(seconds int) string {
 	if seconds <= 0 {
 		return ""
 	}
-	if seconds >= 3600 {
-		if hours := seconds / 3600; seconds%3600 == 0 {
-			return fmt.Sprintf("every %d h", hours)
+	return "every " + waitText(time.Duration(seconds)*time.Second)
+}
+
+// waitText renders a positive duration with its two largest units, e.g. "40 s",
+// "4 min" or "1 h 5 min". It rounds to the second below a minute and to the
+// minute above it, so a dashboard readout does not overflow.
+func waitText(d time.Duration) string {
+	if d < time.Minute {
+		seconds := int(d.Round(time.Second) / time.Second)
+		if seconds < 1 {
+			seconds = 1
+		}
+		return fmt.Sprintf("%d s", seconds)
+	}
+	d = d.Round(time.Minute)
+	if d < time.Hour {
+		return fmt.Sprintf("%d min", int(d/time.Minute))
+	}
+	if d%time.Hour == 0 {
+		return fmt.Sprintf("%d h", int(d/time.Hour))
+	}
+	return fmt.Sprintf("%d h %d min", int(d/time.Hour), int(d/time.Minute)%60)
+}
+
+// refreshText shows the regular interval of a device and the time to its next
+// sync. The reported refresh is the sleep until that sync, not the interval
+// (ADR 0129), so it changes from cycle to cycle and must not read as "every".
+// A text display polls instead of sleeping, so it names only its poll.
+func refreshText(st deviceState, now time.Time, polling bool) string {
+	if polling {
+		if st.LastRefresh > 0 {
+			return "polling " + intervalText(st.LastRefresh)
+		}
+		return ""
+	}
+	interval := intervalText(st.LastInterval)
+	next := ""
+	if st.LastRefresh > 0 && !st.LastPageTime.IsZero() {
+		left := st.LastPageTime.Add(time.Duration(st.LastRefresh) * time.Second).Sub(now)
+		if left <= 0 {
+			next = "due now"
+		} else {
+			next = "next in " + waitText(left)
 		}
 	}
-	return fmt.Sprintf("every %d min", (seconds+30)/60)
+	switch {
+	case interval != "" && next != "":
+		return interval + " · " + next
+	case interval != "":
+		return interval
+	}
+	return next
 }
 
 // firmwareText shows the running version and, if another image is available,

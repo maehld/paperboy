@@ -174,7 +174,7 @@ func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 				Is: strings.Join(cond.Is, ", "), Current: current, Active: active})
 		}
 		if rule.Refresh > 0 {
-			vr.Refresh = refreshText(int(time.Duration(rule.Refresh) / time.Second))
+			vr.Refresh = intervalText(int(time.Duration(rule.Refresh) / time.Second))
 		}
 		for _, name := range rule.Pages {
 			vr.Pages = append(vr.Pages, s.planViewPage(cfg, dev.ID, dev.Profile, name, text, at))

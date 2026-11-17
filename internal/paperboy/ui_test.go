@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func htmlRequest(t *testing.T, s *Server, path string) *httptest.ResponseRecorder {
@@ -55,7 +56,7 @@ func TestDashboardShowsDevices(t *testing.T) {
 	if !strings.Contains(body, lastImagePath("test")+"?h=") {
 		t.Fatalf("the served image must name its hash: %s", body)
 	}
-	for _, want := range []string{"zimmer", "eins", "every 10 min", "3.74 V · 61 %", "small <span class=\"muted\">(sticky)</span>"} {
+	for _, want := range []string{"zimmer", "eins", "every 10 min · next in 10 min", "3.74 V · 61 %", "small <span class=\"muted\">(sticky)</span>"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("dashboard misses %q: %s", want, body)
 		}
@@ -157,6 +158,37 @@ func TestDashboardPower(t *testing.T) {
 		}
 		if got := batteryText(c.st); got != c.details {
 			t.Errorf("%s: details %q, want %q", c.name, got, c.details)
+		}
+	}
+}
+
+// TestRefreshText keeps the interval and the sleep apart (ADR 0129): the
+// dashboard names the plan's interval but the next sync from the reported
+// sleep, which is the rest of the clock grid.
+func TestRefreshText(t *testing.T) {
+	now := time.Date(2026, time.November, 17, 8, 6, 0, 0, time.UTC)
+	for _, c := range []struct {
+		name    string
+		st      deviceState
+		polling bool
+		want    string
+	}{
+		{"aligned sleep", deviceState{LastPageTime: now, LastRefresh: 240, LastInterval: 600},
+			false, "every 10 min · next in 4 min"},
+		{"due", deviceState{LastPageTime: now.Add(-time.Minute), LastRefresh: 30, LastInterval: 60},
+			false, "every 1 min · due now"},
+		{"state without an interval", deviceState{LastPageTime: now, LastRefresh: 240},
+			false, "next in 4 min"},
+		{"seconds", deviceState{LastPageTime: now, LastRefresh: 30, LastInterval: 30},
+			false, "every 30 s · next in 30 s"},
+		{"hours", deviceState{LastPageTime: now, LastRefresh: 3900, LastInterval: 7200},
+			false, "every 2 h · next in 1 h 5 min"},
+		{"text display polls", deviceState{LastRefresh: 2, LastInterval: 2},
+			true, "polling every 2 s"},
+		{"unknown", deviceState{}, false, ""},
+	} {
+		if got := refreshText(c.st, now, c.polling); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}
 	}
 }

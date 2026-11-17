@@ -63,7 +63,8 @@ type deviceState struct {
 	LastPages    int       `json:"last_pages,omitempty"`     // pages in the active rule, 0 when unknown
 	ScrollHash   string    `json:"scroll_hash,omitempty"`    // hash of the current scroll text (ADR 0118)
 	LastPageTime time.Time `json:"last_page_time,omitempty"`
-	LastRefresh  int       `json:"last_refresh,omitempty"`  // reported refresh in seconds
+	LastRefresh  int       `json:"last_refresh,omitempty"`  // sleep until the next sync in seconds (ADR 0129)
+	LastInterval int       `json:"last_interval,omitempty"` // regular interval that sleep belongs to
 	LastError    string    `json:"last_error,omitempty"`    // last render or plan error
 	LastText     []string  `json:"last_text,omitempty"`     // text displays: the last served lines (ADR 0044)
 	LastEventID  int64     `json:"last_event_id,omitempty"` // highest applied event ID (ADR 0064)
