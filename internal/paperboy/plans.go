@@ -26,15 +26,16 @@ const hintRefresh = 15 * time.Minute
 
 // servedPage is the page an answer points the device to.
 type servedPage struct {
-	path    string           // image path below the server root
-	refresh time.Duration    // sleep time to report
-	name    string           // page or template name for logging; empty for a notice
-	page    int              // page index within the plan rule, for logging
-	pages   int              // pages in the rule, for logging
-	hash    string           // content hash of the PNG or the lines; the device repaints when it changes
-	lines   []string         // text displays: the lines to show (ADR 0044)
-	scrolls []page.ScrollBox // text displays: boxes that scroll (ADR 0118)
-	err     error            // render error that turned the page into a notice
+	path     string           // image path below the server root
+	refresh  time.Duration    // sleep time to report, after the plan boundary and timeout caps
+	interval time.Duration    // the regular interval before those caps, for the alignment (ADR 0129)
+	name     string           // page or template name for logging; empty for a notice
+	page     int              // page index within the plan rule, for logging
+	pages    int              // pages in the rule, for logging
+	hash     string           // content hash of the PNG or the lines; the device repaints when it changes
+	lines    []string         // text displays: the lines to show (ADR 0044)
+	scrolls  []page.ScrollBox // text displays: boxes that scroll (ADR 0118)
+	err      error            // render error that turned the page into a notice
 }
 
 // renderedPage is a page template rendered for one profile and page.
@@ -336,15 +337,16 @@ func (l *planLoader) stats() (files int, bytes int64) {
 // planChoice is the page a plan picked for one device request, resolved without
 // rendering: either a page template or a notice to show.
 type planChoice struct {
-	page    int
-	pages   int
-	name    string        // page template; empty when only a notice is shown
-	title   string        // notice title
-	text    string        // notice text
-	err     error         // reason for the notice, shown as the device's last error
-	refresh time.Duration // sleep time to report
-	banners []string
-	actions []plan.PlanAction // the plan's actions for the device menu (ADR 0057)
+	page     int
+	pages    int
+	name     string        // page template; empty when only a notice is shown
+	title    string        // notice title
+	text     string        // notice text
+	err      error         // reason for the notice, shown as the device's last error
+	refresh  time.Duration // sleep time to report, after the plan boundary and timeout caps
+	interval time.Duration // the regular interval before those caps, for the alignment (ADR 0129)
+	banners  []string
+	actions  []plan.PlanAction // the plan's actions for the device menu (ADR 0057)
 }
 
 // choosePlanPage evaluates the device plan and advances the rotation state.
@@ -411,11 +413,12 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 	}
 	page := st.Page
 	floor := cfg.minRefresh(d, st.ReportedPower)
-	refresh := time.Duration(sel.Refresh)
-	if refresh == 0 {
-		refresh = d.refresh()
+	interval := time.Duration(sel.Refresh)
+	if interval == 0 {
+		interval = d.refresh()
 	}
-	refresh = max(refresh, floor)
+	interval = max(interval, floor)
+	refresh := interval
 	// Wake up for the next rule change instead of sleeping through it.
 	if until := p.UntilNextBoundary(now); until > 0 && until < refresh {
 		refresh = max(floor, until)
@@ -423,7 +426,7 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 	if !sel.Rotate && page != 0 {
 		refresh = min(refresh, max(floor, pageTimeout-now.Sub(st.LastInput)+5*time.Second))
 	}
-	c := planChoice{page: page, pages: n, name: pages[page], refresh: refresh, actions: sel.Actions}
+	c := planChoice{page: page, pages: n, name: pages[page], refresh: refresh, interval: interval, actions: sel.Actions}
 	if st.BatteryLevel == batteryWarn {
 		c.banners = append(c.banners, cfg.texts().lowBattery(voltageKey(st.BatteryVoltage)))
 	}
@@ -446,14 +449,14 @@ func (s *Server) renderPlan(cfg *Config, d *Device, c planChoice, now time.Time,
 			return s.pageFailed(cfg, d, c, err, quiet)
 		}
 		return servedPage{lines: text.Lines, scrolls: text.Scrolls, hash: hashText(text.Lines, text.Scrolls),
-			name: c.name, page: c.page, pages: c.pages, refresh: c.refresh}
+			name: c.name, page: c.page, pages: c.pages, refresh: c.refresh, interval: c.interval}
 	}
 	rp, err := s.renderPage(cfg, d.Profile, c.name, now, pagePosition{index: c.page, count: c.pages}, d.ID, c.banners...)
 	if err != nil {
 		return s.pageFailed(cfg, d, c, err, quiet)
 	}
 	sp := s.storePage(d.Profile, c.name, rp)
-	sp.name, sp.page, sp.pages, sp.refresh = c.name, c.page, c.pages, c.refresh
+	sp.name, sp.page, sp.pages, sp.refresh, sp.interval = c.name, c.page, c.pages, c.refresh, c.interval
 	return sp
 }
 
@@ -464,7 +467,7 @@ func (s *Server) pageFailed(cfg *Config, d *Device, c planChoice, err error, qui
 		slog.Error("page rendering failed", "device", d.ID, "page", c.name, "error", err)
 	}
 	sp := s.hint(cfg, d.Profile, cfg.texts().pageError(c.name), shorten(err.Error()))
-	sp.page, sp.pages = c.page, c.pages
+	sp.page, sp.pages, sp.interval = c.page, c.pages, c.interval
 	sp.err = err
 	return sp
 }

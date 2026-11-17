@@ -1070,7 +1070,8 @@ func (s *Server) menuOverlay(page servedPage, profile string, p Profile, v menuV
 	}
 	drawMenu(pal, p, v, t)
 	out := s.notice(profile, pal)
-	out.name, out.page, out.pages, out.refresh = page.name, page.page, page.pages, page.refresh
+	out.name, out.page, out.pages = page.name, page.page, page.pages
+	out.refresh, out.interval = page.refresh, page.interval
 	return out, nil
 }
 

@@ -638,8 +638,21 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	if menu.Open && !critical && !textDisplay {
 		served = s.overlayMenu(cfg, d, served, &menu, menuTouch)
 	}
+	if served.interval == 0 {
+		served.interval = served.refresh
+	}
 	served.refresh = max(served.refresh, floor)
+	served.interval = max(served.interval, floor)
 	refresh := served.refresh
+	// A timer sync lands on the grid of its interval, so a page that shows a
+	// clock, a departure or a schedule is composed at that time (ADR 0129).
+	// A plan boundary or the page timeout shortened the sleep already: that cap
+	// wins, and the next sync aligns again.
+	if !textDisplay && refresh == served.interval {
+		if aligned := alignRefresh(now, served.interval, floor, cfg.Timezone); aligned > 0 {
+			refresh = aligned
+		}
+	}
 	// Remember what the device was pointed at, so /api/devices can show the
 	// current content. Rendering happened above, outside the lock.
 	shownKind, shownPage := "page", served.name

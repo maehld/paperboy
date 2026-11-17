@@ -100,7 +100,7 @@ A device whose file has a `Problem` answers with `503` and the reason, never wit
 
 ### Intervals
 
-`defaults.refresh` (at least 1 minute) or the `refresh` of the device applies; the `refresh` of a device may go down to 1 s. A plan rule may override it (down to `1s`). The reported interval never goes below the floor of the power source ([ADR 0051](adr/0051-power-source-refresh-policy.md)). Battery devices keep one minute or the `min_refresh` of the display type if that is longer. Mains devices go down to `min_refresh`: by default `1s` for text and `10s` for image displays. When the composed image does not change, the display does not redraw.
+`defaults.refresh` (at least 1 minute) or the `refresh` of the device applies; the `refresh` of a device may go down to 1 s. A plan rule may override it (down to `1s`). `refresh_s` in the sync answer is the sleep until the next sync: a timer sync lands on the grid of its interval, so ten minutes give :00, :10 and :20 ([ADR 0129](adr/0129-align-timer-syncs.md)). The dashboard and the `late` check name that sleep. The reported interval never goes below the floor of the power source ([ADR 0051](adr/0051-power-source-refresh-policy.md)). Battery devices keep one minute or the `min_refresh` of the display type if that is longer. Mains devices go down to `min_refresh`: by default `1s` for text and `10s` for image displays. When the composed image does not change, the display does not redraw.
 
 ### Power source
 

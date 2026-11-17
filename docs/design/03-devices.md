@@ -75,6 +75,8 @@ The refresh has a floor per power source ([ADR 0051](../adr/0051-power-source-re
 
 A device's `refresh` may go down to one second and is clamped at runtime. `sleep: false` tells a mains device to stay awake and sync again after `refresh_s`.
 
+`refresh_s` is the sleep until the next sync, and a timer sync lands on the grid of its interval ([ADR 0129](../adr/0129-align-timer-syncs.md)). Ten minutes give :00, :10 and :20 in the instance timezone. The device paints before it sleeps, so it syncs a few seconds after the slot. A plan boundary or the page timeout caps the sleep; that cap wins and is not stretched, and the next sync aligns again. A slot closer than the floor is skipped, and a slot is never in the past. The grid counts from local midnight, so an interval that does not divide the hour walks through the clock.
+
 `listen_s` is 0 for a timer wake and 20 seconds after input, so the firmware can wait for the next press without registering again. While a menu is open, `listen_s` shortens so that `listen_s` plus `wake.after_s` cover the time left until the menu expires ([ADR 0078](../adr/0078-the-menu-stays-open-while-it-is-used.md)).
 
 `wake` is a one-shot next wake: the menu deadline or an action result. The firmware uses it once and goes back to its normal cycle.
