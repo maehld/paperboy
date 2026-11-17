@@ -285,9 +285,37 @@ func TestRender(t *testing.T) {
 		render.NewCanvas(100, 8, 2)); !errors.Is(err, plugin.ErrTooSmall) {
 		t.Errorf("tiny cell: error = %v, want ErrTooSmall", err)
 	}
+	// The count argument fills the cell with that many rows.
+	if err := p.Render(req, plugin.WidgetRequest{Widget: "departures", Width: 400, Height: 240, Args: map[string]any{"count": 2},
+		Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 28}}, render.NewCanvas(400, 240, 2)); err != nil {
+		t.Errorf("count: %v", err)
+	}
 	if err := p.Render(req, plugin.WidgetRequest{Widget: "departures", Width: 100, Height: 100, Args: map[string]any{"time": "x"}},
 		render.NewCanvas(100, 100, 2)); err == nil {
 		t.Error("bad time mode accepted")
+	}
+}
+
+func TestRowLayout(t *testing.T) {
+	const base, rule = 52.4, 2
+	// Default: rows at 0.6 of the base text, as many as fit.
+	rows, rowH, size := rowLayout(390, base, rule, 0)
+	if rows != 8 || rowH != 46 || size < rowShare*base-0.01 || size > rowShare*base+0.01 {
+		t.Errorf("auto: %d rows of %d px, text %v", rows, rowH, size)
+	}
+	// Fewer rows make the text bigger, up to the base text.
+	four, _, fourSize := rowLayout(390, base, rule, 4)
+	if four != 4 || fourSize != base {
+		t.Errorf("count 4: %d rows, text %v, want the base text %v", four, fourSize, base)
+	}
+	// More rows make it smaller than four rows.
+	if _, rowH, s := rowLayout(390, base, rule, 8); s >= fourSize || rowH*8 > 390 {
+		t.Errorf("count 8: text %v of %d px rows, want smaller than %v", s, rowH, fourSize)
+	}
+	// A crowded cell drops rows instead of shrinking below the smallest text.
+	rows, rowH, size = rowLayout(20, base, rule, 8)
+	if rows != 2 || rowH != 10 || size != render.MinSize {
+		t.Errorf("crowded: %d rows of %d px, text %v", rows, rowH, size)
 	}
 }
 
@@ -314,6 +342,9 @@ func TestConfigure(t *testing.T) {
 	arg := d.Widgets[0].Args["stop"]
 	if arg.Default != "X" || len(arg.Enum) != 2 || arg.Enum[1] != "Hbf" {
 		t.Errorf("stop arg: %+v", arg)
+	}
+	if _, ok := d.Widgets[0].Args["count"]; !ok {
+		t.Error("count arg not declared")
 	}
 }
 
