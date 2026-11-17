@@ -16,13 +16,15 @@ Pokémon from [PokéAPI](https://pokeapi.co), no API key needed.
 
 ## Widget `card`
 
-The card is for image displays. It shows the artwork, the name in the request language (from the species names, with English as fallback), the number, types, height and weight, the six base stats as bars and the flavor text in the request language.
+The card is for image displays. It shows the artwork, the name in the request language (from the species names, with English as fallback), the number, types, height and weight, the six base stats as bars and the flavor text in the request language. Two arguments leave the stats or the flavor text out. A card without stats keeps its text size and gives the freed rows to the flavor text.
 
 Arguments:
 
 | Key | Description |
 |---|---|
 | `seed` | Any label, e.g. the name of a device. Every seed draws its own random Pokémon, all of them from the same rotation interval |
+| `stats` | Draw the six base stats as bars, default `true` |
+| `flavor` | Draw the flavor text when there is room, default `true` |
 
 Without a seed every use of the plugin shows the same Pokémon. With a seed the pick depends on the rotation interval and the seed, so it stays stable across restarts and still changes at the same moment for all seeds.
 

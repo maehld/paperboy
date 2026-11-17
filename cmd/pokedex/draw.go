@@ -102,9 +102,9 @@ func drawCard(m *mon, req *plugin.Request, lang string, w plugin.WidgetRequest, 
 	if m.art != nil {
 		drawArt(img, art, m.art)
 	}
-	bottom, s := drawText(img, col, m, lang, base, gap, rule)
-	if s < base*0.99 {
-		return nil // squeezed: no flavor text
+	bottom, s := drawText(img, col, m, lang, base, gap, rule, w.Arg().Bool("stats", true))
+	if !w.Arg().Bool("flavor", true) || s < base*0.99 {
+		return nil // switched off or squeezed: no flavor text
 	}
 	// The flavor text goes below the artwork when there is room for two
 	// lines, else below the stats.
@@ -135,13 +135,18 @@ func drawFlavor(img *image.Paletted, r image.Rectangle, text string, fs float64)
 	}
 }
 
-// drawText draws name, number, types, size, stats and the flavor text into
-// col and returns the bottom edge and the text size used. When the column is
-// too short everything shrinks down to half the base size.
-func drawText(img *image.Paletted, col image.Rectangle, m *mon, lang string, base float64, gap, rule int) (bottom int, used float64) {
+// drawText draws name, number, types, size and, when stats is set, the six
+// base stats into col. It returns the bottom edge and the text size used. When
+// the column is too short everything shrinks down to half the base size.
+func drawText(img *image.Paletted, col image.Rectangle, m *mon, lang string, base float64, gap, rule int, stats bool) (bottom int, used float64) {
 	// Heights in units of the text size s: name 1.45, info 1.0, six stat rows 0.9.
-	// Roomy columns grow the text a little; short ones shrink it.
-	s := max(min((float64(col.Dy())-3*float64(gap))/(1.45+1.0+6*0.9), base*1.2), base*0.5)
+	// Roomy columns grow the text a little; short ones shrink it; without the
+	// stats their rows are free.
+	statsRows := 6 * 0.9
+	if !stats {
+		statsRows = 0
+	}
+	s := max(min((float64(col.Dy())-3*float64(gap))/(1.45+1.0+statsRows), base*1.2), base*0.5)
 	y := col.Min.Y
 
 	// Name and number.
@@ -168,6 +173,9 @@ func drawText(img *image.Paletted, col image.Rectangle, m *mon, lang string, bas
 	render.TextAt(img, render.Ellipsize(types, info, true, col.Dx()-sizeW-gap*2), col.Min.X, y+int(info), info, true, color.Black, render.Left)
 	y += int(s * 1.0)
 
+	if !stats {
+		return y, s
+	}
 	// Base stats as bars.
 	labels := statLabels(lang)
 	row := int(s * 0.9)
