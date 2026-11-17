@@ -367,6 +367,66 @@ func TestRenderCard(t *testing.T) {
 	}
 }
 
+// TestCardSwitches checks that stats and flavor leave their part of the card
+// out, and that a card without stats keeps its text size.
+func TestCardSwitches(t *testing.T) {
+	p, _ := configured(t, map[string]any{"pokemon": "25"})
+	prepare := func(args plugin.Values) (*plugin.Request, plugin.WidgetRequest) {
+		req, w := request("en", 400, 300, 125)
+		w.Args = args
+		req.Widgets = []plugin.WidgetRequest{w}
+		if err := p.Prepare(req); err != nil {
+			t.Fatal(err)
+		}
+		return req, w
+	}
+	draw := func(args plugin.Values) *image.Paletted {
+		req, w := prepare(args)
+		img := render.NewCanvas(400, 300, 4)
+		if err := p.Render(req, w, img); err != nil {
+			t.Fatalf("card with %v: %v", args, err)
+		}
+		return img
+	}
+	all := draw(nil)
+	noStats := draw(plugin.Values{"stats": false})
+	noFlavor := draw(plugin.Values{"flavor": false})
+	both := draw(plugin.Values{"stats": false, "flavor": false})
+	for _, tc := range []struct {
+		name string
+		a, b *image.Paletted
+	}{
+		{"stats off", all, noStats}, {"flavor off", all, noFlavor}, {"both off", all, both},
+	} {
+		if bytes.Equal(tc.a.Pix, tc.b.Pix) {
+			t.Errorf("%s: the card did not change", tc.name)
+		}
+	}
+	dark := 0
+	for _, i := range both.Pix {
+		if i == 0 {
+			dark++
+		}
+	}
+	if dark < 400*300/200 {
+		t.Errorf("a card without stats and flavor is almost empty: %d black pixels", dark)
+	}
+
+	// The freed stat rows go to the text: a short column keeps or grows its
+	// text size instead of shrinking to fit a row budget it no longer uses.
+	_, w := prepare(nil)
+	m, err := p.current(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	col := image.Rect(0, 0, 200, 100)
+	_, withStats := drawText(render.NewCanvas(200, 100, 4), col, m, "en", 16, 2, 1, true)
+	_, without := drawText(render.NewCanvas(200, 100, 4), col, m, "en", 16, 2, 1, false)
+	if without < withStats {
+		t.Errorf("a card without stats shrank its text: %.1f < %.1f", without, withStats)
+	}
+}
+
 func TestStartLoadsAhead(t *testing.T) {
 	p, calls := configured(t, map[string]any{"pokemon": "25"})
 	ctx, cancel := context.WithCancel(context.Background())

@@ -115,6 +115,14 @@ var valueArgs = map[string]plugin.Arg{
 	"seed": {Type: "string", Description: "a label such as a device name; every seed shows its own random Pokémon"},
 }
 
+// cardArgs are the card's arguments: the seed and the switches that leave the
+// stats or the flavor text out.
+var cardArgs = map[string]plugin.Arg{
+	"seed":   valueArgs["seed"],
+	"stats":  {Type: "bool", Default: true, Description: "the six base stats as bars"},
+	"flavor": {Type: "bool", Default: true, Description: "the flavor text when there is room"},
+}
+
 func (p *pokedex) Describe() plugin.Description {
 	return plugin.Description{
 		Title:   "Pokédex",
@@ -139,7 +147,7 @@ func (p *pokedex) Describe() plugin.Description {
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "card", Title: "Pokémon card", Kinds: []string{plugin.KindImage}, MinWidth: 240, MinHeight: 240,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 4}, {Columns: 6, Rows: 8}},
-				Args:  valueArgs},
+				Args:  cardArgs},
 		},
 	}
 }
