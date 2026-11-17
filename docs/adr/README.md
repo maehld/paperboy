@@ -98,6 +98,7 @@ Registration, sync, state and what a device receives. See [`03-devices.md`](../d
 | [0102](0102-rotate-pages-onto-the-panel.md) | Rotate pages onto the panel | Accepted, implemented (firmware not yet flashed); amends the display types of [ADR-0071](0071-display-types-in-files-of-their-own.md), the device files of [ADR-0070](0070-devices-in-their-own-files.md) and the sync answer of [ADR-0042](0042-device-protocol.md) |
 | [0109](0109-pair-a-display.md) | Pair a display instead of trusting its MAC address | Accepted, implemented (firmware not yet flashed); replaces the MAC rule of [ADR-0042](0042-device-protocol.md) and builds on the UI password of [ADR-0096](0096-a-password-for-the-operator-ui.md) |
 | [0119](0119-remove-opendisplay.md) | Remove OpenDisplay from Paperboy | Accepted, implemented; removes `internal/opendisplay`, `cmd/odtest` and the device keys `address`/`buttons`; supersedes [ADR-0016](0016-opendisplay-bluetooth.md), the delivery of [ADR-0018](0018-opendisplay-im-display-service.md) and the rest of [ADR-0012](0012-epaper-opendisplay.md) |
+| [0129](0129-align-timer-syncs.md) | Align timer syncs to the interval grid | Accepted, implemented; makes `refresh_s` the sleep until the next slot and keeps the caps of [ADR-0051](0051-power-source-refresh-policy.md) and the `wake` of [ADR-0064](0064-device-protocol-v4.md) untouched |
 
 ## Displays, panels and firmware
 
