@@ -1,6 +1,6 @@
 # evcc plugin
 
-Shows data from [evcc](https://evcc.io) over its REST API: live values from `/api/state` and the energy history from `/api/history/energy`. The plugin polls the API in the background and sends a change event when a shown value moves.
+Shows data from [evcc](https://evcc.io) over its REST API: live values from `/api/state` and the energy history from `/api/history/energy`. The plugin polls the API in the background and sends a change event when a shown value moves. evcc 0.127.0 or newer is required, because older versions report the duration fields in nanoseconds.
 
 ## Configuration
 
