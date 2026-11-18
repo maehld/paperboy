@@ -102,6 +102,40 @@ rules:
 	}
 }
 
+// TestBeepModes reads the two beep modes, treats never and the missing key as
+// quiet and rejects the boolean of an early sketch (ADR 0131).
+func TestBeepModes(t *testing.T) {
+	p := parse(t, `
+rules:
+  - name: quiet
+    pages: [a]
+  - name: never
+    pages: [a]
+    beep: never
+  - name: once
+    pages: [a]
+    beep: once
+  - name: always
+    pages: [a]
+    beep: always
+`)
+	want := []BeepMode{BeepNever, BeepNever, BeepOnce, BeepAlways}
+	for i, mode := range want {
+		if got := p.Rules[i].Beep; got != mode {
+			t.Fatalf("rule %s: got %q, want %q", p.Rules[i].Name, got, mode)
+		}
+	}
+	// The selection carries the mode.
+	sel, ok := p.Select(at(t, 2026, time.October, 21, 12, 0), nil)
+	if !ok || sel.Beep != BeepNever {
+		t.Fatalf("first rule: %+v %v", sel, ok)
+	}
+	one := parse(t, "rules: [{name: alarm, pages: [a], beep: always}]")
+	if sel, ok := one.Select(at(t, 2026, time.October, 21, 12, 0), nil); !ok || sel.Beep != BeepAlways {
+		t.Fatalf("always: %+v %v", sel, ok)
+	}
+}
+
 func TestParseErrors(t *testing.T) {
 	cases := map[string]string{
 		"unknown field":      "rules: [{name: a, pages: [x]}]\nextra: 1",
@@ -115,6 +149,8 @@ func TestParseErrors(t *testing.T) {
 		"refresh too short":  "rules: [{name: a, pages: [x], refresh: 500ms}]",
 		"unknown refresh":    "rules: [{name: a, pages: [x], on_refresh: rotate}]",
 		"rotate conflict":    "rules: [{name: a, pages: [x], rotate: true, on_refresh: first}]",
+		"beep bool":          "rules: [{name: a, pages: [x], beep: true}]",
+		"unknown beep":       "rules: [{name: a, pages: [x], beep: sometimes}]",
 		"data condition":     "rules: [{name: a, pages: [x], when: {data: [{path: tuer, equals: offen}]}}]",
 		"from without to":    "rules: [{name: a, pages: [x], when: {from: \"07:00\"}}]",
 		"from equals to":     "rules: [{name: a, pages: [x], when: {from: \"07:00\", to: \"07:00\"}}]",

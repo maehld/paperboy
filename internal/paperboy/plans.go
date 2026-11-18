@@ -346,6 +346,7 @@ type planChoice struct {
 	refresh  time.Duration // sleep time to report, after the plan boundary and timeout caps
 	interval time.Duration // the regular interval before those caps, for the alignment (ADR 0129)
 	banners  []string
+	beep     bool              // sound the buzzer with this answer (ADR 0131)
 	actions  []plan.PlanAction // the plan's actions for the device menu (ADR 0057)
 }
 
@@ -382,7 +383,8 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 			err: fmt.Errorf("rule %s has no page for display type %s: %s", sel.Rule, d.Profile, joinReasons(skipped))}
 	}
 	n := len(pages)
-	if st.Rule != sel.Rule {
+	ruleChanged := st.Rule != sel.Rule
+	if ruleChanged {
 		// A new rule always starts at its first page, also with current.
 		st.Rule, st.Page = sel.Rule, 0
 	} else if paused {
@@ -424,7 +426,8 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 	if until := p.UntilNextBoundary(now); until > 0 && until < refresh {
 		refresh = max(floor, until)
 	}
-	c := planChoice{page: page, pages: n, name: pages[page], refresh: refresh, interval: interval, actions: sel.Actions}
+	c := planChoice{page: page, pages: n, name: pages[page], refresh: refresh, interval: interval, actions: sel.Actions,
+		beep: sel.Beep == plan.BeepAlways || (sel.Beep == plan.BeepOnce && ruleChanged)}
 	if st.BatteryLevel == batteryWarn {
 		c.banners = append(c.banners, cfg.texts().lowBattery(voltageKey(st.BatteryVoltage)))
 	}

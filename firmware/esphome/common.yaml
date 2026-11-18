@@ -183,6 +183,10 @@ globals:
   - id: stay_awake
     type: bool
     initial_value: "false"
+  # beep in the last sync (ADR 0131): the rule wants a sound after the paint.
+  - id: beep_pending
+    type: bool
+    initial_value: "false"
   # Firmware offer from the last sync; empty path = no offer.
   - id: fw_path
     type: std::string
@@ -259,8 +263,25 @@ time:
 # fetches the QOI bytes and paints them itself (ADR 0072), which removes both
 # the decode cost and the 384 KB image buffer.
 
+# The buzzer of every ePaper hardware (ADR 0131) lives in its hardware file:
+# GPIO48 on the Sticky, GPIO45 on the E1001 and E1003. The beep script drives
+# it after the paint. Text displays have no buzzer and use text-common.yaml
+# instead.
+
 script:
   # ---------------------------------------------------------------- cycle
+
+  # A short beep for a plan rule (ADR 0131). The sync answer decides when,
+  # after_paint runs it after the panel is done, so the page and the sound
+  # arrive together.
+  - id: beep
+    mode: single
+    then:
+      - output.set_level:
+          id: buzzer
+          level: 50%
+      - delay: 150ms
+      - output.turn_off: buzzer
 
   # The splash of a power-on (ADR 0095): the mark in the middle of the panel for
   # 5 s. The page hash is dropped first, because the panel shows the splash, not
@@ -619,6 +640,9 @@ script:
                     id(listen_s) = root["listen_s"] | 0;
                     // Older servers send no sleep field: keep deep sleeping.
                     id(stay_awake) = !(root["sleep"] | true);
+                    // A rule with beep once or always asks for a sound after
+                    // the paint (ADR 0131). Older servers omit the field.
+                    id(beep_pending) = root["beep"] | false;
                     // The page rotation for this mounting (ADR 0102). Older
                     // servers omit it, which keeps the compiled orientation.
                     pb_set_rotation(root["rotation"] | 0);
@@ -666,6 +690,7 @@ script:
           id(sync_result) = 0;
           id(image_path) = "";
           id(image_hash) = "";
+          id(beep_pending) = false;
       - script.stop: do_sync
       - script.stop: do_sync_once
       - script.execute: do_sync
@@ -793,6 +818,15 @@ script:
             pb_paint_pending = false;
           }
           id(busy) = false;
+      # The answer of this sync asked for a sound (ADR 0131): the page is on
+      # the panel, so the beep belongs here. A sync that changed nothing beeps
+      # too, which is what a rule with beep: always needs.
+      - if:
+          condition:
+            lambda: "return id(beep_pending);"
+          then:
+            - lambda: "id(beep_pending) = false;"
+            - script.execute: beep
       - if:
           condition:
             lambda: "return pb_has_events();"

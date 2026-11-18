@@ -114,6 +114,33 @@ func TestPlanJSONShowsTheOldRotate(t *testing.T) {
 	}
 }
 
+// TestEncodeWritesBeep verifies that the mode reaches the file, that a quiet
+// rule writes no key and that the editor API round-trips it (ADR 0131).
+func TestEncodeWritesBeep(t *testing.T) {
+	p := parse(t, "rules: [{name: a, pages: [x], beep: always}, {name: b, pages: [x]}]")
+	data, err := Encode(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "beep: always\n") || strings.Count(string(data), "beep:") != 1 {
+		t.Fatalf("layout:\n%s", data)
+	}
+	raw, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"beep":"always"`) {
+		t.Fatalf("json: %s", raw)
+	}
+	var got Plan
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Rules[0].Beep != BeepAlways || got.Rules[1].Beep != BeepNever {
+		t.Fatalf("round trip: %+v", got.Rules)
+	}
+}
+
 // TestEncodeRejectsInvalidPlan verifies that invalid plans never reach a file.
 func TestEncodeRejectsInvalidPlan(t *testing.T) {
 	for name, p := range map[string]*Plan{
@@ -121,6 +148,7 @@ func TestEncodeRejectsInvalidPlan(t *testing.T) {
 		"bad name":         {Rules: []Rule{{Name: "Bad", Pages: []string{"home"}}}},
 		"duplicate page":   {Rules: []Rule{{Name: "a", Pages: []string{"home", "home"}}}},
 		"bad refresh mode": {Rules: []Rule{{Name: "a", Pages: []string{"home"}, OnRefresh: "rotate"}}},
+		"bad beep mode":    {Rules: []Rule{{Name: "a", Pages: []string{"home"}, Beep: "sometimes"}}},
 		"half window":      {Rules: []Rule{{Name: "a", Pages: []string{"home"}, When: When{From: clock(600)}}}},
 		"unknown fallback": {Rules: []Rule{{Name: "a", Pages: []string{"home"}}}, Fallback: "nope"},
 	} {

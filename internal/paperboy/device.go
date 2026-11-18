@@ -144,7 +144,10 @@ type syncResponse struct {
 	// Rotation is the quarter turn the firmware applies to composed pages
 	// before painting, in degrees clockwise relative to its built-in mounting
 	// (ADR 0102). 0 leaves it as built; old firmware ignores the field.
-	Rotation int            `json:"rotation,omitempty"`
+	Rotation int `json:"rotation,omitempty"`
+	// Beep asks the firmware to sound its buzzer after the paint (ADR 0131).
+	// Displays without a buzzer ignore the field.
+	Beep     bool           `json:"beep,omitempty"`
 	Firmware *firmwareOffer `json:"firmware"` // update offer (ADR 0043); null when none
 	// Wake names the reason of the next wake and how long to sleep until then
 	// (ADR 0064). It overrides refresh_s for exactly one sleep, so the menu can
@@ -729,6 +732,9 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		attrs = append(attrs, "index", served.page, "pages", served.pages)
 	}
 	attrs = append(attrs, "rule", logged.Rule, "reason", req.Reason)
+	if choice.beep {
+		attrs = append(attrs, "beep", true)
+	}
 	if len(buttons) > 0 {
 		attrs = append(attrs, "buttons", strings.Join(buttons, ","))
 	}
@@ -758,6 +764,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		Sleep:    power == powerBattery,
 		Time:     now.Unix(),
 		Rotation: cfg.rotation(d),
+		Beep:     choice.beep,
 		Firmware: offer,
 		Wake:     wake,
 	}

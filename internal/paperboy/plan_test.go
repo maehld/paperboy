@@ -238,6 +238,62 @@ func TestPlanRuleSwitchAndKeys(t *testing.T) {
 	}
 }
 
+// TestPlanBeep sounds the buzzer once when a once rule starts and on every
+// sync while an always rule applies (ADR 0131). A repeated once rule stays
+// quiet, also on a button press.
+func TestPlanBeep(t *testing.T) {
+	s, now := planServer(t, `
+rules:
+  - name: morgen
+    when: { from: "07:00", to: "09:00" }
+    pages: [eins]
+    beep: once
+  - name: tag
+    when: { from: "09:00", to: "19:00" }
+    pages: [drei]
+    beep: always
+  - name: abend
+    when: { from: "19:00", to: "23:00" }
+    pages: [vier]
+    beep: once
+fallback: morgen
+`)
+	dev := planDevice(t, s)
+	if out := displayPage(t, s, dev); out["beep"] != true {
+		t.Fatalf("the first once rule must beep: %v", out)
+	}
+	*now = now.Add(10 * time.Minute)
+	if out := displayPage(t, s, dev); out["beep"] != nil {
+		t.Fatalf("the same once rule must stay quiet: %v", out)
+	}
+	// A button press on a once rule does not beep either.
+	if out := press(t, s, dev, buttonHome); out["beep"] != nil {
+		t.Fatalf("input on a once rule must stay quiet: %v", out)
+	}
+
+	// The always rule beeps on every sync, a timer wake and a button wake.
+	*now = time.Date(2026, time.October, 21, 9, 0, 0, 0, time.UTC)
+	for i := 0; i < 2; i++ {
+		if out := displayPage(t, s, dev); out["beep"] != true {
+			t.Fatalf("always must beep on sync %d: %v", i, out)
+		}
+		*now = now.Add(5 * time.Minute)
+	}
+	if out := press(t, s, dev, buttonNext); out["beep"] != true {
+		t.Fatalf("always must beep on input: %v", out)
+	}
+
+	// A change to another once rule beeps again.
+	*now = time.Date(2026, time.October, 21, 19, 0, 0, 0, time.UTC)
+	if out := displayPage(t, s, dev); out["beep"] != true {
+		t.Fatalf("the new once rule must beep: %v", out)
+	}
+	*now = now.Add(10 * time.Minute)
+	if out := displayPage(t, s, dev); out["beep"] != nil {
+		t.Fatalf("the second sync of the once rule must stay quiet: %v", out)
+	}
+}
+
 func TestPlanRotation(t *testing.T) {
 	s, now := planServer(t, testPlan)
 	dev := planDevice(t, s)

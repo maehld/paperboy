@@ -100,6 +100,25 @@ rules:
 	}
 }
 
+// TestPlanViewShowsBeep names the rule's beep mode in the preview.
+func TestPlanViewShowsBeep(t *testing.T) {
+	s, _ := planServer(t, `
+rules:
+  - name: alarm
+    pages: [eins]
+    beep: always
+  - name: ruhig
+    pages: [zwei]
+`)
+	body := htmlRequest(t, s, "/ui/plan?device=test").Body.String()
+	if !strings.Contains(body, "· beep always") {
+		t.Fatalf("plan view misses the beep mode: %s", body)
+	}
+	if strings.Count(body, "beep ") != 1 {
+		t.Fatalf("a quiet rule must name no beep: %s", body)
+	}
+}
+
 func TestPlanViewUnknownDevice(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	if rec := htmlRequest(t, s, "/ui/plan?device=nope"); rec.Code != http.StatusNotFound {

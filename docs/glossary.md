@@ -23,8 +23,9 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **orphan** | A variant whose page file is missing, and a page that exists only as variants | stray file, leftover |
 | **device** | One panel with Paperboy's firmware, identified by MAC and one file under `devices/` | display, node, client, target |
 | **plan** | The rules that select the pages of one device over time | playlist, schedule |
-| **rule** | One entry of a plan: time window, days, value conditions, pages, `on_refresh`, refresh | plan, entry |
+| **rule** | One entry of a plan: time window, days, value conditions, pages, `on_refresh`, refresh, `beep` | plan, entry |
 | **on_refresh** | What a timed refresh of a rule shows: `cycle`, `first` or `current`; a rule change always starts at the first page | rotate, paging mode |
+| **beep** | A rule's sound from the device buzzer: `once` when the rule starts, `always` on every sync while it applies | alarm, tone |
 | **fallback** | The pages of a device whose no rule matches | default, base |
 | **condition** | A value condition of a rule: a `plugin/value` must answer one of the keys in `is` | predicate, expression, data blocker |
 | **action** | Something a plugin can do on request, offered in the device menu | command, task, operation |
