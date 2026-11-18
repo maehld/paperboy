@@ -145,9 +145,10 @@ type syncResponse struct {
 	// before painting, in degrees clockwise relative to its built-in mounting
 	// (ADR 0102). 0 leaves it as built; old firmware ignores the field.
 	Rotation int `json:"rotation,omitempty"`
-	// Alert asks the device to alert after the paint (ADR 0131). The device
-	// decides what an alert is; displays without one ignore the field.
-	Alert    bool           `json:"alert,omitempty"`
+	// Beep and Blink ask the device to signal after the paint (ADR 0131).
+	// The device runs the method it has; a missing field is false.
+	Beep     bool           `json:"beep,omitempty"`
+	Blink    bool           `json:"blink,omitempty"`
 	Firmware *firmwareOffer `json:"firmware"` // update offer (ADR 0043); null when none
 	// Wake names the reason of the next wake and how long to sleep until then
 	// (ADR 0064). It overrides refresh_s for exactly one sleep, so the menu can
@@ -764,7 +765,8 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		Sleep:    power == powerBattery,
 		Time:     now.Unix(),
 		Rotation: cfg.rotation(d),
-		Alert:    choice.alert,
+		Beep:     choice.alert,
+		Blink:    choice.alert,
 		Firmware: offer,
 		Wake:     wake,
 	}

@@ -259,37 +259,39 @@ rules:
 fallback: morgen
 `)
 	dev := planDevice(t, s)
-	if out := displayPage(t, s, dev); out["alert"] != true {
+	alerted := func(out map[string]any) bool { return out["beep"] == true && out["blink"] == true }
+	quiet := func(out map[string]any) bool { return out["beep"] == nil && out["blink"] == nil }
+	if out := displayPage(t, s, dev); !alerted(out) {
 		t.Fatalf("the first once rule must alert: %v", out)
 	}
 	*now = now.Add(10 * time.Minute)
-	if out := displayPage(t, s, dev); out["alert"] != nil {
+	if out := displayPage(t, s, dev); !quiet(out) {
 		t.Fatalf("the same once rule must stay quiet: %v", out)
 	}
 	// A button press on a once rule does not alert either.
-	if out := press(t, s, dev, buttonHome); out["alert"] != nil {
+	if out := press(t, s, dev, buttonHome); !quiet(out) {
 		t.Fatalf("input on a once rule must stay quiet: %v", out)
 	}
 
 	// The refresh rule alerts on every timed refresh, but not on input.
 	*now = time.Date(2026, time.October, 21, 9, 0, 0, 0, time.UTC)
 	for i := 0; i < 2; i++ {
-		if out := displayPage(t, s, dev); out["alert"] != true {
+		if out := displayPage(t, s, dev); !alerted(out) {
 			t.Fatalf("refresh must alert on timer sync %d: %v", i, out)
 		}
 		*now = now.Add(5 * time.Minute)
 	}
-	if out := press(t, s, dev, buttonNext); out["alert"] != nil {
+	if out := press(t, s, dev, buttonNext); !quiet(out) {
 		t.Fatalf("a button press on a refresh rule must stay quiet: %v", out)
 	}
 
 	// A change to another once rule alerts again.
 	*now = time.Date(2026, time.October, 21, 19, 0, 0, 0, time.UTC)
-	if out := displayPage(t, s, dev); out["alert"] != true {
+	if out := displayPage(t, s, dev); !alerted(out) {
 		t.Fatalf("the new once rule must alert: %v", out)
 	}
 	*now = now.Add(10 * time.Minute)
-	if out := displayPage(t, s, dev); out["alert"] != nil {
+	if out := displayPage(t, s, dev); !quiet(out) {
 		t.Fatalf("the second sync of the once rule must stay quiet: %v", out)
 	}
 }

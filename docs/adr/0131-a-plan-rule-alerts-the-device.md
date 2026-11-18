@@ -18,13 +18,12 @@ The hardware differs. The Sticky, E1001 and E1003 have a buzzer and an LED; the 
 1. A rule names `alert` with `once` or `refresh`. `never` and the missing key stay quiet; `Encode` writes no key for them.
 2. `once` alerts in the sync answer that starts the rule. A rule change is the same edge that resets the page cursor. A later sync of the same rule stays quiet, also with button input.
 3. `refresh` alerts when the rule starts and on every sync with `reason: timer`. A button, touch, menu or result sync stays quiet. The rule's `refresh` decides the reminder interval.
-4. The device API carries `alert: true` in a sync answer that wants an alert. The server takes it from the plan choice. A critical battery page and a plan without a matching rule carry none.
-5. The firmware runs its alert script after the paint, also when the image hash did not change. `alert: refresh` must signal on unchanged content.
-6. The device decides what the script does:
-   - The Sticky beeps for 150 ms.
-   - The E1001 and E1003 beep and blink the green LED twice.
-   - The LCD2004 blinks its backlight twice.
-   - A device without an alert path ignores the field.
+4. The device API carries `beep` and `blink` in a sync answer that asks for a signal. The server sets both. A later device setting narrows the two flags. There is no `alert` field: the firmware only knows the methods. A critical battery page and a plan without a matching rule carry neither.
+5. The firmware runs the `beep` and `blink` scripts after the paint, also when the image hash did not change. `alert: refresh` must signal on unchanged content.
+6. The device runs the script it has:
+   - The Sticky beeps; its blink script does nothing because it has no user LED.
+   - The E1001 and E1003 beep and blink the green LED.
+   - The LCD2004 blinks its backlight; its beep script does nothing.
 7. The buzzer pins are GPIO48 on the Sticky and GPIO45 on the E1001 and E1003. The green LED sits on GPIO6 (E1001) and GPIO16 (E1003). The LCD2004 drives its backlight bit through the PCF8574.
 8. The plan editor offers never, once and on refresh. The plan preview names the mode.
 
@@ -34,8 +33,8 @@ The hardware differs. The Sticky, E1001 and E1003 have a buzzer and an LED; the 
 - `refresh` on a short refresh repeats the signal. That is intended for a low glucose reminder; `once` avoids it.
 - A rule that already applies and later gains `alert: once` stays quiet until it starts again. `refresh` signals on the next timed refresh.
 - An alert lives in the answer of one sync. A lost answer loses that alert; the next refresh signals again.
-- An old server sends no `alert` and new firmware stays quiet. An old firmware ignores the field, so the protocol version stays.
-- A new alert idea changes the firmware script of one hardware type. The plan key and the API field stay.
+- An old server sends no `beep` or `blink` and new firmware stays quiet. An old firmware ignores the fields, so the protocol version stays.
+- A new signal method changes the firmware scripts of one hardware type. The plan key and the API fields stay.
 
 ## Alternatives
 

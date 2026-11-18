@@ -9,8 +9,8 @@
 
 substitutions:
   hardware: lcd2004
-  # 2.7.0 adds the alert blink of the backlight (ADR 0131). 2.6.0 combined
-  # the scroll engine with the update screen of 2.5.0.
+  # 2.7.0 adds the beep and blink scripts of the sync answer (ADR 0131).
+  # 2.6.0 combined the scroll engine with the update screen of 2.5.0.
   fw_version: "2.7.0"
   # Characters per row; the display lambda prints each row in this width.
   text_columns: "20"
@@ -47,9 +47,13 @@ display:
       }
 
 script:
-  # An alert blinks the backlight (ADR 0131). The PCF8574 drives the
-  # backlight bit, so this display flashes without a buzzer.
-  - id: alert
+  # A signal is a beep or a blink; this display has a backlight but no buzzer,
+  # so its beep script does nothing (ADR 0131).
+  - id: beep
+    mode: single
+    then:
+      - lambda: "// the LCD2004 has no buzzer"
+  - id: blink
     mode: single
     then:
       - lambda: "id(text_display).no_backlight();"

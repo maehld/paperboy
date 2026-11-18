@@ -183,8 +183,12 @@ globals:
   - id: stay_awake
     type: bool
     initial_value: "false"
-  # alert in the last sync (ADR 0131): the rule wants an alert after the paint.
-  - id: alert_pending
+  # beep and blink in the last sync (ADR 0131): the rule wants the device to
+  # signal after the paint. The device runs the method it has.
+  - id: beep_pending
+    type: bool
+    initial_value: "false"
+  - id: blink_pending
     type: bool
     initial_value: "false"
   # Firmware offer from the last sync; empty path = no offer.
@@ -263,10 +267,11 @@ time:
 # fetches the QOI bytes and paints them itself (ADR 0072), which removes both
 # the decode cost and the 384 KB image buffer.
 
-# An alert (ADR 0131) belongs to the hardware, just like the buzzer and the
-# LED: each ePaper hardware file defines the alert script, because the device
-# decides what an alert is. The cycle parses `alert` from the sync answer and
-# runs the script after the paint. Text displays use text-common.yaml instead.
+# A signal (ADR 0131) belongs to the hardware, just like the buzzer and the
+# LED: each ePaper hardware file defines the beep and blink scripts, because
+# the device decides what it can do. The cycle parses `beep` and `blink` from
+# the sync answer and runs the scripts after the paint. Text displays use
+# text-common.yaml instead.
 
 script:
   # ---------------------------------------------------------------- cycle
@@ -628,10 +633,11 @@ script:
                     id(listen_s) = root["listen_s"] | 0;
                     // Older servers send no sleep field: keep deep sleeping.
                     id(stay_awake) = !(root["sleep"] | true);
-                    // A rule with alert once or refresh asks for an alert
-                    // after the paint (ADR 0131). Older servers omit the
-                    // field.
-                    id(alert_pending) = root["alert"] | false;
+                    // The server sets beep and blink when a rule wants the
+                    // device to signal (ADR 0131). Older servers omit the
+                    // fields.
+                    id(beep_pending) = root["beep"] | false;
+                    id(blink_pending) = root["blink"] | false;
                     // The page rotation for this mounting (ADR 0102). Older
                     // servers omit it, which keeps the compiled orientation.
                     pb_set_rotation(root["rotation"] | 0);
@@ -679,7 +685,8 @@ script:
           id(sync_result) = 0;
           id(image_path) = "";
           id(image_hash) = "";
-          id(alert_pending) = false;
+          id(beep_pending) = false;
+          id(blink_pending) = false;
       - script.stop: do_sync
       - script.stop: do_sync_once
       - script.execute: do_sync
@@ -807,15 +814,22 @@ script:
             pb_paint_pending = false;
           }
           id(busy) = false;
-      # The answer of this sync asked for an alert (ADR 0131): the page is on
-      # the panel, so the alert belongs here. A sync that changed nothing
-      # alerts too, which is what a rule with alert: refresh needs.
+      # The answer of this sync asked for a signal (ADR 0131): the page is on
+      # the panel, so the signal belongs here. Each hardware file defines the
+      # beep and blink scripts and leaves out what it cannot do. A sync that
+      # changed nothing signals too, which a repeated signal needs.
       - if:
           condition:
-            lambda: "return id(alert_pending);"
+            lambda: "return id(beep_pending);"
           then:
-            - lambda: "id(alert_pending) = false;"
-            - script.execute: alert
+            - lambda: "id(beep_pending) = false;"
+            - script.execute: beep
+      - if:
+          condition:
+            lambda: "return id(blink_pending);"
+          then:
+            - lambda: "id(blink_pending) = false;"
+            - script.execute: blink
       - if:
           condition:
             lambda: "return pb_has_events();"

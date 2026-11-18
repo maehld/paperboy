@@ -65,7 +65,7 @@ The register of a configured display answers 403 with a six-character code until
 
 Events are applied in order before the page is chosen. `previous` wraps. Touches operate the menu when it is open and are only logged otherwise. Paperboy drops an event `id` that is not newer than `last_event_id` in the state file. A repeated request therefore cannot move the cursor twice ([ADR 0064](../adr/0064-device-protocol-v4.md)).
 
-The answer carries `image` with a relative `path` and its `hash`, `refresh_s`, `wake` with `reason` and `after_s`, `listen_s`, `sleep` and `time`. It also carries `rotation` when it is not 0. A plan rule that wants an alert sets `alert` ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). The answer carries the firmware offer of [ADR 0043](../adr/0043-firmware-distribution.md) or `null`.
+The answer carries `image` with a relative `path` and its `hash`, `refresh_s`, `wake` with `reason` and `after_s`, `listen_s`, `sleep` and `time`. It also carries `rotation` when it is not 0. A plan rule that wants the device to signal sets `beep` and `blink` ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). The answer carries the firmware offer of [ADR 0043](../adr/0043-firmware-distribution.md) or `null`.
 
 ## Timing
 
@@ -131,13 +131,13 @@ The firmware lives in `firmware/esphome/` and is built on ESPHome ([ADR 0041](..
 
 | File | Content |
 |---|---|
-| `common.yaml` | Register, sync, download, listen, alert, deep sleep |
+| `common.yaml` | Register, sync, download, listen, beep and blink, deep sleep |
 | `paperboy.h` | Sync body, event queue, wake helpers, rotation, QOI paint, the lockup of the setup screens, text rows and the scroll engine |
 | `sticky.yaml`, `e1001.yaml`, `e1003.yaml` | Hardware, buttons, panel driver, buzzer, LED, battery and charger |
 | `text-common.yaml`, `lcd2004.yaml` | Text displays, text poll and the marquee script |
 | `build.ps1` | Build with a pinned ESPHome (2026.10.1); `-Instance` publishes `firmware/<hardware>-v<version>.bin` |
 
-A sync answer with `alert: true` runs the alert script of the hardware after the paint, also when the page did not change ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). The Sticky beeps; the E1001 and E1003 beep and blink the green LED; the LCD2004 blinks its backlight. The buzzer pins are GPIO48 on the Sticky and GPIO45 on the E1001 and E1003; the green LED is on GPIO6 and GPIO16.
+A sync answer with `beep` or `blink` runs the script of that method after the paint, also when the page did not change ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). The Sticky beeps; the E1001 and E1003 beep and blink the green LED; the LCD2004 blinks its backlight. The buzzer pins are GPIO48 on the Sticky and GPIO45 on the E1001 and E1003; the green LED is on GPIO6 and GPIO16.
 
 A cycle runs one at a time; a second trigger is dropped, so it cannot move the page cursor behind a running download. The firmware connects to the saved BSSID and channel without a scan. It decodes QOI itself into the panel buffer, because ESPHome's decoders spend 2.2–2.6 seconds on 384k pixels. Input during sync or paint is queued for one follow-up sync with a 150 ms settle, so a burst of presses becomes one sync. Failures are noted in RTC memory and reported in the next sync's `log`.
 
