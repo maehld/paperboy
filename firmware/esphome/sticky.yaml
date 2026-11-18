@@ -233,6 +233,17 @@ touchscreen:
       - lambda: "pb_touch_release();"
 
 script:
+  # An alert is a short beep (ADR 0131). The Sticky has no user LED in this
+  # firmware, so the sound is the whole alert.
+  - id: alert
+    mode: single
+    then:
+      - output.set_level:
+          id: buzzer
+          level: 50%
+      - delay: 150ms
+      - output.turn_off: buzzer
+
   # A tap becomes a touch event in page coordinates (ADR 0102). The touch
   # transform is measured in the compiled orientation, so pb_touch turns it by
   # the device's relative rotation; the display is painted the same way.

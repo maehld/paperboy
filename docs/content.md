@@ -90,7 +90,7 @@ fallback: nacht
 - Times use the global `timezone` from the configuration ([ADR 0033](adr/0033-global-language-and-timezone.md)). Plans have no timezone of their own, and Paperboy rejects a `timezone` key.
 - `pages` is the paging order within the rule. `on_refresh` decides what a timed refresh shows: `cycle` moves to the next page, `first` shows the first page, `current` keeps the page (the default). Buttons page within the active rule only, a long press returns to its first page, and a rule change always starts at the first page.
 - `refresh` replaces the device interval. Paperboy caps the reported interval to the next rule boundary (but never below the floor of the power source of the device), so a sleeping device wakes up for a rule change.
-- `beep` sounds the device's buzzer: `once` when the rule starts, `always` on every sync while it applies, or absent to stay quiet ([ADR 0131](adr/0131-a-plan-rule-sounds-the-buzzer.md)). The Sticky, E1001 and E1003 have a buzzer; the LCD2004 does not.
+- `alert` lets the device signal: `once` when the rule starts, `refresh` at the start and on every timed refresh while it applies, or absent to stay quiet ([ADR 0131](adr/0131-a-plan-rule-alerts-the-device.md)). The device decides what an alert is: the Sticky beeps, the E1001 and E1003 beep and blink, the LCD2004 blinks.
 - `fallback` names the rule used when nothing matches. Without a match and without a fallback, the device gets a notice page.
 - A rule needs a name (a-z, 0-9, `-`) and at least one page. Rule names must be unique, and a rule must not name the same page twice.
 - Paperboy reloads plans on change without a restart; a broken file keeps the last valid version. A missing or broken page also leads to a notice page, so devices never see a server error.
@@ -105,7 +105,7 @@ rules:
   - name: unterzucker
     when: { conditions: [{ value: dexcom/state, is: [low, urgent] }] }
     pages: [zucker]
-    beep: always
+    alert: refresh
   - name: tag
     when: { from: "07:00", to: "22:00" }
     pages: [uebersicht]

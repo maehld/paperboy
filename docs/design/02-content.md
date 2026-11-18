@@ -128,7 +128,7 @@ rules:
     pages: [morning, work]
     on_refresh: cycle
     refresh: 30m
-    beep: always
+    alert: refresh
 fallback: nacht
 actions:
   - action: evcc/mode
@@ -145,7 +145,7 @@ Rules are tried in order and the first match wins:
 
 A rule lists `pages`, `on_refresh` (what a timed refresh shows) and `refresh` (seconds until the next sync). `on_refresh` is `cycle` (the next page), `first` (the first page) or `current` (the same page), default `current`. A rule change always starts at the first page ([ADR 0130](../adr/0130-what-a-plan-refresh-does.md)). `UntilNextBoundary` caps the refresh at the next rule change. `fallback` holds the pages of a device whose no rule matches.
 
-`beep` sounds the device's buzzer ([ADR 0131](../adr/0131-a-plan-rule-sounds-the-buzzer.md)). `once` beeps in the sync that starts the rule. `always` beeps on every sync while the rule applies, so a low glucose value reminds at every refresh. A rule without the key stays quiet. A display without a buzzer ignores it.
+`alert` asks the device to signal ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). `once` alerts in the sync that starts the rule. `refresh` alerts at the start and on every timed refresh, so a low glucose value reminds at every refresh. A rule without the key stays quiet. The device decides what an alert is: a beep, a blink or both.
 
 A page of a rule that does not fit the device's display type is skipped. That is no file for the type, the other kind, or a text page whose boxes do not fit the character grid. The file the page names decides; a type that names no variant is served by the page file. The skip is logged once per display type, page and reason. No fitting page at all gives a notice page. A broken page is shown as a notice, not skipped. A render that panics is logged with its stack and answered with a notice page.
 
@@ -204,4 +204,4 @@ On a text page the built-in plugin provides four values. `title` is the page tit
 
 ## Decisions
 
-[ADR 0025](../adr/0025-plaene-je-display.md) (plans) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md) (the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) · [0130](../adr/0130-what-a-plan-refresh-does.md) (what a refresh does) · [0131](../adr/0131-a-plan-rule-sounds-the-buzzer.md) (a rule beeps)
+[ADR 0025](../adr/0025-plaene-je-display.md) (plans) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md) (the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) · [0130](../adr/0130-what-a-plan-refresh-does.md) (what a refresh does) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (a rule alerts)

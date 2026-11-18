@@ -110,36 +110,38 @@ const (
 	RefreshCycle RefreshMode = "cycle"
 )
 
-// BeepMode says when a rule sounds the device's buzzer (ADR 0131). The empty
-// mode means never; a rule without the key stays quiet.
-type BeepMode string
+// AlertMode says when a rule asks the device to alert (ADR 0131). The device
+// decides what an alert is: a beep, a blink or both. The empty mode means
+// never; a rule without the key stays quiet.
+type AlertMode string
 
 const (
-	// BeepNever keeps the device quiet.
-	BeepNever BeepMode = ""
-	// BeepOnce sounds the buzzer when the rule becomes active.
-	BeepOnce BeepMode = "once"
-	// BeepAlways sounds the buzzer on every sync while the rule applies, so
-	// a low glucose value reminds at every refresh.
-	BeepAlways BeepMode = "always"
+	// AlertNever keeps the device quiet.
+	AlertNever AlertMode = ""
+	// AlertOnce alerts when the rule becomes active.
+	AlertOnce AlertMode = "once"
+	// AlertRefresh alerts when the rule becomes active and on every timed
+	// refresh while it applies, so a low glucose value reminds at every
+	// refresh without an alert on a button press.
+	AlertRefresh AlertMode = "refresh"
 )
 
-// UnmarshalYAML accepts once and always, and never as the explicit way to
+// UnmarshalYAML accepts once and refresh, and never as the explicit way to
 // stay quiet. Anything else, including the true of an early sketch, gets a
 // hint that names the three modes.
-func (b *BeepMode) UnmarshalYAML(v *yaml.Node) error {
+func (b *AlertMode) UnmarshalYAML(v *yaml.Node) error {
 	if v.Kind != yaml.ScalarNode {
-		return fmt.Errorf("line %d: beep: expected never, once or always", v.Line)
+		return fmt.Errorf("line %d: alert: expected never, once or refresh", v.Line)
 	}
 	switch s := strings.ToLower(v.Value); s {
 	case "never", "":
-		*b = BeepNever
+		*b = AlertNever
 	case "once":
-		*b = BeepOnce
-	case "always":
-		*b = BeepAlways
+		*b = AlertOnce
+	case "refresh":
+		*b = AlertRefresh
 	default:
-		return fmt.Errorf("line %d: beep %q: expected never, once or always", v.Line, v.Value)
+		return fmt.Errorf("line %d: alert %q: expected never, once or refresh", v.Line, v.Value)
 	}
 	return nil
 }
@@ -151,9 +153,9 @@ type Rule struct {
 	Pages     []string    `yaml:"pages" json:"pages"`
 	OnRefresh RefreshMode `yaml:"on_refresh" json:"on_refresh,omitempty"`
 	Refresh   Duration    `yaml:"refresh" json:"refresh,omitempty"`
-	// Beep sounds the device's buzzer when the rule takes over or on every
-	// sync (ADR 0131).
-	Beep BeepMode `yaml:"beep" json:"beep,omitempty"`
+	// Alert asks the device to alert when the rule takes over or on every
+	// timed refresh (ADR 0131).
+	Alert AlertMode `yaml:"alert" json:"alert,omitempty"`
 	// Rotate is the old name of on_refresh: cycle (ADR 0025, 0130). Parse and
 	// the editor API keep accepting it; Encode writes on_refresh.
 	Rotate bool `yaml:"rotate" json:"rotate,omitempty"`
@@ -359,7 +361,7 @@ type Selection struct {
 	Pages     []string
 	OnRefresh RefreshMode
 	Refresh   time.Duration // 0 = use the device interval
-	Beep      BeepMode
+	Alert     AlertMode
 	Actions   []PlanAction // the plan's actions, the same for every rule and page
 }
 
@@ -511,7 +513,7 @@ func (w *When) matches(t time.Time, values Values) bool {
 }
 
 func (r *Rule) selection() Selection {
-	return Selection{Rule: r.Name, Pages: r.Pages, OnRefresh: r.Mode(), Refresh: time.Duration(r.Refresh), Beep: r.Beep}
+	return Selection{Rule: r.Name, Pages: r.Pages, OnRefresh: r.Mode(), Refresh: time.Duration(r.Refresh), Alert: r.Alert}
 }
 
 func (p *Plan) validate() error {
@@ -611,10 +613,10 @@ func (r *Rule) validate() error {
 	if r.Rotate && r.OnRefresh != "" && r.OnRefresh != RefreshCycle {
 		return fmt.Errorf("rotate is the old name of on_refresh: cycle; remove rotate (ADR 0130)")
 	}
-	switch r.Beep {
-	case BeepNever, BeepOnce, BeepAlways:
+	switch r.Alert {
+	case AlertNever, AlertOnce, AlertRefresh:
 	default:
-		return fmt.Errorf("beep %q: expected never, once or always", r.Beep)
+		return fmt.Errorf("alert %q: expected never, once or refresh", r.Alert)
 	}
 	if len(r.Actions) > 0 {
 		return fmt.Errorf("actions belong to the plan, not to a rule (ADR 0057)")

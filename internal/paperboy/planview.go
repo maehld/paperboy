@@ -40,7 +40,7 @@ type planViewRule struct {
 	When       string
 	OnRefresh  string
 	Refresh    string
-	Beep       string // once or always; empty when the rule stays quiet
+	Alert      string // once or refresh; empty when the rule stays quiet
 	Active     bool   // the rule the device shows at the selected time
 	Fallback   bool   // the plan's fallback rule
 	Conditions []planViewCondition
@@ -159,7 +159,7 @@ func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 	text := cfg.Profiles[dev.Profile].text()
 	for _, rule := range p.Rules {
 		vr := planViewRule{Name: rule.Name, When: whenText(rule.When), OnRefresh: string(rule.Mode()),
-			Beep: string(rule.Beep), Active: rule.Name == view.Active, Fallback: rule.Name == p.Fallback}
+			Alert: string(rule.Alert), Active: rule.Name == view.Active, Fallback: rule.Name == p.Fallback}
 		for _, cond := range rule.When.Conditions {
 			current, has := values[cond.Value]
 			active := false

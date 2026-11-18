@@ -104,7 +104,7 @@ label.field.wide { grid-column: 1 / -1; }
         <h3>Rules</h3>
         <button id="add-rule" type="button">Add rule</button>
       </div>
-      <p class="hint">The first matching rule wins; a rule without from/to matches at any time. Pages are shown in this order, times are in {{.Timezone}}. A condition reads an enum value, e.g. dexcom/state is low; several keys are alternatives, several conditions must all match. Beep sounds the buzzer once when the rule starts, or always on every sync while it applies.</p>
+      <p class="hint">The first matching rule wins; a rule without from/to matches at any time. Pages are shown in this order, times are in {{.Timezone}}. A condition reads an enum value, e.g. dexcom/state is low; several keys are alternatives, several conditions must all match. Alert lets the device alert once when the rule starts, or on every timed refresh while it applies; a device may beep, blink or both.</p>
       <div id="rules"></div>
     </section>
     <section class="panel">

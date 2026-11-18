@@ -80,7 +80,7 @@
         pages: (r.pages || []).slice(),
         on_refresh: r.on_refresh || (r.rotate ? 'cycle' : 'current'),
         refresh: r.refresh || '',
-        beep: r.beep || '',
+        alert: r.alert || '',
       };
     });
     p.fallback = p.fallback || '';
@@ -109,7 +109,7 @@
         if (r.when.conditions.length) rule.when.conditions = r.when.conditions.slice();
         if (r.on_refresh && r.on_refresh !== 'current') rule.on_refresh = r.on_refresh;
         if (r.refresh) rule.refresh = r.refresh;
-        if (r.beep) rule.beep = r.beep;
+        if (r.alert) rule.alert = r.alert;
         return rule;
       }),
     };
@@ -287,19 +287,19 @@
     });
     grid.appendChild(field('On refresh', onRefresh));
 
-    const beep = document.createElement('select');
-    for (const [value, label] of [['', 'never'], ['once', 'once'], ['always', 'always']]) {
+    const alertSelect = document.createElement('select');
+    for (const [value, label] of [['', 'never'], ['once', 'once'], ['refresh', 'on refresh']]) {
       const option = document.createElement('option');
       option.value = value;
       option.textContent = label;
-      beep.appendChild(option);
+      alertSelect.appendChild(option);
     }
-    beep.value = rule.beep;
-    beep.addEventListener('change', () => {
-      rule.beep = beep.value;
+    alertSelect.value = rule.alert;
+    alertSelect.addEventListener('change', () => {
+      rule.alert = alertSelect.value;
       changed();
     });
-    grid.appendChild(field('Beep', beep));
+    grid.appendChild(field('Alert', alertSelect));
 
     // Conditions are value keys, e.g. dexcom/state is low (ADR 0127). Every
     // entry must match; the keys of one entry are alternatives. A value or key
@@ -942,7 +942,7 @@
     const taken = new Set(ruleNames());
     let n = state.plan.rules.length + 1;
     while (taken.has('rule-' + n)) n++;
-    state.plan.rules.push({ name: 'rule-' + n, when: { from: '', to: '', days: [], conditions: [] }, pages: [], on_refresh: 'current', refresh: '', beep: '' });
+    state.plan.rules.push({ name: 'rule-' + n, when: { from: '', to: '', days: [], conditions: [] }, pages: [], on_refresh: 'current', refresh: '', alert: '' });
     changed();
     renderRules();
     renderFallback();

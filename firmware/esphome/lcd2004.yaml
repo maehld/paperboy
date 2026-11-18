@@ -9,8 +9,9 @@
 
 substitutions:
   hardware: lcd2004
-  # 2.6.0 combines the scroll engine with the update screen of 2.5.0.
-  fw_version: "2.6.0"
+  # 2.7.0 adds the alert blink of the backlight (ADR 0131). 2.6.0 combined
+  # the scroll engine with the update screen of 2.5.0.
+  fw_version: "2.7.0"
   # Characters per row; the display lambda prints each row in this width.
   text_columns: "20"
   # Optional default for the Paperboy URL entered in the web UI.
@@ -44,3 +45,17 @@ display:
       for (int row = 0; row < 4; row++) {
         it.print(0, row, pb_hd44780(pb_row(row, ${text_columns})).c_str());
       }
+
+script:
+  # An alert blinks the backlight (ADR 0131). The PCF8574 drives the
+  # backlight bit, so this display flashes without a buzzer.
+  - id: alert
+    mode: single
+    then:
+      - lambda: "id(text_display).no_backlight();"
+      - delay: 200ms
+      - lambda: "id(text_display).backlight();"
+      - delay: 150ms
+      - lambda: "id(text_display).no_backlight();"
+      - delay: 200ms
+      - lambda: "id(text_display).backlight();"

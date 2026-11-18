@@ -238,58 +238,58 @@ func TestPlanRuleSwitchAndKeys(t *testing.T) {
 	}
 }
 
-// TestPlanBeep sounds the buzzer once when a once rule starts and on every
-// sync while an always rule applies (ADR 0131). A repeated once rule stays
-// quiet, also on a button press.
-func TestPlanBeep(t *testing.T) {
+// TestPlanAlert alerts once when a once rule starts and on every
+// timed refresh while a refresh rule applies (ADR 0131). A repeated rule and
+// a button press stay quiet unless the rule starts.
+func TestPlanAlert(t *testing.T) {
 	s, now := planServer(t, `
 rules:
   - name: morgen
     when: { from: "07:00", to: "09:00" }
     pages: [eins]
-    beep: once
+    alert: once
   - name: tag
     when: { from: "09:00", to: "19:00" }
     pages: [drei]
-    beep: always
+    alert: refresh
   - name: abend
     when: { from: "19:00", to: "23:00" }
     pages: [vier]
-    beep: once
+    alert: once
 fallback: morgen
 `)
 	dev := planDevice(t, s)
-	if out := displayPage(t, s, dev); out["beep"] != true {
-		t.Fatalf("the first once rule must beep: %v", out)
+	if out := displayPage(t, s, dev); out["alert"] != true {
+		t.Fatalf("the first once rule must alert: %v", out)
 	}
 	*now = now.Add(10 * time.Minute)
-	if out := displayPage(t, s, dev); out["beep"] != nil {
+	if out := displayPage(t, s, dev); out["alert"] != nil {
 		t.Fatalf("the same once rule must stay quiet: %v", out)
 	}
-	// A button press on a once rule does not beep either.
-	if out := press(t, s, dev, buttonHome); out["beep"] != nil {
+	// A button press on a once rule does not alert either.
+	if out := press(t, s, dev, buttonHome); out["alert"] != nil {
 		t.Fatalf("input on a once rule must stay quiet: %v", out)
 	}
 
-	// The always rule beeps on every sync, a timer wake and a button wake.
+	// The refresh rule alerts on every timed refresh, but not on input.
 	*now = time.Date(2026, time.October, 21, 9, 0, 0, 0, time.UTC)
 	for i := 0; i < 2; i++ {
-		if out := displayPage(t, s, dev); out["beep"] != true {
-			t.Fatalf("always must beep on sync %d: %v", i, out)
+		if out := displayPage(t, s, dev); out["alert"] != true {
+			t.Fatalf("refresh must alert on timer sync %d: %v", i, out)
 		}
 		*now = now.Add(5 * time.Minute)
 	}
-	if out := press(t, s, dev, buttonNext); out["beep"] != true {
-		t.Fatalf("always must beep on input: %v", out)
+	if out := press(t, s, dev, buttonNext); out["alert"] != nil {
+		t.Fatalf("a button press on a refresh rule must stay quiet: %v", out)
 	}
 
-	// A change to another once rule beeps again.
+	// A change to another once rule alerts again.
 	*now = time.Date(2026, time.October, 21, 19, 0, 0, 0, time.UTC)
-	if out := displayPage(t, s, dev); out["beep"] != true {
-		t.Fatalf("the new once rule must beep: %v", out)
+	if out := displayPage(t, s, dev); out["alert"] != true {
+		t.Fatalf("the new once rule must alert: %v", out)
 	}
 	*now = now.Add(10 * time.Minute)
-	if out := displayPage(t, s, dev); out["beep"] != nil {
+	if out := displayPage(t, s, dev); out["alert"] != nil {
 		t.Fatalf("the second sync of the once rule must stay quiet: %v", out)
 	}
 }

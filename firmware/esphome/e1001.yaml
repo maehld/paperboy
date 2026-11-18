@@ -98,6 +98,11 @@ output:
     pin: ${buzzer_pin}
     id: buzzer
     frequency: 2700Hz
+  # Onboard green LED, active LOW (Seeed). It blinks with an alert (ADR 0131).
+  - platform: gpio
+    pin: GPIO6
+    inverted: true
+    id: led
 
 spi:
   clk_pin: GPIO7
@@ -229,6 +234,23 @@ button:
       - component.update: epaper_display
 
 script:
+  # An alert is a beep and a double blink of the green LED (ADR 0131).
+  - id: alert
+    mode: single
+    then:
+      - output.set_level:
+          id: buzzer
+          level: 50%
+      - output.turn_on: led
+      - delay: 150ms
+      - output.turn_off: buzzer
+      - delay: 100ms
+      - output.turn_off: led
+      - delay: 100ms
+      - output.turn_on: led
+      - delay: 150ms
+      - output.turn_off: led
+
   # uc8179_gray4 refreshes synchronously: component.update returns once the
   # panel is idle, so after_paint has nothing to wait for.
   - id: wait_paint

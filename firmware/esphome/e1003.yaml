@@ -179,6 +179,11 @@ output:
     pin: ${buzzer_pin}
     id: buzzer
     frequency: 2700Hz
+  # Onboard green LED, active LOW (Seeed). It blinks with an alert (ADR 0131).
+  - platform: gpio
+    pin: GPIO16
+    inverted: true
+    id: led
 
 font:
   # The notice bar for a page the firmware cannot show.
@@ -318,6 +323,23 @@ binary_sensor:
           start: !lambda "return (int) esphome::millis();"
 
 script:
+  # An alert is a beep and a double blink of the green LED (ADR 0131).
+  - id: alert
+    mode: single
+    then:
+      - output.set_level:
+          id: buzzer
+          level: 50%
+      - output.turn_on: led
+      - delay: 150ms
+      - output.turn_off: buzzer
+      - delay: 100ms
+      - output.turn_off: led
+      - delay: 100ms
+      - output.turn_on: led
+      - delay: 150ms
+      - output.turn_off: led
+
   # A tap becomes a touch event in page coordinates (ADR 0102). The GT911
   # transform is measured in the compiled orientation, so pb_touch turns it by
   # the device's relative rotation; the display is painted the same way. The

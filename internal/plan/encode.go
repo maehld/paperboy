@@ -38,8 +38,8 @@ func Encode(p *Plan) ([]byte, error) {
 		if r.Refresh != 0 {
 			add(n, "refresh", str(durationString(time.Duration(r.Refresh))))
 		}
-		if r.Beep != BeepNever {
-			add(n, "beep", str(string(r.Beep)))
+		if r.Alert != AlertNever {
+			add(n, "alert", str(string(r.Alert)))
 		}
 		rules.Content = append(rules.Content, n)
 	}

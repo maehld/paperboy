@@ -73,7 +73,7 @@ The content model: what a page is, what draws in it and when it is shown. See [`
 | [0122](0122-hide-and-progress-a-unit.md) | Hide and progress a text value's unit | Accepted, implemented; extends the units of [ADR-0111](0111-text-pages-from-plugin-values.md) with `unit: none`, a declared progression and the cell key `scale` |
 | [0128](0128-a-default-grid-per-display-type.md) | A default grid per display type | Accepted, implemented; keeps the reference grid of [ADR-0049](0049-plugin-widgets.md) for declarations, adds `grid` to a display type as the start for new pages, and leaves the variant rule of [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md) alone |
 | [0130](0130-what-a-plan-refresh-does.md) | What a plan refresh does | Accepted, implemented; replaces `rotate` of [ADR-0025](0025-plaene-je-display.md) with `on_refresh`, removes `defaults.page_timeout` and its extra wake; a rule change always starts at the first page |
-| [0131](0131-a-plan-rule-sounds-the-buzzer.md) | A plan rule sounds the buzzer | Accepted, implemented; adds `beep: once` and `beep: always` to a rule, `beep` to the sync answer and a buzzer to the Sticky, E1001 and E1003 firmware |
+| [0131](0131-a-plan-rule-alerts-the-device.md) | A plan rule alerts the device | Accepted, implemented; adds `alert: once` and `alert: refresh` to a rule, `alert` to the sync answer and an alert script to each hardware type; the device decides between beep, LED blink and backlight blink |
 
 ## Devices and the device protocol
 
