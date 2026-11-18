@@ -355,7 +355,7 @@
   // server; the display takes its key on its next register (ADR 0109).
   async function pair() {
     const p = state.pairing;
-    if (!p || p.paired) return;
+    if (!p || (!p.waiting && p.paired)) return;
     const code = (prompt('Code on the display ' + p.mac + ':', '') || '').trim();
     if (!code) return;
     setStatus('pairing…', '');

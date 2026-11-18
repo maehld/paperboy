@@ -154,7 +154,9 @@ type pairingInfo struct {
 	Waiting bool   `json:"waiting"` // a code was issued and is still valid
 }
 
-// pairingOf answers the pairing state of a MAC.
+// pairingOf answers the pairing state of a MAC. A waiting code means the
+// display cannot register, also when an old key is still in the state, so it
+// is not paired in that moment.
 func (s *Server) pairingOf(mac string) pairingInfo {
 	key, err := deviceStateKey(mac)
 	if err != nil {
@@ -166,8 +168,8 @@ func (s *Server) pairingOf(mac string) pairingInfo {
 	st := s.state[key]
 	info := pairingInfo{MAC: formatStateKey(key)}
 	if st != nil {
-		info.Paired = st.APIKey != "" || st.PairAuthorized
 		info.Waiting = st.PairCode != "" && now.Before(st.PairExpiry)
+		info.Paired = (st.APIKey != "" || st.PairAuthorized) && !info.Waiting
 	}
 	return info
 }
