@@ -260,9 +260,8 @@ func mergeBattery(base, override *Battery) *Battery {
 const (
 	TypePaperboy = "paperboy"
 
-	minRefresh         = time.Minute
-	defaultRefresh     = 5 * time.Minute
-	defaultPageTimeout = 5 * time.Minute
+	minRefresh     = time.Minute
+	defaultRefresh = 5 * time.Minute
 
 	// The device menu (ADR 0057) stays open this long by default and never
 	// longer than menuMaxDuration, so a forgotten menu does not keep waking the
@@ -296,14 +295,13 @@ type Config struct {
 	Language    string         // "de" or "en"; built-in texts and number formats
 	Timezone    *time.Location // plans and built-in dates
 	Refresh     Duration       // default interval of a device; a plan rule may override it
-	PageTimeout Duration
-	MenuShow    Duration // default time the device menu stays open (ADR 0057)
-	Pages       string   // page templates: <dir>/pages
-	Plans       string   // page plans: <dir>/plans
-	DisplaysDir string   // display type files: <dir>/displays (ADR 0071)
-	DevicesDir  string   // device files: <dir>/devices (ADR 0070)
-	PluginsDir  string   // plugin programs: <dir>/plugins (ADR 0049)
-	FirmwareDir string   // firmware images: <dir>/firmware (ADR 0043)
+	MenuShow    Duration       // default time the device menu stays open (ADR 0057)
+	Pages       string         // page templates: <dir>/pages
+	Plans       string         // page plans: <dir>/plans
+	DisplaysDir string         // display type files: <dir>/displays (ADR 0071)
+	DevicesDir  string         // device files: <dir>/devices (ADR 0070)
+	PluginsDir  string         // plugin programs: <dir>/plugins (ADR 0049)
+	FirmwareDir string         // firmware images: <dir>/firmware (ADR 0043)
 	Firmware    FirmwareConfig
 	Download    *DownloadConfig // nil = fetch nothing (ADR 0060)
 	Profiles    map[string]Profile
@@ -411,7 +409,7 @@ type fileConfig struct {
 	Old      any    `yaml:"providers"` // removed in v2; rejected with a hint
 	Defaults struct {
 		Refresh     Duration `yaml:"refresh"`
-		PageTimeout Duration `yaml:"page_timeout"`
+		PageTimeout any      `yaml:"page_timeout"` // removed by ADR 0130; rejected with a hint
 		MenuShow    Duration `yaml:"menu_show_duration"`
 		Battery     *Battery `yaml:"battery"`
 	} `yaml:"defaults"`
@@ -509,7 +507,6 @@ func LoadConfig(dir string) (*Config, error) {
 		Language:    f.Language,
 		Timezone:    tz,
 		Refresh:     f.Defaults.Refresh,
-		PageTimeout: f.Defaults.PageTimeout,
 		MenuShow:    f.Defaults.MenuShow,
 		Battery:     f.Defaults.Battery,
 		Pages:       filepath.Join(dir, pagesDirName),
@@ -525,6 +522,9 @@ func LoadConfig(dir string) (*Config, error) {
 	}
 	if f.Old != nil {
 		return nil, fmt.Errorf("%s: providers were replaced by plugins in Paperboy v2 (ADR 0049); move them to plugins with a config section", path)
+	}
+	if f.Defaults.PageTimeout != nil {
+		return nil, fmt.Errorf("%s: defaults.page_timeout was removed: a plan rule decides with on_refresh (ADR 0130); remove it", path)
 	}
 	if f.DisplayTypes != nil {
 		return nil, fmt.Errorf("%s: display types moved to files of their own: create displays/<name>.yaml for every display type and remove the display_types section (ADR 0071)", path)
@@ -609,9 +609,6 @@ func (c *Config) validate() error {
 	}
 	if time.Duration(c.Refresh) < minRefresh {
 		return fmt.Errorf("defaults: refresh must be at least 1m")
-	}
-	if c.PageTimeout == 0 {
-		c.PageTimeout = Duration(defaultPageTimeout)
 	}
 	if err := c.Battery.validate("battery"); err != nil {
 		return err

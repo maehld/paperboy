@@ -85,7 +85,7 @@ Old instances from version 1 still carry `providers/` and `icons/`. Nothing read
 | `language`, `timezone` | Language and zone for every page, plan and plugin ([ADR 0033](../adr/0033-global-language-and-timezone.md)) |
 | `plugins` | One entry per plugin: `version`, `timeout`, `env`, `config` ([ADR 0049](../adr/0049-plugin-widgets.md), [0060](../adr/0060-download-from-releases.md)) |
 | `download` | `source`, `token`, `interval`, `plugin_channel`, `firmware_channel` ([ADR 0060](../adr/0060-download-from-releases.md), [0062](../adr/0062-plugin-updates-and-download-control.md), [0089](../adr/0089-release-channels.md)) |
-| `defaults` | `refresh`, `page_timeout`, `menu_show_duration` ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md)) |
+| `defaults` | `refresh`, `menu_show_duration` ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md)) |
 | `firmware` | `version` pin for the images an instance installs |
 | `ui` | `password` for the operator UI ([ADR 0096](../adr/0096-a-password-for-the-operator-ui.md)) |
 

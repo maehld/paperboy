@@ -19,7 +19,6 @@ type deviceState struct {
 	APIKey          string    `json:"api_key"`
 	Page            int       `json:"page"`
 	FirstSeen       time.Time `json:"first_seen,omitempty"`
-	LastInput       time.Time `json:"last_input,omitempty"`
 	LastSeen        time.Time `json:"last_seen,omitempty"`
 	ClientIP        string    `json:"client_ip,omitempty"` // source address of the last register, sync or text poll
 	BatteryVoltage  string    `json:"battery_voltage,omitempty"`

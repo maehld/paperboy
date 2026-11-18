@@ -45,7 +45,7 @@ The content model: what a page is, what draws in it and when it is shown. See [`
 |---|---|---|
 | [0013](0013-truetype-schrift.md) | TrueType-Schrift über golang.org/x/image | Akzeptiert |
 | [0024](0024-layouts-im-display-service.md) | Daten statt Bilder – Datendokument und YAML-Layouts im Display-Service | Abgelöst durch [ADR-0049](0049-plugin-widgets.md) |
-| [0025](0025-plaene-je-display.md) | Pläne – regelbasierte Seitenauswahl je Display | Akzeptiert, umgesetzt für TRMNL-Geräte; Zeitzone abgelöst durch [ADR-0033](0033-global-language-and-timezone.md) |
+| [0025](0025-plaene-je-display.md) | Pläne – regelbasierte Seitenauswahl je Display | Akzeptiert, umgesetzt für TRMNL-Geräte; Zeitzone abgelöst durch [ADR-0033](0033-global-language-and-timezone.md), `rotate` durch [ADR-0130](0130-what-a-plan-refresh-does.md) |
 | [0032](0032-data-providers-and-regions.md) | Data providers with named regions instead of image fragments | Superseded by [ADR-0049](0049-plugin-widgets.md) |
 | [0034](0034-layout-primitives-and-typography.md) | Layout primitives and typography in page templates | Superseded by [ADR-0049](0049-plugin-widgets.md) |
 | [0035](0035-duration-format.md) | Duration format and explicit charge direction for derived values | Superseded by [ADR-0049](0049-plugin-widgets.md) |
@@ -72,6 +72,7 @@ The content model: what a page is, what draws in it and when it is shown. See [`
 | [0121](0121-segmented-battery-gauge.md) | A segmented gauge for the battery | Accepted, implemented; replaces the drawing and the sizes of the `battery` widget of [ADR-0115](0115-device-status-in-a-widget.md) and supersedes its point 5 (the header shows an icon and a percentage) |
 | [0122](0122-hide-and-progress-a-unit.md) | Hide and progress a text value's unit | Accepted, implemented; extends the units of [ADR-0111](0111-text-pages-from-plugin-values.md) with `unit: none`, a declared progression and the cell key `scale` |
 | [0128](0128-a-default-grid-per-display-type.md) | A default grid per display type | Accepted, implemented; keeps the reference grid of [ADR-0049](0049-plugin-widgets.md) for declarations, adds `grid` to a display type as the start for new pages, and leaves the variant rule of [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md) alone |
+| [0130](0130-what-a-plan-refresh-does.md) | What a plan refresh does | Accepted, implemented; replaces `rotate` of [ADR-0025](0025-plaene-je-display.md) with `on_refresh`, removes `defaults.page_timeout` and its extra wake; a rule change always starts at the first page |
 
 ## Devices and the device protocol
 

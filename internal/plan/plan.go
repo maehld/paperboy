@@ -97,16 +97,44 @@ type Plan struct {
 	loc *time.Location
 }
 
+// RefreshMode decides what a timed refresh does with the page cursor
+// (ADR 0130). A rule change always starts at the first page.
+type RefreshMode string
+
+const (
+	// RefreshCurrent keeps the page.
+	RefreshCurrent RefreshMode = "current"
+	// RefreshFirst shows the first page of the rule.
+	RefreshFirst RefreshMode = "first"
+	// RefreshCycle advances to the next page of the rule.
+	RefreshCycle RefreshMode = "cycle"
+)
+
 // Rule shows Pages while When matches.
 type Rule struct {
-	Name    string   `yaml:"name" json:"name"`
-	When    When     `yaml:"when" json:"when"`
-	Pages   []string `yaml:"pages" json:"pages"`
-	Rotate  bool     `yaml:"rotate" json:"rotate,omitempty"`
-	Refresh Duration `yaml:"refresh" json:"refresh,omitempty"`
+	Name      string      `yaml:"name" json:"name"`
+	When      When        `yaml:"when" json:"when"`
+	Pages     []string    `yaml:"pages" json:"pages"`
+	OnRefresh RefreshMode `yaml:"on_refresh" json:"on_refresh,omitempty"`
+	Refresh   Duration    `yaml:"refresh" json:"refresh,omitempty"`
+	// Rotate is the old name of on_refresh: cycle (ADR 0025, 0130). Parse and
+	// the editor API keep accepting it; Encode writes on_refresh.
+	Rotate bool `yaml:"rotate" json:"rotate,omitempty"`
 	// Actions belong to the plan, not to a rule. The field only exists to
 	// reject the key with a hint instead of "field not found".
 	Actions []any `yaml:"actions" json:"-"`
+}
+
+// Mode returns the effective refresh mode. An empty mode means current; the
+// old rotate: true means cycle (ADR 0130).
+func (r Rule) Mode() RefreshMode {
+	if r.OnRefresh != "" {
+		return r.OnRefresh
+	}
+	if r.Rotate {
+		return RefreshCycle
+	}
+	return RefreshCurrent
 }
 
 // PlanAction is one action a plan offers to every device that uses it
@@ -290,11 +318,11 @@ type Values map[string]string
 
 // Selection is the evaluated rule.
 type Selection struct {
-	Rule    string
-	Pages   []string
-	Rotate  bool
-	Refresh time.Duration // 0 = use the device interval
-	Actions []PlanAction  // the plan's actions, the same for every rule and page
+	Rule      string
+	Pages     []string
+	OnRefresh RefreshMode
+	Refresh   time.Duration // 0 = use the device interval
+	Actions   []PlanAction  // the plan's actions, the same for every rule and page
 }
 
 // Parse reads a plan and validates it. Time windows refer to loc; nil means
@@ -445,7 +473,7 @@ func (w *When) matches(t time.Time, values Values) bool {
 }
 
 func (r *Rule) selection() Selection {
-	return Selection{Rule: r.Name, Pages: r.Pages, Rotate: r.Rotate, Refresh: time.Duration(r.Refresh)}
+	return Selection{Rule: r.Name, Pages: r.Pages, OnRefresh: r.Mode(), Refresh: time.Duration(r.Refresh)}
 }
 
 func (p *Plan) validate() error {
@@ -536,6 +564,14 @@ func (r *Rule) validate() error {
 	// type's floor. Text displays may poll every second (ADR 0045).
 	if r.Refresh != 0 && time.Duration(r.Refresh) < time.Second {
 		return fmt.Errorf("refresh must be at least 1s")
+	}
+	switch r.Mode() {
+	case RefreshCurrent, RefreshFirst, RefreshCycle:
+	default:
+		return fmt.Errorf("on_refresh %q: expected cycle, first or current", r.OnRefresh)
+	}
+	if r.Rotate && r.OnRefresh != "" && r.OnRefresh != RefreshCycle {
+		return fmt.Errorf("rotate is the old name of on_refresh: cycle; remove rotate (ADR 0130)")
 	}
 	if len(r.Actions) > 0 {
 		return fmt.Errorf("actions belong to the plan, not to a rule (ADR 0057)")

@@ -72,8 +72,9 @@ buffer plus the string.
 Only one cycle runs at a time. A second trigger — the flash-restored Paperboy
 URL at boot used to start one while `on_boot` was already running the cycle —
 is dropped with `a cycle is already running, keeping its page`. Otherwise the
-second sync moves Paperboy's page cursor (with `rotate` in the plan) while the
-first image is still downloading, and the panel never shows that page.
+second sync moves Paperboy's page cursor (with `on_refresh: cycle` in the
+plan) while the first image is still downloading, and the panel never shows
+that page.
 
 The firmware reports its power source in every sync ([ADR 0051](../../docs/adr/0051-power-source-refresh-policy.md)). The Sticky
 measures USB power on GPIO9 (`PWR_IN_VOLT`, 5.1k/5.1k divider: about 2.5 V

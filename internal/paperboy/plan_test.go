@@ -68,7 +68,7 @@ rules:
   - name: tag
     when: { from: "09:00", to: "19:00" }
     pages: [drei, vier]
-    rotate: true
+    on_refresh: cycle
     refresh: 5m
   - name: nacht
     when: { from: "19:00", to: "07:00" }
@@ -245,7 +245,7 @@ func TestPlanRotation(t *testing.T) {
 	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/drei/") {
 		t.Fatalf("first day page: %q", got)
 	}
-	// Every timer wake moves on while the rule has rotate: true.
+	// Every timer wake moves on while the rule has on_refresh: cycle.
 	for _, want := range []string{"vier", "drei", "vier"} {
 		*now = now.Add(5 * time.Minute)
 		if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/"+want+"/") {
@@ -262,14 +262,58 @@ func TestPlanRotation(t *testing.T) {
 	}
 }
 
-func TestPlanPageTimeout(t *testing.T) {
-	s, now := planServer(t, testPlan)
+// TestPlanRefreshCurrent keeps a button-paged page over a timer refresh. The
+// old page timeout no longer caps the sleep or returns to the first page
+// (ADR 0130).
+func TestPlanRefreshCurrent(t *testing.T) {
+	s, now := planServer(t, `
+rules:
+  - name: morgen
+    when: { from: "07:00", to: "09:00" }
+    pages: [eins, zwei]
+  - name: tag
+    when: { from: "09:00", to: "19:00" }
+    pages: [drei, zwei]
+`)
 	dev := planDevice(t, s)
-	displayPage(t, s, dev)          // eins
-	press(t, s, dev, buttonNext)    // zwei
-	*now = now.Add(6 * time.Minute) // past page_timeout (5m)
 	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/eins/") {
-		t.Fatalf("back to the first page after the timeout: %q", got)
+		t.Fatalf("first page: %q", got)
+	}
+	if got := pagePath(press(t, s, dev, buttonNext)); !strings.Contains(got, "/zwei/") {
+		t.Fatalf("button page: %q", got)
+	}
+	*now = now.Add(10 * time.Minute)
+	out := displayPage(t, s, dev)
+	if got := pagePath(out); !strings.Contains(got, "/zwei/") {
+		t.Fatalf("current must keep the page: %q", got)
+	}
+	if got := out["refresh_s"].(float64); got != 600 {
+		t.Fatalf("refresh must not be capped to a page timeout: %v", got)
+	}
+	// A rule change always starts at its first page, even when the old page
+	// still exists in the new rule.
+	*now = time.Date(2026, time.October, 21, 9, 0, 0, 0, time.UTC)
+	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/drei/") {
+		t.Fatalf("new rule must start at its first page: %q", got)
+	}
+}
+
+// TestPlanRefreshFirst shows the first page at every timer refresh.
+func TestPlanRefreshFirst(t *testing.T) {
+	s, now := planServer(t, `
+rules:
+  - name: immer
+    pages: [eins, zwei]
+    on_refresh: first
+`)
+	dev := planDevice(t, s)
+	displayPage(t, s, dev)
+	if got := pagePath(press(t, s, dev, buttonNext)); !strings.Contains(got, "/zwei/") {
+		t.Fatalf("button page: %q", got)
+	}
+	*now = now.Add(10 * time.Minute)
+	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/eins/") {
+		t.Fatalf("first must reset at the next refresh: %q", got)
 	}
 }
 

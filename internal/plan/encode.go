@@ -32,8 +32,8 @@ func Encode(p *Plan) ([]byte, error) {
 			pages.Content = append(pages.Content, str(name))
 		}
 		add(n, "pages", pages)
-		if r.Rotate {
-			add(n, "rotate", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"})
+		if mode := r.Mode(); mode != RefreshCurrent {
+			add(n, "on_refresh", str(string(mode)))
 		}
 		if r.Refresh != 0 {
 			add(n, "refresh", str(durationString(time.Duration(r.Refresh))))

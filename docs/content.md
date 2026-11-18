@@ -77,7 +77,7 @@ rules:
   - name: tag
     when: { from: "09:00", to: "19:00" }
     pages: [uebersicht, wetter, energie]
-    rotate: true
+    on_refresh: cycle
     refresh: 5m
   - name: nacht
     when: { from: "19:00", to: "07:00" }
@@ -88,7 +88,7 @@ fallback: nacht
 
 - The first matching rule wins. A `when` without `from`/`to` always matches. `from` is inclusive, `to` exclusive. `to < from` wraps over midnight and then belongs to the day the window starts. Days accept German and English short names.
 - Times use the global `timezone` from the configuration ([ADR 0033](adr/0033-global-language-and-timezone.md)). Plans have no timezone of their own, and Paperboy rejects a `timezone` key.
-- `pages` is the paging order within the rule. `rotate: true` moves on at every timed refresh; otherwise only a button changes the page. Buttons page within the active rule only, a long press returns to its first page, and after `page_timeout` the device shows the first page again unless the rule rotates.
+- `pages` is the paging order within the rule. `on_refresh` decides what a timed refresh shows: `cycle` moves to the next page, `first` shows the first page, `current` keeps the page (the default). Buttons page within the active rule only, a long press returns to its first page, and a rule change always starts at the first page.
 - `refresh` replaces the device interval. Paperboy caps the reported interval to the next rule boundary (but never below the floor of the power source of the device), so a sleeping device wakes up for a rule change.
 - `fallback` names the rule used when nothing matches. Without a match and without a fallback, the device gets a notice page.
 - A rule needs a name (a-z, 0-9, `-`) and at least one page. Rule names must be unique, and a rule must not name the same page twice.
@@ -140,7 +140,7 @@ actions:
 
 #### The device menu
 
-A short `home` always opens the menu. It also opens when the plan offers no actions; then it shows a *No actions* (*Keine Aktionen*) banner instead of the action grid. A device with `actions: deny` has no menu. A text display, a device with a critical battery and a device without a plan have no menu either. Paperboy draws the menu as an overlay over the top half of the current page. It has one row with `X`, up to three actions and `<`/`>`, stacked in the same order on portrait displays. The page below stays visible, and the menu pauses rotation and `page_timeout`.
+A short `home` always opens the menu. It also opens when the plan offers no actions; then it shows a *No actions* (*Keine Aktionen*) banner instead of the action grid. A device with `actions: deny` has no menu. A text display, a device with a critical battery and a device without a plan have no menu either. Paperboy draws the menu as an overlay over the top half of the current page. It has one row with `X`, up to three actions and `<`/`>`, stacked in the same order on portrait displays. The page below stays visible, and the menu pauses page changes.
 
 - `next`/`previous` move the selection and wrap. `<`/`>` page through the list in steps of three.
 - `home` runs the selected action. If the plugin asks for a confirmation (`confirm` in its `describe`), Paperboy shows a confirmation screen first. It runs the action only after the device reports that screen as painted (`shown` hash): the first `home` opens the menu or the confirmation, it never runs an action blind.

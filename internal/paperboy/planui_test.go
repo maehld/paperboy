@@ -14,7 +14,7 @@ const testEditablePlan = `rules:
   - name: day
     when: { from: "07:00", to: "22:00", days: [mon, tue] }
     pages: [solar, lcd]
-    rotate: true
+    on_refresh: cycle
     refresh: 10m
   - name: night
     pages: [solar]

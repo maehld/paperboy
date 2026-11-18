@@ -445,7 +445,7 @@ func TestPlansListReadAndSave(t *testing.T) {
 	}
 	changed := *read.Plan
 	changed.Fallback = "day"
-	changed.Rules[0].Rotate = true
+	changed.Rules[0].OnRefresh = plan.RefreshFirst
 	rec := request(t, s, http.MethodPut, "/api/plans/tour", planSave{Hash: read.Hash, Plan: &changed}, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("save: %d %s", rec.Code, rec.Body)
@@ -454,7 +454,7 @@ func TestPlansListReadAndSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "fallback: day") || !strings.Contains(string(data), "rotate: true") {
+	if !strings.Contains(string(data), "fallback: day") || !strings.Contains(string(data), "on_refresh: first") {
 		t.Fatalf("file:\n%s", data)
 	}
 	if _, err := plan.Parse(bytes.NewReader(data), nil); err != nil {

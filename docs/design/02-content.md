@@ -126,7 +126,7 @@ rules:
       days: [mo, tu, we, th, fr]
       conditions: [{ value: dexcom/state, is: [low, urgent] }]
     pages: [morning, work]
-    rotate: true
+    on_refresh: cycle
     refresh: 30m
 fallback: nacht
 actions:
@@ -142,7 +142,7 @@ Rules are tried in order and the first match wins:
 - The old condition string `plugin/condition` is rejected with a hint that shows the value form.
 - `timezone` inside a plan is rejected; the global `timezone` applies ([ADR 0033](../adr/0033-global-language-and-timezone.md)). `when.data` of version 1 is rejected with a hint that names `when.conditions`.
 
-A rule lists `pages`, `rotate` (seconds until the next page of the rule) and `refresh` (seconds until the next sync). `UntilNextBoundary` caps the refresh at the next rule change. `fallback` holds the pages of a device whose no rule matches.
+A rule lists `pages`, `on_refresh` (what a timed refresh shows) and `refresh` (seconds until the next sync). `on_refresh` is `cycle` (the next page), `first` (the first page) or `current` (the same page), default `current`. A rule change always starts at the first page ([ADR 0130](../adr/0130-what-a-plan-refresh-does.md)). `UntilNextBoundary` caps the refresh at the next rule change. `fallback` holds the pages of a device whose no rule matches.
 
 A page of a rule that does not fit the device's display type is skipped. That is no file for the type, the other kind, or a text page whose boxes do not fit the character grid. The file the page names decides; a type that names no variant is served by the page file. The skip is logged once per display type, page and reason. No fitting page at all gives a notice page. A broken page is shown as a notice, not skipped. A render that panics is logged with its stack and answered with a notice page.
 
@@ -173,7 +173,7 @@ Short `home` opens the menu when the device is not `actions: deny` and has a pla
 - Otherwise three actions appear in a row, stacked in portrait, over the top half of the display.
 - With `touch: true`, a smaller control strip sits beneath them: `<` and `>` while the list has more than one page, and `X`. The strip is drawn as controls, not as action cells.
 - `next` and `previous` move the selection. `home` runs the selected action. A long `home` closes the menu and keeps the page. In the strip, `next` past the last action selects `X`, and `home` closes.
-- Long presses inside the menu are ignored. `page_timeout` and page rotation pause while it is open.
+- Long presses inside the menu are ignored. Page changes pause while it is open.
 - With the menu closed, a long `next` or `previous` jumps to the first page of the rule. The server decides this at 700 ms; the firmware only reports `hold_ms`.
 
 Paperboy resolves the actions when the menu opens: one `describe` per plugin plus one `actions` request. It caches the answer in `menuState` in the device's state file. The entry keeps the phase (`list`, `confirm`, `running`, `result`), the selection by identity, the offset, the session and the confirmation hash.

@@ -78,7 +78,7 @@
           })),
         },
         pages: (r.pages || []).slice(),
-        rotate: !!r.rotate,
+        on_refresh: r.on_refresh || (r.rotate ? 'cycle' : 'current'),
         refresh: r.refresh || '',
       };
     });
@@ -106,7 +106,7 @@
         const days = DAYS.filter((d) => r.when.days.includes(d));
         if (days.length) rule.when.days = days;
         if (r.when.conditions.length) rule.when.conditions = r.when.conditions.slice();
-        if (r.rotate) rule.rotate = true;
+        if (r.on_refresh && r.on_refresh !== 'current') rule.on_refresh = r.on_refresh;
         if (r.refresh) rule.refresh = r.refresh;
         return rule;
       }),
@@ -271,14 +271,19 @@
     });
     grid.appendChild(field('Refresh', refresh));
 
-    const rotate = document.createElement('input');
-    rotate.type = 'checkbox';
-    rotate.checked = rule.rotate;
-    rotate.addEventListener('change', () => {
-      rule.rotate = rotate.checked;
+    const onRefresh = document.createElement('select');
+    for (const mode of ['current', 'first', 'cycle']) {
+      const option = document.createElement('option');
+      option.value = mode;
+      option.textContent = mode;
+      onRefresh.appendChild(option);
+    }
+    onRefresh.value = rule.on_refresh;
+    onRefresh.addEventListener('change', () => {
+      rule.on_refresh = onRefresh.value;
       changed();
     });
-    grid.appendChild(field('Rotate', rotate));
+    grid.appendChild(field('On refresh', onRefresh));
 
     // Conditions are value keys, e.g. dexcom/state is low (ADR 0127). Every
     // entry must match; the keys of one entry are alternatives. A value or key
@@ -921,7 +926,7 @@
     const taken = new Set(ruleNames());
     let n = state.plan.rules.length + 1;
     while (taken.has('rule-' + n)) n++;
-    state.plan.rules.push({ name: 'rule-' + n, when: { from: '', to: '', days: [], conditions: [] }, pages: [], rotate: false, refresh: '' });
+    state.plan.rules.push({ name: 'rule-' + n, when: { from: '', to: '', days: [], conditions: [] }, pages: [], on_refresh: 'current', refresh: '' });
     changed();
     renderRules();
     renderFallback();

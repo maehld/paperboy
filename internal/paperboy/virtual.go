@@ -43,12 +43,11 @@ type virtualPage struct {
 // and the display type are required; the rest falls back to the instance
 // defaults, so a URL carries only what differs (ADR 0091).
 type virtualOptions struct {
-	plan        string
-	profile     string
-	refresh     time.Duration
-	menu        time.Duration
-	pageTimeout time.Duration
-	power       string
+	plan    string
+	profile string
+	refresh time.Duration
+	menu    time.Duration
+	power   string
 }
 
 // device builds the in-memory device a virtual display acts as. It has no MAC
@@ -85,7 +84,7 @@ func parseVirtualOptions(cfg *Config, q url.Values) (virtualOptions, int, error)
 		return virtualOptions{}, http.StatusNotFound, fmt.Errorf("unknown display type %q", profile)
 	}
 	o := virtualOptions{plan: plan, profile: profile, refresh: time.Duration(cfg.Refresh),
-		menu: time.Duration(cfg.MenuShow), pageTimeout: time.Duration(cfg.PageTimeout), power: powerMains}
+		menu: time.Duration(cfg.MenuShow), power: powerMains}
 	if o.menu == 0 {
 		o.menu = defaultMenuDuration
 	}
@@ -96,8 +95,9 @@ func parseVirtualOptions(cfg *Config, q url.Values) (virtualOptions, int, error)
 	if o.menu, err = querySeconds(q, "menu", o.menu, 5*time.Second, menuMaxDuration); err != nil {
 		return virtualOptions{}, http.StatusBadRequest, err
 	}
-	if o.pageTimeout, err = querySeconds(q, "page_timeout", o.pageTimeout, time.Second, 0); err != nil {
-		return virtualOptions{}, http.StatusBadRequest, err
+	if _, ok := q["page_timeout"]; ok {
+		return virtualOptions{}, http.StatusBadRequest,
+			fmt.Errorf("page_timeout was removed: a plan rule decides with on_refresh (ADR 0130)")
 	}
 	switch q.Get("power") {
 	case "":
@@ -193,9 +193,8 @@ func (s *Server) handleVirtualSync(w http.ResponseWriter, r *http.Request) {
 	st := s.virtualState(opt)
 	values := s.planValues(r.Context(), cfg, opt.plan, opt.profile, optDevice)
 	resp := s.serveSync(cfg, optDevice, st, &req, now, syncOptions{
-		pageTimeout: opt.pageTimeout,
-		virtual:     true,
-		values:      values,
+		virtual: true,
+		values:  values,
 	})
 	if resp.Image != nil {
 		// The browser has no device key, so the page fetches its picture

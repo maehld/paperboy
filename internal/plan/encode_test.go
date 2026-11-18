@@ -59,7 +59,7 @@ func TestEncodeKeepsPlanLayout(t *testing.T) {
 		"  - name: morning\n",
 		`    when: {from: "06:00", to: "09:00", days: [mon, tue]}`,
 		"    pages: [home, week]\n",
-		"    rotate: true\n",
+		"    on_refresh: cycle\n",
 		"    refresh: 5m\n",
 		"fallback: evening\n",
 	} {
@@ -74,12 +74,45 @@ rules:
   - name: morning
     when: { from: "06:00", to: "09:00", days: [mon, tue] }
     pages: [home, week]
-    rotate: true
+    on_refresh: cycle
     refresh: 5m
   - name: evening
     pages: [home]
 fallback: evening
 `
+
+// TestEncodeWritesOnRefresh verifies that the old rotate key never reaches a
+// file again (ADR 0130).
+func TestEncodeWritesOnRefresh(t *testing.T) {
+	p := parse(t, "rules: [{name: a, pages: [x], rotate: true}]")
+	data, err := Encode(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "on_refresh: cycle\n") || strings.Contains(string(data), "rotate:") {
+		t.Fatalf("layout:\n%s", data)
+	}
+}
+
+// TestPlanJSONShowsTheOldRotate verifies that the editor sees the effective
+// mode of an old plan and that the API still accepts the key (ADR 0130).
+func TestPlanJSONShowsTheOldRotate(t *testing.T) {
+	p := parse(t, "rules: [{name: a, pages: [x], rotate: true}]")
+	data, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"rotate":true`) {
+		t.Fatalf("json: %s", data)
+	}
+	var got Plan
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Rules[0].Mode() != RefreshCycle {
+		t.Fatalf("mode: %q", got.Rules[0].Mode())
+	}
+}
 
 // TestEncodeRejectsInvalidPlan verifies that invalid plans never reach a file.
 func TestEncodeRejectsInvalidPlan(t *testing.T) {
@@ -87,6 +120,7 @@ func TestEncodeRejectsInvalidPlan(t *testing.T) {
 		"no rules":         {Fallback: "home"},
 		"bad name":         {Rules: []Rule{{Name: "Bad", Pages: []string{"home"}}}},
 		"duplicate page":   {Rules: []Rule{{Name: "a", Pages: []string{"home", "home"}}}},
+		"bad refresh mode": {Rules: []Rule{{Name: "a", Pages: []string{"home"}, OnRefresh: "rotate"}}},
 		"half window":      {Rules: []Rule{{Name: "a", Pages: []string{"home"}, When: When{From: clock(600)}}}},
 		"unknown fallback": {Rules: []Rule{{Name: "a", Pages: []string{"home"}}}, Fallback: "nope"},
 	} {

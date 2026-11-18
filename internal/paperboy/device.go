@@ -360,25 +360,23 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	values := s.planValues(r.Context(), cfg, d.Plan, d.Profile, d)
 	valuesDone()
 	resp := s.serveSync(cfg, d, st, &req, now, syncOptions{
-		firmware:    img,
-		pageTimeout: time.Duration(cfg.PageTimeout),
-		clientIP:    clientIP(r),
-		values:      values,
+		firmware: img,
+		clientIP: clientIP(r),
+		values:   values,
 	})
 	writeJSON(w, http.StatusOK, resp)
 }
 
 // syncOptions is what a wake needs beyond the request itself: the firmware
-// image a device may be offered and the page timeout in force. virtual marks a
-// display without hardware (ADR 0091): it gets no firmware offer, does not run
-// its actions and writes no state file. values is the plan's evaluated value
-// state, asked before the state lock (ADR 0127).
+// image a device may be offered. virtual marks a display without hardware
+// (ADR 0091): it gets no firmware offer, does not run its actions and writes
+// no state file. values is the plan's evaluated value state, asked before the
+// state lock (ADR 0127).
 type syncOptions struct {
-	firmware    *firmwareImage
-	pageTimeout time.Duration
-	virtual     bool
-	clientIP    string // source address of the contact, empty for a virtual display
-	values      plan.Values
+	firmware *firmwareImage
+	virtual  bool
+	clientIP string // source address of the contact, empty for a virtual display
+	values   plan.Values
 }
 
 // chargerState names what the charger does for the journal: the hardware's own
@@ -441,7 +439,6 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	prevLevel := st.BatteryLevel
 	st.BatteryLevel = nextBatteryLevel(cfg.battery(d), prevLevel, st.BatteryVoltage)
 	critical := st.BatteryLevel == batteryCritical
-	pageTimeout := opt.pageTimeout
 	var offer *firmwareOffer
 	if !opt.virtual {
 		s.settleFirmwareLocked(d, st)
@@ -563,7 +560,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		st.Page = 0
 	case d.Plan != "":
 		planDone := s.stats.Start("sync.plan")
-		choice = s.choosePlanPage(cfg, d, st, now, opt.values, firstContact, pageButtons, pageTimeout, menuSync, false)
+		choice = s.choosePlanPage(cfg, d, st, now, opt.values, firstContact, pageButtons, menuSync, false)
 		planDone()
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
@@ -858,10 +855,10 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case critical:
 	case d.Plan != "":
-		// A copy keeps the cursor: a rule change or page timeout only shows here
-		// and is stored by the next sync.
+		// A copy keeps the cursor: a rule change only shows here and is
+		// stored by the next sync.
 		peek := *st
-		choice = s.choosePlanPage(cfg, d, &peek, now, values, true, nil, time.Duration(cfg.PageTimeout), false, true)
+		choice = s.choosePlanPage(cfg, d, &peek, now, values, true, nil, false, true)
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
 	}

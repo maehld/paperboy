@@ -43,7 +43,6 @@ plugins:
       password: ${PAPERBOY_CALDAV_PASSWORD}
 defaults:
   refresh: 5m          # regular interval; plans may override it (ADR 0129 aligns the sleep)
-  page_timeout: 5m     # back to the first page after this
   menu_show_duration: 30s  # how long the device menu stays open (ADR 0057), 5s–60s
   battery: { warn_volts: 3.45, critical_volts: 3.3, hysteresis_volts: 0.1 }
 firmware:
