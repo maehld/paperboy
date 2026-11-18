@@ -23,6 +23,13 @@ import (
 // stable device ID; the runtime state (cursor, battery, menu) lives per MAC
 // under state/devices/ (ADR 0080).
 
+// Alert methods name what an alert may do on a device (ADR 0132). The
+// firmware ignores a method its hardware lacks.
+const (
+	alertBeep  = "beep"
+	alertBlink = "blink"
+)
+
 // deviceFile mirrors devices/<id>.yaml with what the operator wrote: an empty
 // field keeps the default, so the editor writes back only what is set. The
 // model is also the JSON model of the device API (ADR 0066).
@@ -34,11 +41,15 @@ type deviceFile struct {
 	Refresh     Duration `yaml:"refresh" json:"refresh,omitempty"`
 	Power       string   `yaml:"power,omitempty" json:"power,omitempty"`
 	Actions     string   `yaml:"actions,omitempty" json:"actions,omitempty"`
-	MenuShow    Duration `yaml:"menu_show_duration" json:"menu_show_duration,omitempty"`
-	Touch       *bool    `yaml:"touch,omitempty" json:"touch,omitempty"`
-	Rotation    *int     `yaml:"rotation,omitempty" json:"rotation,omitempty"` // overrides the display type, ADR 0102
-	Battery     *Battery `yaml:"battery,omitempty" json:"battery,omitempty"`
-	Firmware    string   `yaml:"firmware,omitempty" json:"firmware,omitempty"`
+	// AlertMethods lists the signals an alert may use (ADR 0132): beep,
+	// blink or both. nil keeps the hardware default (both); an empty list
+	// mutes the device.
+	AlertMethods *[]string `yaml:"alert_methods,omitempty" json:"alert_methods,omitempty"`
+	MenuShow     Duration  `yaml:"menu_show_duration" json:"menu_show_duration,omitempty"`
+	Touch        *bool     `yaml:"touch,omitempty" json:"touch,omitempty"`
+	Rotation     *int      `yaml:"rotation,omitempty" json:"rotation,omitempty"` // overrides the display type, ADR 0102
+	Battery      *Battery  `yaml:"battery,omitempty" json:"battery,omitempty"`
+	Firmware     string    `yaml:"firmware,omitempty" json:"firmware,omitempty"`
 }
 
 // parseDeviceFile reads one device file strictly: an unknown key or a second
@@ -67,6 +78,20 @@ func (f deviceFile) validate(id string) error {
 	default:
 		return fmt.Errorf("device %s: firmware %q: only hold is allowed", id, f.Firmware)
 	}
+	if f.AlertMethods != nil {
+		seen := map[string]bool{}
+		for _, method := range *f.AlertMethods {
+			switch method {
+			case alertBeep, alertBlink:
+			default:
+				return fmt.Errorf("device %s: alert_methods %q: expected beep or blink", id, method)
+			}
+			if seen[method] {
+				return fmt.Errorf("device %s: alert_methods: duplicate %q", id, method)
+			}
+			seen[method] = true
+		}
+	}
 	return nil
 }
 
@@ -84,10 +109,29 @@ func (f deviceFile) device(id string, defaults *Battery) Device {
 		Hold:             f.Firmware == firmwareHold,
 		Power:            f.Power,
 		Actions:          f.Actions,
+		AlertMethods:     f.AlertMethods,
 		MenuShowDuration: f.MenuShow,
 		Touch:            f.Touch,
 		Rotation:         f.Rotation,
 	}
+}
+
+// alertMethods returns the signals this device may use. An unset list keeps
+// the hardware default: both. The firmware ignores a method its hardware
+// lacks, so both may stay true for a display with only one output (ADR 0132).
+func (d *Device) alertMethods() (beep, blink bool) {
+	if d.AlertMethods == nil {
+		return true, true
+	}
+	for _, method := range *d.AlertMethods {
+		switch method {
+		case alertBeep:
+			beep = true
+		case alertBlink:
+			blink = true
+		}
+	}
+	return beep, blink
 }
 
 // copyBattery merges a device's thresholds into the defaults without sharing a
@@ -183,6 +227,13 @@ func encodeDeviceFile(f *deviceFile) ([]byte, error) {
 	}
 	if f.Actions != "" {
 		set("actions", plainScalar(f.Actions))
+	}
+	if f.AlertMethods != nil {
+		methods := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Style: yaml.FlowStyle}
+		for _, method := range *f.AlertMethods {
+			methods.Content = append(methods.Content, plainScalar(method))
+		}
+		set("alert_methods", methods)
 	}
 	if f.MenuShow != 0 {
 		set("menu_show_duration", durationValue(time.Duration(f.MenuShow)))

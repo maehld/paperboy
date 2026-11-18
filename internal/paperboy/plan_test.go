@@ -296,6 +296,29 @@ fallback: morgen
 	}
 }
 
+// TestPlanAlertMethods narrows the sync answer to the device's alert methods
+// (ADR 0132). An empty list mutes the device.
+func TestPlanAlertMethods(t *testing.T) {
+	s, _ := planServer(t, "rules: [{name: alarm, pages: [eins], alert: refresh}]")
+	dev := planDevice(t, s)
+
+	s.config().Devices[0].AlertMethods = &[]string{alertBeep}
+	out := displayPage(t, s, dev)
+	if out["beep"] != true || out["blink"] != nil {
+		t.Fatalf("beep only: %v", out)
+	}
+	s.config().Devices[0].AlertMethods = &[]string{}
+	out = displayPage(t, s, dev)
+	if out["beep"] != nil || out["blink"] != nil {
+		t.Fatalf("an empty list must mute: %v", out)
+	}
+	s.config().Devices[0].AlertMethods = &[]string{alertBlink}
+	out = displayPage(t, s, dev)
+	if out["blink"] != true || out["beep"] != nil {
+		t.Fatalf("blink only: %v", out)
+	}
+}
+
 func TestPlanRotation(t *testing.T) {
 	s, now := planServer(t, testPlan)
 	dev := planDevice(t, s)

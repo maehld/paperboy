@@ -30,6 +30,7 @@
       plan: '',
       refresh: '',
       actions: '',
+      alert_methods: '',
       menu_show_duration: '',
       touch: false,
       power: '',
@@ -85,6 +86,15 @@
     option(actions, 'allow', 'allow');
     option(actions, 'deny', 'deny');
 
+    // alert_methods is a list in the file and one choice in the form (ADR 0132).
+    // The empty value keeps the hardware default; "silent" writes an empty list.
+    const alertMethods = el('alert_methods');
+    option(alertMethods, '', 'hardware default (both)');
+    option(alertMethods, 'both', 'beep and blink');
+    option(alertMethods, 'beep', 'beep only');
+    option(alertMethods, 'blink', 'blink only');
+    option(alertMethods, 'none', 'silent');
+
     const power = el('power');
     option(power, '', "the display type's setting");
     option(power, 'auto', 'auto');
@@ -120,6 +130,7 @@
     fillPlans(d.plan);
     el('refresh').value = d.refresh || '';
     el('actions').value = d.actions || '';
+    el('alert_methods').value = d.alert_methods || '';
     el('menu').value = d.menu_show_duration || '';
     el('touch').checked = !!d.touch;
     el('power').value = d.power || '';
@@ -182,6 +193,10 @@
       if (d[key]) out[key] = d[key];
     }
     if (d.refresh) out.refresh = d.refresh;
+    if (d.alert_methods === 'beep') out.alert_methods = ['beep'];
+    else if (d.alert_methods === 'blink') out.alert_methods = ['blink'];
+    else if (d.alert_methods === 'both') out.alert_methods = ['beep', 'blink'];
+    else if (d.alert_methods === 'none') out.alert_methods = [];
     if (d.menu_show_duration) out.menu_show_duration = d.menu_show_duration;
     if (d.touch) out.touch = true;
     if (d.rotation !== null && d.rotation !== undefined && d.rotation !== '') out.rotation = Number(d.rotation);
@@ -197,6 +212,12 @@
   // normalize keeps the model in the shape serialize expects.
   function normalize(doc) {
     const d = Object.assign(empty(), doc || {});
+    const methods = d.alert_methods;
+    d.alert_methods =
+      methods === undefined || methods === null ? '' :
+      methods.length === 0 ? 'none' :
+      methods.length > 1 ? 'both' :
+      methods[0] === 'beep' ? 'beep' : 'blink';
     d.rotation = d.rotation === undefined || d.rotation === null || d.rotation === '' ? null : Number(d.rotation);
     d.battery =
       d.battery && (d.battery.warn_volts || d.battery.critical_volts || d.battery.hysteresis_volts)
@@ -456,6 +477,7 @@
   onField('plan', 'plan');
   onField('refresh', 'refresh');
   onField('actions', 'actions');
+  onField('alert_methods', 'alert_methods');
   onField('menu', 'menu_show_duration');
   onCheck('touch', 'touch');
   onField('power', 'power');

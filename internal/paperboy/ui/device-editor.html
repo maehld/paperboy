@@ -59,6 +59,8 @@ pre.file { margin: 0; padding: .5rem .6rem; background: #f7f9fc; border: 1px sol
       <label class="field"><span>refresh</span><input id="refresh" autocomplete="off" spellcheck="false" placeholder=""></label>
       <p class="hint" id="refresh-note"></p>
       <label class="field"><span>actions</span><select id="actions"></select></label>
+      <label class="field"><span>alert methods</span><select id="alert_methods"></select></label>
+      <p class="hint">An alert uses these methods: a beep, a blink or both. The hardware ignores a method it lacks; <em>silent</em> keeps this device quiet (ADR 0132).</p>
       <label class="field"><span>menu duration</span><input id="menu" autocomplete="off" spellcheck="false" placeholder=""></label>
       <label class="field"><span>touch controls</span><input id="touch" type="checkbox"></label>
       <p class="hint">The menu opens on a short <code>home</code> press; <code>deny</code> turns it off (ADR 0057). The duration is between 5s and 1m. <em>touch controls</em> draws the close box and the page arrows under the actions for a digitiser; without it the menu is button-only (ADR 0082).</p>
