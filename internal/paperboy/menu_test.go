@@ -569,13 +569,13 @@ func TestMenuTapExtendsTheDeadline(t *testing.T) {
 	}
 }
 
-// TestMenuExpiryKeepsThePageWhileRotating covers the same with `rotate` in the
+// TestMenuExpiryKeepsThePageWhileRotating covers the same with `on_refresh: cycle` in the
 // plan, where every sync would otherwise advance the page: the wake at the
 // menu deadline is not input and must keep the page the operator was looking
 // at (ADR 0057).
 func TestMenuExpiryKeepsThePageWhileRotating(t *testing.T) {
 	s, now, _ := menuServerRules(t,
-		"rules:\n  - name: immer\n    pages: [eins, zwei]\n    rotate: true\n", menuPlanActions, nil)
+		"rules:\n  - name: immer\n    pages: [eins, zwei]\n    on_refresh: cycle\n", menuPlanActions, nil)
 	dev := menuDevice(t, s)
 	base := pagePath(displayPage(t, s, dev))
 	press(t, s, dev, buttonHome)

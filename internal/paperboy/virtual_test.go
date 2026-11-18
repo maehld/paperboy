@@ -294,7 +294,7 @@ func TestVirtualDisplayOptionsRejected(t *testing.T) {
 		{"plan=zimmer&display=small&menu=61", http.StatusBadRequest},
 		{"plan=zimmer&display=small&refresh=0", http.StatusBadRequest},
 		{"plan=zimmer&display=small&refresh=abc", http.StatusBadRequest},
-		{"plan=zimmer&display=small&page_timeout=0", http.StatusBadRequest},
+		{"plan=zimmer&display=small&page_timeout=300", http.StatusBadRequest},
 		{"plan=zimmer&display=small&power=auto", http.StatusBadRequest},
 	}
 	for _, c := range cases {

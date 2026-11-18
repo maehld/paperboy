@@ -15,7 +15,7 @@ rules:
   - name: tag
     when: { from: "09:00", to: "19:00" }
     pages: [solar-gross, solar-battery, solar-history]
-    rotate: true
+    on_refresh: cycle
     refresh: 5m
   - name: nacht
     when: { from: "19:00", to: "07:00" }
@@ -55,7 +55,7 @@ func TestParse(t *testing.T) {
 		t.Fatalf("plan: %+v", p)
 	}
 	tag := p.Rules[1]
-	if !tag.Rotate || time.Duration(tag.Refresh) != 5*time.Minute {
+	if tag.Mode() != RefreshCycle || time.Duration(tag.Refresh) != 5*time.Minute {
 		t.Fatalf("tag: %+v", tag)
 	}
 	// German and English weekday names are both accepted.
@@ -70,6 +70,38 @@ rules:
 	}
 }
 
+// TestRefreshModes reads the three modes and defaults to current. The old
+// rotate key still means cycle (ADR 0130).
+func TestRefreshModes(t *testing.T) {
+	p := parse(t, `
+rules:
+  - name: cycle
+    pages: [a]
+    on_refresh: cycle
+  - name: first
+    pages: [a]
+    on_refresh: first
+  - name: current
+    pages: [a]
+    on_refresh: current
+  - name: default
+    pages: [a]
+  - name: old
+    pages: [a]
+    rotate: true
+`)
+	want := []RefreshMode{RefreshCycle, RefreshFirst, RefreshCurrent, RefreshCurrent, RefreshCycle}
+	for i, mode := range want {
+		if got := p.Rules[i].Mode(); got != mode {
+			t.Fatalf("rule %s: got %q, want %q", p.Rules[i].Name, got, mode)
+		}
+	}
+	sel, ok := p.Select(at(t, 2026, time.October, 21, 12, 0), nil)
+	if !ok || sel.OnRefresh != RefreshCycle {
+		t.Fatalf("selection: %+v %v", sel, ok)
+	}
+}
+
 func TestParseErrors(t *testing.T) {
 	cases := map[string]string{
 		"unknown field":      "rules: [{name: a, pages: [x]}]\nextra: 1",
@@ -81,6 +113,8 @@ func TestParseErrors(t *testing.T) {
 		"bad page name":      "rules: [{name: a, pages: [Solar]}]",
 		"duplicate page":     "rules: [{name: a, pages: [x, x]}]",
 		"refresh too short":  "rules: [{name: a, pages: [x], refresh: 500ms}]",
+		"unknown refresh":    "rules: [{name: a, pages: [x], on_refresh: rotate}]",
+		"rotate conflict":    "rules: [{name: a, pages: [x], rotate: true, on_refresh: first}]",
 		"data condition":     "rules: [{name: a, pages: [x], when: {data: [{path: tuer, equals: offen}]}}]",
 		"from without to":    "rules: [{name: a, pages: [x], when: {from: \"07:00\"}}]",
 		"from equals to":     "rules: [{name: a, pages: [x], when: {from: \"07:00\", to: \"07:00\"}}]",
@@ -182,7 +216,7 @@ func TestSelect(t *testing.T) {
 			t.Fatalf("%s: got %q (%v), want %q", c.at.Format(time.RFC3339), sel.Rule, ok, c.rule)
 		}
 	}
-	if sel, _ := p.Select(at(t, 2026, time.October, 21, 12, 0), nil); len(sel.Pages) != 3 || !sel.Rotate {
+	if sel, _ := p.Select(at(t, 2026, time.October, 21, 12, 0), nil); len(sel.Pages) != 3 || sel.OnRefresh != RefreshCycle {
 		t.Fatalf("tag selection: %+v", sel)
 	}
 }

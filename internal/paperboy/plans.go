@@ -349,12 +349,13 @@ type planChoice struct {
 	actions  []plan.PlanAction // the plan's actions for the device menu (ADR 0057)
 }
 
-// choosePlanPage evaluates the device plan and advances the rotation state.
+// choosePlanPage evaluates the device plan and advances the page cursor.
 // Callers hold s.mu and pass the configuration snapshot of the request: no
 // config access happens under the state lock (ADR 0047). Rendering happens
 // later in renderPlan. paused freezes paging while the device menu is open
-// (ADR 0057): the page stays and rotation waits.
-func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now time.Time, values plan.Values, firstContact bool, buttons []string, pageTimeout time.Duration, paused, quiet bool) planChoice {
+// (ADR 0057): the page stays and a timed change waits. A rule change always
+// starts at the first page (ADR 0130).
+func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now time.Time, values plan.Values, firstContact bool, buttons []string, paused, quiet bool) planChoice {
 	p, err := s.plans.get(cfg.Plans, d.Plan, cfg.Timezone)
 	if p == nil {
 		if !quiet {
@@ -381,11 +382,11 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 			err: fmt.Errorf("rule %s has no page for display type %s: %s", sel.Rule, d.Profile, joinReasons(skipped))}
 	}
 	n := len(pages)
-	if switched := st.Rule != sel.Rule; switched {
-		// A new rule starts at its first page, the previous position is dropped.
-		st.Rule, st.Page, st.LastInput = sel.Rule, 0, now
+	if st.Rule != sel.Rule {
+		// A new rule always starts at its first page, also with current.
+		st.Rule, st.Page = sel.Rule, 0
 	} else if paused {
-		// The menu is modal: no paging, no rotation, no page timeout.
+		// The menu is modal: no paging and no automatic page change.
 	} else {
 		// Button roles apply in order (ADR 0042): presses made while the panel
 		// was painting arrive together and only the final page is rendered.
@@ -398,14 +399,14 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 			case buttonHome:
 				st.Page = 0
 			}
-			st.LastInput = now
 		}
-		switch {
-		case len(buttons) > 0:
-		case sel.Rotate && !firstContact:
-			st.Page = (st.Page + 1) % n
-		case !sel.Rotate && st.Page != 0 && now.Sub(st.LastInput) >= pageTimeout:
-			st.Page = 0
+		if len(buttons) == 0 && !firstContact {
+			switch sel.OnRefresh {
+			case plan.RefreshCycle:
+				st.Page = (st.Page + 1) % n
+			case plan.RefreshFirst:
+				st.Page = 0
+			}
 		}
 	}
 	if st.Page < 0 || st.Page >= n {
@@ -422,9 +423,6 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 	// Wake up for the next rule change instead of sleeping through it.
 	if until := p.UntilNextBoundary(now); until > 0 && until < refresh {
 		refresh = max(floor, until)
-	}
-	if !sel.Rotate && page != 0 {
-		refresh = min(refresh, max(floor, pageTimeout-now.Sub(st.LastInput)+5*time.Second))
 	}
 	c := planChoice{page: page, pages: n, name: pages[page], refresh: refresh, interval: interval, actions: sel.Actions}
 	if st.BatteryLevel == batteryWarn {

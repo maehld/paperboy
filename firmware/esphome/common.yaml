@@ -348,7 +348,7 @@ script:
                         lambda: "return !id(api_key).state.empty();"
                       then:
                         # One cycle at a time. A second sync while the first answer is
-                        # still downloading does move Paperboy's cursor (with `rotate`
+                        # still downloading does move Paperboy's cursor (with `on_refresh: cycle`
                         # in the plan) while the panel keeps the old page, so the
                         # second page would never be seen: drop the extra cycle and
                         # leave the running one to deliver its page.

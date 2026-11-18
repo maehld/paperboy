@@ -38,7 +38,7 @@ type planViewPage struct {
 type planViewRule struct {
 	Name       string
 	When       string
-	Rotate     bool
+	OnRefresh  string
 	Refresh    string
 	Active     bool // the rule the device shows at the selected time
 	Fallback   bool // the plan's fallback rule
@@ -157,7 +157,7 @@ func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 	}
 	text := cfg.Profiles[dev.Profile].text()
 	for _, rule := range p.Rules {
-		vr := planViewRule{Name: rule.Name, When: whenText(rule.When), Rotate: rule.Rotate,
+		vr := planViewRule{Name: rule.Name, When: whenText(rule.When), OnRefresh: string(rule.Mode()),
 			Active: rule.Name == view.Active, Fallback: rule.Name == p.Fallback}
 		for _, cond := range rule.When.Conditions {
 			current, has := values[cond.Value]

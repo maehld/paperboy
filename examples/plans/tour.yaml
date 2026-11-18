@@ -11,12 +11,12 @@ rules:
   - name: morning
     when: { from: "06:00", to: "09:00", days: [mon, tue, wed, thu, fri] }
     pages: [unterwegs, uebersicht, woche, energie]
-    rotate: true
+    on_refresh: cycle
     refresh: 5m
   - name: day
     when: { from: "07:00", to: "22:00" }
     pages: [uebersicht, status, energie, ertrag, werte, unterwegs, woche, kalender, wetter, laden, auto, glukose, abfahrten, nachrichten, pokemon, comic, countdown, geburtstage]
-    rotate: true
+    on_refresh: cycle
     refresh: 10m
   - name: night
     when: { from: "22:00", to: "07:00" }

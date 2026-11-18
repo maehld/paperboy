@@ -15,7 +15,6 @@ language: en
 timezone: Europe/Berlin
 defaults:
   refresh: 10m
-  page_timeout: 3m
   battery: { warn_volts: 3.45, critical_volts: 3.3 }
 firmware:
   update: auto
@@ -149,8 +148,8 @@ func TestLoadConfig(t *testing.T) {
 	if want := filepath.Join(dir, "state", "plugins", "weather"); spec.StateDir != want {
 		t.Fatalf("state directory: %q, want %q", spec.StateDir, want)
 	}
-	if cfg.Refresh != Duration(10*time.Minute) || cfg.PageTimeout != Duration(3*time.Minute) {
-		t.Fatalf("defaults: %v %v", cfg.Refresh, cfg.PageTimeout)
+	if cfg.Refresh != Duration(10*time.Minute) {
+		t.Fatalf("defaults: %v", cfg.Refresh)
 	}
 	if p := cfg.Profiles["e1001"]; p.Width != 800 || p.Height != 480 || p.Levels != 4 || p.PPI != 125 || p.MinRefresh != Duration(2*time.Minute) {
 		t.Fatalf("e1001: %+v", p)
@@ -228,6 +227,7 @@ func TestLoadConfigErrors(t *testing.T) {
 		want     string
 	}{
 		{"unknown key", strings.Replace(validConfig, "  refresh: 10m", "  refrsh: 10m", 1), nil, nil, "field refrsh not found"},
+		{"page timeout", strings.Replace(validConfig, "  refresh: 10m", "  refresh: 10m\n  page_timeout: 3m", 1), nil, nil, "on_refresh"},
 		{"server section", "server:\n  upload_token: abc\n" + validConfig, nil, nil, "no data API"},
 		{"providers section", "providers: {}\n" + validConfig, nil, nil, "replaced by plugins"},
 		{"devices section", validConfig + "devices: {}\n", nil, nil, "devices moved to files of their own"},
