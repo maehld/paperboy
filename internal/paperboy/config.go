@@ -166,6 +166,9 @@ type Device struct {
 	// whose digitiser the operator wants to use (ADR 0082). Empty = use what
 	// the firmware reported, which defaults to false.
 	Touch *bool
+	// AlertMethods lists the methods an alert may use: beep, blink or both
+	// (ADR 0132). nil or an empty list keeps the device silent.
+	AlertMethods *[]string
 	// Rotation overrides the display type's rotation for this mounting
 	// (ADR 0102). nil = the display type's.
 	Rotation *int

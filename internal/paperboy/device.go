@@ -765,10 +765,13 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		Sleep:    power == powerBattery,
 		Time:     now.Unix(),
 		Rotation: cfg.rotation(d),
-		Beep:     choice.alert,
-		Blink:    choice.alert,
 		Firmware: offer,
 		Wake:     wake,
+	}
+	// The rule decides whether to signal; the device file decides which
+	// methods it may use (ADR 0132). The firmware ignores a method it lacks.
+	if choice.alert {
+		resp.Beep, resp.Blink = d.alertMethods()
 	}
 	if textDisplay {
 		resp.Text = textResponse(served, cfg.Profiles[d.Profile], st)

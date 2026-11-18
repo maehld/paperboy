@@ -259,6 +259,7 @@ rules:
 fallback: morgen
 `)
 	dev := planDevice(t, s)
+	s.config().Devices[0].AlertMethods = &[]string{alertBeep, alertBlink}
 	alerted := func(out map[string]any) bool { return out["beep"] == true && out["blink"] == true }
 	quiet := func(out map[string]any) bool { return out["beep"] == nil && out["blink"] == nil }
 	if out := displayPage(t, s, dev); !alerted(out) {
@@ -293,6 +294,34 @@ fallback: morgen
 	*now = now.Add(10 * time.Minute)
 	if out := displayPage(t, s, dev); !quiet(out) {
 		t.Fatalf("the second sync of the once rule must stay quiet: %v", out)
+	}
+}
+
+// TestPlanAlertMethods narrows the sync answer to the device's alert methods
+// (ADR 0132). An empty list mutes the device.
+func TestPlanAlertMethods(t *testing.T) {
+	s, _ := planServer(t, "rules: [{name: alarm, pages: [eins], alert: refresh}]")
+	dev := planDevice(t, s)
+
+	// An unset list keeps the device silent (ADR 0132).
+	out := displayPage(t, s, dev)
+	if out["beep"] != nil || out["blink"] != nil {
+		t.Fatalf("an unset list must stay silent: %v", out)
+	}
+	s.config().Devices[0].AlertMethods = &[]string{alertBeep}
+	out = displayPage(t, s, dev)
+	if out["beep"] != true || out["blink"] != nil {
+		t.Fatalf("beep only: %v", out)
+	}
+	s.config().Devices[0].AlertMethods = &[]string{}
+	out = displayPage(t, s, dev)
+	if out["beep"] != nil || out["blink"] != nil {
+		t.Fatalf("an empty list must mute: %v", out)
+	}
+	s.config().Devices[0].AlertMethods = &[]string{alertBlink}
+	out = displayPage(t, s, dev)
+	if out["blink"] != true || out["beep"] != nil {
+		t.Fatalf("blink only: %v", out)
 	}
 }
 

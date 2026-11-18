@@ -37,6 +37,7 @@ actions: deny
 menu_show_duration: 45s
 rotation: 180
 battery: { warn_volts: 3.5, critical_volts: 3.3 }
+alert_methods: [beep, blink]
 firmware: hold
 `
 	f, err := parseDeviceFile([]byte(src))
@@ -48,8 +49,8 @@ firmware: hold
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(data), "refresh: 10m\n") || !strings.Contains(string(data), "menu_show_duration: 45s\n") ||
-		!strings.Contains(string(data), "rotation: 180\n") {
-		t.Fatalf("durations and rotation:\n%s", data)
+		!strings.Contains(string(data), "rotation: 180\n") || !strings.Contains(string(data), "alert_methods: [beep, blink]\n") {
+		t.Fatalf("durations, rotation and alert methods:\n%s", data)
 	}
 	again, err := parseDeviceFile(data)
 	if err != nil {
@@ -75,6 +76,58 @@ firmware: hold
 		if _, err := parseDeviceFile([]byte(bad)); err == nil {
 			t.Fatalf("%q parses as a device", bad)
 		}
+	}
+}
+
+// TestAlertMethodsFile checks the list forms of alert_methods (ADR 0132):
+// omitted keeps the default, empty mutes, and bad entries are rejected.
+func TestAlertMethodsFile(t *testing.T) {
+	const base = "display_type: e1001\nmac: \"aa:bb:cc:dd:ee:01\"\n"
+	omitted, err := parseDeviceFile([]byte(base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if omitted.AlertMethods != nil {
+		t.Fatalf("omitted key must stay nil: %+v", omitted.AlertMethods)
+	}
+	empty, err := parseDeviceFile([]byte(base + "alert_methods: []\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty.AlertMethods == nil || len(*empty.AlertMethods) != 0 {
+		t.Fatalf("empty list lost: %+v", empty.AlertMethods)
+	}
+	beep, err := parseDeviceFile([]byte(base + "alert_methods: [beep]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if beep.AlertMethods == nil || len(*beep.AlertMethods) != 1 || (*beep.AlertMethods)[0] != alertBeep {
+		t.Fatalf("beep list: %+v", beep.AlertMethods)
+	}
+	for _, bad := range []string{"alert_methods: [beep, beep]\n", "alert_methods: [bell]\n"} {
+		f, err := parseDeviceFile([]byte(base + bad))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.validate("kueche"); err == nil {
+			t.Fatalf("%q passes validation", bad)
+		}
+	}
+
+	// The encoder omits the default and keeps an explicit empty list.
+	data, err := encodeDeviceFile(&deviceFile{DisplayType: "e1001", MAC: "AA:BB:CC:DD:EE:01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "alert_methods") {
+		t.Fatalf("default must write no key:\n%s", data)
+	}
+	data, err = encodeDeviceFile(&deviceFile{DisplayType: "e1001", MAC: "AA:BB:CC:DD:EE:01", AlertMethods: &[]string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "alert_methods: []\n") {
+		t.Fatalf("empty list:\n%s", data)
 	}
 }
 
