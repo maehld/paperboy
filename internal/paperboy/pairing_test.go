@@ -185,4 +185,28 @@ func TestPairingInDeviceEditor(t *testing.T) {
 	if !out.Pairing.Paired || out.Pairing.Waiting {
 		t.Fatalf("pairing after the confirmation: %+v", out.Pairing)
 	}
+
+	// The confirmation is consumed by a register, which hands out the key.
+	rec = register(t, s, `{"mac":"aa:bb:cc:dd:ee:01"}`)
+	var reg struct{ Key string }
+	if err := json.Unmarshal(rec.Body.Bytes(), &reg); err != nil || rec.Code != http.StatusOK || reg.Key == "" {
+		t.Fatalf("register after the confirmation: %d %s", rec.Code, rec.Body)
+	}
+
+	// A later register without a key (the device lost it) gets a new code
+	// while the old key is still in the state. The display must pair again,
+	// and the editor must call it unpaired so the Pair button works (issue #322).
+	rec = register(t, s, `{"mac":"aa:bb:cc:dd:ee:01"}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("register with an old key and no pairing: %d %s", rec.Code, rec.Body)
+	}
+	code, _ = readChallenge(t, rec.Body.Bytes())
+	out.Pairing = pairingInfo{}
+	request(t, s, http.MethodGet, "/api/devices/test", nil, &out)
+	if out.Pairing.Paired || !out.Pairing.Waiting {
+		t.Fatalf("a waiting code must count as unpaired: %+v", out.Pairing)
+	}
+	if rec := request(t, s, http.MethodPost, "/api/state/devices/AA:BB:CC:DD:EE:01/pair", map[string]string{"code": code}, nil); rec.Code != http.StatusOK {
+		t.Fatalf("pairing again: %d %s", rec.Code, rec.Body)
+	}
 }

@@ -50,7 +50,7 @@ Both routes are open; a device proves itself with the key from registration ([AD
 
 **`POST /api/device/register`** takes `mac`, `hardware` and `firmware`. A configured MAC gets `{key, device}`, and an existing key stays. An unknown MAC gets 403, but only after Paperboy wrote `state/devices/<MAC>.json` with hardware, firmware and the first and last contact. The devices tab shows it as unclaimed hardware ([ADR 0080](../adr/0080-device-state-per-mac.md)). `DELETE /api/state/devices/{mac}` forgets it.
 
-The register of a configured display answers 403 with a six-character code until the operator confirmed it ([ADR 0109](../adr/0109-pair-a-display.md)). The panel shows the code. The operator enters it in the device editor, which posts it to `POST /api/state/devices/{mac}/pair`, a UI route. The confirmation authorizes exactly the next register. `Forget` requires a new pairing.
+The register of a configured display answers 403 with a six-character code until the operator confirmed it ([ADR 0109](../adr/0109-pair-a-display.md)). The panel shows the code. The operator enters it in the device editor, which posts it to `POST /api/state/devices/{mac}/pair`, a UI route. The confirmation authorizes exactly the next register. `Forget` requires a new pairing. A waiting code counts as unpaired, also when the state still holds an old key, so the editor keeps the Pair button.
 
 **`POST /api/device/sync`** requires the bearer key and answers 401 without it; the firmware then drops its key and registers again. The body is strict:
 
