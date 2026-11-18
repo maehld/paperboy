@@ -17,7 +17,9 @@
 
 substitutions:
   hardware: e1001
-  fw_version: "2.12.0"
+  fw_version: "2.13.0"
+  # Buzzer of the reTerminal E series on LEDC PWM (ADR 0131).
+  buzzer_pin: GPIO45
   # The mounting this image is built for; a device adds its quarter turn to it
   # at runtime (ADR 0102).
   compiled_rotation: 0
@@ -91,6 +93,17 @@ output:
   - platform: gpio
     pin: GPIO21
     id: battery_enable
+  # Buzzer: a passive piezo on LEDC PWM (ADR 0131).
+  - platform: ledc
+    pin: ${buzzer_pin}
+    id: buzzer
+    frequency: 2700Hz
+  # Onboard green LED, active LOW (Seeed). It blinks when the sync sends blink
+  # (ADR 0131).
+  - platform: gpio
+    pin: GPIO6
+    inverted: true
+    id: led
 
 spi:
   clk_pin: GPIO7
@@ -222,6 +235,26 @@ button:
       - component.update: epaper_display
 
 script:
+  # A signal is a beep and/or a blink of the green LED (ADR 0131).
+  - id: beep
+    mode: single
+    then:
+      - output.set_level:
+          id: buzzer
+          level: 50%
+      - delay: 150ms
+      - output.turn_off: buzzer
+  - id: blink
+    mode: single
+    then:
+      - output.turn_on: led
+      - delay: 150ms
+      - output.turn_off: led
+      - delay: 100ms
+      - output.turn_on: led
+      - delay: 150ms
+      - output.turn_off: led
+
   # uc8179_gray4 refreshes synchronously: component.update returns once the
   # panel is idle, so after_paint has nothing to wait for.
   - id: wait_paint

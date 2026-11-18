@@ -80,6 +80,7 @@
         pages: (r.pages || []).slice(),
         on_refresh: r.on_refresh || (r.rotate ? 'cycle' : 'current'),
         refresh: r.refresh || '',
+        alert: r.alert || '',
       };
     });
     p.fallback = p.fallback || '';
@@ -108,6 +109,7 @@
         if (r.when.conditions.length) rule.when.conditions = r.when.conditions.slice();
         if (r.on_refresh && r.on_refresh !== 'current') rule.on_refresh = r.on_refresh;
         if (r.refresh) rule.refresh = r.refresh;
+        if (r.alert) rule.alert = r.alert;
         return rule;
       }),
     };
@@ -284,6 +286,20 @@
       changed();
     });
     grid.appendChild(field('On refresh', onRefresh));
+
+    const alertSelect = document.createElement('select');
+    for (const [value, label] of [['', 'never'], ['once', 'once'], ['refresh', 'on refresh']]) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      alertSelect.appendChild(option);
+    }
+    alertSelect.value = rule.alert;
+    alertSelect.addEventListener('change', () => {
+      rule.alert = alertSelect.value;
+      changed();
+    });
+    grid.appendChild(field('Alert', alertSelect));
 
     // Conditions are value keys, e.g. dexcom/state is low (ADR 0127). Every
     // entry must match; the keys of one entry are alternatives. A value or key
@@ -926,7 +942,7 @@
     const taken = new Set(ruleNames());
     let n = state.plan.rules.length + 1;
     while (taken.has('rule-' + n)) n++;
-    state.plan.rules.push({ name: 'rule-' + n, when: { from: '', to: '', days: [], conditions: [] }, pages: [], on_refresh: 'current', refresh: '' });
+    state.plan.rules.push({ name: 'rule-' + n, when: { from: '', to: '', days: [], conditions: [] }, pages: [], on_refresh: 'current', refresh: '', alert: '' });
     changed();
     renderRules();
     renderFallback();

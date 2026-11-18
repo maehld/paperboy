@@ -5,7 +5,9 @@
 
 substitutions:
   hardware: sticky
-  fw_version: "2.11.0"
+  fw_version: "2.12.0"
+  # Buzzer of the Sticky: a passive piezo on LEDC PWM (ADR 0131).
+  buzzer_pin: GPIO48
   # The mounting this image is built for; a device adds its quarter turn to it
   # at runtime (ADR 0102).
   compiled_rotation: 180
@@ -104,6 +106,11 @@ output:
   - platform: gpio
     pin: GPIO46
     id: pwr_lock
+  # Buzzer: a passive piezo on LEDC PWM (ADR 0131).
+  - platform: ledc
+    pin: ${buzzer_pin}
+    id: buzzer
+    frequency: 2700Hz
 
 switch:
   - platform: gpio
@@ -226,6 +233,21 @@ touchscreen:
       - lambda: "pb_touch_release();"
 
 script:
+  # A signal is a beep or a blink; the Sticky has a buzzer but no user LED in
+  # this firmware, so its blink script does nothing (ADR 0131).
+  - id: beep
+    mode: single
+    then:
+      - output.set_level:
+          id: buzzer
+          level: 50%
+      - delay: 150ms
+      - output.turn_off: buzzer
+  - id: blink
+    mode: single
+    then:
+      - lambda: "// the Sticky has no user LED"
+
   # A tap becomes a touch event in page coordinates (ADR 0102). The touch
   # transform is measured in the compiled orientation, so pb_touch turns it by
   # the device's relative rotation; the display is painted the same way.

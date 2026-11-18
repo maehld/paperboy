@@ -238,6 +238,64 @@ func TestPlanRuleSwitchAndKeys(t *testing.T) {
 	}
 }
 
+// TestPlanAlert alerts once when a once rule starts and on every
+// timed refresh while a refresh rule applies (ADR 0131). A repeated rule and
+// a button press stay quiet unless the rule starts.
+func TestPlanAlert(t *testing.T) {
+	s, now := planServer(t, `
+rules:
+  - name: morgen
+    when: { from: "07:00", to: "09:00" }
+    pages: [eins]
+    alert: once
+  - name: tag
+    when: { from: "09:00", to: "19:00" }
+    pages: [drei]
+    alert: refresh
+  - name: abend
+    when: { from: "19:00", to: "23:00" }
+    pages: [vier]
+    alert: once
+fallback: morgen
+`)
+	dev := planDevice(t, s)
+	alerted := func(out map[string]any) bool { return out["beep"] == true && out["blink"] == true }
+	quiet := func(out map[string]any) bool { return out["beep"] == nil && out["blink"] == nil }
+	if out := displayPage(t, s, dev); !alerted(out) {
+		t.Fatalf("the first once rule must alert: %v", out)
+	}
+	*now = now.Add(10 * time.Minute)
+	if out := displayPage(t, s, dev); !quiet(out) {
+		t.Fatalf("the same once rule must stay quiet: %v", out)
+	}
+	// A button press on a once rule does not alert either.
+	if out := press(t, s, dev, buttonHome); !quiet(out) {
+		t.Fatalf("input on a once rule must stay quiet: %v", out)
+	}
+
+	// The refresh rule alerts on every timed refresh, but not on input.
+	*now = time.Date(2026, time.October, 21, 9, 0, 0, 0, time.UTC)
+	for i := 0; i < 2; i++ {
+		if out := displayPage(t, s, dev); !alerted(out) {
+			t.Fatalf("refresh must alert on timer sync %d: %v", i, out)
+		}
+		*now = now.Add(5 * time.Minute)
+	}
+	if out := press(t, s, dev, buttonNext); !quiet(out) {
+		t.Fatalf("a button press on a refresh rule must stay quiet: %v", out)
+	}
+
+	// A change to another once rule alerts again.
+	*now = time.Date(2026, time.October, 21, 19, 0, 0, 0, time.UTC)
+	if out := displayPage(t, s, dev); !alerted(out) {
+		t.Fatalf("the new once rule must alert: %v", out)
+	}
+	*now = now.Add(10 * time.Minute)
+	if out := displayPage(t, s, dev); !quiet(out) {
+		t.Fatalf("the second sync of the once rule must stay quiet: %v", out)
+	}
+}
+
 func TestPlanRotation(t *testing.T) {
 	s, now := planServer(t, testPlan)
 	dev := planDevice(t, s)

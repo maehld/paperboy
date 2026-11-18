@@ -1,7 +1,8 @@
 # Shared part of the Paperboy firmware for text displays (ADR 0041, ADR 0044),
 # included as a package by the hardware files. The hardware file supplies the
-# board, the display (id text_display) whose lambda prints pb_row, and the
-# substitution text_columns, the character width of a row. A sync answer names
+# board, the display (id text_display) whose lambda prints pb_row, the
+# substitution text_columns (the character width of a row) and the beep and
+# blink scripts, because the device decides what it can do (ADR 0131). A sync answer names
 # the scrolling boxes, their direction, step and whether their text changed
 # (ADR 0117); text_scroll moves them without blocking Wi-Fi or OTA.
 #
@@ -106,6 +107,14 @@ globals:
   - id: poll_ms
     type: uint32_t
     initial_value: "60000"
+  # beep and blink in the last sync (ADR 0131): the rule wants the device to
+  # signal. The device runs the method it has.
+  - id: beep_pending
+    type: bool
+    initial_value: "false"
+  - id: blink_pending
+    type: bool
+    initial_value: "false"
   - id: fw_path
     type: std::string
     initial_value: '""'
@@ -347,6 +356,11 @@ script:
                     id(next_poll) = millis() + id(poll_ms);
                     id(next_sync) = millis() + (uint32_t) std::max(refresh, 60) * 1000;
                     changed = pb_take_text(root["text"]);
+                    // The server sets beep and blink when a rule wants the
+                    // device to signal (ADR 0131). The hardware file defines
+                    // the scripts.
+                    id(beep_pending) = root["beep"] | false;
+                    id(blink_pending) = root["blink"] | false;
                     // The server's time keeps the clock for the certificate
                     // check of an https URL accurate (ADR 0108).
                     pb_set_clock(root["time"] | 0);
@@ -358,6 +372,18 @@ script:
                   pb_sync_done();
                   id(setup_shown) = "";
                   pb_text_changed = changed;
+              - if:
+                  condition:
+                    lambda: "return id(beep_pending);"
+                  then:
+                    - lambda: "id(beep_pending) = false;"
+                    - script.execute: beep
+              - if:
+                  condition:
+                    lambda: "return id(blink_pending);"
+                  then:
+                    - lambda: "id(blink_pending) = false;"
+                    - script.execute: blink
               - if:
                   condition:
                     lambda: "return pb_text_changed;"

@@ -183,6 +183,14 @@ globals:
   - id: stay_awake
     type: bool
     initial_value: "false"
+  # beep and blink in the last sync (ADR 0131): the rule wants the device to
+  # signal after the paint. The device runs the method it has.
+  - id: beep_pending
+    type: bool
+    initial_value: "false"
+  - id: blink_pending
+    type: bool
+    initial_value: "false"
   # Firmware offer from the last sync; empty path = no offer.
   - id: fw_path
     type: std::string
@@ -258,6 +266,12 @@ time:
 # page (measured 2026-11-08), whatever the format and file size. The firmware
 # fetches the QOI bytes and paints them itself (ADR 0072), which removes both
 # the decode cost and the 384 KB image buffer.
+
+# A signal (ADR 0131) belongs to the hardware, just like the buzzer and the
+# LED: each ePaper hardware file defines the beep and blink scripts, because
+# the device decides what it can do. The cycle parses `beep` and `blink` from
+# the sync answer and runs the scripts after the paint. Text displays use
+# text-common.yaml instead.
 
 script:
   # ---------------------------------------------------------------- cycle
@@ -619,6 +633,11 @@ script:
                     id(listen_s) = root["listen_s"] | 0;
                     // Older servers send no sleep field: keep deep sleeping.
                     id(stay_awake) = !(root["sleep"] | true);
+                    // The server sets beep and blink when a rule wants the
+                    // device to signal (ADR 0131). Older servers omit the
+                    // fields.
+                    id(beep_pending) = root["beep"] | false;
+                    id(blink_pending) = root["blink"] | false;
                     // The page rotation for this mounting (ADR 0102). Older
                     // servers omit it, which keeps the compiled orientation.
                     pb_set_rotation(root["rotation"] | 0);
@@ -666,6 +685,8 @@ script:
           id(sync_result) = 0;
           id(image_path) = "";
           id(image_hash) = "";
+          id(beep_pending) = false;
+          id(blink_pending) = false;
       - script.stop: do_sync
       - script.stop: do_sync_once
       - script.execute: do_sync
@@ -793,6 +814,22 @@ script:
             pb_paint_pending = false;
           }
           id(busy) = false;
+      # The answer of this sync asked for a signal (ADR 0131): the page is on
+      # the panel, so the signal belongs here. Each hardware file defines the
+      # beep and blink scripts and leaves out what it cannot do. A sync that
+      # changed nothing signals too, which a repeated signal needs.
+      - if:
+          condition:
+            lambda: "return id(beep_pending);"
+          then:
+            - lambda: "id(beep_pending) = false;"
+            - script.execute: beep
+      - if:
+          condition:
+            lambda: "return id(blink_pending);"
+          then:
+            - lambda: "id(blink_pending) = false;"
+            - script.execute: blink
       - if:
           condition:
             lambda: "return pb_has_events();"

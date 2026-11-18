@@ -346,6 +346,7 @@ type planChoice struct {
 	refresh  time.Duration // sleep time to report, after the plan boundary and timeout caps
 	interval time.Duration // the regular interval before those caps, for the alignment (ADR 0129)
 	banners  []string
+	alert    bool              // let the device alert with this answer (ADR 0131)
 	actions  []plan.PlanAction // the plan's actions for the device menu (ADR 0057)
 }
 
@@ -353,9 +354,10 @@ type planChoice struct {
 // Callers hold s.mu and pass the configuration snapshot of the request: no
 // config access happens under the state lock (ADR 0047). Rendering happens
 // later in renderPlan. paused freezes paging while the device menu is open
-// (ADR 0057): the page stays and a timed change waits. A rule change always
-// starts at the first page (ADR 0130).
-func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now time.Time, values plan.Values, firstContact bool, buttons []string, paused, quiet bool) planChoice {
+// (ADR 0057): the page stays and a timed change waits. timed marks a timed
+// refresh, which is when a rule with alert: refresh alerts again (ADR 0131). A
+// rule change always starts at the first page (ADR 0130).
+func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now time.Time, values plan.Values, firstContact, timed bool, buttons []string, paused, quiet bool) planChoice {
 	p, err := s.plans.get(cfg.Plans, d.Plan, cfg.Timezone)
 	if p == nil {
 		if !quiet {
@@ -382,7 +384,8 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 			err: fmt.Errorf("rule %s has no page for display type %s: %s", sel.Rule, d.Profile, joinReasons(skipped))}
 	}
 	n := len(pages)
-	if st.Rule != sel.Rule {
+	ruleChanged := st.Rule != sel.Rule
+	if ruleChanged {
 		// A new rule always starts at its first page, also with current.
 		st.Rule, st.Page = sel.Rule, 0
 	} else if paused {
@@ -424,7 +427,15 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 	if until := p.UntilNextBoundary(now); until > 0 && until < refresh {
 		refresh = max(floor, until)
 	}
-	c := planChoice{page: page, pages: n, name: pages[page], refresh: refresh, interval: interval, actions: sel.Actions}
+	alert := false
+	switch sel.Alert {
+	case plan.AlertOnce:
+		alert = ruleChanged
+	case plan.AlertRefresh:
+		alert = ruleChanged || timed
+	}
+	c := planChoice{page: page, pages: n, name: pages[page], refresh: refresh, interval: interval, actions: sel.Actions,
+		alert: alert}
 	if st.BatteryLevel == batteryWarn {
 		c.banners = append(c.banners, cfg.texts().lowBattery(voltageKey(st.BatteryVoltage)))
 	}

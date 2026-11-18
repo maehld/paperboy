@@ -144,7 +144,11 @@ type syncResponse struct {
 	// Rotation is the quarter turn the firmware applies to composed pages
 	// before painting, in degrees clockwise relative to its built-in mounting
 	// (ADR 0102). 0 leaves it as built; old firmware ignores the field.
-	Rotation int            `json:"rotation,omitempty"`
+	Rotation int `json:"rotation,omitempty"`
+	// Beep and Blink ask the device to signal after the paint (ADR 0131).
+	// The device runs the method it has; a missing field is false.
+	Beep     bool           `json:"beep,omitempty"`
+	Blink    bool           `json:"blink,omitempty"`
 	Firmware *firmwareOffer `json:"firmware"` // update offer (ADR 0043); null when none
 	// Wake names the reason of the next wake and how long to sleep until then
 	// (ADR 0064). It overrides refresh_s for exactly one sleep, so the menu can
@@ -560,7 +564,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		st.Page = 0
 	case d.Plan != "":
 		planDone := s.stats.Start("sync.plan")
-		choice = s.choosePlanPage(cfg, d, st, now, opt.values, firstContact, pageButtons, menuSync, false)
+		choice = s.choosePlanPage(cfg, d, st, now, opt.values, firstContact, req.Reason == "timer", pageButtons, menuSync, false)
 		planDone()
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
@@ -729,6 +733,9 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		attrs = append(attrs, "index", served.page, "pages", served.pages)
 	}
 	attrs = append(attrs, "rule", logged.Rule, "reason", req.Reason)
+	if choice.alert {
+		attrs = append(attrs, "alert", true)
+	}
 	if len(buttons) > 0 {
 		attrs = append(attrs, "buttons", strings.Join(buttons, ","))
 	}
@@ -758,6 +765,8 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		Sleep:    power == powerBattery,
 		Time:     now.Unix(),
 		Rotation: cfg.rotation(d),
+		Beep:     choice.alert,
+		Blink:    choice.alert,
 		Firmware: offer,
 		Wake:     wake,
 	}
@@ -858,7 +867,7 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 		// A copy keeps the cursor: a rule change only shows here and is
 		// stored by the next sync.
 		peek := *st
-		choice = s.choosePlanPage(cfg, d, &peek, now, values, true, nil, false, true)
+		choice = s.choosePlanPage(cfg, d, &peek, now, values, true, false, nil, false, true)
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
 	}

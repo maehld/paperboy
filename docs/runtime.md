@@ -28,7 +28,7 @@ The widget cache follows: entries, images, bytes, stale entries, entries past th
 
 ### Plan preview
 
-The **Plan preview** button at the foot of a device card opens `/ui/plan?device=<id>` ([ADR 0054](adr/0054-plan-preview-in-the-web-ui.md)), a read-only view of the plan of the device. It shows every rule with its time window, `on_refresh` and `refresh`, the fallback, the rule that applies now (or at the time picked with `&at=YYYY-MM-DDTHH:MM`) and the next rule change. Each page is previewed for the display type of the device; pages the device would skip show the reason, broken pages their error. The view does not change the page cursor or the state of the device.
+The **Plan preview** button at the foot of a device card opens `/ui/plan?device=<id>` ([ADR 0054](adr/0054-plan-preview-in-the-web-ui.md)), a read-only view of the plan of the device. It shows every rule with its time window, `on_refresh`, `refresh` and `alert` mode, the fallback, the rule that applies now (or at the time picked with `&at=YYYY-MM-DDTHH:MM`) and the next rule change. Each page is previewed for the display type of the device; pages the device would skip show the reason, broken pages their error. The view does not change the page cursor or the state of the device.
 
 ### Virtual display
 
@@ -60,7 +60,7 @@ Nothing is written before *Save*. A file that does not parse is listed with its 
 
 #### Plan editor
 
-`/ui/editor/plan?name=<plan>` edits a plan ([ADR 0069](adr/0069-plan-editor-ui.md)). A missing file opens as a new plan that the first save writes. The editor edits rules in their order: name, time window (`from`/`to` as times of day, days as checkboxes), pages in their order with `on_refresh` and `refresh`, and the fallback. It also edits the actions the device menu offers, built from the actions of the plugins with their arguments and confirmation.
+`/ui/editor/plan?name=<plan>` edits a plan ([ADR 0069](adr/0069-plan-editor-ui.md)). A missing file opens as a new plan that the first save writes. The editor edits rules in their order: name, time window (`from`/`to` as times of day, days as checkboxes), pages in their order with `on_refresh`, `refresh` and `alert`, and the fallback. It also edits the actions the device menu offers, built from the actions of the plugins with their arguments and confirmation.
 
 The editor marks rules that an earlier rule always overrides. It names pages that the own devices of the plan would skip, and links each device to its `/ui/plan` preview and to its device page. *Delete* removes the plan after naming the devices that use it. *Rename* moves the file ([ADR 0079](adr/0079-rename-config-items.md)).
 
@@ -88,7 +88,7 @@ The `ppi` field has a helper. It converts the diagonal of the panel in inches or
 - `battery`: `volts` is required, `percent`, `mah` and `ma` are optional. `ma` is the current from the fuel gauge, positive while charging. `charging` is the charger's own state (the Sticky reads the BQ25616's `STAT` pin) and cross-checks the gauge.
 - `rssi`, `power` and `log` entries.
 
-The answer names the image (`image.path` relative to the Paperboy URL, `image.hash`) and the deep-sleep time `refresh_s`. It also names `listen_s` (0 after a timer wake, 20 s after input) and `sleep` (`false` for mains devices, [ADR 0051](adr/0051-power-source-refresh-policy.md)). It names the server `time` in Unix seconds and `firmware` (an update offer, otherwise `null`). The firmware sets its clock from `time`, because the certificate check of an `https://` URL needs it ([ADR 0108](adr/0108-verify-the-tls-certificate.md)). `rotation` is the effective page rotation in degrees clockwise (0, 90, 180 or 270), omitted when it is 0; the firmware applies it before painting and to touches ([ADR 0102](adr/0102-rotate-pages-onto-the-panel.md)). `wake` (`{reason, after_s}`) is a one-shot wake for the menu deadline or an action result; otherwise it is absent. An unknown key gets `401`, and the device registers again. An invalid body gets `400`.
+The answer names the image (`image.path` relative to the Paperboy URL, `image.hash`) and the deep-sleep time `refresh_s`. It also names `listen_s` (0 after a timer wake, 20 s after input) and `sleep` (`false` for mains devices, [ADR 0051](adr/0051-power-source-refresh-policy.md)). It names the server `time` in Unix seconds and `firmware` (an update offer, otherwise `null`). The firmware sets its clock from `time`, because the certificate check of an `https://` URL needs it ([ADR 0108](adr/0108-verify-the-tls-certificate.md)). `rotation` is the effective page rotation in degrees clockwise (0, 90, 180 or 270), omitted when it is 0; the firmware applies it before painting and to touches ([ADR 0102](adr/0102-rotate-pages-onto-the-panel.md)). `beep` and `blink` are `true` when a plan rule wants the device to signal; the device uses the method it has, after the paint ([ADR 0131](adr/0131-a-plan-rule-alerts-the-device.md)). `wake` (`{reason, after_s}`) is a one-shot wake for the menu deadline or an action result; otherwise it is absent. An unknown key gets `401`, and the device registers again. An invalid body gets `400`.
 
 A device whose file has a `Problem` answers with `503` and the reason, never with `401` ([ADR 0079](adr/0079-rename-config-items.md)).
 

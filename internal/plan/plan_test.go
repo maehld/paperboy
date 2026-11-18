@@ -102,6 +102,40 @@ rules:
 	}
 }
 
+// TestAlertModes reads the two alert modes, treats never and the missing key as
+// quiet and rejects the boolean of an early sketch (ADR 0131).
+func TestAlertModes(t *testing.T) {
+	p := parse(t, `
+rules:
+  - name: quiet
+    pages: [a]
+  - name: never
+    pages: [a]
+    alert: never
+  - name: once
+    pages: [a]
+    alert: once
+  - name: refresh
+    pages: [a]
+    alert: refresh
+`)
+	want := []AlertMode{AlertNever, AlertNever, AlertOnce, AlertRefresh}
+	for i, mode := range want {
+		if got := p.Rules[i].Alert; got != mode {
+			t.Fatalf("rule %s: got %q, want %q", p.Rules[i].Name, got, mode)
+		}
+	}
+	// The selection carries the mode.
+	sel, ok := p.Select(at(t, 2026, time.October, 21, 12, 0), nil)
+	if !ok || sel.Alert != AlertNever {
+		t.Fatalf("first rule: %+v %v", sel, ok)
+	}
+	one := parse(t, "rules: [{name: alarm, pages: [a], alert: refresh}]")
+	if sel, ok := one.Select(at(t, 2026, time.October, 21, 12, 0), nil); !ok || sel.Alert != AlertRefresh {
+		t.Fatalf("refresh: %+v %v", sel, ok)
+	}
+}
+
 func TestParseErrors(t *testing.T) {
 	cases := map[string]string{
 		"unknown field":      "rules: [{name: a, pages: [x]}]\nextra: 1",
@@ -115,6 +149,9 @@ func TestParseErrors(t *testing.T) {
 		"refresh too short":  "rules: [{name: a, pages: [x], refresh: 500ms}]",
 		"unknown refresh":    "rules: [{name: a, pages: [x], on_refresh: rotate}]",
 		"rotate conflict":    "rules: [{name: a, pages: [x], rotate: true, on_refresh: first}]",
+		"alert bool":         "rules: [{name: a, pages: [x], alert: true}]",
+		"unknown alert":      "rules: [{name: a, pages: [x], alert: sometimes}]",
+		"old alert name":     "rules: [{name: a, pages: [x], alert: always}]",
 		"data condition":     "rules: [{name: a, pages: [x], when: {data: [{path: tuer, equals: offen}]}}]",
 		"from without to":    "rules: [{name: a, pages: [x], when: {from: \"07:00\"}}]",
 		"from equals to":     "rules: [{name: a, pages: [x], when: {from: \"07:00\", to: \"07:00\"}}]",

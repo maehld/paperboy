@@ -100,6 +100,25 @@ rules:
 	}
 }
 
+// TestPlanViewShowsAlert names the rule's alert mode in the preview.
+func TestPlanViewShowsAlert(t *testing.T) {
+	s, _ := planServer(t, `
+rules:
+  - name: alarm
+    pages: [eins]
+    alert: refresh
+  - name: ruhig
+    pages: [zwei]
+`)
+	body := htmlRequest(t, s, "/ui/plan?device=test").Body.String()
+	if !strings.Contains(body, "· alert refresh") {
+		t.Fatalf("plan view misses the alert mode: %s", body)
+	}
+	if strings.Count(body, "alert ") != 1 {
+		t.Fatalf("a quiet rule must name no alert: %s", body)
+	}
+}
+
 func TestPlanViewUnknownDevice(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	if rec := htmlRequest(t, s, "/ui/plan?device=nope"); rec.Code != http.StatusNotFound {

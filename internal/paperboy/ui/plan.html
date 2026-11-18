@@ -48,7 +48,7 @@ figure .error { margin: 0; }
   <h2>{{.Name}}
     {{if .Active}}<span class="badge active">active</span>{{end}}
     {{if .Fallback}}<span class="badge fallback">fallback</span>{{end}}
-    <span class="muted">{{.When}} · {{.OnRefresh}}{{if .Refresh}} · {{.Refresh}}{{end}}</span>
+    <span class="muted">{{.When}} · {{.OnRefresh}}{{if .Refresh}} · {{.Refresh}}{{end}}{{if .Alert}} · alert {{.Alert}}{{end}}</span>
   </h2>
   {{if .Conditions}}<p class="conditions">{{range $i, $c := .Conditions}}{{if $i}} · {{end}}{{$c.Value}} is {{$c.Is}} · now {{if $c.Current}}{{$c.Current}}{{else}}no value{{end}} <span class="badge{{if $c.Active}} active{{end}}">{{if $c.Active}}match{{else}}no match{{end}}</span>{{end}}</p>{{end}}
   <div class="pages">

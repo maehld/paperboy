@@ -110,6 +110,42 @@ const (
 	RefreshCycle RefreshMode = "cycle"
 )
 
+// AlertMode says when a rule asks the device to alert (ADR 0131). The device
+// decides what an alert is: a beep, a blink or both. The empty mode means
+// never; a rule without the key stays quiet.
+type AlertMode string
+
+const (
+	// AlertNever keeps the device quiet.
+	AlertNever AlertMode = ""
+	// AlertOnce alerts when the rule becomes active.
+	AlertOnce AlertMode = "once"
+	// AlertRefresh alerts when the rule becomes active and on every timed
+	// refresh while it applies, so a low glucose value reminds at every
+	// refresh without an alert on a button press.
+	AlertRefresh AlertMode = "refresh"
+)
+
+// UnmarshalYAML accepts once and refresh, and never as the explicit way to
+// stay quiet. Anything else, including the true of an early sketch, gets a
+// hint that names the three modes.
+func (b *AlertMode) UnmarshalYAML(v *yaml.Node) error {
+	if v.Kind != yaml.ScalarNode {
+		return fmt.Errorf("line %d: alert: expected never, once or refresh", v.Line)
+	}
+	switch s := strings.ToLower(v.Value); s {
+	case "never", "":
+		*b = AlertNever
+	case "once":
+		*b = AlertOnce
+	case "refresh":
+		*b = AlertRefresh
+	default:
+		return fmt.Errorf("line %d: alert %q: expected never, once or refresh", v.Line, v.Value)
+	}
+	return nil
+}
+
 // Rule shows Pages while When matches.
 type Rule struct {
 	Name      string      `yaml:"name" json:"name"`
@@ -117,6 +153,9 @@ type Rule struct {
 	Pages     []string    `yaml:"pages" json:"pages"`
 	OnRefresh RefreshMode `yaml:"on_refresh" json:"on_refresh,omitempty"`
 	Refresh   Duration    `yaml:"refresh" json:"refresh,omitempty"`
+	// Alert asks the device to alert when the rule takes over or on every
+	// timed refresh (ADR 0131).
+	Alert AlertMode `yaml:"alert" json:"alert,omitempty"`
 	// Rotate is the old name of on_refresh: cycle (ADR 0025, 0130). Parse and
 	// the editor API keep accepting it; Encode writes on_refresh.
 	Rotate bool `yaml:"rotate" json:"rotate,omitempty"`
@@ -322,7 +361,8 @@ type Selection struct {
 	Pages     []string
 	OnRefresh RefreshMode
 	Refresh   time.Duration // 0 = use the device interval
-	Actions   []PlanAction  // the plan's actions, the same for every rule and page
+	Alert     AlertMode
+	Actions   []PlanAction // the plan's actions, the same for every rule and page
 }
 
 // Parse reads a plan and validates it. Time windows refer to loc; nil means
@@ -473,7 +513,7 @@ func (w *When) matches(t time.Time, values Values) bool {
 }
 
 func (r *Rule) selection() Selection {
-	return Selection{Rule: r.Name, Pages: r.Pages, OnRefresh: r.Mode(), Refresh: time.Duration(r.Refresh)}
+	return Selection{Rule: r.Name, Pages: r.Pages, OnRefresh: r.Mode(), Refresh: time.Duration(r.Refresh), Alert: r.Alert}
 }
 
 func (p *Plan) validate() error {
@@ -572,6 +612,11 @@ func (r *Rule) validate() error {
 	}
 	if r.Rotate && r.OnRefresh != "" && r.OnRefresh != RefreshCycle {
 		return fmt.Errorf("rotate is the old name of on_refresh: cycle; remove rotate (ADR 0130)")
+	}
+	switch r.Alert {
+	case AlertNever, AlertOnce, AlertRefresh:
+	default:
+		return fmt.Errorf("alert %q: expected never, once or refresh", r.Alert)
 	}
 	if len(r.Actions) > 0 {
 		return fmt.Errorf("actions belong to the plan, not to a rule (ADR 0057)")
