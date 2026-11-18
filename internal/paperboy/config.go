@@ -167,8 +167,7 @@ type Device struct {
 	// the firmware reported, which defaults to false.
 	Touch *bool
 	// AlertMethods lists the methods an alert may use: beep, blink or both
-	// (ADR 0132). nil keeps the hardware default (both); an empty list mutes
-	// the device.
+	// (ADR 0132). nil or an empty list keeps the device silent.
 	AlertMethods *[]string
 	// Rotation overrides the display type's rotation for this mounting
 	// (ADR 0102). nil = the display type's.

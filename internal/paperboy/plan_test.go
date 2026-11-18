@@ -259,6 +259,7 @@ rules:
 fallback: morgen
 `)
 	dev := planDevice(t, s)
+	s.config().Devices[0].AlertMethods = &[]string{alertBeep, alertBlink}
 	alerted := func(out map[string]any) bool { return out["beep"] == true && out["blink"] == true }
 	quiet := func(out map[string]any) bool { return out["beep"] == nil && out["blink"] == nil }
 	if out := displayPage(t, s, dev); !alerted(out) {
@@ -302,8 +303,13 @@ func TestPlanAlertMethods(t *testing.T) {
 	s, _ := planServer(t, "rules: [{name: alarm, pages: [eins], alert: refresh}]")
 	dev := planDevice(t, s)
 
-	s.config().Devices[0].AlertMethods = &[]string{alertBeep}
+	// An unset list keeps the device silent (ADR 0132).
 	out := displayPage(t, s, dev)
+	if out["beep"] != nil || out["blink"] != nil {
+		t.Fatalf("an unset list must stay silent: %v", out)
+	}
+	s.config().Devices[0].AlertMethods = &[]string{alertBeep}
+	out = displayPage(t, s, dev)
 	if out["beep"] != true || out["blink"] != nil {
 		t.Fatalf("beep only: %v", out)
 	}

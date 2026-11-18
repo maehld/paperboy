@@ -41,9 +41,8 @@ type deviceFile struct {
 	Refresh     Duration `yaml:"refresh" json:"refresh,omitempty"`
 	Power       string   `yaml:"power,omitempty" json:"power,omitempty"`
 	Actions     string   `yaml:"actions,omitempty" json:"actions,omitempty"`
-	// AlertMethods lists the signals an alert may use (ADR 0132): beep,
-	// blink or both. nil keeps the hardware default (both); an empty list
-	// mutes the device.
+	// AlertMethods lists the methods an alert may use: beep, blink or both
+	// (ADR 0132). nil or an empty list keeps the device silent.
 	AlertMethods *[]string `yaml:"alert_methods,omitempty" json:"alert_methods,omitempty"`
 	MenuShow     Duration  `yaml:"menu_show_duration" json:"menu_show_duration,omitempty"`
 	Touch        *bool     `yaml:"touch,omitempty" json:"touch,omitempty"`
@@ -116,12 +115,13 @@ func (f deviceFile) device(id string, defaults *Battery) Device {
 	}
 }
 
-// alertMethods returns the signals this device may use. An unset list keeps
-// the hardware default: both. The firmware ignores a method its hardware
-// lacks, so both may stay true for a display with only one output (ADR 0132).
+// alertMethods returns the signals this device may use. An unset or empty
+// list keeps the device silent: alerting is opt-in per device (ADR 0132). The
+// firmware ignores a method its hardware lacks, so both may be true for a
+// display with only one output.
 func (d *Device) alertMethods() (beep, blink bool) {
 	if d.AlertMethods == nil {
-		return true, true
+		return false, false
 	}
 	for _, method := range *d.AlertMethods {
 		switch method {

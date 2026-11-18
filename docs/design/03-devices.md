@@ -35,7 +35,7 @@ A device is a file under `devices/<id>.yaml` ([ADR 0070](../adr/0070-devices-in-
 | `refresh` | Seconds between syncs, down to 1 |
 | `power` | Overrides the display type ([ADR 0051](../adr/0051-power-source-refresh-policy.md)) |
 | `actions` | `allow` (default) or `deny`: whether `home` opens the menu |
-| `alert_methods` | The methods an alert may use: a list of `beep` and `blink`; omitted = both, empty = silent ([ADR 0132](../adr/0132-alert-methods-per-device.md)) |
+| `alert_methods` | The methods an alert may use: a list of `beep` and `blink`; omitted or empty = silent ([ADR 0132](../adr/0132-alert-methods-per-device.md)) |
 | `menu_show_duration` | Seconds until the menu expires, at most 60 ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md)) |
 | `touch` | Draws the menu's tap controls ([ADR 0082](../adr/0082-menu-tap-controls-in-a-strip.md)) |
 | `rotation` | Overrides the display type's rotation ([ADR 0102](../adr/0102-rotate-pages-onto-the-panel.md)) |
@@ -138,7 +138,7 @@ The firmware lives in `firmware/esphome/` and is built on ESPHome ([ADR 0041](..
 | `text-common.yaml`, `lcd2004.yaml` | Text displays, text poll and the marquee script |
 | `build.ps1` | Build with a pinned ESPHome (2026.10.1); `-Instance` publishes `firmware/<hardware>-v<version>.bin` |
 
-A sync answer with `beep` or `blink` runs the script of that method after the paint, also when the page did not change ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). The device file's `alert_methods` narrows the two flags ([ADR 0132](../adr/0132-alert-methods-per-device.md)). The Sticky beeps; the E1001 and E1003 beep and blink the green LED; the LCD2004 blinks its backlight. The buzzer pins are GPIO48 on the Sticky and GPIO45 on the E1001 and E1003; the green LED is on GPIO6 and GPIO16.
+A sync answer with `beep` or `blink` runs the script of that method after the paint, also when the page did not change ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). The device file's `alert_methods` selects the two flags; without the key the device stays silent ([ADR 0132](../adr/0132-alert-methods-per-device.md)). The Sticky beeps; the E1001 and E1003 beep and blink the green LED; the LCD2004 blinks its backlight. The buzzer pins are GPIO48 on the Sticky and GPIO45 on the E1001 and E1003; the green LED is on GPIO6 and GPIO16.
 
 A cycle runs one at a time; a second trigger is dropped, so it cannot move the page cursor behind a running download. The firmware connects to the saved BSSID and channel without a scan. It decodes QOI itself into the panel buffer, because ESPHome's decoders spend 2.2–2.6 seconds on 384k pixels. Input during sync or paint is queued for one follow-up sync with a 150 ms settle, so a burst of presses becomes one sync. Failures are noted in RTC memory and reported in the next sync's `log`.
 
