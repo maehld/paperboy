@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -339,6 +340,37 @@ func TestDegradedStartRetriesUnchangedFile(t *testing.T) {
 	}
 	if resp := call(t, s, "/api/profiles", nil); len(resp["profiles"].([]any)) != 1 {
 		t.Fatalf("degraded start did not retry the unchanged file: %#v", resp)
+	}
+}
+
+// TestDegradedStartAnswers503: while paperboy.yaml is unusable, the device API
+// answers 503 instead of 401 or 403, so a display keeps its key (ADR 0047, 0079).
+func TestDegradedStartAnswers503(t *testing.T) {
+	dir := t.TempDir()
+	s, err := New(DegradedConfig(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := register(t, s, `{"mac":"aa:bb:cc:dd:ee:01"}`); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("register: %d %s", rec.Code, rec.Body)
+	}
+	if rec := syncRaw(t, s, "stale-key", `{"reason":"timer"}`); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("sync: %d %s", rec.Code, rec.Body)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/device/text", nil)
+	req.Header.Set("Authorization", "Bearer stale-key")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("text poll: %d %s", rec.Code, rec.Body)
+	}
+	// The register must not create a state file for a display it cannot judge.
+	entries, err := os.ReadDir(filepath.Join(dir, stateDirName, devicesStateDirName))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("degraded register wrote %d state files", len(entries))
 	}
 }
 
