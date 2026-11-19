@@ -245,6 +245,13 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg := s.config()
+	if cfg.degraded {
+		// A broken paperboy.yaml must not look like a forgotten device: a 401
+		// would make the firmware drop its key, and a 403 would start a
+		// pairing. The display keeps its key and retries (ADR 0047, 0079).
+		http.Error(w, "configuration unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	device := cfg.device(req.MAC)
 	now := s.now()
 	s.mu.Lock()
@@ -327,6 +334,12 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	configDone := s.stats.Start("sync.config")
 	cfg := s.config()
 	configDone()
+	if cfg.degraded {
+		// The display keeps its key while the configuration is unusable; a
+		// 401 would drop it and force a new pairing (ADR 0047, 0079).
+		http.Error(w, "configuration unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	// The firmware directory is read before taking the state lock.
 	var img *firmwareImage
 	if req.Hardware != "" {
@@ -827,6 +840,12 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 	defer s.stats.Start("poll.total")()
 	now := s.now()
 	cfg := s.config()
+	if cfg.degraded {
+		// The text display keeps its key while the configuration is unusable
+		// (ADR 0047, 0079).
+		http.Error(w, "configuration unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	s.lock("poll.lock")
 	d, st := s.deviceByKeyLocked(r, cfg)
 	if d == nil {
