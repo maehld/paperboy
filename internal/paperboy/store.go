@@ -18,6 +18,7 @@ import (
 type deviceState struct {
 	APIKey          string    `json:"api_key"`
 	Page            int       `json:"page"`
+	PageName        string    `json:"page_name,omitempty"` // page the cursor holds; a plan edit follows it (ADR 0133)
 	FirstSeen       time.Time `json:"first_seen,omitempty"`
 	LastSeen        time.Time `json:"last_seen,omitempty"`
 	ClientIP        string    `json:"client_ip,omitempty"` // source address of the last register, sync or text poll

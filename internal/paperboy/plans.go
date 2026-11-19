@@ -388,27 +388,35 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 	if ruleChanged {
 		// A new rule always starts at its first page, also with current.
 		st.Rule, st.Page = sel.Rule, 0
-	} else if paused {
-		// The menu is modal: no paging and no automatic page change.
 	} else {
-		// Button roles apply in order (ADR 0042): presses made while the panel
-		// was painting arrive together and only the final page is rendered.
-		for _, role := range buttons {
-			switch role {
-			case buttonNext:
-				st.Page = (st.Page + 1) % n
-			case buttonPrevious:
-				st.Page = ((st.Page-1)%n + n) % n
-			case buttonHome:
-				st.Page = 0
-			}
+		if st.PageName != "" && (st.Page < 0 || st.Page >= n || pages[st.Page] != st.PageName) {
+			// The cursor holds the page, not its index: a plan edit that adds,
+			// removes or reorders pages keeps the device on its page, and a
+			// page the rule lost starts the rule at its first page (ADR 0133).
+			st.Page = pageIndex(pages, st.PageName)
 		}
-		if len(buttons) == 0 && !firstContact {
-			switch sel.OnRefresh {
-			case plan.RefreshCycle:
-				st.Page = (st.Page + 1) % n
-			case plan.RefreshFirst:
-				st.Page = 0
+		// The menu is modal: no paging and no automatic page change.
+		if !paused {
+			// Button roles apply in order (ADR 0042): presses made while the
+			// panel was painting arrive together and only the final page is
+			// rendered.
+			for _, role := range buttons {
+				switch role {
+				case buttonNext:
+					st.Page = (st.Page + 1) % n
+				case buttonPrevious:
+					st.Page = ((st.Page-1)%n + n) % n
+				case buttonHome:
+					st.Page = 0
+				}
+			}
+			if len(buttons) == 0 && !firstContact {
+				switch sel.OnRefresh {
+				case plan.RefreshCycle:
+					st.Page = (st.Page + 1) % n
+				case plan.RefreshFirst:
+					st.Page = 0
+				}
 			}
 		}
 	}
@@ -416,6 +424,7 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 		st.Page = 0
 	}
 	page := st.Page
+	st.PageName = pages[page]
 	floor := cfg.minRefresh(d, st.ReportedPower)
 	interval := time.Duration(sel.Refresh)
 	if interval == 0 {
@@ -440,6 +449,18 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 		c.banners = append(c.banners, cfg.texts().lowBattery(voltageKey(st.BatteryVoltage)))
 	}
 	return c
+}
+
+// pageIndex follows a page name through the pages of a rule. A page that the
+// rule no longer lists starts the rule at its first page; a duplicate name is
+// the first entry, which the plan editor already warns about.
+func pageIndex(pages []string, name string) int {
+	for i, p := range pages {
+		if p == name {
+			return i
+		}
+	}
+	return 0
 }
 
 // renderPlan draws the chosen page or notice outside s.mu. A broken template

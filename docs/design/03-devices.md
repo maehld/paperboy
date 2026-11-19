@@ -88,13 +88,13 @@ A device's `refresh` may go down to one second and is clamped at runtime. `sleep
 
 `wake` is a one-shot next wake: the menu deadline or an action result. The firmware uses it once and goes back to its normal cycle.
 
-A rule's `on_refresh` decides what a timed refresh shows; a rule change starts at the first page ([ADR 0130](../adr/0130-what-a-plan-refresh-does.md)).
+A rule's `on_refresh` decides what a timed refresh shows; a rule change starts at the first page ([ADR 0130](../adr/0130-what-a-plan-refresh-does.md)). An edit of the plan keeps the device on its page: the cursor holds the page name ([ADR 0133](../adr/0133-the-page-cursor-holds-the-page.md)). A page the rule lost starts the rule at its first page.
 
 ## State
 
 `state/devices/<MAC>.json` holds everything the service knows about a device ([ADR 0080](../adr/0080-device-state-per-mac.md)):
 
-- the page cursor and the rule it came from
+- the page cursor: the index, the page name it holds ([ADR 0133](../adr/0133-the-page-cursor-holds-the-page.md)) and the rule it came from
 - the last battery reading, the last charging episode and the hourly battery samples of the last week
 - the last value of every reading, with the time it was taken
 - the menu, with its phase, selection, session and confirmation hash

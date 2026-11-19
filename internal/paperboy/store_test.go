@@ -33,7 +33,7 @@ func TestLoadDeviceStatesSkipsUnusableFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("AABBCCDDEE01.json", `{"api_key": "key-1", "page": 2}`)
+	write("AABBCCDDEE01.json", `{"api_key": "key-1", "page": 2, "page_name": "eins"}`)
 	write("aabbccddee02.json", `{"page": 3}`)
 	write("broken.json", `{`)
 	write("notes.txt", `hello`)
@@ -48,11 +48,12 @@ func TestLoadDeviceStatesSkipsUnusableFiles(t *testing.T) {
 	if len(state) != 2 {
 		t.Fatalf("loaded %d entries: %v", len(state), state)
 	}
-	if st := state["AABBCCDDEE01"]; st == nil || st.APIKey != "key-1" || st.Page != 2 {
+	if st := state["AABBCCDDEE01"]; st == nil || st.APIKey != "key-1" || st.Page != 2 || st.PageName != "eins" {
 		t.Fatalf("first device: %+v", st)
 	}
 	// A lower case file name is the same key on a case-insensitive file system.
-	if st := state["AABBCCDDEE02"]; st == nil || st.Page != 3 {
+	// A file from before ADR 0133 has no page name.
+	if st := state["AABBCCDDEE02"]; st == nil || st.Page != 3 || st.PageName != "" {
 		t.Fatalf("second device: %+v", st)
 	}
 }
