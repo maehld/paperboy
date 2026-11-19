@@ -386,9 +386,11 @@
     meta.textContent = info
       ? info.serves && info.serves.length ? info.serves.join(' · ') : 'no display type'
       : 'no file';
+    const labels = document.createElement('span');
+    labels.className = 'labels';
+    labels.append(label, meta);
     row.append(
-      label,
-      meta,
+      labels,
       small('↑', j > 0 ? () => movePage(rule, j, -1) : null),
       small('↓', j < rule.pages.length - 1 ? () => movePage(rule, j, 1) : null),
       small('×', () => {

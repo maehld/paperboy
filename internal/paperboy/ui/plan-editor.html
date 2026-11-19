@@ -43,7 +43,11 @@ label.field.wide { grid-column: 1 / -1; }
 .pages { margin: .5rem 0 0; display: flex; flex-direction: column; gap: .2rem; }
 .pages .empty { margin: 0; font-size: .82rem; color: #888; }
 .page-row { display: flex; gap: .35rem; align-items: center; background: #f5f8fd; border: 1px solid #e1e7f0; border-radius: 4px; padding: .1rem .35rem; font-size: .84rem; }
-.page-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The page name wins over its display types: they wrap to a second line
+   instead of squeezing the name to nothing on a narrow screen. */
+.page-row .labels { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .4rem; }
+.page-row .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-row .labels .muted { min-width: 0; font-size: .78rem; overflow-wrap: anywhere; }
 .page-row.missing { background: #fff5f5; border-color: #f0c9c9; }
 .add-page { display: flex; gap: .4rem; align-items: center; margin-top: .4rem; font-size: .84rem; }
 .add-page select { flex: 1; }
