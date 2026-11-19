@@ -21,13 +21,26 @@ func testPayload(t *testing.T) map[string]any {
 	localMidnight := time.Date(2026, 10, 21, 22, 0, 0, 0, time.UTC)
 	hours := make([]int64, 48)
 	temps := make([]float64, 48)
+	precip := make([]float64, 48)
+	rain := make([]float64, 48)
+	showers := make([]float64, 48)
+	snow := make([]float64, 48)
+	codes := make([]int, 48)
 	probs := make([]*float64, 48)
 	for i := range hours {
 		hours[i] = localMidnight.Add(time.Duration(i) * time.Hour).Unix()
 		temps[i] = 8 + float64(i)/3
 		p := float64(i * 2 % 50)
 		probs[i] = &p
+		codes[i] = 3
 	}
+	// Rain from 14:00 to 16:00, snow from 18:00 to 19:00 and a mixed hour at
+	// 20:00, all local time.
+	for i := 14; i < 16; i++ {
+		precip[i], rain[i], codes[i] = 0.4, 0.4, 61
+	}
+	precip[18], snow[18], codes[18] = 0.5, 0.5, 71
+	precip[20], rain[20], snow[20] = 0.5, 0.2, 0.3
 	days := make([]int64, 5)
 	for i := range days {
 		days[i] = localMidnight.AddDate(0, 0, i).Unix()
@@ -47,7 +60,9 @@ func testPayload(t *testing.T) map[string]any {
 			"wind_speed_10m": 14.2, "is_day": 1,
 		},
 		"hourly": map[string]any{
-			"time": hours, "temperature_2m": temps, "precipitation_probability": probs,
+			"time": hours, "temperature_2m": temps, "precipitation": precip,
+			"precipitation_probability": probs, "rain": rain, "showers": showers,
+			"snowfall": snow, "weather_code": codes,
 		},
 		"daily": map[string]any{
 			"time":                          days,
@@ -55,6 +70,7 @@ func testPayload(t *testing.T) map[string]any {
 			"temperature_2m_max":            []float64{15.24, 14, 18, 19.3, 16},
 			"temperature_2m_min":            []float64{8.06, 7, 9, 10, 8},
 			"precipitation_probability_max": []*float64{ptr(40.0), ptr(80.0), ptr(0.0), ptr(10.0), ptr(60.0)},
+			"precipitation_sum":             []float64{3.42, 8, 0, 1.2, 2.1},
 			"sunrise":                       sunrise,
 			"sunset":                        sunset,
 		},
@@ -117,6 +133,9 @@ func TestFetchAndBranch(t *testing.T) {
 	if b.Today.PrecipProb == nil || *b.Today.PrecipProb != 40 {
 		t.Fatalf("today precipitation probability = %v", b.Today.PrecipProb)
 	}
+	if b.Today.Precip != 3.42 {
+		t.Fatalf("today precipitation = %v", b.Today.Precip)
+	}
 	if len(b.Days) != 5 || b.Days[0].Date != "2026-10-22" || b.Days[0].Label != "Do" ||
 		b.Days[1].Label != "Fr" || b.Days[0].Max != 15.2 || b.Days[1].Text != "Leichter Regen" {
 		t.Fatalf("days = %+v", b.Days)
@@ -129,6 +148,23 @@ func TestFetchAndBranch(t *testing.T) {
 	}
 	if b.Hours[0].Values["precip_prob"] != 0 || b.Hours[11].Values["temp"] != round1(8+11.0/3) {
 		t.Fatalf("hour values = %+v", b.Hours)
+	}
+	if b.Hours[14].Values["precip"] != 0.4 || b.Hours[14].Type != precipRain ||
+		b.Hours[18].Type != precipSnow || b.Hours[20].Type != precipMixed || b.Hours[0].Type != "" {
+		t.Fatalf("hour types = %+v", b.Hours[0].Type)
+	}
+	want := []precipEvent{
+		{Type: precipRain, Start: "2026-10-22T12:00:00Z", End: "2026-10-22T14:00:00Z"},
+		{Type: precipSnow, Start: "2026-10-22T16:00:00Z", End: "2026-10-22T17:00:00Z"},
+		{Type: precipMixed, Start: "2026-10-22T18:00:00Z", End: "2026-10-22T19:00:00Z"},
+	}
+	if len(b.Events) != len(want) {
+		t.Fatalf("events = %+v", b.Events)
+	}
+	for i := range want {
+		if b.Events[i] != want[i] {
+			t.Fatalf("event %d = %+v, want %+v", i, b.Events[i], want[i])
+		}
 	}
 }
 
@@ -190,6 +226,95 @@ func TestWeekday(t *testing.T) {
 	}
 	if got := weekday(d, "en"); got != "Thu" {
 		t.Fatalf("en = %q", got)
+	}
+}
+
+func TestPrecipType(t *testing.T) {
+	tests := []struct {
+		code                int
+		rain, showers, snow float64
+		prob                float64
+		want                string
+	}{
+		{3, 0, 0, 0, 0, ""},
+		{3, 0, 0, 0, 40, ""}, // a probability without a precipitation code
+		{61, 0, 0, 0, 40, precipRain},
+		{71, 0, 0, 0, 60, precipSnow},
+		{61, 0.2, 0, 0, 0, precipRain},
+		{71, 0, 0, 0.3, 0, precipSnow},
+		{61, 0.2, 0, 0.3, 0, precipMixed},
+		{3, 0.2, 0.1, 0, 0, precipRain},
+		{95, 0, 0, 0, 90, precipRain},
+		{86, 0, 0, 0, 10, precipSnow},
+	}
+	for _, tt := range tests {
+		if got := precipType(tt.code, tt.rain, tt.showers, tt.snow, tt.prob); got != tt.want {
+			t.Fatalf("precipType(%d, %g, %g, %g, %g) = %q, want %q", tt.code, tt.rain, tt.showers, tt.snow, tt.prob, got, tt.want)
+		}
+	}
+}
+
+// Events are the contiguous hours above the threshold, snow and rain in one
+// run make a mixed event.
+func TestEventsOf(t *testing.T) {
+	at := func(hour int) string {
+		return time.Date(2026, 10, 22, hour, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	}
+	hour := func(h int, amount float64, typ string) point {
+		return point{Time: at(h), Values: map[string]float64{"precip": amount}, Type: typ}
+	}
+	points := []point{
+		hour(10, 0.05, precipRain), // below the threshold
+		hour(11, 0.4, precipRain),
+		hour(12, 0.3, precipRain),
+		hour(13, 0, ""),
+		hour(14, 0.5, precipSnow),
+		hour(15, 0.2, precipRain),
+	}
+	got := eventsOf(points)
+	want := []precipEvent{
+		{Type: precipRain, Start: at(11), End: at(13)},
+		{Type: precipMixed, Start: at(14), End: at(16)},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("events = %+v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("event %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+	if len(eventsOf(nil)) != 0 {
+		t.Fatal("empty series has events")
+	}
+}
+
+func TestEventText(t *testing.T) {
+	rain := precipEvent{Type: precipRain, Start: "2026-10-22T12:00:00Z", End: "2026-10-22T14:00:00Z"}
+	snow := precipEvent{Type: precipSnow, Start: "2026-10-22T16:00:00Z", End: "2026-10-22T17:00:00Z"}
+	mixed := precipEvent{Type: precipMixed, Start: "2026-10-22T18:00:00Z", End: "2026-10-22T19:00:00Z"}
+	tests := []struct {
+		name   string
+		now    time.Time
+		lang   string
+		events []precipEvent
+		want   string
+	}{
+		{"before", time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC), "de", []precipEvent{rain}, "Regen ab 14:00, ca. 2 h"},
+		{"running", time.Date(2026, 10, 22, 12, 30, 0, 0, time.UTC), "de", []precipEvent{rain}, "Regen bis 16:00"},
+		{"over", time.Date(2026, 10, 22, 15, 0, 0, 0, time.UTC), "de", []precipEvent{rain}, "Kein Regen heute"},
+		{"skips finished", time.Date(2026, 10, 22, 15, 0, 0, 0, time.UTC), "de", []precipEvent{rain, snow}, "Schnee ab 18:00, ca. 1 h"},
+		{"snow", time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC), "de", []precipEvent{snow}, "Schnee ab 18:00, ca. 1 h"},
+		{"mixed", time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC), "de", []precipEvent{mixed}, "Regen+Schnee ab 20:00, ca. 1 h"},
+		{"english", time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC), "en", []precipEvent{rain}, "Rain from 14:00, about 2 h"},
+		{"none", time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC), "en", nil, "No rain today"},
+	}
+	for _, tt := range tests {
+		req := &plugin.Request{Language: tt.lang, Timezone: "Europe/Berlin", Now: tt.now}
+		p := &weather{cur: &branch{Events: tt.events}, req: req, loc: req.Location(), lang: tt.lang}
+		if got := p.eventText(); got != tt.want {
+			t.Fatalf("%s: %q, want %q", tt.name, got, tt.want)
+		}
 	}
 }
 
@@ -272,7 +397,8 @@ func TestValues(t *testing.T) {
 		Page: plugin.PageInfo{Width: 20, Height: 4}}
 	p := &weather{cur: &b, req: req, loc: req.Location(), lang: "de"}
 	names := []string{"temperature", "apparent", "humidity", "precipitation", "precipitation-probability",
-		"wind", "beaufort", "condition", "min-today", "max-today", "sunrise", "sunset", "updated", "forecast"}
+		"precipitation-today", "precipitation-next", "wind", "beaufort", "condition", "min-today",
+		"max-today", "sunrise", "sunset", "updated", "forecast"}
 	values, err := p.Values(&plugin.Request{Values: names})
 	if err != nil {
 		t.Fatal(err)
@@ -287,6 +413,12 @@ func TestValues(t *testing.T) {
 	}
 	if v := values["condition"]; v.Text == nil || *v.Text != "Bedeckt" {
 		t.Fatalf("condition = %+v", v)
+	}
+	if v := values["precipitation-today"]; v.Number == nil || *v.Number != 3.42 {
+		t.Fatalf("precipitation-today = %+v", v)
+	}
+	if v := values["precipitation-next"]; v.Text == nil || *v.Text != "Regen ab 14:00, ca. 2 h" {
+		t.Fatalf("precipitation-next = %+v", v)
 	}
 	if v := values["sunrise"]; v.Timestamp == nil || *v.Timestamp != "2026-10-22T04:00:00Z" {
 		t.Fatalf("sunrise = %+v", v)
