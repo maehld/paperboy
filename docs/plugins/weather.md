@@ -16,7 +16,7 @@ Weather from [Open-Meteo](https://open-meteo.com/), no API key needed.
 
 All widgets are for image displays.
 
-- `current`: pictogram, temperature, condition, apparent temperature, wind force and the next precipitation of the day, e.g. `Rain from 14:00, about 2 h`, `Rain until 15:00` or `No rain today`. `clothing: true` adds a T-shirt or a pullover; the pullover appears below 15 °C apparent temperature or above wind force 3.
+- `current`: pictogram, temperature, condition, apparent temperature, wind force, today's range and the next precipitation of the day, e.g. `Rain from 14:00, about 2 h`, `Rain until 15:00` or `No rain today`. `clothing: true` adds a T-shirt or a pullover; the pullover appears below 15 °C apparent temperature or above wind force 3.
 - `days`: pictogram and range per day. Args: `days: 1..5`.
 - `hours`: today's temperature as a line with the precipitation probability as bars. The fill names the type: rain shaded, snow hatched, a mixed hour solid. The heading names the fill patterns, the dashed line marks now.
 

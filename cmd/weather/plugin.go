@@ -270,13 +270,13 @@ func (w *weather) current(wr plugin.WidgetRequest, img *image.Paletted) error {
 	width := right - x
 	h := b.Dy()
 	base := w.req.TextPx(wr)
-	big := min(float64(h)*0.38, base*2.5)
-	small := min(float64(h)*0.16, base*0.9)
+	big := min(float64(h)*0.36, base*2.6)
+	small := min(float64(h)*0.15, base*0.9)
 	top := b.Min.Y + (h-int(big+3.6*small))/2
 	render.Text(img, w.num(c.Temp, 1)+" °C", x, top+int(big*0.9), render.Style{Size: big, Bold: true, Shrink: true}, width, color.Black, render.Left)
 	render.Text(img, c.Text, x, top+int(big+small*1.1), render.Style{Size: small, Shrink: true}, width, color.Black, render.Left)
-	detail := fmt.Sprintf("%s %s · %s %d", w.t("gefühlt", "feels"), w.temp(c.Apparent),
-		w.t("Wind", "wind"), c.Beaufort)
+	detail := fmt.Sprintf("%s %s · %s %d · %s %s/%s", w.t("gefühlt", "feels"), w.temp(c.Apparent),
+		w.t("Wind", "wind"), c.Beaufort, w.t("heute", "today"), w.temp(w.cur.Today.Max), w.temp(w.cur.Today.Min))
 	render.Text(img, detail, x, top+int(big+small*2.5), render.Style{Size: small * 0.85, Shrink: true}, width, color.Black, render.Left)
 	render.Text(img, w.eventText(), x, top+int(big+small*3.5), render.Style{Size: small * 0.95, Bold: true, Shrink: true}, width, color.Black, render.Left)
 	return nil
