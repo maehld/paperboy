@@ -385,6 +385,48 @@ rules:
 	}
 }
 
+// editPlan rewrites the plan of planServer and moves its stamp, so the loader
+// reads the new file.
+func editPlan(t *testing.T, s *Server, content string) {
+	t.Helper()
+	path := filepath.Join(s.config().Plans, "zimmer.yaml")
+	writePageFile(t, path, content)
+	stamp := time.Now().Add(time.Minute)
+	if err := os.Chtimes(path, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPlanEditKeepsThePage keeps a device on its page when the operator edits
+// the plan file: the cursor holds the page, not its index (ADR 0133).
+func TestPlanEditKeepsThePage(t *testing.T) {
+	s, _ := planServer(t, "rules: [{name: tag, pages: [eins, zwei, drei]}]\n")
+	dev := planDevice(t, s)
+	displayPage(t, s, dev)
+	if got := pagePath(press(t, s, dev, buttonNext)); !strings.Contains(got, "/zwei/") {
+		t.Fatalf("next: %q", got)
+	}
+	// A page in front of the current one must not move the device.
+	editPlan(t, s, "rules: [{name: tag, pages: [vier, eins, zwei, drei]}]\n")
+	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/zwei/") {
+		t.Fatalf("a plan edit must keep the page: %q", got)
+	}
+	// The next press continues from the page, not from the old index.
+	if got := pagePath(press(t, s, dev, buttonNext)); !strings.Contains(got, "/drei/") {
+		t.Fatalf("next after the edit: %q", got)
+	}
+	// A reordered list keeps it too.
+	editPlan(t, s, "rules: [{name: tag, pages: [drei, vier, eins, zwei]}]\n")
+	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/drei/") {
+		t.Fatalf("a reordered list must keep the page: %q", got)
+	}
+	// A page the rule loses starts the rule at its first page.
+	editPlan(t, s, "rules: [{name: tag, pages: [vier, eins]}]\n")
+	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/vier/") {
+		t.Fatalf("a lost page must start at the first page: %q", got)
+	}
+}
+
 // TestPlanRefreshFirst shows the first page at every timer refresh.
 func TestPlanRefreshFirst(t *testing.T) {
 	s, now := planServer(t, `

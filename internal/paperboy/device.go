@@ -574,7 +574,8 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	var choice planChoice
 	switch {
 	case critical: // the warning replaces all pages; buttons only show it again
-		st.Page = 0
+		// The cursor starts over when the pages return.
+		st.Page, st.PageName = 0, ""
 	case d.Plan != "":
 		planDone := s.stats.Start("sync.plan")
 		choice = s.choosePlanPage(cfg, d, st, now, opt.values, firstContact, req.Reason == "timer", pageButtons, menuSync, false)

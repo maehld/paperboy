@@ -143,7 +143,7 @@ Rules are tried in order and the first match wins:
 - The old condition string `plugin/condition` is rejected with a hint that shows the value form.
 - `timezone` inside a plan is rejected; the global `timezone` applies ([ADR 0033](../adr/0033-global-language-and-timezone.md)). `when.data` of version 1 is rejected with a hint that names `when.conditions`.
 
-A rule lists `pages`, `on_refresh` (what a timed refresh shows) and `refresh` (seconds until the next sync). `on_refresh` is `cycle` (the next page), `first` (the first page) or `current` (the same page), default `current`. A rule change always starts at the first page ([ADR 0130](../adr/0130-what-a-plan-refresh-does.md)). `UntilNextBoundary` caps the refresh at the next rule change. `fallback` holds the pages of a device whose no rule matches.
+A rule lists `pages`, `on_refresh` (what a timed refresh shows) and `refresh` (seconds until the next sync). `on_refresh` is `cycle` (the next page), `first` (the first page) or `current` (the same page), default `current`. A rule change always starts at the first page ([ADR 0130](../adr/0130-what-a-plan-refresh-does.md)). An edit of the page list keeps the device on its page ([ADR 0133](../adr/0133-the-page-cursor-holds-the-page.md)). `UntilNextBoundary` caps the refresh at the next rule change. `fallback` holds the pages of a device whose no rule matches.
 
 `alert` asks the device to signal ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). `once` alerts in the sync that starts the rule. `refresh` alerts at the start and on every timed refresh, so a low glucose value reminds at every refresh. A rule without the key stays quiet. The device decides what an alert is: a beep, a blink or both.
 
