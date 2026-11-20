@@ -95,6 +95,8 @@ func (w *weather) Describe() plugin.Description {
 			{Name: "humidity", Title: "Humidity", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
 			{Name: "precipitation", Title: "Precipitation", Type: plugin.ValueNumber, Unit: "mm", Precision: 1},
 			{Name: "precipitation-probability", Title: "Chance of rain", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+			{Name: "precipitation-today", Title: "Precipitation today", Type: plugin.ValueNumber, Unit: "mm", Precision: 1},
+			{Name: "precipitation-next", Title: "Next precipitation", Type: plugin.ValueText},
 			{Name: "wind", Title: "Wind", Type: plugin.ValueNumber, Unit: "km/h", Precision: 1},
 			{Name: "beaufort", Title: "Wind force", Type: plugin.ValueNumber, Unit: "Bft", Precision: 0},
 			{Name: "condition", Title: "Condition", Type: plugin.ValueText},
@@ -268,15 +270,56 @@ func (w *weather) current(wr plugin.WidgetRequest, img *image.Paletted) error {
 	width := right - x
 	h := b.Dy()
 	base := w.req.TextPx(wr)
-	big := min(float64(h)*0.42, base*2.6)
-	small := min(float64(h)*0.17, base*0.9)
-	top := b.Min.Y + (h-int(big+2.6*small))/2
+	big := min(float64(h)*0.36, base*2.6)
+	small := min(float64(h)*0.15, base*0.9)
+	top := b.Min.Y + (h-int(big+3.6*small))/2
 	render.Text(img, w.num(c.Temp, 1)+" °C", x, top+int(big*0.9), render.Style{Size: big, Bold: true, Shrink: true}, width, color.Black, render.Left)
 	render.Text(img, c.Text, x, top+int(big+small*1.1), render.Style{Size: small, Shrink: true}, width, color.Black, render.Left)
 	detail := fmt.Sprintf("%s %s · %s %d · %s %s/%s", w.t("gefühlt", "feels"), w.temp(c.Apparent),
 		w.t("Wind", "wind"), c.Beaufort, w.t("heute", "today"), w.temp(w.cur.Today.Max), w.temp(w.cur.Today.Min))
 	render.Text(img, detail, x, top+int(big+small*2.5), render.Style{Size: small * 0.85, Shrink: true}, width, color.Black, render.Left)
+	render.Text(img, w.eventText(), x, top+int(big+small*3.5), render.Style{Size: small * 0.95, Bold: true, Shrink: true}, width, color.Black, render.Left)
 	return nil
+}
+
+// nextEvent is the first event of today that is not over yet; the forecast may
+// be older than the request, so the widget decides at render time.
+func (w *weather) nextEvent() *precipEvent {
+	for i := range w.cur.Events {
+		e := &w.cur.Events[i]
+		end, err := time.Parse(time.RFC3339, e.End)
+		if err != nil || !end.After(w.req.Now) {
+			continue
+		}
+		return e
+	}
+	return nil
+}
+
+// eventText names the next precipitation: when it starts and how long it
+// lasts, or when the running one ends.
+func (w *weather) eventText() string {
+	e := w.nextEvent()
+	if e == nil {
+		return w.t("Kein Regen heute", "No rain today")
+	}
+	start, errS := time.Parse(time.RFC3339, e.Start)
+	end, errE := time.Parse(time.RFC3339, e.End)
+	if errS != nil || errE != nil {
+		return w.t("Kein Regen heute", "No rain today")
+	}
+	kind := w.t("Regen", "Rain")
+	switch e.Type {
+	case precipSnow:
+		kind = w.t("Schnee", "Snow")
+	case precipMixed:
+		kind = w.t("Regen+Schnee", "Rain+snow")
+	}
+	if w.req.Now.Before(start) {
+		return fmt.Sprintf("%s %s %s, %s %d h", kind, w.t("ab", "from"),
+			start.In(w.loc).Format("15:04"), w.t("ca.", "about"), int(end.Sub(start).Hours()))
+	}
+	return fmt.Sprintf("%s %s %s", kind, w.t("bis", "until"), end.In(w.loc).Format("15:04"))
 }
 
 func (w *weather) dayList(n int) []day {
@@ -318,7 +361,8 @@ func (w *weather) days(wr plugin.WidgetRequest, img *image.Paletted) error {
 }
 
 // hours draws today's temperature as a line over a time axis with the
-// precipitation probability as shaded bars.
+// precipitation probability as bars. The fill of a bar names the type: rain is
+// shaded, snow hatched and a mixed hour solid.
 func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) error {
 	b := img.Rect.Inset(wr.Style.Padding)
 	if b.Empty() {
@@ -336,12 +380,17 @@ func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) error {
 	if right-left < 20 || bottom-top < 20 {
 		return plugin.TooSmall(wr)
 	}
-	render.Text(img, w.t("Temperatur heute", "Temperature today"), b.Min.X, b.Min.Y+int(label), render.Style{Size: label, Bold: true, Shrink: true}, b.Dx(), color.Black, render.Left)
+	titleW := b.Dx()
+	if lx := w.legend(img, b, label); lx > 0 {
+		titleW = lx - b.Min.X - int(label*0.5)
+	}
+	render.Text(img, w.t("Temperatur (°C)", "Temperature (°C)"), b.Min.X, b.Min.Y+int(label), render.Style{Size: label, Bold: true, Shrink: true}, titleW, color.Black, render.Left)
 	lo, hi := 1e9, -1e9
 	type sample struct {
 		t    time.Time
 		temp float64
 		prob float64
+		fill string
 	}
 	var ss []sample
 	for _, p := range pts {
@@ -351,7 +400,14 @@ func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) error {
 		}
 		v := p.Values["temp"]
 		lo, hi = min(lo, v), max(hi, v)
-		ss = append(ss, sample{t.In(w.loc), v, p.Values["precip_prob"]})
+		fill := "shade"
+		switch p.Type {
+		case precipSnow:
+			fill = "hatch"
+		case precipMixed:
+			fill = "solid"
+		}
+		ss = append(ss, sample{t.In(w.loc), v, p.Values["precip_prob"], fill})
 	}
 	if len(ss) < 2 {
 		return nil
@@ -366,7 +422,11 @@ func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) error {
 		}
 		x0 := x(s.t)
 		bar := int(s.prob / 100 * float64(bottom-top))
-		render.Fill(img, image.Rect(x0+1, bottom-bar, x0+max((right-left)/24-1, 2), bottom), "shade")
+		render.Fill(img, image.Rect(x0+1, bottom-bar, x0+max((right-left)/24-1, 2), bottom), s.fill)
+	}
+	// The halo keeps the temperature line visible in a solid bar.
+	for i := 1; i < len(ss); i++ {
+		segment(img, x(ss[i-1].t), y(ss[i-1].temp), x(ss[i].t), y(ss[i].temp), 4, render.White)
 	}
 	for i := 1; i < len(ss); i++ {
 		render.Segment(img, x(ss[i-1].t), y(ss[i-1].temp), x(ss[i].t), y(ss[i].temp), 2, false)
@@ -384,6 +444,53 @@ func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) error {
 		render.Segment(img, x(now), top, x(now), bottom, 1, true)
 	}
 	return nil
+}
+
+// legend draws the fill patterns of the bars and their labels into the top
+// right corner and returns the left edge it uses, or 0 when it does not fit.
+func (w *weather) legend(img *image.Paletted, b image.Rectangle, label float64) int {
+	entries := []struct{ fill, text string }{
+		{"shade", w.t("Regen %", "rain %")},
+		{"hatch", w.t("Schnee %", "snow %")},
+		{"solid", w.t("beides %", "mixed %")},
+	}
+	sw := int(label * 1.1)
+	gap := int(label * 0.5)
+	total := 0
+	for _, e := range entries {
+		total += sw + gap + render.Measure(e.text, label, false) + gap
+	}
+	if total > b.Dx()*3/5 {
+		return 0
+	}
+	x := b.Max.X - total
+	baseline := b.Min.Y + int(label)
+	for _, e := range entries {
+		render.Fill(img, image.Rect(x, baseline-sw, x+sw, baseline), e.fill)
+		x += sw + gap
+		tw := render.Measure(e.text, label, false)
+		render.Text(img, e.text, x, baseline, render.Style{Size: label}, tw+2, color.Black, render.Left)
+		x += tw + gap
+	}
+	return b.Max.X - total
+}
+
+// segment draws a thick line in one colour; render.Segment draws black only
+// and the white halo around the temperature line is local to this plugin.
+func segment(img *image.Paletted, x0, y0, x1, y1, thickness int, c color.Color) {
+	steps := max(abs(x1-x0), abs(y1-y0), 1)
+	for i := 0; i <= steps; i++ {
+		x := x0 + (x1-x0)*i/steps
+		y := y0 + (y1-y0)*i/steps
+		render.FillColor(img, image.Rect(x, y, x+thickness, y+thickness), c)
+	}
+}
+
+func abs(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 // Values answers the declared values of a text page from the forecast the
@@ -417,6 +524,10 @@ func (w *weather) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 				prob = *c.PrecipProb
 			}
 			out[name] = plugin.NumberValue(prob)
+		case "precipitation-today":
+			out[name] = plugin.NumberValue(t.Precip)
+		case "precipitation-next":
+			out[name] = plugin.TextValue(w.eventText())
 		case "wind":
 			out[name] = plugin.NumberValue(c.Wind)
 		case "beaufort":

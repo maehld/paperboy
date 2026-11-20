@@ -1,8 +1,9 @@
 // Command weather is a Paperboy plugin (ADR 0049) with Open-Meteo data. It
 // fetches the forecast in the background, keeps it in memory and draws the
 // widgets "current" (pictogram, temperature, condition, optional clothing
-// advice), "days" (daily forecast) and "hours" (today's temperature curve).
-// "current" and "days" have text variants for character displays.
+// advice, next precipitation), "days" (daily forecast) and "hours" (today's
+// temperature curve with the precipitation type). "current" and "days" have
+// text variants for character displays.
 //
 //	plugins:
 //	  weather:
@@ -63,7 +64,12 @@ type openMeteo struct {
 	Hourly struct {
 		Time       []int64    `json:"time"`
 		Temp       []float64  `json:"temperature_2m"`
+		Precip     []float64  `json:"precipitation"`
 		PrecipProb []*float64 `json:"precipitation_probability"`
+		Rain       []float64  `json:"rain"`
+		Showers    []float64  `json:"showers"`
+		Snowfall   []float64  `json:"snowfall"`
+		Code       []int      `json:"weather_code"`
 	} `json:"hourly"`
 	Daily struct {
 		Time       []int64    `json:"time"`
@@ -71,6 +77,7 @@ type openMeteo struct {
 		Max        []float64  `json:"temperature_2m_max"`
 		Min        []float64  `json:"temperature_2m_min"`
 		PrecipProb []*float64 `json:"precipitation_probability_max"`
+		PrecipSum  []float64  `json:"precipitation_sum"`
 		Sunrise    []int64    `json:"sunrise"`
 		Sunset     []int64    `json:"sunset"`
 	} `json:"daily"`
@@ -87,8 +94,8 @@ func fetch(ctx context.Context, client *http.Client, base string, lat, lon float
 	q.Set("latitude", strconv.FormatFloat(lat, 'f', -1, 64))
 	q.Set("longitude", strconv.FormatFloat(lon, 'f', -1, 64))
 	q.Set("current", "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,is_day")
-	q.Set("hourly", "temperature_2m,precipitation_probability")
-	q.Set("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset")
+	q.Set("hourly", "temperature_2m,precipitation,precipitation_probability,rain,showers,snowfall,weather_code")
+	q.Set("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,sunrise,sunset")
 	q.Set("timezone", "auto")
 	q.Set("timeformat", "unixtime")
 	q.Set("forecast_days", strconv.Itoa(forecastDays))
@@ -125,11 +132,12 @@ func fetch(ctx context.Context, client *http.Client, base string, lat, lon float
 
 // branch is the forecast the widgets draw from.
 type branch struct {
-	Updated string  `json:"updated"`
-	Current current `json:"current"`
-	Today   today   `json:"today"`
-	Days    []day   `json:"days"`
-	Hours   []point `json:"hours"`
+	Updated string        `json:"updated"`
+	Current current       `json:"current"`
+	Today   today         `json:"today"`
+	Days    []day         `json:"days"`
+	Hours   []point       `json:"hours"`
+	Events  []precipEvent `json:"events,omitempty"`
 }
 
 type current struct {
@@ -151,6 +159,7 @@ type today struct {
 	Min        float64  `json:"min"`
 	Max        float64  `json:"max"`
 	PrecipProb *float64 `json:"precip_prob,omitempty"`
+	Precip     float64  `json:"precip"`
 	Sunrise    string   `json:"sunrise"`
 	Sunset     string   `json:"sunset"`
 	Code       int      `json:"code"`
@@ -171,6 +180,27 @@ type day struct {
 type point struct {
 	Time   string             `json:"time"`
 	Values map[string]float64 `json:"values"`
+	// Type is the precipitation of the hour: rain, snow, mixed or "" for a
+	// dry hour. The chart uses it as the fill of the bar.
+	Type string `json:"type,omitempty"`
+}
+
+// The precipitation types of an hour and of an event.
+const (
+	precipRain  = "rain"
+	precipSnow  = "snow"
+	precipMixed = "mixed"
+)
+
+// eventAmount is the hourly amount in mm from which an hour counts as an
+// event. Open-Meteo reports precipitation as water equivalent, snow included.
+const eventAmount = 0.1
+
+// precipEvent is one contiguous run of wet hours of today.
+type precipEvent struct {
+	Type  string `json:"type"`
+	Start string `json:"start"`
+	End   string `json:"end"`
 }
 
 // branchOf maps the response to the weather branch. The times are RFC 3339 in
@@ -202,6 +232,7 @@ func branchOf(f *openMeteo, language string) (branch, error) {
 		Min:        round1(f.Daily.Min[0]),
 		Max:        round1(f.Daily.Max[0]),
 		PrecipProb: at(f.Daily.PrecipProb, 0),
+		Precip:     round2(atF(f.Daily.PrecipSum, 0)),
 		Sunrise:    stamp(atInt(f.Daily.Sunrise, 0)),
 		Sunset:     stamp(atInt(f.Daily.Sunset, 0)),
 		Code:       atInt(f.Daily.Code, 0),
@@ -243,13 +274,96 @@ func branchOf(f *openMeteo, language string) (branch, error) {
 		if i >= len(f.Hourly.Temp) {
 			break
 		}
-		p := point{Time: stamp(f.Hourly.Time[i]), Values: map[string]float64{"temp": round1(f.Hourly.Temp[i])}}
+		p := point{Time: stamp(f.Hourly.Time[i]), Values: map[string]float64{
+			"temp":   round1(f.Hourly.Temp[i]),
+			"precip": round2(atF(f.Hourly.Precip, i)),
+		}}
 		if prob := at(f.Hourly.PrecipProb, i); prob != nil {
 			p.Values["precip_prob"] = *prob
 		}
+		p.Type = precipType(atInt(f.Hourly.Code, i), atF(f.Hourly.Rain, i), atF(f.Hourly.Showers, i), atF(f.Hourly.Snowfall, i), p.Values["precip_prob"])
 		b.Hours = append(b.Hours, p)
 	}
+	b.Events = eventsOf(b.Hours)
 	return b, nil
+}
+
+// precipType names the precipitation of an hour: the amounts decide, and where
+// the forecast gives only a probability the weather code does. "" is dry.
+func precipType(code int, rain, showers, snow, prob float64) string {
+	switch {
+	case rain+showers > 0 && snow > 0:
+		return precipMixed
+	case snow > 0:
+		return precipSnow
+	case rain+showers > 0:
+		return precipRain
+	}
+	if prob <= 0 {
+		return ""
+	}
+	switch code {
+	case 71, 73, 75, 77, 85, 86:
+		return precipSnow
+	case 51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99:
+		return precipRain
+	}
+	return ""
+}
+
+// eventsOf groups contiguous hours above eventAmount into events. A run that
+// mixes rain and snow is a mixed event.
+func eventsOf(points []point) []precipEvent {
+	var out []precipEvent
+	start := -1
+	for i := range points {
+		if points[i].Values["precip"] >= eventAmount {
+			if start < 0 {
+				start = i
+			}
+			continue
+		}
+		if start >= 0 {
+			if e, ok := eventOf(points[start:i]); ok {
+				out = append(out, e)
+			}
+			start = -1
+		}
+	}
+	if start >= 0 {
+		if e, ok := eventOf(points[start:]); ok {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// eventOf turns a run of wet hours into an event that ends one hour after its
+// last hour.
+func eventOf(run []point) (precipEvent, bool) {
+	end, err := time.Parse(time.RFC3339, run[len(run)-1].Time)
+	if err != nil {
+		return precipEvent{}, false
+	}
+	rain, snow := false, false
+	for _, p := range run {
+		switch p.Type {
+		case precipRain:
+			rain = true
+		case precipSnow:
+			snow = true
+		case precipMixed:
+			rain, snow = true, true
+		}
+	}
+	t := precipRain
+	switch {
+	case rain && snow:
+		t = precipMixed
+	case snow:
+		t = precipSnow
+	}
+	return precipEvent{Type: t, Start: run[0].Time, End: stamp(end.Add(time.Hour).Unix())}, true
 }
 
 // hourIndex returns the index of the last hourly entry that is not after t, so
@@ -277,6 +391,14 @@ func atInt[T int | int64](list []T, i int) T {
 	var zero T
 	if i < 0 || i >= len(list) {
 		return zero
+	}
+	return list[i]
+}
+
+// atF reads one entry of a float list, or zero when the list is short.
+func atF(list []float64, i int) float64 {
+	if i < 0 || i >= len(list) {
+		return 0
 	}
 	return list[i]
 }

@@ -16,9 +16,11 @@ Weather from [Open-Meteo](https://open-meteo.com/), no API key needed.
 
 All widgets are for image displays.
 
-- `current`: pictogram, temperature, condition, apparent temperature, wind force and today's range. `clothing: true` adds a T-shirt or a pullover; the pullover appears below 15 °C apparent temperature or above wind force 3.
+- `current`: pictogram, temperature, condition, apparent temperature, wind force, today's range and the next precipitation of the day, e.g. `Rain from 14:00, about 2 h`, `Rain until 15:00` or `No rain today`. `clothing: true` adds a T-shirt or a pullover; the pullover appears below 15 °C apparent temperature or above wind force 3.
 - `days`: pictogram and range per day. Args: `days: 1..5`.
-- `hours`: today's temperature with the precipitation probability.
+- `hours`: today's temperature as a line with the precipitation probability as bars. The fill names the type: rain shaded, snow hatched, a mixed hour solid. The heading names the fill patterns, the dashed line marks now.
+
+An event is a contiguous run of hours with at least 0.1 mm. Open-Meteo gives precipitation as water equivalent, so snow counts too. An hour with rain and snow is mixed. The plugin decides about the event at render time, so an old forecast still says when a running event ends.
 
 The pictograms come from [OpenMoji](https://openmoji.org) (CC BY-SA 4.0, see `cmd/weather/icons/README.md`).
 
@@ -33,6 +35,8 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 | `humidity` | number | % | 0 | relative humidity |
 | `precipitation` | number | mm | 1 | now |
 | `precipitation-probability` | number | % | 0 | now |
+| `precipitation-today` | number | mm | 1 | today's sum |
+| `precipitation-next` | text | | | the next event as in `current` |
 | `wind` | number | km/h | 1 | now |
 | `beaufort` | number | Bft | 0 | wind force |
 | `condition` | text | | | condition in the global language |
