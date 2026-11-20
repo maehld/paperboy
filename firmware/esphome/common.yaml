@@ -853,6 +853,12 @@ script:
                   - delay: 180s
                 else:
                   - delay: !lambda "return (uint32_t) std::max(0, id(listen_s)) * 1000;"
+            # The signal must finish before the cycle can sleep. A timer wake
+            # has listen_s = 0, so go_sleep would enter deep sleep after one
+            # loop iteration and cut the tone off after a few milliseconds
+            # (issue #356).
+            - script.wait: beep
+            - script.wait: blink
             - script.execute: go_sleep
 
   # Battery devices deep sleep for refresh_s. Mains devices (sleep: false in

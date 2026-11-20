@@ -24,7 +24,7 @@
 
 substitutions:
   hardware: e1003
-  fw_version: "1.6.0"
+  fw_version: "1.7.0"
   # Buzzer of the reTerminal E series on LEDC PWM (ADR 0131). GPIO48 is the
   # touch reset here, so the buzzer keeps its own pin.
   buzzer_pin: GPIO45
@@ -324,14 +324,27 @@ binary_sensor:
           start: !lambda "return (int) esphome::millis();"
 
 script:
-  # A signal is a beep and/or a blink of the green LED (ADR 0131).
+  # A signal is a beep and/or a blink of the green LED (ADR 0131). The beep is
+  # a triple tone of 90 ms with 70 ms gaps, which reads as an alert (issue #356).
   - id: beep
     mode: single
     then:
       - output.set_level:
           id: buzzer
           level: 50%
-      - delay: 150ms
+      - delay: 90ms
+      - output.turn_off: buzzer
+      - delay: 70ms
+      - output.set_level:
+          id: buzzer
+          level: 50%
+      - delay: 90ms
+      - output.turn_off: buzzer
+      - delay: 70ms
+      - output.set_level:
+          id: buzzer
+          level: 50%
+      - delay: 90ms
       - output.turn_off: buzzer
   - id: blink
     mode: single
