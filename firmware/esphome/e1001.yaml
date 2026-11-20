@@ -17,7 +17,7 @@
 
 substitutions:
   hardware: e1001
-  fw_version: "2.13.0"
+  fw_version: "2.14.0"
   # Buzzer of the reTerminal E series on LEDC PWM (ADR 0131).
   buzzer_pin: GPIO45
   # The mounting this image is built for; a device adds its quarter turn to it
@@ -87,7 +87,11 @@ esp32:
 psram:
   mode: octal
 
+# The SHT4x of the E series sits on GPIO19/20, the pins the ESP32-S3 uses for
+# USB. The console therefore runs on UART0 like on the E1003: USB Serial/JTAG
+# and this bus cannot share the pins.
 logger:
+  hardware_uart: UART0
 
 output:
   - platform: gpio
@@ -108,6 +112,14 @@ output:
 spi:
   clk_pin: GPIO7
   mosi_pin: GPIO9
+
+i2c:
+  # The SHT4x on GPIO19/20 (address 0x44); the E1001 has no other I2C device.
+  # See the note at logger: these pins are the USB pair.
+  - id: i2c_sensor
+    scl: GPIO20
+    sda: GPIO19
+    frequency: 100kHz
 
 sensor:
   # Battery voltage through a 1:2 divider; needs battery_enable on.
@@ -299,6 +311,17 @@ script:
           // No GPIO sees USB power on the E1001 (ADR 0051); power: mains in
           // paperboy.yaml overrides this for a device on a charger.
           pb_power = "battery";
+
+  # One SHT4x measurement per wake feeds the room reading (ADR 0134); a failed
+  # read leaves the reading out.
+  - id: read_climate
+    then:
+      - lambda: |-
+          float temperature, humidity;
+          if (pb_read_sht4x(id(i2c_sensor), temperature, humidity)) {
+            pb_add_reading("temperature", temperature);
+            pb_add_reading("humidity", humidity);
+          }
 
 deep_sleep:
   id: sleeper

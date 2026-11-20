@@ -24,7 +24,7 @@
 
 substitutions:
   hardware: e1003
-  fw_version: "1.5.0"
+  fw_version: "1.6.0"
   # Buzzer of the reTerminal E series on LEDC PWM (ADR 0131). GPIO48 is the
   # touch reset here, so the buzzer keeps its own pin.
   buzzer_pin: GPIO45
@@ -370,6 +370,18 @@ script:
                   lambda: "return !id(busy);"
                 then:
                   - script.execute: sync_and_show
+
+  # The SHT4x sits on i2c0 at 0x44, with the GT911 and the SY6974B. One
+  # measurement per wake feeds the room reading (ADR 0134); a failed read leaves
+  # the reading out.
+  - id: read_climate
+    then:
+      - lambda: |-
+          float temperature, humidity;
+          if (pb_read_sht4x(id(i2c0), temperature, humidity)) {
+            pb_add_reading("temperature", temperature);
+            pb_add_reading("humidity", humidity);
+          }
 
   # The IT8951 driver transfers and refreshes asynchronously and exposes no
   # completion state, so after_paint waits a fixed time. Measured on the device:

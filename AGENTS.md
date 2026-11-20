@@ -63,6 +63,7 @@ The structure is in `docs/design/`; these are the rules that a change must not b
 - **No upload endpoints and no data API:** pages are composed from plugin widgets and selected by plans.
 - **Device API (ADR 0042):** plain HTTP status codes; `401` makes the firmware drop its key and register again by MAC, so a lost `state/devices/` only costs the page cursor and the battery level. A device with a `Problem` answers 503, never 401 (ADR 0079). Image paths are relative; the device keeps the Paperboy URL it was configured with. Page and notice downloads carry the device key and only reach the device's own display type (ADR 0097).
 - **Firmware:** compiled for `sticky`, `e1001`, `e1003` and `lcd2004` with the pinned ESPHome. No secrets; the only update path is `ota: http_request` with Paperboy's offer (no native ESPHome OTA, no web UI upload; rescue over USB).
+- **A device sends readings, not sensors.** The sync carries `readings` as `{name, value}`; the catalog in `internal/reading` owns unit, precision and range. Paperboy discards an unknown name or an implausible value with a log line instead of failing the sync (ADR 0134).
 
 ## Planned work
 

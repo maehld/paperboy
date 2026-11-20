@@ -26,12 +26,16 @@ type deviceState struct {
 	BatteryMAH      *float64  `json:"battery_mah,omitempty"`      // remaining capacity from the fuel gauge
 	BatteryMA       *float64  `json:"battery_ma,omitempty"`       // current from the fuel gauge, positive while charging
 	BatteryCharging *bool     `json:"battery_charging,omitempty"` // charger's own state (e.g. the Sticky's STAT pin)
-	RSSI            string    `json:"rssi,omitempty"`
-	Firmware        string    `json:"firmware,omitempty"`
-	Hardware        string    `json:"hardware,omitempty"` // firmware image type, e.g. "sticky"
-	WakeReason      string    `json:"wake_reason,omitempty"`
-	BatteryLevel    string    `json:"battery_level,omitempty"` // "", "warn" or "critical"
-	Rule            string    `json:"rule,omitempty"`          // name of the active plan rule
+	// Readings are the last measured values of the room, keyed by the name of
+	// the reading catalog (ADR 0134). At names the moment of the measurement, so
+	// a value a later sync did not bring does not look fresh.
+	Readings     map[string]deviceReading `json:"readings,omitempty"`
+	RSSI         string                   `json:"rssi,omitempty"`
+	Firmware     string                   `json:"firmware,omitempty"`
+	Hardware     string                   `json:"hardware,omitempty"` // firmware image type, e.g. "sticky"
+	WakeReason   string                   `json:"wake_reason,omitempty"`
+	BatteryLevel string                   `json:"battery_level,omitempty"` // "", "warn" or "critical"
+	Rule         string                   `json:"rule,omitempty"`          // name of the active plan rule
 
 	// Charging episodes from the fuel gauge current (issue #205): the one that
 	// runs right now and the last one that finished.
@@ -80,6 +84,13 @@ type deviceState struct {
 	FirmwareOfferedTime time.Time `json:"firmware_offered_time,omitempty"`
 	FirmwarePending     bool      `json:"firmware_pending,omitempty"`
 	FirmwareFailures    int       `json:"firmware_failures,omitempty"`
+}
+
+// deviceReading is the last value a device reported for one reading of the
+// catalog, with the moment it was taken (ADR 0134).
+type deviceReading struct {
+	Value float64   `json:"value"`
+	At    time.Time `json:"at"`
 }
 
 func writeAtomic(path string, data []byte) error {

@@ -597,6 +597,10 @@ script:
     then:
       - script.execute: read_battery
       - script.wait: read_battery
+      # The room's measured values are taken once per attempt, before the
+      # request; a failed read leaves them out (ADR 0134). Every hardware file
+      # provides read_climate.
+      - script.execute: read_climate
       - lambda: |-
           id(sync_result) = 0;
           id(auth_header) = "Bearer " + id(api_key).state;

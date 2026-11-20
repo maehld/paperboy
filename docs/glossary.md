@@ -13,6 +13,7 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **cell** | One box of a page: a widget on an image page, a value or literal text on a text page | tile, slot |
 | **text cell** | One box of a text page: a value or literal text with a column, span, alignment and overflow | row, line, label |
 | **value** | One piece of data a plugin declares by name, for example `evcc/pv`; a text cell shows it | reading, datum, key |
+| **reading** | One measured number a device reports in its sync, named by Paperboy's catalog, for example `temperature` | value, sensor, measurement |
 | **enum value** | A value that answers one declared key, e.g. `dexcom/state` with `normal`, `low`, `high` and `urgent` | state, choice |
 | **enum label** | The display text of one enum key on a text cell (`labels`); without it the key shows | key text, caption |
 | **overflow** | A text box policy: `strip`, `wrap` or `scroll` | clip, fitting |

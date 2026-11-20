@@ -20,6 +20,7 @@ An empty password keeps the UI open and logs a warning at startup when the liste
 - the last page as an image, taken from `GET /api/devices/{id}/image` ([ADR 0097](../adr/0097-page-downloads-take-the-device-key.md))
 - a *Power* row with the charge state (charging, connected, discharging), the charge or the voltage
 - a *Details* block with the display type, the raw battery reading, the last charge and the runtime estimate
+- a *Readings* row with the room's measured values; the catalog names are its tooltip ([ADR 0134](../adr/0134-readings-from-the-device.md))
 - the refresh interval and the estimated time to the next sync, the address and the firmware
 - a line for a newer Paperboy release, with the version as its link ([ADR 0101](../adr/0101-a-hint-about-a-newer-paperboy.md)), or a warning when the last release check failed
 

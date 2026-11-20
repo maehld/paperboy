@@ -85,6 +85,7 @@ dd.oneline .muted { font-size: .78rem; }
         {{if .Battery}}<dt>Battery</dt><dd>{{.Battery}}</dd>{{end}}
         {{if .LastCharge}}<dt>Last charge</dt><dd>{{.LastCharge}}</dd>{{end}}
         {{if .Runtime}}<dt>Runtime</dt><dd title="{{.RuntimeHint}}">{{.Runtime}}{{if .RuntimeNote}} <span class="muted">{{.RuntimeNote}}</span>{{end}}</dd>{{end}}
+        {{if .Readings}}<dt>Readings</dt><dd title="{{.ReadingsKeys}}">{{.Readings}}{{if .ReadingsSince}} <span class="muted">{{.ReadingsSince}}</span>{{end}}</dd>{{end}}
         {{if .Refresh}}<dt>Refresh</dt><dd>{{.Refresh}}</dd>{{end}}
         {{if .Address}}<dt>Address</dt><dd>{{.Address}}</dd>{{end}}
         {{if .Firmware}}<dt>Firmware</dt><dd>{{.Firmware}}</dd>{{end}}

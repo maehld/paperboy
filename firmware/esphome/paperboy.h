@@ -138,6 +138,24 @@ static int pb_charging = -1;
 // the hardware cannot tell. Set by the device file.
 static std::string pb_power;
 
+// Measured values of this wake, e.g. the room's temperature and humidity
+// (ADR 0134). The device reports bare numbers; Paperboy's catalog owns unit,
+// precision and range. A repeated name replaces the earlier value, so a retried
+// sync sends one entry per reading.
+static std::vector<std::pair<std::string, float>> pb_readings;
+
+inline void pb_add_reading(const std::string &name, float value) {
+  if (!std::isfinite(value))
+    return;
+  for (auto &r : pb_readings) {
+    if (r.first == name) {
+      r.second = value;
+      return;
+    }
+  }
+  pb_readings.emplace_back(name, value);
+}
+
 // Events since the last sync are kept in RTC memory; log entries for the next
 // sync stay in RAM and are resent with the events.
 static std::vector<std::string> pb_logs;
@@ -291,6 +309,48 @@ inline void pb_log(const std::string &level, const std::string &message) {
 
 inline bool pb_has_events() { return pb_event_queue[0] != 0; }
 
+// CRC-8 of the SHT4x (polynomial 0x31, initial value 0xFF). The sensor sends
+// one checksum per 16-bit word.
+inline uint8_t pb_crc8(const uint8_t *data, size_t len) {
+  uint8_t crc = 0xFF;
+  for (size_t i = 0; i < len; i++) {
+    crc ^= data[i];
+    for (int bit = 0; bit < 8; bit++)
+      crc = (crc & 0x80) ? (uint8_t) ((crc << 1) ^ 0x31) : (uint8_t) (crc << 1);
+  }
+  return crc;
+}
+
+// pb_read_sht4x takes one measurement from an SHT4x (address 0x44) on the given
+// bus and leaves NAN on a failed read, so a missing sensor never fails the sync
+// (ADR 0134). The wake can wait the ~9 ms of a high-repeatability measurement
+// once per sync; the heater stays off. The bus is the pointer an ESPHome id
+// yields.
+template<typename Bus> inline bool pb_read_sht4x(Bus *bus, float &temperature, float &humidity) {
+  auto failed = [&]() {
+    temperature = NAN;
+    humidity = NAN;
+    return false;
+  };
+  const uint8_t cmd = 0xFD;  // measure, high repeatability, heater off
+  auto err = bus->write(0x44, &cmd, 1);
+  if (err != decltype(err) {})
+    return failed();
+  esphome::delay(15);
+  uint8_t raw[6];
+  err = bus->read(0x44, raw, 6);
+  if (err != decltype(err) {})
+    return failed();
+  if (pb_crc8(raw, 2) != raw[2] || pb_crc8(raw + 3, 2) != raw[5])
+    return failed();
+  uint16_t t = (uint16_t(raw[0]) << 8) | raw[1];
+  uint16_t h = (uint16_t(raw[3]) << 8) | raw[4];
+  temperature = -45.0f + 175.0f * (float) t / 65535.0f;
+  humidity = -6.0f + 125.0f * (float) h / 65535.0f;
+  humidity = std::max(0.0f, std::min(100.0f, humidity));
+  return true;
+}
+
 // pb_sync_body builds the sync body from the queued events; the queue is only
 // dropped by pb_sync_done after Paperboy accepted it (ADR 0064), so a failed
 // request resends the same events with the same IDs.
@@ -320,6 +380,12 @@ inline std::string pb_sync_body(const std::string &firmware, const std::string &
       b += std::string(",\"charging\":") + (pb_charging ? "true" : "false");
     b += "}";
   }
+  b += ",\"readings\":[";
+  for (size_t i = 0; i < pb_readings.size(); i++) {
+    b += (i ? "," : "") + std::string("{\"name\":") + pb_json_string(pb_readings[i].first) +
+         esphome::str_sprintf(",\"value\":%.3f}", pb_readings[i].second);
+  }
+  b += "]";
   b += esphome::str_sprintf(",\"rssi\":%d", rssi);
   if (!pb_power.empty())
     b += ",\"power\":" + pb_json_string(pb_power);

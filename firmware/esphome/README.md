@@ -8,10 +8,10 @@ installation, nothing installation-specific is compiled in.
 | File | Content |
 |---|---|
 | `common.yaml` | Shared cycle and device API (register, sync, download, beep and blink, sleep), included as a package |
-| `paperboy.h` | C++ helpers: sync body, event and log queue, RTC state, gray-level mapping, dithering (mono fallback), text rows, the scroll engine and HD44780 character mapping |
-| `sticky.yaml` | reTerminal Sticky: pins, gray4 panel, touch, BQ27220 fuel gauge, buzzer, beep and blink scripts |
-| `e1001.yaml` | reTerminal E1001: pins, four-level UC8179 panel via `uc8179_gray4`, ADC battery, buzzer, green LED, beep and blink scripts |
-| `e1003.yaml` | reTerminal E1003: pins, 16-level IT8951 panel, GT911 touch, ADC battery, deep-sleep pin holds, buzzer, green LED, beep and blink scripts |
+| `paperboy.h` | C++ helpers: sync body with the readings, event and log queue, RTC state, the SHT4x read, gray-level mapping, dithering (mono fallback), text rows, the scroll engine and HD44780 character mapping |
+| `sticky.yaml` | reTerminal Sticky: pins, gray4 panel, touch, BQ27220 fuel gauge, SHT40, buzzer, beep and blink scripts |
+| `e1001.yaml` | reTerminal E1001: pins, four-level UC8179 panel via `uc8179_gray4`, ADC battery, SHT4x on GPIO19/20, buzzer, green LED, beep and blink scripts |
+| `e1003.yaml` | reTerminal E1003: pins, 16-level IT8951 panel, GT911 touch, ADC battery, SHT4x, deep-sleep pin holds, buzzer, green LED, beep and blink scripts |
 | `text-common.yaml` | Shared cycle of text displays: register, sync, text poll at the plan's `refresh_s`, no sleep; scrolling boxes move on the `step_ms` of the sync answer, horizontally, vertically or both ([ADR 0118](../../docs/adr/0118-text-boxes-and-overflow.md)); the hardware file supplies the beep and blink scripts |
 | `lcd2004.yaml` | ESP32 dev board with a 20×4 HD44780 LCD behind a PCF8574 (I²C 0x27, SDA GPIO21, SCL GPIO22); prints every row through `pb_row`, so every scrolling box shows its window; a blink flashes the backlight |
 | `fonts/` | Go Mono Bold as a subset, the face of the logo's wordmark and the firmware version ([ADR 0098](../../docs/adr/0098-the-device-shows-the-lockup-and-its-version.md)), with its licence |
@@ -23,7 +23,8 @@ installation, nothing installation-specific is compiled in.
 |---|---|---|
 | Power-on | none | the lockup of the logo and the firmware version in the middle of the panel for 5 s ([ADR 0095](../../docs/adr/0095-the-logo-on-pages-and-devices.md), [0098](../../docs/adr/0098-the-device-shows-the-lockup-and-its-version.md)); a timer or button wake gets no splash, so a page change stays as fast as it is |
 | First contact | `POST /api/device/register` with `mac`, `hardware`, `firmware` | the key is kept in flash; `403` shows "Paperboy does not know this display" with the MAC |
-| Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `rssi`, `power`, `log` | `401` drops the key, registers again and repeats the sync; a failed request keeps the event queue and is retried up to three times ([ADR 0064](../../docs/adr/0064-device-protocol-v4.md)) |
+| Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `readings`, `rssi`, `power`, `log` | `401` drops the key, registers again and repeats the sync; a failed request keeps the event queue and is retried up to three times ([ADR 0064](../../docs/adr/0064-device-protocol-v4.md)) |
+| Room sensor | one SHT4x measurement per wake, before the sync | the firmware sends `temperature` and `humidity` in `readings`; a failed read sends no value, so the last one stays ([ADR 0134](../../docs/adr/0134-readings-from-the-device.md)) |
 | No key | `POST /api/device/register` is retried three times as well | without a key and with an unreachable server the device shows the setup screen with its address and the URL it has, instead of sleeping silently |
 | Pairing needed | the register answers `403` with a `code` ([ADR 0109](../../docs/adr/0109-pair-a-display.md)) | the panel shows `Pairing code` and the code instead of the setup instructions; the operator enters it in the device editor, and the next register takes the key. A repeated identical code does not repaint |
 | Unchanged content | `image.hash` equals the hash on the panel | no download, no paint |
