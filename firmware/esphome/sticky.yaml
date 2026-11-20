@@ -5,7 +5,7 @@
 
 substitutions:
   hardware: sticky
-  fw_version: "2.12.0"
+  fw_version: "2.13.0"
   # Buzzer of the Sticky: a passive piezo on LEDC PWM (ADR 0131).
   buzzer_pin: GPIO48
   # The mounting this image is built for; a device adds its quarter turn to it
@@ -310,6 +310,18 @@ script:
       - lambda: |-
           float usb = id(usb_volts).state;
           pb_power = std::isfinite(usb) && usb > 3.0f ? "mains" : "battery";
+
+  # The SHT40 sits on the sensor bus at 0x44, next to the BQ27220 (0x55) and the
+  # PCF8563 (0x51). One measurement per wake feeds the room reading (ADR 0134);
+  # a failed read leaves the reading out.
+  - id: read_climate
+    then:
+      - lambda: |-
+          float temperature, humidity;
+          if (pb_read_sht4x(id(i2c_sensor), temperature, humidity)) {
+            pb_add_reading("temperature", temperature);
+            pb_add_reading("humidity", humidity);
+          }
 
 sensor:
   - platform: adc
