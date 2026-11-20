@@ -107,6 +107,7 @@ Registration, sync, state and what a device receives. See [`03-devices.md`](../d
 | [0133](0133-the-page-cursor-holds-the-page.md) | The page cursor holds the page | Accepted, implemented; adds `page_name` to the device state, so an edit of a plan keeps a device on its page and keeps the first-page rule of [ADR-0130](0130-what-a-plan-refresh-does.md) for a rule change |
 | [0134](0134-readings-from-the-device.md) | Readings from the device | Accepted, implemented; adds the generic `readings` list to the sync body and the reading catalog, so the SHT4x of the Sticky, E1001 and E1003 reports the room on the dashboard; the plugin status and the page values follow with the widget |
 | [0137](0137-bound-unclaimed-device-registration.md) | Bound unclaimed device registration | Accepted, implemented; caps the unclaimed state of [ADR-0080](0080-device-state-per-mac.md) |
+| [0142](0142-a-manual-alert-waits-for-the-next-sync.md) | A manual alert waits for the next sync | Accepted, implemented; adds `pending_alert` to the device state and the `Signal` button on the dashboard, and reuses the `beep`/`blink` answer of [ADR-0131](0131-a-plan-rule-alerts-the-device.md) through the `alert_methods` of [ADR-0132](0132-alert-methods-per-device.md) without a firmware change |
 
 ## Displays, panels and firmware
 

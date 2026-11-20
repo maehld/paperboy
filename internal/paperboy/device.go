@@ -680,6 +680,17 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
 	}
+	// The rule or the operator asks for a signal (ADR 0131, 0142). The request
+	// is consumed here, before the snapshot, so it is one-shot and stored with
+	// the rest of this sync.
+	alert, alertSource := choice.alert, "rule"
+	if !opt.virtual && takeManualAlert(d, st, now, critical) {
+		alertSource = "manual"
+		if alert {
+			alertSource = "rule+manual"
+		}
+		alert = true
+	}
 	logged := *st
 	powerChanged := prevPower != logged.ReportedPower || prevCharger != chargerState(logged)
 	var stateData []byte
@@ -849,8 +860,8 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		attrs = append(attrs, "index", served.page, "pages", served.pages)
 	}
 	attrs = append(attrs, "rule", logged.Rule, "reason", req.Reason)
-	if choice.alert {
-		attrs = append(attrs, "alert", true)
+	if alert {
+		attrs = append(attrs, "alert", alertSource)
 	}
 	if len(buttons) > 0 {
 		attrs = append(attrs, "buttons", strings.Join(buttons, ","))
@@ -884,9 +895,10 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		Firmware: offer,
 		Wake:     wake,
 	}
-	// The rule decides whether to signal; the device file decides which
-	// methods it may use (ADR 0132). The firmware ignores a method it lacks.
-	if choice.alert {
+	// The rule or the operator decides whether to signal; the device file
+	// decides which methods it may use (ADR 0132). The firmware ignores a
+	// method it lacks.
+	if alert {
 		resp.Beep, resp.Blink = d.alertMethods()
 	}
 	if textDisplay {
@@ -994,7 +1006,8 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 	case critical:
 	case d.Plan != "":
 		// A copy keeps the cursor: a rule change only shows here and is
-		// stored by the next sync.
+		// stored by the next sync. The copy also keeps a queued manual alert,
+		// because only a sync consumes one (ADR 0142).
 		peek := *st
 		choice = s.choosePlanPage(resolved, cfg, d, &peek, now, true, false, nil, false, true)
 	default:

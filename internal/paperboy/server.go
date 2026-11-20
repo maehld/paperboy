@@ -238,6 +238,7 @@ func (s *Server) uiRoutes() []route {
 		// Device files (ADR 0070).
 		{"GET /api/devices/{id}", s.handleDevice},
 		{"GET /api/devices/{id}/image", s.handleDeviceImage},
+		{"POST /api/devices/{id}/alert", s.handleDeviceAlert},
 		{"PUT /api/devices/{id}", s.handleSaveDevice},
 		{"DELETE /api/devices/{id}", s.handleDeleteDevice},
 		{"POST /api/devices/{id}/rename", s.handleRenameDevice},

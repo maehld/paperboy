@@ -79,6 +79,11 @@ type deviceState struct {
 	// resolved actions.
 	Menu menuState `json:"menu,omitempty"`
 
+	// A manual alert from the operator (ADR 0142). The device cannot confirm a
+	// signal, so the state holds the request and its expiry until the next sync
+	// consumes it.
+	PendingAlert *pendingAlert `json:"pending_alert,omitempty"`
+
 	// Firmware updates (ADR 0043): the last offered version and its image
 	// checksum, whether the offer is still unanswered, and failed attempts for
 	// that version. Clearing firmware_failures lets Paperboy offer it again.
@@ -99,6 +104,13 @@ type deviceReading struct {
 // atomicWrite replaces one file in one step; tests replace it to make a write
 // fail at a chosen path.
 var atomicWrite = atomicfile.WriteFile
+
+// pendingAlert is a manual alert that waits for the device's next sync
+// (ADR 0142). At is when the operator asked, Until when the request expires.
+type pendingAlert struct {
+	At    time.Time `json:"at"`
+	Until time.Time `json:"until"`
+}
 
 func writeAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
