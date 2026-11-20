@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // requirePageKey guards a page or notice download (ADR 0097): the request has
@@ -46,21 +47,51 @@ func (s *Server) pageProfile(r *http.Request) string {
 	key, _ := strings.CutSuffix(r.PathValue("file"), ".png")
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.hints[key].profile
+	hp, ok := s.hints[key]
+	if !ok {
+		return ""
+	}
+	hp.used = time.Now()
+	s.hints[key] = hp
+	return hp.profile
 }
+
+// The note map only suppresses repeated log lines, so it must not grow without
+// limit (ADR 0138).
+type pageKeyNote struct {
+	reason string
+	at     time.Time
+}
+
+const (
+	maxPageKeyNotes = 256
+	pageKeyNoteTTL  = time.Hour
+)
 
 // notePageKey logs a refused download once per path and reason, so a display
 // with old firmware shows up in the journal without a line on every wake.
 func (s *Server) notePageKey(path, reason string) {
+	now := time.Now()
 	s.mu.Lock()
 	if s.pageKeyNotes == nil {
-		s.pageKeyNotes = map[string]string{}
+		s.pageKeyNotes = map[string]pageKeyNote{}
 	}
-	if s.pageKeyNotes[path] == reason {
+	if n, ok := s.pageKeyNotes[path]; ok && n.reason == reason {
 		s.mu.Unlock()
 		return
 	}
-	s.pageKeyNotes[path] = reason
+	if len(s.pageKeyNotes) >= maxPageKeyNotes {
+		for p, n := range s.pageKeyNotes {
+			if now.Sub(n.at) >= pageKeyNoteTTL {
+				delete(s.pageKeyNotes, p)
+			}
+		}
+		if len(s.pageKeyNotes) >= maxPageKeyNotes {
+			s.mu.Unlock()
+			return
+		}
+	}
+	s.pageKeyNotes[path] = pageKeyNote{reason: reason, at: now}
 	s.mu.Unlock()
 	slog.Info("page download refused", "path", path, "reason", reason)
 }

@@ -55,7 +55,7 @@ type Server struct {
 	pages        *pageLoader              // pages by file, reloaded on change (own lock)
 	skipNotes    map[string]string        // "<profile>/<page>" → last logged reason for skipping it
 	qoiNotes     map[string]string        // page path → last logged reason for simplifying it (ADR 0088)
-	pageKeyNotes map[string]string        // page path → last logged reason for refusing it (ADR 0097)
+	pageKeyNotes map[string]pageKeyNote   // page path → last logged reason for refusing it (ADR 0097)
 	unknownNotes map[string]time.Time     // MAC key → last log about its unclaimed registration (ADR 0136)
 	widgets      *widget.Host             // plugins and their widget cache (ADR 0049; own lock)
 	download     *downloadStatus          // release checks (ADR 0060; own lock)
@@ -620,6 +620,10 @@ func (s *Server) handleHint(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	hp := s.hints[key]
+	if hp.data != nil {
+		hp.used = time.Now()
+		s.hints[key] = hp
+	}
 	s.mu.Unlock()
 	if hp.data == nil {
 		http.NotFound(w, r)

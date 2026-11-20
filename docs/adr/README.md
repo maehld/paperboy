@@ -36,6 +36,7 @@ Where the instance lives, how it is configured and how its files relate. See [`0
 | [0070](0070-devices-in-their-own-files.md) | Devices in files of their own | Accepted, implemented; a missing display type no longer fails the load ([ADR-0079](0079-rename-config-items.md)) |
 | [0071](0071-display-types-in-files-of-their-own.md) | Display types in files of their own | Accepted, implemented; renaming in the editor added by [ADR-0079](0079-rename-config-items.md) |
 | [0079](0079-rename-config-items.md) | Renaming pages, plans, devices and display types | Accepted, implemented; supersedes the manual rename of [ADR-0071](0071-display-types-in-files-of-their-own.md) and the load failure of [ADR-0070](0070-devices-in-their-own-files.md); a device rename no longer moves state ([ADR-0080](0080-device-state-per-mac.md)) |
+| [0138](0138-bound-the-page-caches.md) | Bound the in-memory page caches | Accepted, implemented; caps the rendered and notice pages and the refusal notes |
 
 ## Pages, widgets and plans
 

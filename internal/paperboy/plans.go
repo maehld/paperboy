@@ -187,17 +187,43 @@ type hintPage struct {
 	data    []byte
 	profile string
 	at      time.Time // when the notice was drawn (ADR 0104)
+	used    time.Time // last download or menu use, for the LRU eviction (ADR 0138)
 }
+
+// maxHints bounds the generated notice pages in memory (ADR 0138). A page that
+// falls out is drawn again on the next request; a device with an old URL gets
+// 404 and keeps its screen until the next sync.
+const maxHints = 500
 
 // notice registers a generated page and returns where it is served. Only the
 // registration needs the lock; drawing happens before.
 func (s *Server) notice(profile string, img *image.Paletted) servedPage {
 	data := encodePNG(img)
 	key := hashBytes(data)
+	now := time.Now()
 	s.mu.Lock()
-	s.hints[key] = hintPage{data: data, profile: profile, at: time.Now()}
+	s.hints[key] = hintPage{data: data, profile: profile, at: now, used: now}
+	s.pruneHintsLocked()
 	s.mu.Unlock()
 	return servedPage{path: "/hints/" + key + ".png", hash: key}
+}
+
+// pruneHintsLocked drops the least recently used notice pages above the cap.
+// Callers hold s.mu.
+func (s *Server) pruneHintsLocked() {
+	for len(s.hints) > maxHints {
+		oldest, oldestAt := "", time.Time{}
+		for key, hp := range s.hints {
+			at := hp.used
+			if at.IsZero() {
+				at = hp.at
+			}
+			if oldest == "" || at.Before(oldestAt) {
+				oldest, oldestAt = key, at
+			}
+		}
+		delete(s.hints, oldest)
+	}
 }
 
 // hint registers a notice page with a title and a line of text. It draws the
@@ -230,8 +256,37 @@ func (s *Server) storePage(profile, name string, rp *renderedPage) servedPage {
 	}
 	s.rendered[key] = rp
 	s.renderedHash[rp.hash] = rp
+	s.pruneRenderedLocked(time.Now())
 	s.mu.Unlock()
 	return servedPage{path: fmt.Sprintf("/pages/%s/%s/%s.png", profile, name, rp.hash), hash: rp.hash}
+}
+
+// maxRendered and renderedTTL bound the rendered page cache (ADR 0138). The
+// cache is memory only; a dropped entry is composed again on the next request.
+const (
+	maxRendered = 256
+	renderedTTL = 24 * time.Hour
+)
+
+// pruneRenderedLocked drops stale renders and the oldest entries above the
+// cap. Callers hold s.mu.
+func (s *Server) pruneRenderedLocked(now time.Time) {
+	for key, rp := range s.rendered {
+		if !rp.at.IsZero() && now.Sub(rp.at) > renderedTTL {
+			s.forgetRenderedLocked(key, rp.hash)
+			delete(s.rendered, key)
+		}
+	}
+	for len(s.rendered) > maxRendered {
+		oldest, oldestAt := "", time.Time{}
+		for key, rp := range s.rendered {
+			if oldest == "" || rp.at.Before(oldestAt) {
+				oldest, oldestAt = key, rp.at
+			}
+		}
+		s.forgetRenderedLocked(oldest, s.rendered[oldest].hash)
+		delete(s.rendered, oldest)
+	}
 }
 
 // forgetRenderedLocked drops an old hash unless another cache key still names

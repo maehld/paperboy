@@ -40,6 +40,8 @@ Concurrency rule: a device request takes the configuration before it locks the s
 
 Paperboy replaces every file below `state/` through a unique temporary file and a rename. Two editors, a repeated sync or a plugin that saves at the same time therefore leave a complete file, never a mix.
 
+Two memory caches hold composed pages ([ADR 0138](../adr/0138-bound-the-page-caches.md)). The rendered pages hold at most 256 entries, and an entry older than 24 hours goes. The notice pages hold at most 500 entries and drop the least recently used. A dropped page is composed again on the next request. A device that asks for a dropped notice gets `404` and keeps its screen until the next sync. The notes that suppress repeated refusal logs keep at most 256 paths.
+
 ## Data flow
 
 1. A device wakes and calls `POST /api/device/sync`. The operator UI can ask the same questions for a plan preview or for the virtual display instead.
@@ -125,4 +127,4 @@ The whole configuration reloads on change ([ADR 0047](../adr/0047-config-reload.
 
 ## Decisions
 
-[ADR 0028](../adr/0028-paperboy-eigenes-repository.md), [0029](../adr/0029-repository-trennung-umgesetzt.md) (own repository) · [0031](../adr/0031-everything-in-english.md) (English) · [0033](../adr/0033-global-language-and-timezone.md) (language and timezone) · [0037](../adr/0037-instance-directory-layout.md) (instance directory) · [0047](../adr/0047-config-reload.md) (reload) · [0049](../adr/0049-plugin-widgets.md) (v2 and plugin widgets) · [0056](../adr/0056-repository-layout-and-release-trains.md) (repository and release trains) · [0070](../adr/0070-devices-in-their-own-files.md), [0071](../adr/0071-display-types-in-files-of-their-own.md) (device and display type files) · [0079](../adr/0079-rename-config-items.md) (renaming) · [0096](../adr/0096-a-password-for-the-operator-ui.md) (UI password) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values)
+[ADR 0028](../adr/0028-paperboy-eigenes-repository.md), [0029](../adr/0029-repository-trennung-umgesetzt.md) (own repository) · [0031](../adr/0031-everything-in-english.md) (English) · [0033](../adr/0033-global-language-and-timezone.md) (language and timezone) · [0037](../adr/0037-instance-directory-layout.md) (instance directory) · [0047](../adr/0047-config-reload.md) (reload) · [0049](../adr/0049-plugin-widgets.md) (v2 and plugin widgets) · [0056](../adr/0056-repository-layout-and-release-trains.md) (repository and release trains) · [0070](../adr/0070-devices-in-their-own-files.md), [0071](../adr/0071-display-types-in-files-of-their-own.md) (device and display type files) · [0079](../adr/0079-rename-config-items.md) (renaming) · [0096](../adr/0096-a-password-for-the-operator-ui.md) (UI password) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0137](../adr/0137-resolve-plans-outside-the-state-lock.md) (plans outside the state lock) · [0138](../adr/0138-bound-the-page-caches.md) (bounded page caches)
