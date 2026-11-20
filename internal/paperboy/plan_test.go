@@ -554,3 +554,55 @@ func TestPlanLoaderKeepsLastValidVersion(t *testing.T) {
 		t.Fatalf("fixed plan: %v %v", p3, err3)
 	}
 }
+
+// TestResolvePlanDoesNotNeedTheStateLock pins ADR 0137: plan loading, rule
+// selection and the page reads happen outside the state lock.
+func TestResolvePlanDoesNotNeedTheStateLock(t *testing.T) {
+	s, now := planServer(t, testPlan)
+	cfg := s.config()
+	d := &cfg.Devices[0]
+
+	s.mu.Lock()
+	done := make(chan planResolution, 1)
+	go func() { done <- s.resolvePlan(cfg, d, *now, nil) }()
+	select {
+	case res := <-done:
+		if res.plan == nil || !res.selected || len(res.pages) != 2 {
+			t.Fatalf("resolution under a held lock: %+v", res)
+		}
+	case <-time.After(2 * time.Second):
+		s.mu.Unlock()
+		t.Fatal("resolvePlan waits for the state lock")
+	}
+	s.mu.Unlock()
+}
+
+// TestResolvePlanSkipsMissingPages keeps the rule's order and names the pages
+// that do not fit; choosePlanPage records the reason for the journal.
+func TestResolvePlanSkipsMissingPages(t *testing.T) {
+	s, now := planServer(t, `
+rules:
+  - name: immer
+    pages: [eins, fehlt, zwei]
+`)
+	cfg := s.config()
+	d := &cfg.Devices[0]
+	res := s.resolvePlan(cfg, d, *now, nil)
+	if len(res.pages) != 2 || res.pages[0] != "eins" || res.pages[1] != "zwei" {
+		t.Fatalf("fitting pages: %+v", res.pages)
+	}
+	if len(res.skipped) != 1 || !strings.Contains(res.skipped[0], "fehlt") {
+		t.Fatalf("skipped: %+v", res.skipped)
+	}
+	s.mu.Lock()
+	st := &deviceState{}
+	choice := s.choosePlanPage(res, cfg, d, st, *now, true, false, nil, false, true)
+	reason := s.skipNotes["small/fehlt"]
+	s.mu.Unlock()
+	if choice.name != "eins" || choice.pages != 2 {
+		t.Fatalf("choice: %+v", choice)
+	}
+	if reason == "" {
+		t.Fatal("the skipped page has no note")
+	}
+}

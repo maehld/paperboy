@@ -36,7 +36,7 @@ Background loops keep the service warm:
 - The widget host renders cached widgets again before they expire and after a plugin reports a change ([ADR 0049](../adr/0049-plugin-widgets.md)).
 - The download check runs at startup and then once per `download.interval` ([ADR 0060](../adr/0060-download-from-releases.md)).
 
-Concurrency rule: a device request takes the configuration before it locks the state. It selects the page under the lock, and it renders, draws and writes without it. The values of a plan condition are read before the lock too ([ADR 0127](../adr/0127-plan-conditions-are-values.md)). A plugin request therefore never runs while the state lock is held, and a slow plugin cannot block the other devices.
+Concurrency rule: a device request takes the configuration before it locks the state. It resolves the plan, its rule and the pages that fit before the lock ([ADR 0137](../adr/0137-resolve-plans-outside-the-state-lock.md)) and applies the page cursor under it. It renders, draws and writes without the lock. The values of a plan condition are read before the lock too ([ADR 0127](../adr/0127-plan-conditions-are-values.md)). A plugin request therefore never runs while the state lock is held, and a slow plugin cannot block the other devices.
 
 Paperboy replaces every file below `state/` through a unique temporary file and a rename. Two editors, a repeated sync or a plugin that saves at the same time therefore leave a complete file, never a mix.
 

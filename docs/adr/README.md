@@ -74,6 +74,7 @@ The content model: what a page is, what draws in it and when it is shown. See [`
 | [0128](0128-a-default-grid-per-display-type.md) | A default grid per display type | Accepted, implemented; keeps the reference grid of [ADR-0049](0049-plugin-widgets.md) for declarations, adds `grid` to a display type as the start for new pages, and leaves the variant rule of [ADR-0110](0110-pages-serve-their-kind-and-name-variants.md) alone |
 | [0130](0130-what-a-plan-refresh-does.md) | What a plan refresh does | Accepted, implemented; replaces `rotate` of [ADR-0025](0025-plaene-je-display.md) with `on_refresh`, removes `defaults.page_timeout` and its extra wake; a rule change always starts at the first page |
 | [0131](0131-a-plan-rule-alerts-the-device.md) | A plan rule alerts the device | Accepted, implemented; adds `alert: once` and `alert: refresh` to a rule and `beep`/`blink` to the sync answer, with one script per method in each hardware type |
+| [0137](0137-resolve-plans-outside-the-state-lock.md) | Resolve plans and pages outside the state lock | Accepted, implemented; moves plan loading, rule selection and page reads before the state lock |
 
 ## Devices and the device protocol
 

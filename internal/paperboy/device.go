@@ -498,6 +498,9 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		// numbers of the real devices (ADR 0091, 0104).
 		defer s.stats.Start("sync.device:" + d.ID)()
 	}
+	// The plan, its rule and the pages that fit are read before the state lock
+	// (ADR 0137): a slow page file must not block the other devices.
+	resolved := s.resolvePlan(cfg, d, now, opt.values)
 	s.lock("sync.lock")
 	// The journal gets one line when the power source or the charger state
 	// changes instead of repeating it on every sync (issue #200).
@@ -629,10 +632,8 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 			menuClosed = true
 		}
 		var acts []plan.PlanAction
-		if p, _ := s.plans.get(cfg.Plans, d.Plan, cfg.Timezone); p != nil {
-			if sel, ok := p.Select(now, opt.values); ok {
-				acts = sel.Actions
-			}
+		if resolved.selected {
+			acts = resolved.selection.Actions
 		}
 		// Buttons of a wake that finds the menu open belong to the menu, even
 		// when they close it: dismissing a banner must not turn the page
@@ -674,7 +675,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		st.Page, st.PageName = 0, ""
 	case d.Plan != "":
 		planDone := s.stats.Start("sync.plan")
-		choice = s.choosePlanPage(cfg, d, st, now, opt.values, firstContact, req.Reason == "timer", pageButtons, menuSync, false)
+		choice = s.choosePlanPage(resolved, cfg, d, st, now, firstContact, req.Reason == "timer", pageButtons, menuSync, false)
 		planDone()
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
@@ -975,6 +976,7 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 	planName, profile := d.Plan, d.Profile
 	s.mu.Unlock()
 	values := s.planValues(r.Context(), cfg, planName, profile, d)
+	resolved := s.resolvePlan(cfg, d, now, values)
 	s.lock("poll.lock")
 	d, st = s.deviceByKeyLocked(r, cfg)
 	if d == nil {
@@ -994,7 +996,7 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 		// A copy keeps the cursor: a rule change only shows here and is
 		// stored by the next sync.
 		peek := *st
-		choice = s.choosePlanPage(cfg, d, &peek, now, values, true, false, nil, false, true)
+		choice = s.choosePlanPage(resolved, cfg, d, &peek, now, true, false, nil, false, true)
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
 	}

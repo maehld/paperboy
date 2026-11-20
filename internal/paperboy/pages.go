@@ -3,7 +3,6 @@ package paperboy
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -130,28 +129,6 @@ func (s *Server) fits(cfg *Config, profile, name string) error {
 		return nil
 	}
 	return t.Fits(s.display(cfg, p))
-}
-
-// fittingPages keeps the pages of a plan rule that fit the device's display
-// type. A skipped page is logged once per display type and page, and again
-// only when the reason changes. Callers hold s.mu.
-func (s *Server) fittingPages(cfg *Config, profile string, names []string) ([]string, []string) {
-	var out, reasons []string
-	for _, name := range names {
-		key := profile + "/" + name
-		err := s.fits(cfg, profile, name)
-		if err == nil {
-			out = append(out, name)
-			delete(s.skipNotes, key)
-			continue
-		}
-		reasons = append(reasons, name+": "+err.Error())
-		if s.skipNotes[key] != err.Error() {
-			s.skipNotes[key] = err.Error()
-			slog.Info("page skipped for display type", "display_type", profile, "page", name, "reason", err)
-		}
-	}
-	return out, reasons
 }
 
 // joinReasons keeps a notice short.

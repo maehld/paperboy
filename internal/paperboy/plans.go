@@ -350,15 +350,81 @@ type planChoice struct {
 	actions  []plan.PlanAction // the plan's actions for the device menu (ADR 0057)
 }
 
-// choosePlanPage evaluates the device plan and advances the page cursor.
-// Callers hold s.mu and pass the configuration snapshot of the request: no
-// config access happens under the state lock (ADR 0047). Rendering happens
-// later in renderPlan. paused freezes paging while the device menu is open
-// (ADR 0057): the page stays and a timed change waits. timed marks a timed
-// refresh, which is when a rule with alert: refresh alerts again (ADR 0131). A
-// rule change always starts at the first page (ADR 0130).
-func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now time.Time, values plan.Values, firstContact, timed bool, buttons []string, paused, quiet bool) planChoice {
-	p, err := s.plans.get(cfg.Plans, d.Plan, cfg.Timezone)
+// planResolution is a device plan evaluated before the state lock: the plan,
+// the rule it selects and the pages of that rule that fit the display type. A
+// slow page read therefore never blocks the other devices (ADR 0137).
+type planResolution struct {
+	plan      *plan.Plan
+	err       error
+	selection plan.Selection
+	selected  bool
+	pages     []string  // pages of the selected rule that fit, in rule order
+	skipped   []string  // "page: reason" for the pages that do not fit
+	fitNotes  []pageFit // one entry per page of the selected rule
+}
+
+// pageFit is one page of the selected rule and why it does not fit; an empty
+// reason means it fits.
+type pageFit struct {
+	page   string
+	reason string
+}
+
+// resolvePlan loads the plan, selects its rule and keeps the pages that fit the
+// device's display type. It runs outside the state lock; a missing plan or a
+// failing page is part of the answer, not an error of the caller.
+func (s *Server) resolvePlan(cfg *Config, d *Device, now time.Time, values plan.Values) planResolution {
+	r := planResolution{}
+	if d.Plan == "" {
+		return r
+	}
+	r.plan, r.err = s.plans.get(cfg.Plans, d.Plan, cfg.Timezone)
+	if r.plan == nil {
+		return r
+	}
+	sel, ok := r.plan.Select(now, values)
+	if !ok {
+		return r
+	}
+	r.selection, r.selected = sel, true
+	for _, name := range sel.Pages {
+		reason := ""
+		if err := s.fits(cfg, d.Profile, name); err == nil {
+			r.pages = append(r.pages, name)
+		} else {
+			reason = err.Error()
+			r.skipped = append(r.skipped, name+": "+reason)
+		}
+		r.fitNotes = append(r.fitNotes, pageFit{page: name, reason: reason})
+	}
+	return r
+}
+
+// announceSkippedLocked updates the skip notes and logs a page that stopped
+// fitting once per display type and page. Callers hold s.mu.
+func (s *Server) announceSkippedLocked(d *Device, r planResolution) {
+	for _, f := range r.fitNotes {
+		key := d.Profile + "/" + f.page
+		if f.reason == "" {
+			delete(s.skipNotes, key)
+			continue
+		}
+		if s.skipNotes[key] != f.reason {
+			s.skipNotes[key] = f.reason
+			slog.Info("page skipped for display type", "display_type", d.Profile, "page", f.page, "reason", f.reason)
+		}
+	}
+}
+
+// choosePlanPage applies a resolved plan under the state lock and advances the
+// page cursor. Callers hold s.mu and pass the configuration snapshot of the
+// request: plan loading and page reads happen before the lock (ADR 0137).
+// Rendering happens later in renderPlan. paused freezes paging while the
+// device menu is open (ADR 0057): the page stays and a timed change waits.
+// timed marks a timed refresh, which is when a rule with alert: refresh alerts
+// again (ADR 0131). A rule change always starts at the first page (ADR 0130).
+func (s *Server) choosePlanPage(res planResolution, cfg *Config, d *Device, st *deviceState, now time.Time, firstContact, timed bool, buttons []string, paused, quiet bool) planChoice {
+	p, err := res.plan, res.err
 	if p == nil {
 		if !quiet {
 			slog.Error("plan unavailable", "device", d.ID, "plan", d.Plan, "error", err)
@@ -372,12 +438,12 @@ func (s *Server) choosePlanPage(cfg *Config, d *Device, st *deviceState, now tim
 	if err != nil && !quiet {
 		slog.Warn("plan invalid, using the last valid version", "device", d.ID, "plan", d.Plan, "error", err)
 	}
-	sel, ok := p.Select(now, values)
-	if !ok {
+	s.announceSkippedLocked(d, res)
+	if !res.selected {
 		title, text := cfg.texts().noSelection()
 		return planChoice{title: title, text: text}
 	}
-	pages, skipped := s.fittingPages(cfg, d.Profile, sel.Pages)
+	sel, pages, skipped := res.selection, res.pages, res.skipped
 	if len(pages) == 0 {
 		title, text := cfg.texts().noFittingPage(sel.Rule, d.Profile)
 		return planChoice{title: title, text: shorten(text + " " + joinReasons(skipped)),
