@@ -1062,6 +1062,11 @@ func wrapMenu(s string, width int, size float64) []string {
 func (s *Server) menuOverlay(page servedPage, profile string, p Profile, v menuView, t texts) (servedPage, error) {
 	s.mu.Lock()
 	data := s.hints[page.hash].data
+	if len(data) != 0 {
+		hp := s.hints[page.hash]
+		hp.used = time.Now()
+		s.hints[page.hash] = hp
+	}
 	if len(data) == 0 {
 		if rp := s.renderedPageLocked(profile, page.name, page.hash); rp != nil {
 			data = rp.data

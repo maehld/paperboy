@@ -320,9 +320,11 @@ type Config struct {
 
 // UIConfig is the operator UI section (ADR 0096). The password guards every
 // route of the UI and its API; an empty password keeps the UI open like a v2
-// instance that never set one.
+// instance that never set one. Hosts limits the Host header the UI answers to
+// (ADR 0136); an empty list accepts every host.
 type UIConfig struct {
-	Password string // ui.password, ${VAR} already expanded from the environment
+	Password string   // ui.password, ${VAR} already expanded from the environment
+	Hosts    []string // ui.hosts, lower case and without a port
 }
 
 // Plugin is one plugin (ADR 0049): a long-running program in the plugins
@@ -423,7 +425,8 @@ type fileConfig struct {
 	} `yaml:"firmware"`
 	Download *downloadFile `yaml:"download"`
 	UI       struct {
-		Password string `yaml:"password"` // operator UI password (ADR 0096)
+		Password string   `yaml:"password"` // operator UI password (ADR 0096)
+		Hosts    []string `yaml:"hosts"`    // host names the UI answers to (ADR 0136)
 	} `yaml:"ui"`
 	Plugins map[string]struct {
 		Command any               `yaml:"command"` // removed by ADR 0060; rejected with a hint
@@ -589,6 +592,9 @@ func LoadConfig(dir string) (*Config, error) {
 		}
 		c.UI.Password, _ = v.(string)
 	}
+	// Host names a browser uses to reach the UI (ADR 0136); the comparison
+	// ignores case and the port, so "Paperboy.Local:8090" works too.
+	c.UI.Hosts = append([]string(nil), f.UI.Hosts...)
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
@@ -598,6 +604,15 @@ func (c *Config) validate() error {
 	if c.Timezone == nil {
 		c.Timezone = time.Local
 	}
+	hosts := make([]string, 0, len(c.UI.Hosts))
+	for _, host := range c.UI.Hosts {
+		h := hostOnly(host)
+		if h == "" || strings.ContainsAny(h, "/\\@?#") {
+			return fmt.Errorf("ui: hosts: %q is not a host name; give a name or an IP address without a scheme, port or path", host)
+		}
+		hosts = append(hosts, h)
+	}
+	c.UI.Hosts = hosts
 	if c.Language == "" {
 		c.Language = detectLanguage()
 	}

@@ -1,6 +1,8 @@
 package paperboy
 
 import (
+	"errors"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -242,16 +244,20 @@ func TestMoveVariant(t *testing.T) {
 		}
 	}
 
-	// A failed target write puts the file and the source page back: the blocking
-	// path makes os.WriteFile fail without a permission check.
+	// A failed target write puts the file and the source page back: the test
+	// replaces the atomic writer for that one path.
 	writePage(t, s, "quell", "", strings.Replace(pageWithVariant, "title: Solar", "title: Quelle", 1))
 	writePage(t, s, "quell", "hochkant", variantPage)
 	writePage(t, s, "voll", "", targetPage)
-	blocked := filepath.Join(s.config().Pages, "voll.yaml.tmp")
-	if err := os.MkdirAll(blocked, 0o755); err != nil {
-		t.Fatal(err)
+	targetPath := filepath.Join(s.config().Pages, "voll.yaml")
+	oldWrite := atomicWrite
+	atomicWrite = func(path string, data []byte, perm fs.FileMode) error {
+		if path == targetPath {
+			return errors.New("target write blocked")
+		}
+		return oldWrite(path, data, perm)
 	}
-	defer os.RemoveAll(blocked)
+	defer func() { atomicWrite = oldWrite }()
 	var quell editorPage
 	request(t, s, http.MethodGet, "/api/pages/quell", nil, &quell)
 	quellBefore, err := os.ReadFile(filepath.Join(s.config().Pages, "quell.yaml"))

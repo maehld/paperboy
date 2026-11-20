@@ -223,6 +223,51 @@ func clientIP(r *http.Request) string {
 	return strings.Trim(r.RemoteAddr, "[]")
 }
 
+// maxUnclaimed bounds the hardware that registered without a device file
+// (ADR 0137). Registration takes no key, so any LAN client can create an entry;
+// the operator claims or forgets hardware in the devices tab.
+const (
+	maxUnclaimed    = 10
+	unknownNoteTTL  = time.Hour
+	unknownNotesMax = 256
+)
+
+// unclaimedCountLocked counts the state entries no device file uses. Callers
+// hold s.mu.
+func (s *Server) unclaimedCountLocked(cfg *Config) int {
+	n := 0
+	for key, st := range s.state {
+		if !st.FirstSeen.IsZero() && cfg.device(formatStateKey(key)) == nil {
+			n++
+		}
+	}
+	return n
+}
+
+// noteUnknownLocked reports whether the journal should log this MAC now: once
+// per TTL, and never beyond a bounded number of remembered MACs. Callers hold
+// s.mu.
+func (s *Server) noteUnknownLocked(key string, now time.Time) bool {
+	if s.unknownNotes == nil {
+		s.unknownNotes = map[string]time.Time{}
+	}
+	if t, ok := s.unknownNotes[key]; ok && now.Sub(t) < unknownNoteTTL {
+		return false
+	}
+	if len(s.unknownNotes) >= unknownNotesMax {
+		for k, t := range s.unknownNotes {
+			if now.Sub(t) >= unknownNoteTTL {
+				delete(s.unknownNotes, k)
+			}
+		}
+		if len(s.unknownNotes) >= unknownNotesMax {
+			return false
+		}
+	}
+	s.unknownNotes[key] = now
+	return true
+}
+
 // decodeDeviceJSON reads a size-limited JSON body; unknown fields are ignored
 // so newer firmware can add fields without breaking older servers.
 func decodeDeviceJSON(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -262,7 +307,23 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	device := cfg.device(req.MAC)
 	now := s.now()
 	s.mu.Lock()
-	st := s.stateLocked(key)
+	st := s.state[key]
+	if device == nil && (st == nil || st.FirstSeen.IsZero()) && s.unclaimedCountLocked(cfg) >= maxUnclaimed {
+		// The state map and state/devices/ stay bounded: any LAN client can
+		// register a MAC without a key, so unclaimed hardware is capped
+		// (ADR 0137). The log names a MAC once, not once per attempt.
+		logged := s.noteUnknownLocked(key, now)
+		s.mu.Unlock()
+		if logged {
+			slog.Warn("registration from unknown device refused: the unclaimed list is full",
+				"mac", formatStateKey(key), "limit", maxUnclaimed, "hardware", req.Hardware, "firmware", req.Firmware)
+		}
+		http.Error(w, "the unclaimed hardware list is full; claim or forget a device in the devices tab first", http.StatusForbidden)
+		return
+	}
+	if st == nil {
+		st = s.stateLocked(key)
+	}
 	if st.FirstSeen.IsZero() {
 		st.FirstSeen = now
 	}
@@ -274,10 +335,13 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if device == nil {
 		st.LastSeen = now
 		stateData := s.stateSnapshotLocked(st)
+		logged := s.noteUnknownLocked(key, now)
 		s.mu.Unlock()
 		s.saveState(key, stateData)
-		slog.Warn("registration from unknown device; claim it in the device editor or add its MAC to a device file",
-			"mac", formatStateKey(key), "hardware", req.Hardware, "firmware", req.Firmware)
+		if logged {
+			slog.Warn("registration from unknown device; claim it in the device editor or add its MAC to a device file",
+				"mac", formatStateKey(key), "hardware", req.Hardware, "firmware", req.Firmware)
+		}
 		http.Error(w, "device not configured", http.StatusForbidden)
 		return
 	}
@@ -434,6 +498,9 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		// numbers of the real devices (ADR 0091, 0104).
 		defer s.stats.Start("sync.device:" + d.ID)()
 	}
+	// The plan, its rule and the pages that fit are read before the state lock
+	// (ADR 0138): a slow page file must not block the other devices.
+	resolved := s.resolvePlan(cfg, d, now, opt.values)
 	s.lock("sync.lock")
 	// The journal gets one line when the power source or the charger state
 	// changes instead of repeating it on every sync (issue #200).
@@ -565,10 +632,8 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 			menuClosed = true
 		}
 		var acts []plan.PlanAction
-		if p, _ := s.plans.get(cfg.Plans, d.Plan, cfg.Timezone); p != nil {
-			if sel, ok := p.Select(now, opt.values); ok {
-				acts = sel.Actions
-			}
+		if resolved.selected {
+			acts = resolved.selection.Actions
 		}
 		// Buttons of a wake that finds the menu open belong to the menu, even
 		// when they close it: dismissing a banner must not turn the page
@@ -610,7 +675,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		st.Page, st.PageName = 0, ""
 	case d.Plan != "":
 		planDone := s.stats.Start("sync.plan")
-		choice = s.choosePlanPage(cfg, d, st, now, opt.values, firstContact, req.Reason == "timer", pageButtons, menuSync, false)
+		choice = s.choosePlanPage(resolved, cfg, d, st, now, firstContact, req.Reason == "timer", pageButtons, menuSync, false)
 		planDone()
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
@@ -911,6 +976,7 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 	planName, profile := d.Plan, d.Profile
 	s.mu.Unlock()
 	values := s.planValues(r.Context(), cfg, planName, profile, d)
+	resolved := s.resolvePlan(cfg, d, now, values)
 	s.lock("poll.lock")
 	d, st = s.deviceByKeyLocked(r, cfg)
 	if d == nil {
@@ -930,7 +996,7 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 		// A copy keeps the cursor: a rule change only shows here and is
 		// stored by the next sync.
 		peek := *st
-		choice = s.choosePlanPage(cfg, d, &peek, now, values, true, false, nil, false, true)
+		choice = s.choosePlanPage(resolved, cfg, d, &peek, now, true, false, nil, false, true)
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
 	}

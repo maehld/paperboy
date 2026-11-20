@@ -383,6 +383,11 @@ Keep no secrets in the state (a fingerprint of a key is enough), version the
 object so a later plugin can discard a format it does not know, and treat the
 blobs as a cache that can be rebuilt.
 
+A plugin is a separate program, but Paperboy does not sandbox it. It runs
+with the rights of the operator. Install only plugins you trust. A plugin
+also inherits only an allowlist of the Paperboy environment
+([ADR 0135](../adr/0135-a-minimal-environment-for-plugins.md)).
+
 ## Go helper
 
 A Go plugin implements `plugin.Handler`:

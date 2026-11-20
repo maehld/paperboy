@@ -14,12 +14,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/maehld/paperboy/internal/atomicfile"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
@@ -434,11 +436,7 @@ func writeStateFile(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.WriteFile(path, data, 0o600)
 }
 
 // read dispatches the plugin's lines: answers to their request, events to
@@ -589,17 +587,53 @@ func resolveCommand(dir, name string) (string, error) {
 	return exec.LookPath(name)
 }
 
-// environ returns the inherited environment plus the configured keys, sorted
-// so that a plugin sees a stable order.
+// inheritedEnvironment names the variables a plugin inherits from Paperboy.
+// The list is an allowlist: Paperboy itself carries secrets such as
+// PAPERBOY_UI_PASSWORD and PAPERBOY_DOWNLOAD_TOKEN, and a plugin has no business
+// reading them (ADR 0134). A plugin adds its own values through spec.Env.
+var inheritedEnvironment = []string{
+	"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR",
+	"LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "LC_NUMERIC", "LC_TIME",
+	"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+	"http_proxy", "https_proxy", "no_proxy", "all_proxy",
+	// Windows needs these to start a program and to load system libraries.
+	"SystemRoot", "SystemDrive", "windir", "ComSpec", "PATHEXT",
+	"TEMP", "TMP", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA",
+	"LOCALAPPDATA", "USERNAME",
+}
+
+// environ returns the allowlisted environment plus the configured keys. A
+// configured key replaces an inherited one with the same name, and on Windows
+// the comparison ignores case, so a plugin never sees two values for one key.
+// The result is sorted, so a plugin sees a stable order.
 func environ(extra map[string]string) []string {
-	keys := make([]string, 0, len(extra))
-	for k := range extra {
-		keys = append(keys, k)
+	values := make(map[string]string, len(inheritedEnvironment)+len(extra))
+	names := make(map[string]string, len(inheritedEnvironment)+len(extra))
+	for _, key := range inheritedEnvironment {
+		if v, ok := os.LookupEnv(key); ok {
+			canonical := environmentKey(key)
+			values[canonical] = v
+			names[canonical] = key
+		}
 	}
-	sort.Strings(keys)
-	out := os.Environ()
-	for _, k := range keys {
-		out = append(out, k+"="+extra[k])
+	for key, v := range extra {
+		canonical := environmentKey(key)
+		values[canonical] = v
+		names[canonical] = key
 	}
+	out := make([]string, 0, len(values))
+	for canonical, v := range values {
+		out = append(out, names[canonical]+"="+v)
+	}
+	sort.Strings(out)
 	return out
+}
+
+// environmentKey folds a variable name for the duplicate check. Windows
+// environment names are case-insensitive.
+func environmentKey(key string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToUpper(key)
+	}
+	return key
 }

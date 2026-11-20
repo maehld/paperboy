@@ -1,6 +1,7 @@
 package paperboy
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +17,54 @@ func deviceInfoOf(t *testing.T, s *Server) map[string]any {
 	return devices[0].(map[string]any)
 }
 
-// TestDevicesAPIShowsServedPage checks that the devices API names the page the
+// TestDevicesAPINamesOnlyKnownFields keeps GET /api/devices an explicit field
+// set and never exposes the device key or the pairing state (ADR 0140).
+func TestDevicesAPINamesOnlyKnownFields(t *testing.T) {
+	s, now := planServer(t, testPlan)
+	planDevice(t, s)
+	key, err := deviceStateKey(planDeviceMAC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	st := s.state[key]
+	st.PairCode, st.PairTries, st.PairExpiry, st.PairAuthorized = "ABC123", 2, now.Add(time.Minute), true
+	apiKey := st.APIKey
+	s.mu.Unlock()
+
+	info := deviceInfoOf(t, s)
+	allowed := map[string]bool{}
+	for _, name := range []string{
+		"id", "protocol", "mac", "display_type", "plan", "registered", "status",
+		"last_page_url", "firmware_available", "firmware_status", "power", "problem",
+		"page", "page_name", "first_seen", "last_seen", "client_ip",
+		"battery_voltage", "battery_percent", "battery_mah", "battery_ma", "battery_charging",
+		"rssi", "firmware", "hardware", "wake_reason", "battery_level", "rule",
+		"charge", "last_charge", "battery_history", "reported_power", "reported_touch",
+		"paired_at", "last_page", "last_page_kind", "last_page_hash", "last_pages",
+		"scroll_hash", "last_page_time", "last_refresh", "last_interval", "last_error",
+		"last_text", "last_event_id", "menu", "firmware_pending", "firmware_failures",
+	} {
+		allowed[name] = true
+	}
+	for name := range info {
+		if !allowed[name] {
+			t.Errorf("the devices API names an unlisted field %q", name)
+		}
+	}
+	for _, secret := range []string{"api_key", "pair_code", "pair_expiry", "pair_tries", "pair_authorized"} {
+		if _, ok := info[secret]; ok {
+			t.Errorf("the devices API exposes %q", secret)
+		}
+	}
+	rec := request(t, s, http.MethodGet, "/api/devices", nil, nil)
+	for name, value := range map[string]string{"pair code": "ABC123", "device key": apiKey} {
+		if strings.Contains(rec.Body.String(), value) {
+			t.Errorf("the devices API leaks the %s", name)
+		}
+	}
+}
+
 // device was last pointed at, including its URL and refresh.
 func TestDevicesAPIShowsServedPage(t *testing.T) {
 	s, now := planServer(t, testPlan)
