@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/maehld/paperboy/internal/plan"
+	"github.com/maehld/paperboy/internal/reading"
 )
 
 // Button roles of the device API (ADR 0042). The firmware maps its physical
@@ -72,10 +73,18 @@ type syncRequest struct {
 	Events   []syncEvent      `json:"events"`
 	Shown    string           `json:"shown"`
 	Battery  *syncBattery     `json:"battery"`
+	Readings []syncReading    `json:"readings"` // measured values of this wake (ADR 0134)
 	RSSI     *int             `json:"rssi"`
 	Log      []deviceLogEntry `json:"log"`
 	Power    string           `json:"power"` // battery or mains, if the hardware knows (ADR 0051)
 	Touch    *bool            `json:"touch"` // the hardware has a digitiser (ADR 0082)
+}
+
+// syncReading is one measured value of this wake. The name is the key of the
+// reading catalog; the firmware sends a bare number in the catalog's unit.
+type syncReading struct {
+	Name  string   `json:"name"`
+	Value *float64 `json:"value"` // absent or null when the measurement failed
 }
 
 type syncImage struct {
@@ -450,6 +459,31 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		st.BatteryPercent, st.BatteryMAH, st.BatteryMA = b.Percent, b.MAH, b.MA
 		st.BatteryCharging = b.Charging
 		trackBattery(st, b, now)
+	}
+	// Readings are the measured values of this wake, e.g. the room's
+	// temperature and humidity. A name the catalog does not know, a missing
+	// value and an implausible number are discarded, so a sensor fault never
+	// costs the device its page (ADR 0134).
+	if len(req.Readings) > 0 {
+		if st.Readings == nil {
+			st.Readings = map[string]deviceReading{}
+		}
+		for _, r := range req.Readings {
+			spec, ok := reading.Lookup(r.Name)
+			if !ok {
+				slog.Debug("ignoring an unknown reading", "device", d.ID, "reading", r.Name)
+				continue
+			}
+			if r.Value == nil {
+				slog.Warn("discarding a reading without a value", "device", d.ID, "reading", r.Name)
+				continue
+			}
+			if !spec.Valid(*r.Value) {
+				slog.Warn("discarding an implausible reading", "device", d.ID, "reading", r.Name, "value", *r.Value)
+				continue
+			}
+			st.Readings[r.Name] = deviceReading{Value: *r.Value, At: now}
+		}
 	}
 	prevLevel := st.BatteryLevel
 	st.BatteryLevel = nextBatteryLevel(cfg.battery(d), prevLevel, st.BatteryVoltage)

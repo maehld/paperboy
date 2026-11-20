@@ -7,7 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
+
+	"github.com/maehld/paperboy/internal/reading"
 )
 
 // dashboardTemplate is the operator overview. It is read-only and rendered on
@@ -90,34 +93,37 @@ func serveSVG(w http.ResponseWriter, data []byte) {
 // dashboardDevice is one card of the overview. It carries display-ready texts
 // so the template holds no formatting logic.
 type dashboardDevice struct {
-	ID          string
-	Status      string // ok, late, never or unregistered
-	Type        string // display type: the operator's label for the page layout
-	Hardware    string // hardware the device reports; empty until it registered
-	Plan        string // plan name, "no plan" when empty
-	Rule        string // active plan rule, empty when unknown
-	Content     string // page name, "notice", "battery warning" or empty
-	ImageURL    string // last served image, else the current page's preview; empty for a placeholder
-	Waiting     string // placeholder text when there is neither an image nor text
-	Power       string // charge state with the charge or voltage, e.g. "Charging · 50 %" (ADR 0051)
-	Battery     string // raw fuel gauge reading for the details, e.g. "3.83 V · 50 % · +568 mA"
-	LastCharge  string // last finished charging episode, e.g. "2 h ago · 41 → 50 %" (issue #205)
-	Runtime     string // estimated battery runtime, e.g. "~12 d" or "still collecting" (issue #207, #236)
-	RuntimeNote string // "estimated" or "early estimate", empty while collecting
-	RuntimeHint string // tooltip on the Runtime row: the data behind it
-	Width       int
-	Height      int
-	Text        []string // text displays: the last served lines
-	Refresh     string   // "every 10 min · next in 4 min", empty when unknown
-	SeenAgo     string   // last contact, "never" when unknown
-	Address     string   // source address of the last contact, empty when unknown (ADR 0083)
-	ServedAgo   string   // age of the last served page
-	Firmware    string   // running version, available version and update status
-	Menu        string   // open menu phase and selected action (ADR 0057)
-	Actions     string   // "denied", empty when the device may use actions
-	Problem     string   // why the device cannot sync, empty when it can (ADR 0079)
-	Error       string   // last render or plan error
-	VirtualURL  string   // the plan as a virtual display, empty without a plan (ADR 0091)
+	ID            string
+	Status        string // ok, late, never or unregistered
+	Type          string // display type: the operator's label for the page layout
+	Hardware      string // hardware the device reports; empty until it registered
+	Plan          string // plan name, "no plan" when empty
+	Rule          string // active plan rule, empty when unknown
+	Content       string // page name, "notice", "battery warning" or empty
+	ImageURL      string // last served image, else the current page's preview; empty for a placeholder
+	Waiting       string // placeholder text when there is neither an image nor text
+	Power         string // charge state with the charge or voltage, e.g. "Charging · 50 %" (ADR 0051)
+	Battery       string // raw fuel gauge reading for the details, e.g. "3.83 V · 50 % · +568 mA"
+	LastCharge    string // last finished charging episode, e.g. "2 h ago · 41 → 50 %" (issue #205)
+	Runtime       string // estimated battery runtime, e.g. "~12 d" or "still collecting" (issue #207, #236)
+	RuntimeNote   string // "estimated" or "early estimate", empty while collecting
+	RuntimeHint   string // tooltip on the Runtime row: the data behind it
+	Readings      string // measured values of the room, e.g. "21.5 °C · 45 %" (ADR 0134)
+	ReadingsKeys  string // the catalog names behind them, as the tooltip
+	ReadingsSince string // age of the oldest shown value, empty while the last sync brought it
+	Width         int
+	Height        int
+	Text          []string // text displays: the last served lines
+	Refresh       string   // "every 10 min · next in 4 min", empty when unknown
+	SeenAgo       string   // last contact, "never" when unknown
+	Address       string   // source address of the last contact, empty when unknown (ADR 0083)
+	ServedAgo     string   // age of the last served page
+	Firmware      string   // running version, available version and update status
+	Menu          string   // open menu phase and selected action (ADR 0057)
+	Actions       string   // "denied", empty when the device may use actions
+	Problem       string   // why the device cannot sync, empty when it can (ADR 0079)
+	Error         string   // last render or plan error
+	VirtualURL    string   // the plan as a virtual display, empty without a plan (ADR 0091)
 }
 
 type dashboardPage struct {
@@ -154,35 +160,39 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	for _, d := range s.deviceInfos() {
 		image, waiting := imageText(d, profiles[d.Profile].text())
 		runtimeValue, runtimeNote, runtimeHint := runtimeCard(d.Power, d.deviceState)
+		readingsValue, readingsKeys, readingsSince := readingsText(d.deviceState, now)
 		cards = append(cards, dashboardDevice{
-			ID:          d.ID,
-			Status:      d.Status,
-			Type:        d.Profile,
-			Hardware:    d.Hardware,
-			Plan:        planText(d.Plan),
-			Rule:        d.Rule,
-			Content:     contentText(d.deviceState),
-			ImageURL:    image,
-			Waiting:     waiting,
-			Power:       powerText(d.Power, d.deviceState),
-			Battery:     batteryText(d.deviceState),
-			LastCharge:  chargeText(d.deviceState, now),
-			Runtime:     runtimeValue,
-			RuntimeNote: runtimeNote,
-			RuntimeHint: runtimeHint,
-			Width:       profiles[d.Profile].Width,
-			Height:      profiles[d.Profile].Height,
-			Text:        d.LastText,
-			Refresh:     refreshText(d.deviceState, now, profiles[d.Profile].text()),
-			SeenAgo:     agoText(d.LastSeen, now),
-			Address:     d.ClientIP,
-			ServedAgo:   agoText(d.LastPageTime, now),
-			Firmware:    firmwareText(d),
-			Menu:        menuText(d.deviceState),
-			Actions:     actionsText(devices[d.ID]),
-			Problem:     d.Problem,
-			Error:       d.LastError,
-			VirtualURL:  virtualURL(d.Plan, d.Profile),
+			ID:            d.ID,
+			Status:        d.Status,
+			Type:          d.Profile,
+			Hardware:      d.Hardware,
+			Plan:          planText(d.Plan),
+			Rule:          d.Rule,
+			Content:       contentText(d.deviceState),
+			ImageURL:      image,
+			Waiting:       waiting,
+			Power:         powerText(d.Power, d.deviceState),
+			Battery:       batteryText(d.deviceState),
+			LastCharge:    chargeText(d.deviceState, now),
+			Runtime:       runtimeValue,
+			RuntimeNote:   runtimeNote,
+			RuntimeHint:   runtimeHint,
+			Readings:      readingsValue,
+			ReadingsKeys:  readingsKeys,
+			ReadingsSince: readingsSince,
+			Width:         profiles[d.Profile].Width,
+			Height:        profiles[d.Profile].Height,
+			Text:          d.LastText,
+			Refresh:       refreshText(d.deviceState, now, profiles[d.Profile].text()),
+			SeenAgo:       agoText(d.LastSeen, now),
+			Address:       d.ClientIP,
+			ServedAgo:     agoText(d.LastPageTime, now),
+			Firmware:      firmwareText(d),
+			Menu:          menuText(d.deviceState),
+			Actions:       actionsText(devices[d.ID]),
+			Problem:       d.Problem,
+			Error:         d.LastError,
+			VirtualURL:    virtualURL(d.Plan, d.Profile),
 		})
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -469,6 +479,36 @@ func batteryText(st deviceState) string {
 		text += " · " + currentText(*st.BatteryMA)
 	}
 	return text
+}
+
+// readingsText writes the measured values of a device for the card's details:
+// "21.5 °C · 45 %", the catalog names behind them for the tooltip and, when the
+// last sync brought no value, the age of the oldest one (ADR 0134). The catalog
+// fixes the order, so the row reads the same on every device.
+func readingsText(st deviceState, now time.Time) (text, keys, since string) {
+	var parts, names []string
+	var oldest time.Time
+	for _, spec := range reading.Catalog {
+		r, ok := st.Readings[spec.Name]
+		if !ok {
+			continue
+		}
+		parts = append(parts, spec.Format(r.Value))
+		names = append(names, spec.Name)
+		if oldest.IsZero() || r.At.Before(oldest) {
+			oldest = r.At
+		}
+	}
+	if len(parts) == 0 {
+		return "", "", ""
+	}
+	text, keys = strings.Join(parts, " · "), strings.Join(names, ", ")
+	// A reading older than the last contact came from an earlier sync: the value
+	// still stands, but the operator has to see that it is stale.
+	if !oldest.IsZero() && oldest.Before(st.LastSeen) {
+		since = "since " + agoText(oldest, now)
+	}
+	return text, keys, since
 }
 
 // runtimeCard builds the Runtime row of a card: the value, the muted note next

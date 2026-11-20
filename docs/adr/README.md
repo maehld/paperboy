@@ -102,6 +102,7 @@ Registration, sync, state and what a device receives. See [`03-devices.md`](../d
 | [0119](0119-remove-opendisplay.md) | Remove OpenDisplay from Paperboy | Accepted, implemented; removes `internal/opendisplay`, `cmd/odtest` and the device keys `address`/`buttons`; supersedes [ADR-0016](0016-opendisplay-bluetooth.md), the delivery of [ADR-0018](0018-opendisplay-im-display-service.md) and the rest of [ADR-0012](0012-epaper-opendisplay.md) |
 | [0129](0129-align-timer-syncs.md) | Align timer syncs to the interval grid | Accepted, implemented; makes `refresh_s` the sleep until the next slot and keeps the caps of [ADR-0051](0051-power-source-refresh-policy.md) and the `wake` of [ADR-0064](0064-device-protocol-v4.md) untouched |
 | [0132](0132-alert-methods-per-device.md) | Alert methods per device | Accepted, implemented; adds `alert_methods` to a device file and makes alerting opt-in: an omitted key stays silent, a list sets the `beep`/`blink` flags of [ADR-0131](0131-a-plan-rule-alerts-the-device.md) without a firmware change |
+| [0134](0134-readings-from-the-device.md) | Readings from the device | Accepted, implemented; adds the generic `readings` list to the sync body and the reading catalog, so the SHT4x of the Sticky, E1001 and E1003 reports the room on the dashboard; the plugin status and the page values follow with the widget |
 
 ## Displays, panels and firmware
 

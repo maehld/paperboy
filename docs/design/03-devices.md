@@ -62,11 +62,14 @@ While `paperboy.yaml` is unusable (a degraded start), register, sync and text po
 | `events` | Button roles `next`, `previous` and `home`, in order, each with a monotonic `id`; `hold_ms` for long presses |
 | `shown` | Hash of the page the device displays, which guards the confirmation screen |
 | `battery` | `volts` (required), `percent`, `mah`, `ma` (positive while charging) and `charging` |
+| `readings` | Measured values of this wake as `{name, value}`; the name comes from Paperboy's reading catalog ([ADR 0134](../adr/0134-readings-from-the-device.md)) |
 | `rssi` | Signal strength |
 | `log` | Lines that Paperboy writes one by one; a repeated entry carries `time` and `id` and is written once |
 | `power` | `battery` or `mains`, if the device can tell |
 
 Events are applied in order before the page is chosen. `previous` wraps. Touches operate the menu when it is open and are only logged otherwise. Paperboy drops an event `id` that is not newer than `last_event_id` in the state file. A repeated request therefore cannot move the cursor twice ([ADR 0064](../adr/0064-device-protocol-v4.md)).
+
+`readings` carries a bare number per name. Paperboy discards a name its catalog does not know, a reading without a value and a value outside the sensor range. Such a reading never fails the sync, so a broken sensor cannot cost the device its page ([ADR 0134](../adr/0134-readings-from-the-device.md)).
 
 The answer carries `image` with a relative `path` and its `hash`, `refresh_s`, `wake` with `reason` and `after_s`, `listen_s`, `sleep` and `time`. It also carries `rotation` when it is not 0. A plan rule that wants the device to signal sets `beep` and `blink` ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). The answer carries the firmware offer of [ADR 0043](../adr/0043-firmware-distribution.md) or `null`.
 
@@ -93,6 +96,7 @@ A rule's `on_refresh` decides what a timed refresh shows; a rule change starts a
 
 - the page cursor and the rule it came from
 - the last battery reading, the last charging episode and the hourly battery samples of the last week
+- the last value of every reading, with the time it was taken
 - the menu, with its phase, selection, session and confirmation hash
 - the address of the last contact ([ADR 0083](../adr/0083-device-address.md))
 - `last_event_id`, the reported power source and the key
@@ -107,6 +111,14 @@ The charger and the power source drive three things: the refresh floor, the char
 - A change of the report or of the charger state gets one `power changed` journal line instead of one per sync.
 - Below `warn_volts` the battery warning draws a bar on plan pages. Below `critical_volts` it replaces the page with a full-screen warning, with `hysteresis_volts` to avoid flapping ([ADR 0020](../adr/0020-akkuwarnung-trmnl.md)).
 - The dashboard reads the last charge from the gauge current (`charge.go`). It estimates the runtime from the hourly samples (`runtime.go`): the gauge's capacity first, then its percentage, then the voltage, with a least-squares slope.
+
+## Readings
+
+Every reTerminal E series device and the Sticky carry a Sensirion SHT4x temperature and humidity sensor. The firmware takes one measurement per wake, before the sync, and reports it as `temperature` and `humidity` ([ADR 0134](../adr/0134-readings-from-the-device.md)). A failed read sends no value, and the last value with its old time stays.
+
+The catalog in `internal/reading` owns the unit, the precision and the plausible range of every reading. A device sends bare numbers, so a wrong firmware offset cannot label a value falsely. Paperboy stores the last value per device and MAC ([ADR 0080](../adr/0080-device-state-per-mac.md)). The dashboard shows the values as a `Readings` row in the card's details, with the catalog names as the tooltip. A reading the last sync did not bring shows its age.
+
+The sensor sits next to the panel and the battery, so it reads slightly warm. There is no calibration yet. A later device-file offset applies to the stored value, not to the widget ([ADR 0134](../adr/0134-readings-from-the-device.md)).
 
 ## Device status in widgets
 
@@ -135,8 +147,8 @@ The firmware lives in `firmware/esphome/` and is built on ESPHome ([ADR 0041](..
 | File | Content |
 |---|---|
 | `common.yaml` | Register, sync, download, listen, beep and blink, deep sleep |
-| `paperboy.h` | Sync body, event queue, wake helpers, rotation, QOI paint, the lockup of the setup screens, text rows and the scroll engine |
-| `sticky.yaml`, `e1001.yaml`, `e1003.yaml` | Hardware, buttons, panel driver, buzzer, LED, battery and charger |
+| `paperboy.h` | Sync body with the readings, event queue, wake helpers, rotation, QOI paint, the lockup of the setup screens, text rows and the scroll engine |
+| `sticky.yaml`, `e1001.yaml`, `e1003.yaml` | Hardware, buttons, panel driver, buzzer, LED, battery, charger and the room sensor |
 | `text-common.yaml`, `lcd2004.yaml` | Text displays, text poll and the marquee script |
 | `build.ps1` | Build with a pinned ESPHome (2026.10.1); `-Instance` publishes `firmware/<hardware>-v<version>.bin` |
 
@@ -152,14 +164,14 @@ The only update path is `ota: http_request` with the offer from Paperboy. There 
 
 Facts from the hardware, kept because they cost time to find.
 
-**E1001** (7.5 in, 800 × 480): the panel is a GDEY075T7 with a UC8179 controller and four gray levels. ESPHome's preset drives it in black and white with a fixed 2 × 2 dither. That puts a dot ring around every antialiased glyph. Since firmware 2.4.0 the pinned external component `uc8179_gray4` draws the four levels directly ([ADR 0086](../adr/0086-four-gray-levels-on-the-e1001.md)). Data polarity and LUT bank differ per batch and are set per device in the web UI ([ADR 0087](../adr/0087-panel-settings-live-on-the-device.md)). Buttons left to right: GPIO5 `previous`, GPIO4 `next`, GPIO3 (green) `home`. Battery on ADC GPIO1 ×2 with enable GPIO21, mapped with Seeed's E10xx curve. USB power is not visible to the ESP32, so an E1001 on a charger needs `power: mains`.
+**E1001** (7.5 in, 800 × 480): the panel is a GDEY075T7 with a UC8179 controller and four gray levels. ESPHome's preset drives it in black and white with a fixed 2 × 2 dither. That puts a dot ring around every antialiased glyph. Since firmware 2.4.0 the pinned external component `uc8179_gray4` draws the four levels directly ([ADR 0086](../adr/0086-four-gray-levels-on-the-e1001.md)). Data polarity and LUT bank differ per batch and are set per device in the web UI ([ADR 0087](../adr/0087-panel-settings-live-on-the-device.md)). Buttons left to right: GPIO5 `previous`, GPIO4 `next`, GPIO3 (green) `home`. Battery on ADC GPIO1 ×2 with enable GPIO21, mapped with Seeed's E10xx curve. USB power is not visible to the ESP32, so an E1001 on a charger needs `power: mains`. Since firmware 2.14.0 the SHT4x sits on a new I2C bus on GPIO19/20 at 0x44. The console moved to UART0, because those pins are the USB pair. The deep sleep current with the bus is not measured yet.
 
-**E1003** (10.3 in, 1872 × 1404, 227 ppi): 16 gray levels, IT8951 controller with a 3 s full refresh. ESP32-S3 with 8 MB PSRAM. Buttons: green GPIO3 `home`, right white GPIO4 `next`, left white GPIO5 `previous`. Battery on ADC GPIO1 ×2 with enable GPIO40, SY6974B charger on I2C 0x6B for `power` and `charging`. Touch is a GT911 on I2C GPIO19/20 without a transform. The preset forces 16 °C and a mirrored X. Deep sleep needs GPIO11/21/38/39/40/45/48 held low and I2C disabled, otherwise the device draws about 4 mA. The image sets `CONFIG_SPIRAM_USE_MALLOC` so that the response copy fits. Measured since 0.1.2: nine pages cycled, sync 0.7 s, paint 1.9–2.7 s.
+**E1003** (10.3 in, 1872 × 1404, 227 ppi): 16 gray levels, IT8951 controller with a 3 s full refresh. ESP32-S3 with 8 MB PSRAM. Buttons: green GPIO3 `home`, right white GPIO4 `next`, left white GPIO5 `previous`. Battery on ADC GPIO1 ×2 with enable GPIO40, SY6974B charger on I2C 0x6B for `power` and `charging`. Touch is a GT911 on I2C GPIO19/20 without a transform. Since firmware 1.6.0 the SHT4x reports the room on the same bus at 0x44. The preset forces 16 °C and a mirrored X. Deep sleep needs GPIO11/21/38/39/40/45/48 held low and I2C disabled, otherwise the device draws about 4 mA. The image sets `CONFIG_SPIRAM_USE_MALLOC` so that the response copy fits. Measured since 0.1.2: nine pages cycled, sync 0.7 s, paint 1.9–2.7 s.
 
-**Sticky**: gray4 panel that bands luma at 32/96/160, so the firmware maps 0/85/170/255 into the bands. Touch needs `swap_xy`, `mirror_x`, `mirror_y` and rotation 180. Power latch on GPIO45/46 through deep sleep, BQ27220 gauge with currents and capacities ×10, BQ25616 `STAT` on GPIO40 reported as `charging`, charge enable GPIO39.
+**Sticky**: gray4 panel that bands luma at 32/96/160, so the firmware maps 0/85/170/255 into the bands. Touch needs `swap_xy`, `mirror_x`, `mirror_y` and rotation 180. Power latch on GPIO45/46 through deep sleep, BQ27220 gauge with currents and capacities ×10, BQ25616 `STAT` on GPIO40 reported as `charging`, charge enable GPIO39. Since firmware 2.13.0 the SHT40 reports the room on the sensor bus GPIO0/1 at 0x44, next to the gauge and the PCF8563.
 
 **Battery readings** for calibration: the Sticky "Küche" reads 3.40 V after a long time without charging. The E1001 "Wohnzimmer" reads 3.75 V. Both fluctuate by about 0.02 V.
 
 ## Decisions
 
-[ADR 0020](../adr/0020-akkuwarnung-trmnl.md) (battery warning) · [0041](../adr/0041-esphome-firmware.md) (firmware) · [0042](../adr/0042-device-protocol.md) (device protocol) · [0043](../adr/0043-firmware-distribution.md) (firmware distribution) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0051](../adr/0051-power-source-refresh-policy.md) (power source) · [0064](../adr/0064-device-protocol-v4.md) (protocol v4) · [0070](../adr/0070-devices-in-their-own-files.md), [0071](../adr/0071-display-types-in-files-of-their-own.md) (device and display type files) · [0072](../adr/0072-pages-as-qoi.md), [0088](../adr/0088-pages-that-do-not-fit-the-buffer.md) (QOI and the buffer) · [0079](../adr/0079-rename-config-items.md) (a missing display type) · [0080](../adr/0080-device-state-per-mac.md) (state per MAC) · [0083](../adr/0083-device-address.md) (address) · [0086](../adr/0086-four-gray-levels-on-the-e1001.md), [0087](../adr/0087-panel-settings-live-on-the-device.md) (gray levels and panel settings on the E1001) · [0097](../adr/0097-page-downloads-take-the-device-key.md) (the device key on downloads) · [0098](../adr/0098-the-device-shows-the-lockup-and-its-version.md) (lockup and version) · [0102](../adr/0102-rotate-pages-onto-the-panel.md) (rotation) · [0105](../adr/0105-sixteen-gray-levels.md) (16 gray levels) · [0123](../adr/0123-a-sample-device-in-previews.md) (the sample device in previews) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (the alert) · [0132](../adr/0132-alert-methods-per-device.md) (alert methods per device)
+[ADR 0020](../adr/0020-akkuwarnung-trmnl.md) (battery warning) · [0041](../adr/0041-esphome-firmware.md) (firmware) · [0042](../adr/0042-device-protocol.md) (device protocol) · [0043](../adr/0043-firmware-distribution.md) (firmware distribution) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0051](../adr/0051-power-source-refresh-policy.md) (power source) · [0064](../adr/0064-device-protocol-v4.md) (protocol v4) · [0070](../adr/0070-devices-in-their-own-files.md), [0071](../adr/0071-display-types-in-files-of-their-own.md) (device and display type files) · [0072](../adr/0072-pages-as-qoi.md), [0088](../adr/0088-pages-that-do-not-fit-the-buffer.md) (QOI and the buffer) · [0079](../adr/0079-rename-config-items.md) (a missing display type) · [0080](../adr/0080-device-state-per-mac.md) (state per MAC) · [0083](../adr/0083-device-address.md) (address) · [0086](../adr/0086-four-gray-levels-on-the-e1001.md), [0087](../adr/0087-panel-settings-live-on-the-device.md) (gray levels and panel settings on the E1001) · [0097](../adr/0097-page-downloads-take-the-device-key.md) (the device key on downloads) · [0098](../adr/0098-the-device-shows-the-lockup-and-its-version.md) (lockup and version) · [0102](../adr/0102-rotate-pages-onto-the-panel.md) (rotation) · [0105](../adr/0105-sixteen-gray-levels.md) (16 gray levels) · [0123](../adr/0123-a-sample-device-in-previews.md) (the sample device in previews) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (the alert) · [0132](../adr/0132-alert-methods-per-device.md) (alert methods per device) · [0134](../adr/0134-readings-from-the-device.md) (readings from the device)
