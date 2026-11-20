@@ -630,6 +630,20 @@ func (s *Server) finishAction(key, identity string, run *actionRun) {
 	s.saveState(key, data)
 }
 
+// keepActionResult keeps a result that arrived while the page was rendered.
+// local was copied before the action ran and still names the running phase;
+// stored is the current state, which finishAction may have moved to the result.
+// The screen has to stay the one this sync serves, because the device reports
+// that hash as shown until it paints again.
+func keepActionResult(local, stored menuState) menuState {
+	if local.Phase != menuRunningPhase || stored.Phase != menuResultPhase ||
+		!stored.Open || stored.Session != local.Session || stored.Selected != local.Selected {
+		return local
+	}
+	stored.Screen = local.Screen
+	return stored
+}
+
 // menuCells lays the overlay out: the top half of the display, one row in
 // landscape and a stack in portrait (ADR 0057). kinds are in reading order.
 type menuCell struct {

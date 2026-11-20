@@ -700,3 +700,38 @@ func TestMenuCloseBoxClosesWithHome(t *testing.T) {
 		t.Fatalf("home on the close box must close the menu: %+v", m)
 	}
 }
+
+// TestKeepActionResult covers the sync that renders while the background
+// action finishes: the stored result must win, but the screen hash stays the
+// one the device currently reports (issue #330).
+func TestKeepActionResult(t *testing.T) {
+	local := menuState{Open: true, Phase: menuRunningPhase, Session: 2, Selected: "act/quick", Screen: "running-screen"}
+	stored := menuState{Open: true, Phase: menuResultPhase, Session: 2, Selected: "act/quick",
+		Screen: "old-screen", Result: "done", ResultOK: true}
+
+	got := keepActionResult(local, stored)
+	if got.Phase != menuResultPhase || got.Result != "done" || !got.ResultOK {
+		t.Fatalf("result was lost: %+v", got)
+	}
+	if got.Screen != "running-screen" {
+		t.Fatalf("screen = %q, want the screen this sync served", got.Screen)
+	}
+
+	otherSession := stored
+	otherSession.Session = 1
+	if got := keepActionResult(local, otherSession); got.Phase != menuRunningPhase {
+		t.Fatalf("a result of another session must not replace the local menu: %+v", got)
+	}
+
+	otherSelection := stored
+	otherSelection.Selected = "act/go"
+	if got := keepActionResult(local, otherSelection); got.Phase != menuRunningPhase {
+		t.Fatalf("a result of another selection must not replace the local menu: %+v", got)
+	}
+
+	listing := local
+	listing.Phase = menuListPhase
+	if got := keepActionResult(listing, stored); got.Phase != menuListPhase {
+		t.Fatalf("a local menu that is not running must stay: %+v", got)
+	}
+}
