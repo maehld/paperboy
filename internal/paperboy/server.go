@@ -327,8 +327,9 @@ type deviceInfo struct {
 	MAC     string `json:"mac,omitempty"`
 	Profile string `json:"display_type"`
 	Plan    string `json:"plan,omitempty"`
-	deviceState
-	APIKey            string `json:"api_key,omitempty"` // shadows the embedded key; never exposed
+	// The state stays in memory for the dashboard; the API answer is the
+	// explicit deviceAPIInfo below, so a new state field cannot leak (ADR 0139).
+	deviceState       `json:"-"`
 	Registered        bool   `json:"registered"`
 	Status            string `json:"status"`                       // ok, late, never or unregistered
 	LastPageURL       string `json:"last_page_url,omitempty"`      // UI route for the last served image (ADR 0097)
@@ -338,8 +339,89 @@ type deviceInfo struct {
 	Problem           string `json:"problem,omitempty"`            // why the device cannot sync, e.g. a missing display type (ADR 0079)
 }
 
+// deviceAPIInfo is what GET /api/devices answers. The explicit field list keeps
+// the pairing secrets and the API key out, whatever the state gains later
+// (ADR 0139).
+type deviceAPIInfo struct {
+	ID                string          `json:"id"`
+	Type              string          `json:"protocol"`
+	MAC               string          `json:"mac,omitempty"`
+	Profile           string          `json:"display_type"`
+	Plan              string          `json:"plan,omitempty"`
+	Registered        bool            `json:"registered"`
+	Status            string          `json:"status"`
+	LastPageURL       string          `json:"last_page_url,omitempty"`
+	FirmwareAvailable string          `json:"firmware_available,omitempty"`
+	FirmwareStatus    string          `json:"firmware_status"`
+	Power             string          `json:"power"`
+	Problem           string          `json:"problem,omitempty"`
+	Page              int             `json:"page,omitempty"`
+	PageName          string          `json:"page_name,omitempty"`
+	FirstSeen         time.Time       `json:"first_seen,omitempty"`
+	LastSeen          time.Time       `json:"last_seen,omitempty"`
+	ClientIP          string          `json:"client_ip,omitempty"`
+	BatteryVoltage    string          `json:"battery_voltage,omitempty"`
+	BatteryPercent    *float64        `json:"battery_percent,omitempty"`
+	BatteryMAH        *float64        `json:"battery_mah,omitempty"`
+	BatteryMA         *float64        `json:"battery_ma,omitempty"`
+	BatteryCharging   *bool           `json:"battery_charging,omitempty"`
+	RSSI              string          `json:"rssi,omitempty"`
+	Firmware          string          `json:"firmware,omitempty"`
+	Hardware          string          `json:"hardware,omitempty"`
+	WakeReason        string          `json:"wake_reason,omitempty"`
+	BatteryLevel      string          `json:"battery_level,omitempty"`
+	Rule              string          `json:"rule,omitempty"`
+	Charge            *chargeEpisode  `json:"charge,omitempty"`
+	LastCharge        *chargeEpisode  `json:"last_charge,omitempty"`
+	BatteryHistory    []batterySample `json:"battery_history,omitempty"`
+	ReportedPower     string          `json:"reported_power,omitempty"`
+	TouchReported     bool            `json:"reported_touch,omitempty"`
+	PairedAt          time.Time       `json:"paired_at,omitempty"`
+	LastPage          string          `json:"last_page,omitempty"`
+	LastPageKind      string          `json:"last_page_kind,omitempty"`
+	LastPageHash      string          `json:"last_page_hash,omitempty"`
+	LastPages         int             `json:"last_pages,omitempty"`
+	ScrollHash        string          `json:"scroll_hash,omitempty"`
+	LastPageTime      time.Time       `json:"last_page_time,omitempty"`
+	LastRefresh       int             `json:"last_refresh,omitempty"`
+	LastInterval      int             `json:"last_interval,omitempty"`
+	LastError         string          `json:"last_error,omitempty"`
+	LastText          []string        `json:"last_text,omitempty"`
+	LastEventID       int64           `json:"last_event_id,omitempty"`
+	Menu              menuState       `json:"menu,omitempty"`
+	FirmwarePending   bool            `json:"firmware_pending,omitempty"`
+	FirmwareFailures  int             `json:"firmware_failures,omitempty"`
+}
+
+// api returns the fields that the devices API exposes.
+func (d deviceInfo) api() deviceAPIInfo {
+	st := d.deviceState
+	return deviceAPIInfo{
+		ID: d.ID, Type: d.Type, MAC: d.MAC, Profile: d.Profile, Plan: d.Plan,
+		Registered: d.Registered, Status: d.Status, LastPageURL: d.LastPageURL,
+		FirmwareAvailable: d.FirmwareAvailable, FirmwareStatus: d.FirmwareStatus,
+		Power: d.Power, Problem: d.Problem,
+		Page: st.Page, PageName: st.PageName, FirstSeen: st.FirstSeen, LastSeen: st.LastSeen,
+		ClientIP: st.ClientIP, BatteryVoltage: st.BatteryVoltage, BatteryPercent: st.BatteryPercent,
+		BatteryMAH: st.BatteryMAH, BatteryMA: st.BatteryMA, BatteryCharging: st.BatteryCharging,
+		RSSI: st.RSSI, Firmware: st.Firmware, Hardware: st.Hardware, WakeReason: st.WakeReason,
+		BatteryLevel: st.BatteryLevel, Rule: st.Rule, Charge: st.Charge, LastCharge: st.LastCharge,
+		BatteryHistory: st.BatteryHistory, ReportedPower: st.ReportedPower, TouchReported: st.TouchReported,
+		PairedAt: st.PairedAt, LastPage: st.LastPage, LastPageKind: st.LastPageKind,
+		LastPageHash: st.LastPageHash, LastPages: st.LastPages, ScrollHash: st.ScrollHash,
+		LastPageTime: st.LastPageTime, LastRefresh: st.LastRefresh, LastInterval: st.LastInterval,
+		LastError: st.LastError, LastText: st.LastText, LastEventID: st.LastEventID, Menu: st.Menu,
+		FirmwarePending: st.FirmwarePending, FirmwareFailures: st.FirmwareFailures,
+	}
+}
+
 func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"devices": s.deviceInfos()})
+	infos := s.deviceInfos()
+	list := make([]deviceAPIInfo, len(infos))
+	for i, info := range infos {
+		list[i] = info.api()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"devices": list})
 }
 
 // lastImagePath is the UI route that serves the last image a device received
