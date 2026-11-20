@@ -12,24 +12,10 @@ import (
 // the request with its expiry, not an outcome. This is the shape of the pairing
 // claim (ADR 0109): a wish that waits for the device's next request.
 
-// alertLifetime is how long a manual request waits for the device: two regular
-// refreshes, so a slow plan still collects it. At least one hour protects a
-// device whose interval is unknown, and one day keeps a display that stayed
-// away from signalling for an old click.
-func alertLifetime(d *Device, st *deviceState) time.Duration {
-	interval := d.refresh()
-	if st.LastInterval > 0 {
-		interval = time.Duration(st.LastInterval) * time.Second
-	}
-	life := 2 * interval
-	if life < time.Hour {
-		life = time.Hour
-	}
-	if life > 24*time.Hour {
-		life = 24 * time.Hour
-	}
-	return life
-}
+// alertLifetime is how long a manual request waits for the device. It is a
+// test, not a message: a signal from yesterday would only confuse, so the
+// request is gone after one hour.
+const alertLifetime = time.Hour
 
 // Refusal codes for a manual alert: the dashboard shows the text before the
 // click, and the redirect carries the code, not a message.
@@ -145,11 +131,11 @@ func (s *Server) queueAlert(d *Device) string {
 		return refuseUnregistered
 	}
 	now := s.now()
-	life := alertLifetime(d, st)
-	st.PendingAlert = &pendingAlert{At: now, Until: now.Add(life)}
+	until := now.Add(alertLifetime)
+	st.PendingAlert = &pendingAlert{At: now, Until: until}
 	data := s.stateSnapshotLocked(st)
 	s.mu.Unlock()
 	s.saveState(key, data)
-	slog.Info("manual alert queued", "device", d.ID, "until", now.Add(life).Format(time.RFC3339))
+	slog.Info("manual alert queued", "device", d.ID, "until", until.Format(time.RFC3339))
 	return ""
 }

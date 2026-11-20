@@ -155,7 +155,7 @@ The firmware lives in `firmware/esphome/` and is built on ESPHome ([ADR 0041](..
 
 A sync answer with `beep` or `blink` runs the script of that method after the paint, also when the page did not change ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). The device file's `alert_methods` selects the two flags; without the key the device stays silent ([ADR 0132](../adr/0132-alert-methods-per-device.md)). The Sticky beeps; the E1001 and E1003 beep and blink the green LED; the LCD2004 blinks its backlight. The buzzer pins are GPIO48 on the Sticky and GPIO45 on the E1001 and E1003; the green LED is on GPIO6 and GPIO16.
 
-A manual alert uses this path on the next sync, also without a plan. One sync consumes it, and the request expires after two refresh intervals, at least one hour and at most one day. The battery warning drops it, because that page carries no alert ([ADR 0142](../adr/0142-a-manual-alert-waits-for-the-next-sync.md)).
+A manual alert uses this path on the next sync, also without a plan. One sync consumes it, and the request expires after one hour. The battery warning drops it, because that page carries no alert ([ADR 0142](../adr/0142-a-manual-alert-waits-for-the-next-sync.md)).
 
 A cycle runs one at a time; a second trigger is dropped, so it cannot move the page cursor behind a running download. The firmware connects to the saved BSSID and channel without a scan. It decodes QOI itself into the panel buffer, because ESPHome's decoders spend 2.2–2.6 seconds on 384k pixels. Input during sync or paint is queued for one follow-up sync with a 150 ms settle, so a burst of presses becomes one sync. Failures are noted in RTC memory and reported in the next sync's `log`.
 

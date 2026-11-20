@@ -21,6 +21,12 @@ func TestManualAlertOnNextSync(t *testing.T) {
 	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/ui?alert=test" {
 		t.Fatalf("queue: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
+	s.lock("test")
+	queued := s.state[s.config().Devices[0].stateKey()].PendingAlert
+	s.mu.Unlock()
+	if want := s.now().Add(time.Hour); queued == nil || !queued.Until.Equal(want) {
+		t.Fatalf("the request must last one hour: %+v", queued)
+	}
 	out := displayPage(t, s, dev)
 	if out["beep"] != true || out["blink"] != true {
 		t.Fatalf("the next sync must signal: %v", out)
@@ -78,22 +84,6 @@ func TestTakeManualAlert(t *testing.T) {
 	}
 	if st := fresh(); takeManualAlert(d, st, now, true) || st.PendingAlert != nil {
 		t.Fatal("the battery warning must drop the request")
-	}
-}
-
-// TestAlertLifetime follows the refresh of the device and keeps its bounds: a
-// fast device waits an hour, a slow plan gets two intervals, and a day is the
-// cap.
-func TestAlertLifetime(t *testing.T) {
-	d := &Device{Refresh: Duration(10 * time.Minute)}
-	if got := alertLifetime(d, &deviceState{}); got != time.Hour {
-		t.Fatalf("a fast device: %v", got)
-	}
-	if got := alertLifetime(d, &deviceState{LastInterval: 6 * 3600}); got != 12*time.Hour {
-		t.Fatalf("a slow plan: %v", got)
-	}
-	if got := alertLifetime(d, &deviceState{LastInterval: 7 * 24 * 3600}); got != 24*time.Hour {
-		t.Fatalf("the cap: %v", got)
 	}
 }
 

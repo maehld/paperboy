@@ -17,7 +17,7 @@ The device drives every request. Paperboy has no channel to a sleeping device, s
 
 1. A manual alert is a request in the device state: `pending_alert` with `at` and `until`.
 2. The next sync consumes it and sets `beep` and `blink` through `alert_methods`, the same path as a rule ([ADR 0131](0131-a-plan-rule-alerts-the-device.md), [0132](0132-alert-methods-per-device.md)). The sync consumes it before it writes the state, so one write clears the request and stores the rest of the sync.
-3. The request waits for two refresh intervals, at least one hour and at most one day. An expired request is dropped with a log line.
+3. The request lasts one hour after the click. An expired request is dropped with a log line.
 4. The battery warning drops the request, because that page carries no alert.
 5. `POST /api/devices/{id}/alert` in the UI routes queues the request. The dashboard card posts it as a form and comes back to the cards.
 6. A device that cannot take the request gets no button: no `alert_methods`, a `Problem` or no key. A line under the button names the reason.
@@ -29,7 +29,8 @@ The device drives every request. Paperboy has no channel to a sleeping device, s
 
 - An operator signals one device without a plan. The request arrives at the next sync: up to `refresh_s` later, or at once with a button press on the device.
 - A lost answer loses that signal. The operator asks again. [ADR 0131](0131-a-plan-rule-alerts-the-device.md) accepts the same loss for a rule's alert.
-- A device that stays away loses the request after its lifetime, so a display does not signal for a click from yesterday.
+- The request lasts an hour. A display that returns later does not signal for an old click.
+- A plan slower than an hour can lose the request before the next sync. A button press on the device collects it, and the card shows the expiry.
 - A silent device cannot be signalled. The card names the reason, so the operator enables a method instead of waiting.
 - The state holds one request. A second click replaces the first.
 - A rule and a manual request in the same sync send one answer and log `rule+manual`.
@@ -42,3 +43,4 @@ The device drives every request. Paperboy has no channel to a sleeping device, s
 - **The virtual display.** It has no device and no hardware. A signal there would claim something that did not happen.
 - **`alert_methods` ignored for a manual request.** A signal stays opt-in ([ADR 0132](0132-alert-methods-per-device.md)). The card names the missing methods instead.
 - **A request without expiry.** A device that returns after a week would signal for an old click.
+- **A lifetime from the plan's refresh.** A slow plan would keep a click alive for half a day, and a test wants a short answer.
