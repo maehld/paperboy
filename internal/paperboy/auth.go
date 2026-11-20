@@ -4,8 +4,10 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -13,8 +15,14 @@ import (
 // paperboy.yaml (ADR 0096). Without a configured password the UI stays open
 // like before, so an existing instance keeps working; the CSRF check below runs
 // either way, because Basic credentials are attached to cross-site form posts.
+// A configured ui.hosts list also stops DNS rebinding (ADR 0135).
 func (s *Server) requireUI(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hosts := s.config().UI.Hosts; len(hosts) > 0 && !hostAllowed(r.Host, hosts) {
+			slog.Info("UI request refused: unknown host", "path", r.URL.Path, "remote", clientIP(r), "host", r.Host)
+			http.Error(w, "this host is not in ui.hosts (ADR 0135)", http.StatusForbidden)
+			return
+		}
 		if crossSite(r) {
 			slog.Info("UI request refused: cross-site", "path", r.URL.Path, "remote", clientIP(r), "origin", r.Header.Get("Origin"))
 			http.Error(w, "cross-site request refused (ADR 0096)", http.StatusForbidden)
@@ -65,4 +73,29 @@ func crossSite(r *http.Request) bool {
 		return true
 	}
 	return !strings.EqualFold(u.Host, r.Host)
+}
+
+// hostAllowed reports whether the request's Host header names one of the
+// configured hosts. The comparison ignores case and the port, so both
+// "paperboy.local" and "paperboy.local:8090" match (ADR 0135).
+func hostAllowed(host string, allowed []string) bool {
+	got := hostOnly(host)
+	for _, want := range allowed {
+		if got == want {
+			return true
+		}
+	}
+	return false
+}
+
+// hostOnly strips the port and the brackets from a Host header or a configured
+// host name and folds the case.
+func hostOnly(hostport string) string {
+	hostport = strings.TrimSpace(hostport)
+	if host, port, err := net.SplitHostPort(hostport); err == nil {
+		if _, err := strconv.Atoi(port); err == nil {
+			return strings.ToLower(host)
+		}
+	}
+	return strings.ToLower(strings.Trim(hostport, "[]"))
 }

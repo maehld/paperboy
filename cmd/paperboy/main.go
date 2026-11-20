@@ -64,6 +64,10 @@ func run() error {
 		slog.Warn("the operator UI has no password: every page, plan and device is open to anyone who can reach this address; set ui.password in paperboy.yaml",
 			"listen", listener.Addr().String())
 	}
+	if len(cfg.UI.Hosts) == 0 && !isLoopback(listener.Addr()) {
+		slog.Warn("the operator UI accepts every Host header: a web page can reach it through DNS rebinding; set ui.hosts in paperboy.yaml",
+			"listen", listener.Addr().String())
+	}
 	select {
 	case err := <-serveErr:
 		if !errors.Is(err, http.ErrServerClosed) {

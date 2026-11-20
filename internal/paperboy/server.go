@@ -268,6 +268,11 @@ func (s *Server) Handler() http.Handler {
 	ui := s.requireUI(uiMux)
 	devices := newMux(s.deviceRoutes())
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Every answer refuses framing and content sniffing (ADR 0135): a
+		// framed UI would send same-origin writes and pass the CSRF check.
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		if uiRequest(uiMux, r) {
 			ui.ServeHTTP(w, r)
 			return

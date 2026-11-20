@@ -11,9 +11,15 @@ import (
 // testServerWithPassword is testServer with a UI password (ADR 0096).
 func testServerWithPassword(t *testing.T, password string) *Server {
 	t.Helper()
+	return testServerWithUI(t, UIConfig{Password: password})
+}
+
+// testServerWithUI builds a server with an explicit ui section.
+func testServerWithUI(t *testing.T, ui UIConfig) *Server {
+	t.Helper()
 	cfg := &Config{Dir: t.TempDir(), Profiles: map[string]Profile{"small": {Width: 40, Height: 20, PPI: 125, Levels: 4}},
 		Devices: []Device{{ID: "test", MAC: "aa:bb:cc:dd:ee:01", Profile: "small", Refresh: Duration(10 * time.Minute)}},
-		UI:      UIConfig{Password: password}}
+		UI:      ui}
 	if err := cfg.validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -42,6 +48,62 @@ func sampleRequest(t *testing.T, pattern string) *http.Request {
 		}
 	}
 	return httptest.NewRequest(method, strings.Join(parts, "/"), nil)
+}
+
+// TestUIHostAllowlistStopsRebinding: with ui.hosts set, the UI refuses a
+// request whose Host names another site, because DNS rebinding makes Origin and
+// Host agree (ADR 0135). The check ignores the port and the case.
+func TestUIHostAllowlistStopsRebinding(t *testing.T) {
+	s := testServerWithUI(t, UIConfig{Hosts: []string{"paperboy.local"}})
+	h := s.Handler()
+	status := func(host string) int {
+		req := httptest.NewRequest(http.MethodGet, "/api/devices", nil)
+		req.Host = host
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if code := status("evil.example:8090"); code != http.StatusForbidden {
+		t.Errorf("rebinding host: %d, want 403", code)
+	}
+	if code := status("paperboy.local:8090"); code != http.StatusOK {
+		t.Errorf("configured host: %d, want 200", code)
+	}
+	if code := status("PAPERBOY.LOCAL"); code != http.StatusOK {
+		t.Errorf("configured host in other case: %d, want 200", code)
+	}
+}
+
+// TestUISecurityHeaders pins the clickjacking protection: a framed page sends
+// same-origin writes and passes the CSRF check, so the browser must refuse the
+// frame (ADR 0135).
+func TestUISecurityHeaders(t *testing.T) {
+	s, _ := testServer(t)
+	h := s.Handler()
+	for _, path := range []string{"/", "/api/devices"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if got := rec.Header().Get("X-Frame-Options"); got != "DENY" {
+			t.Errorf("%s: X-Frame-Options %q, want DENY", path, got)
+		}
+		if got := rec.Header().Get("Content-Security-Policy"); !strings.Contains(got, "frame-ancestors 'none'") {
+			t.Errorf("%s: Content-Security-Policy %q", path, got)
+		}
+		if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Errorf("%s: X-Content-Type-Options %q, want nosniff", path, got)
+		}
+	}
+}
+
+// TestUIConfigRejectsAForeignHostEntry keeps a URL out of ui.hosts; the
+// comparison expects a bare host name.
+func TestUIConfigRejectsAForeignHostEntry(t *testing.T) {
+	cfg := &Config{Profiles: map[string]Profile{"small": {Width: 40, Height: 20, PPI: 125, Levels: 4}},
+		UI: UIConfig{Hosts: []string{"http://paperboy.local"}}}
+	if err := cfg.validate(); err == nil || !strings.Contains(err.Error(), "ui: hosts") {
+		t.Fatalf("URL in ui.hosts: %v", err)
+	}
 }
 
 // TestUIRequiresPassword walks the UI table: every route answers 401 without

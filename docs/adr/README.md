@@ -149,6 +149,7 @@ The web UI: what the operator sees and how content is edited. See [`04-operator-
 | [0123](0123-a-sample-device-in-previews.md) | A sample device in previews | Accepted, implemented; builds on the device status of [ADR-0115](0115-device-status-in-a-widget.md) and adds a computed `enum` to the argument values of [ADR-0055](0055-allowed-arg-values-and-gallery-form.md) |
 | [0124](0124-the-playground-shows-image-display-types.md) | The Playground shows image display types only | Accepted, implemented; supersedes the sentence about the LCD block in [ADR-0074](0074-editor-board-shows-the-preview.md); the `text` action it left in the protocol is removed by [ADR-0125](0125-remove-the-text-widget-path.md) |
 | [0125](0125-remove-the-text-widget-path.md) | Remove the text widget path | Accepted, implemented; removes the text action, `Texter`, `Result.lines`, `WidgetRequest.scroll` and the `text` widget kind in protocol 8, and the built-in `Text` method; supersedes the "the text action stays" rule of [ADR-0111](0111-text-pages-from-plugin-values.md) and the widget part of [ADR-0092](0092-scrolling-text-lines.md) |
+| [0135](0135-harden-the-operator-ui.md) | Harden the operator UI against framing and DNS rebinding | Accepted, implemented; amends the same-origin check of [ADR-0096](0096-a-password-for-the-operator-ui.md) with a host allowlist and response headers |
 
 ## Plugins
 
