@@ -17,7 +17,7 @@
 
 substitutions:
   hardware: e1001
-  fw_version: "2.14.0"
+  fw_version: "2.15.0"
   # Buzzer of the reTerminal E series on LEDC PWM (ADR 0131).
   buzzer_pin: GPIO45
   # The mounting this image is built for; a device adds its quarter turn to it
@@ -247,14 +247,27 @@ button:
       - component.update: epaper_display
 
 script:
-  # A signal is a beep and/or a blink of the green LED (ADR 0131).
+  # A signal is a beep and/or a blink of the green LED (ADR 0131). The beep is
+  # a triple tone of 90 ms with 70 ms gaps, which reads as an alert (issue #356).
   - id: beep
     mode: single
     then:
       - output.set_level:
           id: buzzer
           level: 50%
-      - delay: 150ms
+      - delay: 90ms
+      - output.turn_off: buzzer
+      - delay: 70ms
+      - output.set_level:
+          id: buzzer
+          level: 50%
+      - delay: 90ms
+      - output.turn_off: buzzer
+      - delay: 70ms
+      - output.set_level:
+          id: buzzer
+          level: 50%
+      - delay: 90ms
       - output.turn_off: buzzer
   - id: blink
     mode: single

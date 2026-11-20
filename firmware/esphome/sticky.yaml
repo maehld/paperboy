@@ -5,7 +5,7 @@
 
 substitutions:
   hardware: sticky
-  fw_version: "2.13.0"
+  fw_version: "2.14.0"
   # Buzzer of the Sticky: a passive piezo on LEDC PWM (ADR 0131).
   buzzer_pin: GPIO48
   # The mounting this image is built for; a device adds its quarter turn to it
@@ -234,14 +234,27 @@ touchscreen:
 
 script:
   # A signal is a beep or a blink; the Sticky has a buzzer but no user LED in
-  # this firmware, so its blink script does nothing (ADR 0131).
+  # this firmware, so its blink script does nothing (ADR 0131). The beep is a
+  # triple tone of 90 ms with 70 ms gaps, which reads as an alert (issue #356).
   - id: beep
     mode: single
     then:
       - output.set_level:
           id: buzzer
           level: 50%
-      - delay: 150ms
+      - delay: 90ms
+      - output.turn_off: buzzer
+      - delay: 70ms
+      - output.set_level:
+          id: buzzer
+          level: 50%
+      - delay: 90ms
+      - output.turn_off: buzzer
+      - delay: 70ms
+      - output.set_level:
+          id: buzzer
+          level: 50%
+      - delay: 90ms
       - output.turn_off: buzzer
   - id: blink
     mode: single
