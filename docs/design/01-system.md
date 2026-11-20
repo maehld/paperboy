@@ -113,13 +113,20 @@ The whole configuration reloads on change ([ADR 0047](../adr/0047-config-reload.
 |---|---|
 | `cmd/paperboy/` | Startup, options and the example configuration |
 | `internal/paperboy/` | Configuration, device API, plans, state, operator UI, downloads |
+| `internal/atomicfile/` | Replace a file in one step |
 | `internal/page/` | Page parsing and composition from widgets and values |
 | `internal/plan/` | Time rules that select pages |
 | `internal/widget/` | Plugin processes, widget and value cache, background refresh |
 | `internal/builtin/` | Built-in plugin `paperboy`: header, text, clock, logo, battery, device status, values |
 | `internal/download/` | Release lists, archives and verification |
+| `internal/duration/` | Durations in the configuration and in plans |
+| `internal/format/` | Text helpers shared with the built-in plugin |
+| `internal/ident/` | The name rule of pages, plans, displays, plugins and devices |
+| `internal/imagelimit/` | Pixel budget for an image from an untrusted source |
+| `internal/reading/` | Catalog of the readings a device may report |
 | `internal/semver/` | Version grammar of programs and images |
 | `internal/stats/` | Timers, gauges and process numbers for the stats page |
+| `internal/strictyaml/` | One YAML document with known fields only |
 | `pkg/plugin/` | Public plugin protocol and its Go helper |
 | `pkg/render/` | Fonts, palettes and drawing shared by Paperboy and plugins |
 | `firmware/esphome/` | The firmware for Sticky, E1001, E1003 and the LCD2004 |
