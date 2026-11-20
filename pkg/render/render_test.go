@@ -3,6 +3,7 @@ package render
 import (
 	"image"
 	"image/color"
+	"sync"
 	"testing"
 )
 
@@ -80,4 +81,31 @@ func TestQuantizeSixteenLevelsTransparentIsWhite(t *testing.T) {
 	if got := int(out.Pix[0]); got != 15 {
 		t.Fatalf("transparent pixel became index %d, want white", got)
 	}
+}
+
+// TestFacesAreSafeForConcurrentUse exercises the shared face cache from
+// several goroutines. Run with -race: before the lockedFace wrapper this
+// reported a race in opentype.(*Face).Glyph.
+func TestFacesAreSafeForConcurrentUse(t *testing.T) {
+	const (
+		workers = 8
+		rounds  = 50
+	)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			img := NewCanvas(160, 32, 2)
+			size := float64(10 + i%3)
+			bold := i%2 == 0
+			for n := 0; n < rounds; n++ {
+				Text(img, "paperboy", 2, 22, Style{Size: size, Bold: bold, Shrink: true}, 150, Black, Left)
+				_ = Measure("paperboy", size, bold)
+				_ = Face(size, bold).Metrics()
+				_ = Ellipsize("paperboy paperboy", size, bold, 80)
+			}
+		}(i)
+	}
+	wg.Wait()
 }

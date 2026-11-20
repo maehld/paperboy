@@ -3,8 +3,7 @@
 // plugins that render image fragments use the same code, so a fragment has
 // the same typeface, hinting and gray levels as the page around it.
 //
-// The font faces are cached and not safe for concurrent use; callers that
-// render from several goroutines must serialize their drawing.
+// The font faces are cached and safe for concurrent use.
 package render
 
 import (
@@ -88,15 +87,71 @@ type faceKey struct {
 	size int
 }
 
+// lockedFace serializes the methods of a cached face. An opentype.Face keeps
+// mutable buffers (sfnt.Buffer, the rasterizer and the mask), so two callers
+// must not use the same face at the same time. The lock is per face, so
+// different sizes still draw in parallel.
+type lockedFace struct {
+	mu sync.Mutex
+	f  font.Face
+}
+
+func (l *lockedFace) Close() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.f.Close()
+}
+
+func (l *lockedFace) Glyph(dot fixed.Point26_6, r rune) (image.Rectangle, image.Image, image.Point, fixed.Int26_6, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	dr, mask, maskp, advance, ok := l.f.Glyph(dot, r)
+	if mask != nil {
+		// The face reuses one mask buffer for every glyph; the drawer reads
+		// the mask after this method returns. Hand out a copy so the next
+		// Glyph call cannot change the pixels under the drawer.
+		b := mask.Bounds()
+		c := image.NewAlpha(b)
+		draw.Draw(c, b, mask, b.Min, draw.Src)
+		mask = c
+	}
+	return dr, mask, maskp, advance, ok
+}
+
+func (l *lockedFace) GlyphBounds(r rune) (fixed.Rectangle26_6, fixed.Int26_6, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.f.GlyphBounds(r)
+}
+
+func (l *lockedFace) GlyphAdvance(r rune) (fixed.Int26_6, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.f.GlyphAdvance(r)
+}
+
+func (l *lockedFace) Kern(r0, r1 rune) fixed.Int26_6 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.f.Kern(r0, r1)
+}
+
+func (l *lockedFace) Metrics() font.Metrics {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.f.Metrics()
+}
+
 // Face returns the cached Go font face for a pixel size, rounded to whole
-// pixels with full hinting.
+// pixels with full hinting. The face is safe for concurrent use; callers must
+// not close it.
 func Face(size float64, bold bool) font.Face {
 	return face(size, bold, false)
 }
 
 // MonoFace returns Go Mono Bold for a pixel size: the face of Paperboy's
 // wordmark in docs/logo, for text that has to match the logo. It is not a page
-// typeface.
+// typeface. The face is safe for concurrent use; callers must not close it.
 func MonoFace(size float64) font.Face {
 	return face(size, true, true)
 }
@@ -132,8 +187,9 @@ func face(size float64, bold, mono bool) font.Face {
 	if err != nil {
 		panic(err)
 	}
-	faceCache[key] = f
-	return f
+	locked := &lockedFace{f: f}
+	faceCache[key] = locked
+	return locked
 }
 
 // Measure returns the advance width of s in pixels.
