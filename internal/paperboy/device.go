@@ -107,9 +107,10 @@ type syncScroll struct {
 	Align     string   `json:"align,omitempty"` // left, right or decimal
 }
 
-// textResponse builds the text part of a sync or poll answer. The scroll hash
-// lets a device keep its marquee offset while the scroll text is unchanged.
-func textResponse(served servedPage, p Profile, st *deviceState) *syncText {
+// textResponse builds the text part of a sync or poll answer. previous is the
+// scroll hash of the last answer; the new hash is returned for the caller to
+// store under the state lock. The function does not touch device state.
+func textResponse(served servedPage, p Profile, previous string) (*syncText, string) {
 	step := p.ScrollStep
 	if step <= 0 {
 		step = DefaultScrollStep
@@ -127,11 +128,8 @@ func textResponse(served servedPage, p Profile, st *deviceState) *syncText {
 		raw, _ := json.Marshal(served.scrolls)
 		hash = hashBytes(raw)
 	}
-	if st != nil {
-		out.ScrollChanged = hash != st.ScrollHash
-		st.ScrollHash = hash
-	}
-	return out
+	out.ScrollChanged = hash != previous
+	return out, hash
 }
 
 type syncResponse struct {
@@ -685,6 +683,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	}
 	s.lock("sync.lock")
 	var pageData []byte
+	var textPart *syncText
 	if !opt.virtual {
 		// A background action may have finished and replaced the menu while
 		// the page was rendered; a virtual display has no such path.
@@ -697,6 +696,9 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		st.LastText = served.lines
 		st.LastError = errText
 		st.Menu = menu
+		if textDisplay {
+			textPart, st.ScrollHash = textResponse(served, cfg.Profiles[d.Profile], st.ScrollHash)
+		}
 		if !opt.virtual {
 			pageData = s.stateSnapshotLocked(st)
 		}
@@ -787,7 +789,10 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		resp.Beep, resp.Blink = d.alertMethods()
 	}
 	if textDisplay {
-		resp.Text = textResponse(served, cfg.Profiles[d.Profile], st)
+		if textPart == nil { // the state vanished between rendering and the final lock
+			textPart, _ = textResponse(served, cfg.Profiles[d.Profile], "")
+		}
+		resp.Text = textPart
 	} else {
 		resp.Image = &syncImage{Path: served.path, Hash: served.hash}
 	}
@@ -908,23 +913,32 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 	// The dashboard and /api/devices show what the display shows now. Kept in
 	// memory only; the next sync writes the device's state file (ADR 0080).
 	s.lock("poll.lock")
-	if st := s.state[d.stateKey()]; st != nil && st.LastPageHash != served.hash {
-		st.LastText, st.LastPageHash, st.LastPageTime = served.lines, served.hash, now
-		st.LastPage, st.LastPageKind = served.name, "page"
-		switch {
-		case critical:
-			st.LastPage, st.LastPageKind = "", "battery"
-		case served.name == "":
-			st.LastPageKind = "notice"
-		}
-		st.LastError = ""
-		if choice.err != nil {
-			st.LastError = shortError(choice.err)
-		} else if served.err != nil {
-			st.LastError = shortError(served.err)
+	var textPart *syncText
+	if st := s.state[d.stateKey()]; st != nil {
+		var scrollHash string
+		textPart, scrollHash = textResponse(served, cfg.Profiles[d.Profile], st.ScrollHash)
+		st.ScrollHash = scrollHash
+		if st.LastPageHash != served.hash {
+			st.LastText, st.LastPageHash, st.LastPageTime = served.lines, served.hash, now
+			st.LastPage, st.LastPageKind = served.name, "page"
+			switch {
+			case critical:
+				st.LastPage, st.LastPageKind = "", "battery"
+			case served.name == "":
+				st.LastPageKind = "notice"
+			}
+			st.LastError = ""
+			if choice.err != nil {
+				st.LastError = shortError(choice.err)
+			} else if served.err != nil {
+				st.LastError = shortError(served.err)
+			}
 		}
 	}
 	s.mu.Unlock()
+	if textPart == nil { // the state vanished between rendering and the poll lock
+		textPart, _ = textResponse(served, cfg.Profiles[d.Profile], "")
+	}
 	// ESPHome logs every non-2xx answer as a failed request, so unchanged text
 	// is a 204 for the hash the device names in ?shown= (ADR 0045).
 	if shown := r.URL.Query().Get("shown"); shown != "" && shown == served.hash {
@@ -932,5 +946,5 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	writeJSON(w, http.StatusOK, textResponse(served, cfg.Profiles[d.Profile], st))
+	writeJSON(w, http.StatusOK, textPart)
 }

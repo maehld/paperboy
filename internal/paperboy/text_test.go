@@ -287,8 +287,7 @@ func TestTextResponseCarriesScrollFields(t *testing.T) {
 		hash: "h1",
 	}
 	profile := Profile{Kind: kindText, Charset: "ascii", Width: 8, Height: 2, ScrollStep: 300 * time.Millisecond}
-	state := &deviceState{}
-	out := textResponse(served, profile, state)
+	out, hash := textResponse(served, profile, "")
 	if len(out.Scrolls) != 1 {
 		t.Fatalf("scrolls: %+v", out.Scrolls)
 	}
@@ -301,7 +300,7 @@ func TestTextResponseCarriesScrollFields(t *testing.T) {
 	if !out.ScrollChanged {
 		t.Fatal("the first answer must reset the offset")
 	}
-	if again := textResponse(served, profile, state); again.ScrollChanged {
+	if again, _ := textResponse(served, profile, hash); again.ScrollChanged {
 		t.Fatal("the same scroll text must keep the offset")
 	}
 }
