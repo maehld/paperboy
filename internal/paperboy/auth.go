@@ -15,12 +15,12 @@ import (
 // paperboy.yaml (ADR 0096). Without a configured password the UI stays open
 // like before, so an existing instance keeps working; the CSRF check below runs
 // either way, because Basic credentials are attached to cross-site form posts.
-// A configured ui.hosts list also stops DNS rebinding (ADR 0135).
+// A configured ui.hosts list also stops DNS rebinding (ADR 0136).
 func (s *Server) requireUI(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if hosts := s.config().UI.Hosts; len(hosts) > 0 && !hostAllowed(r.Host, hosts) {
 			slog.Info("UI request refused: unknown host", "path", r.URL.Path, "remote", clientIP(r), "host", r.Host)
-			http.Error(w, "this host is not in ui.hosts (ADR 0135)", http.StatusForbidden)
+			http.Error(w, "this host is not in ui.hosts (ADR 0136)", http.StatusForbidden)
 			return
 		}
 		if crossSite(r) {
@@ -77,7 +77,7 @@ func crossSite(r *http.Request) bool {
 
 // hostAllowed reports whether the request's Host header names one of the
 // configured hosts. The comparison ignores case and the port, so both
-// "paperboy.local" and "paperboy.local:8090" match (ADR 0135).
+// "paperboy.local" and "paperboy.local:8090" match (ADR 0136).
 func hostAllowed(host string, allowed []string) bool {
 	got := hostOnly(host)
 	for _, want := range allowed {

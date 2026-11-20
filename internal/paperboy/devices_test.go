@@ -18,7 +18,7 @@ func deviceInfoOf(t *testing.T, s *Server) map[string]any {
 }
 
 // TestDevicesAPINamesOnlyKnownFields keeps GET /api/devices an explicit field
-// set and never exposes the device key or the pairing state (ADR 0139).
+// set and never exposes the device key or the pairing state (ADR 0140).
 func TestDevicesAPINamesOnlyKnownFields(t *testing.T) {
 	s, now := planServer(t, testPlan)
 	planDevice(t, s)

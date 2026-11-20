@@ -1,4 +1,4 @@
-# 0134: A minimal environment for plugins
+# 0135: A minimal environment for plugins
 
 - Status: Accepted
 - Datum: 2026-11-20

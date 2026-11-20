@@ -57,7 +57,7 @@ download:              # optional: fetch plugins and firmware from the releases 
   firmware_channel: stable  # optional: stable or latest
 ui:                    # optional: the password of the operator UI (ADR 0096)
   password: ${PAPERBOY_UI_PASSWORD}
-  hosts: [paperboy.local, 192.168.1.20]  # optional: host names the UI answers to (ADR 0135)
+  hosts: [paperboy.local, 192.168.1.20]  # optional: host names the UI answers to (ADR 0136)
 # Display types are files under displays/ (ADR 0071); devices are files under devices/ (ADR 0070).
 ```
 
@@ -80,7 +80,7 @@ ui:
 - Without the `ui` section the UI stays open, as it was before this option existed. Paperboy warns at startup when the listener is not loopback and no password is set. A password added or changed later applies to the next request, without a restart.
 - A changed password ends the sessions of open tabs: their next request answers `401` and the browser asks again. There is no logout, because the browser keeps Basic credentials until it is closed; use a private window on a shared machine.
 - The UI password is not the device key. A display keeps registering, syncing and downloading its pages with its own key ([ADR 0042](adr/0042-device-protocol.md), [ADR 0097](adr/0097-page-downloads-take-the-device-key.md)); the firmware images on `/firmware/` stay open, because they are public release artifacts. Requests from another site cannot write: they are refused with `403` even when the browser would send the password along.
-- `ui.hosts` (optional) names the host names you type to reach the UI ([ADR 0135](adr/0135-harden-the-operator-ui.md)). Paperboy then answers no other `Host`; a request with another host gets `403`. This stops DNS rebinding, where a web page points its own name at Paperboy's address. List every name and IP address you use, including the name of a reverse proxy. The port does not matter. Without `ui.hosts` the UI accepts every host, and Paperboy warns at startup when the listener is not loopback.
+- `ui.hosts` (optional) names the host names you type to reach the UI ([ADR 0136](adr/0136-harden-the-operator-ui.md)). Paperboy then answers no other `Host`; a request with another host gets `403`. This stops DNS rebinding, where a web page points its own name at Paperboy's address. List every name and IP address you use, including the name of a reverse proxy. The port does not matter. Without `ui.hosts` the UI accepts every host, and Paperboy warns at startup when the listener is not loopback.
 - **Expose beyond the LAN:** Paperboy does not terminate TLS. The password and the page images of the displays travel through the LAN in clear text. Put a reverse proxy in front that terminates HTTPS and forwards to Paperboy's `-listen` address. A display in another network needs that public address as its Paperboy URL (`https://…`). The firmware verifies the certificate against the public CAs ([ADR 0108](adr/0108-verify-the-tls-certificate.md)), so a proxy with a Let's Encrypt certificate is enough. A self-signed certificate only works in the LAN over `http://`. The device needs a clock for the check. It gets one from NTP (`ntp_server`, default `pool.ntp.org`) after a power-on. A display in the trusted LAN can keep `http://<host>:<port>`. The dashboard shows the proxy's address as the last contact of the device ([ADR 0083](adr/0083-device-address.md)).
 
 ## Display types

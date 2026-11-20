@@ -52,7 +52,7 @@ func sampleRequest(t *testing.T, pattern string) *http.Request {
 
 // TestUIHostAllowlistStopsRebinding: with ui.hosts set, the UI refuses a
 // request whose Host names another site, because DNS rebinding makes Origin and
-// Host agree (ADR 0135). The check ignores the port and the case.
+// Host agree (ADR 0136). The check ignores the port and the case.
 func TestUIHostAllowlistStopsRebinding(t *testing.T) {
 	s := testServerWithUI(t, UIConfig{Hosts: []string{"paperboy.local"}})
 	h := s.Handler()
@@ -76,7 +76,7 @@ func TestUIHostAllowlistStopsRebinding(t *testing.T) {
 
 // TestUISecurityHeaders pins the clickjacking protection: a framed page sends
 // same-origin writes and passes the CSRF check, so the browser must refuse the
-// frame (ADR 0135).
+// frame (ADR 0136).
 func TestUISecurityHeaders(t *testing.T) {
 	s, _ := testServer(t)
 	h := s.Handler()

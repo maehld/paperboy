@@ -1,4 +1,4 @@
-# 0135: Harden the operator UI against framing and DNS rebinding
+# 0136: Harden the operator UI against framing and DNS rebinding
 
 - Status: Accepted
 - Datum: 2026-11-20

@@ -1,4 +1,4 @@
-# 0137: Resolve plans and pages outside the state lock
+# 0138: Resolve plans and pages outside the state lock
 
 - Status: Accepted
 - Datum: 2026-11-20

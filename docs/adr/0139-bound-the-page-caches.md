@@ -1,4 +1,4 @@
-# 0138: Bound the in-memory page caches
+# 0139: Bound the in-memory page caches
 
 - Status: Accepted
 - Datum: 2026-11-20

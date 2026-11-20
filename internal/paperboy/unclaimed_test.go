@@ -55,7 +55,7 @@ func TestUnclaimedDeviceInEditor(t *testing.T) {
 
 // TestUnclaimedRegistrationIsBounded caps the hardware that registers without
 // a device file: the state map and state/devices/ must not grow without limit
-// (ADR 0136). An entry that exists keeps updating at the cap.
+// (ADR 0137). An entry that exists keeps updating at the cap.
 func TestUnclaimedRegistrationIsBounded(t *testing.T) {
 	s, _ := testServer(t)
 	registration := func(i int) string {
@@ -102,7 +102,7 @@ func mustStateKey(t *testing.T, mac string) string {
 }
 
 // TestUnknownNoteLogsOnce keeps the journal quiet under a registration flood:
-// one line per MAC and hour, and a bounded memory (ADR 0136).
+// one line per MAC and hour, and a bounded memory (ADR 0137).
 func TestUnknownNoteLogsOnce(t *testing.T) {
 	s, now := testServer(t)
 	if !s.noteUnknownLocked("AABBCCDDEEFF", *now) {

@@ -1,4 +1,4 @@
-# 0139: An explicit answer for the devices API
+# 0140: An explicit answer for the devices API
 
 - Status: Accepted
 - Datum: 2026-11-20

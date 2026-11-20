@@ -57,7 +57,7 @@ func (s *Server) pageProfile(r *http.Request) string {
 }
 
 // The note map only suppresses repeated log lines, so it must not grow without
-// limit (ADR 0138).
+// limit (ADR 0139).
 type pageKeyNote struct {
 	reason string
 	at     time.Time

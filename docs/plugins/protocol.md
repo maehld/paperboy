@@ -386,7 +386,7 @@ blobs as a cache that can be rebuilt.
 A plugin is a separate program, but Paperboy does not sandbox it. It runs
 with the rights of the operator. Install only plugins you trust. A plugin
 also inherits only an allowlist of the Paperboy environment
-([ADR 0134](../adr/0134-a-minimal-environment-for-plugins.md)).
+([ADR 0135](../adr/0135-a-minimal-environment-for-plugins.md)).
 
 ## Go helper
 

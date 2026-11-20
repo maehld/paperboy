@@ -321,7 +321,7 @@ type Config struct {
 // UIConfig is the operator UI section (ADR 0096). The password guards every
 // route of the UI and its API; an empty password keeps the UI open like a v2
 // instance that never set one. Hosts limits the Host header the UI answers to
-// (ADR 0135); an empty list accepts every host.
+// (ADR 0136); an empty list accepts every host.
 type UIConfig struct {
 	Password string   // ui.password, ${VAR} already expanded from the environment
 	Hosts    []string // ui.hosts, lower case and without a port
@@ -426,7 +426,7 @@ type fileConfig struct {
 	Download *downloadFile `yaml:"download"`
 	UI       struct {
 		Password string   `yaml:"password"` // operator UI password (ADR 0096)
-		Hosts    []string `yaml:"hosts"`    // host names the UI answers to (ADR 0135)
+		Hosts    []string `yaml:"hosts"`    // host names the UI answers to (ADR 0136)
 	} `yaml:"ui"`
 	Plugins map[string]struct {
 		Command any               `yaml:"command"` // removed by ADR 0060; rejected with a hint
@@ -592,7 +592,7 @@ func LoadConfig(dir string) (*Config, error) {
 		}
 		c.UI.Password, _ = v.(string)
 	}
-	// Host names a browser uses to reach the UI (ADR 0135); the comparison
+	// Host names a browser uses to reach the UI (ADR 0136); the comparison
 	// ignores case and the port, so "Paperboy.Local:8090" works too.
 	c.UI.Hosts = append([]string(nil), f.UI.Hosts...)
 	if err := c.validate(); err != nil {

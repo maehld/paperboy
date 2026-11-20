@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// TestCredentialHost pins where the app password may travel (ADR 0140).
+// TestCredentialHost pins where the app password may travel (ADR 0141).
 func TestCredentialHost(t *testing.T) {
 	for _, tc := range []struct {
 		from, to string
@@ -34,7 +34,7 @@ func TestCredentialHost(t *testing.T) {
 
 // TestCredentialsDropOnForeignRedirect sends the app password to a configured
 // server and follows it to another host: the target must see no credentials
-// (ADR 0140).
+// (ADR 0141).
 func TestCredentialsDropOnForeignRedirect(t *testing.T) {
 	var leaked bool
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

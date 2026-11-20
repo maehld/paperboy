@@ -1,4 +1,4 @@
-# 0136: Bound unclaimed device registration
+# 0137: Bound unclaimed device registration
 
 - Status: Accepted
 - Datum: 2026-11-20

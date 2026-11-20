@@ -1,4 +1,4 @@
-# 0140: Keep CalDAV credentials on their hosts
+# 0141: Keep CalDAV credentials on their hosts
 
 - Status: Accepted
 - Datum: 2026-11-20

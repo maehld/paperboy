@@ -41,7 +41,7 @@ func newClient(user, password string) *client {
 // do sends one request and follows up to five redirects with the same method,
 // body and credentials. Credentials stay on the same host and on iCloud, which
 // moves an account to its partition host; any other host change drops them
-// (ADR 0140). It returns the final URL with the body.
+// (ADR 0141). It returns the final URL with the body.
 func (c *client) do(ctx context.Context, method string, u *url.URL, depth string, body []byte) (*url.URL, []byte, int, error) {
 	auth := c.user != "" || c.password != ""
 	for range 6 {
@@ -95,7 +95,7 @@ func (c *client) do(ctx context.Context, method string, u *url.URL, depth string
 // credentialHost reports whether the Basic credentials may travel from one host
 // to another: the same host, or two iCloud hosts, because iCloud moves an
 // account from caldav.icloud.com to its pNN-caldav.icloud.com partition
-// (ADR 0140). The port does not matter.
+// (ADR 0141). The port does not matter.
 func credentialHost(from, to string) bool {
 	from, to = hostName(from), hostName(to)
 	if from == "" || to == "" {

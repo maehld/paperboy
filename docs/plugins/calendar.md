@@ -20,7 +20,7 @@ Calendars from CalDAV and iCalendar, plus contact birthdays from CardDAV ([ADR 0
 
 `calendars` filters at load time and applies to every display. Each widget can narrow the loaded set further with its own `calendars` argument; an empty list shows all loaded calendars. The editors offer the loaded names as check boxes, and an unknown name is an error that lists the available calendars. Before the first successful load the configured names are offered instead; if those are empty too, the editors keep a comma-separated text field.
 
-For iCloud, create an app-specific password at [account.apple.com](https://account.apple.com) and use your Apple ID as `user`. Nextcloud works with an address like `https://cloud.example.org/remote.php/dav`. The plugin follows redirects. It sends the app password only to the same host and to iCloud hosts; a redirect to any other host continues without credentials ([ADR 0140](../adr/0140-keep-caldav-credentials-on-their-hosts.md)).
+For iCloud, create an app-specific password at [account.apple.com](https://account.apple.com) and use your Apple ID as `user`. Nextcloud works with an address like `https://cloud.example.org/remote.php/dav`. The plugin follows redirects. It sends the app password only to the same host and to iCloud hosts; a redirect to any other host continues without credentials ([ADR 0141](../adr/0141-keep-caldav-credentials-on-their-hosts.md)).
 
 The plugin expands recurring events itself. If an event uses a rule it does not support (hourly, `BYWEEKNO`, `BYYEARDAY`), it skips that event and logs a warning.
 

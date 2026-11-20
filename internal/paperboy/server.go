@@ -56,7 +56,7 @@ type Server struct {
 	skipNotes    map[string]string        // "<profile>/<page>" → last logged reason for skipping it
 	qoiNotes     map[string]string        // page path → last logged reason for simplifying it (ADR 0088)
 	pageKeyNotes map[string]pageKeyNote   // page path → last logged reason for refusing it (ADR 0097)
-	unknownNotes map[string]time.Time     // MAC key → last log about its unclaimed registration (ADR 0136)
+	unknownNotes map[string]time.Time     // MAC key → last log about its unclaimed registration (ADR 0137)
 	widgets      *widget.Host             // plugins and their widget cache (ADR 0049; own lock)
 	download     *downloadStatus          // release checks (ADR 0060; own lock)
 
@@ -269,7 +269,7 @@ func (s *Server) Handler() http.Handler {
 	ui := s.requireUI(uiMux)
 	devices := newMux(s.deviceRoutes())
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Every answer refuses framing and content sniffing (ADR 0135): a
+		// Every answer refuses framing and content sniffing (ADR 0136): a
 		// framed UI would send same-origin writes and pass the CSRF check.
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
@@ -328,7 +328,7 @@ type deviceInfo struct {
 	Profile string `json:"display_type"`
 	Plan    string `json:"plan,omitempty"`
 	// The state stays in memory for the dashboard; the API answer is the
-	// explicit deviceAPIInfo below, so a new state field cannot leak (ADR 0139).
+	// explicit deviceAPIInfo below, so a new state field cannot leak (ADR 0140).
 	deviceState       `json:"-"`
 	Registered        bool   `json:"registered"`
 	Status            string `json:"status"`                       // ok, late, never or unregistered
@@ -341,7 +341,7 @@ type deviceInfo struct {
 
 // deviceAPIInfo is what GET /api/devices answers. The explicit field list keeps
 // the pairing secrets and the API key out, whatever the state gains later
-// (ADR 0139).
+// (ADR 0140).
 type deviceAPIInfo struct {
 	ID                string          `json:"id"`
 	Type              string          `json:"protocol"`

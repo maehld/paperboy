@@ -555,7 +555,7 @@ func TestPlanLoaderKeepsLastValidVersion(t *testing.T) {
 	}
 }
 
-// TestResolvePlanDoesNotNeedTheStateLock pins ADR 0137: plan loading, rule
+// TestResolvePlanDoesNotNeedTheStateLock pins ADR 0138: plan loading, rule
 // selection and the page reads happen outside the state lock.
 func TestResolvePlanDoesNotNeedTheStateLock(t *testing.T) {
 	s, now := planServer(t, testPlan)

@@ -224,7 +224,7 @@ func clientIP(r *http.Request) string {
 }
 
 // maxUnclaimed bounds the hardware that registered without a device file
-// (ADR 0136). Registration takes no key, so any LAN client can create an entry;
+// (ADR 0137). Registration takes no key, so any LAN client can create an entry;
 // the operator claims or forgets hardware in the devices tab.
 const (
 	maxUnclaimed    = 10
@@ -311,7 +311,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if device == nil && (st == nil || st.FirstSeen.IsZero()) && s.unclaimedCountLocked(cfg) >= maxUnclaimed {
 		// The state map and state/devices/ stay bounded: any LAN client can
 		// register a MAC without a key, so unclaimed hardware is capped
-		// (ADR 0136). The log names a MAC once, not once per attempt.
+		// (ADR 0137). The log names a MAC once, not once per attempt.
 		logged := s.noteUnknownLocked(key, now)
 		s.mu.Unlock()
 		if logged {
@@ -499,7 +499,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		defer s.stats.Start("sync.device:" + d.ID)()
 	}
 	// The plan, its rule and the pages that fit are read before the state lock
-	// (ADR 0137): a slow page file must not block the other devices.
+	// (ADR 0138): a slow page file must not block the other devices.
 	resolved := s.resolvePlan(cfg, d, now, opt.values)
 	s.lock("sync.lock")
 	// The journal gets one line when the power source or the charger state

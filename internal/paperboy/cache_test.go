@@ -7,7 +7,7 @@ import (
 )
 
 // TestHintsAreBoundedLRU keeps the notice cache small and drops the page used
-// longest ago (ADR 0138).
+// longest ago (ADR 0139).
 func TestHintsAreBoundedLRU(t *testing.T) {
 	s, _ := testServer(t)
 	now := time.Now()
@@ -30,7 +30,7 @@ func TestHintsAreBoundedLRU(t *testing.T) {
 }
 
 // TestRenderedCacheIsBounded drops stale renders and the oldest above the cap
-// (ADR 0138); the hash index follows.
+// (ADR 0139); the hash index follows.
 func TestRenderedCacheIsBounded(t *testing.T) {
 	s, _ := testServer(t)
 	now := time.Now()
@@ -58,7 +58,7 @@ func TestRenderedCacheIsBounded(t *testing.T) {
 }
 
 // TestPageKeyNotesAreBounded caps the map that suppresses repeated refusal
-// logs (ADR 0138).
+// logs (ADR 0139).
 func TestPageKeyNotesAreBounded(t *testing.T) {
 	s, _ := testServer(t)
 	for i := range maxPageKeyNotes + 20 {

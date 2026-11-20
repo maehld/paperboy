@@ -187,10 +187,10 @@ type hintPage struct {
 	data    []byte
 	profile string
 	at      time.Time // when the notice was drawn (ADR 0104)
-	used    time.Time // last download or menu use, for the LRU eviction (ADR 0138)
+	used    time.Time // last download or menu use, for the LRU eviction (ADR 0139)
 }
 
-// maxHints bounds the generated notice pages in memory (ADR 0138). A page that
+// maxHints bounds the generated notice pages in memory (ADR 0139). A page that
 // falls out is drawn again on the next request; a device with an old URL gets
 // 404 and keeps its screen until the next sync.
 const maxHints = 500
@@ -261,7 +261,7 @@ func (s *Server) storePage(profile, name string, rp *renderedPage) servedPage {
 	return servedPage{path: fmt.Sprintf("/pages/%s/%s/%s.png", profile, name, rp.hash), hash: rp.hash}
 }
 
-// maxRendered and renderedTTL bound the rendered page cache (ADR 0138). The
+// maxRendered and renderedTTL bound the rendered page cache (ADR 0139). The
 // cache is memory only; a dropped entry is composed again on the next request.
 const (
 	maxRendered = 256
@@ -407,7 +407,7 @@ type planChoice struct {
 
 // planResolution is a device plan evaluated before the state lock: the plan,
 // the rule it selects and the pages of that rule that fit the display type. A
-// slow page read therefore never blocks the other devices (ADR 0137).
+// slow page read therefore never blocks the other devices (ADR 0138).
 type planResolution struct {
 	plan      *plan.Plan
 	err       error
@@ -473,7 +473,7 @@ func (s *Server) announceSkippedLocked(d *Device, r planResolution) {
 
 // choosePlanPage applies a resolved plan under the state lock and advances the
 // page cursor. Callers hold s.mu and pass the configuration snapshot of the
-// request: plan loading and page reads happen before the lock (ADR 0137).
+// request: plan loading and page reads happen before the lock (ADR 0138).
 // Rendering happens later in renderPlan. paused freezes paging while the
 // device menu is open (ADR 0057): the page stays and a timed change waits.
 // timed marks a timed refresh, which is when a rule with alert: refresh alerts
