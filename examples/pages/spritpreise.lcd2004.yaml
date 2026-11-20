@@ -1,0 +1,8 @@
+kind: text
+cells:
+  - { at: [0, 0], span: [20, 1], value: paperboy/title }
+  - { at: [0, 1], span: [10, 1], value: fuel/price, args: { fuel: diesel }, label: Diesel }
+  - { at: [10, 1], span: [10, 1], value: fuel/price, args: { fuel: e5 }, label: Super E5, align: right }
+  - { at: [0, 2], span: [10, 1], value: fuel/station, args: { fuel: diesel } }
+  - { at: [10, 2], span: [10, 1], value: fuel/updated, align: right }
+  - { at: [0, 3], span: [20, 1], value: fuel/list, args: { fuel: diesel, stations: 3 }, overflow: scroll }

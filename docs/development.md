@@ -22,6 +22,7 @@ The workflows build the three deliverables ([ADR 0056](adr/0056-repository-layou
 ```text
 cmd/paperboy/            Startup, options and example configuration
 cmd/weather/             Weather plugin: Open-Meteo (ADR 0049)
+cmd/fuel/                Fuel plugin: Tankerkönig prices and their history
 cmd/calendar/            Calendar plugin: CalDAV and iCalendar (ADR 0048, 0049)
 cmd/evcc/                evcc plugin: energy flow, charging point, forecast, history, chart, values
 cmd/xkcd/                xkcd plugin: comic with optional title and alt text
