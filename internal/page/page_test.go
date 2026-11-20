@@ -42,6 +42,7 @@ func TestParseValidatesGrid(t *testing.T) {
 		"notices":   "grid: [1, 1]\nnotices: bar\ncells: [{widget: a/b}]\n",
 		"old rows":  "rows: [1]\nblocks: [{text: x}]\n",
 		"actions":   "grid: [1, 1]\nactions: [{action: a/b}]\ncells: [{widget: a/b}]\n",
+		"second":    "kind: image\ngrid: [1, 1]\ncells: [{widget: a/b}]\n---\nkind: text\n",
 	} {
 		if _, err := Parse(strings.NewReader(bad)); err == nil {
 			t.Errorf("%s: accepted", name)

@@ -60,4 +60,15 @@ if [ "$shared" -eq 0 ] && { changed pkg || changed go.mod || changed go.sum; }; 
     echo "::warning::shared code changed (pkg/, go.mod or go.sum): check whether the affected plugins need a new VERSION (ADR 0075)"
 fi
 
+# The embed directive must sit in each command's package, so every
+# cmd/<plugin>/version.go is a copy. This check keeps the copies identical.
+reference=cmd/calendar/version.go
+for file in cmd/*/version.go; do
+    [ "$file" = "$reference" ] && continue
+    if ! cmp -s "$reference" "$file"; then
+        echo "::error file=$file::$file differs from $reference; keep the plugin version files identical"
+        status=1
+    fi
+done
+
 exit $status

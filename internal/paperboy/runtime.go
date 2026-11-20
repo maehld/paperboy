@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/maehld/paperboy/internal/format"
 )
 
 // The runtime estimate (issue #207, issue #236) learns the discharge rate from
@@ -213,21 +215,8 @@ func waitForDrop(missing, rate float64) time.Duration {
 	return ((wait + time.Hour - 1) / time.Hour) * time.Hour
 }
 
-// runtimeText formats the estimate as "~12 d" or, below two days, "~18 h". The
-// tilde says that it is an estimate, not a promise.
-func runtimeText(d time.Duration) string {
-	switch {
-	case d <= 0:
-		return ""
-	case d < 48*time.Hour:
-		hours := int(d.Round(time.Hour) / time.Hour)
-		if hours < 1 {
-			hours = 1
-		}
-		return fmt.Sprintf("~%d h", hours)
-	}
-	return fmt.Sprintf("~%d d", int(d.Round(24*time.Hour)/(24*time.Hour)))
-}
+// runtimeText formats the estimate as "~12 d" or, below two days, "~18 h".
+func runtimeText(d time.Duration) string { return format.Runtime(d) }
 
 // spanText names the data behind the estimate: "under an hour", "6 h" or "3 d".
 func dataSpanText(d time.Duration) string {

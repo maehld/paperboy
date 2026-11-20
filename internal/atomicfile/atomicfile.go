@@ -7,6 +7,15 @@ import (
 	"path/filepath"
 )
 
+// WriteFileIn replaces path like WriteFile and creates missing parent
+// directories with dirPerm.
+func WriteFileIn(path string, data []byte, dirPerm, perm fs.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
+		return err
+	}
+	return WriteFile(path, data, perm)
+}
+
 // WriteFile replaces path with data. It writes a unique temporary file in the
 // target directory, gives it perm, and renames it over path. A reader sees the
 // old file or the new one, never a mix, and two writers cannot interleave. The

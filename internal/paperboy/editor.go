@@ -38,6 +38,53 @@ type conflictAnswer struct {
 	Hash  string `json:"hash"`
 }
 
+// editedFile is a file an editor read before it writes it; data is empty when
+// the file does not exist yet.
+type editedFile struct {
+	path   string
+	data   []byte
+	exists bool
+}
+
+// readEditedFile reads the file an editor is about to replace and checks the
+// hash it sent. A missing file is no error, because a save creates it. It
+// answers the request itself on a conflict or a read error.
+func readEditedFile(w http.ResponseWriter, path, hash, noun string) (editedFile, bool) {
+	data, err := os.ReadFile(path)
+	exists := err == nil
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return editedFile{}, false
+	}
+	if exists && hash != "" && fileHash(data) != hash {
+		writeJSON(w, http.StatusConflict, conflictAnswer{
+			Error: fmt.Sprintf("the %s changed on disk; read it again before saving", noun), Hash: fileHash(data)})
+		return editedFile{}, false
+	}
+	if !exists && hash != "" {
+		writeAPIError(w, http.StatusConflict, "the %s was removed on disk; read it again before saving", noun)
+		return editedFile{}, false
+	}
+	return editedFile{path: path, data: data, exists: exists}, true
+}
+
+// saveEditedFile keeps a backup of the old content and writes data. It answers
+// the request itself when the backup or the write fails, so no caller writes
+// without one.
+func (s *Server) saveEditedFile(w http.ResponseWriter, cfg *Config, f editedFile, kind, label string, data []byte, noun string) bool {
+	if f.exists {
+		if err := s.backupFile(cfg, kind, label, f.data); err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "cannot keep a backup of the %s: %v", noun, err)
+			return false
+		}
+	}
+	if err := writeAtomic(f.path, data); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+		return false
+	}
+	return true
+}
+
 // pagesAnswer is the body of GET /api/pages.
 type pagesAnswer struct {
 	Pages []editorPageFile `json:"pages"`
@@ -407,28 +454,11 @@ func (s *Server) handleSavePage(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "%v", err)
 		return
 	}
-	cur, err := os.ReadFile(path)
-	exists := err == nil
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+	current, ok := readEditedFile(w, path, body.Hash, "page")
+	if !ok {
 		return
 	}
-	if exists && body.Hash != "" && fileHash(cur) != body.Hash {
-		writeJSON(w, http.StatusConflict, conflictAnswer{Error: "the page changed on disk; read it again before saving", Hash: fileHash(cur)})
-		return
-	}
-	if !exists && body.Hash != "" {
-		writeAPIError(w, http.StatusConflict, "the page was removed on disk; read it again before saving")
-		return
-	}
-	if exists {
-		if err := s.backupFile(cfg, "pages", backupLabel(name, label), cur); err != nil {
-			writeAPIError(w, http.StatusInternalServerError, "cannot keep a backup of the page: %v", err)
-			return
-		}
-	}
-	if err := writeAtomic(path, data); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+	if !s.saveEditedFile(w, cfg, current, "pages", backupLabel(name, label), data, "page") {
 		return
 	}
 	out := editorPage{Name: name, File: label, Path: relativePath(cfg, path),
@@ -794,28 +824,11 @@ func (s *Server) handleSavePlan(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "written plan does not read back: %v", err)
 		return
 	}
-	cur, err := os.ReadFile(path)
-	exists := err == nil
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+	current, ok := readEditedFile(w, path, body.Hash, "plan")
+	if !ok {
 		return
 	}
-	if exists && body.Hash != "" && fileHash(cur) != body.Hash {
-		writeJSON(w, http.StatusConflict, conflictAnswer{Error: "the plan changed on disk; read it again before saving", Hash: fileHash(cur)})
-		return
-	}
-	if !exists && body.Hash != "" {
-		writeAPIError(w, http.StatusConflict, "the plan was removed on disk; read it again before saving")
-		return
-	}
-	if exists {
-		if err := s.backupFile(cfg, "plans", name, cur); err != nil {
-			writeAPIError(w, http.StatusInternalServerError, "cannot keep a backup of the plan: %v", err)
-			return
-		}
-	}
-	if err := writeAtomic(path, data); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+	if !s.saveEditedFile(w, cfg, current, "plans", name, data, "plan") {
 		return
 	}
 	p, _ := plan.Parse(bytes.NewReader(data), cfg.Timezone)
@@ -917,32 +930,11 @@ func (s *Server) handleSaveDevice(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	cur, err := os.ReadFile(path)
-	exists := err == nil
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+	current, ok := readEditedFile(w, path, body.Hash, "device")
+	if !ok {
 		return
 	}
-	if exists && body.Hash != "" && fileHash(cur) != body.Hash {
-		writeJSON(w, http.StatusConflict, conflictAnswer{Error: "the device changed on disk; read it again before saving", Hash: fileHash(cur)})
-		return
-	}
-	if !exists && body.Hash != "" {
-		writeAPIError(w, http.StatusConflict, "the device was removed on disk; read it again before saving")
-		return
-	}
-	if exists {
-		if err := s.backupFile(cfg, "devices", id, cur); err != nil {
-			writeAPIError(w, http.StatusInternalServerError, "cannot keep a backup of the device: %v", err)
-			return
-		}
-	}
-	if err := os.MkdirAll(cfg.DevicesDir, 0o755); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "%v", err)
-		return
-	}
-	if err := writeAtomic(path, data); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+	if !s.saveEditedFile(w, cfg, current, "devices", id, data, "device") {
 		return
 	}
 	writeJSON(w, http.StatusOK, editorDevice{ID: id, Path: relativePath(cfg, path), Hash: fileHash(data),
@@ -1049,32 +1041,11 @@ func (s *Server) handleSaveDisplay(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "%v", err)
 		return
 	}
-	cur, err := os.ReadFile(path)
-	exists := err == nil
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+	current, ok := readEditedFile(w, path, body.Hash, "display type")
+	if !ok {
 		return
 	}
-	if exists && body.Hash != "" && fileHash(cur) != body.Hash {
-		writeJSON(w, http.StatusConflict, conflictAnswer{Error: "the display type changed on disk; read it again before saving", Hash: fileHash(cur)})
-		return
-	}
-	if !exists && body.Hash != "" {
-		writeAPIError(w, http.StatusConflict, "the display type was removed on disk; read it again before saving")
-		return
-	}
-	if exists {
-		if err := s.backupFile(cfg, "displays", name, cur); err != nil {
-			writeAPIError(w, http.StatusInternalServerError, "cannot keep a backup of the display type: %v", err)
-			return
-		}
-	}
-	if err := os.MkdirAll(cfg.DisplaysDir, 0o755); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "%v", err)
-		return
-	}
-	if err := writeAtomic(path, data); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "%v", err)
+	if !s.saveEditedFile(w, cfg, current, "displays", name, data, "display type") {
 		return
 	}
 	writeJSON(w, http.StatusOK, editorDisplayType{Name: name, Path: relativePath(cfg, path), Hash: fileHash(data),

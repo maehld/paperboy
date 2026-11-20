@@ -12,7 +12,6 @@
 package page
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -20,7 +19,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go.yaml.in/yaml/v3"
+	"github.com/maehld/paperboy/internal/ident"
+	"github.com/maehld/paperboy/internal/strictyaml"
 )
 
 // ErrNotFound reports a page template that does not exist for a display type.
@@ -137,10 +137,8 @@ func parse(r io.Reader, variant bool) (*Template, error) {
 	if err != nil {
 		return nil, err
 	}
-	dec := yaml.NewDecoder(bytes.NewReader(raw))
-	dec.KnownFields(true)
 	var t Template
-	if err := dec.Decode(&t); err != nil {
+	if err := strictyaml.Decode(raw, &t); err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, fmt.Errorf("empty template")
 		}
@@ -238,17 +236,7 @@ func readTemplate(path string, variant bool) (*Template, error) {
 
 // ValidName reports whether s can be used as a page, display, plugin or
 // widget name.
-func ValidName(s string) bool {
-	if s == "" || len(s) > 40 {
-		return false
-	}
-	for _, r := range s {
-		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
-			return false
-		}
-	}
-	return true
-}
+func ValidName(s string) bool { return ident.Valid(s) }
 
 func (t *Template) validate() error {
 	if len(t.Actions) > 0 {

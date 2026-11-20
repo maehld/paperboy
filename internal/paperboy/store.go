@@ -101,9 +101,9 @@ type deviceReading struct {
 	At    time.Time `json:"at"`
 }
 
-// atomicWrite replaces one file in one step; tests replace it to make a write
-// fail at a chosen path.
-var atomicWrite = atomicfile.WriteFile
+// atomicWrite replaces one file in one step and creates its directory; tests
+// replace it to make a write fail at a chosen path.
+var atomicWrite = atomicfile.WriteFileIn
 
 // pendingAlert is a manual alert that waits for the device's next sync
 // (ADR 0142). At is when the operator asked, Until when the request expires.
@@ -112,12 +112,7 @@ type pendingAlert struct {
 	Until time.Time `json:"until"`
 }
 
-func writeAtomic(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return atomicWrite(path, data, 0o644)
-}
+func writeAtomic(path string, data []byte) error { return atomicWrite(path, data, 0o755, 0o644) }
 
 // deviceStateKey turns a MAC address into the key of its state file: upper case
 // hex without separators, e.g. A0B1C2D3E4F5 (ADR 0080). The MAC is stable when
@@ -211,12 +206,7 @@ func formatStateKey(key string) string {
 
 // writeStateFile replaces one state file atomically; state holds API keys, so
 // it is readable by the owner only (ADR 0080).
-func writeStateFile(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return atomicWrite(path, data, 0o600)
-}
+func writeStateFile(path string, data []byte) error { return atomicWrite(path, data, 0o755, 0o600) }
 
 // unclaimedDevice is a state file whose MAC no device file uses: hardware that
 // registered but was never claimed (ADR 0080). The fields are copies, so a

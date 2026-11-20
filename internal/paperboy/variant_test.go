@@ -251,11 +251,11 @@ func TestMoveVariant(t *testing.T) {
 	writePage(t, s, "voll", "", targetPage)
 	targetPath := filepath.Join(s.config().Pages, "voll.yaml")
 	oldWrite := atomicWrite
-	atomicWrite = func(path string, data []byte, perm fs.FileMode) error {
+	atomicWrite = func(path string, data []byte, dirPerm, perm fs.FileMode) error {
 		if path == targetPath {
 			return errors.New("target write blocked")
 		}
-		return oldWrite(path, data, perm)
+		return oldWrite(path, data, dirPerm, perm)
 	}
 	defer func() { atomicWrite = oldWrite }()
 	var quell editorPage

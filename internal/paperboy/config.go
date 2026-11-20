@@ -6,7 +6,6 @@ package paperboy
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -24,60 +23,16 @@ import (
 
 	"github.com/maehld/paperboy/internal/builtin"
 	"github.com/maehld/paperboy/internal/download"
+	"github.com/maehld/paperboy/internal/duration"
+	"github.com/maehld/paperboy/internal/ident"
 	"github.com/maehld/paperboy/internal/page"
 	"github.com/maehld/paperboy/internal/semver"
 	"github.com/maehld/paperboy/internal/widget"
 )
 
-// Duration accepts Go duration strings such as "5m" in YAML.
-type Duration time.Duration
-
-func (d *Duration) UnmarshalYAML(v *yaml.Node) error {
-	var s string
-	if err := v.Decode(&s); err != nil {
-		return fmt.Errorf("expected duration as string, e.g. \"5m\"")
-	}
-	parsed, err := time.ParseDuration(s)
-	if err != nil {
-		return err
-	}
-	*d = Duration(parsed)
-	return nil
-}
-
-func (d Duration) MarshalYAML() (any, error) { return time.Duration(d).String(), nil }
-
-// UnmarshalJSON reads the string form its YAML counterpart uses, so a duration
-// survives the round trip through the editor API (ADR 0066, 0070).
-func (d *Duration) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
-		return fmt.Errorf("expected duration as string, e.g. \"5m\"")
-	}
-	if s == "" {
-		*d = 0
-		return nil
-	}
-	parsed, err := time.ParseDuration(s)
-	if err != nil {
-		return err
-	}
-	*d = Duration(parsed)
-	return nil
-}
-
-// MarshalJSON keeps durations readable in API responses such as /api/profiles.
-func (d Duration) MarshalJSON() ([]byte, error) { return json.Marshal(durationText(time.Duration(d))) }
-
-// durationText writes a duration the way operators do: "5m" instead of "5m0s",
-// but "1m30s" when the seconds matter.
-func durationText(d time.Duration) string {
-	s := d.String()
-	if strings.HasSuffix(s, "m0s") {
-		s = strings.TrimSuffix(s, "0s")
-	}
-	return s
-}
+// Duration is the duration type of the configuration (ADR 0026). It reads a
+// Go duration string such as "5m" and keeps it readable in JSON.
+type Duration = duration.Duration
 
 // Profile describes one display type (ADR 0026); a page names it to say which
 // panel it draws for. A text display type (ADR 0044) uses Width and Height for
@@ -1026,17 +981,7 @@ func (d *Device) stateKey() string {
 
 func normalizeMAC(s string) string { return strings.ToUpper(strings.TrimSpace(s)) }
 
-func validName(s string) bool {
-	if s == "" || len(s) > 40 {
-		return false
-	}
-	for _, r := range s {
-		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
-			return false
-		}
-	}
-	return true
-}
+func validName(s string) bool { return ident.Valid(s) }
 
 // refresh returns the regular sleep time of the device. Plans may override it.
 func (d *Device) refresh() time.Duration { return time.Duration(d.Refresh) }

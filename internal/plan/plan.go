@@ -14,23 +14,14 @@ import (
 	"time"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/maehld/paperboy/internal/duration"
+	"github.com/maehld/paperboy/internal/ident"
+	"github.com/maehld/paperboy/internal/strictyaml"
 )
 
 // Duration accepts duration strings such as "5m" in YAML.
-type Duration time.Duration
-
-func (d *Duration) UnmarshalYAML(v *yaml.Node) error {
-	var s string
-	if err := v.Decode(&s); err != nil {
-		return fmt.Errorf("expected duration as string, e.g. \"5m\"")
-	}
-	parsed, err := time.ParseDuration(s)
-	if err != nil {
-		return err
-	}
-	*d = Duration(parsed)
-	return nil
-}
+type Duration = duration.Duration
 
 // Clock is a local time of day written as "HH:MM".
 type Clock int // minutes since midnight
@@ -368,10 +359,12 @@ type Selection struct {
 // Parse reads a plan and validates it. Time windows refer to loc; nil means
 // the system timezone.
 func Parse(r io.Reader, loc *time.Location) (*Plan, error) {
-	dec := yaml.NewDecoder(r)
-	dec.KnownFields(true)
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
 	var p Plan
-	if err := dec.Decode(&p); err != nil {
+	if err := strictyaml.Decode(raw, &p); err != nil {
 		return nil, err
 	}
 	if loc == nil {
@@ -647,17 +640,7 @@ func (r *Rule) validate() error {
 	return nil
 }
 
-func validName(s string) bool {
-	if s == "" || len(s) > 40 {
-		return false
-	}
-	for _, r := range s {
-		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
-			return false
-		}
-	}
-	return true
-}
+func validName(s string) bool { return ident.Valid(s) }
 
 // validRef reports whether s is "plugin/name" with valid names, as used by an
 // action or a condition.

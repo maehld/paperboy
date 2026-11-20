@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/maehld/paperboy/internal/format"
 	"github.com/maehld/paperboy/internal/page"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
@@ -154,7 +155,7 @@ func (s *Server) handleWidget(w http.ResponseWriter, r *http.Request) {
 	res := s.fetchWidget(r.Context(), cfg, wq)
 	label := wq.req.Plugin + "/" + wq.req.Widget
 	if res.Err != nil {
-		w.Header().Set("X-Widget-Error", firstLine(res.Err.Error()))
+		w.Header().Set("X-Widget-Error", format.FirstLine(res.Err.Error()))
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	levels := wq.p.Levels
@@ -162,13 +163,6 @@ func (s *Server) handleWidget(w http.ResponseWriter, r *http.Request) {
 		levels = 2
 	}
 	writePNG(w, encodePNG(page.WidgetImage(res, wq.req.Width, wq.req.Height, levels, label)))
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }
 
 // ---- widgets page ----
