@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/maehld/paperboy/internal/atomicfile"
 )
 
 // deviceState is persisted per device in state/devices/<MAC>.json (ADR 0080).
@@ -94,15 +96,15 @@ type deviceReading struct {
 	At    time.Time `json:"at"`
 }
 
+// atomicWrite replaces one file in one step; tests replace it to make a write
+// fail at a chosen path.
+var atomicWrite = atomicfile.WriteFile
+
 func writeAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicWrite(path, data, 0o644)
 }
 
 // deviceStateKey turns a MAC address into the key of its state file: upper case
@@ -201,11 +203,7 @@ func writeStateFile(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicWrite(path, data, 0o600)
 }
 
 // unclaimedDevice is a state file whose MAC no device file uses: hardware that

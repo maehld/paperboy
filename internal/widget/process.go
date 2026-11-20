@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maehld/paperboy/internal/atomicfile"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
@@ -435,11 +436,7 @@ func writeStateFile(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.WriteFile(path, data, 0o600)
 }
 
 // read dispatches the plugin's lines: answers to their request, events to

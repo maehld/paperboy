@@ -38,6 +38,8 @@ Background loops keep the service warm:
 
 Concurrency rule: a device request takes the configuration before it locks the state. It selects the page under the lock, and it renders, draws and writes without it. The values of a plan condition are read before the lock too ([ADR 0127](../adr/0127-plan-conditions-are-values.md)). A plugin request therefore never runs while the state lock is held, and a slow plugin cannot block the other devices.
 
+Paperboy replaces every file below `state/` through a unique temporary file and a rename. Two editors, a repeated sync or a plugin that saves at the same time therefore leave a complete file, never a mix.
+
 ## Data flow
 
 1. A device wakes and calls `POST /api/device/sync`. The operator UI can ask the same questions for a plan preview or for the virtual display instead.
