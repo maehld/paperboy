@@ -56,6 +56,7 @@ type Server struct {
 	skipNotes    map[string]string        // "<profile>/<page>" → last logged reason for skipping it
 	qoiNotes     map[string]string        // page path → last logged reason for simplifying it (ADR 0088)
 	pageKeyNotes map[string]string        // page path → last logged reason for refusing it (ADR 0097)
+	unknownNotes map[string]time.Time     // MAC key → last log about its unclaimed registration (ADR 0136)
 	widgets      *widget.Host             // plugins and their widget cache (ADR 0049; own lock)
 	download     *downloadStatus          // release checks (ADR 0060; own lock)
 

@@ -1,11 +1,13 @@
 package paperboy
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestUnclaimedDeviceInEditor registers hardware whose MAC no device file uses:
@@ -48,6 +50,75 @@ func TestUnclaimedDeviceInEditor(t *testing.T) {
 	}
 	if rec := request(t, s, http.MethodDelete, "/api/state/devices/nope", nil, nil); rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid MAC: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// TestUnclaimedRegistrationIsBounded caps the hardware that registers without
+// a device file: the state map and state/devices/ must not grow without limit
+// (ADR 0136). An entry that exists keeps updating at the cap.
+func TestUnclaimedRegistrationIsBounded(t *testing.T) {
+	s, _ := testServer(t)
+	registration := func(i int) string {
+		return `{"mac":"aa:bb:cc:dd:ef:` + fmt.Sprintf("%02x", i) + `","hardware":"sticky"}`
+	}
+	for i := range maxUnclaimed {
+		if rec := registerFrom(t, s, fmt.Sprintf("10.0.0.%d:5555", i+1), registration(i)); rec.Code != http.StatusForbidden {
+			t.Fatalf("unknown device %d: %d %s", i, rec.Code, rec.Body)
+		}
+	}
+	if got := len(s.unclaimedDevices(s.config())); got != maxUnclaimed {
+		t.Fatalf("unclaimed: %d, want %d", got, maxUnclaimed)
+	}
+	// The next new MAC is refused and writes neither memory nor disk.
+	if rec := registerFrom(t, s, "10.0.0.99:5555", registration(0xff)); rec.Code != http.StatusForbidden {
+		t.Fatalf("registration above the cap: %d %s", rec.Code, rec.Body)
+	}
+	key, err := deviceStateKey("aa:bb:cc:dd:ef:ff")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.state[key] != nil {
+		t.Fatalf("state above the cap: %+v", s.state[key])
+	}
+	if _, err := os.Stat(deviceStateFile(s.devicesDir, key)); !os.IsNotExist(err) {
+		t.Fatalf("state file above the cap: %v", err)
+	}
+	// An existing unclaimed entry still reports its new hardware.
+	if rec := registerFrom(t, s, "10.0.0.1:5555", `{"mac":"aa:bb:cc:dd:ef:00","hardware":"e1001"}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("existing unclaimed device: %d %s", rec.Code, rec.Body)
+	}
+	if st := s.state[mustStateKey(t, "aa:bb:cc:dd:ef:00")]; st == nil || st.Hardware != "e1001" {
+		t.Fatalf("existing unclaimed state did not update: %+v", st)
+	}
+}
+
+func mustStateKey(t *testing.T, mac string) string {
+	t.Helper()
+	key, err := deviceStateKey(mac)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return key
+}
+
+// TestUnknownNoteLogsOnce keeps the journal quiet under a registration flood:
+// one line per MAC and hour, and a bounded memory (ADR 0136).
+func TestUnknownNoteLogsOnce(t *testing.T) {
+	s, now := testServer(t)
+	if !s.noteUnknownLocked("AABBCCDDEEFF", *now) {
+		t.Fatal("the first registration must log")
+	}
+	if s.noteUnknownLocked("AABBCCDDEEFF", now.Add(30*time.Minute)) {
+		t.Fatal("a second registration within the hour must not log")
+	}
+	if !s.noteUnknownLocked("AABBCCDDEEFF", now.Add(2*time.Hour)) {
+		t.Fatal("a registration after the hour must log again")
+	}
+	for i := range unknownNotesMax + 10 {
+		s.noteUnknownLocked(fmt.Sprintf("MAC%04d", i), *now)
+	}
+	if len(s.unknownNotes) > unknownNotesMax {
+		t.Fatalf("the note map grew to %d entries, cap %d", len(s.unknownNotes), unknownNotesMax)
 	}
 }
 
