@@ -121,6 +121,10 @@ type dashboardDevice struct {
 	Firmware      string   // running version, available version and update status
 	Menu          string   // open menu phase and selected action (ADR 0057)
 	Actions       string   // "denied", empty when the device may use actions
+	Alert         string   // why a manual alert is not available, empty when it is (ADR 0142)
+	Signal        string   // a manual alert that waits for the next sync, empty when none
+	Alerted       bool     // this page load follows a queued request (?alert=<id>)
+	Refused       string   // why that request was refused, empty when it was not
 	Problem       string   // why the device cannot sync, empty when it can (ADR 0079)
 	Error         string   // last render or plan error
 	VirtualURL    string   // the plan as a virtual display, empty without a plan (ADR 0091)
@@ -152,16 +156,23 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	cfg := s.config()
 	profiles := cfg.Profiles
+	loc := cfg.Timezone
+	if loc == nil {
+		loc = time.UTC
+	}
 	devices := map[string]*Device{}
 	for i := range cfg.Devices {
 		devices[cfg.Devices[i].ID] = &cfg.Devices[i]
 	}
+	// The alert form posts and redirects here: ?alert=<id> names the card that
+	// asked, and ?refused=<code> why the request was not taken (ADR 0142).
+	q := r.URL.Query()
 	cards := []dashboardDevice{}
 	for _, d := range s.deviceInfos() {
 		image, waiting := imageText(d, profiles[d.Profile].text())
 		runtimeValue, runtimeNote, runtimeHint := runtimeCard(d.Power, d.deviceState)
 		readingsValue, readingsKeys, readingsSince := readingsText(d.deviceState, now)
-		cards = append(cards, dashboardDevice{
+		card := dashboardDevice{
 			ID:            d.ID,
 			Status:        d.Status,
 			Type:          d.Profile,
@@ -190,17 +201,25 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			Firmware:      firmwareText(d),
 			Menu:          menuText(d.deviceState),
 			Actions:       actionsText(devices[d.ID]),
+			Alert:         alertOffer(devices[d.ID], d),
+			Signal:        alertQueuedText(d.PendingAlert, now, loc),
 			Problem:       d.Problem,
 			Error:         d.LastError,
 			VirtualURL:    virtualURL(d.Plan, d.Profile),
-		})
+		}
+		if q.Get("alert") == d.ID {
+			// A code Paperboy does not know stays silent instead of claiming
+			// that the request was queued.
+			if code := q.Get("refused"); code != "" {
+				card.Refused = alertRefusalText(code)
+			} else {
+				card.Alerted = true
+			}
+		}
+		cards = append(cards, card)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	loc := cfg.Timezone
-	if loc == nil {
-		loc = time.UTC
-	}
 	page := dashboardPage{
 		Version:   versionText(build, loc),
 		GoVersion: build.Go,

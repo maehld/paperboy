@@ -26,7 +26,7 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **plan** | The rules that select the pages of one device over time | playlist, schedule |
 | **rule** | One entry of a plan: time window, days, value conditions, pages, `on_refresh`, refresh, `alert` | plan, entry |
 | **on_refresh** | What a timed refresh of a rule shows: `cycle`, `first` or `current`; a rule change always starts at the first page | rotate, paging mode |
-| **alert** | A rule's signal through the device: `once` when the rule starts, `refresh` at the start and on every timed refresh; the device decides between beep, LED and backlight | alarm, tone, beep |
+| **alert** | A signal through the device: a rule's `once` when the rule starts and `refresh` at the start and on every timed refresh, or a manual request that waits for the next sync; the device decides between beep, LED and backlight | alarm, tone, beep |
 | **alert_methods** | The methods a device may use for an alert: a list of `beep` and `blink`; omitted or empty = silent | outputs, signals |
 | **fallback** | The pages of a device whose no rule matches | default, base |
 | **condition** | A value condition of a rule: a `plugin/value` must answer one of the keys in `is` | predicate, expression, data blocker |
