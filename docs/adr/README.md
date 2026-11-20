@@ -175,6 +175,7 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0127](0127-plan-conditions-are-values.md) | Plan conditions are values | Accepted, implemented; supersedes the conditions of [ADR-0103](0103-plugin-conditions-in-plans.md), adds the `enum` value type to [ADR-0111](0111-text-pages-from-plugin-values.md) and the per-cell labels to those values; amends protocol 9 before it ships |
 | [0135](0135-a-minimal-environment-for-plugins.md) | A minimal environment for plugins | Accepted, implemented |
 | [0141](0141-keep-caldav-credentials-on-their-hosts.md) | Keep CalDAV credentials on their hosts | Accepted, implemented; limits the redirect handling of [ADR-0048](0048-calendar-provider-and-agenda.md) |
+| [0143](0143-a-fuel-price-plugin-with-its-own-history.md) | A fuel price plugin with its own history | Accepted, implemented |
 
 ## Delivery and releases
 

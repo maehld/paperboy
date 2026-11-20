@@ -23,6 +23,12 @@ plugins:
     config: { url: "http://evcc:7070" }
   weather:
     config: { lat: 52.52, lon: 13.40 }
+  fuel:                                    # Tankerkönig, a personal key is required (docs/plugins/fuel.md)
+    config:
+      apikey: ${TANKERKOENIG_API_KEY}
+      lat: 52.52
+      lon: 13.40
+      radius: 5
   pokedex:
     config: { mode: random, rotate: 24h }   # or: { pokemon: pikachu }
   xkcd:
