@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -38,8 +39,11 @@ func newClient(user, password string) *client {
 }
 
 // do sends one request and follows up to five redirects with the same method,
-// body and credentials. It returns the final URL with the body.
+// body and credentials. Credentials stay on the same host and on iCloud, which
+// moves an account to its partition host; any other host change drops them
+// (ADR 0140). It returns the final URL with the body.
 func (c *client) do(ctx context.Context, method string, u *url.URL, depth string, body []byte) (*url.URL, []byte, int, error) {
+	auth := c.user != "" || c.password != ""
 	for range 6 {
 		req, err := http.NewRequestWithContext(ctx, method, u.String(), bytes.NewReader(body))
 		if err != nil {
@@ -51,7 +55,7 @@ func (c *client) do(ctx context.Context, method string, u *url.URL, depth string
 		if depth != "" {
 			req.Header.Set("Depth", depth)
 		}
-		if c.user != "" || c.password != "" {
+		if auth {
 			req.SetBasicAuth(c.user, c.password)
 		}
 		req.Header.Set("User-Agent", "paperboy-calendar")
@@ -74,12 +78,45 @@ func (c *client) do(ctx context.Context, method string, u *url.URL, depth string
 			if err != nil || resp.Header.Get("Location") == "" {
 				return nil, nil, 0, fmt.Errorf("%s: redirect without a valid location", redact(u))
 			}
+			if !credentialHost(u.Host, loc.Host) {
+				// Never hand the app password to another site, also not through
+				// a userinfo part that a later request would turn into a header.
+				auth = false
+				loc.User = nil
+			}
 			u = loc
 			continue
 		}
 		return u, data, resp.StatusCode, nil
 	}
 	return nil, nil, 0, fmt.Errorf("%s: too many redirects", redact(u))
+}
+
+// credentialHost reports whether the Basic credentials may travel from one host
+// to another: the same host, or two iCloud hosts, because iCloud moves an
+// account from caldav.icloud.com to its pNN-caldav.icloud.com partition
+// (ADR 0140). The port does not matter.
+func credentialHost(from, to string) bool {
+	from, to = hostName(from), hostName(to)
+	if from == "" || to == "" {
+		return false
+	}
+	if strings.EqualFold(from, to) {
+		return true
+	}
+	return iCloudHost(from) && iCloudHost(to)
+}
+
+func hostName(hostport string) string {
+	if host, _, err := net.SplitHostPort(hostport); err == nil {
+		return host
+	}
+	return strings.Trim(hostport, "[]")
+}
+
+func iCloudHost(host string) bool {
+	host = strings.ToLower(host)
+	return host == "icloud.com" || strings.HasSuffix(host, ".icloud.com")
 }
 
 // redact removes credentials and the query from a URL for messages; secret
