@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -94,6 +95,7 @@ func fakePlugin(mode string) {
 			continue
 		}
 		if req.Action == plugin.ActionDescribe {
+			appendFile(os.Getenv("FAKE_DESC_COUNT"))
 			d := plugin.Description{Title: "fake", Values: []plugin.ValueSpec{
 				{Name: "a", Type: plugin.ValueNumber, Precision: 1},
 				{Name: "b", Type: plugin.ValueText},
@@ -141,6 +143,23 @@ func fakePlugin(mode string) {
 		if mode == "hang" {
 			continue
 		}
+		// meet-a and meet-b only answer when both are in their request at the
+		// same time: each waits for a file the other writes. Asked one after
+		// the other, meet-a gives up with an error.
+		if mode == "meet-a" || mode == "meet-b" {
+			path := os.Getenv("FAKE_MEET")
+			if mode == "meet-a" {
+				os.WriteFile(path, []byte("a"), 0o644)
+				waitForFile(path, func(s string) bool { return s == "ab" })
+				if b, _ := os.ReadFile(path); string(b) != "ab" {
+					enc.Encode(plugin.Message{ID: req.ID, Version: version, Error: "the other plugin did not arrive"})
+					continue
+				}
+			} else {
+				waitForFile(path, func(s string) bool { return s != "" })
+				os.WriteFile(path, []byte("ab"), 0o644)
+			}
+		}
 		msg := plugin.Message{ID: req.ID, Version: version, MaxAge: 60}
 		for _, w := range req.Widgets {
 			width := w.Width
@@ -185,6 +204,18 @@ func appendFile(path string) {
 	}
 	b, _ := os.ReadFile(path)
 	os.WriteFile(path, append(b, 'x'), 0o644)
+}
+
+// waitForFile polls a file for up to two seconds until ok accepts its content.
+// The fake plugin uses it to wait for its partner without timing math.
+func waitForFile(path string, ok func(string) bool) {
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if b, err := os.ReadFile(path); err == nil && ok(string(b)) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func runs(path string) int {
@@ -249,6 +280,57 @@ func TestHostCachesAndBatches(t *testing.T) {
 	h.Fetch(context.Background(), b)
 	if n, s := runs(f.count), runs(f.starts); n != 2 || s != 1 {
 		t.Errorf("requests %d (want 2), starts %d (want 1)", n, s)
+	}
+}
+
+// TestHostAsksPluginsInParallel checks that a page waits for its slowest
+// plugin, not for the sum of all: two plugins that need each other answer only
+// when both requests run at the same time.
+func TestHostAsksPluginsInParallel(t *testing.T) {
+	f := newFake(t)
+	meet := filepath.Join(t.TempDir(), "meet")
+	specs := map[string]Spec{}
+	for name, mode := range map[string]string{"one": "meet-a", "two": "meet-b"} {
+		spec := f.spec(mode)["fake"]
+		spec.Name = name
+		spec.Env = maps.Clone(spec.Env)
+		spec.Env["FAKE_MEET"] = meet
+		specs[name] = spec
+	}
+	h := newHost(t, specs)
+	out := h.Fetch(context.Background(), batch(w("one", "a", 10, 5), w("two", "b", 10, 5)))
+	for i, r := range out {
+		if r.Err != nil || r.Image == nil {
+			t.Fatalf("widget %d: %v", i, r.Err)
+		}
+	}
+}
+
+// TestHostKeepsDeclarationsWithoutAChange checks that the configuration loop,
+// which runs every two seconds, does not drop the describe answers: their TTL
+// of five minutes only ends early when a specification changed.
+func TestHostKeepsDeclarationsWithoutAChange(t *testing.T) {
+	f := newFake(t)
+	specs := f.spec("values")
+	count := filepath.Join(t.TempDir(), "describe")
+	spec := specs["fake"]
+	spec.Env = maps.Clone(spec.Env)
+	spec.Env["FAKE_DESC_COUNT"] = count
+	specs["fake"] = spec
+	h := newHost(t, specs)
+	ask := func() {
+		t.Helper()
+		out := h.FetchValues(context.Background(), page.ValueBatch{Values: []page.ValueRequest{{Plugin: "fake", Name: "a"}}})
+		if len(out) != 1 || out[0].Err != nil {
+			t.Fatalf("value: %+v", out)
+		}
+	}
+	ask()
+	h.Configure(specs, Env{Language: "de", Timezone: "UTC"})
+	h.Configure(specs, Env{Language: "de", Timezone: "UTC"})
+	ask()
+	if n := runs(count); n != 1 {
+		t.Fatalf("describe asked %d times, want 1", n)
 	}
 }
 

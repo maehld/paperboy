@@ -291,9 +291,10 @@ func splitFirmwareName(name string) (string, bool) {
 	return "", false
 }
 
-// handleFirmware serves an OTA image without a token, like page images. Only
-// <hardware>-v<version>.bin names are served; an image in an old <hardware>/
-// directory is still found (ADR 0043, 0060).
+// handleFirmware serves an OTA image without a key: the firmware updates
+// itself before it has a device key, unlike page images (ADR 0043, 0060,
+// 0097). Only <hardware>-v<version>.bin names are served; an image in an old
+// <hardware>/ directory is still found.
 func (s *Server) handleFirmware(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("file")
 	if name != filepath.Base(name) || strings.HasPrefix(name, ".") {

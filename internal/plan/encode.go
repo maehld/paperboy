@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/maehld/paperboy/internal/duration"
 )
 
 // Encode writes a plan as a plan file the way Parse reads it (ADR 0066). It
@@ -36,7 +38,7 @@ func Encode(p *Plan) ([]byte, error) {
 			add(n, "on_refresh", str(string(mode)))
 		}
 		if r.Refresh != 0 {
-			add(n, "refresh", str(durationString(time.Duration(r.Refresh))))
+			add(n, "refresh", str(duration.Text(time.Duration(r.Refresh))))
 		}
 		if r.Alert != AlertNever {
 			add(n, "alert", str(string(r.Alert)))
@@ -107,48 +109,12 @@ func whenNode(w *When) *yaml.Node {
 
 func clockString(c Clock) string { return fmt.Sprintf("%02d:%02d", int(c)/60, int(c)%60) }
 
-// durationString writes a duration the way operators do: "5m" instead of
-// "5m0s", but "1m30s" when the seconds matter.
-func durationString(d time.Duration) string {
-	s := d.String()
-	switch {
-	case strings.HasSuffix(s, "h0m0s"):
-		return strings.TrimSuffix(s, "0m0s")
-	case strings.HasSuffix(s, "m0s"):
-		return strings.TrimSuffix(s, "0s")
-	}
-	return s
-}
-
 // dayShort lists the weekday names Encode writes, indexed like time.Weekday.
 var dayShort = [...]string{"sun", "mon", "tue", "wed", "thu", "fri", "sat"}
 
 func dayString(d time.Weekday) string { return dayShort[int(d)%7] }
 
-// ---- YAML marshalling of the scalar types ----
-
-func (d Duration) MarshalYAML() (any, error) { return time.Duration(d).String(), nil }
-func (c Clock) MarshalYAML() (any, error)    { return clockString(c), nil }
-func (d Day) MarshalYAML() (any, error)      { return dayString(time.Weekday(d)), nil }
-
 // ---- JSON marshalling for the editor API (ADR 0066) ----
-
-func (d Duration) MarshalJSON() ([]byte, error) {
-	return json.Marshal(durationString(time.Duration(d)))
-}
-
-func (d *Duration) UnmarshalJSON(b []byte) error {
-	var s string
-	if err := json.Unmarshal(b, &s); err != nil {
-		return fmt.Errorf("expected duration as string, e.g. \"5m\"")
-	}
-	parsed, err := time.ParseDuration(s)
-	if err != nil {
-		return err
-	}
-	*d = Duration(parsed)
-	return nil
-}
 
 func (c Clock) MarshalJSON() ([]byte, error) { return json.Marshal(clockString(c)) }
 

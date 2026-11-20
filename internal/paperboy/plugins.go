@@ -18,7 +18,9 @@ func (s *Server) configurePlugins(cfg *Config) {
 }
 
 // widgetSource lets a page ask the plugins for its widgets. The time spent
-// here is the part of a page render that waits for plugins (ADR 0104).
+// here is the part of a page render that waits for plugins (ADR 0104). The
+// request context is deliberately not used: a render that outlives the
+// connection still fills the cache, so the next sync pays nothing for it.
 func (s *Server) widgetSource() page.WidgetSource {
 	return func(b page.Batch) []page.Result {
 		done := s.stats.Start("render.widgets")
@@ -35,6 +37,11 @@ func (s *Server) valueSource() page.ValueSource {
 		defer done()
 		return s.widgets.FetchValues(context.Background(), b)
 	}
+}
+
+// pluginsAnswer is the body of GET /api/plugins.
+type pluginsAnswer struct {
+	Plugins []pluginInfo `json:"plugins"`
 }
 
 type pluginInfo struct {
@@ -112,5 +119,5 @@ func (s *Server) handlePlugins(w http.ResponseWriter, r *http.Request) {
 		}
 		list = append(list, info)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"plugins": list})
+	writeJSON(w, http.StatusOK, pluginsAnswer{Plugins: list})
 }

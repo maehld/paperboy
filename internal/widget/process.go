@@ -433,10 +433,7 @@ func validBlobName(name string) bool {
 // writeStateFile replaces one file of the plugin's state atomically and
 // readable only by its owner.
 func writeStateFile(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	return atomicfile.WriteFile(path, data, 0o600)
+	return atomicfile.WriteFileIn(path, data, 0o700, 0o600)
 }
 
 // read dispatches the plugin's lines: answers to their request, events to

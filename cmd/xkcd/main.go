@@ -11,7 +11,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -29,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maehld/paperboy/internal/imagelimit"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
@@ -115,7 +115,7 @@ func fetchComic(ctx context.Context, client *http.Client, base string, n int) (*
 	if err != nil {
 		return nil, err
 	}
-	img, _, err := image.Decode(bytes.NewReader(body))
+	img, err := imagelimit.Decode(body)
 	if err != nil {
 		return nil, fmt.Errorf("xkcd: comic %d: %w", in.Num, err)
 	}

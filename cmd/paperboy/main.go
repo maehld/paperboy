@@ -24,7 +24,7 @@ func main() {
 }
 
 func run() error {
-	dir := flag.String("config", ".", "Instance directory with paperboy.yaml, pages, plans, providers and state")
+	dir := flag.String("config", ".", "Instance directory with paperboy.yaml, pages, plans and state")
 	listen := flag.String("listen", ":8090", "HTTP listen address; must be reachable for the displays on Wi-Fi")
 	flag.Parse()
 	if flag.NArg() != 0 {
@@ -49,7 +49,7 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	srv.Start(ctx)
-	server := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	listener, err := net.Listen("tcp", *listen)
 	if err != nil {
 		return err

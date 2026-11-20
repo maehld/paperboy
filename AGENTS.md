@@ -82,6 +82,7 @@ go vet ./...
 .\scripts\build.ps1             # paperboy and the plugins into bin/<os>-<arch>/
 ./scripts/package-plugins.sh dist  # plugin zip for the host platform
 ./scripts/check-docs.sh         # sentence length and filler words of the design documents
+./scripts/check-adr-refs.sh     # every ADR reference in Go code resolves to a document
 npm install --no-save jsdom && node scripts/check-ui.mjs  # smoke-runs virtual.js in jsdom
 ```
 

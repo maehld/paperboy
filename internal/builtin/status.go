@@ -6,7 +6,9 @@ import (
 	"image/color"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/maehld/paperboy/internal/format"
 	"github.com/maehld/paperboy/pkg/plugin"
 	"github.com/maehld/paperboy/pkg/render"
 )
@@ -107,7 +109,7 @@ func statusParts(req *plugin.Request, d plugin.DeviceStatus, a plugin.Values) []
 		}
 	}
 	if a.Bool("runtime", true) && d.RuntimeS > 0 {
-		parts = append(parts, runtimeText(d.RuntimeS))
+		parts = append(parts, format.Runtime(time.Duration(d.RuntimeS)*time.Second))
 	}
 	if a.Bool("seen", true) {
 		if v := seenText(req, d.SeenS); v != "" {
@@ -189,21 +191,6 @@ func voltsText(req *plugin.Request, volts float64) string {
 		s = strings.ReplaceAll(s, ".", ",")
 	}
 	return s + " V"
-}
-
-// runtimeText formats the estimate as "~12 d" or, below two days, "~18 h".
-func runtimeText(seconds int64) string {
-	switch {
-	case seconds <= 0:
-		return ""
-	case seconds < 48*3600:
-		hours := (seconds + 1800) / 3600
-		if hours < 1 {
-			hours = 1
-		}
-		return fmt.Sprintf("~%d h", hours)
-	}
-	return fmt.Sprintf("~%d d", (seconds+43200)/86400)
 }
 
 // seenText compacts the time since the last contact: now, 5m, 2h or 3d.

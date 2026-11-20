@@ -62,10 +62,7 @@ func (s *Server) pageFileForVariant(w http.ResponseWriter, cfg *Config, name, ha
 		return "", nil, nil, false
 	}
 	if hash != "" && fileHash(data) != hash {
-		writeJSON(w, http.StatusConflict, map[string]string{
-			"error": "the page changed on disk; read it again before changing its variants",
-			"hash":  fileHash(data),
-		})
+		writeJSON(w, http.StatusConflict, conflictAnswer{Error: "the page changed on disk; read it again before changing its variants", Hash: fileHash(data)})
 		return "", nil, nil, false
 	}
 	t, err := page.Parse(bytes.NewReader(data))
@@ -178,7 +175,11 @@ func (s *Server) handleRenameVariant(w http.ResponseWriter, r *http.Request) {
 	// A file that no entry names moves without a write, so its page keeps its
 	// text and its backup count (ADR 0110).
 	if renamed {
-		s.backupFile(cfg, "pages", name, pageData)
+		if err := s.backupFile(cfg, "pages", name, pageData); err != nil {
+			undoMoveFile(toPath, fromPath)
+			writeAPIError(w, http.StatusInternalServerError, "cannot keep a backup of the page: %v", err)
+			return
+		}
 		if err := writeAtomic(pagePath, encoded); err != nil {
 			undoMoveFile(toPath, fromPath)
 			writeAPIError(w, http.StatusInternalServerError, "%v", err)
@@ -291,7 +292,11 @@ func (s *Server) handleMoveVariant(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
-	s.backupFile(cfg, "pages", name, pageData)
+	if err := s.backupFile(cfg, "pages", name, pageData); err != nil {
+		undoMoveFile(toPath, fromPath)
+		writeAPIError(w, http.StatusInternalServerError, "cannot keep a backup of the page: %v", err)
+		return
+	}
 	if err := writeAtomic(pagePath, sourceOut); err != nil {
 		undoMoveFile(toPath, fromPath)
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
@@ -310,7 +315,12 @@ func (s *Server) handleMoveVariant(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
-	s.backupFile(cfg, "pages", body.Page, targetData)
+	if err := s.backupFile(cfg, "pages", body.Page, targetData); err != nil {
+		restoreFile(pagePath, pageData)
+		undoMoveFile(toPath, fromPath)
+		writeAPIError(w, http.StatusInternalServerError, "cannot keep a backup of the page: %v", err)
+		return
+	}
 	if err := writeAtomic(targetPath, targetOut); err != nil {
 		restoreFile(pagePath, pageData)
 		undoMoveFile(toPath, fromPath)

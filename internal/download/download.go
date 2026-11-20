@@ -138,6 +138,12 @@ func (c *Client) List(ctx context.Context) ([]Release, error) {
 		if r.Draft {
 			continue
 		}
+		// The tag names a file in the cache, so a tag that is not a plain
+		// version is skipped: it can never leave the cache directory.
+		if !plainName(r.TagName) {
+			slog.Warn("ignoring a release with an unusable tag", "tag", r.TagName)
+			continue
+		}
 		rel := Release{Tag: r.TagName, Version: versionOf(r.TagName), Prerelease: r.Prerelease}
 		for _, a := range r.Assets {
 			u := a.URL
@@ -171,9 +177,30 @@ func (c *Client) Latest(ctx context.Context, pick func(Asset) bool) (Release, bo
 	return Release{}, false, nil
 }
 
+// plainName reports whether a release tag can name a file in the cache. Tags
+// are v1.2.3, plugins-v1.2.3 or firmware-v1.2.3, so anything outside letters,
+// digits, dot, dash and underscore is refused.
+func plainName(s string) bool {
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '.' || r == '-' || r == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // Fetch downloads an asset into the cache directory and verifies it against the
 // release's SHA256SUMS. It returns the local file name.
 func (c *Client) Fetch(ctx context.Context, rel Release, name string) (string, error) {
+	if !plainName(rel.Tag) {
+		return "", fmt.Errorf("%q: invalid release tag", rel.Tag)
+	}
 	asset, ok := rel.Asset(name)
 	if !ok {
 		return "", fmt.Errorf("%s: no asset %s", rel.Tag, name)
@@ -215,6 +242,9 @@ func (c *Client) Fetch(ctx context.Context, rel Release, name string) (string, e
 // no file on disk: the entries outlive a pruned zip (ADR 0090), and Ensure
 // fetches the bundle again when it has to be unpacked.
 func (c *Client) Bundle(ctx context.Context, rel Release) ([]string, string, error) {
+	if !plainName(rel.Tag) {
+		return nil, "", fmt.Errorf("%q: invalid release tag", rel.Tag)
+	}
 	cache := c.readCache()
 	if entries, ok := cache.Bundles[rel.Tag]; ok {
 		return entries, filepath.Join(c.Dir, rel.Tag+"-"+bundleName(rel)), nil
@@ -251,6 +281,9 @@ func bundleName(rel Release) string {
 // plugin name, plus the local zip; a zip is downloaded and read once per release
 // (ADR 0075). A release without a plugin zip for this platform answers an error.
 func (c *Client) PluginZip(ctx context.Context, rel Release) (map[string]string, string, error) {
+	if !plainName(rel.Tag) {
+		return nil, "", fmt.Errorf("%q: invalid release tag", rel.Tag)
+	}
 	cache := c.readCache()
 	local := filepath.Join(c.Dir, rel.Tag+"-"+PluginAsset())
 	if entries, ok := cache.PluginZips[rel.Tag]; ok {
@@ -413,10 +446,17 @@ func extractFile(f *zip.File, target string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(file, io.LimitReader(r, maxEntry)); err != nil {
+	written, err := io.Copy(file, io.LimitReader(r, maxEntry+1))
+	if err != nil {
 		file.Close()
 		os.Remove(tmp)
 		return err
+	}
+	// A lying header must not install a truncated file silently.
+	if written != int64(f.UncompressedSize64) {
+		file.Close()
+		os.Remove(tmp)
+		return fmt.Errorf("%s: size is %d bytes, header names %d", f.Name, written, f.UncompressedSize64)
 	}
 	if err := file.Close(); err != nil {
 		os.Remove(tmp)

@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/maehld/paperboy/internal/format"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
@@ -263,7 +264,7 @@ func textValueParts(r Result, cell Cell, charset, lang string, now time.Time, lo
 	if r.Err != nil || r.Value == nil {
 		msg := "no value"
 		if r.Err != nil {
-			msg = firstLine(r.Err.Error())
+			msg = format.FirstLine(r.Err.Error())
 		}
 		return convertLines(charset, "? "+msg), clean(Convert(charset, unitText(cell.Unit, "")))
 	}

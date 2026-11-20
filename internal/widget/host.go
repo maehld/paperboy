@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -229,7 +230,6 @@ func (h *Host) Configure(specs map[string]Spec, env Env) {
 	h.mu.Lock()
 	old := h.specs
 	h.specs, h.env = specs, env
-	h.descs = nil // declarations may have changed with the program
 	var stop []*process
 	for name, p := range h.procs {
 		if spec, ok := specs[name]; !ok || !sameSpec(spec, p.spec) {
@@ -238,7 +238,8 @@ func (h *Host) Configure(specs map[string]Spec, env Env) {
 		}
 	}
 	// Results of a changed or removed plugin are dropped: they were drawn
-	// with the old configuration.
+	// with the old configuration. An unchanged plugin keeps its describe
+	// answer for its TTL; only a changed specification drops it.
 	for name, spec := range old {
 		if now, ok := specs[name]; ok && sameSpec(now, spec) {
 			continue
@@ -258,6 +259,27 @@ func (h *Host) Configure(specs map[string]Spec, env Env) {
 	}
 }
 
+// maxParallelPlugins bounds how many plugin processes a page asks at once.
+const maxParallelPlugins = 8
+
+// forEachPlugin runs fn for every name in parallel, at most maxParallelPlugins
+// at a time. Each plugin writes its own results, so a page waits for its
+// slowest plugin instead of the sum of all.
+func forEachPlugin(names []string, fn func(name string)) {
+	sem := make(chan struct{}, maxParallelPlugins)
+	var wg sync.WaitGroup
+	for _, name := range names {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			fn(name)
+		}()
+	}
+	wg.Wait()
+}
+
 // Fetch returns one result per widget of the batch. Cached results are used
 // while they are valid; the rest of one plugin goes out in one request.
 func (h *Host) Fetch(ctx context.Context, b page.Batch) []page.Result {
@@ -275,7 +297,7 @@ func (h *Host) Fetch(ctx context.Context, b page.Batch) []page.Result {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	for _, name := range names {
+	forEachPlugin(names, func(name string) {
 		idx := byPlugin[name]
 		jobs := make([]job, 0, len(idx))
 		for _, i := range idx {
@@ -288,17 +310,17 @@ func (h *Host) Fetch(ctx context.Context, b page.Batch) []page.Result {
 			// widgets are not cached, while a plugin process would keep stale
 			// rows until its max_age runs out (ADR 0115).
 			h.builtin(name, handler, jobs, idx, env, b.ServerStatus, out)
-			continue
+			return
 		}
 		spec, ok := specs[name]
 		if !ok {
 			for _, i := range idx {
 				out[i] = page.Result{Err: fmt.Errorf("plugin %q is not configured", name)}
 			}
-			continue
+			return
 		}
 		h.fetchPlugin(ctx, spec, env, jobs, idx, out)
-	}
+	})
 	return out
 }
 
@@ -321,14 +343,14 @@ func (h *Host) FetchValues(ctx context.Context, b page.ValueBatch) []page.Result
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	for _, name := range names {
+	forEachPlugin(names, func(name string) {
 		idx := byPlugin[name]
 		decl, err := h.description(ctx, name)
 		if err != nil {
 			for _, i := range idx {
 				out[i] = page.Result{Err: err}
 			}
-			continue
+			return
 		}
 		known := make(map[string]plugin.ValueSpec, len(decl.desc.Values))
 		for _, v := range decl.desc.Values {
@@ -348,23 +370,23 @@ func (h *Host) FetchValues(ctx context.Context, b page.ValueBatch) []page.Result
 			jobIdx = append(jobIdx, i)
 		}
 		if len(jobs) == 0 {
-			continue
+			return
 		}
 		if handler, ok := h.Builtin[name]; ok {
 			// Values carry no server status: a page of values asks a plugin
 			// for its data, and only widgets draw the device status (ADR 0115).
 			h.builtin(name, handler, jobs, jobIdx, env, nil, out)
-			continue
+			return
 		}
 		spec, ok := specs[name]
 		if !ok {
 			for _, i := range jobIdx {
 				out[i] = page.Result{Err: fmt.Errorf("plugin %q is not configured", name)}
 			}
-			continue
+			return
 		}
 		h.fetchPlugin(ctx, spec, env, jobs, jobIdx, out)
-	}
+	})
 	return out
 }
 
@@ -516,12 +538,7 @@ func (h *Host) run(ctx context.Context, spec Spec, env Env, jobs []job) ([]page.
 			maxAge = time.Duration(msg.MaxAge) * time.Second
 		}
 		now := h.now()
-		h.mu.Lock()
 		expires := now.Add(maxAge)
-		if h.changes[spec.Name] != gen {
-			expires = time.Time{} // the data changed while the plugin drew
-		}
-		h.mu.Unlock()
 		var failed error
 		for n, i := range idx {
 			j := jobs[i]
@@ -540,7 +557,7 @@ func (h *Host) run(ctx context.Context, spec Spec, env Env, jobs []job) ([]page.
 			}
 			out[i] = r
 			h.store(j, env, &entry{job: j, img: r.Image, value: r.Value, spec: j.spec,
-				created: now, expires: expires, lastUsed: now})
+				created: now, expires: expires, lastUsed: now}, gen)
 		}
 		if failed != nil {
 			slog.Warn("plugin widget failed", "plugin", spec.Name, "error", failed)
@@ -564,6 +581,15 @@ func decode(j job, r plugin.Result) (page.Result, error) {
 	}
 	if len(r.PNG) == 0 {
 		return page.Result{}, errors.New("no image")
+	}
+	// The header names the canvas, so its size is checked before the pixels
+	// are allocated: a small answer cannot ask for a huge image.
+	cfg, err := png.DecodeConfig(bytes.NewReader(r.PNG))
+	if err != nil {
+		return page.Result{}, err
+	}
+	if cfg.Width != j.widget.Width || cfg.Height != j.widget.Height {
+		return page.Result{}, fmt.Errorf("image is %dx%d, requested %dx%d", cfg.Width, cfg.Height, j.widget.Width, j.widget.Height)
 	}
 	img, err := png.Decode(bytes.NewReader(r.PNG))
 	if err != nil {
@@ -966,7 +992,11 @@ func (h *Host) evict() {
 	h.evicted += int64(len(list) - maxEntries)
 }
 
-func (h *Host) store(j job, env Env, e *entry) {
+// store puts one result into the cache. gen is the changed generation before
+// the request: a changed event that arrived while the plugin drew makes the
+// entry expired at once, even when the event reached the cache before the
+// result (issue found with TestHostChangedEventRefreshesInBackground).
+func (h *Host) store(j job, env Env, e *entry, gen int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if j.action == plugin.ActionValues {
@@ -974,6 +1004,9 @@ func (h *Host) store(j job, env Env, e *entry) {
 			return // the declaration changed while the plugin answered
 		}
 		e.declGen = j.declGen
+	}
+	if h.changes[j.plugin] != gen {
+		e.expires = time.Time{}
 	}
 	if h.cache == nil {
 		h.cache = map[string]*entry{}
@@ -997,20 +1030,11 @@ func (h *Host) expire(name string, widgets []string) {
 		if e.job.plugin != name {
 			continue
 		}
-		if len(widgets) > 0 && !contains(widgets, e.job.widget.Widget) {
+		if len(widgets) > 0 && !slices.Contains(widgets, e.job.widget.Widget) {
 			continue
 		}
 		e.expires = time.Time{}
 	}
-}
-
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 func (h *Host) pluginLock(name string) *sync.Mutex {

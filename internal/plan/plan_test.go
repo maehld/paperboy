@@ -160,6 +160,7 @@ func TestParseErrors(t *testing.T) {
 		"unknown weekday":    "rules: [{name: a, pages: [x], when: {days: [funday]}}]",
 		"unknown fallback":   "rules: [{name: a, pages: [x]}]\nfallback: b",
 		"timezone not given": "rules: [{name: a, pages: [x]}]\ntimezone: 5",
+		"second document":    "rules: [{name: a, pages: [x]}]\n---\nrules: []",
 	}
 	for name, yaml := range cases {
 		if _, err := Parse(strings.NewReader(yaml), berlin(t)); err == nil {

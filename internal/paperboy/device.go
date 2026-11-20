@@ -8,12 +8,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/maehld/paperboy/internal/plan"
-	"github.com/maehld/paperboy/internal/reading"
 )
 
 // Button roles of the device API (ADR 0042). The firmware maps its physical
@@ -27,16 +25,6 @@ const (
 // listenAfterInput is how long a device stays awake for further input after a
 // button press or touch before it goes back to deep sleep.
 const listenAfterInput = 20 * time.Second
-
-// hasButton reports whether one of the button roles is in the list.
-func hasButton(buttons []string, role string) bool {
-	for _, b := range buttons {
-		if b == role {
-			return true
-		}
-	}
-	return false
-}
 
 // maxSyncBytes caps a register or sync body; log entries make up most of it.
 const maxSyncBytes = 64 << 10
@@ -360,7 +348,14 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if st.APIKey == "" {
-		st.APIKey = newAPIKey()
+		key, err := newAPIKey()
+		if err != nil {
+			s.mu.Unlock()
+			slog.Error("cannot create a device key", "device", device.ID, "error", err)
+			writeAPIError(w, http.StatusInternalServerError, "cannot create a device key")
+			return
+		}
+		st.APIKey = key
 	}
 	if st.PairAuthorized {
 		usePairingLocked(st, now)
@@ -373,7 +368,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	s.saveState(key, stateData)
 	slog.Info("display registered", "device", device.ID, "mac", device.MAC, "hardware", req.Hardware, "firmware", req.Firmware)
-	writeJSON(w, http.StatusOK, map[string]string{"key": apiKey, "device": device.ID})
+	writeJSON(w, http.StatusOK, registerAnswer{Key: apiKey, Device: device.ID})
 }
 
 // deviceByKeyLocked finds the device that owns the bearer key. cfg is the
@@ -455,6 +450,12 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// registerAnswer gives a display its key and its name in the instance.
+type registerAnswer struct {
+	Key    string `json:"key"`
+	Device string `json:"device"`
+}
+
 // syncOptions is what a wake needs beyond the request itself: the firmware
 // image a device may be offered. virtual marks a display without hardware
 // (ADR 0091): it gets no firmware offer, does not run its actions and writes
@@ -485,431 +486,6 @@ func chargerState(st deviceState) string {
 		return "discharging"
 	}
 	return ""
-}
-
-// serveSync applies one wake to the state of a device and answers what to show
-// and when to come back (ADR 0042). The caller has resolved the device and
-// holds no lock; page selection happens under the state lock, rendering and
-// plugin calls do not.
-func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncRequest, now time.Time, opt syncOptions) syncResponse {
-	defer s.stats.Start("sync.total")()
-	if !opt.virtual {
-		// Virtual displays have no device file; their syncs would muddy the
-		// numbers of the real devices (ADR 0091, 0104).
-		defer s.stats.Start("sync.device:" + d.ID)()
-	}
-	// The plan, its rule and the pages that fit are read before the state lock
-	// (ADR 0138): a slow page file must not block the other devices.
-	resolved := s.resolvePlan(cfg, d, now, opt.values)
-	s.lock("sync.lock")
-	// The journal gets one line when the power source or the charger state
-	// changes instead of repeating it on every sync (issue #200).
-	prevPower, prevCharger := st.ReportedPower, chargerState(*st)
-	firstContact := st.LastSeen.IsZero()
-	st.LastSeen = now
-	st.ClientIP = opt.clientIP
-	st.WakeReason = req.Reason
-	if req.Firmware != "" {
-		st.Firmware = req.Firmware
-	}
-	if req.Hardware != "" {
-		st.Hardware = req.Hardware
-	}
-	if req.RSSI != nil {
-		st.RSSI = strconv.Itoa(*req.RSSI)
-	}
-	if req.Power != "" {
-		st.ReportedPower = req.Power
-	}
-	if b := req.Battery; b != nil {
-		st.BatteryVoltage = strconv.FormatFloat(b.Volts, 'f', 2, 64)
-		st.BatteryPercent, st.BatteryMAH, st.BatteryMA = b.Percent, b.MAH, b.MA
-		st.BatteryCharging = b.Charging
-		trackBattery(st, b, now)
-	}
-	// Readings are the measured values of this wake, e.g. the room's
-	// temperature and humidity. A name the catalog does not know, a missing
-	// value and an implausible number are discarded, so a sensor fault never
-	// costs the device its page (ADR 0134).
-	if len(req.Readings) > 0 {
-		if st.Readings == nil {
-			st.Readings = map[string]deviceReading{}
-		}
-		for _, r := range req.Readings {
-			spec, ok := reading.Lookup(r.Name)
-			if !ok {
-				slog.Debug("ignoring an unknown reading", "device", d.ID, "reading", r.Name)
-				continue
-			}
-			if r.Value == nil {
-				slog.Warn("discarding a reading without a value", "device", d.ID, "reading", r.Name)
-				continue
-			}
-			if !spec.Valid(*r.Value) {
-				slog.Warn("discarding an implausible reading", "device", d.ID, "reading", r.Name, "value", *r.Value)
-				continue
-			}
-			st.Readings[r.Name] = deviceReading{Value: *r.Value, At: now}
-		}
-	}
-	prevLevel := st.BatteryLevel
-	st.BatteryLevel = nextBatteryLevel(cfg.battery(d), prevLevel, st.BatteryVoltage)
-	critical := st.BatteryLevel == batteryCritical
-	var offer *firmwareOffer
-	if !opt.virtual {
-		s.settleFirmwareLocked(d, st)
-		var volts float64
-		if req.Battery != nil {
-			volts = req.Battery.Volts
-		}
-		offer = s.offerFirmwareLocked(d, st, cfg, opt.firmware, volts, req.Battery != nil, now)
-	}
-
-	var buttons []string
-	var holds []int
-	var touches []syncEvent
-	input := req.Reason == "button" || req.Reason == "touch" || req.Reason == "menu" || req.Reason == "result"
-	if req.Reason == "powercycle" {
-		// A power cycle clears the RTC event counter, so the IDs start again
-		// (ADR 0064).
-		st.LastEventID = 0
-		st.Menu.close()
-	}
-	for _, e := range req.Events {
-		// A retried sync resends the same event IDs; anything at or below the
-		// last applied ID is a repeat (ADR 0064).
-		if e.ID > 0 {
-			if e.ID <= st.LastEventID {
-				continue
-			}
-			st.LastEventID = e.ID
-		}
-		input = true
-		switch e.Type {
-		case "button":
-			buttons = append(buttons, e.Button)
-			holds = append(holds, e.HoldMS)
-		case "touch":
-			touches = append(touches, e)
-		}
-	}
-
-	power := cfg.power(d, st.ReportedPower)
-	floor := cfg.minRefresh(d, st.ReportedPower)
-	textDisplay := cfg.Profiles[d.Profile].text()
-	// The device menu (ADR 0057) consumes the buttons before the plan sees
-	// them, so a press never both moves the selection and turns the page.
-	menu := st.Menu
-	var invoke *menuAction
-	menuConsumed := false
-	// Whether the menu draws its tap-only controls for this device (ADR 0082).
-	menuTouch := cfg.touch(d, st.TouchReported)
-	// A menu that closes without user input (the wake at its deadline, a
-	// replaced result screen) still paused the page while it was open, so that
-	// sync must not turn it either (ADR 0057).
-	menuClosed := false
-	switch {
-	case req.Reason == "powercycle", critical, textDisplay, d.Actions == actionsDeny, d.Plan == "":
-		menu.close()
-	default:
-		// The deadline is a server-side timer, but the panel keeps the menu
-		// screen until the deadline wake repaints it. A press that arrives while
-		// the device still reports that screen belongs to the menu, even when
-		// the deadline has passed: closing it would swallow the press and the
-		// next one would turn the page (ADR 0078).
-		onScreen := menu.Screen != "" && req.Shown == menu.Screen
-		if menu.Open && !now.Before(menu.expiresAt(d)) && !(onScreen && (len(buttons) > 0 || len(touches) > 0)) {
-			slog.Info("menu expired", "device", d.ID)
-			menu.close()
-			menuClosed = true
-		}
-		// A result stays until the next input or the next regular sync; the
-		// result wake itself is the one that brings it, so it must not close
-		// the screen before it is drawn.
-		if menu.Open && menu.Phase == menuResultPhase && len(buttons) == 0 &&
-			req.Reason != "button" && req.Reason != "touch" && req.Reason != "result" {
-			menu.close()
-			menuClosed = true
-		}
-		var acts []plan.PlanAction
-		if resolved.selected {
-			acts = resolved.selection.Actions
-		}
-		// Buttons of a wake that finds the menu open belong to the menu, even
-		// when they close it: dismissing a banner must not turn the page
-		// (ADR 0067).
-		menuConsumed = menu.Open
-		invoke = menu.step(menuInput{buttons: buttons, holds: holds, shown: req.Shown, touch: menuTouch}, acts, now)
-		if invoke == nil && menu.Open {
-			for _, e := range touches {
-				if a := menu.tap(e.X, e.Y, cfg.Profiles[d.Profile], menuTouch, req.Shown, now); a != nil {
-					invoke = a
-				}
-			}
-		}
-	}
-	menuOpen := menu.Open
-	// A sync the menu took part in never pages: it is modal, and its own
-	// buttons belong to it even when they close it (ADR 0067).
-	menuSync := menuOpen || menuConsumed || menuClosed
-	var pageButtons []string
-	switch {
-	case menuSync:
-		// The menu consumed the input, so it never pages.
-	case d.Actions != actionsDeny:
-		// A long next/previous jumps to the first page of the rule; a long
-		// home belongs to the open menu and is dropped (ADR 0067).
-		pageButtons = pageRoles(buttons, holds)
-	default:
-		// A denied device keeps the old meaning of every button.
-		pageButtons = buttons
-	}
-	if d.Actions == actionsDeny && hasButton(buttons, buttonHome) {
-		slog.Info("device menu denied; home keeps paging", "device", d.ID)
-	}
-	st.Menu = menu
-	var choice planChoice
-	switch {
-	case critical: // the warning replaces all pages; buttons only show it again
-		// The cursor starts over when the pages return.
-		st.Page, st.PageName = 0, ""
-	case d.Plan != "":
-		planDone := s.stats.Start("sync.plan")
-		choice = s.choosePlanPage(resolved, cfg, d, st, now, firstContact, req.Reason == "timer", pageButtons, menuSync, false)
-		planDone()
-	default:
-		choice.title, choice.text = cfg.texts().noPlan()
-	}
-	// The rule or the operator asks for a signal (ADR 0131, 0142). The request
-	// is consumed here, before the snapshot, so it is one-shot and stored with
-	// the rest of this sync.
-	alert, alertSource := choice.alert, "rule"
-	if !opt.virtual && takeManualAlert(d, st, now, critical) {
-		alertSource = "manual"
-		if alert {
-			alertSource = "rule+manual"
-		}
-		alert = true
-	}
-	logged := *st
-	powerChanged := prevPower != logged.ReportedPower || prevCharger != chargerState(logged)
-	var stateData []byte
-	if !opt.virtual {
-		stateData = s.stateSnapshotLocked(st)
-	}
-	s.mu.Unlock()
-	writeDone := s.stats.Start("sync.state_write")
-	s.saveState(d.stateKey(), stateData)
-	writeDone()
-	s.logDevice(d.ID, req.Log)
-	for _, e := range req.Events {
-		// Touches and long presses carry no meaning yet; they are only recorded.
-		if e.Type == "touch" {
-			slog.Info("display touch", "device", d.ID, "x", e.X, "y", e.Y)
-		} else if e.HoldMS > 0 {
-			slog.Info("display button held", "device", d.ID, "button", e.Button, "hold_ms", e.HoldMS)
-		}
-	}
-
-	// Drawing and rendering happen without the lock: a slow page, a font problem
-	// or a panicking template must never block the other devices.
-	if invoke != nil {
-		if opt.virtual {
-			// A virtual display stops before the plugin call (ADR 0091): the
-			// banner names the action instead of claiming a result.
-			title := invoke.Title
-			if title == "" {
-				title = invoke.Action
-			}
-			menu.Phase, menu.Result, menu.ResultOK, menu.Simulated, menu.ConfirmHash =
-				menuResultPhase, title, true, true, ""
-			st.Menu = menu
-			slog.Info("virtual display: action not run", "device", d.ID, "action", invoke.Action)
-		} else {
-			run := s.startAction(cfg, d, *invoke, now)
-			actionDone := s.stats.Start("sync.action")
-			select {
-			case <-run.done:
-			case <-time.After(actionBudget):
-				slog.Info("action still running", "device", d.ID, "action", invoke.Action)
-			}
-			actionDone()
-			s.lock("sync.lock")
-			if st := s.state[d.stateKey()]; st != nil {
-				menu = st.Menu
-			}
-			s.mu.Unlock()
-		}
-	}
-	var served servedPage
-	switch {
-	case critical:
-		if p := cfg.Profiles[d.Profile]; p.text() {
-			title, text := cfg.texts().criticalBattery(voltageKey(logged.BatteryVoltage))
-			served = s.hint(cfg, d.Profile, title, text)
-		} else {
-			served = s.notice(d.Profile, criticalBatteryImage(p, cfg.texts(), voltageKey(logged.BatteryVoltage)))
-		}
-		served.refresh = d.refresh()
-	case d.Plan != "":
-		renderDone := s.stats.Start("sync.render")
-		served = s.renderPlan(cfg, d, choice, now, false)
-		renderDone()
-	default:
-		served = s.hint(cfg, d.Profile, choice.title, choice.text)
-	}
-	if menu.Open && !critical && !textDisplay {
-		served = s.overlayMenu(cfg, d, served, &menu, menuTouch)
-	}
-	if served.interval == 0 {
-		served.interval = served.refresh
-	}
-	served.refresh = max(served.refresh, floor)
-	served.interval = max(served.interval, floor)
-	refresh := served.refresh
-	// A timer sync lands on the grid of its interval, so a page that shows a
-	// clock, a departure or a schedule is composed at that time (ADR 0129).
-	// A plan boundary or the page timeout shortened the sleep already: that cap
-	// wins, and the next sync aligns again.
-	if !textDisplay && refresh == served.interval {
-		if aligned := alignRefresh(now, served.interval, floor, cfg.Timezone); aligned > 0 {
-			refresh = aligned
-		}
-	}
-	// Remember what the device was pointed at, so /api/devices can show the
-	// current content. Rendering happened above, outside the lock.
-	shownKind, shownPage := "page", served.name
-	switch {
-	case critical:
-		shownKind, shownPage = "battery", ""
-	case served.name == "":
-		shownKind = "notice"
-	}
-	errText := ""
-	switch {
-	case choice.err != nil:
-		errText = shortError(choice.err)
-	case served.err != nil:
-		errText = shortError(served.err)
-	}
-	s.lock("sync.lock")
-	var pageData []byte
-	var textPart *syncText
-	if !opt.virtual {
-		// A background action may have finished and replaced the menu while
-		// the page was rendered; a virtual display has no such path.
-		st = s.state[d.stateKey()]
-	}
-	if st != nil {
-		menu = keepActionResult(menu, st.Menu)
-		st.LastPage, st.LastPageKind, st.LastPageHash = shownPage, shownKind, served.hash
-		st.LastPages = served.pages
-		st.LastPageTime, st.LastRefresh, st.LastInterval = now, int(refresh.Seconds()), int(served.interval.Seconds())
-		st.LastText = served.lines
-		st.LastError = errText
-		st.Menu = menu
-		if textDisplay {
-			textPart, st.ScrollHash = textResponse(served, cfg.Profiles[d.Profile], st.ScrollHash)
-		}
-		if !opt.virtual {
-			pageData = s.stateSnapshotLocked(st)
-		}
-	}
-	s.mu.Unlock()
-	writeDone = s.stats.Start("sync.state_write")
-	s.saveState(d.stateKey(), pageData)
-	writeDone()
-	if powerChanged {
-		attrs := []any{"device", d.ID, "power", power}
-		if charger := chargerState(logged); charger != "" {
-			attrs = append(attrs, "charger", charger)
-		}
-		if logged.BatteryVoltage != "" {
-			attrs = append(attrs, "battery", logged.BatteryVoltage)
-		}
-		if logged.BatteryMA != nil {
-			attrs = append(attrs, "battery_ma", fmt.Sprintf("%+.0f", *logged.BatteryMA))
-		}
-		slog.Info("power changed", attrs...)
-	}
-	if logged.BatteryLevel != prevLevel {
-		level := logged.BatteryLevel
-		if level == batteryOK {
-			level = "ok"
-		}
-		slog.Warn("battery warning", "device", d.ID, "level", level, "battery", logged.BatteryVoltage)
-	}
-	listen := time.Duration(0)
-	if input && !textDisplay && !opt.virtual {
-		listen = listenAfterInput
-	}
-	wake := menuWake(menu, d, now, critical)
-	// The firmware sleeps only after listening, and the one-shot wake counts
-	// from the sync: give the wake the time it needs, so the menu expires when
-	// the panel is repainted instead of listen_s later (ADR 0078).
-	listen, wake = fitWakeToListen(listen, wake)
-	pageName := served.name
-	switch {
-	case critical:
-		pageName = "battery"
-	case pageName == "":
-		pageName = "notice"
-	}
-	attrs := []any{"device", d.ID, "page", pageName}
-	if served.pages > 1 {
-		attrs = append(attrs, "index", served.page, "pages", served.pages)
-	}
-	attrs = append(attrs, "rule", logged.Rule, "reason", req.Reason)
-	if alert {
-		attrs = append(attrs, "alert", alertSource)
-	}
-	if len(buttons) > 0 {
-		attrs = append(attrs, "buttons", strings.Join(buttons, ","))
-	}
-	if menu.Open {
-		attrs = append(attrs, "menu", menu.Phase, "action", menu.Selected)
-	}
-	attrs = append(attrs, "changed", req.Shown != served.hash, "battery", logged.BatteryVoltage,
-		"rssi", logged.RSSI, "refresh", refresh, "power", power)
-	// The fuel gauge current shows whether the battery is charging (positive)
-	// or discharging (negative); only devices with a gauge send it.
-	if logged.BatteryMA != nil {
-		attrs = append(attrs, "battery_ma", fmt.Sprintf("%+.0f", *logged.BatteryMA))
-	}
-	// The charger's own state (the Sticky's STAT pin) next to the gauge
-	// current, so the log shows when the two disagree.
-	if logged.BatteryCharging != nil {
-		charger := "idle"
-		if *logged.BatteryCharging {
-			charger = "charging"
-		}
-		attrs = append(attrs, "charger", charger)
-	}
-	slog.Info("display sync", attrs...)
-	resp := syncResponse{
-		RefreshS: int(refresh.Seconds()),
-		ListenS:  int(listen.Seconds()),
-		Sleep:    power == powerBattery,
-		Time:     now.Unix(),
-		Rotation: cfg.rotation(d),
-		Firmware: offer,
-		Wake:     wake,
-	}
-	// The rule or the operator decides whether to signal; the device file
-	// decides which methods it may use (ADR 0132). The firmware ignores a
-	// method it lacks.
-	if alert {
-		resp.Beep, resp.Blink = d.alertMethods()
-	}
-	if textDisplay {
-		if textPart == nil { // the state vanished between rendering and the final lock
-			textPart, _ = textResponse(served, cfg.Profiles[d.Profile], "")
-		}
-		resp.Text = textPart
-	} else {
-		resp.Image = &syncImage{Path: served.path, Hash: served.hash}
-	}
-	return resp
 }
 
 // menuWake names the one-shot wake the device needs (ADR 0064): the menu

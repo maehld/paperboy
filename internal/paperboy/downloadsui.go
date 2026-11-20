@@ -93,8 +93,8 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 		v.FirmwareChannel = cfg.Download.FirmwareChannel
 		running, lastCheck, lastOK, lastErr, _, _, update := s.download.view()
 		v.Running = running
-		v.LastCheck = downloadTime(lastCheck, loc)
-		v.LastOK = downloadTime(lastOK, loc)
+		v.LastCheck = downloadTime(lastCheck, s.now(), loc)
+		v.LastOK = downloadTime(lastOK, s.now(), loc)
 		v.Error = lastErr
 		v.Updates, v.UpdateURL = paperboyUpdateText(update)
 	}
@@ -107,7 +107,7 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 				if spec.Command[0] != p.Name {
 					row.Program = filepath.Base(spec.Command[0])
 				}
-				row.Downloaded = fileTime(spec.Command[0], loc)
+				row.Downloaded = fileTime(spec.Command[0], s.now(), loc)
 			}
 		}
 		_, row.Pinned = pluginPin(p.Version)
@@ -121,7 +121,7 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 	pinned, hasPin := pinVersion(cfg.Firmware.Version)
 	for _, img := range s.firmware.installed() {
 		row := downloadFirmwareRow{Hardware: img.Hardware, Version: img.Version, File: img.File,
-			Downloaded: fileTime(img.path, loc),
+			Downloaded: fileTime(img.path, s.now(), loc),
 			Pinned:     hasPin && semver.Compare(pinned, img.ver) == 0}
 		row.OutsideChannel = cfg.Download != nil && !row.Pinned &&
 			outsideChannel(cfg.Download.FirmwareChannel, img.Version)
@@ -147,12 +147,12 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 // fileTime prints when a program or image was written into the instance: for a
 // file Paperboy downloaded that is the time of the download, for one dropped in
 // by hand the time of the copy. Empty when the file cannot be read.
-func fileTime(path string, loc *time.Location) string {
+func fileTime(path string, now time.Time, loc *time.Location) string {
 	info, err := os.Stat(path)
 	if err != nil || info.ModTime().IsZero() {
 		return ""
 	}
-	return downloadTime(info.ModTime(), loc)
+	return downloadTime(info.ModTime(), now, loc)
 }
 
 // outsideChannel reports whether a version in use is one the channel would not

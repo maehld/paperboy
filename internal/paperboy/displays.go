@@ -1,7 +1,6 @@
 package paperboy
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +15,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/maehld/paperboy/internal/page"
+	"github.com/maehld/paperboy/internal/strictyaml"
 )
 
 // Display types live in files of their own (ADR 0071): displays/<name>.yaml,
@@ -49,17 +49,11 @@ type displayScroll struct {
 // second document is an error, like in pages, plans and devices.
 func parseDisplayFile(data []byte) (displayFile, error) {
 	var f displayFile
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&f); err != nil {
+	if err := strictyaml.Decode(data, &f); err != nil {
 		if errors.Is(err, io.EOF) {
 			return f, errors.New("empty display type file")
 		}
 		return f, err
-	}
-	var extra yaml.Node
-	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
-		return f, errors.New("only one YAML document is allowed")
 	}
 	return f, nil
 }

@@ -143,7 +143,12 @@ func (s *Server) handlePairDevice(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	s.saveState(key, data)
 	slog.Info("display paired; its next register takes the key", "mac", mac)
-	writeJSON(w, http.StatusOK, map[string]any{"paired": true})
+	writeJSON(w, http.StatusOK, pairedAnswer{Paired: true})
+}
+
+// pairedAnswer confirms a pairing to the device editor.
+type pairedAnswer struct {
+	Paired bool `json:"paired"`
 }
 
 // pairingInfo tells the device editor what to show: whether the display may

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maehld/paperboy/internal/format"
 	"github.com/maehld/paperboy/pkg/plugin"
 	"github.com/maehld/paperboy/pkg/render"
 )
@@ -316,14 +317,7 @@ func cellNotice(img *image.Paletted, area image.Rectangle, label, msg string) {
 	cy := inner.Min.Y + inner.Dy()/2
 	render.Text(img, label, cx, cy-int(size*0.2), render.Style{Size: size, Bold: true, Shrink: true}, inner.Dx()-8, color.Black, render.Center)
 	small := size * 0.75
-	render.TextAt(img, render.Ellipsize(firstLine(msg), small, false, inner.Dx()-8), cx, cy+int(size*0.95), small, false, color.Black, render.Center)
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
+	render.TextAt(img, render.Ellipsize(format.FirstLine(msg), small, false, inner.Dx()-8), cx, cy+int(size*0.95), small, false, color.Black, render.Center)
 }
 
 // WithBanner returns a copy of img with inverted notice bars stacked at the

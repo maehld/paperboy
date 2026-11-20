@@ -15,7 +15,9 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/maehld/paperboy/internal/duration"
 	"github.com/maehld/paperboy/internal/page"
+	"github.com/maehld/paperboy/internal/strictyaml"
 )
 
 // Devices live in files of their own (ADR 0070): devices/<id>.yaml, one file
@@ -55,17 +57,11 @@ type deviceFile struct {
 // document is an error, like in pages and plans.
 func parseDeviceFile(data []byte) (deviceFile, error) {
 	var f deviceFile
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&f); err != nil {
+	if err := strictyaml.Decode(data, &f); err != nil {
 		if errors.Is(err, io.EOF) {
 			return f, errors.New("empty device file")
 		}
 		return f, err
-	}
-	var extra yaml.Node
-	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
-		return f, errors.New("only one YAML document is allowed")
 	}
 	return f, nil
 }
@@ -282,7 +278,7 @@ func quotedScalar(value string) *yaml.Node {
 	return n
 }
 
-func durationValue(d time.Duration) *yaml.Node { return plainScalar(durationText(d)) }
+func durationValue(d time.Duration) *yaml.Node { return plainScalar(duration.Text(d)) }
 
 // marshalFile writes a node tree as the YAML file layout the editors write.
 func marshalFile(node *yaml.Node) ([]byte, error) {

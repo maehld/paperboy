@@ -48,7 +48,7 @@ A variant file carries `kind`, `grid`, `style`, `notices` and `cells`. It inheri
 | `overflow` | Text pages: default `strip`, `wrap` or `scroll` ([text pages](#text-pages)) |
 | `cells` | Text pages: boxes with `at`, `span`, `text` or `value`, `label`, `unit`, `scale`, `align` and `overflow` |
 
-Parsing is strict and cells must not overlap. Sizes are in points since [ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md). A fraction such as `0.06` is rejected with a hint: points are physical, and the display type's `ppi` converts them into pixels.
+Parsing is strict: an unknown key or a second YAML document is an error. Cells must not overlap. Sizes are in points since [ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md). A fraction such as `0.06` is rejected with a hint: points are physical, and the display type's `ppi` converts them into pixels.
 
 A widget declares its sizes as spans of the 6 × 8 reference grid, so an author places cells without knowing the panel. That reference grid is a fraction vocabulary, not a density. A span of 3 × 4 means half the width and half the height, and the shipped plugins use halves and quarters.
 
