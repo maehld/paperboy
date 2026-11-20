@@ -2,6 +2,30 @@
 
 The built-in plugin `paperboy` runs inside Paperboy and needs no configuration. Its widgets draw on image pages; its values feed text pages ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)).
 
+## Screenshots
+
+The example page `status` with the battery of this device in the header, two
+device-status rows, two gauges and the clock:
+
+![The status page](../images/plugins/paperboy/page-status.png)
+
+| `header` | `battery` | `device-status` |
+|---|---|---|
+| ![header](../images/plugins/paperboy/header.png) | ![battery](../images/plugins/paperboy/battery.png) | ![device-status](../images/plugins/paperboy/device-status.png) |
+
+| `text` | `clock` | `logo` |
+|---|---|---|
+| ![text](../images/plugins/paperboy/text.png) | ![clock](../images/plugins/paperboy/clock.png) | ![logo](../images/plugins/paperboy/logo.png) |
+
+The `hinweise` text page on a 20 × 4 display:
+
+```text
+Hinweise            
+Datum 21.11.2026    
+          Zeit 00:19
+Jetzt          00:19
+```
+
 ## Values
 
 A text page lays out values ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). The plugin declares:

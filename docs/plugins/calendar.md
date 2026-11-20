@@ -2,6 +2,29 @@
 
 Calendars from CalDAV and iCalendar, plus contact birthdays from CardDAV ([ADR 0048](../adr/0048-calendar-provider-and-agenda.md)). The plugin reads the sources in the background and reports changes.
 
+## Screenshots
+
+The example pages `kalender`, `woche` and `geburtstage`:
+
+![The calendar page](../images/plugins/calendar/page-kalender.png)
+
+![The week page](../images/plugins/calendar/page-woche.png)
+
+![The birthday page](../images/plugins/calendar/page-geburtstage.png)
+
+| `agenda` | `month` | `week` | `birthdays` |
+|---|---|---|---|
+| ![agenda](../images/plugins/calendar/agenda.png) | ![month](../images/plugins/calendar/month.png) | ![week](../images/plugins/calendar/week.png) | ![birthdays](../images/plugins/calendar/birthdays.png) |
+
+The `geburtstage` text page on a 20 × 4 display:
+
+```text
+Geburtstage         
+Di ganztägig Anna Be
+Mo ganztägig Ben Web
+Di ganztägig Clara S
+```
+
 ## Configuration
 
 | Key | Description |

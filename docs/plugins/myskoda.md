@@ -4,6 +4,30 @@ Shows the state of a Škoda with a connected-vehicle subscription over the [MyŠ
 
 The API returns a snapshot: every part carries its own `carCapturedTimestamp`, so the widget shows when the car last sent its data. Parts a vehicle does not support are absent, and a field without a usable value is omitted — the widgets show `–` or leave the line out instead of inventing a value.
 
+## Screenshots
+
+The example pages `auto` and `auto.lcd2004` show the car on an image display
+and on a 20 × 4 character display:
+
+![The car page](../images/plugins/myskoda/page-auto.png)
+
+| `battery` | `charging` | `climate` | `card` |
+|---|---|---|---|
+| ![battery](../images/plugins/myskoda/battery.png) | ![charging](../images/plugins/myskoda/charging.png) | ![climate](../images/plugins/myskoda/climate.png) | ![card](../images/plugins/myskoda/card.png) |
+
+| `profiles` | `location` | `car` |
+|---|---|---|
+| ![profiles](../images/plugins/myskoda/profiles.png) | ![location](../images/plugins/myskoda/location.png) | ![car](../images/plugins/myskoda/car.png) |
+
+The `auto` text page on a 20 × 4 display:
+
+```text
+Auto                
+Akku 71 %     249 km
+Lädt         20,2 kW
+Heizt        22,5 °C
+```
+
 ## Configuration
 
 ```yaml
@@ -104,7 +128,3 @@ The API also offers:
 - door, window, sunroof and light detail, tire pressure is not part of the API.
 
 Doors, windows and lights beyond the overall lock state, fuel status and those further commands are not implemented yet.
-
-## Example
-
-`examples/pages/auto.yaml` shows battery, charging, climate, the vehicle image, charging plans and position on a 6×8 grid; `examples/pages/auto.lcd2004.yaml` shows the overview and climate on a 20×4 character display. The tour plan `examples/plans/tour.yaml` includes the page.

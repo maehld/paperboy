@@ -2,6 +2,17 @@
 
 Weather from [Open-Meteo](https://open-meteo.com/), no API key needed.
 
+## Screenshots
+
+The example page `wetter` shows the current weather with clothing advice, the
+next five days and today's temperature curve:
+
+![The weather page](../images/plugins/weather/page-wetter.png)
+
+| `current` | `days` | `hours` |
+|---|---|---|
+| ![current](../images/plugins/weather/current.png) | ![days](../images/plugins/weather/days.png) | ![hours](../images/plugins/weather/hours.png) |
+
 ## Configuration
 
 | Key | Description |

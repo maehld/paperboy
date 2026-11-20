@@ -7,6 +7,17 @@ prices come from the German Markttransparenzstelle für Kraftstoffe (MTS-K) and
 are published under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 The API needs a personal key.
 
+## Screenshots
+
+The example page `spritpreise` shows the cheapest station, the nearest stations
+and the price history of the day:
+
+![The fuel page](../images/plugins/fuel/page-spritpreise.png)
+
+| `cheapest` | `prices` | `history` |
+|---|---|---|
+| ![cheapest](../images/plugins/fuel/cheapest.png) | ![prices](../images/plugins/fuel/prices.png) | ![history](../images/plugins/fuel/history.png) |
+
 ## Configuration
 
 | Key | Description |

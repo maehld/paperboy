@@ -2,6 +2,24 @@
 
 Shows data from [evcc](https://evcc.io) over its REST API: live values from `/api/state` and the energy history from `/api/history/energy`. The plugin polls the API in the background and sends a change event when a shown value moves. evcc 0.127.0 or newer is required, because older versions report the duration fields in nanoseconds.
 
+## Screenshots
+
+The example page `energie` shows the energy flow with the site values and the
+charging point. `ertrag` compares the energy history of today, yesterday, the
+week, the month and the year:
+
+![The energy page](../images/plugins/evcc/page-energie.png)
+
+![The yield page](../images/plugins/evcc/page-ertrag.png)
+
+| `site` | `flow` | `loadpoint` |
+|---|---|---|
+| ![site](../images/plugins/evcc/site.png) | ![flow](../images/plugins/evcc/flow.png) | ![loadpoint](../images/plugins/evcc/loadpoint.png) |
+
+| `history` | `values` | `chart` | `forecast` |
+|---|---|---|---|
+| ![history](../images/plugins/evcc/history.png) | ![values](../images/plugins/evcc/values.png) | ![chart](../images/plugins/evcc/chart.png) | ![forecast](../images/plugins/evcc/forecast.png) |
+
 ## Configuration
 
 | Key | Description |

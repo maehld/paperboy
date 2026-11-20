@@ -2,6 +2,17 @@
 
 RSS 2.0, RSS 1.0 (RDF) and Atom feeds as widgets. Every configured feed is fetched in the background, so the page never waits for a slow server. No API key, no account.
 
+## Screenshots
+
+The example page `nachrichten` with headlines and summaries of one feed,
+followed by the newest entries of every feed:
+
+![The news page](../images/plugins/rss/page-nachrichten.png)
+
+| `feed` | `headline` |
+|---|---|
+| ![feed](../images/plugins/rss/feed.png) | ![headline](../images/plugins/rss/headline.png) |
+
 ## Configuration
 
 | Key | Description |

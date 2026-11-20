@@ -53,4 +53,6 @@ English documents follow the rules of ASD-STE100 as the house style. This does n
 
 `./scripts/check-docs.sh` checks the part that needs no dictionary: sentence length and filler words. It covers the design documents and the glossary by default and takes other files as arguments.
 
+`./scripts/screenshots.sh` renders the pictures of the plugin pages into `docs/images/plugins/`. It builds Paperboy and the plugins, copies the examples into a temporary instance and starts a mock of every upstream service, so it needs no network and no credentials. `-only <plugin>` renders one plugin, `-keep` keeps the temporary instance and its log, and `-bin <dir>` reuses built programs. The xkcd page and the Pokémon card show drawn placeholder art, because the repository ships neither the comic nor the sprites.
+
 Each fact lives in exactly one place. The [design documents](design/README.md) keep the structure and the reason; the topic pages keep the steps; the [ADRs](adr/README.md) keep the history and are not rewritten.
