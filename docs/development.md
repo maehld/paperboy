@@ -32,6 +32,7 @@ cmd/myskoda/             MyŠkoda plugin: vehicle state and commands
 cmd/dexcom/              Dexcom plugin: glucose readings from the Share service
 cmd/pokedex/             Pokédex plugin: a Pokémon card from PokéAPI
 cmd/rss/                 RSS and Atom plugin: feed list and headline
+cmd/github/              GitHub plugin: issues, pull requests, workflow runs and commits
 pkg/plugin/              Plugin protocol and Go helper (public API)
 pkg/render/              Fonts, palettes and drawing shared by Paperboy and plugins (public API)
 internal/paperboy/       YAML configuration, device API, plans, battery warning, dashboard

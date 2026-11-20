@@ -1,0 +1,14 @@
+# The state of one repository: counts and the newest commit in the header,
+# then issues, pull requests, workflow runs and commits. Requires the github
+# plugin and a repository named paperboy (docs/plugins/github.md).
+title: GitHub
+kind: image
+grid: [6, 8]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
+  - { at: [0, 1], span: [6, 2], widget: github/repo, args: { repo: paperboy } }
+  - { at: [0, 3], span: [3, 3], widget: github/issues, args: { repo: paperboy, count: 6 } }
+  - { at: [3, 3], span: [3, 3], widget: github/pulls, args: { repo: paperboy, count: 6 } }
+  - { at: [0, 6], span: [3, 2], widget: github/runs, args: { repo: paperboy, count: 3 } }
+  - { at: [3, 6], span: [3, 2], widget: github/commits, args: { repo: paperboy, count: 3 } }

@@ -115,6 +115,7 @@ Every plugin has its own version in `cmd/<plugin>/VERSION`, embedded in the prog
 | [`myskoda`](../plugins/myskoda.md) | MyŠkoda Public API | `battery`, `charging`, `profiles`, `location`, `climate`, `card`, `car`, actions `charging` and `climate` |
 | [`dexcom`](../plugins/dexcom.md) | Dexcom Share | `glucose`, `graph`, `values`, value `state` with the keys `normal`, `low`, `high`, `urgent` |
 | [`rss`](../plugins/rss.md) | RSS 2.0, RSS 1.0 and Atom | `feed`, `headline` |
+| [`github`](../plugins/github.md) | GitHub REST API | `repo`, `issues`, `pulls`, `runs`, `commits`, values `open-issues`, `open-pulls`, `failed-runs`, `last-commit`, `last-run`, `state` |
 | [`xkcd`](../plugins/xkcd.md) | xkcd | `comic` |
 | [`countdown`](../plugins/countdown.md) | none, every date is an argument | `countdown` |
 | [`pokedex`](../plugins/pokedex.md) | PokéAPI | `card` |

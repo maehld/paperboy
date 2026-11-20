@@ -1,0 +1,10 @@
+# The counts and the state of one repository on 20x4. Requires the github
+# plugin and a repository named paperboy (docs/plugins/github.md).
+kind: text
+cells:
+  - { at: [0, 0], span: [20, 1], value: paperboy/title }
+  - { at: [0, 1], span: [10, 1], value: github/open-issues, args: { repo: paperboy }, label: Issues }
+  - { at: [10, 1], span: [10, 1], value: github/open-pulls, args: { repo: paperboy }, label: PRs, align: right }
+  - { at: [0, 2], span: [10, 1], value: github/failed-runs, args: { repo: paperboy }, label: Failed }
+  - { at: [10, 2], span: [10, 1], value: github/state, args: { repo: paperboy }, labels: { ok: OK, failing: Failing }, align: right }
+  - { at: [0, 3], span: [20, 1], value: github/last-commit, args: { repo: paperboy }, overflow: strip }
