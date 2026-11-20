@@ -32,6 +32,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maehld/paperboy/internal/imagelimit"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
@@ -500,7 +501,7 @@ func (p *pokedex) load(ctx context.Context, key string) (*mon, error) {
 	if art != "" {
 		body, err := p.get(ctx, art)
 		if err == nil {
-			m.art, _, err = image.Decode(strings.NewReader(string(body)))
+			m.art, err = imagelimit.Decode(body)
 		}
 		if err != nil { // the card still works without a picture
 			fmt.Fprintf(os.Stderr, "pokedex: artwork of %s: %v\n", pk.Name, err)

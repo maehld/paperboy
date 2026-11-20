@@ -475,6 +475,27 @@ func TestPlansListReadAndSave(t *testing.T) {
 // TestDeleteFiles removes a page, a plan, a device and a display type file. A
 // hash that no longer matches refuses the delete, and every removed file stays
 // under state/editor/ (ADR 0073).
+// TestDeleteKeepsTheFileWhenTheBackupFails checks that a delete is not
+// destructive without a copy: a state directory that cannot be written leaves
+// the file in place.
+func TestDeleteKeepsTheFileWhenTheBackupFails(t *testing.T) {
+	s := editorServer(t)
+	writePlanFile(t, s, "tour", testEditablePlan)
+	blocker := filepath.Join(s.config().Dir, "state", "editor", "plans", "tour")
+	if err := os.MkdirAll(filepath.Dir(blocker), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(blocker, []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if rec := request(t, s, http.MethodDelete, "/api/plans/tour", nil, nil); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("delete without a backup: %d %s", rec.Code, rec.Body)
+	}
+	if _, err := os.Stat(filepath.Join(s.config().Plans, "tour.yaml")); err != nil {
+		t.Fatalf("the plan is gone although its backup failed: %v", err)
+	}
+}
+
 func TestDeleteFiles(t *testing.T) {
 	s := editorServer(t)
 	backups := func(kind, label string) []string {

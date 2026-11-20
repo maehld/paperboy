@@ -398,7 +398,10 @@ func (s *Server) handleSavePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if exists {
-		s.backupFile(cfg, "pages", backupLabel(name, label), cur)
+		if err := s.backupFile(cfg, "pages", backupLabel(name, label), cur); err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "cannot keep a backup of the page: %v", err)
+			return
+		}
 	}
 	if err := writeAtomic(path, data); err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
@@ -535,7 +538,11 @@ func (s *Server) handleCreateVariant(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
-	s.backupFile(cfg, "pages", name, cur)
+	if err := s.backupFile(cfg, "pages", name, cur); err != nil {
+		os.Remove(variantPath)
+		writeAPIError(w, http.StatusInternalServerError, "cannot keep a backup of the page: %v", err)
+		return
+	}
 	if err := writeAtomic(pagePath, pageData); err != nil {
 		os.Remove(variantPath)
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
@@ -638,7 +645,10 @@ func (s *Server) handleSetServes(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
-	s.backupFile(cfg, "pages", name, cur)
+	if err := s.backupFile(cfg, "pages", name, cur); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "cannot keep a backup of the page: %v", err)
+		return
+	}
 	if err := writeAtomic(pagePath, data); err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
@@ -778,7 +788,10 @@ func (s *Server) handleSavePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if exists {
-		s.backupFile(cfg, "plans", name, cur)
+		if err := s.backupFile(cfg, "plans", name, cur); err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "cannot keep a backup of the plan: %v", err)
+			return
+		}
 	}
 	if err := writeAtomic(path, data); err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
@@ -901,7 +914,10 @@ func (s *Server) handleSaveDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if exists {
-		s.backupFile(cfg, "devices", id, cur)
+		if err := s.backupFile(cfg, "devices", id, cur); err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "cannot keep a backup of the device: %v", err)
+			return
+		}
 	}
 	if err := os.MkdirAll(cfg.DevicesDir, 0o755); err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
@@ -1033,7 +1049,10 @@ func (s *Server) handleSaveDisplay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if exists {
-		s.backupFile(cfg, "displays", name, cur)
+		if err := s.backupFile(cfg, "displays", name, cur); err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "cannot keep a backup of the display type: %v", err)
+			return
+		}
 	}
 	if err := os.MkdirAll(cfg.DisplaysDir, 0o755); err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
@@ -1114,7 +1133,9 @@ func (s *Server) deleteEditedFile(cfg *Config, kind, label, path, hash, noun str
 	if hash != "" && fileHash(data) != hash {
 		return http.StatusConflict, fmt.Errorf("the %s changed on disk; read it again before deleting", noun)
 	}
-	s.backupFile(cfg, kind, label, data)
+	if err := s.backupFile(cfg, kind, label, data); err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("cannot keep a backup of the %s: %w", noun, err)
+	}
 	if err := os.Remove(path); err != nil {
 		return http.StatusInternalServerError, err
 	}
@@ -1220,18 +1241,19 @@ func backupLabel(name, label string) string {
 }
 
 // backupFile keeps a copy of a file before it is overwritten and drops the
-// oldest beyond editorBackups versions, so a save can be undone by hand.
-func (s *Server) backupFile(cfg *Config, kind, label string, data []byte) {
+// oldest beyond editorBackups versions, so a save can be undone by hand. It
+// returns an error when the copy cannot be kept; the caller then leaves the
+// file unchanged.
+func (s *Server) backupFile(cfg *Config, kind, label string, data []byte) error {
 	dir := filepath.Join(cfg.Dir, "state", "editor", kind, label)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		slog.Warn("cannot keep a backup of an edited file", "dir", dir, "error", err)
-		return
+		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("%d.yaml", time.Now().UnixNano())), data, 0o644); err != nil {
-		slog.Warn("cannot keep a backup of an edited file", "dir", dir, "error", err)
-		return
+		return err
 	}
 	pruneBackups(dir, editorBackups)
+	return nil
 }
 
 func pruneBackups(dir string, keep int) {

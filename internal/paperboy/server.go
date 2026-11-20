@@ -611,10 +611,12 @@ func (s *Server) saveState(key string, data []byte) {
 	}
 }
 
-func newAPIKey() string {
+func newAPIKey() (string, error) {
 	b := make([]byte, 16)
-	rand.Read(b)
-	return base64.RawURLEncoding.EncodeToString(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 // handlePreview composes a page as PNG (or text for text displays), so a

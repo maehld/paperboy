@@ -359,7 +359,14 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if st.APIKey == "" {
-		st.APIKey = newAPIKey()
+		key, err := newAPIKey()
+		if err != nil {
+			s.mu.Unlock()
+			slog.Error("cannot create a device key", "device", device.ID, "error", err)
+			writeAPIError(w, http.StatusInternalServerError, "cannot create a device key")
+			return
+		}
+		st.APIKey = key
 	}
 	if st.PairAuthorized {
 		usePairingLocked(st, now)

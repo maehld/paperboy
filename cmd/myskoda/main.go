@@ -48,6 +48,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maehld/paperboy/internal/imagelimit"
 	"github.com/maehld/paperboy/pkg/plugin"
 )
 
@@ -469,7 +470,7 @@ func (m *myskoda) LoadState(state json.RawMessage, blobs map[string][]byte) erro
 	m.mu.Unlock()
 	if s.RenderURL != "" {
 		if data := blobs[blobRender]; len(data) > 0 {
-			if img, err := png.Decode(bytes.NewReader(data)); err == nil {
+			if img, err := imagelimit.Decode(data); err == nil {
 				m.mu.Lock()
 				m.image = &supplement{img: img, url: s.RenderURL}
 				m.mu.Unlock()
@@ -686,7 +687,7 @@ func (m *myskoda) downloadImage(ctx context.Context, u string) (image.Image, err
 	if len(body) > maxImageBytes {
 		return nil, fmt.Errorf("render image larger than %d bytes", maxImageBytes)
 	}
-	img, _, err := image.Decode(bytes.NewReader(body))
+	img, err := imagelimit.Decode(body)
 	if err != nil {
 		return nil, fmt.Errorf("render image: %w", err)
 	}

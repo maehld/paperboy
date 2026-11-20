@@ -565,6 +565,15 @@ func decode(j job, r plugin.Result) (page.Result, error) {
 	if len(r.PNG) == 0 {
 		return page.Result{}, errors.New("no image")
 	}
+	// The header names the canvas, so its size is checked before the pixels
+	// are allocated: a small answer cannot ask for a huge image.
+	cfg, err := png.DecodeConfig(bytes.NewReader(r.PNG))
+	if err != nil {
+		return page.Result{}, err
+	}
+	if cfg.Width != j.widget.Width || cfg.Height != j.widget.Height {
+		return page.Result{}, fmt.Errorf("image is %dx%d, requested %dx%d", cfg.Width, cfg.Height, j.widget.Width, j.widget.Height)
+	}
 	img, err := png.Decode(bytes.NewReader(r.PNG))
 	if err != nil {
 		return page.Result{}, err

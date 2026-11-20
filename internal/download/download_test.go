@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -388,4 +389,39 @@ func TestExtractKeepsFlatEntries(t *testing.T) {
 func platformSuffix() string {
 	name := PluginAsset()
 	return strings.TrimSuffix(strings.TrimPrefix(name, "paperboy-plugins-"), ".zip")
+}
+
+func TestListSkipsUnusableTags(t *testing.T) {
+	_, srv := newReleaseServer(t, "v2.1.0", "../evil", "plugins-v1.0.0/../x")
+	c := New(srv.URL+"/repos/me/paperboy/releases", "", t.TempDir())
+	releases, err := c.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(releases) != 1 || releases[0].Tag != "v2.1.0" {
+		t.Fatalf("releases: %+v", releases)
+	}
+}
+
+func TestExtractRefusesALyingSize(t *testing.T) {
+	data := zipOf(t, map[string]string{"plugins/weather": "program"})
+	// The central directory names the uncompressed size; a wrong one would
+	// install a truncated file silently.
+	i := bytes.Index(data, []byte("PK\x01\x02"))
+	if i < 0 {
+		t.Fatal("no central directory")
+	}
+	binary.LittleEndian.PutUint32(data[i+24:], 4096)
+	dir := t.TempDir()
+	archive := filepath.Join(dir, "plugins.zip")
+	if err := os.WriteFile(archive, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(dir, "plugins")
+	if _, err := Extract(archive, dest, func(string) bool { return true }); err == nil {
+		t.Fatal("a zip with a lying size was accepted")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "weather")); !os.IsNotExist(err) {
+		t.Fatalf("truncated file installed: %v", err)
+	}
 }
