@@ -690,6 +690,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		st = s.state[d.stateKey()]
 	}
 	if st != nil {
+		menu = keepActionResult(menu, st.Menu)
 		st.LastPage, st.LastPageKind, st.LastPageHash = shownPage, shownKind, served.hash
 		st.LastPages = served.pages
 		st.LastPageTime, st.LastRefresh, st.LastInterval = now, int(refresh.Seconds()), int(served.interval.Seconds())
