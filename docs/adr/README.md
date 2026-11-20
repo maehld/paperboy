@@ -167,6 +167,7 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0100](0100-one-stop-per-departures-widget.md) | One stop per departures widget | Accepted, implemented; replaces the single `stop` of [ADR-0053](0053-departures-from-efa.md) |
 | [0126](0126-a-schedule-event-for-plugin-demand.md) | A schedule event for plugin demand | Accepted; protocol 9, the `Demand` helper, the host demand and the cache gate implemented; the plugin migrations follow |
 | [0127](0127-plan-conditions-are-values.md) | Plan conditions are values | Accepted, implemented; supersedes the conditions of [ADR-0103](0103-plugin-conditions-in-plans.md), adds the `enum` value type to [ADR-0111](0111-text-pages-from-plugin-values.md) and the per-cell labels to those values; amends protocol 9 before it ships |
+| [0134](0134-a-minimal-environment-for-plugins.md) | A minimal environment for plugins | Accepted, implemented |
 
 ## Delivery and releases
 
