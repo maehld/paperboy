@@ -32,7 +32,7 @@ type chargeReading struct {
 type chargeEpisode struct {
 	Start time.Time      `json:"start"`
 	From  *chargeReading `json:"from,omitempty"`
-	End   time.Time      `json:"end,omitempty"`
+	End   time.Time      `json:"end,omitzero"`
 	To    *chargeReading `json:"to,omitempty"`
 }
 

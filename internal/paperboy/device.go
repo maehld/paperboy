@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -27,15 +28,6 @@ const (
 // listenAfterInput is how long a device stays awake for further input after a
 // button press or touch before it goes back to deep sleep.
 const listenAfterInput = 20 * time.Second
-
-func hasButton(buttons []string, role string) bool {
-	for _, b := range buttons {
-		if b == role {
-			return true
-		}
-	}
-	return false
-}
 
 // maxSyncBytes caps a register or sync body; log entries make up most of it.
 const maxSyncBytes = 64 << 10
@@ -379,7 +371,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	s.saveState(key, stateData)
 	slog.Info("display registered", "device", device.ID, "mac", device.MAC, "hardware", req.Hardware, "firmware", req.Firmware)
-	writeJSON(w, http.StatusOK, map[string]string{"key": apiKey, "device": device.ID})
+	writeJSON(w, http.StatusOK, registerAnswer{Key: apiKey, Device: device.ID})
 }
 
 // deviceByKeyLocked finds the device that owns the bearer key. cfg is the
@@ -459,6 +451,12 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		values:   values,
 	})
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// registerAnswer gives a display its key and its name in the instance.
+type registerAnswer struct {
+	Key    string `json:"key"`
+	Device string `json:"device"`
 }
 
 // syncOptions is what a wake needs beyond the request itself: the firmware
@@ -670,7 +668,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 		// A denied device keeps the old meaning of every button.
 		pageButtons = buttons
 	}
-	if d.Actions == actionsDeny && hasButton(buttons, buttonHome) {
+	if d.Actions == actionsDeny && slices.Contains(buttons, buttonHome) {
 		slog.Info("device menu denied; home keeps paging", "device", d.ID)
 	}
 	st.Menu = menu

@@ -62,10 +62,7 @@ func (s *Server) pageFileForVariant(w http.ResponseWriter, cfg *Config, name, ha
 		return "", nil, nil, false
 	}
 	if hash != "" && fileHash(data) != hash {
-		writeJSON(w, http.StatusConflict, map[string]string{
-			"error": "the page changed on disk; read it again before changing its variants",
-			"hash":  fileHash(data),
-		})
+		writeJSON(w, http.StatusConflict, conflictAnswer{Error: "the page changed on disk; read it again before changing its variants", Hash: fileHash(data)})
 		return "", nil, nil, false
 	}
 	t, err := page.Parse(bytes.NewReader(data))

@@ -9,9 +9,11 @@ import (
 	"html/template"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -265,12 +267,7 @@ func imageDisplayNames(cfg *Config) []string {
 }
 
 func sortedDisplays(displays map[string]Profile) []string {
-	names := make([]string, 0, len(displays))
-	for name := range displays {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
+	return slices.Sorted(maps.Keys(displays))
 }
 
 // editorDisplay picks the display type an overview or a new page works on: the

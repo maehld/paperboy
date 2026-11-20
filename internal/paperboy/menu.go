@@ -73,8 +73,8 @@ type menuState struct {
 	Session     int          `json:"session,omitempty"`
 	ConfirmHash string       `json:"confirm_hash,omitempty"` // hash of the served confirmation screen
 	Screen      string       `json:"screen,omitempty"`       // hash of the last served menu screen
-	OpenedAt    time.Time    `json:"opened_at,omitempty"`
-	LastInput   time.Time    `json:"last_input,omitempty"` // last button or touch that kept the menu open
+	OpenedAt    time.Time    `json:"opened_at,omitzero"`
+	LastInput   time.Time    `json:"last_input,omitzero"` // last button or touch that kept the menu open
 	Actions     []menuAction `json:"actions,omitempty"`
 	Resolved    bool         `json:"resolved,omitempty"` // plugin state is filled in
 	Result      string       `json:"result,omitempty"`

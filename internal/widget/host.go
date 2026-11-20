@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -537,12 +538,7 @@ func (h *Host) run(ctx context.Context, spec Spec, env Env, jobs []job) ([]page.
 			maxAge = time.Duration(msg.MaxAge) * time.Second
 		}
 		now := h.now()
-		h.mu.Lock()
 		expires := now.Add(maxAge)
-		if h.changes[spec.Name] != gen {
-			expires = time.Time{} // the data changed while the plugin drew
-		}
-		h.mu.Unlock()
 		var failed error
 		for n, i := range idx {
 			j := jobs[i]
@@ -561,7 +557,7 @@ func (h *Host) run(ctx context.Context, spec Spec, env Env, jobs []job) ([]page.
 			}
 			out[i] = r
 			h.store(j, env, &entry{job: j, img: r.Image, value: r.Value, spec: j.spec,
-				created: now, expires: expires, lastUsed: now})
+				created: now, expires: expires, lastUsed: now}, gen)
 		}
 		if failed != nil {
 			slog.Warn("plugin widget failed", "plugin", spec.Name, "error", failed)
@@ -996,7 +992,11 @@ func (h *Host) evict() {
 	h.evicted += int64(len(list) - maxEntries)
 }
 
-func (h *Host) store(j job, env Env, e *entry) {
+// store puts one result into the cache. gen is the changed generation before
+// the request: a changed event that arrived while the plugin drew makes the
+// entry expired at once, even when the event reached the cache before the
+// result (issue found with TestHostChangedEventRefreshesInBackground).
+func (h *Host) store(j job, env Env, e *entry, gen int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if j.action == plugin.ActionValues {
@@ -1004,6 +1004,9 @@ func (h *Host) store(j job, env Env, e *entry) {
 			return // the declaration changed while the plugin answered
 		}
 		e.declGen = j.declGen
+	}
+	if h.changes[j.plugin] != gen {
+		e.expires = time.Time{}
 	}
 	if h.cache == nil {
 		h.cache = map[string]*entry{}
@@ -1027,20 +1030,11 @@ func (h *Host) expire(name string, widgets []string) {
 		if e.job.plugin != name {
 			continue
 		}
-		if len(widgets) > 0 && !contains(widgets, e.job.widget.Widget) {
+		if len(widgets) > 0 && !slices.Contains(widgets, e.job.widget.Widget) {
 			continue
 		}
 		e.expires = time.Time{}
 	}
-}
-
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 func (h *Host) pluginLock(name string) *sync.Mutex {

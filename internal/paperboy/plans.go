@@ -200,7 +200,7 @@ const maxHints = 500
 func (s *Server) notice(profile string, img *image.Paletted) servedPage {
 	data := encodePNG(img)
 	key := hashBytes(data)
-	now := time.Now()
+	now := s.now()
 	s.mu.Lock()
 	s.hints[key] = hintPage{data: data, profile: profile, at: now, used: now}
 	s.pruneHintsLocked()

@@ -21,8 +21,8 @@ type deviceState struct {
 	APIKey          string    `json:"api_key"`
 	Page            int       `json:"page"`
 	PageName        string    `json:"page_name,omitempty"` // page the cursor holds; a plan edit follows it (ADR 0133)
-	FirstSeen       time.Time `json:"first_seen,omitempty"`
-	LastSeen        time.Time `json:"last_seen,omitempty"`
+	FirstSeen       time.Time `json:"first_seen,omitzero"`
+	LastSeen        time.Time `json:"last_seen,omitzero"`
 	ClientIP        string    `json:"client_ip,omitempty"` // source address of the last register, sync or text poll
 	BatteryVoltage  string    `json:"battery_voltage,omitempty"`
 	BatteryPercent  *float64  `json:"battery_percent,omitempty"`  // fuel gauge, if the hardware has one
@@ -55,9 +55,9 @@ type deviceState struct {
 	// Pairing (ADR 0109). PairCode is the code the panel shows; the claim in the
 	// UI turns it into PairAuthorized, which lets exactly the next register take
 	// the key. PairedAt is when that happened the last time.
-	PairedAt       time.Time `json:"paired_at,omitempty"`
+	PairedAt       time.Time `json:"paired_at,omitzero"`
 	PairCode       string    `json:"pair_code,omitempty"`
-	PairExpiry     time.Time `json:"pair_expiry,omitempty"`
+	PairExpiry     time.Time `json:"pair_expiry,omitzero"`
 	PairTries      int       `json:"pair_tries,omitempty"`
 	PairAuthorized bool      `json:"pair_authorized,omitempty"`
 
@@ -68,7 +68,7 @@ type deviceState struct {
 	LastPageHash string    `json:"last_page_hash,omitempty"` // content hash, the same as the sync response's image hash
 	LastPages    int       `json:"last_pages,omitempty"`     // pages in the active rule, 0 when unknown
 	ScrollHash   string    `json:"scroll_hash,omitempty"`    // hash of the current scroll text (ADR 0118)
-	LastPageTime time.Time `json:"last_page_time,omitempty"`
+	LastPageTime time.Time `json:"last_page_time,omitzero"`
 	LastRefresh  int       `json:"last_refresh,omitempty"`  // sleep until the next sync in seconds (ADR 0129)
 	LastInterval int       `json:"last_interval,omitempty"` // regular interval that sleep belongs to
 	LastError    string    `json:"last_error,omitempty"`    // last render or plan error
@@ -89,7 +89,7 @@ type deviceState struct {
 	// that version. Clearing firmware_failures lets Paperboy offer it again.
 	FirmwareOffered     string    `json:"firmware_offered,omitempty"`
 	FirmwareOfferedMD5  string    `json:"firmware_offered_md5,omitempty"`
-	FirmwareOfferedTime time.Time `json:"firmware_offered_time,omitempty"`
+	FirmwareOfferedTime time.Time `json:"firmware_offered_time,omitzero"`
 	FirmwarePending     bool      `json:"firmware_pending,omitempty"`
 	FirmwareFailures    int       `json:"firmware_failures,omitempty"`
 }

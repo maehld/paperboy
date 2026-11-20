@@ -254,12 +254,12 @@ func (s *Server) downloadHint(cfg *Config) *dashboardDownloads {
 }
 
 // downloadTime prints a time of the day, with the date when it is not today.
-func downloadTime(t time.Time, loc *time.Location) string {
+// now is the server clock, so the page agrees with the rest of the instance.
+func downloadTime(t, now time.Time, loc *time.Location) string {
 	if t.IsZero() {
 		return "never"
 	}
-	now := time.Now().In(loc)
-	if t.In(loc).Format("2006-01-02") == now.Format("2006-01-02") {
+	if t.In(loc).Format("2006-01-02") == now.In(loc).Format("2006-01-02") {
 		return t.In(loc).Format("15:04")
 	}
 	return t.In(loc).Format("2006-01-02 15:04")

@@ -31,6 +31,33 @@ const (
 	editorMaxBody = 1 << 20
 )
 
+// conflictAnswer tells an editor that the file changed on disk. Hash is the
+// current content, so the editor can reload and try again.
+type conflictAnswer struct {
+	Error string `json:"error"`
+	Hash  string `json:"hash"`
+}
+
+// pagesAnswer is the body of GET /api/pages.
+type pagesAnswer struct {
+	Pages []editorPageFile `json:"pages"`
+}
+
+// plansAnswer is the body of GET /api/plans.
+type plansAnswer struct {
+	Plans []editorPlanFile `json:"plans"`
+}
+
+// displaysAnswer is the body of GET /api/displays.
+type displaysAnswer struct {
+	Displays []editorDisplayFile `json:"displays"`
+}
+
+// deletedAnswer is the body of a successful delete.
+type deletedAnswer struct {
+	Deleted string `json:"deleted"`
+}
+
 // editorPageFile is one page file in the list: pages/<name>.yaml or
 // pages/<name>.<label>.yaml (ADR 0110).
 type editorPageFile struct {
@@ -304,7 +331,7 @@ func (s *Server) handlePages(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"pages": list})
+	writeJSON(w, http.StatusOK, pagesAnswer{Pages: list})
 }
 
 // handlePage reads one page file exactly: the page file without a label, else
@@ -387,10 +414,7 @@ func (s *Server) handleSavePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if exists && body.Hash != "" && fileHash(cur) != body.Hash {
-		writeJSON(w, http.StatusConflict, map[string]string{
-			"error": "the page changed on disk; read it again before saving",
-			"hash":  fileHash(cur),
-		})
+		writeJSON(w, http.StatusConflict, conflictAnswer{Error: "the page changed on disk; read it again before saving", Hash: fileHash(cur)})
 		return
 	}
 	if !exists && body.Hash != "" {
@@ -706,7 +730,7 @@ func (s *Server) handlePlans(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"plans": list})
+	writeJSON(w, http.StatusOK, plansAnswer{Plans: list})
 }
 
 func planFilePath(dir, name string) (string, error) {
@@ -777,10 +801,7 @@ func (s *Server) handleSavePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if exists && body.Hash != "" && fileHash(cur) != body.Hash {
-		writeJSON(w, http.StatusConflict, map[string]string{
-			"error": "the plan changed on disk; read it again before saving",
-			"hash":  fileHash(cur),
-		})
+		writeJSON(w, http.StatusConflict, conflictAnswer{Error: "the plan changed on disk; read it again before saving", Hash: fileHash(cur)})
 		return
 	}
 	if !exists && body.Hash != "" {
@@ -903,10 +924,7 @@ func (s *Server) handleSaveDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if exists && body.Hash != "" && fileHash(cur) != body.Hash {
-		writeJSON(w, http.StatusConflict, map[string]string{
-			"error": "the device changed on disk; read it again before saving",
-			"hash":  fileHash(cur),
-		})
+		writeJSON(w, http.StatusConflict, conflictAnswer{Error: "the device changed on disk; read it again before saving", Hash: fileHash(cur)})
 		return
 	}
 	if !exists && body.Hash != "" {
@@ -957,7 +975,7 @@ func (s *Server) handleDisplays(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"displays": list})
+	writeJSON(w, http.StatusOK, displaysAnswer{Displays: list})
 }
 
 // handleDisplay reads one display type file. A broken file still answers, so an
@@ -1038,10 +1056,7 @@ func (s *Server) handleSaveDisplay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if exists && body.Hash != "" && fileHash(cur) != body.Hash {
-		writeJSON(w, http.StatusConflict, map[string]string{
-			"error": "the display type changed on disk; read it again before saving",
-			"hash":  fileHash(cur),
-		})
+		writeJSON(w, http.StatusConflict, conflictAnswer{Error: "the display type changed on disk; read it again before saving", Hash: fileHash(cur)})
 		return
 	}
 	if !exists && body.Hash != "" {
@@ -1150,7 +1165,7 @@ func (s *Server) deleteFile(w http.ResponseWriter, cfg *Config, kind, label, pat
 		writeAPIError(w, status, "%v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"deleted": relativePath(cfg, path)})
+	writeJSON(w, http.StatusOK, deletedAnswer{Deleted: relativePath(cfg, path)})
 }
 
 // handleDraftPreview renders a page that is not saved yet, so an editor can
@@ -1249,6 +1264,8 @@ func (s *Server) backupFile(cfg *Config, kind, label string, data []byte) error 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	// The wall clock names the copy: the name must stay unique even when the
+	// server clock is pinned, and it orders the versions for pruning.
 	if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("%d.yaml", time.Now().UnixNano())), data, 0o644); err != nil {
 		return err
 	}

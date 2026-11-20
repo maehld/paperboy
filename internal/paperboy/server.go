@@ -319,7 +319,23 @@ func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
 	for name, p := range cfg.Profiles {
 		list = append(list, profileInfo{Name: name, Profile: p})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"profiles": list})
+	writeJSON(w, http.StatusOK, profilesAnswer{Profiles: list})
+}
+
+// profilesAnswer is the body of GET /api/profiles.
+type profilesAnswer struct {
+	Profiles []profileInfo `json:"profiles"`
+}
+
+// devicesAnswer is the body of GET /api/devices.
+type devicesAnswer struct {
+	Devices []deviceAPIInfo `json:"devices"`
+}
+
+// macAnswer confirms that state was forgotten; the MAC names the display in a
+// form an operator recognises.
+type macAnswer struct {
+	MAC string `json:"mac"`
 }
 
 type deviceInfo struct {
@@ -358,8 +374,8 @@ type deviceAPIInfo struct {
 	Problem           string          `json:"problem,omitempty"`
 	Page              int             `json:"page,omitempty"`
 	PageName          string          `json:"page_name,omitempty"`
-	FirstSeen         time.Time       `json:"first_seen,omitempty"`
-	LastSeen          time.Time       `json:"last_seen,omitempty"`
+	FirstSeen         time.Time       `json:"first_seen,omitzero"`
+	LastSeen          time.Time       `json:"last_seen,omitzero"`
 	ClientIP          string          `json:"client_ip,omitempty"`
 	BatteryVoltage    string          `json:"battery_voltage,omitempty"`
 	BatteryPercent    *float64        `json:"battery_percent,omitempty"`
@@ -377,13 +393,13 @@ type deviceAPIInfo struct {
 	BatteryHistory    []batterySample `json:"battery_history,omitempty"`
 	ReportedPower     string          `json:"reported_power,omitempty"`
 	TouchReported     bool            `json:"reported_touch,omitempty"`
-	PairedAt          time.Time       `json:"paired_at,omitempty"`
+	PairedAt          time.Time       `json:"paired_at,omitzero"`
 	LastPage          string          `json:"last_page,omitempty"`
 	LastPageKind      string          `json:"last_page_kind,omitempty"`
 	LastPageHash      string          `json:"last_page_hash,omitempty"`
 	LastPages         int             `json:"last_pages,omitempty"`
 	ScrollHash        string          `json:"scroll_hash,omitempty"`
-	LastPageTime      time.Time       `json:"last_page_time,omitempty"`
+	LastPageTime      time.Time       `json:"last_page_time,omitzero"`
 	LastRefresh       int             `json:"last_refresh,omitempty"`
 	LastInterval      int             `json:"last_interval,omitempty"`
 	LastError         string          `json:"last_error,omitempty"`
@@ -422,7 +438,7 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 	for i, info := range infos {
 		list[i] = info.api()
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"devices": list})
+	writeJSON(w, http.StatusOK, devicesAnswer{Devices: list})
 }
 
 // lastImagePath is the UI route that serves the last image a device received
@@ -494,7 +510,7 @@ func (s *Server) handleForgetDeviceState(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	slog.Info("device state forgotten", "mac", formatStateKey(key))
-	writeJSON(w, http.StatusOK, map[string]string{"mac": formatStateKey(key)})
+	writeJSON(w, http.StatusOK, macAnswer{MAC: formatStateKey(key)})
 }
 
 // deviceInfos builds the device list for the devices API and the dashboard.

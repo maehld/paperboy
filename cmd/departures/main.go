@@ -30,6 +30,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -393,12 +394,9 @@ func (p *departures) visible(all []departure, now time.Time) []departure {
 }
 
 func containsFold(list []string, s string) bool {
-	for _, v := range list {
-		if strings.EqualFold(strings.TrimSpace(v), s) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(list, func(v string) bool {
+		return strings.EqualFold(strings.TrimSpace(v), s)
+	})
 }
 
 func matchesAny(s string, words []string) bool {
