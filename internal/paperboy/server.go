@@ -164,8 +164,8 @@ type route struct {
 
 // deviceRoutes are what a display touches: the device API (ADR 0042) and the
 // images, notice pages and firmware it downloads. They stay reachable without
-// the UI password, so nothing else belongs here; TestDeviceRoutesStayOpen pins
-// their prefixes.
+// the UI password, so nothing else belongs here; TestUIDeviceRoutesStayOpen
+// pins their prefixes.
 func (s *Server) deviceRoutes() []route {
 	return []route{
 		{"POST /api/device/register", s.handleRegister},

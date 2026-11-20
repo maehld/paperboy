@@ -28,7 +28,6 @@ var dashboardTmpl = template.Must(template.New("dashboard").Parse(dashboardTempl
 //go:embed ui/ui.css
 var uiCSS []byte
 
-// handleUICSS serves the shared stylesheet.
 func (s *Server) handleUICSS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -44,7 +43,6 @@ func (s *Server) handleUICSS(w http.ResponseWriter, r *http.Request) {
 //go:embed ui/vendor/htmx-4.0.1.min.js
 var uiHtmx []byte
 
-// handleUIHtmx serves the vendored script the self-updating pages link.
 func (s *Server) handleUIHtmx(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -67,19 +65,16 @@ var uiFavicon []byte
 //go:embed ui/fonts/dotgothic16-latin.woff2
 var uiFont []byte
 
-// handleUIFont serves the pixel font of the text previews behind the password.
 func (s *Server) handleUIFont(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "font/woff2")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	w.Write(uiFont)
 }
 
-// handleUILogo serves the lockup the header of every page shows.
 func (s *Server) handleUILogo(w http.ResponseWriter, r *http.Request) {
 	serveSVG(w, uiLogo)
 }
 
-// handleUIFavicon serves the icon the pages link.
 func (s *Server) handleUIFavicon(w http.ResponseWriter, r *http.Request) {
 	serveSVG(w, uiFavicon)
 }

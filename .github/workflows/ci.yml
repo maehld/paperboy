@@ -41,6 +41,9 @@ jobs:
       - name: Check the documentation style
         run: ./scripts/check-docs.sh
 
+      - name: Check the ADR references
+        run: ./scripts/check-adr-refs.sh
+
       - name: Smoke the browser scripts
         run: |
           npm install --no-save --prefix "$RUNNER_TEMP/ui" jsdom

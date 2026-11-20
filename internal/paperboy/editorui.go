@@ -1226,8 +1226,6 @@ func renderEditorPage(w http.ResponseWriter, v editorPageView, status int) {
 	}
 }
 
-// handleEditorJS serves the editor script, embedded in the binary like the
-// templates.
 func (s *Server) handleEditorJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")

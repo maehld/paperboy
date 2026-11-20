@@ -127,7 +127,6 @@ func renderDeviceEditor(w http.ResponseWriter, v deviceEditorView, status int) {
 	}
 }
 
-// handleDeviceEditorJS serves the device editor script from the binary.
 func (s *Server) handleDeviceEditorJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")

@@ -1,7 +1,7 @@
 // Package paperboy serves ePaper devices running the Paperboy firmware over the
-// device API (ADR 0041, 0042). Pages are
-// rendered from templates and chosen by plans (ADR 0024, 0025); the
-// configuration is YAML (ADR 0026) in a fixed instance directory (ADR 0037).
+// device API (ADR 0041, 0042). A page is a grid of plugin widgets (ADR 0049)
+// and plans choose the page (ADR 0025); the configuration is YAML (ADR 0026)
+// in a fixed instance directory (ADR 0037).
 package paperboy
 
 import (
@@ -79,9 +79,9 @@ func durationText(d time.Duration) string {
 	return s
 }
 
-// Profile describes one display type (ADR 0026); the key is also the file
-// suffix of its page templates (pages/<page>.<display type>.yaml). A text
-// display type (ADR 0044) uses Width and Height for columns and rows.
+// Profile describes one display type (ADR 0026); a page names it to say which
+// panel it draws for. A text display type (ADR 0044) uses Width and Height for
+// columns and rows.
 type Profile struct {
 	Kind       string   `json:"kind"`              // "image" or "text"
 	Charset    string   `json:"charset,omitempty"` // text displays: utf8, ascii or hd44780

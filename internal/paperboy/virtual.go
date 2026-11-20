@@ -164,7 +164,6 @@ func (s *Server) handleVirtual(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleVirtualJS serves the firmware stand-in of the virtual display.
 func (s *Server) handleVirtualJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")

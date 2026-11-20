@@ -28,7 +28,6 @@ const (
 // button press or touch before it goes back to deep sleep.
 const listenAfterInput = 20 * time.Second
 
-// hasButton reports whether one of the button roles is in the list.
 func hasButton(buttons []string, role string) bool {
 	for _, b := range buttons {
 		if b == role {

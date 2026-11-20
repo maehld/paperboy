@@ -24,7 +24,7 @@ func main() {
 }
 
 func run() error {
-	dir := flag.String("config", ".", "Instance directory with paperboy.yaml, pages, plans, providers and state")
+	dir := flag.String("config", ".", "Instance directory with paperboy.yaml, pages, plans and state")
 	listen := flag.String("listen", ":8090", "HTTP listen address; must be reachable for the displays on Wi-Fi")
 	flag.Parse()
 	if flag.NArg() != 0 {

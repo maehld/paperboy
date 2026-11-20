@@ -150,7 +150,6 @@ func renderDisplayEditor(w http.ResponseWriter, v displayEditorView, status int)
 	}
 }
 
-// handleDisplayEditorJS serves the display type editor script from the binary.
 func (s *Server) handleDisplayEditorJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
