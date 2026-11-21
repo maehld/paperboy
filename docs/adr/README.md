@@ -177,6 +177,7 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0141](0141-keep-caldav-credentials-on-their-hosts.md) | Keep CalDAV credentials on their hosts | Accepted, implemented; limits the redirect handling of [ADR-0048](0048-calendar-provider-and-agenda.md) |
 | [0143](0143-a-fuel-price-plugin-with-its-own-history.md) | A fuel price plugin with its own history | Accepted, implemented |
 | [0144](0144-a-github-plugin-for-repository-status.md) | A GitHub plugin for repository status | Accepted, implemented |
+| [0145](0145-a-period-and-a-balance-in-the-evcc-plugin.md) | A period and a balance in the evcc plugin | Accepted, implemented; adds `period` to the flow and the `balance` widget, and draws a link only while power or energy flows |
 
 ## Delivery and releases
 

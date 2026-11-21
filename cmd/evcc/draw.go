@@ -25,6 +25,8 @@ func (e *evcc) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Pa
 		return e.drawLoadpoint(w, lp, img)
 	case "flow":
 		return e.flow(w, img)
+	case "balance":
+		return e.balance(w, img)
 	case "forecast":
 		return e.forecast(w, img)
 	case "history":

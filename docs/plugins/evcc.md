@@ -4,17 +4,20 @@ Shows data from [evcc](https://evcc.io) over its REST API: live values from `/ap
 
 ## Screenshots
 
-The example page `energie` shows the energy flow with the site values and the
-charging point. `ertrag` compares the energy history of today, yesterday, the
-week, the month and the year:
+The example page `energie` shows the current energy flow with the site values
+and the charging point. `energie-woche` shows the flow of this week in kWh;
+`ertrag` compares the energy history of today, yesterday, the week, the month
+and the year:
 
 ![The energy page](../images/plugins/evcc/page-energie.png)
 
+![The weekly flow page](../images/plugins/evcc/page-energie-woche.png)
+
 ![The yield page](../images/plugins/evcc/page-ertrag.png)
 
-| `site` | `flow` | `loadpoint` |
-|---|---|---|
-| ![site](../images/plugins/evcc/site.png) | ![flow](../images/plugins/evcc/flow.png) | ![loadpoint](../images/plugins/evcc/loadpoint.png) |
+| `site` | `flow` | `balance` | `loadpoint` |
+|---|---|---|---|
+| ![site](../images/plugins/evcc/site.png) | ![flow](../images/plugins/evcc/flow.png) | ![balance](../images/plugins/evcc/balance.png) | ![loadpoint](../images/plugins/evcc/loadpoint.png) |
 
 | `history` | `values` | `chart` | `forecast` |
 |---|---|---|---|
@@ -33,7 +36,8 @@ week, the month and the year:
 ## Widgets
 
 - `site`: PV, home, grid with import/export, home battery or grid price. Args: `columns` (`2` or `4`, default 2).
-- `flow`: energy flow diagram arranged like the SolarAI dashboard: the house connection (hub) in the middle, PV above, the battery below, the grid left, the home right and up to three active loadpoints as small nodes right of the hub, below and above the home. Each box shows an [OpenMoji](https://openmoji.org) pictogram when it fits (CC BY-SA 4.0, see `cmd/evcc/icons/README.md`). Like Home Assistant's energy distribution, every node has exactly one link to the hub, always drawn: an idle link is a thin dashed line, an active one is solid with an arrowhead in the direction of the node's power (into the hub for PV, grid import and battery discharge, out of it for the home, the loadpoints, export and charging) and the same width for every link. The grid box reads "Grid import" or "Grid export". Idle boxes are dashed and their text is gray on four-level displays, so the diagram reads in two gray levels. In small cells the pictograms go first, then the state of charge in the labels, then the labels. Sizes follow the display ppi.
+- `flow`: energy flow diagram with rounded cards and one line-icon set: the house connection (hub) in the middle, PV above, the battery below, the grid left and the home right. Up to three loadpoints are text lines below the home; a thin tree joins the active ones. A link exists only while power or energy flows: arrows point into the hub for PV, grid import and battery discharge, and out to the home, the loadpoints, export and charging. An idle node keeps its card and value but has no link. The grid card reads "Grid import" or "Grid export". Links follow Home Assistant's energy distribution: PV serves the home and the loadpoints first, then charges the battery and exports the rest; a deficit comes from the battery before the grid. Args: `period` (`now` default, or `today`, `yesterday`, `week`, `last_week`, `month`, `last_month`, `year`, `last_year`). `now` reads `/api/state` in W; a period sums the energy history of the same categories as the `history` widget, in kWh, and is as current as `history_refresh`. In small cells the pictograms go first, then the state of charge in the labels, then the labels. Sizes follow the display ppi.
+- `balance`: the energy split as a T-account. Sources stand on the left (PV, grid import, battery discharge), consumers on the right (home, charging, battery charge, export). The rows are fixed, so a value never moves; a zero shows a gray dash. `Charging (n)` groups all loadpoints. Each side sums its values at the bottom. The widget shows the current power only. The two totals can differ a little because evcc measures each category on its own.
 - `loadpoint`: vehicle, mode, a state-of-charge bar with the limit as a tick, range, charge power and phases, remaining time, session energy and solar share. Args: `index` (default 0).
 - `forecast`: solar forecast as an area and the grid price as steps for the next `hours` (default 24). Image only.
 - `history`: energy totals for today, yesterday, this week (from Monday), last week, this month, last month and this year. Args: `source` (`pv` default, `battery`, `loadpoint`, `grid` or `home`), `metric` (`energy` default, or `return` for the battery's discharge and the grid's export) and `index` (the loadpoint of `/api/state`, default 0). The values come from evcc's energy history (`/api/history/energy`, one request per group with day buckets), so a year is one request; the long periods drop first when the cell is too small. The battery and the grid show the charged or discharged, imported or exported energy, the loadpoint its charged energy.
