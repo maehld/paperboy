@@ -270,8 +270,8 @@ jobs:
           esac
           echo "path=$RUNNER_TEMP/body.md" >> "$GITHUB_OUTPUT"
 
-      # GitHub's "Latest" badge is repository-wide. With three trains no release
-      # should claim it, so every release sets make_latest to false.
+      # The newest final server release carries GitHub's "Latest" badge. A
+      # prerelease and a plugin or firmware release do not claim it (ADR 0149).
       - name: Release with generated notes
         if: startsWith(github.ref_name, 'server-v')
         uses: softprops/action-gh-release@v2
@@ -285,7 +285,7 @@ jobs:
           generate_release_notes: true
           previous_tag: ${{ steps.previous.outputs.tag }}
           prerelease: ${{ steps.tag.outputs.prerelease }}
-          make_latest: false
+          make_latest: ${{ steps.tag.outputs.prerelease == 'false' }}
           files: dist/*
 
       - name: Release with asset notes
