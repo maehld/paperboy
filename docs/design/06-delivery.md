@@ -30,15 +30,15 @@ Only `release.yml` creates a GitHub release. The other workflows build for chang
 | *CI* | `gofmt`, `go vet`, tests and a cross-build on every change |
 | *Plugins* | Builds both plugin zips; fails a pull request that changed `plugins/cmd/<plugin>` without raising its `VERSION`, and one that changed `sdk/plugin` or `sdk/render` without raising every plugin's version ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)) |
 | *Firmware* | Compiles `sticky`, `e1001`, `e1003` and `lcd2004` with the pinned ESPHome, only for changes under `firmware/esphome/`, and bundles them into one image archive |
-| *Docker* | Publishes the container image for a `server-v*` release; a pull request builds it without pushing |
-| *Release* | Builds the server binaries or calls *Plugins* and *Firmware* for the tag's train, attaches its assets with `SHA256SUMS`, writes notes per train and sets no GitHub latest badge |
+| *Docker* | Checks the container image on a pull request without pushing ([ADR 0148](../adr/0148-the-container-image-is-the-primary-server-artifact.md)) |
+| *Release* | Builds the server binaries, calls *Plugins* and *Firmware* for the tag's train, builds and pushes the image for a server release, attaches the assets with `SHA256SUMS`, writes notes per train and sets no GitHub latest badge |
 
 Two rules follow from the version stamping:
 
 - The server's version comes from Go's VCS stamping, so a release build needs the full history (`fetch-depth: 0`). A build without a repository reports `dev`.
 - The firmware images carry `fw_version` in their name. The release tag labels the bundle by date ([ADR 0147](../adr/0147-separate-server-plugin-and-firmware-releases.md)) and names no image version. The *Firmware* workflow compiles the same images in CI, so a tag ships what was tested.
 
-The container image follows the server. A final release gets `X.Y.Z`, `X.Y` and `latest`; a prerelease keeps only its full version. No `main` build and no plugin or firmware release publishes an image.
+The container image is the primary server artifact. A server release builds and pushes it before the release appears. A final release gets `X.Y.Z`, `X.Y` and `latest`; a prerelease keeps only its full version. No `main` build and no plugin or firmware release publishes an image. A pull request only builds the image to check it.
 
 ## The download client
 
@@ -91,4 +91,4 @@ The downloads page lists what *Preview cleanup* would delete, and the button del
 
 ## Decisions
 
-[ADR 0056](../adr/0056-repository-layout-and-release-trains.md) (release trains), [0147](../adr/0147-separate-server-plugin-and-firmware-releases.md) (separate releases) · [0059](../adr/0059-firmware-bundle.md), [0061](../adr/0061-install-every-bundle-image.md), [0063](../adr/0063-constant-firmware-bundle-name.md) (the firmware bundle) · [0060](../adr/0060-download-from-releases.md), [0062](../adr/0062-plugin-updates-and-download-control.md) (downloads and intervals) · [0075](../adr/0075-plugin-versions.md), [0107](../adr/0107-plugin-builds-reach-installations.md) (a version per plugin) · [0089](../adr/0089-release-channels.md) (channels and prereleases) · [0090](../adr/0090-download-cache-and-inventory.md) (cache and inventory) · [0101](../adr/0101-a-hint-about-a-newer-paperboy.md) (a hint about a newer Paperboy)
+[ADR 0056](../adr/0056-repository-layout-and-release-trains.md) (release trains), [0147](../adr/0147-separate-server-plugin-and-firmware-releases.md) (separate releases), [0148](../adr/0148-the-container-image-is-the-primary-server-artifact.md) (the image is primary) · [0059](../adr/0059-firmware-bundle.md), [0061](../adr/0061-install-every-bundle-image.md), [0063](../adr/0063-constant-firmware-bundle-name.md) (the firmware bundle) · [0060](../adr/0060-download-from-releases.md), [0062](../adr/0062-plugin-updates-and-download-control.md) (downloads and intervals) · [0075](../adr/0075-plugin-versions.md), [0107](../adr/0107-plugin-builds-reach-installations.md) (a version per plugin) · [0089](../adr/0089-release-channels.md) (channels and prereleases) · [0090](../adr/0090-download-cache-and-inventory.md) (cache and inventory) · [0101](../adr/0101-a-hint-about-a-newer-paperboy.md) (a hint about a newer Paperboy)

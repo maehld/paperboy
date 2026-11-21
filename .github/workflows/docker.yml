@@ -1,14 +1,9 @@
 name: Docker
 
-# Publishes the container image for a server release (ADR 0147). The image
-# carries the Paperboy binary only; the plugins and the firmware stay outside.
-# A pull request builds the image without pushing it, so a broken Dockerfile
-# fails before a tag. There is no image from main or from plugin and firmware
-# releases.
+# Checks the container image on a pull request (ADR 0148). The release workflow
+# builds and pushes the image for a server release; this workflow never pushes.
 
 on:
-  push:
-    tags: ["server-v*"]
   pull_request:
     branches: [main]
     paths:
@@ -24,10 +19,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
-
-env:
-  IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
   build:
@@ -36,65 +27,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Read the tag
-        id: tag
-        run: |
-          version=""
-          final=false
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            version="${GITHUB_REF_NAME#server-v}"
-            case "$version" in
-              *-*) ;;
-              *)   final=true ;;
-            esac
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "final=$final" >> "$GITHUB_OUTPUT"
-          if [ "$version" = "" ]; then
-            echo "display=" >> "$GITHUB_OUTPUT"
-          else
-            echo "display=v$version" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Log in to GitHub Container Registry
-        if: github.event_name == 'push' && github.ref_type == 'tag'
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            # The full version of the server release (3.30.0, 3.31.0-rc.1).
-            type=match,pattern=server-v(.*),group=1,enable=${{ github.ref_type == 'tag' }}
-            # The moving X.Y tag stays with the last final release (ADR 0089).
-            type=match,pattern=server-v(\d+\.\d+),group=1,enable=${{ steps.tag.outputs.final == 'true' }}
-            type=sha,prefix=sha-,format=short
-            type=raw,value=latest,enable=${{ steps.tag.outputs.final == 'true' }}
-
-      - name: Build and push
+      - name: Build
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
-          # The binary reports the server release version; a branch build stays
-          # "dev" (ADR 0056).
-          build-args: |
-            VERSION=${{ steps.tag.outputs.display }}
-          push: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
