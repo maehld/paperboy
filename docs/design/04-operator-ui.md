@@ -59,6 +59,7 @@ The dashboard, the stats page and the downloads page poll themselves ([ADR 0106]
 - every plugin with its resolved program and version, `(pinned)` behind a version that a pin selects, and the time each program and image arrived
 - the images in `firmware/`, including the old `<hardware>/` layout and the files that are ignored
 - the release channel of each train, with a note when the running version is not one the channel would deliver
+- the plugin and firmware bundle that the last check used (`plugins-YYYY.MM.DD`, `firmware-YYYY.MM.DD`), a dash before the first use
 - the size of both inventories and *Preview cleanup*, which lists what it would delete and then deletes exactly that (`POST /ui/downloads/prune`, [ADR 0090](../adr/0090-download-cache-and-inventory.md))
 
 ## Plan preview

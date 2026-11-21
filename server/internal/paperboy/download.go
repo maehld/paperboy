@@ -28,15 +28,17 @@ const (
 
 // downloadStatus is what the dashboard shows about the release checks.
 type downloadStatus struct {
-	mu        sync.Mutex
-	running   bool
-	lastCheck time.Time
-	lastOK    time.Time
-	lastError string
-	plugins   map[string]string // plugin -> installed version
-	firmware  map[string]string // hardware -> installed version
-	update    paperboyUpdate    // what the last check learned about Paperboy itself (ADR 0101)
-	notified  string            // version the journal already named, so a check does not repeat it
+	mu             sync.Mutex
+	running        bool
+	lastCheck      time.Time
+	lastOK         time.Time
+	lastError      string
+	plugins        map[string]string // plugin -> installed version
+	firmware       map[string]string // hardware -> installed version
+	pluginBundle   string            // release tag of the last plugin bundle the check used
+	firmwareBundle string            // release tag of the last firmware bundle the check used
+	update         paperboyUpdate    // what the last check learned about Paperboy itself (ADR 0101)
+	notified       string            // version the journal already named, so a check does not repeat it
 }
 
 // paperboyUpdate is the result of looking at Paperboy's own release train: the
@@ -101,6 +103,28 @@ func (d *downloadStatus) installed(plugins, firmware map[string]string) {
 	for hw, version := range firmware {
 		d.firmware[hw] = version
 	}
+}
+
+// usedPluginBundle records the plugin release the last check used.
+func (d *downloadStatus) usedPluginBundle(tag string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.pluginBundle = tag
+}
+
+// usedFirmwareBundle records the firmware release the last check used.
+func (d *downloadStatus) usedFirmwareBundle(tag string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.firmwareBundle = tag
+}
+
+// bundles returns the release tags of the last used bundles, empty before a
+// check used one.
+func (d *downloadStatus) bundles() (plugin, firmware string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.pluginBundle, d.firmwareBundle
 }
 
 // pluginVersion returns the version a check installed for a plugin during this
@@ -385,6 +409,7 @@ func (s *Server) downloadPlugins(ctx context.Context, cfg *Config) (bool, error)
 		if err != nil {
 			return changed, err
 		}
+		s.download.usedPluginBundle(rel.Tag)
 		archive = pinnedArchive
 		installed, err := s.installPlugins(ctx, cfg, c, rel, archive, targets)
 		if err != nil {
@@ -399,6 +424,7 @@ func (s *Server) downloadPlugins(ctx context.Context, cfg *Config) (bool, error)
 		if !ok {
 			return changed, fmt.Errorf("plugins: no release with %s in channel %s", download.PluginAsset(), channel)
 		}
+		s.download.usedPluginBundle(rel.Tag)
 		versions, pluginArchive, err := c.PluginZip(ctx, rel)
 		if err != nil {
 			return changed, err
@@ -580,6 +606,7 @@ func (s *Server) downloadFirmware(ctx context.Context, cfg *Config) error {
 		if !ok {
 			return errors.New("firmware: no release with a bundle in channel " + channel)
 		}
+		s.download.usedFirmwareBundle(rel.Tag)
 		entries, local, err := c.Bundle(ctx, rel)
 		if err != nil {
 			return err
@@ -601,6 +628,7 @@ func (s *Server) downloadFirmware(ctx context.Context, cfg *Config) error {
 		if local == "" || !bundleHas(entries, pin) {
 			continue
 		}
+		s.download.usedFirmwareBundle(rel.Tag)
 		archive = local
 		return s.installFirmwareFiles(ctx, cfg, c, rel, archive, pin, channel)
 	}
