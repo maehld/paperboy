@@ -4,3 +4,4 @@ paperboy-data
 displayd.json
 displayd-data
 .env
+go.work.sum
