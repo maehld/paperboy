@@ -2,6 +2,17 @@
 
 Comics from [xkcd](https://xkcd.com) through its JSON API (`info.0.json`). The plugin downloads the image from the comic's `img` URL in the background and sends a change event when another comic is shown.
 
+## Screenshots
+
+The example page `comic` with a full-screen comic:
+
+![The comic page](../images/plugins/xkcd/page-comic.png)
+
+![The comic widget](../images/plugins/xkcd/comic.png)
+
+The picture above is a placeholder that the screenshot generator draws. The
+repository ships no xkcd comic.
+
 ## Configuration
 
 | Key | Description |

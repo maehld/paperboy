@@ -21,6 +21,54 @@ format; the Go types live in [`pkg/plugin`](../../pkg/plugin/plugin.go).
 - Unknown request or answer fields must be ignored, so later additions stay
   compatible.
 
+## Lifecycle
+
+The host runs a plugin in four states: stopped, starting, ready and failed.
+It keeps one process per plugin.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Stopped
+
+    Stopped --> Starting: a page needs a widget or a value
+    Starting --> Loading: configure accepted
+    Starting --> Failed: configure rejected, version too old
+    Loading --> Ready: state request answered
+    Loading --> Failed: state request failed
+    Ready --> Ready: describe, render, values, actions, action
+    Ready --> Ready: changed event drops cached results
+    Ready --> Ready: schedule event sets the next moment
+    Ready --> Failed: exit, timeout, broken answer
+    Failed --> Stopped: retry after one minute
+    Ready --> Stopped: stdin closes, Paperboy stops
+
+    note right of Failed
+        Paperboy keeps the last results
+        and serves them as stale.
+    end note
+```
+
+- **Starting** sends `configure` once. Paperboy sends the plugin its section of
+  `paperboy.yaml`.
+- **Loading** sends `state` with the stored state and blobs. A plugin gets its
+  data back before the first widget request ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)).
+- **Ready** answers the requests of a page: `describe`, `render`, `values`,
+  `actions` or `action`. One request per plugin runs at a time.
+- **Failed** means the process exited, a request timed out or the answer was
+  invalid. Paperboy kills a hanging process after `timeout` (default 30 s).
+  The last results stay as stale in the widget cache. The host asks a failed
+  plugin again after one minute.
+- A plugin without a version or below version 5 fails at its first answer
+  ([ADR 0058](../adr/0058-plugin-protocol-version-check.md)). A newer version is
+  accepted, because the protocol only grows.
+- A change of the plugin configuration replaces the process on its next
+  request. Paperboy reads the state files before `configure`, so the new
+  process gets the same state.
+- A `changed` event is no request and needs no answer. It drops the named
+  results, or all results of the plugin. The `schedule` event sets the next
+  moment the host needs data; it also needs no answer.
+
 ## Requests
 
 Every request carries:

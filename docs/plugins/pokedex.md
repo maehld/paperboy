@@ -2,6 +2,17 @@
 
 Pokémon from [PokéAPI](https://pokeapi.co), no API key needed.
 
+## Screenshots
+
+The example page `pokemon` with a full-screen card:
+
+![The Pokémon page](../images/plugins/pokedex/page-pokemon.png)
+
+![The Pokémon card](../images/plugins/pokedex/card.png)
+
+The picture above is drawn by the screenshot generator. The repository ships
+no sprite or artwork of a Pokémon.
+
 ## Configuration
 
 | Key | Description |

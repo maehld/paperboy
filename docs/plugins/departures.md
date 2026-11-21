@@ -2,6 +2,23 @@
 
 Real-time public transport departures from an EFA installation ([ADR 0053](../adr/0053-departures-from-efa.md)). The default is the Westfalenfahrplan (Lippe Mobil, OWL), which needs no API key.
 
+## Screenshots
+
+The example page `abfahrten` with the stop name above the departures:
+
+![The departures page](../images/plugins/departures/page-abfahrten.png)
+
+![The departures widget](../images/plugins/departures/departures.png)
+
+The `abfahrten` text page on a 20 × 4 display:
+
+```text
+Abfahrten           
+Demo, Marktplatz    
+1 Rathaus 00:25     
+S 5 Zentralstation +
+```
+
 ## Configuration
 
 | Key | Description |

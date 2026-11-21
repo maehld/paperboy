@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -63,6 +64,8 @@ var configKeys = map[string]plugin.Arg{
 		Description: "application ID (a GUID) of the app that created the share"},
 	"region": {Type: "string", Required: true, Enum: []any{"eu", "us"},
 		Description: "host of the account: eu or us; the account may live on another host than its country"},
+	"base": {Type: "string",
+		Description: "another Share base URL; overrides the host of the region"},
 	"refresh": {Type: "duration", Default: "5m", Description: "how often the readings are read, at least 1m"},
 	"unit": {Type: "string", Default: "auto", Enum: []any{"auto", "mg/dL", "mmol/L"},
 		Description: "unit of the thresholds and the widgets; auto takes what the account reports"},
@@ -193,6 +196,13 @@ func (d *dexcom) Configure(cfg plugin.Values, req *plugin.Request) error {
 	base, ok := shareRegions[region]
 	if !ok {
 		return fmt.Errorf("region: expected eu or us, got %q", region)
+	}
+	if own := strings.TrimSpace(cfg.String("base", "")); own != "" {
+		u, err := url.Parse(own)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return errors.New("base: expected http(s)://host")
+		}
+		base = strings.TrimRight(own, "/")
 	}
 	refresh, err := cfg.Duration("refresh", defaultRefresh)
 	if err != nil {

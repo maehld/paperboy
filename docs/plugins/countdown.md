@@ -5,6 +5,24 @@ span has already passed. The dates and the label are widget arguments, so one
 page may show several countdowns and the plugin has no configuration of its
 own.
 
+## Screenshots
+
+The example page `countdown` with two yearly dates, two fixed dates and a
+progress bar:
+
+![The countdown page](../images/plugins/countdown/page-countdown.png)
+
+![The countdown widget](../images/plugins/countdown/countdown.png)
+
+The `countdown` text page on a 20 × 4 display:
+
+```text
+Weihnachten 33 Tage 
+     Ferien 231 Tage
+Anteil 91 %         
+Ziel 24.12.2026     
+```
+
 ## Configuration
 
 None. Declare the plugin with an empty section:

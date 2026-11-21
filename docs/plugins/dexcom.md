@@ -4,6 +4,26 @@ Shows the glucose readings of a Dexcom G7 sensor. The data comes from the Dexcom
 
 Share has to be switched on in the app (Connections → Share). Nothing reaches the cloud otherwise, and the plugin gets no readings while the phone is offline.
 
+## Screenshots
+
+The example page `glukose` shows the current reading, the day graph and the
+numbers of the day:
+
+![The glucose page](../images/plugins/dexcom/page-glukose.png)
+
+| `glucose` | `graph` | `values` |
+|---|---|---|
+| ![glucose](../images/plugins/dexcom/glucose.png) | ![graph](../images/plugins/dexcom/graph.png) | ![values](../images/plugins/dexcom/values.png) |
+
+The `glukose` text page on a 20 × 4 display:
+
+```text
+Glukose             
+124 mg/dL          >
+-7 mg/dL        2min
+Normal              
+```
+
 ## Configuration
 
 | Key | Description |
@@ -13,6 +33,7 @@ Share has to be switched on in the app (Connections → Share). Nothing reaches 
 | `password` | The account password, preferably via `${DEXCOM_PASSWORD}` |
 | `app_id` | Required: the application ID (a GUID) of the app that created the share |
 | `region` | Required: `eu` or `us`. The account may live on another host than the country it is used in, so the plugin does not guess |
+| `base` | Another Share base URL. Overrides the host of the `region`, for a proxy or a test |
 | `refresh` | How often the readings are read, default `5m`, at least `1m` |
 | `unit` | `auto` (default), `mg/dL` or `mmol/L`. `auto` takes what the account reports: a reading below 30 is mmol/L |
 | `urgent` | Threshold of the urgent low, default 55 mg/dL or 3.1 mmol/L; `0` disables the state |

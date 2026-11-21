@@ -172,6 +172,27 @@ Every rule carries the same action list, so the menu offers the same actions at 
 
 Short `home` opens the menu when the device is not `actions: deny` and has a plan ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md), [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md)). Paperboy draws it over the served page and registers the result as a notice page, so the cached page stays untouched.
 
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Closed
+    Closed --> Empty: home, plan without actions
+    Closed --> Off: home, no action can run
+    Closed --> List: home, plan with actions
+    Empty --> Closed: input or 10 seconds
+    Off --> Closed: input or 10 seconds
+    List --> List: next, previous
+    List --> Confirm: home, action needs confirmation
+    List --> Running: home, action runs
+    Confirm --> Running: home, shown hash matches
+    Confirm --> List: next or previous
+    Running --> Result: action answered
+    Running --> Result: 5 s budget exceeded
+    Result --> Closed: timeout or input
+    List --> Closed: long home or timeout
+    Confirm --> Closed: timeout
+```
+
 - An empty action list becomes a `Keine Aktionen` banner. A menu in which no action can run names the reason to run none. Both close after 10 seconds or on the next input.
 - Otherwise three actions appear in a row, stacked in portrait, over the top half of the display.
 - With `touch: true`, a smaller control strip sits beneath them: `<` and `>` while the list has more than one page, and `X`. The strip is drawn as controls, not as action cells.

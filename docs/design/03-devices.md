@@ -48,6 +48,50 @@ A device whose `display_type` is not configured still loads, with a `Problem` se
 
 Both routes are open; a device proves itself with the key from registration ([ADR 0042](../adr/0042-device-protocol.md), [0064](../adr/0064-device-protocol-v4.md)).
 
+### Protocol states
+
+A device moves through registration and sync. Paperboy keeps the key in the
+device state, the firmware only uses it.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Unregistered: boot without a key
+
+    Unregistered --> Unclaimed: register, unknown MAC → 403
+    Unclaimed --> Pairing: operator claims the device
+    Unregistered --> Pairing: register, known MAC → 403 with code
+    Pairing --> Registered: operator enters the code, next register → 200
+    Registered --> Unregistered: sync → 401, firmware drops the key
+    Registered --> Unavailable: register, sync or text poll → 503
+    Unavailable --> Registered: next request after the fix
+
+    Registered --> Sleeping: sync answer with image and refresh_s
+    Sleeping --> Registered: timer or input
+    Registered --> Polling: text display after the sync
+    Polling --> Polling: text poll every refresh_s
+```
+
+- **Unregistered** means the firmware has no key. It calls `register` with its
+  MAC and hardware.
+- **Unclaimed** is an unknown MAC. Paperboy writes a state file without a key
+  and shows the device as unclaimed hardware. The answer is 403 without a code.
+- **Pairing** is a configured display before its first key. The answer is 403
+  with a six-character code, and the panel shows it ([ADR 0109](../adr/0109-pair-a-display.md)).
+  The operator enters the code in the device editor. The next register takes
+  the key.
+- **Registered** is a device with a key. Each wake sends one `sync` and gets
+  the image, `refresh_s` and the other fields below.
+- **Unavailable** answers 503, never 401, so the firmware keeps its key. A
+  device with a `Problem`, a broken configuration and a degraded start cause
+  this state ([ADR 0079](../adr/0079-rename-config-items.md)).
+- **Sleeping** is a battery device after a successful sync. A timer or an input
+  wakes it ([ADR 0051](../adr/0051-power-source-refresh-policy.md)).
+- **Polling** is a text display. It stays awake and asks
+  `GET /api/device/text` every `refresh_s` ([ADR 0044](../adr/0044-text-displays-on-the-device-api.md)).
+- A firmware offer in the sync answer sends the device to an update. It
+  downloads the image, flashes it and registers again ([ADR 0043](../adr/0043-firmware-distribution.md)).
+
 **`POST /api/device/register`** takes `mac`, `hardware` and `firmware`. A configured MAC gets `{key, device}`, and an existing key stays. An unknown MAC gets 403, but only after Paperboy wrote `state/devices/<MAC>.json` with hardware, firmware and the first and last contact. The devices tab shows it as unclaimed hardware ([ADR 0080](../adr/0080-device-state-per-mac.md)). `DELETE /api/state/devices/{mac}` forgets it. The unclaimed list holds at most ten entries ([ADR 0137](../adr/0137-bound-unclaimed-device-registration.md)). An eleventh MAC gets 403 without a state file, and the journal logs each unknown MAC once per hour.
 
 The register of a configured display answers 403 with a six-character code until the operator confirmed it ([ADR 0109](../adr/0109-pair-a-display.md)). The panel shows the code. The operator enters it in the device editor, which posts it to `POST /api/state/devices/{mac}/pair`, a UI route. The confirmation authorizes exactly the next register. `Forget` requires a new pairing.

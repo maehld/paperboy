@@ -238,6 +238,7 @@ func TestConfigureValidation(t *testing.T) {
 		"no region":       func(v plugin.Values) { delete(v, "region") },
 		"bad region":      func(v plugin.Values) { v["region"] = "de" },
 		"bad app id":      func(v plugin.Values) { v["app_id"] = "nope" },
+		"bad base":        func(v plugin.Values) { v["base"] = "share2.example.com" },
 		"bad order":       func(v plugin.Values) { v["low"] = 400 },
 		"urgent too high": func(v plugin.Values) { v["urgent"] = 90 },
 		"fast refresh":    func(v plugin.Values) { v["refresh"] = "5s" },
@@ -254,6 +255,19 @@ func TestConfigureValidation(t *testing.T) {
 	}
 	if err := (&dexcom{}).Configure(base, req); err != nil {
 		t.Errorf("the plain configuration was rejected: %v", err)
+	}
+	// base overrides the host of the region.
+	own := plugin.Values{}
+	for k, val := range base {
+		own[k] = val
+	}
+	own["base"] = "https://share.example/"
+	d := &dexcom{}
+	if err := d.Configure(own, req); err != nil {
+		t.Fatalf("base: %v", err)
+	}
+	if d.api == nil || d.api.base != "https://share.example" {
+		t.Errorf("base = %+v", d.api)
 	}
 }
 
