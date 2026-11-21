@@ -2,11 +2,14 @@
 /paperboy
 /paperboy.exe
 # Binaries from `go build` inside a command directory.
-/cmd/*/*
-!/cmd/*/*.*
-!/cmd/*/*/
+/server/cmd/*/*
+!/server/cmd/*/*.*
+!/server/cmd/*/*/
+/plugins/cmd/*/*
+!/plugins/cmd/*/*.*
+!/plugins/cmd/*/*/
 # The plugin version travels with its source (ADR 0075).
-!/cmd/*/VERSION
+!/plugins/cmd/*/VERSION
 
 # Configuration with token, operator content and service state of a local
 # instance (ADR 0037); the old displayd locations stay ignored.
@@ -16,7 +19,12 @@
 /plans/
 /devices/
 /displays/
-/plugins/
+# Plugin programs of a local instance; the sources live in plugins/cmd/.
+/plugins/*
+!/plugins/cmd/
+!/plugins/internal/
+!/plugins/go.mod
+!/plugins/go.sum
 /providers/
 /icons/
 /state/

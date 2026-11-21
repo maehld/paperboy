@@ -1,0 +1,578 @@
+package main
+
+import (
+	"context"
+	"embed"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"math"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/maehld/paperboy/sdk/plugin"
+	"github.com/maehld/paperboy/sdk/render"
+)
+
+//go:embed icons/*.png
+var iconFiles embed.FS
+
+var (
+	iconOnce  sync.Once
+	iconMasks map[string]*render.Mask
+)
+
+// icon returns the mask of an embedded pictogram by name.
+func icon(name string) *render.Mask {
+	iconOnce.Do(func() {
+		iconMasks = map[string]*render.Mask{}
+		entries, _ := iconFiles.ReadDir("icons")
+		for _, e := range entries {
+			f, err := iconFiles.Open("icons/" + e.Name())
+			if err != nil {
+				continue
+			}
+			img, err := png.Decode(f)
+			f.Close()
+			if err == nil {
+				iconMasks[strings.TrimSuffix(e.Name(), ".png")] = render.NewMask(img)
+			}
+		}
+	})
+	return iconMasks[name]
+}
+
+var configKeys = map[string]plugin.Arg{
+	"lat":     {Type: "float", Required: true, Description: "latitude, e.g. 52.52"},
+	"lon":     {Type: "float", Required: true, Description: "longitude, e.g. 13.40"},
+	"base":    {Type: "string", Default: defaultBase, Description: "Open-Meteo base URL"},
+	"refresh": {Type: "duration", Default: "15m", Description: "how often the forecast is fetched"},
+}
+
+// weather is the plugin. The forecast is fetched with the configured
+// language, so the condition texts follow the global language.
+type weather struct {
+	plugin.Demand
+
+	lat, lon float64
+	base     string
+	refresh  time.Duration
+	language string
+
+	mu      sync.Mutex
+	data    *branch
+	loadErr error
+	ready   chan struct{}
+
+	cur  *branch // snapshot for the current request
+	req  *plugin.Request
+	loc  *time.Location
+	lang string
+}
+
+// forecastArgs are the arguments the forecast value reads (ADR 0120).
+var forecastArgs = map[string]plugin.Arg{
+	"days": {Type: "int", Default: 5, Description: "number of days, 1 to 5"},
+}
+
+func (w *weather) Describe() plugin.Description {
+	image := []string{plugin.KindImage}
+	return plugin.Description{
+		Title:   "Weather (Open-Meteo)",
+		Version: version(),
+		Config:  configKeys,
+		// Values give a text page the forecast without a widget (ADR 0111).
+		Values: []plugin.ValueSpec{
+			{Name: "temperature", Title: "Temperature", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
+			{Name: "apparent", Title: "Feels like", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
+			{Name: "humidity", Title: "Humidity", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+			{Name: "precipitation", Title: "Precipitation", Type: plugin.ValueNumber, Unit: "mm", Precision: 1},
+			{Name: "precipitation-probability", Title: "Chance of rain", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+			{Name: "precipitation-today", Title: "Precipitation today", Type: plugin.ValueNumber, Unit: "mm", Precision: 1},
+			{Name: "precipitation-next", Title: "Next precipitation", Type: plugin.ValueText},
+			{Name: "wind", Title: "Wind", Type: plugin.ValueNumber, Unit: "km/h", Precision: 1},
+			{Name: "beaufort", Title: "Wind force", Type: plugin.ValueNumber, Unit: "Bft", Precision: 0},
+			{Name: "condition", Title: "Condition", Type: plugin.ValueText},
+			{Name: "min-today", Title: "Lowest today", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
+			{Name: "max-today", Title: "Highest today", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
+			{Name: "sunrise", Title: "Sunrise", Type: plugin.ValueTimestamp},
+			{Name: "sunset", Title: "Sunset", Type: plugin.ValueTimestamp},
+			{Name: "updated", Title: "Forecast time", Type: plugin.ValueTimestamp},
+			{Name: "forecast", Title: "Daily forecast", Type: plugin.ValueText, Args: forecastArgs},
+		},
+		Widgets: []plugin.WidgetInfo{
+			{Widget: "current", Title: "Current weather", Kinds: image, MinWidth: 160, MinHeight: 80,
+				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 3}},
+				Args: map[string]plugin.Arg{
+					"clothing": {Type: "bool", Default: false, Description: "T-shirt or pullover by apparent temperature and wind"},
+				}},
+			{Widget: "days", Title: "Daily forecast", Kinds: image, MinWidth: 200, MinHeight: 80,
+				Sizes: []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 2}},
+				Args:  forecastArgs},
+			{Widget: "hours", Title: "Temperature today", Kinds: image, MinWidth: 200, MinHeight: 80,
+				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}}},
+		},
+	}
+}
+
+func (w *weather) Configure(cfg plugin.Values, req *plugin.Request) error {
+	if req.Version != 0 && req.Version < 9 {
+		return fmt.Errorf("weather needs Paperboy protocol 9 or newer; this Paperboy reports %d", req.Version)
+	}
+	if err := cfg.Check(configKeys); err != nil {
+		return err
+	}
+	w.lat, w.lon = cfg.Float("lat", 0), cfg.Float("lon", 0)
+	if w.lat < -90 || w.lat > 90 || w.lon < -180 || w.lon > 180 {
+		return errors.New("lat must be within -90..90 and lon within -180..180")
+	}
+	w.base = cfg.String("base", defaultBase)
+	refresh, err := cfg.Duration("refresh", 15*time.Minute)
+	if err != nil {
+		return err
+	}
+	if refresh < time.Minute {
+		return errors.New("refresh must be at least 1m")
+	}
+	w.refresh, w.language = refresh, req.Lang()
+	return nil
+}
+
+// Start fetches the forecast now and then every refresh and reports a change
+// when it differs.
+func (w *weather) Start(ctx context.Context, notify func(widgets ...string)) {
+	w.ready = make(chan struct{})
+	go func() {
+		first := true
+		var last string
+		var next time.Time
+		for {
+			if !next.IsZero() {
+				if !w.Wait(ctx, 0) {
+					return
+				}
+				if wait := time.Until(next); wait > 0 {
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(wait):
+					}
+					continue
+				}
+			}
+			b, err := w.load(ctx)
+			w.mu.Lock()
+			if err != nil {
+				w.loadErr = err
+				fmt.Fprintln(os.Stderr, "weather:", err)
+			} else {
+				w.data, w.loadErr = &b, nil
+			}
+			w.mu.Unlock()
+			if err == nil {
+				sum, _ := json.Marshal(b)
+				if !first && string(sum) != last {
+					notify()
+				}
+				last = string(sum)
+			}
+			if first {
+				close(w.ready)
+				first = false
+			}
+			next = time.Now().Add(w.refresh)
+		}
+	}()
+}
+
+func (w *weather) load(ctx context.Context) (branch, error) {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+	f, err := fetch(ctx, http.DefaultClient, w.base, w.lat, w.lon)
+	if err != nil {
+		return branch{}, err
+	}
+	return branchOf(f, w.language)
+}
+
+func (w *weather) Prepare(req *plugin.Request) error {
+	select {
+	case <-w.ready:
+	case <-time.After(10 * time.Second):
+		return errors.New("forecast is still loading")
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.data == nil {
+		return w.loadErr
+	}
+	w.cur, w.req, w.loc, w.lang = w.data, req, req.Location(), req.Lang()
+	return nil
+}
+
+func (w *weather) MaxAge(*plugin.Request) time.Duration { return 15 * time.Minute }
+
+func (w *weather) t(de, en string) string { return w.req.T(de, en) }
+
+func (w *weather) num(v float64, decimals int) string {
+	s := strconv.FormatFloat(v, 'f', decimals, 64)
+	if w.lang == "de" {
+		s = strings.Replace(s, ".", ",", 1)
+	}
+	return s
+}
+
+func (w *weather) temp(v float64) string { return w.num(math.Round(v)+0, 0) + "°" }
+
+func (w *weather) Render(req *plugin.Request, wr plugin.WidgetRequest, img *image.Paletted) error {
+	switch wr.Widget {
+	case "current":
+		return w.current(wr, img)
+	case "days":
+		return w.days(wr, img)
+	case "hours":
+		return w.hours(wr, img)
+	}
+	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, wr.Widget)
+}
+
+// clothing advises a pullover below 15 °C apparent temperature or above wind
+// force 3, else a T-shirt.
+func clothing(c current) string {
+	if c.Apparent < 15 || c.Beaufort > 3 {
+		return "pullover"
+	}
+	return "tshirt"
+}
+
+func (w *weather) current(wr plugin.WidgetRequest, img *image.Paletted) error {
+	c := w.cur.Current
+	b := img.Rect.Inset(wr.Style.Padding)
+	if b.Empty() {
+		return plugin.TooSmall(wr)
+	}
+	iconW := min(b.Dy(), b.Dx()/3)
+	icon(c.Symbol).Draw(img, image.Rect(b.Min.X, b.Min.Y, b.Min.X+iconW, b.Max.Y), iconW*85/100, render.Center)
+	right := b.Max.X
+	if wr.Arg().Bool("clothing", false) {
+		cw := min(b.Dy()*2/3, b.Dx()/5)
+		icon(clothing(c)).Draw(img, image.Rect(b.Max.X-cw, b.Min.Y, b.Max.X, b.Max.Y), cw*85/100, render.Center)
+		right -= cw + wr.Style.Padding
+	}
+	x := b.Min.X + iconW + wr.Style.Padding
+	width := right - x
+	h := b.Dy()
+	base := w.req.TextPx(wr)
+	big := min(float64(h)*0.36, base*2.6)
+	small := min(float64(h)*0.15, base*0.9)
+	top := b.Min.Y + (h-int(big+3.6*small))/2
+	render.Text(img, w.num(c.Temp, 1)+" °C", x, top+int(big*0.9), render.Style{Size: big, Bold: true, Shrink: true}, width, color.Black, render.Left)
+	render.Text(img, c.Text, x, top+int(big+small*1.1), render.Style{Size: small, Shrink: true}, width, color.Black, render.Left)
+	detail := fmt.Sprintf("%s %s · %s %d · %s %s/%s", w.t("gefühlt", "feels"), w.temp(c.Apparent),
+		w.t("Wind", "wind"), c.Beaufort, w.t("heute", "today"), w.temp(w.cur.Today.Max), w.temp(w.cur.Today.Min))
+	render.Text(img, detail, x, top+int(big+small*2.5), render.Style{Size: small * 0.85, Shrink: true}, width, color.Black, render.Left)
+	render.Text(img, w.eventText(), x, top+int(big+small*3.5), render.Style{Size: small * 0.95, Bold: true, Shrink: true}, width, color.Black, render.Left)
+	return nil
+}
+
+// nextEvent is the first event of today that is not over yet; the forecast may
+// be older than the request, so the widget decides at render time.
+func (w *weather) nextEvent() *precipEvent {
+	for i := range w.cur.Events {
+		e := &w.cur.Events[i]
+		end, err := time.Parse(time.RFC3339, e.End)
+		if err != nil || !end.After(w.req.Now) {
+			continue
+		}
+		return e
+	}
+	return nil
+}
+
+// eventText names the next precipitation: when it starts and how long it
+// lasts, or when the running one ends.
+func (w *weather) eventText() string {
+	e := w.nextEvent()
+	if e == nil {
+		return w.t("Kein Regen heute", "No rain today")
+	}
+	start, errS := time.Parse(time.RFC3339, e.Start)
+	end, errE := time.Parse(time.RFC3339, e.End)
+	if errS != nil || errE != nil {
+		return w.t("Kein Regen heute", "No rain today")
+	}
+	kind := w.t("Regen", "Rain")
+	switch e.Type {
+	case precipSnow:
+		kind = w.t("Schnee", "Snow")
+	case precipMixed:
+		kind = w.t("Regen+Schnee", "Rain+snow")
+	}
+	if w.req.Now.Before(start) {
+		return fmt.Sprintf("%s %s %s, %s %d h", kind, w.t("ab", "from"),
+			start.In(w.loc).Format("15:04"), w.t("ca.", "about"), int(end.Sub(start).Hours()))
+	}
+	return fmt.Sprintf("%s %s %s", kind, w.t("bis", "until"), end.In(w.loc).Format("15:04"))
+}
+
+func (w *weather) dayList(n int) []day {
+	n = min(max(n, 1), 5)
+	if len(w.cur.Days) < n {
+		n = len(w.cur.Days)
+	}
+	return w.cur.Days[:n]
+}
+
+func (w *weather) days(wr plugin.WidgetRequest, img *image.Paletted) error {
+	b := img.Rect.Inset(wr.Style.Padding)
+	if b.Empty() {
+		return plugin.TooSmall(wr)
+	}
+	list := w.dayList(wr.Arg().Int("days", 5))
+	if len(list) == 0 {
+		return nil
+	}
+	cw := b.Dx() / len(list)
+	h := b.Dy()
+	text := min(float64(h)*0.17, w.req.TextPx(wr)*0.9)
+	for i, d := range list {
+		col := image.Rect(b.Min.X+i*cw, b.Min.Y, b.Min.X+(i+1)*cw, b.Max.Y)
+		cx := col.Min.X + cw/2
+		label := d.Label
+		if i == 0 {
+			label = w.t("Heute", "Today")
+		}
+		render.Text(img, label, cx, col.Min.Y+h*18/100, render.Style{Size: text, Bold: true, Shrink: true}, cw-4, color.Black, render.Center)
+		iconH := h * 45 / 100
+		icon(symbol(d.Code)).Draw(img, image.Rect(col.Min.X, col.Min.Y+h*24/100, col.Max.X, col.Min.Y+h*24/100+iconH), iconH*85/100, render.Center)
+		render.Text(img, w.temp(d.Max)+" / "+w.temp(d.Min), cx, col.Max.Y-h*4/100, render.Style{Size: text, Shrink: true}, cw-4, color.Black, render.Center)
+		if i > 0 && wr.Style.Rule > 0 {
+			render.VLine(img, col.Min.X, col.Min.Y+h/10, col.Max.Y-h/10, wr.Style.Rule)
+		}
+	}
+	return nil
+}
+
+// hours draws today's temperature as a line over a time axis with the
+// precipitation probability as bars. The fill of a bar names the type: rain is
+// shaded, snow hatched and a mixed hour solid.
+func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) error {
+	b := img.Rect.Inset(wr.Style.Padding)
+	if b.Empty() {
+		return plugin.TooSmall(wr)
+	}
+	pts := w.cur.Hours
+	if len(pts) < 2 {
+		return nil
+	}
+	label := max(min(w.req.TextPx(wr)*0.6, float64(b.Dy())*0.15), w.req.PtPx(5.8), render.MinSize)
+	left := b.Min.X + render.Measure("-10°", label, false) + 6
+	right := b.Max.X - render.Measure("00", label, false)/2
+	top := b.Min.Y + int(label*1.4)
+	bottom := b.Max.Y - int(label*1.4)
+	if right-left < 20 || bottom-top < 20 {
+		return plugin.TooSmall(wr)
+	}
+	titleW := b.Dx()
+	if lx := w.legend(img, b, label); lx > 0 {
+		titleW = lx - b.Min.X - int(label*0.5)
+	}
+	render.Text(img, w.t("Temperatur (°C)", "Temperature (°C)"), b.Min.X, b.Min.Y+int(label), render.Style{Size: label, Bold: true, Shrink: true}, titleW, color.Black, render.Left)
+	lo, hi := 1e9, -1e9
+	type sample struct {
+		t    time.Time
+		temp float64
+		prob float64
+		fill string
+	}
+	var ss []sample
+	for _, p := range pts {
+		t, err := time.Parse(time.RFC3339, p.Time)
+		if err != nil {
+			continue
+		}
+		v := p.Values["temp"]
+		lo, hi = min(lo, v), max(hi, v)
+		fill := "shade"
+		switch p.Type {
+		case precipSnow:
+			fill = "hatch"
+		case precipMixed:
+			fill = "solid"
+		}
+		ss = append(ss, sample{t.In(w.loc), v, p.Values["precip_prob"], fill})
+	}
+	if len(ss) < 2 {
+		return nil
+	}
+	lo, hi = float64(int(lo)-1), float64(int(hi)+1)
+	day := time.Date(ss[0].t.Year(), ss[0].t.Month(), ss[0].t.Day(), 0, 0, 0, 0, w.loc)
+	x := func(t time.Time) int { return left + int(t.Sub(day).Hours()/24*float64(right-left)) }
+	y := func(v float64) int { return bottom - int((v-lo)/(hi-lo)*float64(bottom-top)) }
+	for _, s := range ss {
+		if s.prob <= 0 {
+			continue
+		}
+		x0 := x(s.t)
+		bar := int(s.prob / 100 * float64(bottom-top))
+		render.Fill(img, image.Rect(x0+1, bottom-bar, x0+max((right-left)/24-1, 2), bottom), s.fill)
+	}
+	// The halo keeps the temperature line visible in a solid bar.
+	for i := 1; i < len(ss); i++ {
+		segment(img, x(ss[i-1].t), y(ss[i-1].temp), x(ss[i].t), y(ss[i].temp), 4, render.White)
+	}
+	for i := 1; i < len(ss); i++ {
+		render.Segment(img, x(ss[i-1].t), y(ss[i-1].temp), x(ss[i].t), y(ss[i].temp), 2, false)
+	}
+	render.HLine(img, left, bottom, right, 1)
+	for _, v := range []float64{lo, (lo + hi) / 2, hi} {
+		render.Text(img, w.temp(v), left-4, y(v)+int(label*0.35), render.Style{Size: label}, left-b.Min.X, color.Black, render.Right)
+	}
+	for h := 0; h <= 24; h += 6 {
+		t := day.Add(time.Duration(h) * time.Hour)
+		render.VLine(img, x(t), bottom, bottom+3, 1)
+		render.Text(img, fmt.Sprintf("%02d", h%24), x(t), b.Max.Y, render.Style{Size: label}, 40, color.Black, render.Center)
+	}
+	if now := w.req.Now.In(w.loc); now.After(day) && now.Before(day.Add(24*time.Hour)) {
+		render.Segment(img, x(now), top, x(now), bottom, 1, true)
+	}
+	return nil
+}
+
+// legend draws the fill patterns of the bars and their labels into the top
+// right corner and returns the left edge it uses, or 0 when it does not fit.
+func (w *weather) legend(img *image.Paletted, b image.Rectangle, label float64) int {
+	entries := []struct{ fill, text string }{
+		{"shade", w.t("Regen %", "rain %")},
+		{"hatch", w.t("Schnee %", "snow %")},
+		{"solid", w.t("beides %", "mixed %")},
+	}
+	sw := int(label * 1.1)
+	gap := int(label * 0.5)
+	total := 0
+	for _, e := range entries {
+		total += sw + gap + render.Measure(e.text, label, false) + gap
+	}
+	if total > b.Dx()*3/5 {
+		return 0
+	}
+	x := b.Max.X - total
+	baseline := b.Min.Y + int(label)
+	for _, e := range entries {
+		render.Fill(img, image.Rect(x, baseline-sw, x+sw, baseline), e.fill)
+		x += sw + gap
+		tw := render.Measure(e.text, label, false)
+		render.Text(img, e.text, x, baseline, render.Style{Size: label}, tw+2, color.Black, render.Left)
+		x += tw + gap
+	}
+	return b.Max.X - total
+}
+
+// segment draws a thick line in one colour; render.Segment draws black only
+// and the white halo around the temperature line is local to this plugin.
+func segment(img *image.Paletted, x0, y0, x1, y1, thickness int, c color.Color) {
+	steps := max(abs(x1-x0), abs(y1-y0), 1)
+	for i := 0; i <= steps; i++ {
+		x := x0 + (x1-x0)*i/steps
+		y := y0 + (y1-y0)*i/steps
+		render.FillColor(img, image.Rect(x, y, x+thickness, y+thickness), c)
+	}
+}
+
+func abs(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+// Values answers the declared values of a text page from the forecast the
+// plugin loaded (ADR 0111). forecast carries one line per day.
+func (w *weather) Values(req *plugin.Request) (map[string]plugin.Value, error) {
+	if err := req.ValueArgs.Check(forecastArgs); err != nil {
+		return nil, err
+	}
+	out := make(map[string]plugin.Value, len(req.Values))
+	c, t := w.cur.Current, w.cur.Today
+	at := func(s string) (plugin.Value, error) {
+		v, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			return plugin.Value{}, fmt.Errorf("time %q: %w", s, err)
+		}
+		return plugin.TimestampValue(v), nil
+	}
+	for _, name := range req.Values {
+		switch name {
+		case "temperature":
+			out[name] = plugin.NumberValue(c.Temp)
+		case "apparent":
+			out[name] = plugin.NumberValue(c.Apparent)
+		case "humidity":
+			out[name] = plugin.NumberValue(c.Humidity)
+		case "precipitation":
+			out[name] = plugin.NumberValue(c.Precip)
+		case "precipitation-probability":
+			prob := 0.0
+			if c.PrecipProb != nil {
+				prob = *c.PrecipProb
+			}
+			out[name] = plugin.NumberValue(prob)
+		case "precipitation-today":
+			out[name] = plugin.NumberValue(t.Precip)
+		case "precipitation-next":
+			out[name] = plugin.TextValue(w.eventText())
+		case "wind":
+			out[name] = plugin.NumberValue(c.Wind)
+		case "beaufort":
+			out[name] = plugin.NumberValue(float64(c.Beaufort))
+		case "condition":
+			out[name] = plugin.TextValue(c.Text)
+		case "min-today":
+			out[name] = plugin.NumberValue(t.Min)
+		case "max-today":
+			out[name] = plugin.NumberValue(t.Max)
+		case "sunrise", "sunset":
+			s := t.Sunrise
+			if name == "sunset" {
+				s = t.Sunset
+			}
+			v, err := at(s)
+			if err != nil {
+				return nil, err
+			}
+			out[name] = v
+		case "updated":
+			v, err := at(w.cur.Updated)
+			if err != nil {
+				return nil, err
+			}
+			out[name] = v
+		case "forecast":
+			out[name] = plugin.TextValue(w.forecastLines(req.ValueArgs.Int("days", 5)))
+		default:
+			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
+		}
+	}
+	return out, nil
+}
+
+// forecastLines is the daily forecast as one line per day: label, condition
+// and the range.
+func (w *weather) forecastLines(days int) string {
+	var lines []string
+	for i, d := range w.dayList(days) {
+		label := d.Label
+		if i == 0 {
+			label = w.t("Heute", "Today")
+		}
+		lines = append(lines, fmt.Sprintf("%s %s %s/%s", label, d.Text, w.temp(d.Max), w.temp(d.Min)))
+	}
+	return strings.Join(lines, "\n")
+}

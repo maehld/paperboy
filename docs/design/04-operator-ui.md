@@ -44,7 +44,7 @@ The dashboard, the stats page and the downloads page poll themselves ([ADR 0106]
 - A served picture names its pixel hash: `GET /api/devices/{id}/image?h=<hash>` answers `Cache-Control: private, max-age=31536000, immutable` for the current hash and `no-store` otherwise. A tick therefore downloads no image.
 - The downloads poll keeps the query string of the page. The cleanup preview does not poll at all, so its list cannot change under the button next to it.
 - Without JavaScript the pages stop updating. They stay readable, and every link works.
-- htmx 4.0.1 is vendored in `internal/paperboy/ui/vendor/` and served as `GET /ui/htmx.js` behind the password. It is the only foreign JavaScript in the service; `ui/vendor/` is the only place for it, and a new file there needs an ADR.
+- htmx 4.0.1 is vendored in `server/internal/paperboy/ui/vendor/` and served as `GET /ui/htmx.js` behind the password. It is the only foreign JavaScript in the service; `ui/vendor/` is the only place for it, and a new file there needs an ADR.
 
 ## Runtime stats
 

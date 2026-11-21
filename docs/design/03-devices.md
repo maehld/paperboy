@@ -161,7 +161,7 @@ The charger and the power source drive three things: the refresh floor, the char
 
 Every reTerminal E series device and the Sticky carry a Sensirion SHT4x temperature and humidity sensor. The firmware takes one measurement per wake, before the sync, and reports it as `temperature` and `humidity` ([ADR 0134](../adr/0134-readings-from-the-device.md)). A failed read sends no value, and the last value with its old time stays.
 
-The catalog in `internal/reading` owns the unit, the precision and the plausible range of every reading. A device sends bare numbers, so a wrong firmware offset cannot label a value falsely. Paperboy stores the last value per device and MAC ([ADR 0080](../adr/0080-device-state-per-mac.md)). The dashboard shows the values as a `Readings` row in the card's details, with the catalog names as the tooltip. A reading the last sync did not bring shows its age.
+The catalog in `server/internal/reading` owns the unit, the precision and the plausible range of every reading. A device sends bare numbers, so a wrong firmware offset cannot label a value falsely. Paperboy stores the last value per device and MAC ([ADR 0080](../adr/0080-device-state-per-mac.md)). The dashboard shows the values as a `Readings` row in the card's details, with the catalog names as the tooltip. A reading the last sync did not bring shows its age.
 
 The sensor sits next to the panel and the battery, so it reads slightly warm. There is no calibration yet. A later device-file offset applies to the stored value, not to the widget ([ADR 0134](../adr/0134-readings-from-the-device.md)).
 

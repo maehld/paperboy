@@ -1,0 +1,234 @@
+package paperboy
+
+import (
+	_ "embed"
+	"fmt"
+	"html/template"
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/maehld/paperboy/server/internal/semver"
+)
+
+// The releases page took the download card off the dashboard (ADR 0060, 0062):
+// a running check used to reload every device card, and what a check installed
+// belongs next to the firmware images rather than into the device grid.
+
+//go:embed ui/downloads.html
+var downloadsTemplate string
+
+var downloadsTmpl = template.Must(template.New("downloads").Parse(downloadsTemplate))
+
+// downloadsView is the releases page: the checks, the programs they installed
+// and the images the devices run.
+type downloadsView struct {
+	Version         string
+	GoVersion       string
+	Configured      bool   // paperboy.yaml has a download section
+	Source          string // release source
+	Interval        string // "every 24 h"
+	PluginChannel   string // stable or latest (ADR 0089)
+	FirmwareChannel string // stable or latest (ADR 0089)
+	Running         bool   // a check is running right now
+	Self            string // this page's URI, so a poll keeps its query string (ADR 0106)
+	LastCheck       string // time of the last check, "never" before the first one
+	LastOK          string // time of the last successful check, empty when unknown
+	Error           string // last error, empty when the check succeeded
+	Updates         string // what the check says about Paperboy itself (ADR 0101)
+	UpdateURL       string // release page of that version, empty when unknown
+	Plugins         []downloadPluginRow
+	Firmware        []downloadFirmwareRow
+	Issues          []string // ignored files in the firmware directory
+
+	// The inventory of plugins/ and firmware/ and its prune action (ADR 0090).
+	InventoryPlugins  string // "7 files, 82 MB"
+	InventoryFirmware string
+	Preview           bool        // the prune preview is open
+	Prune             []pruneFile // what the preview would delete
+	Notice            string      // result of the last prune, empty before one
+}
+
+// downloadPluginRow is one configured plugin with the program the resolver
+// picked and whether paperboy.yaml pins its version.
+type downloadPluginRow struct {
+	Name           string
+	Version        string // downloaded version, empty for a hand-built or PATH program
+	Pinned         bool   // paperboy.yaml pins the version
+	Program        string // file name of the program, "not found" when unresolved
+	Downloaded     string // when the program file arrived, empty when unknown
+	OutsideChannel bool   // a prerelease while the channel delivers finals only
+}
+
+// downloadFirmwareRow is one image in the firmware directory.
+type downloadFirmwareRow struct {
+	Hardware       string
+	Version        string
+	File           string
+	Downloaded     string // when the image arrived, empty when unknown
+	Pinned         bool   // firmware.version names this image
+	OutsideChannel bool
+}
+
+// handleDownloads shows the release checks, their result and what runs where.
+func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	loc := cfg.Timezone
+	if loc == nil {
+		loc = time.UTC
+	}
+	version, goVersion := editorVersion(cfg)
+	v := downloadsView{Version: version, GoVersion: goVersion, Issues: s.firmware.invalidNames(),
+		Self: r.URL.RequestURI()}
+	if cfg.Download != nil {
+		v.Configured = true
+		v.Source = cfg.Download.Source
+		v.Interval = downloadIntervalText(cfg.Download.Interval)
+		v.PluginChannel = cfg.Download.PluginChannel
+		v.FirmwareChannel = cfg.Download.FirmwareChannel
+		running, lastCheck, lastOK, lastErr, _, _, update := s.download.view()
+		v.Running = running
+		v.LastCheck = downloadTime(lastCheck, s.now(), loc)
+		v.LastOK = downloadTime(lastOK, s.now(), loc)
+		v.Error = lastErr
+		v.Updates, v.UpdateURL = paperboyUpdateText(update)
+	}
+	specs := cfg.pluginSpecs()
+	for _, p := range cfg.Plugins {
+		row := downloadPluginRow{Name: p.Name, Program: "not found"}
+		if spec, ok := specs[p.Name]; ok {
+			row.Version = spec.Version
+			if len(spec.Command) > 0 {
+				if spec.Command[0] != p.Name {
+					row.Program = filepath.Base(spec.Command[0])
+				}
+				row.Downloaded = fileTime(spec.Command[0], s.now(), loc)
+			}
+		}
+		_, row.Pinned = pluginPin(p.Version)
+		// A pin bypasses the channel (ADR 0089), so the note would contradict
+		// the marker.
+		row.OutsideChannel = cfg.Download != nil && !row.Pinned &&
+			outsideChannel(cfg.Download.PluginChannel, row.Version)
+		v.Plugins = append(v.Plugins, row)
+	}
+	sort.Slice(v.Plugins, func(i, j int) bool { return v.Plugins[i].Name < v.Plugins[j].Name })
+	pinned, hasPin := pinVersion(cfg.Firmware.Version)
+	for _, img := range s.firmware.installed() {
+		row := downloadFirmwareRow{Hardware: img.Hardware, Version: img.Version, File: img.File,
+			Downloaded: fileTime(img.path, s.now(), loc),
+			Pinned:     hasPin && semver.Compare(pinned, img.ver) == 0}
+		row.OutsideChannel = cfg.Download != nil && !row.Pinned &&
+			outsideChannel(cfg.Download.FirmwareChannel, img.Version)
+		v.Firmware = append(v.Firmware, row)
+	}
+
+	pluginFiles, pluginBytes, firmwareFiles, firmwareBytes := inventorySummary(cfg)
+	v.InventoryPlugins = inventoryText(pluginFiles, pluginBytes)
+	v.InventoryFirmware = inventoryText(firmwareFiles, firmwareBytes)
+	if r.URL.Query().Get("prune") != "" {
+		v.Preview = true
+		v.Prune, _ = s.prunePlan(cfg)
+	}
+	v.Notice = pruneNotice(r.URL.Query().Get("pruned"), r.URL.Query().Get("failed"))
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := downloadsTmpl.Execute(w, v); err != nil {
+		slog.Error("downloads page rendering failed", "error", err)
+	}
+}
+
+// fileTime prints when a program or image was written into the instance: for a
+// file Paperboy downloaded that is the time of the download, for one dropped in
+// by hand the time of the copy. Empty when the file cannot be read.
+func fileTime(path string, now time.Time, loc *time.Location) string {
+	info, err := os.Stat(path)
+	if err != nil || info.ModTime().IsZero() {
+		return ""
+	}
+	return downloadTime(info.ModTime(), now, loc)
+}
+
+// outsideChannel reports whether a version in use is one the channel would not
+// deliver: an rc while the channel follows the final releases (ADR 0089).
+func outsideChannel(channel, running string) bool {
+	if channel != channelStable || running == "" {
+		return false
+	}
+	parsed, ok := semver.Parse(strings.TrimPrefix(running, "v"))
+	return ok && parsed.Prerelease()
+}
+
+// paperboyUpdateText is the line about Paperboy's own release: the newer
+// version, which the template links, or why there is none (ADR 0101).
+func paperboyUpdateText(update paperboyUpdate) (text, url string) {
+	switch {
+	case !update.Checked:
+		return "not checked yet", ""
+	case !update.Compared:
+		return "dev build, no comparison", ""
+	case !update.Found:
+		return "no release in the channel", ""
+	case update.Version != "":
+		return update.Version + " is available", update.URL
+	}
+	return "up to date", ""
+}
+
+// inventoryText prints the size of one inventory directory for the page.
+func inventoryText(files, bytes int64) string {
+	if files == 0 {
+		return "empty"
+	}
+	noun := "files"
+	if files == 1 {
+		noun = "file"
+	}
+	return fmt.Sprintf("%d %s, %s", files, noun, byteText(bytes))
+}
+
+// byteText prints a size in the largest unit that keeps it readable.
+func byteText(bytes int64) string {
+	switch {
+	case bytes >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/(1<<20))
+	case bytes >= 1<<10:
+		return fmt.Sprintf("%.0f kB", float64(bytes)/(1<<10))
+	}
+	return fmt.Sprintf("%d B", bytes)
+}
+
+// pruneNotice is the line the releases page shows after a prune.
+func pruneNotice(deleted, failed string) string {
+	removed, err := strconv.Atoi(deleted)
+	if deleted == "" || err != nil {
+		return ""
+	}
+	noun := "files"
+	if removed == 1 {
+		noun = "file"
+	}
+	line := fmt.Sprintf("Deleted %d %s.", removed, noun)
+	if locked, err := strconv.Atoi(failed); err == nil && locked > 0 {
+		line += fmt.Sprintf(" %d could not be removed (a running program holds them) and stay for the next preview.", locked)
+	}
+	return line
+}
+
+// downloadIntervalText prints the configured interval as "every 24 h" or
+// "every 90 min", so the page needs no logic.
+func downloadIntervalText(d time.Duration) string {
+	if d <= 0 {
+		d = defaultDownloadInterval
+	}
+	if d%time.Hour == 0 {
+		return "every " + strconv.Itoa(int(d.Hours())) + " h"
+	}
+	return "every " + strconv.Itoa(int(d.Minutes())) + " min"
+}

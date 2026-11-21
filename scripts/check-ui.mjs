@@ -15,7 +15,7 @@ try {
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const script = await readFile(join(root, "internal/paperboy/ui/virtual.js"), "utf8");
+const script = await readFile(join(root, "server/internal/paperboy/ui/virtual.js"), "utf8");
 
 const html = `<!doctype html><html><body data-sync="/ui/virtual/sync" data-reset="/ui/virtual/reset">
 <img id="image" hidden><div id="text" data-cols="10" data-rows="2" hidden></div>

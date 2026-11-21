@@ -24,11 +24,11 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version-file: server/go.mod
 
       - name: Check formatting
         run: |
-          files=$(gofmt -l cmd internal pkg)
+          files=$(gofmt -l server plugins sdk)
           if [ -n "$files" ]; then
             echo "gofmt needed for:"
             echo "$files"
@@ -36,7 +36,7 @@ jobs:
           fi
 
       - name: Vet
-        run: go vet ./...
+        run: go vet ./server/... ./plugins/... ./sdk/...
 
       - name: Check the documentation style
         run: ./scripts/check-docs.sh
@@ -50,7 +50,7 @@ jobs:
           NODE_PATH="$RUNNER_TEMP/ui/node_modules" node scripts/check-ui.mjs
 
       - name: Test
-        run: go test ./...
+        run: go test ./server/... ./plugins/... ./sdk/...
 
   build:
     runs-on: ubuntu-latest
@@ -65,7 +65,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version-file: server/go.mod
 
       - name: Build
         env:
@@ -73,4 +73,4 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/bin"
           CGO_ENABLED=0 GOOS=${TARGET%/*} GOARCH=${TARGET#*/} \
-            go build -trimpath -o "$RUNNER_TEMP/bin/" ./...
+            go build -trimpath -o "$RUNNER_TEMP/bin/" ./server/... ./plugins/... ./sdk/...

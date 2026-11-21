@@ -2,7 +2,7 @@
 
 Paperboy and its plugins talk over standard input and standard output, one
 JSON object per line ([ADR 0049](../adr/0049-plugin-widgets.md)). This document is the reference for the wire
-format; the Go types live in [`pkg/plugin`](../../pkg/plugin/plugin.go).
+format; the Go types live in [`sdk/plugin`](../../sdk/plugin/plugin.go).
 
 - Current version: **9** ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md) added version 3, [ADR 0057](../adr/0057-plugin-actions-from-the-plan.md) added
   actions, [ADR 0081](../adr/0081-plugin-state-over-the-protocol.md) added plugin state and blobs and made 5 the minimum,
@@ -368,7 +368,7 @@ schedule ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)):
 - It sends it only to a plugin that reports version 9 or newer, so an older
   plugin never sees a line it does not understand.
 - A plugin ignores events it does not know.
-- `pkg/plugin.Demand` receives the event. `Wait(ctx, floor)` sleeps until
+- `sdk/plugin.Demand` receives the event. `Wait(ctx, floor)` sleeps until
   `next_refresh` minus 30 seconds, wakes on a new schedule, and never returns
   earlier than `floor` after the call. A plugin calls it after each fetch, so
   the floor counts from the end of the fetch. With no demand it blocks.
@@ -425,7 +425,7 @@ plugin no longer declares stays until the operator removes it; deleting the
 directory resets the plugin.
 
 A plugin never writes these files; `PAPERBOY_STATE_DIR` and
-`pkg/plugin.StateDir()` are gone ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)).
+`sdk/plugin.StateDir()` are gone ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)).
 
 Keep no secrets in the state (a fingerprint of a key is enough), version the
 object so a later plugin can discard a format it does not know, and treat the
@@ -461,7 +461,7 @@ Optional interfaces:
 | `Stater` | `LoadState(state, blobs)` when the `state` request arrives and `State() json.RawMessage`: the object to store, nil when unchanged |
 | `Blober` | `Blobs() map[string][]byte`: changed blobs, nil when none; clear the marks |
 
-A plugin calls `plugin.Serve(handler)` and draws with `pkg/render`, so its
+A plugin calls `plugin.Serve(handler)` and draws with `sdk/render`, so its
 widgets use the same fonts, gray levels and scalings as Paperboy's own.
 
 A plugin with background work embeds `plugin.Demand` and calls `Wait` in its
@@ -500,7 +500,7 @@ with `State` and `Blobs`, so a held lock deadlocks the plugin.
 | 6 | Conditions: `describe.conditions`, the `conditions` request and `answer.conditions` ([ADR 0103](../adr/0103-plugin-conditions-in-plans.md)); removed in version 9 ([ADR 0127](../adr/0127-plan-conditions-are-values.md)) |
 | 7 | Values: `describe.values` with `args` and `progression`, the `values` request with `value_args` and `answer.values` ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md), [0122](../adr/0122-hide-and-progress-a-unit.md)) |
 | 8 | The text action is removed: `text`, `Texter`, `answer.widgets[].lines`, `widgets[].scroll` and the `text` widget kind ([ADR 0125](../adr/0125-remove-the-text-widget-path.md)) |
-| 9 | The inbound `schedule` event and `pkg/plugin.Demand` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)); the `enum` value type with `ValueSpec.enum` and `Value.enum`, and the removal of conditions ([ADR 0127](../adr/0127-plan-conditions-are-values.md)) |
+| 9 | The inbound `schedule` event and `sdk/plugin.Demand` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)); the `enum` value type with `ValueSpec.enum` and `Value.enum`, and the removal of conditions ([ADR 0127](../adr/0127-plan-conditions-are-values.md)) |
 
 A plugin is used as a whole or not at all ([ADR 0058](../adr/0058-plugin-protocol-version-check.md)). The check is a floor,
 not equality: Paperboy requires at least version 5 and accepts newer ones.

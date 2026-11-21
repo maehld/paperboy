@@ -1,15 +1,15 @@
 #!/bin/sh
 # Fails when a plugin changed without a new version (ADR 0075): every plugin
-# carries cmd/<plugin>/VERSION, and a change to its code must raise it, because
-# the plugin zip names the program <plugin>-v<version> and a download only
-# installs a higher one.
+# carries plugins/cmd/<plugin>/VERSION, and a change to its code must raise it,
+# because the plugin zip names the program <plugin>-v<version> and a download
+# only installs a higher one.
 #
-# pkg/plugin and pkg/render are linked into every plugin, so a change there
+# sdk/plugin and sdk/render are linked into every plugin, so a change there
 # changes every program and every version has to rise: a release with unchanged
 # version names keeps the old programs and no installation receives the new
-# build (ADR 0107). Other shared code under pkg/, go.mod and go.sum only warn:
-# whether each affected plugin needs a new version is a decision for the
-# maintainer.
+# build (ADR 0107). Other shared code under sdk/, the plugin module's go.mod and
+# go.sum only warn: whether each affected plugin needs a new version is a
+# decision for the maintainer.
 #
 #   ./scripts/check-plugin-versions.sh origin/main
 set -eu
@@ -29,41 +29,46 @@ changed() {
 }
 
 shared=0
-if changed pkg/plugin || changed pkg/render; then
+if changed sdk/plugin || changed sdk/render; then
     shared=1
 fi
 
-for dir in cmd/*/; do
-    plugin=${dir#cmd/}
+for dir in plugins/cmd/*/; do
+    plugin=${dir#plugins/cmd/}
     plugin=${plugin%/}
     [ -f "$dir/VERSION" ] || continue
     own=0
-    if changed "cmd/$plugin"; then
+    if changed "plugins/cmd/$plugin"; then
         own=1
     fi
     [ "$own" -eq 1 ] || [ "$shared" -eq 1 ] || continue
-    old=$(git show "$base:cmd/$plugin/VERSION" 2>/dev/null | tr -d '[:space:]' || true)
+    # The module split moved the versions from cmd/<plugin> to
+    # plugins/cmd/<plugin>; the old location is the base before that change.
+    old=$(git show "$base:plugins/cmd/$plugin/VERSION" 2>/dev/null | tr -d '[:space:]' || true)
+    if [ -z "$old" ]; then
+        old=$(git show "$base:cmd/$plugin/VERSION" 2>/dev/null | tr -d '[:space:]' || true)
+    fi
     new=$(tr -d '[:space:]' < "$dir/VERSION")
     if [ "$new" = "$old" ]; then
         if [ "$own" -eq 1 ]; then
-            echo "::error file=cmd/$plugin/VERSION::$plugin changed, but its version is still $new; raise cmd/$plugin/VERSION (ADR 0075)"
+            echo "::error file=plugins/cmd/$plugin/VERSION::$plugin changed, but its version is still $new; raise plugins/cmd/$plugin/VERSION (ADR 0075)"
         else
-            echo "::error file=cmd/$plugin/VERSION::$plugin is unchanged, but pkg/plugin or pkg/render changed, which alters every plugin binary; raise cmd/$plugin/VERSION (ADR 0107)"
+            echo "::error file=plugins/cmd/$plugin/VERSION::$plugin is unchanged, but sdk/plugin or sdk/render changed, which alters every plugin binary; raise plugins/cmd/$plugin/VERSION (ADR 0107)"
         fi
         status=1
     else
-        echo "$plugin: $old -> $new"
+        echo "$plugin: ${old:-new} -> $new"
     fi
 done
 
-if [ "$shared" -eq 0 ] && { changed pkg || changed go.mod || changed go.sum; }; then
-    echo "::warning::shared code changed (pkg/, go.mod or go.sum): check whether the affected plugins need a new VERSION (ADR 0075)"
+if [ "$shared" -eq 0 ] && { changed sdk || changed plugins/go.mod || changed plugins/go.sum; }; then
+    echo "::warning::shared code changed (sdk/, plugins/go.mod or plugins/go.sum): check whether the affected plugins need a new VERSION (ADR 0075)"
 fi
 
 # The embed directive must sit in each command's package, so every
-# cmd/<plugin>/version.go is a copy. This check keeps the copies identical.
-reference=cmd/calendar/version.go
-for file in cmd/*/version.go; do
+# plugins/cmd/<plugin>/version.go is a copy. This check keeps the copies identical.
+reference=plugins/cmd/calendar/version.go
+for file in plugins/cmd/*/version.go; do
     [ "$file" = "$reference" ] && continue
     if ! cmp -s "$reference" "$file"; then
         echo "::error file=$file::$file differs from $reference; keep the plugin version files identical"
