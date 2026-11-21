@@ -23,7 +23,7 @@ The tag names the release, not what is inside. Every plugin and every firmware i
 | `paperboy-firmware.zip` | unpack in the instance directory: creates `firmware/` with `<hardware>-v<version>.bin` of every hardware type ([ADR 0043](adr/0043-firmware-distribution.md), [0059](adr/0059-firmware-bundle.md), [0060](adr/0060-download-from-releases.md), [0063](adr/0063-constant-firmware-bundle-name.md)) |
 | `SHA256SUMS` | checksums of all assets of the release |
 
-The container image is published as `ghcr.io/maehld/paperboy` for a server release (`X.Y.Z`, `X.Y` and `latest`; a prerelease gets only its full version, so it never replaces `X.Y` or `latest`). No `main` build and no plugin or firmware release publishes an image.
+The container image is the primary server artifact. The `server-v*` release builds and pushes it, and the release waits for it. It is published as `ghcr.io/maehld/paperboy` (`X.Y.Z`, `X.Y` and `latest`; a prerelease gets only its full version, so it never replaces `X.Y` or `latest`). The binaries stay attached as secondary assets. No `main` build and no plugin or firmware release publishes an image.
 
 To create a release, push the tag of the train:
 
@@ -33,7 +33,7 @@ git tag plugins-2026.11.21 && git push origin plugins-2026.11.21
 git tag firmware-2026.11.21 && git push origin firmware-2026.11.21
 ```
 
-The *Release* workflow builds only that train's assets, attaches them to one release and writes notes per train. No release is marked as GitHub's latest; the Docker tag `latest` means the newest final server release. A tag with a suffix (`server-v1.4.0-rc.1`, `plugins-2026.11.21-rc.1`) becomes a prerelease; only the `latest` channel installs it ([ADR 0089](adr/0089-release-channels.md), see [Downloads](#downloads)).
+The *Release* workflow builds only that train's assets, builds and pushes the image for a server release, attaches the assets to one release and writes notes per train. The newest final server release is GitHub's latest; a prerelease and a plugin or firmware release do not take the badge. The Docker tag `latest` means the newest final server release. A tag with a suffix (`server-v1.4.0-rc.1`, `plugins-2026.11.21-rc.1`) becomes a prerelease; only the `latest` channel installs it ([ADR 0089](adr/0089-release-channels.md), see [Downloads](#downloads)).
 
 ## Downloads
 
