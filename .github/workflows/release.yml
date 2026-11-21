@@ -1,15 +1,17 @@
 name: Release
 
-# Builds the artifacts for a tag and attaches them to one GitHub release
-# (ADR 0147). The tag prefix selects the train:
+# Builds the artifacts for a release and attaches them to one GitHub release
+# (ADR 0147). A tag starts a release:
 #
 #   server-v3.30.0             the server binaries
 #   plugins-2026.11.21         the plugin zips (date of the release)
 #   firmware-2026.11.21        the firmware bundle (date of the release)
 #
-# A second release of a train on the same day appends .1, .2, ...
-# A suffix -rc.1 or -beta.1 marks a prerelease. One tag is one release;
-# several tags may point to the same commit.
+# The Actions UI starts a release too (ADR 0150). Choose the train and the
+# version; the workflow tags the selected commit and creates the release after
+# the build. A second release of a train on the same day appends .1, .2, ...
+# A suffix -rc.1 or -beta.1 marks a prerelease. One tag is one release; several
+# tags may point to the same commit.
 
 on:
   push:
@@ -17,23 +19,94 @@ on:
       - "server-v*"
       - "plugins-*"
       - "firmware-*"
+  workflow_dispatch:
+    inputs:
+      train:
+        description: Release train
+        required: true
+        type: choice
+        options: [server, plugins, firmware]
+      version:
+        description: "Server: X.Y.Z; plugins/firmware: YYYY.MM.DD[.N]; empty: today (UTC)"
+        required: false
+        type: string
 
 permissions:
   contents: write
 
+# One release at a time, so two dispatches cannot create the same tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  check:
+  prepare:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      train: ${{ steps.tag.outputs.train }}
+      version: ${{ steps.tag.outputs.version }}
+      minor: ${{ steps.tag.outputs.minor }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - name: Check the tag
-        run: ./scripts/check-release-tag.sh "$GITHUB_REF_NAME"
+      - name: Prepare the tag
+        id: tag
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TRAIN: ${{ inputs.train }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          if [ "$EVENT" = workflow_dispatch ]; then
+            train="$INPUT_TRAIN"
+            version="$INPUT_VERSION"
+            if [ -z "$version" ] && [ "$train" != server ]; then
+              version=$(date -u +%Y.%m.%d)
+            fi
+            if [ "$train" = server ] && [ -z "$version" ]; then
+              echo "the server release needs a version" >&2
+              exit 1
+            fi
+            case "$train" in
+              server)   version="${version#v}"; tag="server-v$version" ;;
+              plugins)  tag="plugins-$version" ;;
+              firmware) tag="firmware-$version" ;;
+              *)        echo "unknown release train: $train" >&2; exit 1 ;;
+            esac
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+              echo "tag $tag already exists; use a new version" >&2
+              exit 1
+            fi
+          else
+            tag="$GITHUB_REF_NAME"
+            case "$tag" in
+              server-v*)  train=server; version="${tag#server-v}" ;;
+              plugins-*)  train=plugins; version="${tag#plugins-}" ;;
+              firmware-*) train=firmware; version="${tag#firmware-}" ;;
+              *)          echo "unknown release tag: $tag" >&2; exit 1 ;;
+            esac
+          fi
+          ./scripts/check-release-tag.sh "$tag"
+          case "$version" in
+            *-*) prerelease=true; minor="" ;;
+            *)   prerelease=false; minor="${version%.*}" ;;
+          esac
+          {
+            echo "tag=$tag"
+            echo "train=$train"
+            echo "version=$version"
+            echo "minor=$minor"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
 
   server:
-    needs: check
-    if: startsWith(github.ref_name, 'server-v')
+    needs: prepare
+    if: needs.prepare.outputs.train == 'server'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -49,7 +122,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # The version label comes from Go's VCS stamping, which needs the tag.
+          # The version label comes from Go's VCS stamping, which needs history.
           fetch-depth: 0
 
       - name: Set up Go
@@ -61,7 +134,7 @@ jobs:
         run: |
           ext=""
           [ "${{ matrix.os }}" = windows ] && ext=".exe"
-          version="${GITHUB_REF_NAME#server-v}"
+          version="${{ needs.prepare.outputs.version }}"
           mkdir -p dist
           CGO_ENABLED=0 GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} \
             go build -trimpath \
@@ -75,8 +148,8 @@ jobs:
           path: dist/paperboy-${{ matrix.os }}-${{ matrix.arch }}*
 
   docker:
-    needs: check
-    if: startsWith(github.ref_name, 'server-v')
+    needs: prepare
+    if: needs.prepare.outputs.train == 'server'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -84,19 +157,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Read the tag
-        id: tag
-        run: |
-          version="${GITHUB_REF_NAME#server-v}"
-          final=false
-          case "$version" in
-            *-*) ;;
-            *)   final=true ;;
-          esac
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "final=$final" >> "$GITHUB_OUTPUT"
-          echo "display=v$version" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -118,11 +178,11 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             # The full version of the server release (3.30.0, 3.31.0-rc.1).
-            type=match,pattern=server-v(.*),group=1
+            type=raw,value=${{ needs.prepare.outputs.version }}
             # The moving X.Y tag stays with the last final release (ADR 0089).
-            type=match,pattern=server-v(\d+\.\d+),group=1,enable=${{ steps.tag.outputs.final == 'true' }}
+            type=raw,value=${{ needs.prepare.outputs.minor }},enable=${{ needs.prepare.outputs.prerelease == 'false' }}
             type=sha,prefix=sha-,format=short
-            type=raw,value=latest,enable=${{ steps.tag.outputs.final == 'true' }}
+            type=raw,value=latest,enable=${{ needs.prepare.outputs.prerelease == 'false' }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
@@ -131,7 +191,7 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           build-args: |
-            VERSION=${{ steps.tag.outputs.display }}
+            VERSION=v${{ needs.prepare.outputs.version }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -139,21 +199,21 @@ jobs:
           cache-to: type=gha,mode=max
 
   plugins:
-    needs: check
-    if: startsWith(github.ref_name, 'plugins-')
+    needs: prepare
+    if: needs.prepare.outputs.train == 'plugins'
     uses: ./.github/workflows/plugins.yml
 
   firmware:
-    needs: check
-    if: startsWith(github.ref_name, 'firmware-')
+    needs: prepare
+    if: needs.prepare.outputs.train == 'firmware'
     uses: ./.github/workflows/firmware.yml
 
   release:
-    needs: [check, server, docker, plugins, firmware]
+    needs: [prepare, server, docker, plugins, firmware]
     # Skipped jobs are fine, a failed build must not publish a partial release.
     if: >
       always() && !cancelled() &&
-      needs.check.result == 'success' &&
+      needs.prepare.result == 'success' &&
       needs.server.result != 'failure' &&
       needs.docker.result != 'failure' &&
       needs.plugins.result != 'failure' &&
@@ -178,25 +238,6 @@ jobs:
           mv "$RUNNER_TEMP/SHA256SUMS" SHA256SUMS
           cat SHA256SUMS
 
-      # The version after the train prefix decides the prerelease flag. The
-      # prefix itself carries a hyphen, so it must be stripped first.
-      - name: Prerelease tag
-        id: tag
-        run: |
-          case "$GITHUB_REF_NAME" in
-            server-v*)  version="${GITHUB_REF_NAME#server-v}" ;;
-            plugins-*)  version="${GITHUB_REF_NAME#plugins-}" ;;
-            firmware-*) version="${GITHUB_REF_NAME#firmware-}" ;;
-            *)          version="$GITHUB_REF_NAME" ;;
-          esac
-          case "$version" in
-            *-*) prerelease=true; minor="" ;;
-            *)   prerelease=false; minor="${version%.*}" ;;
-          esac
-          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "minor=$minor" >> "$GITHUB_OUTPUT"
-
       # The generated notes compare against the last stable release of the same
       # train. Without this the API picks any reachable tag, so a server release
       # could diff against plugins-* or firmware-*.
@@ -204,11 +245,13 @@ jobs:
         id: previous
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          TRAIN: ${{ needs.prepare.outputs.train }}
         run: |
-          case "$GITHUB_REF_NAME" in
-            server-v*)  prefix='server-v' ;;
-            plugins-*)  prefix='plugins-' ;;
-            firmware-*) prefix='firmware-' ;;
+          case "$TRAIN" in
+            server)   prefix='server-v' ;;
+            plugins)  prefix='plugins-' ;;
+            firmware) prefix='firmware-' ;;
           esac
           # Releases come newest first, so the first stable one of the train is
           # the previous release. Drafts are invisible to a download anyway.
@@ -216,7 +259,7 @@ jobs:
             --jq '.[] | select(.draft | not) | .tag_name')
           previous=''
           while read -r tag; do
-            [ "$tag" = "$GITHUB_REF_NAME" ] && continue
+            [ "$tag" = "$TAG" ] && continue
             case "$tag" in
               "$prefix"*) version="${tag#"$prefix"}" ;;
               *)          continue ;;
@@ -235,10 +278,12 @@ jobs:
       # operator sees what the date label contains (ADR 0147).
       - name: Describe the release
         id: body
-        if: "!startsWith(github.ref_name, 'server-v')"
+        if: needs.prepare.outputs.train != 'server'
+        env:
+          TRAIN: ${{ needs.prepare.outputs.train }}
         run: |
-          case "$GITHUB_REF_NAME" in
-            plugins-*)
+          case "$TRAIN" in
+            plugins)
               {
                 echo "## Plugins"
                 echo
@@ -250,7 +295,7 @@ jobs:
                 echo "Unpack \`paperboy-plugins-<os>-<arch>.zip\` in the instance directory. It creates \`plugins/\`."
               } > "$RUNNER_TEMP/body.md"
               ;;
-            firmware-*)
+            firmware)
               {
                 echo "## Firmware"
                 echo
@@ -273,26 +318,30 @@ jobs:
       # The newest final server release carries GitHub's "Latest" badge. A
       # prerelease and a plugin or firmware release do not claim it (ADR 0149).
       - name: Release with generated notes
-        if: startsWith(github.ref_name, 'server-v')
+        if: needs.prepare.outputs.train == 'server'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           body: |
             ## Container image
             The primary server artifact is the container image:
-            `ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.version }}`
-            ${{ steps.tag.outputs.prerelease == 'false' && format('Also tagged `:{0}` and `:latest`.', steps.tag.outputs.minor) || 'A prerelease, not tagged `latest`.' }}
+            `ghcr.io/${{ github.repository }}:${{ needs.prepare.outputs.version }}`
+            ${{ needs.prepare.outputs.prerelease == 'false' && format('Also tagged `:{0}` and `:latest`.', needs.prepare.outputs.minor) || 'A prerelease, not tagged `latest`.' }}
             The binaries are attached as secondary assets.
           generate_release_notes: true
           previous_tag: ${{ steps.previous.outputs.tag }}
-          prerelease: ${{ steps.tag.outputs.prerelease }}
-          make_latest: ${{ steps.tag.outputs.prerelease == 'false' }}
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
+          make_latest: ${{ needs.prepare.outputs.prerelease == 'false' }}
           files: dist/*
 
       - name: Release with asset notes
-        if: "!startsWith(github.ref_name, 'server-v')"
+        if: needs.prepare.outputs.train != 'server'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           body_path: ${{ steps.body.outputs.path }}
-          prerelease: ${{ steps.tag.outputs.prerelease }}
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
           make_latest: false
           files: dist/*

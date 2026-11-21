@@ -21,6 +21,10 @@ Several tags may point to the same commit. A second release of a train on the sa
 | `paperboy-firmware.zip` | One flat bundle with the image of every hardware type, unpacks to `firmware/` ([ADR 0059](../adr/0059-firmware-bundle.md), [0060](../adr/0060-download-from-releases.md), [0063](../adr/0063-constant-firmware-bundle-name.md)) |
 | `SHA256SUMS` | The checksums that an instance verifies before it installs anything |
 
+## Starting a release
+
+A release starts from a tag or from the Actions UI ([ADR 0150](../adr/0150-start-a-release-from-the-actions-ui.md)). In the UI choose *Release* → *Run workflow*, the train, the version and the branch. An empty version is today in UTC for plugins and firmware. The workflow creates the tag with the release, so a failed build leaves no tag. A tag push behaves as before.
+
 ## Workflows
 
 Only `release.yml` creates a GitHub release. The other workflows build for changes and pull requests and never run on a tag.
@@ -31,7 +35,7 @@ Only `release.yml` creates a GitHub release. The other workflows build for chang
 | *Plugins* | Builds both plugin zips for a change under `plugins/`, `sdk/` or the module files; fails a pull request that changed `plugins/cmd/<plugin>` without raising its `VERSION`, and one that changed `sdk/plugin` or `sdk/render` without raising every plugin's version ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)) |
 | *Firmware* | Compiles only the hardware types whose files changed with the pinned ESPHome, and bundles them into one image archive; a release builds all four |
 | *Docker* | Checks the container image on a pull request without pushing ([ADR 0148](../adr/0148-the-container-image-is-the-primary-server-artifact.md)) |
-| *Release* | Builds the server binaries, calls *Plugins* and *Firmware* for the tag's train, builds and pushes the image for a server release, attaches the assets with `SHA256SUMS`, writes notes per train and sets the newest final server release as GitHub's latest |
+| *Release* | Starts from a tag or from the Actions UI, builds the server binaries, calls *Plugins* and *Firmware* for the train, builds and pushes the image for a server release, attaches the assets with `SHA256SUMS`, writes notes per train and sets the newest final server release as GitHub's latest |
 
 A change to `common.yaml` builds `sticky`, `e1001` and `e1003`. A change to `text-common.yaml` builds `lcd2004`. A header change builds all four.
 
@@ -93,4 +97,4 @@ The downloads page lists what *Preview cleanup* would delete, and the button del
 
 ## Decisions
 
-[ADR 0056](../adr/0056-repository-layout-and-release-trains.md) (release trains), [0147](../adr/0147-separate-server-plugin-and-firmware-releases.md) (separate releases), [0148](../adr/0148-the-container-image-is-the-primary-server-artifact.md) (the image is primary) · [0059](../adr/0059-firmware-bundle.md), [0061](../adr/0061-install-every-bundle-image.md), [0063](../adr/0063-constant-firmware-bundle-name.md) (the firmware bundle) · [0060](../adr/0060-download-from-releases.md), [0062](../adr/0062-plugin-updates-and-download-control.md) (downloads and intervals) · [0075](../adr/0075-plugin-versions.md), [0107](../adr/0107-plugin-builds-reach-installations.md) (a version per plugin) · [0089](../adr/0089-release-channels.md) (channels and prereleases) · [0090](../adr/0090-download-cache-and-inventory.md) (cache and inventory) · [0101](../adr/0101-a-hint-about-a-newer-paperboy.md) (a hint about a newer Paperboy)
+[ADR 0056](../adr/0056-repository-layout-and-release-trains.md) (release trains), [0147](../adr/0147-separate-server-plugin-and-firmware-releases.md) (separate releases), [0148](../adr/0148-the-container-image-is-the-primary-server-artifact.md) (the image is primary), [0150](../adr/0150-start-a-release-from-the-actions-ui.md) (releases from the UI) · [0059](../adr/0059-firmware-bundle.md), [0061](../adr/0061-install-every-bundle-image.md), [0063](../adr/0063-constant-firmware-bundle-name.md) (the firmware bundle) · [0060](../adr/0060-download-from-releases.md), [0062](../adr/0062-plugin-updates-and-download-control.md) (downloads and intervals) · [0075](../adr/0075-plugin-versions.md), [0107](../adr/0107-plugin-builds-reach-installations.md) (a version per plugin) · [0089](../adr/0089-release-channels.md) (channels and prereleases) · [0090](../adr/0090-download-cache-and-inventory.md) (cache and inventory) · [0101](../adr/0101-a-hint-about-a-newer-paperboy.md) (a hint about a newer Paperboy)
