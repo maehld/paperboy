@@ -36,7 +36,7 @@ import (
 // that ends in .lcd2004 is a text page for the 20x4 display.
 var pageShots = map[string][]string{
 	"weather":    {"wetter"},
-	"evcc":       {"energie", "ertrag"},
+	"evcc":       {"energie", "energie-woche", "ertrag"},
 	"calendar":   {"kalender", "woche", "geburtstage", "geburtstage.lcd2004"},
 	"departures": {"abfahrten", "abfahrten.lcd2004"},
 	"pokedex":    {"pokemon"},

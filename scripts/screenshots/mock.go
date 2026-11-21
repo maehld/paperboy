@@ -184,7 +184,7 @@ func (m *mock) evccState(w http.ResponseWriter) {
 	now := m.now
 	state := map[string]any{
 		"siteTitle": "Zuhause",
-		"pvPower":   6280, "homePower": 1140, "pvEnergy": 26009.5,
+		"pvPower":   9650, "homePower": 1140, "pvEnergy": 26009.5,
 		"grid":       map[string]any{"power": -3150, "energy": 9697.5, "returnEnergy": 11141.6},
 		"battery":    map[string]any{"power": -1180, "soc": 81, "capacity": 9.6, "energy": 6013.7, "returnEnergy": 6362.4},
 		"tariffGrid": 0.27, "currency": "EUR",
