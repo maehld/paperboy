@@ -27,4 +27,5 @@ Paperboy ships the plugins below. One zip per platform (`paperboy-plugins-linux-
 - [`xkcd`](xkcd.md) – [xkcd](https://xkcd.com) comics.
 - [`countdown`](countdown.md) – days to a date, optionally with a progress bar.
 - [`rss`](rss.md) – RSS and Atom feeds as a list or as a single headline.
+- [`github`](github.md) – open issues, open pull requests, failed workflow runs and the commit history of GitHub repositories.
 - [`paperboy`](paperboy.md) – built in, no zip needed: header, text, clock, the Paperboy logo, the battery and the device status.
