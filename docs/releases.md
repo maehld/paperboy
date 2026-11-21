@@ -33,7 +33,7 @@ git tag plugins-2026.11.21 && git push origin plugins-2026.11.21
 git tag firmware-2026.11.21 && git push origin firmware-2026.11.21
 ```
 
-The *Release* workflow builds only that train's assets, builds and pushes the image for a server release, attaches the assets to one release and writes notes per train. No release is marked as GitHub's latest; the Docker tag `latest` means the newest final server release. A tag with a suffix (`server-v1.4.0-rc.1`, `plugins-2026.11.21-rc.1`) becomes a prerelease; only the `latest` channel installs it ([ADR 0089](adr/0089-release-channels.md), see [Downloads](#downloads)).
+The *Release* workflow builds only that train's assets, builds and pushes the image for a server release, attaches the assets to one release and writes notes per train. The newest final server release is GitHub's latest; a prerelease and a plugin or firmware release do not take the badge. The Docker tag `latest` means the newest final server release. A tag with a suffix (`server-v1.4.0-rc.1`, `plugins-2026.11.21-rc.1`) becomes a prerelease; only the `latest` channel installs it ([ADR 0089](adr/0089-release-channels.md), see [Downloads](#downloads)).
 
 ## Downloads
 

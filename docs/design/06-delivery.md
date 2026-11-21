@@ -31,14 +31,14 @@ Only `release.yml` creates a GitHub release. The other workflows build for chang
 | *Plugins* | Builds both plugin zips; fails a pull request that changed `plugins/cmd/<plugin>` without raising its `VERSION`, and one that changed `sdk/plugin` or `sdk/render` without raising every plugin's version ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)) |
 | *Firmware* | Compiles `sticky`, `e1001`, `e1003` and `lcd2004` with the pinned ESPHome, only for changes under `firmware/esphome/`, and bundles them into one image archive |
 | *Docker* | Checks the container image on a pull request without pushing ([ADR 0148](../adr/0148-the-container-image-is-the-primary-server-artifact.md)) |
-| *Release* | Builds the server binaries, calls *Plugins* and *Firmware* for the tag's train, builds and pushes the image for a server release, attaches the assets with `SHA256SUMS`, writes notes per train and sets no GitHub latest badge |
+| *Release* | Builds the server binaries, calls *Plugins* and *Firmware* for the tag's train, builds and pushes the image for a server release, attaches the assets with `SHA256SUMS`, writes notes per train and sets the newest final server release as GitHub's latest |
 
 Two rules follow from the version stamping:
 
 - The server's version comes from Go's VCS stamping, so a release build needs the full history (`fetch-depth: 0`). A build without a repository reports `dev`.
 - The firmware images carry `fw_version` in their name. The release tag labels the bundle by date ([ADR 0147](../adr/0147-separate-server-plugin-and-firmware-releases.md)) and names no image version. The *Firmware* workflow compiles the same images in CI, so a tag ships what was tested.
 
-The container image is the primary server artifact. A server release builds and pushes it before the release appears. A final release gets `X.Y.Z`, `X.Y` and `latest`; a prerelease keeps only its full version. No `main` build and no plugin or firmware release publishes an image. A pull request only builds the image to check it.
+The container image is the primary server artifact. A server release builds and pushes it before the release appears. A final release gets `X.Y.Z`, `X.Y` and `latest`; a prerelease keeps only its full version. No `main` build and no plugin or firmware release publishes an image. A pull request only builds the image to check it. GitHub's latest badge names the newest final server release; a prerelease and a plugin or firmware release do not take it.
 
 ## The download client
 
