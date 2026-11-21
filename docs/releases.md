@@ -4,13 +4,15 @@
 
 ## Releases
 
-GitHub releases are the distribution point ([ADR 0056](adr/0056-repository-layout-and-release-trains.md)). Each tag names a tested combination of the three deliverables:
+GitHub releases are the distribution point ([ADR 0056](adr/0056-repository-layout-and-release-trains.md), [ADR 0147](adr/0147-separate-server-plugin-and-firmware-releases.md)). One tag is one release; the three deliverables release separately:
 
 | Tag | Contains |
 |---|---|
-| `vX.Y.Z` | Paperboy binaries, plugin zips and the firmware bundle |
-| `plugins-vX.Y.Z` | plugin zips only |
-| `firmware-vX.Y.Z` | firmware bundle only (`X.Y.Z` is the highest `fw_version` in the bundle) |
+| `server-vX.Y.Z` | server binaries only; `X.Y.Z` is the server version |
+| `plugins-YYYY.MM.DD[.N]` | plugin zips only; the date labels the set |
+| `firmware-YYYY.MM.DD[.N]` | firmware bundle only; the date labels the bundle |
+
+Several tags may point to the same commit. The first release of a train on a day has no sequence; a second gets `.1`, `.2`. A tag with `-rc.N` or `-beta.N` is a prerelease. `scripts/check-release-tag.sh` checks the shape of a tag before the build.
 
 The tag names the release, not what is inside. Every plugin and every firmware image carries its own version, and that version changes only with a change ([ADR 0043](adr/0043-firmware-distribution.md), [0075](adr/0075-plugin-versions.md)).
 
@@ -21,7 +23,17 @@ The tag names the release, not what is inside. Every plugin and every firmware i
 | `paperboy-firmware.zip` | unpack in the instance directory: creates `firmware/` with `<hardware>-v<version>.bin` of every hardware type ([ADR 0043](adr/0043-firmware-distribution.md), [0059](adr/0059-firmware-bundle.md), [0060](adr/0060-download-from-releases.md), [0063](adr/0063-constant-firmware-bundle-name.md)) |
 | `SHA256SUMS` | checksums of all assets of the release |
 
-The container image is published separately as `ghcr.io/maehld/paperboy` (`X.Y.Z`, `X.Y` and `latest`; a prerelease gets only its full version, so it never replaces `X.Y` or `latest`). To create a release, push a tag: `git tag v2.1.0 && git push origin v2.1.0`. The *Release* workflow builds all assets and attaches them to one release, with notes that compare against the last stable release of the same train. A tag with a suffix (`v1.4.0-rc.1`, `plugins-v1.4.0-rc.1`) becomes a prerelease; only the `latest` channel installs it ([ADR 0089](adr/0089-release-channels.md), see [Downloads](#downloads)).
+The container image is published as `ghcr.io/maehld/paperboy` for a server release (`X.Y.Z`, `X.Y` and `latest`; a prerelease gets only its full version, so it never replaces `X.Y` or `latest`). No `main` build and no plugin or firmware release publishes an image.
+
+To create a release, push the tag of the train:
+
+```sh
+git tag server-v3.30.0 && git push origin server-v3.30.0
+git tag plugins-2026.11.21 && git push origin plugins-2026.11.21
+git tag firmware-2026.11.21 && git push origin firmware-2026.11.21
+```
+
+The *Release* workflow builds only that train's assets, attaches them to one release and writes notes per train. No release is marked as GitHub's latest; the Docker tag `latest` means the newest final server release. A tag with a suffix (`server-v1.4.0-rc.1`, `plugins-2026.11.21-rc.1`) becomes a prerelease; only the `latest` channel installs it ([ADR 0089](adr/0089-release-channels.md), see [Downloads](#downloads)).
 
 ## Downloads
 

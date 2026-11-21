@@ -44,6 +44,19 @@ jobs:
       - name: Check the ADR references
         run: ./scripts/check-adr-refs.sh
 
+      - name: Check the release tag grammar
+        run: |
+          for tag in server-v3.30.0 server-v3.31.0-rc.1 plugins-2026.11.21 \
+            plugins-2026.11.21.1 firmware-2026.11.21-rc.1; do
+            ./scripts/check-release-tag.sh "$tag"
+          done
+          for tag in v3.30.0 plugins-v4 plugins-2026-11-21; do
+            if ./scripts/check-release-tag.sh "$tag" 2>/dev/null; then
+              echo "accepted an invalid tag: $tag"
+              exit 1
+            fi
+          done
+
       - name: Smoke the browser scripts
         run: |
           npm install --no-save --prefix "$RUNNER_TEMP/ui" jsdom

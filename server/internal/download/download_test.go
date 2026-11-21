@@ -113,15 +113,15 @@ func zipOf(t *testing.T, entries map[string]string) []byte {
 }
 
 func TestListUsesETag(t *testing.T) {
-	rs, srv := newReleaseServer(t, "v2.1.0")
-	rs.add(t, "v2.1.0", "paperboy-plugins-"+platformSuffix()+".zip", []byte("zip"))
+	rs, srv := newReleaseServer(t, "plugins-2026.11.21")
+	rs.add(t, "plugins-2026.11.21", "paperboy-plugins-"+platformSuffix()+".zip", []byte("zip"))
 	c := New(srv.URL+"/repos/me/paperboy/releases", "", t.TempDir())
 
 	releases, err := c.List(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(releases) != 1 || releases[0].Tag != "v2.1.0" || releases[0].Version != "2.1.0" {
+	if len(releases) != 1 || releases[0].Tag != "plugins-2026.11.21" || releases[0].Version != "2026.11.21" {
 		t.Fatalf("releases: %+v", releases)
 	}
 	if _, err := os.Stat(filepath.Join(c.Dir, "cache.json")); err != nil {
@@ -134,13 +134,20 @@ func TestListUsesETag(t *testing.T) {
 	if rs.notMod.Load() != 1 {
 		t.Fatalf("second list must be conditional, got %d not-modified answers", rs.notMod.Load())
 	}
-	if len(again) != 1 || again[0].Tag != "v2.1.0" {
+	if len(again) != 1 || again[0].Tag != "plugins-2026.11.21" {
 		t.Fatalf("cached releases: %+v", again)
 	}
 }
 
 func TestVersionOf(t *testing.T) {
-	for tag, want := range map[string]string{"v2.1.0": "2.1.0", "plugins-v2.2.0": "2.2.0", "firmware-v1.0.0": "1.0.0"} {
+	for tag, want := range map[string]string{
+		"v2.1.0":              "2.1.0",
+		"server-v2.1.0":       "2.1.0",
+		"plugins-2026.11.21":  "2026.11.21",
+		"firmware-2026.11.21": "2026.11.21",
+		"plugins-v2.2.0":      "2.2.0",
+		"firmware-v1.0.0":     "1.0.0",
+	} {
 		if got := versionOf(tag); got != want {
 			t.Fatalf("%s: %q", tag, got)
 		}
@@ -217,17 +224,17 @@ func TestPluginZipReadsTheVersionsInTheNames(t *testing.T) {
 // TestListKeepsPrereleases verifies that the channel, not the list, decides
 // about a prerelease (ADR 0089).
 func TestListKeepsPrereleases(t *testing.T) {
-	rs, srv := newReleaseServer(t, "v2.2.0-rc.1", "v2.1.0")
-	rs.pre["v2.2.0-rc.1"] = true
-	rs.add(t, "v2.2.0-rc.1", FirmwareAsset, []byte("rc"))
-	rs.add(t, "v2.1.0", FirmwareAsset, []byte("final"))
+	rs, srv := newReleaseServer(t, "server-v2.2.0-rc.1", "server-v2.1.0")
+	rs.pre["server-v2.2.0-rc.1"] = true
+	rs.add(t, "server-v2.2.0-rc.1", FirmwareAsset, []byte("rc"))
+	rs.add(t, "server-v2.1.0", FirmwareAsset, []byte("final"))
 	c := New(srv.URL+"/repos/me/paperboy/releases", "", t.TempDir())
 
 	releases, err := c.List(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(releases) != 2 || releases[0].Tag != "v2.2.0-rc.1" || !releases[0].Prerelease || releases[1].Prerelease {
+	if len(releases) != 2 || releases[0].Tag != "server-v2.2.0-rc.1" || !releases[0].Prerelease || releases[1].Prerelease {
 		t.Fatalf("releases: %+v", releases)
 	}
 	if releases[0].Version != "2.2.0-rc.1" {

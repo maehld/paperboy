@@ -320,9 +320,9 @@ func TestDownloadSkipsHandPlacedProgram(t *testing.T) {
 // release replaces the program in use with a new file next to the old one
 // (ADR 0062, 0075).
 func TestDownloadUpdatesDownloadedPlugin(t *testing.T) {
-	feed, srv := newReleaseFeed(t, "v2.1.0")
-	feed.add("v2.1.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.0.0"): "old program"}))
-	feed.add("v2.1.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
+	feed, srv := newReleaseFeed(t, "plugins-2026.11.21", "firmware-2026.11.21")
+	feed.add("plugins-2026.11.21", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.0.0"): "old program"}))
+	feed.add("firmware-2026.11.21", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
 	s := testDownloadServer(t, downloadConfig(t, srv.URL+"/repos/me/paperboy/releases", "", ""))
 	if err := s.downloadOnce(context.Background(), s.config()); err != nil {
 		t.Fatal(err)
@@ -330,9 +330,9 @@ func TestDownloadUpdatesDownloadedPlugin(t *testing.T) {
 
 	// A newer release with the same plugin version downloads nothing: only the
 	// plugin's own version decides (ADR 0075).
-	feed.tags = []string{"v2.2.0", "v2.1.0"}
-	feed.add("v2.2.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.0.0"): "same program"}))
-	feed.add("v2.2.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
+	feed.tags = []string{"plugins-2026.11.22", "firmware-2026.11.22", "plugins-2026.11.21", "firmware-2026.11.21"}
+	feed.add("plugins-2026.11.22", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.0.0"): "same program"}))
+	feed.add("firmware-2026.11.22", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
 	if err := s.downloadOnce(context.Background(), s.config()); err != nil {
 		t.Fatal(err)
 	}
@@ -340,9 +340,13 @@ func TestDownloadUpdatesDownloadedPlugin(t *testing.T) {
 		t.Fatalf("an unchanged plugin version must not install anything, got %q", version)
 	}
 
-	feed.tags = []string{"v2.3.0", "v2.2.0", "v2.1.0"}
-	feed.add("v2.3.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.1.0"): "new program"}))
-	feed.add("v2.3.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.1.0.bin": "image"}))
+	feed.tags = []string{
+		"plugins-2026.11.23", "firmware-2026.11.23",
+		"plugins-2026.11.22", "firmware-2026.11.22",
+		"plugins-2026.11.21", "firmware-2026.11.21",
+	}
+	feed.add("plugins-2026.11.23", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.1.0"): "new program"}))
+	feed.add("firmware-2026.11.23", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.1.0.bin": "image"}))
 	if err := s.downloadOnce(context.Background(), s.config()); err != nil {
 		t.Fatal(err)
 	}
@@ -382,9 +386,9 @@ func TestDownloadUpdatesDownloadedPlugin(t *testing.T) {
 // TestDownloadInterval verifies the configurable cadence and that a reload with
 // a shorter interval applies without a restart (ADR 0062).
 func TestDownloadInterval(t *testing.T) {
-	feed, srv := newReleaseFeed(t, "v2.1.0")
-	feed.add("v2.1.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.0.0"): "old program"}))
-	feed.add("v2.1.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
+	feed, srv := newReleaseFeed(t, "plugins-2026.11.21", "firmware-2026.11.21")
+	feed.add("plugins-2026.11.21", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.0.0"): "old program"}))
+	feed.add("firmware-2026.11.21", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
 	source := srv.URL + "/repos/me/paperboy/releases"
 	config := downloadConfigInterval(t, source, "", "", "  interval: 6h\n")
 	s := testDownloadServer(t, config)
@@ -393,9 +397,9 @@ func TestDownloadInterval(t *testing.T) {
 	// The first check is due right away.
 	s.checkDownloads(context.Background())
 
-	feed.tags = []string{"v2.3.0", "v2.1.0"}
-	feed.add("v2.3.0", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.1.0"): "new program"}))
-	feed.add("v2.3.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
+	feed.tags = []string{"plugins-2026.11.22", "firmware-2026.11.22", "plugins-2026.11.21", "firmware-2026.11.21"}
+	feed.add("plugins-2026.11.22", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.1.0"): "new program"}))
+	feed.add("firmware-2026.11.22", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
 	now = now.Add(5 * time.Hour)
 	s.checkDownloads(context.Background())
 	if _, version := pluginProgram(s.config().PluginsDir, "testplugin", ""); version != "v1.0.0" {
@@ -495,8 +499,8 @@ func setBuildVersion(t *testing.T, version string) {
 // the channel follows the running version, so a final build is never pointed at
 // an rc (ADR 0101).
 func TestPaperboyReleaseHint(t *testing.T) {
-	feed, srv := newReleaseFeed(t, "v2.5.0-rc.1", "v2.4.0", "plugins-v9.9.9")
-	feed.pre["v2.5.0-rc.1"] = true
+	feed, srv := newReleaseFeed(t, "server-v2.5.0-rc.1", "server-v2.4.0", "plugins-2026.11.21")
+	feed.pre["server-v2.5.0-rc.1"] = true
 	source := srv.URL + "/repos/me/paperboy/releases"
 
 	for _, tc := range []struct {
@@ -564,7 +568,7 @@ func TestPaperboyReleaseHintForDevBuild(t *testing.T) {
 // TestPaperboyReleaseHintWithoutPaperboyTrain stays silent instead of failing
 // the check: a mirror may only carry plugin and firmware releases (ADR 0101).
 func TestPaperboyReleaseHintWithoutPaperboyTrain(t *testing.T) {
-	_, srv := newReleaseFeed(t, "plugins-v9.9.9", "firmware-v1.0.0")
+	_, srv := newReleaseFeed(t, "plugins-2026.11.21", "firmware-2026.11.21")
 	s := testDownloadServer(t, paperboyConfig(t, srv.URL+"/repos/me/paperboy/releases"))
 	setBuildVersion(t, "v2.0.0")
 
@@ -660,10 +664,10 @@ func TestDownloadChannels(t *testing.T) {
 // delivery: a version out of a prerelease release is installed although the
 // channel is stable (ADR 0089).
 func TestDownloadPinBypassesChannel(t *testing.T) {
-	feed, srv := newReleaseFeed(t, "plugins-v2.2.0-rc.1", "v2.1.0")
-	feed.pre["plugins-v2.2.0-rc.1"] = true
-	feed.add("plugins-v2.2.0-rc.1", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.5.0-rc.1"): "pinned rc"}))
-	feed.add("v2.1.0", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
+	feed, srv := newReleaseFeed(t, "plugins-2026.11.21-rc.1", "firmware-2026.11.21")
+	feed.pre["plugins-2026.11.21-rc.1"] = true
+	feed.add("plugins-2026.11.21-rc.1", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.5.0-rc.1"): "pinned rc"}))
+	feed.add("firmware-2026.11.21", download.FirmwareAsset, zipOf(t, map[string]string{"firmware/e1001-v1.0.0.bin": "image"}))
 	s := testDownloadServer(t, downloadConfig(t, srv.URL+"/repos/me/paperboy/releases", "    version: v1.5.0-rc.1\n", ""))
 	if err := s.downloadOnce(context.Background(), s.config()); err != nil {
 		t.Fatal(err)

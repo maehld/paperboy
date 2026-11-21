@@ -249,11 +249,11 @@ func runningVersion() (semver.Version, bool) {
 }
 
 // paperboyTrainRelease returns the newest release of Paperboy's own train: the
-// tag of the form vX.Y.Z that no other train uses (ADR 0056), filtered by the
-// channel (ADR 0101).
+// tag of the form server-vX.Y.Z that no other train uses (ADR 0147), filtered
+// by the channel (ADR 0101).
 func paperboyTrainRelease(releases []download.Release, channel string) (download.Release, bool) {
 	for _, rel := range releases {
-		if !strings.HasPrefix(rel.Tag, "v") || !channelAllows(channel, rel.Prerelease) {
+		if !strings.HasPrefix(rel.Tag, "server-v") || !channelAllows(channel, rel.Prerelease) {
 			continue
 		}
 		if !channelAllowsVersion(channel, rel.Version) {
