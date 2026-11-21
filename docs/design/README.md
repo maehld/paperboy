@@ -14,5 +14,6 @@ Each document ends with a list of the decisions it carries. The [ADRs](../adr/RE
 | [`04-operator-ui.md`](04-operator-ui.md) | Dashboard, plan preview, virtual display, editors, page and plan API, password |
 | [`05-plugins.md`](05-plugins.md) | Plugin protocol, plugin host, versions, state and blobs, value conditions, the shipped plugins |
 | [`06-delivery.md`](06-delivery.md) | Release trains, assets, workflows, the download client, channels, cache, inventory |
+| [`07-design-language.md`](07-design-language.md) | The shared type scale and the components of plugin widgets |
 
 [`../glossary.md`](../glossary.md) fixes the terms that all documents use.

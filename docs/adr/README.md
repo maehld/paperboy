@@ -179,6 +179,7 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0144](0144-a-github-plugin-for-repository-status.md) | A GitHub plugin for repository status | Accepted, implemented |
 | [0145](0145-a-period-and-a-balance-in-the-evcc-plugin.md) | A period and a balance in the evcc plugin | Accepted, implemented; adds `period` to the flow and the `balance` widget, and draws a link only while power or energy flows |
 | [0149](0149-a-prusalink-plugin-for-printer-status.md) | A PrusaLink plugin for 3D printer status | Accepted, implemented |
+| [0151](0151-a-shared-design-language-for-plugin-widgets.md) | A shared design language for plugin widgets | Accepted, implemented; adds `sdk/design` with the page-wide type scale and the tile, hero, trend, sparkline, meter, arrow, muted and notice components |
 
 ## Delivery and releases
 
