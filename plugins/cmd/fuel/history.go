@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
-	"image/color"
 	"math"
 	"os"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -224,28 +224,10 @@ func (f *fuel) historyWidget(w plugin.WidgetRequest, img *image.Paletted) error 
 	}
 
 	base := f.req.TextPx(w)
-	label := min(base*0.6, float64(b.Dy())*0.14)
-	if label < render.MinSize {
-		return plugin.TooSmall(w)
-	}
-	left := b.Min.X + render.Measure(f.money(9.999), label, false) + 4
-	right := b.Max.X
-	top := b.Min.Y + int(label*2.0)
-	bottom := b.Max.Y - int(label*1.7)
-	if right-left < 20 || bottom-top < 20 {
-		return plugin.TooSmall(w)
-	}
-
-	render.Text(img, fuelLabel(name)+" · €/l", b.Min.X, b.Min.Y+int(label),
-		render.Style{Size: label, Bold: true, Shrink: true}, b.Dx(), color.Black, render.Left)
-	current := f.money(list[len(list)-1].price)
-	currentW := render.Measure(current, label, true)
-	render.Text(img, current, b.Max.X, b.Min.Y+int(label),
-		render.Style{Size: label, Bold: true, Shrink: true}, currentW+2, color.Black, render.Right)
-
+	s := design.NewScale(base, b.Dy())
 	lo, hi := list[0].price, list[0].price
-	for _, s := range list {
-		lo, hi = min(lo, s.price), max(hi, s.price)
+	for _, step := range list {
+		lo, hi = min(lo, step.price), max(hi, step.price)
 	}
 	if hi-lo < 0.002 {
 		lo, hi = lo-0.005, hi+0.005
@@ -255,43 +237,34 @@ func (f *fuel) historyWidget(w plugin.WidgetRequest, img *image.Paletted) error 
 	if hi == lo {
 		hi = lo + 0.01
 	}
-	x := func(t time.Time) int {
-		return left + int(t.Sub(from).Seconds()/span.Seconds()*float64(right-left))
+	points := make([]design.Point, len(list))
+	for i, step := range list {
+		points[i] = design.Point{At: step.at, Value: step.price}
 	}
-	y := func(v float64) int {
-		return bottom - int((v-lo)/(hi-lo)*float64(bottom-top))
-	}
-
-	for _, v := range []float64{lo, (lo + hi) / 2, hi} {
-		render.HLine(img, left, y(v), right, 1)
-		render.Text(img, f.money(v), left-4, y(v)+int(label*0.35),
-			render.Style{Size: label}, left-b.Min.X, color.Black, render.Right)
-	}
-	for i := 1; i < len(list); i++ {
-		a, c := list[i-1], list[i]
-		render.Segment(img, x(a.at), y(a.price), x(c.at), y(a.price), 2, false)
-		if a.price != c.price {
-			render.Segment(img, x(c.at), y(a.price), x(c.at), y(c.price), 2, false)
-		}
-	}
-
-	type tick struct {
-		t  time.Time
-		st render.Align
-	}
-	ticks := []tick{{from, render.Left}, {now, render.Right}}
-	if right-left > 4*render.Measure("00:00", label, false) {
-		ticks = append(ticks, tick{from.Add(span / 2), render.Center})
+	ticks := []time.Time{from, now}
+	if b.Dx() > 4*render.Measure("00:00", s.Micro, false) {
+		ticks = []time.Time{from, from.Add(span / 2), now}
 	}
 	format := "15:04"
 	if span > 24*time.Hour {
 		format = "02.01."
 	}
-	tw := render.Measure("00:00", label, false) + 2
-	for _, k := range ticks {
-		render.VLine(img, x(k.t), bottom, bottom+3, 1)
-		render.Text(img, k.t.In(f.loc).Format(format), x(k.t), b.Max.Y-int(label*0.2),
-			render.Style{Size: label}, tw, color.Black, k.st)
+	if !design.DrawTrend(img, b, design.Trend{
+		From:   from,
+		To:     now,
+		Series: []design.Series{{Points: points, Style: design.Step, Width: 2}},
+		Range:  &design.Range{Min: lo, Max: hi},
+		Axis:   true,
+		Grid:   true,
+		Ticks:  ticks,
+		TickFormat: func(t time.Time) string {
+			return t.In(f.loc).Format(format)
+		},
+		Label:   fuelLabel(name) + " · €/l",
+		Current: f.money(list[len(list)-1].price),
+		Format:  f.money,
+	}, s) {
+		return plugin.TooSmall(w)
 	}
 	return nil
 }

@@ -50,7 +50,7 @@ func drawValue(dst *image.Paletted, r image.Rectangle, top, height int, value, u
 		return false
 	}
 	unitSize = min(unitSize, valueSize)
-	trendSize := int(math.Round(unitSize * 0.9))
+	trendSize := max(int(math.Round(unitSize*0.9)), render.MinSize)
 	if trend == 0 {
 		trendSize = 0
 	}
@@ -58,7 +58,7 @@ func drawValue(dst *image.Paletted, r image.Rectangle, top, height int, value, u
 		valueSize *= 0.94
 		unitSize = min(unitSize, valueSize)
 		if trend != 0 {
-			trendSize = int(math.Round(unitSize * 0.9))
+			trendSize = max(int(math.Round(unitSize*0.9)), render.MinSize)
 		}
 	}
 	if valueWidth(value, unit, valueSize, unitSize, bold, trend, trendSize) > r.Dx() {

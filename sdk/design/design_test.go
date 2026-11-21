@@ -106,6 +106,37 @@ func TestHeroDropsDetails(t *testing.T) {
 	}
 }
 
+func TestHeroKeepsOneDetailInACurrentWidget(t *testing.T) {
+	h := Hero{
+		Value:   "12,4",
+		Unit:    "°C",
+		Caption: "Teilweise bewölkt",
+		Details: []string{"gefühlt 11° · Wind 3 · 16°/7°"},
+		Note:    "Regen bis 06:00",
+	}
+	s := NewScale(27.8, 164)
+	if p, ok := planHero(h, image.Rect(0, 0, 384, 164), s, 1, true, true); !ok || p.details != 1 {
+		t.Fatalf("current hero: %+v ok=%v", p, ok)
+	}
+}
+
+func TestHeroFitsOneDetailInAShortCell(t *testing.T) {
+	h := Hero{
+		Label:   "Diesel · €/l",
+		Value:   "1,769",
+		Caption: "Freie Tankstelle",
+		Details: []string{"1,6 km · offen · unverändert seit 23:54"},
+	}
+	s := NewScale(27.8, 104)
+	if p, ok := planHero(h, image.Rect(0, 0, 384, 104), s, 1, true, false); !ok || p.details != 1 {
+		t.Fatalf("short fuel hero: %+v ok=%v", p, ok)
+	}
+	img := render.NewCanvas(400, 120, 4)
+	if !DrawHero(img, image.Rect(8, 8, 392, 112), h, s) {
+		t.Fatal("short fuel hero did not draw")
+	}
+}
+
 func points(n int, base float64) []Point {
 	out := make([]Point, n)
 	start := time.Date(2026, 11, 21, 0, 0, 0, 0, time.UTC)

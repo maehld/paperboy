@@ -10,8 +10,10 @@ remove repeated work and keep the sizes on one scale.
 
 ![The components in four gray levels](../images/design/components.png)
 
-`scripts/design-preview.sh` renders this gallery. It also writes
-`components-1bit.png` for the two-level panels.
+`scripts/design-preview.sh` renders this gallery. It also writes the variant
+for the two-level panels:
+
+![The components in one bit](../images/design/components-1bit.png)
 
 ## The type scale
 

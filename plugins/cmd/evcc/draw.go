@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -97,10 +98,7 @@ func duration(d time.Duration, lang string) string {
 	return fmt.Sprintf("%d h %d min", m/60, m%60)
 }
 
-// tile is one label, value and optional detail.
-type tile struct{ label, value, detail string }
-
-func (e *evcc) siteTiles() []tile {
+func (e *evcc) siteTiles() []design.Tile {
 	s := e.cur
 	grid := s.gridPower()
 	gridWord := e.t("Bezug", "import")
@@ -110,10 +108,10 @@ func (e *evcc) siteTiles() []tile {
 	if math.Abs(grid) < 10 {
 		gridWord = ""
 	}
-	tiles := []tile{
-		{e.t("PV", "PV"), e.power(s.PVPower), ""},
-		{e.t("Haus", "Home"), e.power(s.HomePower), ""},
-		{e.t("Netz", "Grid"), e.power(grid), gridWord},
+	tiles := []design.Tile{
+		{Label: e.t("PV", "PV"), Value: e.power(s.PVPower)},
+		{Label: e.t("Haus", "Home"), Value: e.power(s.HomePower)},
+		{Label: e.t("Netz", "Grid"), Value: e.power(grid), Detail: gridWord},
 	}
 	if s.Battery != nil && s.Battery.Capacity > 0 {
 		word := ""
@@ -123,9 +121,9 @@ func (e *evcc) siteTiles() []tile {
 		case s.Battery.Power > 10:
 			word = e.t("entlädt ", "discharging ") + e.power(s.Battery.Power)
 		}
-		tiles = append(tiles, tile{e.t("Akku", "Battery"), e.num(s.Battery.SoC, 0) + " %", word})
+		tiles = append(tiles, design.Tile{Label: e.t("Akku", "Battery"), Value: e.num(s.Battery.SoC, 0) + " %", Detail: word})
 	} else if s.TariffGrid != nil {
-		tiles = append(tiles, tile{e.t("Strompreis", "Grid price"), e.price(*s.TariffGrid), "/ kWh"})
+		tiles = append(tiles, design.Tile{Label: e.t("Strompreis", "Grid price"), Value: e.price(*s.TariffGrid), Detail: "/ kWh"})
 	}
 	return tiles
 }
@@ -139,35 +137,16 @@ func (e *evcc) site(w plugin.WidgetRequest, img *image.Paletted) error {
 	if w.Arg().Int("columns", 2) == 4 {
 		cols = 4
 	}
-	drawTiles(img, tiles, cols, w.Style.Padding, w.Style.Rule, e.req.TextPx(w))
+	s := design.NewScale(e.req.TextPx(w), img.Rect.Dy())
+	if !design.Tiles(img, img.Rect, tiles, s, design.TileOptions{
+		Columns: cols,
+		Divider: true,
+		Gap:     w.Style.Padding,
+		Rule:    max(w.Style.Rule, 1),
+	}) {
+		return plugin.TooSmall(w)
+	}
 	return nil
-}
-
-// drawTiles lays tiles out in a grid with thin separators, like the tiles of
-// the other plugins: label above, value bold, detail below.
-func drawTiles(img *image.Paletted, tiles []tile, cols, pad, rule int, base float64) {
-	rows := (len(tiles) + cols - 1) / cols
-	b := img.Rect
-	cw, ch := b.Dx()/cols, b.Dy()/rows
-	for i, t := range tiles {
-		x0, y0 := b.Min.X+(i%cols)*cw, b.Min.Y+(i/cols)*ch
-		x := x0 + pad
-		width := cw - 2*pad
-		label := min(float64(ch)*0.2, base*0.8)
-		value := min(float64(ch)*0.34, base*1.6)
-		detail := min(float64(ch)*0.17, base*0.7)
-		render.Text(img, t.label, x, y0+pad+int(label), render.Style{Size: label, Shrink: true}, width, color.Black, render.Left)
-		render.Text(img, t.value, x, y0+ch*66/100, render.Style{Size: value, Bold: true, Shrink: true}, width, color.Black, render.Left)
-		if t.detail != "" {
-			render.Text(img, t.detail, x, y0+ch-pad, render.Style{Size: detail, Shrink: true}, width, color.Black, render.Left)
-		}
-	}
-	for c := 1; c < cols; c++ {
-		render.VLine(img, b.Min.X+c*cw, b.Min.Y+pad, b.Max.Y-pad, rule)
-	}
-	for r := 1; r < rows; r++ {
-		render.HLine(img, b.Min.X+pad, b.Min.Y+r*ch, b.Max.X-pad, rule)
-	}
 }
 
 var modes = map[string][2]string{

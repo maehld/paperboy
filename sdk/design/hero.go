@@ -25,6 +25,10 @@ type Hero struct {
 	Rule  int
 }
 
+// heroFitFloor is the smallest share of a role a hero may use while optional
+// content remains. Below it the component drops a line instead.
+const heroFitFloor = 0.65
+
 // heroPlan is the resolved layout of a hero.
 type heroPlan struct {
 	s         Scale
@@ -96,7 +100,7 @@ func planHero(h Hero, r image.Rectangle, s Scale, details int, caption, note boo
 		p.gapLabel = gap(s.Detail)
 		p.gapValue = gap(s.Hero)
 		p.gapDetail = max(int(math.Round(s.Detail*0.12)), 1)
-		p.gapMeter = gap(s.Detail)
+		p.gapMeter = max(gap(s.Body), 2*p.gapDetail)
 		if h.Label != "" {
 			p.labelH = lineHeight(s.Detail)
 		}
@@ -139,14 +143,16 @@ func planHero(h Hero, r image.Rectangle, s Scale, details int, caption, note boo
 		return p, p.total
 	}
 	p, total := layout(s)
-	if total > r.Dy() {
+	cur := s
+	for i := 0; i < 3 && total > r.Dy(); i++ {
 		f := float64(r.Dy()) / float64(total)
-		// Drop content before the type falls below 80% of its role. A
-		// shorter hero reads better than a page of tiny details.
-		if f < 0.8 && (details > 0 || caption || note) {
+		// Drop content before the type falls below the floor. A shorter
+		// hero reads better than a page of tiny details.
+		if f < heroFitFloor && (details > 0 || caption || note) {
 			return heroPlan{}, false
 		}
-		p, total = layout(s.Scaled(f))
+		cur = cur.Scaled(f)
+		p, total = layout(cur)
 	}
 	if total <= 0 || total > r.Dy() || p.s.Hero < render.MinSize {
 		return heroPlan{}, false

@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"math"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -20,7 +21,8 @@ func draw(a *args, req *plugin.Request, w plugin.WidgetRequest, img *image.Palet
 	if inner.Empty() {
 		return plugin.TooSmall(w)
 	}
-	base := req.TextPx(w)
+	s := design.NewScale(req.TextPx(w), inner.Dy())
+	base := s.Body
 	rule := max(w.Style.Rule, 1)
 	gap := max(int(math.Round(base*0.25)), 2)
 
@@ -38,7 +40,7 @@ func draw(a *args, req *plugin.Request, w plugin.WidgetRequest, img *image.Palet
 
 	headerH := 0
 	if a.label != "" || percent != "" {
-		headerH = int(math.Round(base * 1.15))
+		headerH = int(math.Round(s.Detail * 1.15))
 	}
 	barH := 0
 	if st.bar {
@@ -46,7 +48,7 @@ func draw(a *args, req *plugin.Request, w plugin.WidgetRequest, img *image.Palet
 	}
 	dateH := 0
 	if date != "" {
-		dateH = int(math.Round(base * 0.8))
+		dateH = int(math.Round(s.Detail * 0.95))
 	}
 
 	dateOn, headerOn, barOn := date != "", headerH > 0, st.bar
@@ -86,7 +88,7 @@ func draw(a *args, req *plugin.Request, w plugin.WidgetRequest, img *image.Palet
 	// A one-row cell has no room for a row of its own, but the label and the
 	// value fit side by side.
 	if droppedHeader && !barOn && !dateOn && a.label != "" {
-		drawInline(img, inner, a.label, value, base, gap)
+		drawInline(img, inner, a.label, value, s, gap)
 		return nil
 	}
 
@@ -108,14 +110,14 @@ func draw(a *args, req *plugin.Request, w plugin.WidgetRequest, img *image.Palet
 
 	y := inner.Min.Y
 	if headerOn {
-		drawHeader(img, inner, a.label, percent, base, gap)
+		drawHeader(img, inner, a.label, percent, s.Detail, gap)
 		y += headerH + gap/2
 	}
 	if y > mainBottom {
 		y = mainBottom
 	}
 	if mainSpace > 0 {
-		size := math.Min(float64(mainBottom-y)*0.95, base*2.6)
+		size := math.Min(float64(mainBottom-y)*0.95, s.Hero)
 		if st.passed {
 			drawPassed(img, image.Rect(inner.Min.X, y, inner.Max.X, mainBottom), value, size, rule, gap)
 		} else {
@@ -125,10 +127,11 @@ func draw(a *args, req *plugin.Request, w plugin.WidgetRequest, img *image.Palet
 		}
 	}
 	if barOn {
-		drawBar(img, image.Rect(inner.Min.X, barTop, inner.Max.X, barTop+barH), st.fraction, rule)
+		design.DrawMeter(img, image.Rect(inner.Min.X, barTop, inner.Max.X, barTop+barH),
+			design.Meter{Fraction: st.fraction}, rule)
 	}
 	if dateOn {
-		size := math.Min(base*0.72, float64(dateH)*0.8)
+		size := math.Min(s.Detail, float64(dateH)*0.9)
 		baseline := dateTop + int(math.Round(size))
 		render.Text(img, date, inner.Max.X, baseline,
 			render.Style{Size: size, Shrink: true}, inner.Dx(), color.Black, render.Right)
@@ -138,11 +141,11 @@ func draw(a *args, req *plugin.Request, w plugin.WidgetRequest, img *image.Palet
 
 // drawInline puts the label on the left and the value on the right of a cell
 // with a single row.
-func drawInline(img *image.Paletted, r image.Rectangle, label, value string, base float64, gap int) {
+func drawInline(img *image.Paletted, r image.Rectangle, label, value string, s design.Scale, gap int) {
 	if r.Empty() {
 		return
 	}
-	size := math.Min(base*1.3, float64(r.Dy())*0.9)
+	size := math.Min(s.Title, float64(r.Dy())*0.9)
 	if size < render.MinSize {
 		size = render.MinSize
 	}
@@ -150,18 +153,18 @@ func drawInline(img *image.Paletted, r image.Rectangle, label, value string, bas
 	vw := render.Measure(value, size, true)
 	render.Text(img, value, r.Max.X, baseline, render.Style{Size: size, Bold: true, Shrink: true}, r.Dx(), color.Black, render.Right)
 	if room := r.Dx() - vw - gap; room > render.MinSize {
-		render.Text(img, label, r.Min.X, baseline, render.Style{Size: base, Shrink: true}, room, color.Black, render.Left)
+		render.Text(img, label, r.Min.X, baseline, render.Style{Size: s.Detail, Shrink: true}, room, color.Black, render.Left)
 	}
 }
 
 // drawHeader puts the label on the left and the passed percentage on the
 // right of the first line.
-func drawHeader(img *image.Paletted, inner image.Rectangle, label, percent string, base float64, gap int) {
-	baseline := inner.Min.Y + int(math.Round(base*0.85))
+func drawHeader(img *image.Paletted, inner image.Rectangle, label, percent string, size float64, gap int) {
+	baseline := inner.Min.Y + int(math.Round(size*0.95))
 	rightW := 0
 	if percent != "" {
-		rightW = render.Measure(percent, base, false)
-		render.Text(img, percent, inner.Max.X, baseline, render.Style{Size: base}, rightW+1, color.Black, render.Right)
+		rightW = render.Measure(percent, size, false)
+		render.Text(img, percent, inner.Max.X, baseline, render.Style{Size: size}, rightW+1, color.Black, render.Right)
 	}
 	if label == "" {
 		return
@@ -170,7 +173,7 @@ func drawHeader(img *image.Paletted, inner image.Rectangle, label, percent strin
 	if rightW > 0 {
 		room -= gap
 	}
-	render.Text(img, label, inner.Min.X, baseline, render.Style{Size: base, Shrink: true}, room, color.Black, render.Left)
+	render.Text(img, label, inner.Min.X, baseline, render.Style{Size: size, Shrink: true}, room, color.Black, render.Left)
 }
 
 // drawPassed centers the passed text in r and puts a tick in front of it when
@@ -205,22 +208,6 @@ func checkmark(img *image.Paletted, r image.Rectangle, thickness int) {
 	x3, y3 := r.Max.X, r.Min.Y+h*8/100
 	render.Segment(img, x1, y1, x2, y2, th, false)
 	render.Segment(img, x2, y2, x3, y3, th, false)
-}
-
-// drawBar outlines the bar and fills the passed part.
-func drawBar(img *image.Paletted, r image.Rectangle, fraction float64, rule int) {
-	if r.Dx() < 3 || r.Dy() < 2 {
-		return
-	}
-	render.FillSolid(img, image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+rule))
-	render.FillSolid(img, image.Rect(r.Min.X, r.Max.Y-rule, r.Max.X, r.Max.Y))
-	render.FillSolid(img, image.Rect(r.Min.X, r.Min.Y, r.Min.X+rule, r.Max.Y))
-	render.FillSolid(img, image.Rect(r.Max.X-rule, r.Min.Y, r.Max.X, r.Max.Y))
-	width := r.Dx() - 2*rule
-	fill := min(int(math.Round(float64(width)*fraction)), width)
-	if fill > 0 {
-		render.FillSolid(img, image.Rect(r.Min.X+rule, r.Min.Y+rule, r.Min.X+rule+fill, r.Max.Y-rule))
-	}
 }
 
 // value is the main text: the days with their unit, hours and minutes on the
