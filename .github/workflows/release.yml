@@ -41,7 +41,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version-file: server/go.mod
 
       - name: Build
         run: |
@@ -50,8 +50,8 @@ jobs:
           mkdir -p dist
           CGO_ENABLED=0 GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} \
             go build -trimpath \
-            -ldflags="-s -w -X github.com/maehld/paperboy/internal/paperboy.version=${GITHUB_REF_NAME}" \
-            -o "dist/paperboy-${{ matrix.os }}-${{ matrix.arch }}$ext" ./cmd/paperboy
+            -ldflags="-s -w -X github.com/maehld/paperboy/server/internal/paperboy.version=${GITHUB_REF_NAME}" \
+            -o "dist/paperboy-${{ matrix.os }}-${{ matrix.arch }}$ext" ./server/cmd/paperboy
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5

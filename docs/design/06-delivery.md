@@ -28,7 +28,7 @@ Only `release.yml` creates a GitHub release. The other workflows build for chang
 | Workflow | Job |
 |---|---|
 | *CI* | `gofmt`, `go vet`, tests and a cross-build on every change |
-| *Plugins* | Builds both plugin zips; fails a pull request that changed `cmd/<plugin>` without raising its `VERSION`, and one that changed `pkg/plugin` or `pkg/render` without raising every plugin's version ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)) |
+| *Plugins* | Builds both plugin zips; fails a pull request that changed `plugins/cmd/<plugin>` without raising its `VERSION`, and one that changed `sdk/plugin` or `sdk/render` without raising every plugin's version ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)) |
 | *Firmware* | Compiles `sticky`, `e1001`, `e1003` and `lcd2004` with the pinned ESPHome, only for changes under `firmware/esphome/`, and bundles them into one image archive |
 | *Docker* | Builds the container image, which holds the Paperboy binary only |
 | *Release* | Builds the binaries, calls *Plugins* and *Firmware* as reusable workflows, attaches everything with `SHA256SUMS` and writes notes against the last stable release of the same train |
@@ -77,7 +77,7 @@ The inventory is never touched automatically. A check keeps one archive per asse
 
 ## Versions and names
 
-`internal/semver` parses the versions in program and image names: `1.4`, `1.4.0`, `1.4.0-rc.1`, `1.4.0-beta.3`. Missing parts count as zero, so `1.4` equals `1.4.0`. A final version ranks above every suffix, numeric identifiers compare as numbers, the rest lexically. The package is called `semver` because `paperboy` already has a `version` variable for the stamped build version.
+`server/internal/semver` parses the versions in program and image names: `1.4`, `1.4.0`, `1.4.0-rc.1`, `1.4.0-beta.3`. Missing parts count as zero, so `1.4` equals `1.4.0`. A final version ranks above every suffix, numeric identifiers compare as numbers, the rest lexically. The package is called `semver` because `paperboy` already has a `version` variable for the stamped build version.
 
 ## Pruning
 

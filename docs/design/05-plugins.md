@@ -20,7 +20,7 @@ The resolved path is part of the plugin's specification, so installing a new ver
 
 Paperboy and the plugin exchange one JSON object per line: a request on stdin, an answer on stdout with the same `id`. The protocol version is 9 ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0125](../adr/0125-remove-the-text-widget-path.md), [0126](../adr/0126-a-schedule-event-for-plugin-demand.md), [0127](../adr/0127-plan-conditions-are-values.md)). Paperboy requires at least version 5 and accepts newer ones. The protocol grew additively until version 8. Version 8 removed the text action; version 9 adds an inbound schedule event and the `enum` value type, and removes conditions. A plugin below 8 that still has text widgets is accepted, because nothing asks it for text. A plugin below 9 never receives a schedule and cannot declare an enum value. `Message.CheckVersion` runs on every answer; a wrong version fails that plugin with one clear log line instead of a broken page ([ADR 0058](../adr/0058-plugin-protocol-version-check.md), [0081](../adr/0081-plugin-state-over-the-protocol.md)).
 
-Besides answers, Paperboy may send a line without `id`: the schedule event names when it next needs the plugin's data. An event without `next_refresh` means no demand now. It goes only to a plugin that reports version 9 or newer. A plugin that relies on the schedule requires version 9 and refuses an older host. A plugin ignores events it does not know. `pkg/plugin.Demand` receives the event. `Wait(ctx, floor)` sleeps until the named moment minus 30 seconds, wakes on a new schedule, and never returns earlier than `floor` after the call. A plugin calls it after each fetch, so the floor counts from the end of the fetch. The event format is `{"event":"schedule","next_refresh":"…"}`.
+Besides answers, Paperboy may send a line without `id`: the schedule event names when it next needs the plugin's data. An event without `next_refresh` means no demand now. It goes only to a plugin that reports version 9 or newer. A plugin that relies on the schedule requires version 9 and refuses an older host. A plugin ignores events it does not know. `sdk/plugin.Demand` receives the event. `Wait(ctx, floor)` sleeps until the named moment minus 30 seconds, wakes on a new schedule, and never returns earlier than `floor` after the call. A plugin calls it after each fetch, so the floor counts from the end of the fetch. The event format is `{"event":"schedule","next_refresh":"…"}`.
 
 Paperboy computes the demand per plugin from the configured devices. It takes the expected contact (`last_seen + refresh` of the last sync). It also takes the pages of the rule the device is on that fit its display type, and the values of the plan's conditions. Actions do not count; they are resolved when the menu opens. A device that is late or never seen adds no demand until it contacts again, so a powered-off device cannot keep a plugin polling. Previews and the virtual display add no demand either.
 
@@ -55,7 +55,7 @@ A widget that cannot draw anything in its cell reports `ErrTooSmall` with the ce
 
 ## The plugin host
 
-`internal/widget` owns the processes ([ADR 0049](../adr/0049-plugin-widgets.md)).
+`server/internal/widget` owns the processes ([ADR 0049](../adr/0049-plugin-widgets.md)).
 
 - A plugin starts on first use. After an exit, after its `timeout` (default 30 seconds, killed) and after a change of its specification it is started again. A new process may be another program, so it drops the describe answer and the cached results of the plugin. Removed plugins drop their cached results.
 - A plugin inherits an allowlist, not the environment of Paperboy ([ADR 0135](../adr/0135-a-minimal-environment-for-plugins.md)). The allowlist holds `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`, the locale and proxy variables, and what Windows needs to start a program. The configured `env` and `PAPERBOY_LANGUAGE`/`PAPERBOY_TIMEZONE` follow and replace an inherited value of the same name. A plugin never sees `PAPERBOY_UI_PASSWORD` or the release token.
@@ -93,15 +93,15 @@ The readings of Dexcom in `state/` are acceptable: the operator owns the directo
 
 ## Versions
 
-Every plugin has its own version in `cmd/<plugin>/VERSION`, embedded in the program ([ADR 0075](../adr/0075-plugin-versions.md)). The plugin zip names the programs `<plugin>-v<version>`. A change to a plugin raises the version in the same commit. The *Plugins* workflow fails a pull request that changes `cmd/<plugin>` without raising it.
+Every plugin has its own version in `plugins/cmd/<plugin>/VERSION`, embedded in the program ([ADR 0075](../adr/0075-plugin-versions.md)). The plugin zip names the programs `<plugin>-v<version>`. A change to a plugin raises the version in the same commit. The *Plugins* workflow fails a pull request that changes `plugins/cmd/<plugin>` without raising it.
 
-`pkg/plugin` and `pkg/render` are part of every plugin binary, so a change there raises the version of every plugin ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)). Other shared `pkg/` code, `go.mod` and `go.sum` only warn.
+`sdk/plugin` and `sdk/render` are part of every plugin binary, so a change there raises the version of every plugin ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)). Other shared code under `sdk/`, `plugins/go.mod` and `plugins/go.sum` only warn.
 
 `describe` reports the plugin's own version. When it differs from the version in the program's file name, Paperboy logs one warning per plugin.
 
 ## The built-in plugin
 
-`internal/builtin` provides the plugin `paperboy`: `header`, `text`, `clock`, `logo`, `battery` and `device-status` for image displays ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md), [0115](../adr/0115-device-status-in-a-widget.md)). It draws from `pkg/render` and needs no data source, so it is always available and never cached. Its values `title`, `time`, `now`, `date`, `long` and `block` give a text page data without another plugin ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). It is the only plugin that receives `server_status`; a page that shows its own device is cached per device.
+`server/internal/builtin` provides the plugin `paperboy`: `header`, `text`, `clock`, `logo`, `battery` and `device-status` for image displays ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md), [0115](../adr/0115-device-status-in-a-widget.md)). It draws from `sdk/render` and needs no data source, so it is always available and never cached. Its values `title`, `time`, `now`, `date`, `long` and `block` give a text page data without another plugin ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). It is the only plugin that receives `server_status`; a page that shows its own device is cached per device.
 
 ## The shipped plugins
 

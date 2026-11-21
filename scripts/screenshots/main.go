@@ -3,10 +3,11 @@
 // starts a mock of every upstream service and writes the PNGs that the plugin
 // documents embed.
 //
-// Run it from the repository root:
+// Run it from the repository root. The tool belongs to no module, so Go starts
+// it from its files:
 //
-//	go run ./scripts/screenshots
-//	go run ./scripts/screenshots -only weather
+//	go run ./scripts/screenshots/main.go ./scripts/screenshots/mock.go
+//	go run ./scripts/screenshots/main.go ./scripts/screenshots/mock.go -only weather
 //
 // The mock keeps the pictures stable and needs no credentials. xkcd and the
 // Pokémon card show placeholder art, because the repository ships neither the
@@ -57,8 +58,8 @@ var widgetArgs = map[string]map[string]string{
 	"paperboy/header":     {"title": "Übersicht"},
 }
 
-// plugins are the shipped plugins: the directories under cmd/ with a VERSION
-// file. The built-in plugin needs no program.
+// plugins are the shipped plugins: the directories under plugins/cmd/ with a
+// VERSION file. The built-in plugin needs no program.
 var plugins = []string{
 	"calendar", "countdown", "departures", "dexcom", "evcc", "fuel",
 	"myskoda", "pokedex", "rss", "weather", "xkcd",
@@ -145,19 +146,19 @@ func run(out, only, binDir string, keep bool) error {
 	return nil
 }
 
-// repoRoot walks up until it finds go.mod.
+// repoRoot walks up until it finds go.work.
 func repoRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
 	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "go.work")); err == nil {
 			return dir, nil
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", errors.New("go.mod not found")
+			return "", errors.New("go.work not found")
 		}
 		dir = parent
 	}
@@ -170,11 +171,11 @@ func build(root, tmp, instance, binDir string) (string, error) {
 	pluginsDir := filepath.Join(instance, "plugins")
 	if binDir == "" {
 		paperboy = filepath.Join(tmp, "paperboy")
-		if err := goBuild(root, paperboy, "./cmd/paperboy"); err != nil {
+		if err := goBuild(root, paperboy, "./server/cmd/paperboy"); err != nil {
 			return "", err
 		}
 		for _, name := range plugins {
-			if err := goBuild(root, filepath.Join(pluginsDir, name), "./cmd/"+name); err != nil {
+			if err := goBuild(root, filepath.Join(pluginsDir, name), "./plugins/cmd/"+name); err != nil {
 				return "", err
 			}
 		}

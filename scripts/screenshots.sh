@@ -4,4 +4,4 @@
 # needs no credentials and no network. See docs/development.md.
 set -eu
 cd "$(dirname "$0")/.."
-exec go run ./scripts/screenshots "$@"
+exec go run ./scripts/screenshots/main.go ./scripts/screenshots/mock.go "$@"

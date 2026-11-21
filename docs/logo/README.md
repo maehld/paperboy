@@ -27,7 +27,7 @@ It embeds the marks inline instead of linking them, so it renders from any locat
 temp directory, an editor preview — and does not depend on the folder next to it. It is generated:
 change the SVGs and run `python3 build-preview.py`.
 
-The wordmark is Go Mono Bold, the font family `pkg/render` draws text with, converted to outlines:
+The wordmark is Go Mono Bold, the font family `sdk/render` draws text with, converted to outlines:
 the file needs no font installed and cannot drift between renderers. The outlines were generated
 from `golang.org/x/image/font/gofont/gomonobold` with `font/sfnt`; if the wordmark ever has to
 change, regenerate the path instead of setting it as text.
@@ -37,7 +37,7 @@ The logo is part of the project and covered by `LICENSE`.
 ## The mark in pages and on devices
 
 The built-in plugin draws the mark from this geometry instead of a raster copy:
-`paperboy/logo` (`internal/builtin/logo.go`) scales it to any cell and
+`paperboy/logo` (`server/internal/builtin/logo.go`) scales it to any cell and
 `wordmark: true` adds the lockup's wordmark in Go Mono Bold. The firmware draws
 the same shapes (`pb_logo_ink` in `firmware/esphome/paperboy.h`): the lockup
 above the instructions of the Wi-Fi and Paperboy URL screens and alone for 5 s at
@@ -48,7 +48,7 @@ touch both, and the font subset follows the design.
 
 ## What the UI serves
 
-`internal/paperboy/ui/logo.svg` and `internal/paperboy/ui/favicon.svg` are the copies Paperboy
+`server/internal/paperboy/ui/logo.svg` and `server/internal/paperboy/ui/favicon.svg` are the copies Paperboy
 embeds: the lockup in the header of every operator page and the small cut as its favicon. They are
 byte-for-byte copies of `paperboy-lockup.svg` and `paperboy-small.svg`; `TestOperatorPagesCarryTheLogo`
-in `internal/paperboy` fails when one of them drifts.
+in `server/internal/paperboy` fails when one of them drifts.

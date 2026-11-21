@@ -68,7 +68,7 @@ the text display. A text page carries boxes of values or literal text, and every
 box must fit the character grid of the display.
 
 The plugin names in the pages are the keys under `plugins` in `paperboy.yaml`;
-`cmd/paperboy/paperboy.example.yaml` declares all of them.
+`server/cmd/paperboy/paperboy.example.yaml` declares all of them.
 
 `plans/standard.yaml` pages through its pages during the day and shows
 the overview at night. Copy it into the `plans/` directory of your instance and

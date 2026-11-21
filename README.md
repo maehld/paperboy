@@ -18,14 +18,14 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
 ## Quick start
 
 1. Create the instance directory with the fixed layout ([ADR 0037](docs/adr/0037-instance-directory-layout.md)): `paperboy.yaml`, `displays/`, `pages/`, `plans/`, `devices/` and, for your own plugins, `plugins/`.
-2. Configure `paperboy.yaml`: copy `cmd/paperboy/paperboy.example.yaml` to `<instance>/paperboy.yaml` and adapt the `plugins` section.
+2. Configure `paperboy.yaml`: copy `server/cmd/paperboy/paperboy.example.yaml` to `<instance>/paperboy.yaml` and adapt the `plugins` section.
 3. Add the display types: copy the files from `examples/displays`, or create them in the editor at `/ui/editor?tab=displays` ([ADR 0071](docs/adr/0071-display-types-in-files-of-their-own.md)).
 4. Add pages and a plan: copy files from `examples/pages` and `examples/plans` into the instance.
 5. Add one device file under `devices/` for every display ([ADR 0070](docs/adr/0070-devices-in-their-own-files.md)). Copy `examples/devices/wohnzimmer.yaml`, or create the device in the editor. Set `plan: standard` in the device file, or assign the plan in the editor.
 6. Put the plugins into `plugins/`: unpack `paperboy-plugins-<os>-<arch>.zip` in the instance directory. The zip is attached to each release; otherwise it is an artifact of the *Plugins* workflow. You can also run `./scripts/package-plugins.sh` to build the zip, or let Paperboy fetch the programs with a `download` section (see [Downloads](docs/releases.md#downloads)). The zip creates versioned programs such as `plugins/weather-v1.4.0` ([ADR 0075](docs/adr/0075-plugin-versions.md)).
 7. Start the server:
    ```sh
-   go run ./cmd/paperboy -config . -listen :8090
+   go run ./server/cmd/paperboy -config . -listen :8090
    # show a page without a device:
    curl -o page.png http://127.0.0.1:8090/api/preview/e1001/uebersicht
    ```
@@ -53,7 +53,7 @@ The README gives the overview and the quick start. The details are in these page
 
 Paperboy is published under the [MIT licence](LICENSE). Third-party material keeps its own licence:
 
-- The OpenMoji pictograms in `cmd/weather/icons/` are [CC BY-SA 4.0](cmd/weather/icons/README.md); the licence travels with the plugin zip.
-- The operator UI vendors htmx 4.0.1 in `internal/paperboy/ui/vendor/` (0BSD, [ADR 0106](docs/adr/0106-self-updating-pages-with-htmx.md)). It is the only foreign JavaScript in the service.
-- The firmware in `firmware/esphome/` is a Paperboy configuration for [ESPHome](https://esphome.io). The images built from it contain the ESPHome runtime, whose C++ parts are GPLv3; the sources are in this repository. The bundled Go fonts (`pkg/render`) come with their own BSD-style licence.
+- The OpenMoji pictograms in `plugins/cmd/weather/icons/` are [CC BY-SA 4.0](plugins/cmd/weather/icons/README.md); the licence travels with the plugin zip.
+- The operator UI vendors htmx 4.0.1 in `server/internal/paperboy/ui/vendor/` (0BSD, [ADR 0106](docs/adr/0106-self-updating-pages-with-htmx.md)). It is the only foreign JavaScript in the service.
+- The firmware in `firmware/esphome/` is a Paperboy configuration for [ESPHome](https://esphome.io). The images built from it contain the ESPHome runtime, whose C++ parts are GPLv3; the sources are in this repository. The bundled Go fonts (`sdk/render`) come with their own BSD-style licence.
 - The examples and the plugin test fixtures are fictional; xkcd comics are CC BY-NC 2.5 and are fetched at runtime, never shipped.

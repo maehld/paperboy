@@ -10,7 +10,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 
 bad=0
-for number in $(grep -rhoE 'ADR[s]? [0-9]{4}' --include='*.go' cmd internal pkg |
+for number in $(grep -rhoE 'ADR[s]? [0-9]{4}' --include='*.go' server plugins sdk |
 	awk '{print $NF}' | sort -u); do
 	if ! ls docs/adr/"$number"-*.md >/dev/null 2>&1; then
 		echo "ADR $number is referenced in Go code but docs/adr/$number-*.md is missing" >&2

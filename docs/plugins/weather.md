@@ -33,7 +33,7 @@ All widgets are for image displays.
 
 An event is a contiguous run of hours with at least 0.1 mm. Open-Meteo gives precipitation as water equivalent, so snow counts too. An hour with rain and snow is mixed. The plugin decides about the event at render time, so an old forecast still says when a running event ends.
 
-The pictograms come from [OpenMoji](https://openmoji.org) (CC BY-SA 4.0, see `cmd/weather/icons/README.md`).
+The pictograms come from [OpenMoji](https://openmoji.org) (CC BY-SA 4.0, see `plugins/cmd/weather/icons/README.md`).
 
 ## Values
 

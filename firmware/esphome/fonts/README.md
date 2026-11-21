@@ -6,7 +6,7 @@
 instead of being downloaded at build time like Inter.
 
 It is a subset of `font/gofont/ttfs/Go-Mono-Bold.ttf` from
-`golang.org/x/image` v0.24.0 — the module `pkg/render` draws the same face from —
+`golang.org/x/image` v0.24.0 — the module `sdk/render` draws the same face from —
 and holds the letters of `paperboy`, the digits, `v` and `.`. Regenerate it with:
 
 ```sh
