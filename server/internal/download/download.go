@@ -49,7 +49,7 @@ type Asset struct {
 
 // Release is one release as far as Paperboy needs it.
 type Release struct {
-	Tag        string  `json:"tag"`        // v2.1.0, plugins-v2.2.0, firmware-v1.0.0
+	Tag        string  `json:"tag"`        // server-v2.1.0, plugins-2026.11.21, firmware-2026.11.21
 	Version    string  `json:"version"`    // tag without the train prefix: 2.1.0
 	Prerelease bool    `json:"prerelease"` // published as a prerelease (ADR 0089)
 	Assets     []Asset `json:"assets"`
@@ -178,7 +178,8 @@ func (c *Client) Latest(ctx context.Context, pick func(Asset) bool) (Release, bo
 }
 
 // plainName reports whether a release tag can name a file in the cache. Tags
-// are v1.2.3, plugins-v1.2.3 or firmware-v1.2.3, so anything outside letters,
+// are server-v1.2.3, plugins-2026.11.21 or firmware-2026.11.21, so anything
+// outside letters,
 // digits, dot, dash and underscore is refused.
 func plainName(s string) bool {
 	if s == "" || s == "." || s == ".." {
@@ -617,14 +618,15 @@ func (c *Client) apiBase() string {
 	return source + "/releases"
 }
 
-// versionOf strips the train prefix of a tag: v2.1.0, plugins-v2.2.0 and
-// firmware-v1.0.0 become 2.1.0, 2.2.0 and 1.0.0.
+// versionOf strips the train prefix of a tag: server-v2.1.0 becomes 2.1.0,
+// plugins-2026.11.21 becomes 2026.11.21. A bare v tag stays readable as before.
 func versionOf(tag string) string {
-	v := tag
-	if _, rest, ok := strings.Cut(v, "-v"); ok {
-		v = rest
+	for _, prefix := range []string{"server-v", "plugins-", "firmware-"} {
+		if rest, ok := strings.CutPrefix(tag, prefix); ok {
+			return strings.TrimPrefix(rest, "v")
+		}
 	}
-	return strings.TrimPrefix(v, "v")
+	return strings.TrimPrefix(tag, "v")
 }
 
 // AssetName returns the plugin zip of this platform.

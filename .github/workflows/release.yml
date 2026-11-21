@@ -1,25 +1,39 @@
 name: Release
 
 # Builds the artifacts for a tag and attaches them to one GitHub release
-# (ADR 0056). The tag prefix selects the release train:
+# (ADR 0147). The tag prefix selects the train:
 #
-#   v2.1.0          Paperboy, plugins and firmware
-#   plugins-v2.1.0  plugins only
-#   firmware-v1.0.0 firmware bundle only (bundle version: highest fw_version)
+#   server-v3.30.0             the server binaries
+#   plugins-2026.11.21         the plugin zips (date of the release)
+#   firmware-2026.11.21        the firmware bundle (date of the release)
+#
+# A second release of a train on the same day appends .1, .2, ...
+# A suffix -rc.1 or -beta.1 marks a prerelease. One tag is one release;
+# several tags may point to the same commit.
 
 on:
   push:
     tags:
-      - "v*"
-      - "plugins-v*"
-      - "firmware-v*"
+      - "server-v*"
+      - "plugins-*"
+      - "firmware-*"
 
 permissions:
   contents: write
 
 jobs:
-  paperboy:
-    if: startsWith(github.ref_name, 'v')
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Check the tag
+        run: ./scripts/check-release-tag.sh "$GITHUB_REF_NAME"
+
+  server:
+    needs: check
+    if: startsWith(github.ref_name, 'server-v')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -47,10 +61,11 @@ jobs:
         run: |
           ext=""
           [ "${{ matrix.os }}" = windows ] && ext=".exe"
+          version="${GITHUB_REF_NAME#server-v}"
           mkdir -p dist
           CGO_ENABLED=0 GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} \
             go build -trimpath \
-            -ldflags="-s -w -X github.com/maehld/paperboy/server/internal/paperboy.version=${GITHUB_REF_NAME}" \
+            -ldflags="-s -w -X github.com/maehld/paperboy/server/internal/paperboy.version=v${version}" \
             -o "dist/paperboy-${{ matrix.os }}-${{ matrix.arch }}$ext" ./server/cmd/paperboy
 
       - name: Upload artifact
@@ -60,23 +75,29 @@ jobs:
           path: dist/paperboy-${{ matrix.os }}-${{ matrix.arch }}*
 
   plugins:
-    if: startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'plugins-v')
+    needs: check
+    if: startsWith(github.ref_name, 'plugins-')
     uses: ./.github/workflows/plugins.yml
 
   firmware:
-    if: startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'firmware-v')
+    needs: check
+    if: startsWith(github.ref_name, 'firmware-')
     uses: ./.github/workflows/firmware.yml
 
   release:
-    needs: [paperboy, plugins, firmware]
+    needs: [check, server, plugins, firmware]
     # Skipped jobs are fine, a failed build must not publish a partial release.
     if: >
       always() && !cancelled() &&
-      needs.paperboy.result != 'failure' &&
+      needs.check.result == 'success' &&
+      needs.server.result != 'failure' &&
       needs.plugins.result != 'failure' &&
       needs.firmware.result != 'failure'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Download artifacts
         uses: actions/download-artifact@v5
         with:
@@ -92,32 +113,34 @@ jobs:
           mv "$RUNNER_TEMP/SHA256SUMS" SHA256SUMS
           cat SHA256SUMS
 
-      # A tag whose version carries a suffix (v1.4.0-rc.1, plugins-v1.4.0-rc.1)
-      # marks a prerelease delivery, which only the latest channel installs
-      # (ADR 0089). The train prefix has a hyphen too, so only the part after the
-      # last v is asked.
+      # The version after the train prefix decides the prerelease flag. The
+      # prefix itself carries a hyphen, so it must be stripped first.
       - name: Prerelease tag
         id: tag
         run: |
-          version="${GITHUB_REF_NAME##*v}"
+          case "$GITHUB_REF_NAME" in
+            server-v*)  version="${GITHUB_REF_NAME#server-v}" ;;
+            plugins-*)  version="${GITHUB_REF_NAME#plugins-}" ;;
+            firmware-*) version="${GITHUB_REF_NAME#firmware-}" ;;
+            *)          version="$GITHUB_REF_NAME" ;;
+          esac
           case "$version" in
             *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
             *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
           esac
 
       # The generated notes compare against the last stable release of the same
-      # train. Without this the API picks any reachable tag, so a Paperboy release
-      # could diff against plugins-v* or firmware-v*, and a final would diff
-      # against its own rc and hide everything since the last stable release.
+      # train. Without this the API picks any reachable tag, so a server release
+      # could diff against plugins-* or firmware-*.
       - name: Previous release of the train
         id: previous
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           case "$GITHUB_REF_NAME" in
-            plugins-v*)  prefix='plugins-v' ;;
-            firmware-v*) prefix='firmware-v' ;;
-            *)           prefix='v' ;;
+            server-v*)  prefix='server-v' ;;
+            plugins-*)  prefix='plugins-' ;;
+            firmware-*) prefix='firmware-' ;;
           esac
           # Releases come newest first, so the first stable one of the train is
           # the previous release. Drafts are invisible to a download anyway.
@@ -140,24 +163,62 @@ jobs:
           echo "tag=$previous" >> "$GITHUB_OUTPUT"
           echo "previous release of the train: ${previous:-none}"
 
+      # A plugin or firmware release names the versions inside it, so the
+      # operator sees what the date label contains (ADR 0147).
+      - name: Describe the release
+        id: body
+        if: "!startsWith(github.ref_name, 'server-v')"
+        run: |
+          case "$GITHUB_REF_NAME" in
+            plugins-*)
+              {
+                echo "## Plugins"
+                echo
+                for file in plugins/cmd/*/VERSION; do
+                  name=$(basename "$(dirname "$file")")
+                  echo "- \`$name-v$(tr -d '[:space:]' < "$file")\`"
+                done
+                echo
+                echo "Unpack \`paperboy-plugins-<os>-<arch>.zip\` in the instance directory. It creates \`plugins/\`."
+              } > "$RUNNER_TEMP/body.md"
+              ;;
+            firmware-*)
+              {
+                echo "## Firmware"
+                echo
+                for file in firmware/esphome/*.yaml; do
+                  hardware=$(basename "$file" .yaml)
+                  case "$hardware" in common | text-common) continue ;; esac
+                  version=$(grep -m1 -E '^[[:space:]]*fw_version:' "$file" |
+                    sed -E 's/.*fw_version:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/')
+                  if [ -n "$version" ]; then
+                    echo "- \`$hardware-v$version.bin\`"
+                  fi
+                done
+                echo
+                echo "Unpack \`paperboy-firmware.zip\` in the instance directory. It creates \`firmware/\`."
+              } > "$RUNNER_TEMP/body.md"
+              ;;
+          esac
+          echo "path=$RUNNER_TEMP/body.md" >> "$GITHUB_OUTPUT"
+
+      # GitHub's "Latest" badge is repository-wide. With three trains no release
+      # should claim it, so every release sets make_latest to false.
       - name: Release with generated notes
-        if: startsWith(github.ref_name, 'v')
+        if: startsWith(github.ref_name, 'server-v')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           previous_tag: ${{ steps.previous.outputs.tag }}
           prerelease: ${{ steps.tag.outputs.prerelease }}
+          make_latest: false
           files: dist/*
 
       - name: Release with asset notes
-        if: "!startsWith(github.ref_name, 'v')"
+        if: "!startsWith(github.ref_name, 'server-v')"
         uses: softprops/action-gh-release@v2
         with:
+          body_path: ${{ steps.body.outputs.path }}
           prerelease: ${{ steps.tag.outputs.prerelease }}
-          body: |
-            Release of a single release train (ADR 0056).
-
-            - `paperboy-plugins-<os>-<arch>.zip`: unpack in the instance directory, creates `plugins/`.
-            - `paperboy-firmware.zip`: unpack in the instance directory, creates `firmware/<hardware>-v<version>.bin` for every hardware type (ADR 0043, 0059, 0060, 0063).
-            - `SHA256SUMS`: checksums of all assets.
+          make_latest: false
           files: dist/*

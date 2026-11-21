@@ -22,7 +22,7 @@ Plugin (calendar, weather, …) ◀──JSON lines on stdin/stdout──▶ pap
 3. Add the display types: copy the files from `examples/displays`, or create them in the editor at `/ui/editor?tab=displays` ([ADR 0071](docs/adr/0071-display-types-in-files-of-their-own.md)).
 4. Add pages and a plan: copy files from `examples/pages` and `examples/plans` into the instance.
 5. Add one device file under `devices/` for every display ([ADR 0070](docs/adr/0070-devices-in-their-own-files.md)). Copy `examples/devices/wohnzimmer.yaml`, or create the device in the editor. Set `plan: standard` in the device file, or assign the plan in the editor.
-6. Put the plugins into `plugins/`: unpack `paperboy-plugins-<os>-<arch>.zip` in the instance directory. The zip is attached to each release; otherwise it is an artifact of the *Plugins* workflow. You can also run `./scripts/package-plugins.sh` to build the zip, or let Paperboy fetch the programs with a `download` section (see [Downloads](docs/releases.md#downloads)). The zip creates versioned programs such as `plugins/weather-v1.4.0` ([ADR 0075](docs/adr/0075-plugin-versions.md)).
+6. Put the plugins into `plugins/`: unpack `paperboy-plugins-<os>-<arch>.zip` in the instance directory. The zip is attached to a plugin release; otherwise it is an artifact of the *Plugins* workflow. You can also run `./scripts/package-plugins.sh` to build the zip, or let Paperboy fetch the programs with a `download` section (see [Downloads](docs/releases.md#downloads)). The zip creates versioned programs such as `plugins/weather-v1.4.0` ([ADR 0075](docs/adr/0075-plugin-versions.md)).
 7. Start the server:
    ```sh
    go run ./server/cmd/paperboy -config . -listen :8090

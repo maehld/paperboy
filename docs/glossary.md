@@ -38,7 +38,7 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **device key** | The secret a device gets at registration and sends as bearer token | token, password |
 | **operator UI** | The web pages for the operator, behind `ui.password` | dashboard (only `GET /ui`), admin UI, frontend |
 | **plugin host** | The part of Paperboy that starts plugins and caches their widgets and values | widget host, plugin manager |
-| **release train** | One of `v<version>`, `plugins-v<version>`, `firmware-v<version>` | release channel |
+| **release train** | One of the server, plugin or firmware line: `server-v<version>`, `plugins-<date>`, `firmware-<date>` | release channel |
 | **channel** | `stable` or `latest`: which releases an instance installs | train |
 | **bundle** | `paperboy-firmware.zip`, the archive with the image of every hardware type | package |
 | **inventory** | The programs in `plugins/` and the images in `firmware/` | cache, store |
