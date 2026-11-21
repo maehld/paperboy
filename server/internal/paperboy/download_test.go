@@ -385,6 +385,28 @@ func TestDownloadUpdatesDownloadedPlugin(t *testing.T) {
 
 // TestDownloadInterval verifies the configurable cadence and that a reload with
 // a shorter interval applies without a restart (ADR 0062).
+// TestDownloadsShowsLastBundles names the release tags of the plugin and
+// firmware bundles that the last check used.
+func TestDownloadsShowsLastBundles(t *testing.T) {
+	feed, srv := newReleaseFeed(t, "plugins-2026.11.21", "firmware-2026.11.21")
+	feed.add("plugins-2026.11.21", download.PluginAsset(), zipOf(t, map[string]string{
+		pluginEntry("2.1.0"): "program",
+	}))
+	feed.add("firmware-2026.11.21", download.FirmwareAsset, zipOf(t, map[string]string{
+		"firmware/e1001-v1.0.0.bin": "image",
+	}))
+	s := testDownloadServer(t, downloadConfig(t, srv.URL+"/repos/me/paperboy/releases", "", ""))
+	if err := s.downloadOnce(context.Background(), s.config()); err != nil {
+		t.Fatal(err)
+	}
+	body := htmlRequest(t, s, "/ui/downloads").Body.String()
+	for _, want := range []string{"Last bundles", "plugins-2026.11.21", "firmware-2026.11.21"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("downloads page lacks %q: %s", want, body)
+		}
+	}
+}
+
 func TestDownloadInterval(t *testing.T) {
 	feed, srv := newReleaseFeed(t, "plugins-2026.11.21", "firmware-2026.11.21")
 	feed.add("plugins-2026.11.21", download.PluginAsset(), zipOf(t, map[string]string{pluginEntry("1.0.0"): "old program"}))

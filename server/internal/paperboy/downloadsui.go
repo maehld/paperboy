@@ -42,6 +42,8 @@ type downloadsView struct {
 	Error           string // last error, empty when the check succeeded
 	Updates         string // what the check says about Paperboy itself (ADR 0101)
 	UpdateURL       string // release page of that version, empty when unknown
+	PluginBundle    string // release tag of the last plugin bundle the check used
+	FirmwareBundle  string // release tag of the last firmware bundle the check used
 	Plugins         []downloadPluginRow
 	Firmware        []downloadFirmwareRow
 	Issues          []string // ignored files in the firmware directory
@@ -97,6 +99,7 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 		v.LastOK = downloadTime(lastOK, s.now(), loc)
 		v.Error = lastErr
 		v.Updates, v.UpdateURL = paperboyUpdateText(update)
+		v.PluginBundle, v.FirmwareBundle = s.download.bundles()
 	}
 	specs := cfg.pluginSpecs()
 	for _, p := range cfg.Plugins {
