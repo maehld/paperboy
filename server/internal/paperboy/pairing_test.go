@@ -133,6 +133,23 @@ func TestPairingTries(t *testing.T) {
 	}
 }
 
+// TestPairChallengeKeepsOneCode: a display repeats its register every 15
+// seconds while its setup screen is up. It gets the same code, and only the
+// first challenge is fresh, so the journal logs one line per code.
+func TestPairChallengeKeepsOneCode(t *testing.T) {
+	s, _ := testServer(t)
+	now := s.now()
+	st := &deviceState{}
+	first, challenge, fresh := s.pairChallengeLocked(st, now)
+	if !challenge || !fresh || first == "" {
+		t.Fatalf("first challenge: %q %v %v", first, challenge, fresh)
+	}
+	again, challenge, fresh := s.pairChallengeLocked(st, now.Add(time.Minute))
+	if !challenge || fresh || again != first {
+		t.Fatalf("repeated challenge: %q %v %v, want %q without fresh", again, challenge, fresh, first)
+	}
+}
+
 // TestPairingNeedsConfiguredDevice: a code belongs to a device file; a state
 // file of unclaimed hardware cannot be paired.
 func TestPairingNeedsConfiguredDevice(t *testing.T) {

@@ -335,11 +335,15 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	// The operator has to confirm this display before it takes a key; until
 	// then it shows a code (ADR 0109).
-	if code, challenge := s.pairChallengeLocked(st, now); challenge {
+	if code, challenge, fresh := s.pairChallengeLocked(st, now); challenge {
 		stateData := s.stateSnapshotLocked(st)
 		s.mu.Unlock()
 		s.saveState(key, stateData)
-		slog.Info("registration waits for pairing", "device", device.ID, "mac", device.MAC)
+		if fresh {
+			// The display repeats the register every 15 seconds while its setup
+			// screen is up (ADR 0109); one line per code is enough.
+			slog.Info("registration waits for pairing", "device", device.ID, "mac", device.MAC)
+		}
 		writeJSON(w, http.StatusForbidden, pairChallenge{
 			Error:     "pairing required: enter the code the display shows in the device editor",
 			Code:      code,

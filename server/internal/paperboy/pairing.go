@@ -45,23 +45,24 @@ func newPairCode() (string, error) {
 // pairChallengeLocked decides what a register gets: either nothing (the
 // operator paired this display) or a code to show. The code stays the same
 // while it is valid, so a display that asks every minute does not paint a new
-// one.
-func (s *Server) pairChallengeLocked(st *deviceState, now time.Time) (string, bool) {
+// one. fresh names a new code, so the caller logs once per challenge and not
+// once per poll.
+func (s *Server) pairChallengeLocked(st *deviceState, now time.Time) (code string, challenge, fresh bool) {
 	if st.PairAuthorized {
-		return "", false
+		return "", false, false
 	}
 	if st.PairCode != "" && now.Before(st.PairExpiry) && st.PairTries < pairTries {
-		return st.PairCode, true
+		return st.PairCode, true, false
 	}
 	code, err := newPairCode()
 	if err != nil { // never expected: crypto/rand
 		slog.Error("pairing code generation failed", "error", err)
-		return "", false
+		return "", false, false
 	}
 	st.PairCode = code
 	st.PairExpiry = now.Add(pairTTL)
 	st.PairTries = 0
-	return code, true
+	return code, true, true
 }
 
 // usePairingLocked consumes the operator's authorization: the register that

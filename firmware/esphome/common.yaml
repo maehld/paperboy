@@ -162,6 +162,10 @@ globals:
   - id: setup_text
     type: std::string
     initial_value: '""'
+  # Whether the setup screen's text changed since the last paint.
+  - id: setup_changed
+    type: bool
+    initial_value: "false"
   - id: mac
     type: std::string
     initial_value: '""'
@@ -380,8 +384,11 @@ script:
                             then:
                               # No key and no server: show the setup screen with the
                               # address instead of sleeping, so a wrong Paperboy URL
-                              # can be corrected right away.
-                              - script.execute: { id: enter_setup, reason: "url" }
+                              # can be corrected right away. A slow retry keeps its
+                              # reason, so a failed request does not reset the screen.
+                              - script.execute:
+                                  id: enter_setup
+                                  reason: !lambda 'std::string r = pb_setup_reason; return pb_setup_slow && !r.empty() ? r : std::string("url");'
                 else:
                   # No clock after the wait: every handshake would fail. Name it
                   # instead, so the operator looks at NTP and not at the URL.
@@ -436,13 +443,46 @@ script:
 
   # ---------------------------------------------------------------- setup
 
+  # The setup screen (ADR 0109). A new reason starts the fast window: the
+  # display stays awake for 15 minutes and repeats its register every 15 s, so
+  # a claim or a pairing in the editor reaches it without a reset. After that
+  # it shows "Retrying in 5 minutes" and keeps asking on a five-minute wake.
   - id: enter_setup
     mode: restart
     parameters:
       reason: string
     then:
+      - script.stop: awake_limit
+      - lambda: "id(setup_mode) = true;"
+      - if:
+          condition:
+            lambda: "return std::string(pb_setup_reason) != reason;"
+          then:
+            - lambda: |-
+                std::strncpy(pb_setup_reason, reason.c_str(), sizeof(pb_setup_reason) - 1);
+                pb_setup_reason[sizeof(pb_setup_reason) - 1] = 0;
+                pb_setup_slow = false;
+            - script.stop: setup_limit
+            - script.execute: setup_limit
+      - script.execute: setup_paint
+      - if:
+          condition:
+            not:
+              script.is_running: setup_retry
+          then:
+            - script.execute: setup_retry
+      - if:
+          condition:
+            lambda: "return pb_setup_slow;"
+          then:
+            - script.execute: setup_pause
+
+  # Builds the setup text and paints it only when it changed, so repeated
+  # registers and five-minute retries do not refresh the panel.
+  - id: setup_paint
+    then:
       - lambda: |-
-          id(setup_mode) = true;
+          std::string reason = pb_setup_reason;
           std::string t = "Paperboy setup\n";
           if (reason == "wifi") {
             t += "1. Join the Wi-Fi \"" + App.get_name() + "\"\n";
@@ -471,21 +511,76 @@ script:
             t += "Enter it in the device editor.\n";
           } else {
             t += "Paperboy does not know this display.\n";
-            t += "Add its MAC to paperboy.yaml.\n";
+            t += "Claim it in the devices tab.\n";
+          }
+          if (pb_setup_slow) {
+            t += "Retrying in 5 minutes.\n";
           }
           t += "MAC " + id(mac);
           id(setup_text) = t;
-          ESP_LOGW("paperboy", "setup needed: %s", reason.c_str());
-      - script.stop: awake_limit
-      - script.execute: setup_limit
-      - component.update: epaper_display
+          id(setup_changed) = t != pb_setup_shown;
+          if (id(setup_changed)) {
+            std::strncpy(pb_setup_shown, t.c_str(), sizeof(pb_setup_shown) - 1);
+            pb_setup_shown[sizeof(pb_setup_shown) - 1] = 0;
+            ESP_LOGW("paperboy", "setup needed: %s", reason.c_str());
+          }
+      - if:
+          condition:
+            lambda: "return id(setup_changed);"
+          then:
+            - component.update: epaper_display
+
+  # The fast window is over: say what happens next, then sleep five minutes.
+  - id: setup_limit
+    then:
+      - delay: 15min
+      - logger.log: "setup window over: retrying every five minutes"
+      - lambda: "pb_setup_slow = true;"
+      - script.execute: setup_paint
+      - script.execute: setup_pause
+
+  # Waits for the setup screen to finish and sleeps until the next retry.
+  - id: setup_pause
+    then:
+      - script.execute: wait_paint
+      - script.wait: wait_paint
+      - lambda: "pb_refresh_s = 300;"
+      - script.execute: go_sleep
+
+  # Repeats the register during the fast window. A pairing code stays on the
+  # panel until the operator enters it; the next register then takes the key.
+  - id: setup_retry
+    mode: single
+    then:
+      - while:
+          condition:
+            lambda: |-
+              return id(setup_mode) && id(api_key).state.empty() && !pb_setup_slow;
+          then:
+            - delay: 15s
+            - if:
+                condition:
+                  lambda: |-
+                    return id(setup_mode) && id(api_key).state.empty() && !pb_setup_slow &&
+                           wifi::global_wifi_component->is_connected() &&
+                           !pb_base(id(paperboy_url).state).empty() &&
+                           pb_clock_ready(pb_base(id(paperboy_url).state));
+                then:
+                  - script.execute: do_register
+                  - script.wait: do_register
+      - if:
+          condition:
+            lambda: "return !id(api_key).state.empty();"
+          then:
+            - script.execute: run_cycle
 
   # ---------------------------------------------------------------- device API
 
   # POST /api/device/register trades the MAC for the device key; 403 means
   # the MAC is not in paperboy.yaml. A request that fails as a whole is
   # retried, and an unreachable or wrong Paperboy URL ends in the setup screen
-  # instead of a silent deep sleep, so the operator can correct it.
+  # instead of a silent deep sleep, so the operator can correct it. A 403 is a
+  # definite answer: the setup retry asks again, not this loop.
   - id: do_register
     mode: single
     then:
@@ -499,7 +594,7 @@ script:
             - script.wait: do_register_once
             - if:
                 condition:
-                  lambda: "return id(api_key).state.empty();"
+                  lambda: "return id(api_key).state.empty() && id(reg_attempts) < 3;"
                 then:
                   - delay: 2s
 
@@ -528,6 +623,9 @@ script:
                   if (!key.empty()) {
                     id(api_key).make_call().set_value(key).perform();
                     id(pair_code) = "";
+                    pb_setup_slow = false;
+                    pb_setup_reason[0] = 0;
+                    pb_setup_shown[0] = 0;
                     ESP_LOGI("paperboy", "registered with Paperboy");
                   } else {
                     ESP_LOGW("paperboy", "registration refused: HTTP %d", response->status_code);
@@ -540,6 +638,9 @@ script:
                       code = root["code"] | "";
                       return true;
                     });
+                    // A 403 does not change within seconds: the setup retry
+                    // repeats the request, not this loop.
+                    id(reg_attempts) = 3;
                   }
                   if (!code.empty()) {
                     if (code != id(pair_code) || !id(setup_mode)) {
@@ -817,6 +918,11 @@ script:
             pb_remember(id(image_hash));
             pb_paint_pending = false;
           }
+          // The panel shows a page now: a later setup screen paints again,
+          // even with the same text as an older one.
+          pb_setup_slow = false;
+          pb_setup_reason[0] = 0;
+          pb_setup_shown[0] = 0;
           id(busy) = false;
       # The answer of this sync asked for a signal (ADR 0131): the page is on
       # the panel, so the signal belongs here. Each hardware file defines the
@@ -891,12 +997,4 @@ script:
       - delay: 120s
       - logger.log: "awake limit: forcing deep sleep"
       - lambda: "id(busy) = false;"
-      - script.execute: go_sleep
-
-  # Setup waits for the operator, but not forever: retry in an hour.
-  - id: setup_limit
-    then:
-      - delay: 10min
-      - logger.log: "setup not finished, sleeping for an hour"
-      - lambda: "pb_refresh_s = 3600;"
       - script.execute: go_sleep
