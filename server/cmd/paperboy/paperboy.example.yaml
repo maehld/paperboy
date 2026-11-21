@@ -60,6 +60,10 @@ plugins:
     config:
       token: ${GITHUB_TOKEN}          # optional; raises the rate limit and reads private repositories
       repositories: [maehld/paperboy] # or {name: repo} entries (docs/plugins/github.md)
+  prusalink:
+    config:
+      url: http://prusa-core-one.local   # the printer's PrusaLink address
+      api_key: ${PRUSALINK_API_KEY}      # from the printer's network settings
   calendar:
     timeout: 1m
     config:

@@ -45,6 +45,7 @@ plugins/cmd/dexcom/              Dexcom plugin: glucose readings from the Share 
 plugins/cmd/pokedex/             Pokédex plugin: a Pokémon card from PokéAPI
 plugins/cmd/rss/                 RSS and Atom plugin: feed list and headline
 plugins/cmd/github/              GitHub plugin: issues, pull requests, workflow runs and commits
+plugins/cmd/prusalink/           PrusaLink plugin: state, progress and temperatures of a Prusa printer
 plugins/internal/imagelimit/     Pixel budget for an image from an untrusted source
 sdk/                             Go module github.com/maehld/paperboy/sdk
 sdk/plugin/                      Plugin protocol and Go helper (public API)

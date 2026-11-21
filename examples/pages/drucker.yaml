@@ -1,0 +1,13 @@
+# The printer at the desk: the progress as a ring with the temperatures beside
+# it, and the state card below. Requires the prusalink plugin and its url and
+# api_key (docs/plugins/prusalink.md).
+title: Drucker
+kind: image
+variants: {lcd2004: lcd2004}
+grid: [6, 8]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
+  - { at: [0, 1], span: [4, 4], widget: prusalink/progress }
+  - { at: [4, 1], span: [2, 4], widget: prusalink/temperatures }
+  - { at: [0, 5], span: [6, 3], widget: prusalink/printer }
