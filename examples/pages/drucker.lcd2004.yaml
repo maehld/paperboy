@@ -1,0 +1,11 @@
+# The printer's values on a 20×4 display: the state, the file, the progress and
+# the temperatures. Requires the prusalink plugin (docs/plugins/prusalink.md).
+kind: text
+cells:
+  - { at: [0, 0], span: [20, 1], value: paperboy/title }
+  - { at: [0, 1], span: [9, 1], value: prusalink/state, labels: { idle: Bereit, busy: Beschäftigt, printing: Druckt, paused: Pausiert, finished: Fertig, stopped: Gestoppt, error: Fehler, attention: Achtung, ready: Bereit } }
+  - { at: [9, 1], span: [11, 1], value: prusalink/job, overflow: strip }
+  - { at: [0, 2], span: [5, 1], value: prusalink/progress, align: right }
+  - { at: [5, 2], span: [15, 1], value: prusalink/time-remaining, align: right }
+  - { at: [0, 3], span: [10, 1], value: prusalink/nozzle, label: Düse, unit: none }
+  - { at: [10, 3], span: [10, 1], value: prusalink/bed, label: Bett, unit: none, align: right }

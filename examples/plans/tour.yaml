@@ -1,9 +1,14 @@
 # Tour through all shipped plugins. During the day the device turns to the
 # next page with every refresh; on weekday mornings it shows what matters
 # before leaving the house, and at night it stays on the overview. The first
-# rule shows the glucose page while the dexcom state is out of its band; a
-# missing value never matches, so the tour continues.
+# rule shows the printer page while a print runs; the second shows the glucose
+# page while the dexcom state is out of its band; a missing value never
+# matches, so the tour continues.
 rules:
+  - name: printer
+    when: { conditions: [{ value: prusalink/state, is: [printing, paused] }] }
+    pages: [drucker]
+    refresh: 5m
   - name: glucose
     when: { conditions: [{ value: dexcom/state, is: [low, urgent, high] }] }
     pages: [glukose]
@@ -15,7 +20,7 @@ rules:
     refresh: 5m
   - name: day
     when: { from: "07:00", to: "22:00" }
-    pages: [uebersicht, status, energie, energie-woche, ertrag, werte, unterwegs, woche, kalender, wetter, laden, auto, glukose, abfahrten, nachrichten, github, spritpreise, pokemon, comic, countdown, geburtstage]
+    pages: [uebersicht, status, energie, energie-woche, ertrag, werte, unterwegs, woche, kalender, wetter, laden, auto, glukose, abfahrten, nachrichten, github, spritpreise, pokemon, comic, countdown, geburtstage, drucker]
     on_refresh: cycle
     refresh: 10m
   - name: night

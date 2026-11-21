@@ -39,6 +39,8 @@ func (m *mock) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.evccHistory(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/vehicles/"):
 		m.skoda(w)
+	case r.URL.Path == "/api/v1/status", r.URL.Path == "/api/v1/job", r.URL.Path == "/api/v1/info":
+		m.prusalink(w, r)
 	case r.URL.Path == "/car.png":
 		m.placeholder(w, "car")
 	case r.URL.Path == "/artwork.png":
@@ -402,6 +404,35 @@ func (m *mock) fuel(w http.ResponseWriter) {
 		{"id": "station-6", "name": "Total Energies", "brand": "Total", "street": "Westallee 2", "place": "Münster", "dist": 4.2, "diesel": 1.839, "e5": 1.899, "e10": 1.879, "isOpen": true},
 	}
 	writeJSON(w, map[string]any{"ok": true, "stations": stations})
+}
+
+// ---- PrusaLink ----
+
+// prusalink answers a printer in the middle of a print.
+func (m *mock) prusalink(w http.ResponseWriter, r *http.Request) {
+	switch r.URL.Path {
+	case "/api/v1/status":
+		writeJSON(w, map[string]any{
+			"printer": map[string]any{
+				"state": "PRINTING", "temp_nozzle": 214.9, "target_nozzle": 215.0,
+				"temp_bed": 59.6, "target_bed": 60.0, "speed": 100, "flow": 95,
+				"status_printer": map[string]any{"ok": true, "message": "OK"},
+			},
+			"job": map[string]any{"id": 42, "progress": 42.4, "time_remaining": 5025, "time_printing": 1325},
+		})
+	case "/api/v1/job":
+		writeJSON(w, map[string]any{
+			"id": 42, "state": "PRINTING", "progress": 42.4, "time_remaining": 5025, "time_printing": 1325,
+			"file": map[string]any{
+				"name": "BENCHY~1.GCO", "display_name": "Benchy_0.2mm_PLA_COREONE_1h23m.gcode",
+				"path": "/usb", "display_path": "/Benchy",
+			},
+		})
+	case "/api/v1/info":
+		writeJSON(w, map[string]any{"name": "CORE One", "serial": "CZPX0000X000XC00000", "mmu": false})
+	default:
+		http.NotFound(w, r)
+	}
 }
 
 // ---- xkcd ----

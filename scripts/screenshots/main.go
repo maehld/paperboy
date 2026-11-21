@@ -48,6 +48,7 @@ var pageShots = map[string][]string{
 	"dexcom":     {"glukose", "glukose.lcd2004"},
 	"fuel":       {"spritpreise"},
 	"paperboy":   {"status", "hinweise"},
+	"prusalink":  {"drucker", "drucker.lcd2004"},
 }
 
 // widgetArgs overrides the arguments of a widget preview where the plugin
@@ -62,7 +63,7 @@ var widgetArgs = map[string]map[string]string{
 // VERSION file. The built-in plugin needs no program.
 var plugins = []string{
 	"calendar", "countdown", "departures", "dexcom", "evcc", "fuel",
-	"myskoda", "pokedex", "rss", "weather", "xkcd",
+	"myskoda", "pokedex", "prusalink", "rss", "weather", "xkcd",
 }
 
 func main() {
@@ -250,6 +251,8 @@ plugins:
       walk_minutes: 4
   myskoda:
     config: {api_key: demo, vin: TMBJB9NY5RF999999, base: %[1]q, refresh: 1h}
+  prusalink:
+    config: {url: %[1]q, api_key: demo, refresh: 1m}
   rss:
     config:
       feeds:

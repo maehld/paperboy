@@ -2,7 +2,7 @@
 
 The pages under `pages/` are grids of widgets from the shipped plugins
 ([ADR 0049](../docs/adr/0049-plugin-widgets.md)): `weather`, `calendar`, `evcc`, `departures`, `pokedex`, `xkcd`,
-`myskoda`, `countdown`, `rss`, `github`, `dexcom` and the built-in `paperboy` plugin. Copy the
+`myskoda`, `countdown`, `rss`, `github`, `dexcom`, `prusalink` and the built-in `paperboy` plugin. Copy the
 files you need into the `pages/` directory of your instance and adapt the
 grid, the spans and the arguments. A text page's value cells read the same
 `args` as the widget, so a page picks its stop, loadpoint, calendar window or
@@ -44,6 +44,9 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
 - `github.yaml` - the state of one repository: counts and the newest commit,
   open issues and pull requests, workflow runs and commits; `github.lcd2004.yaml`
   shows the counts and the state on 20×4.
+- `drucker.yaml` - a Prusa printer from PrusaLink: the progress as a ring, the
+  temperatures and the state card; `drucker.lcd2004.yaml` shows the state, the
+  file, the progress and the temperatures on 20×4.
 - `unterwegs.yaml` - current weather with clothing advice and the next
   departures, for leaving the house.
 - `pokemon.yaml` - a full-screen Pokédex card.

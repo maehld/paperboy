@@ -178,6 +178,7 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0143](0143-a-fuel-price-plugin-with-its-own-history.md) | A fuel price plugin with its own history | Accepted, implemented |
 | [0144](0144-a-github-plugin-for-repository-status.md) | A GitHub plugin for repository status | Accepted, implemented |
 | [0145](0145-a-period-and-a-balance-in-the-evcc-plugin.md) | A period and a balance in the evcc plugin | Accepted, implemented; adds `period` to the flow and the `balance` widget, and draws a link only while power or energy flows |
+| [0149](0149-a-prusalink-plugin-for-printer-status.md) | A PrusaLink plugin for 3D printer status | Accepted, implemented |
 
 ## Delivery and releases
 
