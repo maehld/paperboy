@@ -2,15 +2,37 @@ name: Plugins
 
 # Builds the shipped plugins as one zip per platform (ADR 0049). Unpacked in
 # the instance directory, a zip creates plugins/ with the binaries. Runs on
-# changes and as the builder for release.yml, which attaches the zips to a
-# release (ADR 0056). On a pull request it also checks that a changed plugin
-# raised its version (ADR 0075).
+# plugin and SDK changes and as the builder for release.yml, which attaches the
+# zips to a release (ADR 0056). On a pull request it also checks that a changed
+# plugin raised its version (ADR 0075).
 
 on:
   push:
     branches: [main]
+    paths:
+      - "plugins/**"
+      - "sdk/**"
+      - "go.work"
+      - "plugins/go.mod"
+      - "plugins/go.sum"
+      - "sdk/go.mod"
+      - "sdk/go.sum"
+      - "scripts/check-plugin-versions.sh"
+      - "scripts/package-plugins.sh"
+      - ".github/workflows/plugins.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "plugins/**"
+      - "sdk/**"
+      - "go.work"
+      - "plugins/go.mod"
+      - "plugins/go.sum"
+      - "sdk/go.mod"
+      - "sdk/go.sum"
+      - "scripts/check-plugin-versions.sh"
+      - "scripts/package-plugins.sh"
+      - ".github/workflows/plugins.yml"
   workflow_dispatch:
   workflow_call:
 

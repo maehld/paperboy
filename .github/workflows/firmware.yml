@@ -1,23 +1,28 @@
 name: Firmware
 
-# Compiles the Paperboy firmware for every hardware type with the pinned
-# ESPHome version and bundles the OTA images into one zip that unpacks in the
-# instance layout firmware/<hardware>-v<version>.bin (ADR 0043, 0059, 0060).
-# The zip itself is always paperboy-firmware.zip; the tag carries the version
-# (ADR 0063).
-# Runs on firmware changes and as the builder for release.yml, which attaches
-# the bundle to a release (ADR 0056).
+# Compiles the Paperboy firmware for the hardware types whose files changed,
+# with the pinned ESPHome version, and bundles the OTA images into one zip that
+# unpacks in the instance layout firmware/<hardware>-v<version>.bin (ADR 0043,
+# 0059, 0060). The zip itself is always paperboy-firmware.zip; the tag carries
+# the version (ADR 0063).
+# A release (a tag) builds every hardware type. Runs on firmware changes and as
+# the builder for release.yml, which attaches the bundle to a release
+# (ADR 0056).
 
 on:
   push:
     branches: [main]
     paths:
-      - firmware/esphome/**
+      - firmware/esphome/*.yaml
+      - firmware/esphome/*.h
+      - firmware/esphome/fonts/**
       - .github/workflows/firmware.yml
   pull_request:
     branches: [main]
     paths:
-      - firmware/esphome/**
+      - firmware/esphome/*.yaml
+      - firmware/esphome/*.h
+      - firmware/esphome/fonts/**
       - .github/workflows/firmware.yml
   workflow_dispatch:
   workflow_call:
@@ -30,12 +35,66 @@ env:
   ESPHOME_VERSION: "2026.10.1"
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      hardware: ${{ steps.list.outputs.hardware }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # The diff needs the base commit.
+          fetch-depth: 0
+
+      - name: List the affected hardware types
+        id: list
+        run: |
+          set -eu
+          # A release and a manual run build every type.
+          if [ "${{ github.ref_type }}" = tag ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            echo 'hardware=["sticky","e1001","e1003","lcd2004"]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base=""
+          case "${{ github.event_name }}" in
+            pull_request) base="${{ github.event.pull_request.base.sha }}" ;;
+            push)         base="${{ github.event.before }}" ;;
+          esac
+          if [ -n "$base" ] && ! printf '%s' "$base" | grep -Eq '^0+$'; then
+            files=$(git diff --name-only "$base" HEAD)
+          else
+            files=$(git ls-files firmware/esphome)
+          fi
+          want=""
+          all=false
+          for file in $files; do
+            case "$file" in
+              firmware/esphome/sticky.yaml)      want="$want sticky" ;;
+              firmware/esphome/e1001.yaml)       want="$want e1001" ;;
+              firmware/esphome/e1003.yaml)       want="$want e1003" ;;
+              firmware/esphome/lcd2004.yaml)     want="$want lcd2004" ;;
+              firmware/esphome/common.yaml)      want="$want sticky e1001 e1003" ;;
+              firmware/esphome/text-common.yaml) want="$want lcd2004" ;;
+              firmware/esphome/fonts/*.ttf)      want="$want sticky e1001 e1003" ;;
+              firmware/esphome/*.h)              all=true ;;
+              .github/workflows/firmware.yml)    all=true ;;
+            esac
+          done
+          if [ "$all" = true ]; then want="sticky e1001 e1003 lcd2004"; fi
+          list=""
+          for hardware in sticky e1001 e1003 lcd2004; do
+            case " $want " in *" $hardware "*) list="$list,\"$hardware\"" ;; esac
+          done
+          echo "hardware=[${list#,}]" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: changes
+    if: needs.changes.outputs.hardware != '[]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        hardware: [sticky, e1001, e1003, lcd2004]
+        hardware: ${{ fromJSON(needs.changes.outputs.hardware) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -115,6 +174,7 @@ jobs:
 
   bundle:
     needs: build
+    if: needs.build.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Download images
