@@ -203,6 +203,8 @@ A manual alert uses this path on the next sync, also without a plan. One sync co
 
 A cycle runs one at a time; a second trigger is dropped, so it cannot move the page cursor behind a running download. The firmware connects to the saved BSSID and channel without a scan. It decodes QOI itself into the panel buffer, because ESPHome's decoders spend 2.2–2.6 seconds on 384k pixels. Input during sync or paint is queued for one follow-up sync with a 150 ms settle, so a burst of presses becomes one sync. Failures are noted in RTC memory and reported in the next sync's `log`.
 
+A display in setup repeats its register every 15 seconds for 15 minutes. A claim or a pairing then reaches it without a reset. After that it shows `Retrying in 5 minutes` and asks on a five-minute wake. An unchanged setup text does not repaint, and a new reason (unknown MAC to pairing) starts the fast window again. The text display retries once a minute instead.
+
 An `https://` Paperboy URL is verified against the ESP-IDF CA bundle, which contains the Let's Encrypt roots ([ADR 0108](../adr/0108-verify-the-tls-certificate.md)). `http://` in the LAN stays unencrypted. The check needs a clock. SNTP provides it after a power-on, the RTC keeps it across deep sleep, and the sync answer sets it from `time`. A device without a clock shows the setup screen with the reason.
 
 The only update path is `ota: http_request` with the offer from Paperboy. There is no native ESPHome OTA and no upload in the web UI; a rescue needs USB. Before the flash the panel draws the update screen: the lockup, the offered version and *Installing update…*. A text display prints `Installing update` with the version in its lines. The device stays quiet until it reboots, so the screen says why.

@@ -24,7 +24,7 @@
 
 substitutions:
   hardware: e1003
-  fw_version: "1.7.0"
+  fw_version: "1.8.0"
   # Buzzer of the reTerminal E series on LEDC PWM (ADR 0131). GPIO48 is the
   # touch reset here, so the buzzer keeps its own pin.
   buzzer_pin: GPIO45

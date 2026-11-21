@@ -22,11 +22,12 @@ installation, nothing installation-specific is compiled in.
 | Step | Request | Notes |
 |---|---|---|
 | Power-on | none | the lockup of the logo and the firmware version in the middle of the panel for 5 s ([ADR 0095](../../docs/adr/0095-the-logo-on-pages-and-devices.md), [0098](../../docs/adr/0098-the-device-shows-the-lockup-and-its-version.md)); a timer or button wake gets no splash, so a page change stays as fast as it is |
-| First contact | `POST /api/device/register` with `mac`, `hardware`, `firmware` | the key is kept in flash; `403` shows "Paperboy does not know this display" with the MAC |
+| First contact | `POST /api/device/register` with `mac`, `hardware`, `firmware` | the key is kept in flash; `403` shows "Paperboy does not know this display" with the MAC and the claim route |
 | Every wake | `POST /api/device/sync` with `reason`, `events`, `shown`, `battery`, `readings`, `rssi`, `power`, `log` | `401` drops the key, registers again and repeats the sync; a failed request keeps the event queue and is retried up to three times ([ADR 0064](../../docs/adr/0064-device-protocol-v4.md)) |
 | Room sensor | one SHT4x measurement per wake, before the sync | the firmware sends `temperature` and `humidity` in `readings`; a failed read sends no value, so the last one stays ([ADR 0134](../../docs/adr/0134-readings-from-the-device.md)) |
 | No key | `POST /api/device/register` is retried three times as well | without a key and with an unreachable server the device shows the setup screen with its address and the URL it has, instead of sleeping silently |
-| Pairing needed | the register answers `403` with a `code` ([ADR 0109](../../docs/adr/0109-pair-a-display.md)) | the panel shows `Pairing code` and the code instead of the setup instructions; the operator enters it in the device editor, and the next register takes the key. A repeated identical code does not repaint |
+| Setup retry | while the setup screen is up | the register repeats every 15 seconds for 15 minutes, so a claim or a pairing in the editor reaches the display without a reset. Then the screen says `Retrying in 5 minutes` and the register repeats on a five-minute wake. An unchanged setup text does not repaint |
+| Pairing needed | the register answers `403` with a `code` ([ADR 0109](../../docs/adr/0109-pair-a-display.md)) | the panel shows `Pairing code` and the code instead of the setup instructions; the operator enters it in the device editor, and the next retry takes the key. A repeated identical code does not repaint |
 | Unchanged content | `image.hash` equals the hash on the panel | no download, no paint |
 | Firmware offer | `firmware` in the sync answer ([ADR 0043](../../docs/adr/0043-firmware-distribution.md)) | the panel shows the update screen — the lockup, the new version and *Installing update…* — flash `<Paperboy URL><path>` with its MD5 and reboot; a failure is reported in the next sync's `log` |
 | Changed content | `GET <Paperboy URL><image.path>?format=qoi` with the device key ([ADR 0097](../../docs/adr/0097-page-downloads-take-the-device-key.md)) | QOI, decoded into the panel buffer and painted with the panel's gray mapping ([ADR 0072](../../docs/adr/0072-pages-as-qoi.md)) |
@@ -161,8 +162,9 @@ verified: the device key and the OTA image are authentic on a public proxy
 While Wi-Fi or the Paperboy URL is missing, Paperboy does not know the MAC, or
 the instance asks to pair the display,
 the display shows instructions with the device's address and MAC, the lockup of
-Paperboy's logo and the firmware version above them, and stays awake for up to
-10 minutes before retrying in an hour. The same screen appears when the URL is
+Paperboy's logo and the firmware version above them. It repeats the register
+every 15 seconds for 15 minutes, then says `Retrying in 5 minutes` and repeats
+it on a five-minute wake. The same screen appears when the URL is
 set but no server answers there; it then also prints the URL the device has, so a
 typo is visible without a serial log. A power-on shows the lockup and the version
 alone for 5 s before the cycle starts ([ADR 0095](../../docs/adr/0095-the-logo-on-pages-and-devices.md), [0098](../../docs/adr/0098-the-device-shows-the-lockup-and-its-version.md)); the mark comes from

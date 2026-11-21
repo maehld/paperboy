@@ -23,6 +23,13 @@ RTC_DATA_ATTR static char pb_shown_hash[32];  // hash of the image on the panel
 RTC_DATA_ATTR static int pb_refresh_s;         // last refresh_s from Paperboy
 RTC_DATA_ATTR static char pb_note[120];        // one warning for the next sync, e.g. a failed download
 
+// Setup screen (ADR 0109): the reason, whether the fast window is over, and
+// the text on the panel. RTC memory keeps the five-minute retries from
+// repainting an unchanged screen.
+RTC_DATA_ATTR static char pb_setup_reason[16];
+RTC_DATA_ATTR static bool pb_setup_slow;
+RTC_DATA_ATTR static char pb_setup_shown[200];
+
 // Event queue and identities (ADR 0064). They live in RTC memory so that a
 // failed sync keeps its events and resends them with the same IDs.
 RTC_DATA_ATTR static uint32_t pb_event_seq;      // last assigned event ID
@@ -37,10 +44,17 @@ RTC_DATA_ATTR static uint32_t pb_next_s;         // seconds until that one-shot 
 // is declared last, so all older variables keep their offsets; bump it whenever
 // this block changes.
 RTC_DATA_ATTR static uint32_t pb_rtc_magic;
-constexpr uint32_t PB_RTC_MAGIC = 0x50423032;  // "PB02"
+constexpr uint32_t PB_RTC_MAGIC = 0x50423033;  // "PB03"
 
 // Zeroes the RTC state once per layout. Safe to call on every boot.
 inline void pb_init_rtc() {
+  // A reset or power-on is an operator at the display: start the fast setup
+  // window instead of the five-minute retries of a deep-sleep wake.
+  if (esp_reset_reason() != ESP_RST_DEEPSLEEP) {
+    pb_setup_reason[0] = 0;
+    pb_setup_slow = false;
+    pb_setup_shown[0] = 0;
+  }
   if (pb_rtc_magic == PB_RTC_MAGIC) {
     return;
   }
@@ -51,6 +65,9 @@ inline void pb_init_rtc() {
   pb_next_reason[0] = 0;
   pb_next_s = 0;
   pb_note[0] = 0;
+  pb_setup_reason[0] = 0;
+  pb_setup_slow = false;
+  pb_setup_shown[0] = 0;
   // The panel shows an image of the previous firmware: repaint it.
   pb_shown_hash[0] = 0;
 }

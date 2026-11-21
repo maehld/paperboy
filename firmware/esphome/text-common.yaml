@@ -244,7 +244,7 @@ script:
           } else if (reason == "pair") {
             t = "Pairing code:\n" + id(pair_code);
           } else {
-            t = "Unknown display\nAdd MAC to Paperboy:\n" + id(mac);
+            t = "Unknown display\nClaim it in Paperboy\n" + id(mac);
           }
           if (t != id(setup_shown)) {
             id(setup_shown) = t;
