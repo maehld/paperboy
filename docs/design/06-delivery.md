@@ -28,10 +28,12 @@ Only `release.yml` creates a GitHub release. The other workflows build for chang
 | Workflow | Job |
 |---|---|
 | *CI* | `gofmt`, `go vet`, tests and a cross-build on every change |
-| *Plugins* | Builds both plugin zips; fails a pull request that changed `plugins/cmd/<plugin>` without raising its `VERSION`, and one that changed `sdk/plugin` or `sdk/render` without raising every plugin's version ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)) |
-| *Firmware* | Compiles `sticky`, `e1001`, `e1003` and `lcd2004` with the pinned ESPHome, only for changes under `firmware/esphome/`, and bundles them into one image archive |
+| *Plugins* | Builds both plugin zips for a change under `plugins/`, `sdk/` or the module files; fails a pull request that changed `plugins/cmd/<plugin>` without raising its `VERSION`, and one that changed `sdk/plugin` or `sdk/render` without raising every plugin's version ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)) |
+| *Firmware* | Compiles only the hardware types whose files changed with the pinned ESPHome, and bundles them into one image archive; a release builds all four |
 | *Docker* | Checks the container image on a pull request without pushing ([ADR 0148](../adr/0148-the-container-image-is-the-primary-server-artifact.md)) |
 | *Release* | Builds the server binaries, calls *Plugins* and *Firmware* for the tag's train, builds and pushes the image for a server release, attaches the assets with `SHA256SUMS`, writes notes per train and sets the newest final server release as GitHub's latest |
+
+A change to `common.yaml` builds `sticky`, `e1001` and `e1003`. A change to `text-common.yaml` builds `lcd2004`. A header change builds all four.
 
 Two rules follow from the version stamping:
 
