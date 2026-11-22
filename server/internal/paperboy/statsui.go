@@ -105,7 +105,7 @@ const (
 type statsView struct {
 	Version    string
 	GoVersion  string
-	Nav        []navItem // the rail, with the active section (ADR 0150)
+	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
 	Platform   string
 	Paperboy   []statsFact

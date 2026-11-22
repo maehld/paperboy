@@ -69,7 +69,7 @@ type editorPageGroup struct {
 type editorListPage struct {
 	Version    string
 	GoVersion  string
-	Nav        []navItem // the rail, with the active section (ADR 0150)
+	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
 	Groups     []editorPageGroup
 	Kinds      []uiOption         // kinds of the new-page form
@@ -132,7 +132,7 @@ type editorPlanRow struct {
 type editorPageView struct {
 	Version        string
 	GoVersion      string
-	Nav            []navItem // the rail, with the active section (ADR 0150)
+	Nav            []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb     []crumb   // the path to this page
 	Name           string
 	Display        string // the preview type (ADR 0110)

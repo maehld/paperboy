@@ -195,7 +195,7 @@ func (s *Server) uiRoutes() []route {
 		{"GET /ui/display-types", s.uiList("displays")},
 		{"GET /ui/display-types/{name}", s.uiObject("name", "name", s.handleDisplayEditor)},
 		// A creation form sends its fields as the query, so these routes move the
-		// new name into the path and open the editor (ADR 0150).
+		// new name into the path and open the editor (ADR 0152).
 		{"GET /ui/pages/new", uiCreate("/ui/pages", "name")},
 		{"GET /ui/plans/new", uiCreate("/ui/plans", "name")},
 		{"GET /ui/devices/new", uiCreate("/ui/devices", "id")},

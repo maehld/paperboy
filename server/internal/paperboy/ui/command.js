@@ -1,4 +1,4 @@
-// The command palette of the operator UI (ADR 0150). Cmd+K or Ctrl+K opens a
+// The command palette of the operator UI (ADR 0152). Cmd+K or Ctrl+K opens a
 // search over the sections and the objects of the instance and jumps to one.
 // The lists come from the APIs the pages already use, so the server needs no
 // search route and the palette knows the same names as the rail and the lists.

@@ -9,7 +9,7 @@ body { padding: 1.5rem 1.5rem 2rem; font-size: 15px; }
    scroll on their own, so a long palette never carries the board away. */
 /* The editor fills the window: the toolbar stays put and the three columns
    scroll on their own, so a long palette never carries the board away. The
-   shell takes the rest of the window below the top bar (ADR 0150). */
+   shell takes the rest of the window below the top bar (ADR 0152). */
 body.editor { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 body.editor main { display: flex; flex-direction: column; min-height: 0; }
 body.editor .shell { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
@@ -121,7 +121,7 @@ ul.variant-types a.active { font-weight: 700; color: var(--pb-ink); }
 .palette .plugin-head { display: flex; align-items: center; gap: .3rem; margin: 0 0 .3rem; font-size: .85rem; color: var(--pb-ink); font-weight: 600; cursor: pointer; user-select: none; }
 .palette .plugin-head .chev { color: var(--pb-ink-muted); font-size: .8rem; width: 1rem; }
 .palette .plugin-head .count { margin-left: auto; color: var(--pb-ink-faint); font-size: .72rem; font-weight: 400; }
-/* The palette entries carry a picture, so 43 widgets stay scannable (ADR 0150). */
+/* The palette entries carry a picture, so 43 widgets stay scannable (ADR 0152). */
 .palette button.widget { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr) auto; gap: .45rem; align-items: center; width: 100%; text-align: left; margin-bottom: .25rem; padding: .2rem .3rem .2rem .2rem; user-select: none; }
 .palette button.widget.active { border-color: var(--pb-accent); background: var(--pb-accent-bg); }
 .palette button.widget.nofit { opacity: .55; }

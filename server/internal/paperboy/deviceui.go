@@ -33,7 +33,7 @@ var deviceEditorJS []byte
 type deviceEditorView struct {
 	Version    string
 	GoVersion  string
-	Nav        []navItem // the rail, with the active section (ADR 0150)
+	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
 	ID         string
 	New        bool

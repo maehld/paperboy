@@ -60,7 +60,7 @@ type planEditorState struct {
 type planEditorView struct {
 	Version    string
 	GoVersion  string
-	Nav        []navItem // the rail, with the active section (ADR 0150)
+	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
 	Name       string
 	Timezone   string // the global timezone the windows are read in (ADR 0033)

@@ -8,7 +8,7 @@
   const el = (id) => document.getElementById(id);
   const start = JSON.parse(el('editor-data').textContent);
 
-  // pageHref builds the route of one page file (ADR 0150): the name sits in the
+  // pageHref builds the route of one page file (ADR 0152): the name sits in the
   // path, the rest stays in the query.
   function pageHref(name, params) {
     const rest = params ? params.toString() : '';
@@ -736,7 +736,7 @@
     return storedList(pinnedKey).includes(id);
   }
 
-  // togglePin keeps a widget at the top of the palette (ADR 0150).
+  // togglePin keeps a widget at the top of the palette (ADR 0152).
   function togglePin(id) {
     const pinned = storedList(pinnedKey);
     storeList(pinnedKey, pinned.includes(id) ? pinned.filter((item) => item !== id) : [id, ...pinned]);
@@ -861,7 +861,7 @@
 
   // renderPalette lists the widgets of the plugins with a picture each. Pinned
   // and recent widgets come first, and a selected cell moves the widgets that
-  // fit it to the top of their group (ADR 0150).
+  // fit it to the top of their group (ADR 0152).
   function renderPalette() {
     const box = el('palette');
     box.innerHTML = '';
@@ -950,7 +950,7 @@
         note.textContent = p.error;
         section.appendChild(note);
       }
-      // The widgets that fit the selected cell come first (ADR 0150).
+      // The widgets that fit the selected cell come first (ADR 0152).
       const ranked = found
         .map((w) => ({ w: w, rank: fitsSelectedCell(w) }))
         .sort((a, b) => a.rank - b.rank || a.w.widget.localeCompare(b.w.widget));
@@ -2753,7 +2753,7 @@
   }
 
   // renderUsedBy names the plans that use the page, each as a link, so the
-  // operator can walk from the page to its plans (ADR 0150).
+  // operator can walk from the page to its plans (ADR 0152).
   function renderUsedBy() {
     const box = el('used-by');
     if (!box) return;
@@ -2867,7 +2867,7 @@
     renderPalette();
   });
   // The palette answers to the keyboard: / focuses the filter, the arrow keys
-  // walk the entries and Enter places the focused one (ADR 0150).
+  // walk the entries and Enter places the focused one (ADR 0152).
   const paletteButtons = () => Array.from(el('palette').querySelectorAll('button.widget'));
   on('palette-filter', 'keydown', (e) => {
     if (e.key !== 'ArrowDown') return;

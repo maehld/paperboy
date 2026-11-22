@@ -1,4 +1,4 @@
-// One dialog for every prompt and confirmation of the operator UI (ADR 0150).
+// One dialog for every prompt and confirmation of the operator UI (ADR 0152).
 // The browser supplies the modal, the backdrop, the focus trap and Escape, so
 // the UI needs no overlay code. Callers get a promise:
 //

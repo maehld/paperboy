@@ -169,7 +169,7 @@
   }
 
   // renderLinks turns the references of the device into a way onward: its plan,
-  // its preview and its display type (ADR 0150).
+  // its preview and its display type (ADR 0152).
   function renderLinks() {
     const box = el('links');
     box.innerHTML = '';

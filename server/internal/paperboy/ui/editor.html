@@ -51,7 +51,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 {{template "chrome" .}}
 {{if or (eq .Tab "devices") (eq .Tab "displays")}}
 {{/* Display types belong to the devices section, so the two lists share a
-     sub-navigation instead of a hidden fourth tab (ADR 0150). */}}
+     sub-navigation instead of a hidden fourth tab (ADR 0152). */}}
 <nav class="switch" aria-label="Devices">
   <a href="/ui/devices"{{if eq .Tab "devices"}} class="active" aria-current="page"{{end}}>Devices</a>
   <a href="/ui/display-types"{{if eq .Tab "displays"}} class="active" aria-current="page"{{end}}>Display types</a>

@@ -1,4 +1,4 @@
-/* Design tokens of the operator UI (ADR 0150). Every page links this file
+/* Design tokens of the operator UI (ADR 0152). Every page links this file
    first, then ui.css and editor.css, and names no colour of its own.
 
    The values move into this file before the look changes: first the tokens
@@ -7,7 +7,7 @@
 
    Dark mode needs no second palette. color-scheme tells the browser which
    branch of light-dark() to use, so a dark system switches the colours on its
-   own and the toggle of ADR 0150 only sets data-theme on <html>.
+   own and the toggle of ADR 0152 only sets data-theme on <html>.
    light-dark() needs a browser from 2024. */
 
 :root {
@@ -82,6 +82,6 @@
   --pb-lcd-pixel-soft: color-mix(in srgb, var(--pb-lcd-pixel) 35%, transparent);
 }
 
-/* The toggle of ADR 0150 stores its choice in the browser and names it here. */
+/* The toggle of ADR 0152 stores its choice in the browser and names it here. */
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }

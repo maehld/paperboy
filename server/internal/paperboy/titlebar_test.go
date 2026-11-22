@@ -24,7 +24,7 @@ func railOf(t *testing.T, body string) string {
 }
 
 // TestOperatorPagesShareTheShell keeps the brand, the rail and the section from
-// drifting apart between the pages (ADR 0150; issue 120 put the device into the
+// drifting apart between the pages (ADR 0152; issue 120 put the device into the
 // h1, issue 382 replaced the flat header).
 func TestOperatorPagesShareTheShell(t *testing.T) {
 	s, _ := planServer(t, testPlan)
@@ -77,7 +77,7 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 
 // TestOperatorPagesLinkTheSharedStylesheet keeps the look in one place: every
 // page links the tokens and /ui/ui.css instead of carrying its own colours and
-// its own copy of the header and the buttons (ADR 0076, ADR 0150).
+// its own copy of the header and the buttons (ADR 0076, ADR 0152).
 func TestOperatorPagesLinkTheSharedStylesheet(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"AA:BB:CC:DD:EE:01\"\nplan: zimmer\n")
@@ -158,7 +158,7 @@ func TestOperatorPagesCarryTheLogo(t *testing.T) {
 // TestEditorBarsShareThePattern verifies that every editor shows one action bar
 // with the object name and Delete, Reload and Save in that order, so no editor
 // drifts from the others (ADR 0076). The breadcrumb carries the way back since
-// ADR 0150.
+// ADR 0152.
 func TestEditorBarsShareThePattern(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"AA:BB:CC:DD:EE:01\"\nplan: zimmer\n")

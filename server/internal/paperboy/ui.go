@@ -35,7 +35,7 @@ func (s *Server) handleUICSS(w http.ResponseWriter, r *http.Request) {
 }
 
 // uiTokens are the design tokens every page links before the stylesheet: the
-// colours, the type scale, the spacing and the motion (ADR 0150).
+// colours, the type scale, the spacing and the motion (ADR 0152).
 //
 //go:embed ui/tokens.css
 var uiTokens []byte
@@ -97,7 +97,7 @@ func serveSVG(w http.ResponseWriter, data []byte) {
 	w.Write(data)
 }
 
-// pageTemplate parses a page file together with the shared shell (ADR 0150).
+// pageTemplate parses a page file together with the shared shell (ADR 0152).
 // The page file is the root template, and layout.html adds the named templates
 // it calls: "head", "chrome" and "chrome-end".
 func pageTemplate(name, page string, funcs template.FuncMap) *template.Template {
@@ -119,7 +119,7 @@ type crumb struct {
 	Current bool
 }
 
-// crumbPath marks the last step as the current page (ADR 0150).
+// crumbPath marks the last step as the current page (ADR 0152).
 func crumbPath(items ...crumb) []crumb {
 	if len(items) > 0 {
 		items[len(items)-1].Current = true
@@ -127,7 +127,7 @@ func crumbPath(items ...crumb) []crumb {
 	return items
 }
 
-// navFor returns the rail with the section marked (ADR 0150).
+// navFor returns the rail with the section marked (ADR 0152).
 func navFor(section string) []navItem {
 	items := []navItem{
 		{Label: "Devices", URL: "/ui"},
@@ -145,7 +145,7 @@ func navFor(section string) []navItem {
 	return items
 }
 
-// objectURL builds the route of one object (ADR 0150): the collection, the
+// objectURL builds the route of one object (ADR 0152): the collection, the
 // escaped name and the remaining query. The name and the id leave the query,
 // because the route carries them.
 func objectURL(collection, name string, params url.Values) string {
@@ -172,7 +172,7 @@ func withQuery(r *http.Request, key, value string) {
 }
 
 // uiList opens one object type of the list page under its own route: the list
-// handler reads the type from the query (ADR 0150).
+// handler reads the type from the query (ADR 0152).
 func (s *Server) uiList(tab string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		withQuery(r, "tab", tab)
@@ -190,7 +190,7 @@ func (s *Server) uiObject(path, query string, handle http.HandlerFunc) http.Hand
 }
 
 // uiCreate takes the name from a creation form and opens the object's route, so
-// a GET form creates without a route of its own (ADR 0150).
+// a GET form creates without a route of its own (ADR 0152).
 func uiCreate(collection, param string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := r.URL.Query().Get(param)
@@ -208,7 +208,7 @@ func uiCreate(collection, param string) http.HandlerFunc {
 //go:embed ui/layout.html
 var uiLayout string
 
-// uiThemeJS is the theme toggle of ADR 0150. It is a file instead of an inline
+// uiThemeJS is the theme toggle of ADR 0152. It is a file instead of an inline
 // script, so the ten pages share one copy.
 //
 //go:embed ui/theme.js
@@ -221,7 +221,7 @@ func (s *Server) handleUIThemeJS(w http.ResponseWriter, r *http.Request) {
 }
 
 // styleguideTemplate renders the tokens and the components, so a change to the
-// look has one page to check (ADR 0150).
+// look has one page to check (ADR 0152).
 //
 //go:embed ui/styleguide.html
 var styleguideTemplate string
@@ -293,7 +293,7 @@ func (s *Server) handleStyleguide(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// uiCommandJS is the command palette behind Cmd+K (ADR 0150). It reads the list
+// uiCommandJS is the command palette behind Cmd+K (ADR 0152). It reads the list
 // APIs in the browser, so the server needs no search route.
 //
 //go:embed ui/command.js
@@ -305,7 +305,7 @@ func (s *Server) handleUICommandJS(w http.ResponseWriter, r *http.Request) {
 	w.Write(uiCommandJS)
 }
 
-// uiDialogJS is the one dialog of the UI, shared by the editors (ADR 0150).
+// uiDialogJS is the one dialog of the UI, shared by the editors (ADR 0152).
 //
 //go:embed ui/dialog.js
 var uiDialogJS []byte
@@ -324,7 +324,7 @@ type dashboardDevice struct {
 	Type          string // display type: the operator's label for the page layout
 	Hardware      string // hardware the device reports; empty until it registered
 	Plan          string // plan name, "no plan" when empty
-	PlanURL       string // the plan's editor, empty without a plan (ADR 0150)
+	PlanURL       string // the plan's editor, empty without a plan (ADR 0152)
 	Rule          string // active plan rule, empty when unknown
 	Content       string // page name, "notice", "battery warning" or empty
 	PageURL       string // the shown page's editor, empty for a notice
@@ -361,7 +361,7 @@ type dashboardDevice struct {
 type dashboardPage struct {
 	Version    string // build label: version, commit and commit date
 	GoVersion  string
-	Nav        []navItem // the rail, with the active section (ADR 0150)
+	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
 	Devices    []dashboardDevice
 	Downloads  *dashboardDownloads // hint about the release checks (ADR 0060), nil without a download section
@@ -608,7 +608,7 @@ func actionsText(d *Device) string {
 }
 
 // contentText names what the device is showing in plain words.
-// planURLFor links the plan of a card; the dashboard opens its editor (ADR 0150).
+// planURLFor links the plan of a card; the dashboard opens its editor (ADR 0152).
 func planURLFor(plan string) string {
 	if plan == "" {
 		return ""

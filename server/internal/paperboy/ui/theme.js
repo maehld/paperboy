@@ -1,4 +1,4 @@
-// The theme toggle of ADR 0150. The choice lives in the browser only: without a
+// The theme toggle of ADR 0152. The choice lives in the browser only: without a
 // stored value the page follows the operating system, and a click stores the
 // opposite of what the page shows now. tokens.css turns data-theme into a
 // colour-scheme, so the whole palette follows one attribute.

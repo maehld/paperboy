@@ -1,4 +1,4 @@
-<!-- The shell every operator page shares (ADR 0150): the document head, the
+<!-- The shell every operator page shares (ADR 0152): the document head, the
      brand, the rail that names the sections, the breadcrumb and the theme
      toggle. A page parses this file together with its own template, calls
      "head" in its head, "chrome" where the section starts and "chrome-end"
@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="/ui/ui.css">
 <link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 {{/* The stored choice must apply before the first paint, or a dark page
-     flashes light. The script is inline for that reason only (ADR 0150). */}}
+     flashes light. The script is inline for that reason only (ADR 0152). */}}
 <script>try{var t=localStorage.getItem("pb-theme");if(t==="dark"||t==="light")document.documentElement.dataset.theme=t}catch(e){}</script>
 <script src="/ui/theme.js" defer></script>
 <script src="/ui/command.js" defer></script>
