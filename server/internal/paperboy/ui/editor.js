@@ -183,6 +183,7 @@
           labels: c.labels && typeof c.labels === 'object' ? c.labels : {},
           unit: c.unit || '',
           scale: typeof c.scale === 'string' ? c.scale : '',
+          flow: c.flow === 'arrow' || (c.flow && typeof c.flow === 'object' && c.flow.out && c.flow.in) ? c.flow : null,
           align: c.align === 'right' || c.align === 'decimal' ? c.align : 'left',
           overflow: c.overflow === 'wrap' || c.overflow === 'scroll' ? c.overflow : '',
           args: c.args || {},
@@ -250,6 +251,8 @@
           if (c.labels && Object.keys(c.labels).length) cell.labels = c.labels;
           if (c.unit) cell.unit = c.unit;
           if (c.scale) cell.scale = c.scale;
+          if (c.flow === 'arrow') cell.flow = 'arrow';
+          else if (c.flow && c.flow.out && c.flow.in) cell.flow = { out: c.flow.out, in: c.flow.in };
         }
         if (c.align && c.align !== 'left') cell.align = c.align;
         if (c.overflow) cell.overflow = c.overflow;
@@ -445,7 +448,7 @@
     t.cells.push({
       at: [x, y], span: [w, 1],
       text: literal ? 'Text' : '', value: literal ? '' : plugin + '/' + name,
-      label: '', labels: {}, unit: '', scale: '', args: {},
+      label: '', labels: {}, unit: '', scale: '', flow: null, args: {},
       align: !literal && info && info.type === 'number' ? 'decimal' : 'left',
       overflow: '',
     });
@@ -1803,6 +1806,7 @@
         c.labels = {};
         c.unit = '';
         c.scale = '';
+        c.flow = null;
       } else {
         c.value = c.value || firstValueKey();
         c.text = '';
@@ -1856,6 +1860,7 @@
         c.args = {};
         c.scale = '';
         c.labels = {};
+        c.flow = null;
         changed();
       });
       box.appendChild(field('Value', select));
@@ -1977,6 +1982,55 @@
           changed();
         });
         box.appendChild(field('Scale', scale));
+      }
+
+      // A signed number may show its direction as < or >, or as words that
+      // belong to the page (issue #399).
+      if (info && info.type === 'number') {
+        const flow = document.createElement('select');
+        const arrow = c.flow === 'arrow';
+        const words = c.flow && typeof c.flow === 'object';
+        for (const [value, text] of [['', 'none'], ['arrow', 'arrow < >'], ['words', 'words']]) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = text;
+          flow.appendChild(option);
+        }
+        flow.value = arrow ? 'arrow' : words ? 'words' : '';
+
+        const out = document.createElement('input');
+        out.type = 'text';
+        out.autocomplete = 'off';
+        out.placeholder = 'out';
+        out.value = words ? (c.flow.out || '') : '';
+        const into = document.createElement('input');
+        into.type = 'text';
+        into.autocomplete = 'off';
+        into.placeholder = 'in';
+        into.value = words ? (c.flow.in || '') : '';
+        const wordWrap = document.createElement('span');
+        wordWrap.style.display = 'flex';
+        wordWrap.style.gap = '.4rem';
+        out.style.width = '6rem';
+        into.style.width = '6rem';
+        wordWrap.append(out, into);
+        wordWrap.hidden = flow.value !== 'words';
+
+        const editWords = () => {
+          c.flow = { out: out.value, in: into.value };
+          changed('inspector');
+        };
+        out.addEventListener('input', editWords);
+        into.addEventListener('input', editWords);
+        flow.addEventListener('change', () => {
+          if (flow.value === 'arrow') c.flow = 'arrow';
+          else if (flow.value === 'words') c.flow = { out: out.value, in: into.value };
+          else c.flow = null;
+          wordWrap.hidden = flow.value !== 'words';
+          changed('inspector');
+        });
+        box.appendChild(field('Flow', flow));
+        box.appendChild(field('Out / in', wordWrap));
       }
 
       renderArgFields(box, c, (info && info.args) || {});
