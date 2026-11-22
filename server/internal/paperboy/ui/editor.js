@@ -41,7 +41,7 @@
     placing: null, // {plugin, widget} or {plugin, name, value: true} waiting for a cell
     filter: '', // text of the palette filter
     collapsed: new Set(), // plugins whose values the palette hides
-    collapsedSections: new Set(), // shortcut groups the palette folds (Pinned, Recent)
+    collapsedSections: new Set(), // shortcut groups the palette folds (Pinned)
     openPlugin: '', // the one plugin group the widget palette shows (ADR 0152)
     openResolved: false, // the palette picked its group after the plugins answered
     plugins: [],
@@ -718,7 +718,6 @@
   // ---- palette ----
 
   const pinnedKey = 'pb-pinned-widgets';
-  const recentKey = 'pb-recent-widgets';
   const openKey = 'pb-open-plugin';
 
   // storedList reads a list of widget ids the browser keeps.
@@ -765,12 +764,6 @@
     const pinned = storedList(pinnedKey);
     storeList(pinnedKey, pinned.includes(id) ? pinned.filter((item) => item !== id) : [id, ...pinned]);
     renderPalette();
-  }
-
-  // rememberWidget keeps the last eight widgets on top.
-  function rememberWidget(id) {
-    const rest = storedList(recentKey).filter((item) => item !== id);
-    storeList(recentKey, [id, ...rest].slice(0, 8));
   }
 
   // pluginHasImageWidget says whether the widget palette can list the plugin.
@@ -900,13 +893,11 @@
         suppressPaletteClick = false;
         return;
       }
-      rememberWidget(id);
       pick(plugin, widget.widget);
     });
     b.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('text/plain', id);
       e.dataTransfer.effectAllowed = 'copy';
-      rememberWidget(id);
     });
     return b;
   }
@@ -937,8 +928,8 @@
     return head;
   }
 
-  // widgetSection renders one shortcut group (Pinned, Recent). Each folds on
-  // its own and starts open; the plugin groups below share one open group.
+  // widgetSection renders the shortcut group (Pinned). It folds on its own and
+  // starts open; the plugin groups below share one open group.
   function widgetSection(title, entries, folded, toggle) {
     const section = document.createElement('div');
     section.className = 'plugin';
@@ -949,8 +940,8 @@
   }
 
   // renderPalette lists the widgets of the plugins with a picture each. Pinned
-  // and recent widgets come first, one plugin group is open and a selected cell
-  // opens the group of its widget (ADR 0152). A filter shows every group with a
+  // widgets come first, one plugin group is open and a selected cell opens the
+  // group of its widget (ADR 0152, 0157). A filter shows every group with a
   // match and suspends the fold.
   function renderPalette() {
     const box = el('palette');
@@ -1002,13 +993,6 @@
           const entry = known.get(id);
           return widgetButton(entry.plugin, entry.widget, fitsSelectedCell(entry.widget));
         }), state.collapsedSections.has('pinned'), () => toggleSection('pinned')));
-      }
-      const recent = matches(storedList(recentKey)).filter((id) => !isPinned(id));
-      if (recent.length) {
-        box.appendChild(widgetSection('Recent', recent.map((id) => {
-          const entry = known.get(id);
-          return widgetButton(entry.plugin, entry.widget, fitsSelectedCell(entry.widget));
-        }), state.collapsedSections.has('recent'), () => toggleSection('recent')));
       }
     }
 
