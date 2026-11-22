@@ -1,7 +1,7 @@
 // Command weather is a Paperboy plugin (ADR 0049) with Open-Meteo data. It
 // fetches the forecast in the background, keeps it in memory and draws the
-// widgets "current" (pictogram, temperature, condition, optional clothing
-// advice, next precipitation), "days" (daily forecast) and "hours" (today's
+// widgets "current" (pictogram, temperature, condition, next
+// precipitation), "days" (daily forecast) and "hours" (today's
 // temperature curve with the precipitation type). "current" and "days" have
 // text variants for character displays.
 //
