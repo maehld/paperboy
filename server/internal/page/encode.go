@@ -98,6 +98,17 @@ func textCellNode(c Cell) *yaml.Node {
 		if len(c.Labels) > 0 {
 			add(n, "labels", stringMapNode(c.Labels))
 		}
+		if c.Flow != nil {
+			if c.Flow.Arrow {
+				add(n, "flow", str(FlowArrow))
+			} else {
+				words := newMap()
+				words.Style = yaml.FlowStyle
+				add(words, "out", str(c.Flow.Out))
+				add(words, "in", str(c.Flow.In))
+				add(n, "flow", words)
+			}
+		}
 	}
 	if c.Align != "" && c.Align != AlignLeft {
 		add(n, "align", str(c.Align))

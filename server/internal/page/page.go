@@ -12,6 +12,8 @@
 package page
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +23,7 @@ import (
 
 	"github.com/maehld/paperboy/server/internal/ident"
 	"github.com/maehld/paperboy/server/internal/strictyaml"
+	"go.yaml.in/yaml/v3"
 )
 
 // ErrNotFound reports a page template that does not exist for a display type.
@@ -82,6 +85,9 @@ type Cell struct {
 	// Scale forces a step of the value's unit progression: "auto" (default)
 	// or the unit of a declared step (ADR 0122).
 	Scale string `yaml:"scale,omitempty" json:"scale,omitempty"`
+	// Flow marks a signed number as a direction: "arrow" or out and in words
+	// (issue #399). Only a number value cell may carry it.
+	Flow *Flow `yaml:"flow,omitempty" json:"flow,omitempty"`
 	// Align is left, right or decimal; empty means left.
 	Align string `yaml:"align,omitempty" json:"align,omitempty"`
 	// Overflow overrides the page's strip, wrap or scroll.
@@ -95,6 +101,87 @@ func (c Cell) Plugin() string { p, _, _ := strings.Cut(c.Widget, "/"); return p 
 
 // Name is the widget name without the plugin.
 func (c Cell) Name() string { _, w, _ := strings.Cut(c.Widget, "/"); return w }
+
+// Flow marks a signed number as a direction (issue #399): "arrow" draws < for
+// a value that leaves the entity and > for one that enters it, while the map
+// form names the words out (positive) and in (negative).
+type Flow struct {
+	Arrow bool   `json:"-"`
+	Out   string `json:"out,omitempty"`
+	In    string `json:"in,omitempty"`
+}
+
+// FlowArrow is the scalar form of a flow: < or >.
+const FlowArrow = "arrow"
+
+// UnmarshalYAML reads either `flow: arrow` or `flow: {out: …, in: …}`.
+func (f *Flow) UnmarshalYAML(n *yaml.Node) error {
+	switch n.Kind {
+	case yaml.ScalarNode:
+		if n.Value != FlowArrow {
+			return fmt.Errorf("flow %q: expected arrow or out and in", n.Value)
+		}
+		*f = Flow{Arrow: true}
+		return nil
+	case yaml.MappingNode:
+		words := map[string]string{}
+		for i := 0; i < len(n.Content); i += 2 {
+			key, value := n.Content[i].Value, n.Content[i+1]
+			if value.Kind != yaml.ScalarNode {
+				return fmt.Errorf("flow.%s: expected a word", key)
+			}
+			switch key {
+			case "out", "in":
+				words[key] = value.Value
+			default:
+				return fmt.Errorf("flow: unknown key %q: expected out and in", key)
+			}
+		}
+		if words["out"] == "" || words["in"] == "" {
+			return fmt.Errorf("flow: out and in are required")
+		}
+		*f = Flow{Out: words["out"], In: words["in"]}
+		return nil
+	}
+	return fmt.Errorf("flow: expected arrow or out and in")
+}
+
+// MarshalJSON keeps the two forms of the file in the editor API.
+func (f Flow) MarshalJSON() ([]byte, error) {
+	if f.Arrow {
+		return []byte(`"` + FlowArrow + `"`), nil
+	}
+	if f.Out == "" || f.In == "" {
+		return nil, fmt.Errorf("flow: out and in are required")
+	}
+	return json.Marshal(map[string]string{"out": f.Out, "in": f.In})
+}
+
+// UnmarshalJSON reads either "arrow" or {"out": …, "in": …}.
+func (f *Flow) UnmarshalJSON(data []byte) error {
+	var word string
+	if err := json.Unmarshal(data, &word); err == nil {
+		if word != FlowArrow {
+			return fmt.Errorf("flow %q: expected arrow or out and in", word)
+		}
+		*f = Flow{Arrow: true}
+		return nil
+	}
+	var words struct {
+		Out string `json:"out"`
+		In  string `json:"in"`
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&words); err != nil {
+		return fmt.Errorf("flow: %w", err)
+	}
+	if words.Out == "" || words.In == "" {
+		return fmt.Errorf("flow: out and in are required")
+	}
+	*f = Flow{Out: words.Out, In: words.In}
+	return nil
+}
 
 // Alignments of a text cell (ADR 0111).
 const (
@@ -295,8 +382,8 @@ func (t *Template) validateGrid() error {
 		if c.Scroll {
 			return fmt.Errorf("%s: scroll is for text pages; ePaper cannot animate (ADR 0118)", where)
 		}
-		if c.Text != "" || c.Value != "" || c.Label != "" || len(c.Labels) > 0 || c.Unit != "" || c.Scale != "" || c.Align != "" || c.Overflow != "" {
-			return fmt.Errorf("%s: text, value, label, labels, unit and scale are for text pages (kind: text); use widget", where)
+		if c.Text != "" || c.Value != "" || c.Label != "" || len(c.Labels) > 0 || c.Unit != "" || c.Scale != "" || c.Flow != nil || c.Align != "" || c.Overflow != "" {
+			return fmt.Errorf("%s: text, value, label, labels, unit, scale and flow are for text pages (kind: text); use widget", where)
 		}
 		plugin, widget, ok := strings.Cut(c.Widget, "/")
 		if !ok || !ValidName(plugin) || !ValidName(widget) {
@@ -370,8 +457,8 @@ func (t *Template) validateText() error {
 			if !ok || !ValidName(plugin) || !ValidName(key) {
 				return fmt.Errorf("%s: value %q: expected plugin/value with a-z, 0-9 and -", where, c.Value)
 			}
-		} else if c.Label != "" || len(c.Labels) > 0 || c.Unit != "" || c.Scale != "" || len(c.Args) > 0 {
-			return fmt.Errorf("%s: a literal text cell has no label, labels, unit, scale or args", where)
+		} else if c.Label != "" || len(c.Labels) > 0 || c.Unit != "" || c.Scale != "" || c.Flow != nil || len(c.Args) > 0 {
+			return fmt.Errorf("%s: a literal text cell has no label, labels, unit, scale, flow or args", where)
 		}
 		switch c.Align {
 		case "":

@@ -46,7 +46,7 @@ A variant file carries `kind`, `grid`, `style`, `notices` and `cells`. It inheri
 | `notices` | `show` or `none`: whether a notice page may replace this page |
 | `cells` | Image pages: `at` (column, row), `span` (columns, rows), `widget`, `args`, `style` |
 | `overflow` | Text pages: default `strip`, `wrap` or `scroll` ([text pages](#text-pages)) |
-| `cells` | Text pages: boxes with `at`, `span`, `text` or `value`, `label`, `unit`, `scale`, `align` and `overflow` |
+| `cells` | Text pages: boxes with `at`, `span`, `text` or `value`, `label`, `unit`, `scale`, `flow`, `align` and `overflow` |
 
 Parsing is strict: an unknown key or a second YAML document is an error. Cells must not overlap. Sizes are in points since [ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md). A fraction such as `0.06` is rejected with a hint: points are physical, and the display type's `ppi` converts them into pixels.
 
@@ -82,7 +82,7 @@ cells:
   - { at: [0, 3], span: [12, 1], value: paperboy/long, overflow: scroll }
 ```
 
-A box carries exactly one of `text` and `value`. `text` is literal text and may span lines; a literal text cell has no label, labels, unit, scale or args. A value cell names `<plugin>/<key>`, the key a plugin declares in `describe.values`. Paperboy asks every plugin once for all keys of the page and argument set. The value reads the box's `args`, the arguments the plugin declares for it ([ADR 0120](../adr/0120-arguments-for-values.md)). Two boxes with the same value and different arguments are two requests. Paperboy caches the answer like a widget and drops it on a `changed` event. The plugin answers data, never text. A text value may carry several lines, one per record. The box shows them like literal text; the label opens the first line and the unit closes the last.
+A box carries exactly one of `text` and `value`. `text` is literal text and may span lines; a literal text cell has no label, labels, unit, scale, flow or args. A value cell names `<plugin>/<key>`, the key a plugin declares in `describe.values`. Paperboy asks every plugin once for all keys of the page and argument set. The value reads the box's `args`, the arguments the plugin declares for it ([ADR 0120](../adr/0120-arguments-for-values.md)). Two boxes with the same value and different arguments are two requests. Paperboy caches the answer like a widget and drops it on a `changed` event. The plugin answers data, never text. A text value may carry several lines, one per record. The box shows them like literal text; the label opens the first line and the unit closes the last.
 
 | Cell key | Meaning |
 |---|---|
@@ -95,6 +95,7 @@ A box carries exactly one of `text` and `value`. `text` is literal text and may 
 | `labels` | enum value cells only: display text per enum key |
 | `unit` | value cells only: text behind the value; `none` hides it; default the declared unit |
 | `scale` | value cells only: `auto` (default) or a declared unit step, e.g. `W` |
+| `flow` | number value cells only: `arrow`, or `out` and `in` with the words of the page (issue #399) |
 | `align` | `left` (default), `right` or `decimal` |
 | `overflow` | `strip`, `wrap` or `scroll`; default the page's `overflow` |
 
@@ -107,11 +108,11 @@ Boxes must stay inside the character grid and must not overlap; `at + span` is c
 
 An `enum` value answers one key of its declaration ([ADR 0127](../adr/0127-plan-conditions-are-values.md)). A value cell may label its keys in `labels`, one text per key. Paperboy shows the label when it is not empty and the key otherwise. Only an enum value cell may carry labels. A plugin and a plan condition carry none, because the text belongs to the page and its language.
 
-Paperboy formats every value itself: numbers follow the global `language` and the declared `precision`, durations and timestamps their compact forms, and directions their arrows. A number with a declared progression takes the largest step whose rounded absolute value is at least 1. Zero and small values stay in the base unit ([ADR 0122](../adr/0122-hide-and-progress-a-unit.md)). The cell's `scale` forces a step, and its `unit` overrides or hides the unit text. `RenderText` converts label, value and text to the charset before it measures, wraps or cuts. Lines of a multi-line value follow the cell's `align` and `overflow` like literal text. A stale value marks `!` in the last column of line 1. A missing value becomes a `? …` cell.
+Paperboy formats every value itself: numbers follow the global `language` and the declared `precision`, durations and timestamps their compact forms, and directions their arrows. A number with a declared progression takes the largest step whose rounded absolute value is at least 1. Zero and small values stay in the base unit ([ADR 0122](../adr/0122-hide-and-progress-a-unit.md)). The cell's `scale` forces a step, and its `unit` overrides or hides the unit text. A number cell may mark its direction with `flow`. `arrow` draws `<` for a positive value and `>` for a negative one. The words `out` and `in` replace the arrows. Positive leaves the entity, negative enters it. A value that rounds to zero gets no marker (issue #399). `RenderText` converts label, value and text to the charset before it measures, wraps or cuts. Lines of a multi-line value follow the cell's `align` and `overflow` like literal text. A stale value marks `!` in the last column of line 1. A missing value becomes a `? …` cell.
 
 A scrolling box adds its full lines, its first window and its direction to the render result. The device answer carries them with the display type's `scroll.step` (default 300 ms) and a flag whether the scroll text changed. A firmware or the virtual display keeps its offset while the flag is false and restarts at the first window when it is true. ePaper pages reject `scroll` and `overflow` with a hint (ADR 0118).
 
-The page editor places the same boxes on the board. Drag moves a box and its edges resize it. The inspector edits value or text, label, labels, unit, scale, align and overflow. It shows one label input per declared enum key. Text pages have no style in points.
+The page editor places the same boxes on the board. Drag moves a box and its edges resize it. The inspector edits value or text, label, labels, unit, scale, flow, align and overflow. It shows one label input per declared enum key. Text pages have no style in points.
 
 ## Which page a device gets
 

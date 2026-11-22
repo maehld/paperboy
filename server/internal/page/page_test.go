@@ -2,6 +2,7 @@ package page
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -298,6 +299,78 @@ cells:
 	}
 }
 
+// TestTextFlow marks a signed number as a direction (issue #399): the arrow
+// form, the words and a value that rounds to zero.
+func TestTextFlow(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader(`
+kind: text
+cells:
+  - { at: [0, 0], span: [20, 1], value: e/grid, label: Netz, flow: arrow }
+  - { at: [0, 1], span: [20, 1], value: e/battery, label: Akku, flow: { out: entlädt, in: lädt } }
+  - { at: [0, 2], span: [20, 1], value: e/out, label: Akku, flow: { out: entlädt, in: lädt } }
+  - { at: [0, 3], span: [20, 1], value: e/zero, label: "Null", flow: arrow }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := plugin.ValueSpec{Name: "power", Type: plugin.ValueNumber, Unit: "W", Precision: 0}
+	src := valueSource(map[string]ValueResult{
+		"e/grid":    {Value: plugin.NumberValue(-400), Spec: spec},
+		"e/battery": {Value: plugin.NumberValue(-400), Spec: spec},
+		"e/out":     {Value: plugin.NumberValue(400), Spec: spec},
+		"e/zero":    {Value: plugin.NumberValue(0.4), Spec: spec},
+	})
+	text, err := tmpl.RenderText(Display{Width: 20, Height: 4, Text: true, Language: "de"}, Context{Values: src})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"Netz > 400 W", "Akku lädt 400 W", "Akku entlädt 400 W", "Null 0 W"}
+	for i, w := range want {
+		if got := strings.TrimRight(text.Lines[i], " "); got != w {
+			t.Errorf("line %d = %q, want %q", i+1, got, w)
+		}
+	}
+}
+
+func TestTextFlowValidation(t *testing.T) {
+	for _, body := range []string{
+		"kind: text\ncells: [{ at: [0, 0], span: [1, 1], text: x, flow: arrow }]",
+		"kind: text\ncells: [{ at: [0, 0], span: [1, 1], value: e/x, flow: { out: nur } }]",
+		"kind: text\ncells: [{ at: [0, 0], span: [1, 1], value: e/x, flow: { out: a, in: b, extra: c } }]",
+		"kind: text\ncells: [{ at: [0, 0], span: [1, 1], value: e/x, flow: sidewards }]",
+	} {
+		if _, err := Parse(strings.NewReader(body)); err == nil {
+			t.Errorf("accepted %q", body)
+		}
+	}
+}
+
+func TestFlowJSON(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		want Flow
+	}{
+		{`"arrow"`, Flow{Arrow: true}},
+		{`{"out":"bezieht","in":"speist ein"}`, Flow{Out: "bezieht", In: "speist ein"}},
+	} {
+		var f Flow
+		if err := json.Unmarshal([]byte(c.in), &f); err != nil {
+			t.Fatalf("%s: %v", c.in, err)
+		}
+		if f != c.want {
+			t.Errorf("%s = %+v, want %+v", c.in, f, c.want)
+		}
+		data, err := json.Marshal(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var back Flow
+		if err := json.Unmarshal(data, &back); err != nil || back != f {
+			t.Errorf("round trip %s: %+v, %v", data, back, err)
+		}
+	}
+}
+
 // TestTextUnitProgression covers the step choice and the unit text of a value
 // (ADR 0122).
 func TestTextUnitProgression(t *testing.T) {
@@ -432,7 +505,7 @@ kind: text
 cells:
   - { at: [0, 0], span: [10, 1], text: hello, args: { n: 1 } }
 `))
-	if err == nil || !strings.Contains(err.Error(), "literal text cell has no label, labels, unit, scale or args") {
+	if err == nil || !strings.Contains(err.Error(), "literal text cell has no label, labels, unit, scale, flow or args") {
 		t.Fatalf("literal text with args: %v", err)
 	}
 }
@@ -592,6 +665,8 @@ overflow: wrap
 cells:
   - { at: [0, 0], span: [6, 1], text: "a\nb", align: right }
   - { at: [6, 1], span: [4, 2], value: a/one, label: L, labels: { low: "Low", urgent: "Urgent" }, unit: kW, overflow: scroll }
+  - { at: [0, 3], span: [6, 1], value: a/power, flow: arrow }
+  - { at: [6, 3], span: [4, 1], value: a/power, flow: { out: bezieht, in: speist ein } }
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -606,6 +681,9 @@ cells:
 	}
 	if !strings.Contains(string(data), `labels: {low: Low, urgent: Urgent}`) {
 		t.Fatalf("labels missing from the file:\n%s", data)
+	}
+	if !strings.Contains(string(data), `flow: arrow`) || !strings.Contains(string(data), `flow: {out: bezieht, in: speist ein}`) {
+		t.Fatalf("flow missing from the file:\n%s", data)
 	}
 	back, err := Parse(bytes.NewReader(data))
 	if err != nil {

@@ -273,7 +273,11 @@ func textValueParts(r Result, cell Cell, charset, lang string, now time.Time, lo
 		if err != nil {
 			return convertLines(charset, "? "+err.Error()), ""
 		}
-		return convertLines(charset, formatNumber(number, step.precision, lang)),
+		text := formatNumber(number, step.precision, lang)
+		if cell.Flow != nil {
+			text = flowNumber(*cell.Flow, number, step.precision, lang)
+		}
+		return convertLines(charset, text),
 			clean(Convert(charset, unitText(cell.Unit, step.unit)))
 	}
 	value = formatValue(r.Spec, *r.Value, lang, now, loc)
@@ -437,6 +441,27 @@ func formatNumber(f float64, precision int, lang string) string {
 		s = strings.Replace(s, ".", ",", 1)
 	}
 	return s
+}
+
+// flowNumber marks a signed number as a direction (issue #399). Positive leaves
+// the entity, so the arrow points at the number; negative enters it. A value
+// that rounds to zero keeps the plain number.
+func flowNumber(flow Flow, value float64, precision int, lang string) string {
+	number := roundStep(value, precision)
+	if number == 0 {
+		return formatNumber(0, precision, lang)
+	}
+	abs := formatNumber(math.Abs(number), precision, lang)
+	if flow.Arrow {
+		if number > 0 {
+			return "< " + abs
+		}
+		return "> " + abs
+	}
+	if number > 0 {
+		return flow.Out + " " + abs
+	}
+	return flow.In + " " + abs
 }
 
 // formatDuration writes a duration of seconds compactly: 45s, 12min, 3h 20min,
