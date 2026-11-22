@@ -172,6 +172,10 @@ async function main() {
       page.setDefaultTimeout(60_000);
       const problems = [];
       page.on("pageerror", (err) => problems.push(`${err.message}`));
+      // A failed request names its URL, so a broken preview is easy to find.
+      page.on("response", (res) => {
+        if (res.status() >= 400) problems.push(`${res.status()} ${res.url()}`);
+      });
       page.on("console", (msg) => {
         if (msg.type() === "error") problems.push(msg.text());
       });
