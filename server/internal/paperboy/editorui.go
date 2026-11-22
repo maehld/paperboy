@@ -872,7 +872,6 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-
 // handleEditorPage opens one page file with a preview display type (ADR 0110).
 // The file is addressed exactly by name and label; the display type only
 // selects the pixels the draft is rendered for. A page without a file opens as
