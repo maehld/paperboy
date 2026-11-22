@@ -12,12 +12,12 @@ import (
 )
 
 // activeLoadpoints are the charging points that take part in the flow: the ones
-// that draw power or have a vehicle connected.
+// that charge or draw power.
 func (s *state) activeLoadpoints() []*loadpoint {
 	var out []*loadpoint
 	for i := range s.Loadpoints {
 		lp := &s.Loadpoints[i]
-		if lp.Charging || lp.ChargePower > flowIdle || lp.Connected {
+		if lp.Charging || lp.ChargePower > flowIdle {
 			out = append(out, lp)
 		}
 	}
@@ -170,15 +170,19 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) error {
 	hubTop, hubBottom := cy-hubD/2, cy+hubD/2
 	hubLeft, hubRight := cx-hubD/2, cx+hubD/2
 
+	// Every link keeps the same clearance to the box it leaves and to the box
+	// or hub it reaches. The head lies inside that length, so the arrow counts
+	// into the line and never makes the gap smaller.
+	linkGap := gap
 	links := make([][]fpt, len(nodes))
-	links[flowPV] = []fpt{{cx, float64(pv.rect.Max.Y) + gap}, {cx, hubTop - 2}}
+	links[flowPV] = []fpt{{cx, float64(pv.rect.Max.Y) + linkGap}, {cx, hubTop - linkGap}}
 	if bat != nil {
-		links[m.battery] = []fpt{{cx, float64(bat.rect.Min.Y) - gap}, {cx, hubBottom + 2}}
+		links[m.battery] = []fpt{{cx, float64(bat.rect.Min.Y) - linkGap}, {cx, hubBottom + linkGap}}
 	}
-	links[flowGrid] = []fpt{{float64(grid.rect.Max.X) + gap, cy}, {hubLeft - 2, cy}}
+	links[flowGrid] = []fpt{{float64(grid.rect.Max.X) + linkGap, cy}, {hubLeft - linkGap, cy}}
 	homeY := float64(home.rect.Min.Y+home.rect.Max.Y) / 2
 	laneX := (hubRight + float64(home.rect.Min.X)) / 2
-	links[flowHome] = []fpt{{float64(home.rect.Min.X) - 1, homeY}, {laneX, homeY}, {laneX, cy}, {hubRight + 2, cy}}
+	links[flowHome] = []fpt{{float64(home.rect.Min.X) - linkGap, homeY}, {laneX, homeY}, {laneX, cy}, {hubRight + linkGap, cy}}
 
 	for i, p := range links {
 		if p == nil {
@@ -199,31 +203,10 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) error {
 		e.flowCard(img, n, base, rule)
 	}
 
-	// The chargers hang on a thin tree below the home. Only active chargers
-	// get a branch.
-	if nlp > 0 {
-		lastActive := -1
-		for i, n := range lpn {
-			if !n.idle {
-				lastActive = i
-			}
-		}
-		if lastActive >= 0 {
-			tx0 := int(float64(home.rect.Min.X) + sideW*0.045)
-			tx1 := int(float64(home.rect.Min.X) + sideW*0.085)
-			end := int(math.Round(float64(lpn[lastActive].rect.Min.Y+lpn[lastActive].rect.Max.Y) / 2))
-			render.VLine(img, tx0, home.rect.Max.Y, end, 1)
-			for _, n := range lpn {
-				if n.idle {
-					continue
-				}
-				ly := int(math.Round(float64(n.rect.Min.Y+n.rect.Max.Y) / 2))
-				arrowPath(img, []fpt{{float64(tx0), float64(ly)}, {float64(tx1 + 5), float64(ly)}}, 1, math.Max(base*0.16, 3.5))
-			}
-		}
-	}
+	// Active chargers are plain text lines below the home; no line joins them,
+	// so nothing runs into the vehicle names.
 	for _, n := range lpn {
-		e.flowTextRow(img, n, home.rect.Min.X+int(sideW*0.10), home.rect.Max.X, base)
+		e.flowTextRow(img, n, home.rect.Min.X, home.rect.Max.X, base)
 	}
 	return nil
 }
