@@ -50,7 +50,7 @@ func TestDeviceEditorPage(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		`<script id="device-data" type="application/json">`, `"id":"kueche"`, `"displays":["lcd","small"]`,
-		`src="/ui/editor/device.js"`, `id="mac"`, `id="plan"`, `id="warn"`,
+		`src="/ui/device-editor.js"`, `id="mac"`, `id="plan"`, `id="warn"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("device page lacks %q:\n%s", want, body)
@@ -75,7 +75,7 @@ func TestDeviceEditorPage(t *testing.T) {
 // TestDeviceEditorScript is served from the binary and talks to the device API.
 func TestDeviceEditorScript(t *testing.T) {
 	s, _ := testServer(t)
-	rec := request(t, s, http.MethodGet, "/ui/editor/device.js", nil, nil)
+	rec := request(t, s, http.MethodGet, "/ui/device-editor.js", nil, nil)
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}

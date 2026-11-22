@@ -63,7 +63,7 @@ func TestPlanEditor(t *testing.T) {
 		`"name":"tour"`,
 		`"devices":[{"id":"test","display":"small"}]`,
 		`"displays":["small"]`,
-		`<script src="/ui/editor/plan.js"></script>`,
+		`<script src="/ui/plan-editor.js"></script>`,
 		`id="rules"`, `id="actions"`, `id="fallback"`, `id="devices"`,
 		`href="/ui/pages"`,
 	} {
@@ -108,7 +108,7 @@ func TestPlanEditorWithoutDevices(t *testing.T) {
 // TestPlanEditorScript serves the plan script from the binary.
 func TestPlanEditorScript(t *testing.T) {
 	s, _ := testServer(t)
-	rec := request(t, s, http.MethodGet, "/ui/editor/plan.js", nil, nil)
+	rec := request(t, s, http.MethodGet, "/ui/plan-editor.js", nil, nil)
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}

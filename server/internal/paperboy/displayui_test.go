@@ -55,7 +55,7 @@ func TestDisplayEditor(t *testing.T) {
 		`id="kind"`, `id="width"`, `id="height"`, `id="gray"`, `id="ppi"`, `id="charset"`,
 		`id="panel-diagonal"`, `id="panel-width"`, `id="panel-height"`,
 		`id="use-diagonal"`, `id="use-width"`, `id="use-height"`, `id="panel-hint"`,
-		`id="min_refresh"`, `id="power"`, `id="yaml"`, `<script src="/ui/editor/display.js"></script>`,
+		`id="min_refresh"`, `id="power"`, `id="yaml"`, `<script src="/ui/display-editor.js"></script>`,
 		// The page names this display type: the editor links the variant.
 		`href="/ui/pages/solar?display=small&amp;file=hochkant"`, `href="/ui/devices/flur"`,
 		`"pages":["solar"]`,
@@ -85,7 +85,7 @@ func TestDisplayEditor(t *testing.T) {
 // type API.
 func TestDisplayEditorScript(t *testing.T) {
 	s := editorServer(t)
-	rec := request(t, s, http.MethodGet, "/ui/editor/display.js", nil, nil)
+	rec := request(t, s, http.MethodGet, "/ui/display-editor.js", nil, nil)
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
