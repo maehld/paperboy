@@ -67,8 +67,11 @@ a job. `/api/v1/info` is read once for the printer name.
 The first request sends the key as `X-Api-Key`. When the printer asks for HTTP
 Digest instead, the plugin answers the challenge and reuses it for the later
 requests ([ADR 0149](../adr/0149-a-prusalink-plugin-for-printer-status.md)).
-A failed request keeps the last state, and the plugin tries again within 30
-seconds. A printer that never answered shows the error in the cell.
+A failed request keeps the last data, and the plugin tries again within 30
+seconds. A printer that misses two requests in a row shows *Printer offline* in
+every widget, about 30 seconds after the first failure. A printer that never
+answered is offline at once
+([ADR 0159](../adr/0159-show-an-offline-printer-in-the-prusalink-widgets.md)).
 
 The plugin only reads. It cannot start, pause or stop a print.
 
@@ -105,7 +108,7 @@ cannot read becomes `–`:
 
 | Value | Type | Base unit | Meaning |
 |---|---|---|---|
-| `state` | enum | | `idle`, `busy`, `printing`, `paused`, `finished`, `stopped`, `error`, `attention` or `ready` |
+| `state` | enum | | `idle`, `busy`, `printing`, `paused`, `finished`, `stopped`, `error`, `attention`, `ready` or `offline` |
 | `progress` | number | % | progress of the active job |
 | `time-remaining` | duration | | time until the print ends |
 | `time-printing` | duration | | time since the print started |
@@ -113,23 +116,25 @@ cannot read becomes `–`:
 | `bed` | number | °C | current bed temperature |
 | `job` | text | | display name of the file |
 
-The `state` value carries no key while the printer has not answered, so a plan
-condition does not match then. The other values answer a dash.
+An offline printer answers `offline` as its state, and the other values answer
+a dash. A plan trigger can test the key, and a text page can label it.
 
 ```yaml
 kind: text
 cells:
   - { at: [0, 1], span: [8, 1], value: prusalink/state,
-      labels: { printing: Druckt, paused: Pausiert, idle: Bereit } }
+      labels: { printing: Druckt, paused: Pausiert, idle: Bereit, offline: Offline } }
   - { at: [8, 2], span: [12, 1], value: prusalink/time-remaining, align: right }
 ```
 
-A plan shows the printer page only while a print runs:
+A plan shows the printer page while a print runs
+([ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md)):
 
 ```yaml
-rules:
-  - name: printing
-    when: { conditions: [{ value: prusalink/state, is: [printing, paused] }] }
-    pages: [drucker]
-    refresh: 5m
+triggers:
+  - when: [{ value: prusalink/state, is: [printing, paused] }]
+    page: drucker
 ```
+
+The key `offline` works like the others, so a second trigger can show a page
+while the printer is off.

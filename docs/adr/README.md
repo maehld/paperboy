@@ -189,6 +189,7 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0151](0151-a-shared-design-language-for-plugin-widgets.md) | A shared design language for plugin widgets | Accepted, implemented; adds `sdk/design` with the page-wide type scale and the tile, hero, trend, sparkline, meter, arrow, muted and notice components |
 | [0152](0152-a-tiny-role-for-dense-lists.md) | A tiny role for dense lists | Accepted, implemented; adds `Tiny` at 0.55 of `text_px` to the scale of [ADR-0151](0151-a-shared-design-language-for-plugin-widgets.md) |
 | [0156](0156-mark-the-extrema-in-a-trend-chart.md) | Mark the extrema in a trend chart | Accepted, implemented; adds labelled marks and the extrema helper to the trend of [ADR-0151](0151-a-shared-design-language-for-plugin-widgets.md) |
+| [0159](0159-show-an-offline-printer-in-the-prusalink-widgets.md) | Show an offline printer in the prusalink widgets | Accepted, implemented; adds the `offline` state key and amends the failure handling of [ADR-0149](0149-a-prusalink-plugin-for-printer-status.md) |
 
 ## Delivery and releases
 

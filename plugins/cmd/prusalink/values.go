@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/maehld/paperboy/sdk/plugin"
 )
@@ -12,8 +11,10 @@ func (p *prusalink) Values(req *plugin.Request) (map[string]plugin.Value, error)
 	p.mu.Lock()
 	snap := p.cur
 	p.mu.Unlock()
-	if !snap.loaded && snap.err != nil {
-		return nil, snap.err
+	if snap.offline() {
+		// An offline printer answers the state and a dash for the rest, so no
+		// plan matches a state that the printer no longer reports.
+		snap = snapshot{}
 	}
 
 	dash := plugin.TextValue("–")
@@ -21,12 +22,11 @@ func (p *prusalink) Values(req *plugin.Request) (map[string]plugin.Value, error)
 	for _, name := range req.Values {
 		switch name {
 		case "state":
-			key := strings.ToLower(snap.state())
-			if !contains(valueKeys, key) {
+			if key := snap.stateKey(); key != "" {
+				out[name] = plugin.EnumValue(key)
+			} else {
 				out[name] = plugin.Value{}
-				continue
 			}
-			out[name] = plugin.EnumValue(key)
 		case "progress":
 			if v, ok := snap.progress(); ok {
 				out[name] = plugin.NumberValue(v)

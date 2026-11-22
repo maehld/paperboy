@@ -87,11 +87,35 @@ func TestRenderTooSmall(t *testing.T) {
 	}
 }
 
+func TestRenderOffline(t *testing.T) {
+	p := configured(t, "http://printer.invalid")
+	p.snap = snapshot{loaded: true, failures: 2}
+	req := &plugin.Request{Version: plugin.Version, Language: "de", Now: time.Now()}
+	for _, name := range []string{"printer", "progress", "temperatures"} {
+		w := plugin.WidgetRequest{Widget: name, Width: 400, Height: 160, Style: plugin.Style{Padding: 6, Rule: 1, TextPx: 16}}
+		img := render.NewCanvas(w.Width, w.Height, 4)
+		if err := p.Render(req, w, img); err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if !hasInk(img) {
+			t.Errorf("%s: empty image", name)
+		}
+	}
+}
+
 func TestRenderWithoutData(t *testing.T) {
 	p := newPlugin()
-	w := plugin.WidgetRequest{Widget: "printer", Width: 400, Height: 160, Style: plugin.Style{TextPx: 16}}
-	if err := p.Render(&plugin.Request{}, w, render.NewCanvas(w.Width, w.Height, 4)); err == nil {
-		t.Error("a widget drew without data")
+	for _, name := range []string{"printer", "progress", "temperatures"} {
+		w := plugin.WidgetRequest{Widget: name, Width: 400, Height: 160, Style: plugin.Style{TextPx: 16}}
+		img := render.NewCanvas(w.Width, w.Height, 4)
+		if err := p.Render(&plugin.Request{}, w, img); err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if !hasInk(img) {
+			t.Errorf("%s: empty image", name)
+		}
 	}
 }
 
