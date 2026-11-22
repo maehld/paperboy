@@ -99,6 +99,40 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 	}
 }
 
+// TestListsNameThemselvesInTheBreadcrumb keeps the top bar honest: every page
+// but the overview names where the operator is, and a list is the first step of
+// its editors (ADR 0152).
+func TestListsNameThemselvesInTheBreadcrumb(t *testing.T) {
+	s, _ := planServer(t, testPlan)
+	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"AA:BB:CC:DD:EE:01\"\nplan: zimmer\n")
+	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
+
+	for _, page := range []struct{ path, crumb string }{
+		{"/ui/pages", `<span aria-current="page">Pages</span>`},
+		{"/ui/plans", `<span aria-current="page">Plans</span>`},
+		{"/ui/devices", `<span aria-current="page">Devices</span>`},
+		{"/ui/display-types", `<span aria-current="page">Display types</span>`},
+		{"/ui/playground?display=small", `<span aria-current="page">Playground</span>`},
+		{"/ui/system/plugins", `<span aria-current="page">Plugins</span>`},
+		{"/ui/system/firmware", `<span aria-current="page">Firmware</span>`},
+		{"/ui/system/maintenance", `<span aria-current="page">Maintenance</span>`},
+		{"/ui/system/stats", `<span aria-current="page">Stats</span>`},
+		{"/ui/system/styleguide", `<span aria-current="page">Styleguide</span>`},
+	} {
+		body := htmlRequest(t, s, page.path).Body.String()
+		if !strings.Contains(body, `<nav class="crumbs"`) {
+			t.Fatalf("%s: the page has no breadcrumb", page.path)
+		}
+		if !strings.Contains(body, page.crumb) {
+			t.Fatalf("%s: the breadcrumb does not end in %q", page.path, page.crumb)
+		}
+	}
+	// The overview is the root of every path, so it names none.
+	if strings.Contains(htmlRequest(t, s, "/ui").Body.String(), `<nav class="crumbs"`) {
+		t.Fatal("the overview must not carry a breadcrumb")
+	}
+}
+
 // TestOperatorPagesLinkTheSharedStylesheet keeps the look in one place: every
 // page links the tokens and /ui/ui.css instead of carrying its own colours and
 // its own copy of the header and the buttons (ADR 0076, ADR 0152).

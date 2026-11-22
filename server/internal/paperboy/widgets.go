@@ -179,7 +179,7 @@ func (s *Server) handleWidgetsPage(w http.ResponseWriter, r *http.Request) {
 	version, goVersion := editorVersion(cfg)
 	v := editorPageView{Version: version, GoVersion: goVersion, WidgetsPage: true,
 		Nav:        navFor("Playground"),
-		Breadcrumb: crumbPath(crumb{Label: "Playground"}),
+		Breadcrumb: crumbPath(crumb{Label: "System"}, crumb{Label: "Playground"}),
 	}
 	display, fellBack := playgroundDisplay(cfg, q.Get("display"))
 	switch {

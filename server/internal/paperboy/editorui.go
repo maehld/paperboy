@@ -776,15 +776,22 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	v := editorListPage{Version: version, GoVersion: goVersion, Tab: tab,
 		Groups: groupPageFiles(files, cfg.Profiles)}
+	// A list names itself in the breadcrumb, so the top bar says where the
+	// operator is and every page starts its content at the same height
+	// (ADR 0152).
 	switch tab {
 	case "plans":
 		v.Nav = navFor("Plans")
+		v.Breadcrumb = crumbPath(crumb{Label: "Plans"})
 	case "devices":
 		v.Nav = navFor("Devices")
+		v.Breadcrumb = crumbPath(crumb{Label: "Devices"})
 	case "displays":
 		v.Nav = navFor("Display types")
+		v.Breadcrumb = crumbPath(crumb{Label: "Display types"})
 	default:
 		v.Nav = navFor("Pages")
+		v.Breadcrumb = crumbPath(crumb{Label: "Pages"})
 	}
 	for _, p := range plans {
 		row := editorPlanRow{Name: p.Name, Rules: p.Rules, Fallback: p.Fallback, Error: p.Error}
