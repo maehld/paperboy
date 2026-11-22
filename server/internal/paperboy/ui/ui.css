@@ -15,65 +15,152 @@
   font-display: swap;
 }
 
-:root {
-  color-scheme: light;
-  --lcd-panel-bg: #0d1c07;
-  --lcd-cell-bg: #18310d;
-  --lcd-pixel: #b9f36a;
-  --lcd-edge: #2b4a18;
-}
 * { box-sizing: border-box; }
 
 /* `hidden` must win over a rule that gives an element a display, otherwise a
    field of the other display kind stays visible (ADR 0076). */
 [hidden] { display: none !important; }
 
-body { margin: 0; padding: 1.5rem; font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: #f2f2f2; color: #111; }
+body { margin: 0; font: var(--pb-text-md)/1.4 var(--pb-font-body); background: var(--pb-bg); color: var(--pb-ink); }
 
-/* The header: brand, the four sections, the build label. The active entry is
-   bold and dark. The brand is the logo lockup, so its items are centred
-   instead of sitting on the text baseline. */
-header { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin-bottom: 1rem; }
-h1 { font-size: 1.5rem; margin: 0; }
+/* The shell (ADR 0152): the top bar carries the brand and the build, the rail
+   names the sections and keeps its place while the page scrolls, and the
+   breadcrumb names the way back. */
+.topbar { display: flex; align-items: center; gap: 1rem; padding: .55rem 1.25rem; min-height: var(--pb-topbar); border-bottom: 1px solid var(--pb-hairline); background: var(--pb-surface); }
 .brand { display: flex; align-items: center; }
 .brand img { display: block; height: 1.7rem; width: auto; }
-.muted { color: #666; font-size: .85rem; }
-nav { font-size: 1rem; }
-header nav { flex: 1 1 auto; }
-nav a { color: #134e9c; text-decoration: none; }
-nav a.active { font-weight: 700; color: #111; }
-.build { margin-left: auto; font-variant-numeric: tabular-nums; }
+/* The lockup is black ink. A dark page inverts it, so the mark stays visible. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .brand img { filter: invert(1); }
+}
+:root[data-theme="dark"] .brand img { filter: invert(1); }
+.topbar-end { display: flex; align-items: center; gap: .75rem; margin-left: auto; }
+.build { font-variant-numeric: tabular-nums; }
+.theme { padding: .1rem .45rem; line-height: 1.3; }
+
+.shell { display: grid; grid-template-columns: var(--pb-rail) minmax(0, 1fr); align-items: start; }
+.rail { position: sticky; top: 0; display: flex; flex-direction: column; gap: .1rem; padding: .9rem .6rem; border-right: 1px solid var(--pb-hairline); min-height: calc(100dvh - var(--pb-topbar)); }
+.rail a { padding: .35rem .6rem; border-radius: var(--pb-radius-md); color: var(--pb-ink); text-decoration: none; font-size: var(--pb-text-sm); }
+.rail a:hover { background: var(--pb-surface-hover); }
+.rail a.active { background: var(--pb-accent-bg); color: var(--pb-accent); font-weight: 600; }
+.rail-head { padding: .9rem .6rem .25rem; font-size: var(--pb-text-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--pb-ink-faint); }
+
+main { padding: 1rem 1.5rem 3rem; min-width: 0; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0 0 .9rem; font-size: var(--pb-text-xs); color: var(--pb-ink-muted); }
+.crumbs a { color: var(--pb-ink-muted); text-decoration: none; }
+.crumbs a:hover { color: var(--pb-accent); }
+.crumbs > * + *::before { content: "/"; margin-right: .4rem; color: var(--pb-ink-faint); }
+.crumbs [aria-current] { color: var(--pb-ink); }
+
+@media (max-width: 64rem) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .rail { position: static; flex-direction: row; flex-wrap: wrap; min-height: 0; padding: .35rem .9rem; border-right: 0; border-bottom: 1px solid var(--pb-hairline); }
+  .rail-head { display: none; }
+  main { padding: .9rem 1rem 2.5rem; }
+}
 
 /* The action bar of an editor: back link, object name, where, status, actions. */
 .bar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-bottom: .9rem; }
 .bar h2 { font-size: 1.15rem; margin: 0; }
 .bar .spacer { margin-left: auto; }
 
-.status { font-size: .85rem; }
-.status.ok { color: #17692c; }
-.status.error { color: #b00; }
+.status { font-size: var(--pb-text-sm); margin: .2rem 0; }
+.status.ok { color: var(--pb-ok); }
+.status.error { color: var(--pb-error); background: none; border: 0; padding: 0; }
+.muted { color: var(--pb-ink-muted); font-size: var(--pb-text-sm); }
 
-button { font: inherit; font-size: .9rem; padding: .25rem .7rem; border-radius: 6px; border: 1px solid #bbb; background: #fafafa; cursor: pointer; }
-button:hover { background: #eee; }
-button.primary { border-color: #134e9c; background: #134e9c; color: #fff; }
-button.primary:hover { background: #0e3d7c; }
-button.danger { border-color: #c22; color: #b00; }
-button.danger:hover { background: #fff2f2; }
-button:disabled { color: #888; cursor: default; background: #f2f2f2; border-color: #ccc; }
+button { font: inherit; font-size: var(--pb-text-sm); padding: .2rem .65rem; border-radius: var(--pb-radius-md); border: 1px solid var(--pb-hairline-strong); background: var(--pb-surface); color: var(--pb-ink); cursor: pointer; }
+button:hover { background: var(--pb-surface-hover); }
+button.primary { border-color: var(--pb-accent); background: var(--pb-accent); color: var(--pb-surface); }
+button.primary:hover { background: var(--pb-accent-hover); }
+button.danger { border-color: var(--pb-error-border); color: var(--pb-error); }
+button.danger:hover { background: var(--pb-error-bg); }
+button:disabled { color: var(--pb-ink-faint); cursor: default; background: var(--pb-surface-sunken); border-color: var(--pb-hairline); }
 
-.panel { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .8rem; }
+/* Fields share one frame, so a form looks the same on every page (ADR 0152). */
+input, select, textarea { font: inherit; color: var(--pb-ink); background: var(--pb-surface); border: 1px solid var(--pb-hairline-strong); border-radius: var(--pb-radius-sm); padding: .15rem .35rem; }
+input:disabled, select:disabled, textarea:disabled { color: var(--pb-ink-faint); background: var(--pb-surface-sunken); }
+input[type=checkbox], input[type=radio] { width: auto; padding: 0; }
+:focus-visible { outline: 2px solid var(--pb-accent); outline-offset: 2px; }
+
+/* A labelled field: the label column stays put, the control takes the rest. */
+label.field { display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: .2rem .6rem; align-items: center; font-size: var(--pb-text-sm); margin-bottom: .35rem; }
+label.field > span:first-child { color: var(--pb-ink-muted); }
+label.field > .hint { grid-column: 2; }
+
+/* A state line, a notice and an empty list look the same on every page. */
+.error { margin: .5rem 0; padding: .5rem .6rem; background: var(--pb-error-bg); border-left: 3px solid var(--pb-error-border); font-size: var(--pb-text-sm); word-break: break-word; }
+.empty { margin: 0; padding: 2rem 1rem; text-align: center; color: var(--pb-ink-faint); border: 1px dashed var(--pb-hairline); }
+.badge { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; padding: .12rem .45rem; border-radius: 999px; border: 1px solid currentColor; font-weight: 600; }
+.badge.ok { color: var(--pb-ok); }
+.badge.late { color: var(--pb-warn); }
+.badge.never, .badge.unregistered { color: var(--pb-ink-muted); }
+
+.panel { background: var(--pb-surface); border: 1px solid var(--pb-hairline); border-radius: 8px; padding: .8rem; }
 .panel h3 { font-size: .95rem; margin: 0 0 .5rem; }
 .panel-head { display: flex; align-items: center; gap: .6rem; margin: 0 0 .5rem; }
 .panel-head h3 { margin: 0; }
-.hint { margin: .4rem 0 0; font-size: .8rem; color: #666; }
-code { font: .85rem ui-monospace, Consolas, monospace; background: #f2f2f2; padding: 0 .2rem; border-radius: 3px; }
-
-/* Sub-tabs of a section (the editor's object types). */
-.tabs { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; border-bottom: 1px solid #ddd; margin: 0 0 1rem; }
-.tabs a { padding: .4rem .8rem; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; text-decoration: none; font-size: .95rem; }
-.tabs a.active { background: #fff; border-color: #ddd; color: #111; font-weight: 600; margin-bottom: -1px; }
+.hint { margin: .4rem 0 0; font-size: .8rem; color: var(--pb-ink-muted); }
+code { font: .85rem var(--pb-font-mono); background: var(--pb-surface-sunken); padding: 0 .2rem; border-radius: 3px; }
 
 /* A row of links that chooses between display types. */
 .switch { display: flex; flex-wrap: wrap; gap: .8rem; margin: 0 0 .9rem; font-size: .95rem; }
-.switch a { color: #134e9c; text-decoration: none; }
-.switch a.active { font-weight: 700; color: #111; }
+.switch a { color: var(--pb-accent); text-decoration: none; }
+.switch a.active { font-weight: 700; color: var(--pb-ink); }
+
+/* The one dialog of the UI (ADR 0152): a prompt or a confirmation. */
+dialog.ask { border: 1px solid var(--pb-hairline-strong); border-radius: var(--pb-radius-lg); padding: 1rem 1.1rem; width: min(26rem, 92vw); background: var(--pb-surface); color: var(--pb-ink); box-shadow: var(--pb-shadow-dialog); }
+dialog.ask::backdrop { background: var(--pb-backdrop); }
+dialog.ask .ask-title { margin: 0 0 .5rem; font-size: var(--pb-text-md); font-weight: 600; }
+dialog.ask .ask-text { margin: 0 0 .7rem; font-size: var(--pb-text-sm); color: var(--pb-ink-muted); white-space: pre-line; }
+dialog.ask .ask-field { display: block; margin: 0 0 .5rem; font-size: var(--pb-text-sm); }
+dialog.ask .ask-field span { display: block; margin-bottom: .2rem; color: var(--pb-ink-muted); }
+dialog.ask .ask-field input { width: 100%; }
+dialog.ask .ask-hint { margin: .2rem 0 0; font-size: var(--pb-text-xs); color: var(--pb-ink-muted); }
+dialog.ask .ask-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .9rem; }
+
+/* A link in running text stays underlined, so colour is not its only cue. */
+a { color: var(--pb-accent); text-underline-offset: 2px; }
+
+/* The search trigger in the top bar and the command palette it opens. */
+.topsearch { display: inline-flex; align-items: center; gap: .45rem; font-size: var(--pb-text-xs); color: var(--pb-ink-muted); padding: .1rem .5rem; }
+.topsearch kbd, .cmd-keys kbd { font-family: var(--pb-font-mono); font-size: .72rem; padding: 0 .25rem; border: 1px solid var(--pb-hairline-strong); border-radius: 3px; color: var(--pb-ink-muted); background: var(--pb-surface); }
+@media (max-width: 64rem) { .topsearch kbd { display: none; } }
+@media (max-width: 40rem) {
+  .topbar { gap: .5rem; padding: .45rem .75rem; }
+  .build { max-width: 8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topsearch { padding: .1rem .4rem; }
+}
+
+dialog.cmd { width: min(34rem, 94vw); margin: 12vh auto auto; padding: 0; border: 1px solid var(--pb-hairline-strong); border-radius: var(--pb-radius-lg); background: var(--pb-surface); color: var(--pb-ink); box-shadow: var(--pb-shadow-dialog); }
+dialog.cmd::backdrop { background: var(--pb-backdrop); }
+dialog.cmd .cmd-form { margin: 0; }
+dialog.cmd .cmd-input { width: 100%; border: 0; border-bottom: 1px solid var(--pb-hairline); border-radius: var(--pb-radius-lg) var(--pb-radius-lg) 0 0; padding: .7rem .9rem; font-size: var(--pb-text-md); }
+dialog.cmd .cmd-results { list-style: none; margin: 0; padding: .3rem; max-height: 55vh; overflow-y: auto; }
+dialog.cmd .cmd-group { padding: .5rem .6rem .2rem; font-size: var(--pb-text-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--pb-ink-faint); }
+dialog.cmd .cmd-item { display: flex; align-items: baseline; gap: .6rem; padding: .35rem .6rem; border-radius: var(--pb-radius-md); cursor: pointer; }
+dialog.cmd .cmd-item.active { background: var(--pb-accent-bg); }
+dialog.cmd .cmd-label { font-weight: 600; font-size: var(--pb-text-sm); font-family: var(--pb-font-mono); }
+dialog.cmd .cmd-note { color: var(--pb-ink-muted); font-size: var(--pb-text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+dialog.cmd .cmd-empty { padding: .8rem .9rem; color: var(--pb-ink-muted); font-size: var(--pb-text-sm); }
+dialog.cmd .cmd-foot { display: flex; justify-content: space-between; gap: 1rem; margin: 0; padding: .45rem .9rem; border-top: 1px solid var(--pb-hairline); font-size: var(--pb-text-xs); color: var(--pb-ink-faint); }
+
+/* A dense table keeps all its columns and scrolls sideways instead of squeezing
+   its text on a narrow screen (ADR 0152). */
+.scroll { overflow-x: auto; }
+.scroll > table { min-width: 36rem; }
+
+/* A list table becomes a card list on a narrow screen, so no column is cut off.
+   The cells carry data-label from the templates (ADR 0152). */
+@media (max-width: 40rem) {
+  table.cards { border-collapse: collapse; }
+  table.cards thead { display: none; }
+  table.cards tbody, table.cards tr, table.cards td { display: block; }
+  table.cards tr { border: 1px solid var(--pb-hairline); border-radius: var(--pb-radius-md); padding: .45rem .55rem; margin-bottom: .5rem; background: var(--pb-surface); }
+  table.cards tr.detail { border: 0; padding: 0; margin: -.35rem 0 .5rem; }
+  table.cards td { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: .4rem; padding: .1rem 0; border: 0; text-align: left; }
+  table.cards td::before { content: attr(data-label); color: var(--pb-ink-muted); font-size: var(--pb-text-xs); }
+  table.cards td[data-label=""]::before, table.cards td:not([data-label])::before { content: none; }
+  table.cards td:not([data-label]) { display: block; }
+  table.cards tr.detail td::before { content: none; }
+}

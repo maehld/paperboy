@@ -66,4 +66,6 @@ English documents follow the rules of ASD-STE100 as the house style. This does n
 
 `./scripts/screenshots.sh` renders the pictures of the plugin pages into `docs/images/plugins/`. It builds Paperboy and the plugins, copies the examples into a temporary instance and starts a mock of every upstream service, so it needs no network and no credentials. `-only <plugin>` renders one plugin, `-keep` keeps the temporary instance and its log, and `-bin <dir>` reuses built programs. The xkcd page and the Pokémon card show drawn placeholder art, because the repository ships neither the comic nor the sprites.
 
+`./scripts/ui-shots.mjs` takes a picture of every operator page, so a UI change has a before and an after. It starts the same mock instance as the screenshot tool with `-serve` and drives a headless browser. Run `npm install --no-save playwright` once. `--out <dir>` moves the PNGs, `--only <page>` takes one, `--theme dark` emulates a dark system, and `--bin <dir>` reuses built programs. The pictures land in `bin/ui-shots/` by default.
+
 Each fact lives in exactly one place. The [design documents](design/README.md) keep the structure and the reason; the topic pages keep the steps; the [ADRs](adr/README.md) keep the history and are not rewritten.

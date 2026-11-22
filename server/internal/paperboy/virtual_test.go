@@ -391,7 +391,7 @@ func TestVirtualDisplayServesScript(t *testing.T) {
 func TestVirtualDisplayLinkedFromPlanAndDashboard(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	link := `href="/ui/virtual?display=small&amp;plan=zimmer"`
-	for _, path := range []string{"/ui/plan?device=test", "/ui"} {
+	for _, path := range []string{"/ui/devices/test/plan", "/ui"} {
 		if body := htmlRequest(t, s, path).Body.String(); !strings.Contains(body, link) {
 			t.Fatalf("%s misses the virtual display link: %s", path, body)
 		}

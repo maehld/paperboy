@@ -3,7 +3,6 @@ package paperboy
 import (
 	_ "embed"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -20,7 +19,7 @@ import (
 //go:embed ui/plan.html
 var planViewTemplate string
 
-var planViewTmpl = template.Must(template.New("plan").Parse(planViewTemplate))
+var planViewTmpl = pageTemplate("plan", planViewTemplate, nil)
 
 // atLayout is the format of the time selection, as sent by a datetime-local input.
 const atLayout = "2006-01-02T15:04"
@@ -60,6 +59,8 @@ type planViewCondition struct {
 type planView struct {
 	Version    string
 	GoVersion  string
+	Nav        []navItem // the rail, with the active section (ADR 0152)
+	Breadcrumb []crumb   // the path to this page
 	Device     string
 	Profile    string
 	Plan       string
@@ -109,6 +110,12 @@ func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 	}
 	view := planView{Device: dev.ID, Profile: dev.Profile, Plan: dev.Plan, At: at.Format(atLayout),
 		AtText: at.Format("Mon 2006-01-02 15:04"), Now: isNow}
+	view.Nav = navFor("Devices")
+	view.Breadcrumb = crumbPath(
+		crumb{Label: "Devices", URL: "/ui"},
+		crumb{Label: dev.ID, URL: objectURL("/ui/devices", dev.ID, nil)},
+		crumb{Label: "Plan"},
+	)
 	view.VirtualURL = virtualURL(dev.Plan, dev.Profile)
 	view.Version, view.GoVersion = editorVersion(cfg)
 	if dev.Problem != "" {

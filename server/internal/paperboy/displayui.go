@@ -23,7 +23,7 @@ import (
 //go:embed ui/display-editor.html
 var displayEditorTemplate string
 
-var displayEditorTmpl = template.Must(template.New("display-editor").Parse(displayEditorTemplate))
+var displayEditorTmpl = pageTemplate("display-editor", displayEditorTemplate, nil)
 
 //go:embed ui/display-editor.js
 var displayEditorJS []byte
@@ -36,14 +36,16 @@ type displayReference struct {
 
 // displayEditorView is the shell of the display type editor.
 type displayEditorView struct {
-	Version   string
-	GoVersion string
-	Name      string
-	New       bool
-	Error     string
-	Pages     []displayReference
-	Devices   []displayReference
-	Data      template.JS
+	Version    string
+	GoVersion  string
+	Nav        []navItem // the rail, with the active section (ADR 0152)
+	Breadcrumb []crumb   // the path to this page
+	Name       string
+	New        bool
+	Error      string
+	Pages      []displayReference
+	Devices    []displayReference
+	Data       template.JS
 }
 
 // displayEditorState is what the script needs besides the file itself.
@@ -62,7 +64,10 @@ func (s *Server) handleDisplayEditor(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	name := q.Get("name")
 	version, goVersion := editorVersion(cfg)
-	v := displayEditorView{Version: version, GoVersion: goVersion, Name: name}
+	v := displayEditorView{Version: version, GoVersion: goVersion, Name: name,
+		Nav:        navFor("Devices"),
+		Breadcrumb: crumbPath(crumb{Label: "Devices", URL: "/ui"}, crumb{Label: "Display types", URL: "/ui/display-types"}, crumb{Label: name}),
+	}
 	if !page.ValidName(name) {
 		v.Error = fmt.Sprintf("display type %q: only a-z, 0-9 and -", name)
 		renderDisplayEditor(w, v, http.StatusBadRequest)
@@ -125,8 +130,8 @@ func displayReferences(cfg *Config, name string) (pages, devices []displayRefere
 		if f.Label != "" || !named {
 			continue
 		}
-		pages = append(pages, displayReference{Label: f.Name, URL: "/ui/editor/page?" + url.Values{
-			"name": {f.Name}, "file": {label}, "display": {name}}.Encode()})
+		link := objectURL("/ui/pages", f.Name, url.Values{"file": {label}, "display": {name}})
+		pages = append(pages, displayReference{Label: f.Name, URL: link})
 	}
 	list, err := deviceFileList(cfg.DevicesDir)
 	if err != nil {
@@ -136,7 +141,7 @@ func displayReferences(cfg *Config, name string) (pages, devices []displayRefere
 		if d.Display != name {
 			continue
 		}
-		devices = append(devices, displayReference{Label: d.ID, URL: "/ui/editor/device?" + url.Values{"id": {d.ID}}.Encode()})
+		devices = append(devices, displayReference{Label: d.ID, URL: objectURL("/ui/devices", d.ID, nil)})
 	}
 	return pages, devices
 }

@@ -20,7 +20,7 @@ import (
 //go:embed ui/index.html
 var dashboardTemplate string
 
-var dashboardTmpl = template.Must(template.New("dashboard").Parse(dashboardTemplate))
+var dashboardTmpl = pageTemplate("dashboard", dashboardTemplate, nil)
 
 // uiCSS is the stylesheet every operator page links, so the header, the action
 // bar and the buttons cannot drift apart between the pages (ADR 0076).
@@ -32,6 +32,18 @@ func (s *Server) handleUICSS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(uiCSS)
+}
+
+// uiTokens are the design tokens every page links before the stylesheet: the
+// colours, the type scale, the spacing and the motion (ADR 0152).
+//
+//go:embed ui/tokens.css
+var uiTokens []byte
+
+func (s *Server) handleUITokens(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(uiTokens)
 }
 
 // uiHtmx is the only third-party code the operator UI ships (ADR 0106). The
@@ -85,6 +97,225 @@ func serveSVG(w http.ResponseWriter, data []byte) {
 	w.Write(data)
 }
 
+// pageTemplate parses a page file together with the shared shell (ADR 0152).
+// The page file is the root template, and layout.html adds the named templates
+// it calls: "head", "chrome" and "chrome-end".
+func pageTemplate(name, page string, funcs template.FuncMap) *template.Template {
+	return template.Must(template.New(name).Funcs(funcs).Parse(uiLayout + page))
+}
+
+// navItem is one entry of the rail. A head is a group label and links nowhere.
+type navItem struct {
+	Label  string
+	URL    string
+	Active bool
+	Head   bool
+}
+
+// crumb is one step of the breadcrumb. The last step is the current page.
+type crumb struct {
+	Label   string
+	URL     string
+	Current bool
+}
+
+// crumbPath marks the last step as the current page (ADR 0152).
+func crumbPath(items ...crumb) []crumb {
+	if len(items) > 0 {
+		items[len(items)-1].Current = true
+	}
+	return items
+}
+
+// navFor returns the rail with the section marked (ADR 0152).
+func navFor(section string) []navItem {
+	items := []navItem{
+		{Label: "Devices", URL: "/ui"},
+		{Label: "Pages", URL: "/ui/pages"},
+		{Label: "Plans", URL: "/ui/plans"},
+		{Label: "Plugins", URL: "/ui/plugins"},
+		{Label: "System", Head: true},
+		{Label: "Downloads", URL: "/ui/system/downloads"},
+		{Label: "Stats", URL: "/ui/system/stats"},
+		{Label: "Styleguide", URL: "/ui/system/styleguide"},
+	}
+	for i := range items {
+		items[i].Active = items[i].Label == section
+	}
+	return items
+}
+
+// objectURL builds the route of one object (ADR 0152): the collection, the
+// escaped name and the remaining query. The name and the id leave the query,
+// because the route carries them.
+func objectURL(collection, name string, params url.Values) string {
+	q := url.Values{}
+	for key, value := range params {
+		if key == "name" || key == "id" {
+			continue
+		}
+		q[key] = value
+	}
+	target := collection + "/" + url.PathEscape(name)
+	if encoded := q.Encode(); encoded != "" {
+		target += "?" + encoded
+	}
+	return target
+}
+
+// withQuery sets one query value, so a route can call a handler that still
+// reads the parameters of the old URL shape.
+func withQuery(r *http.Request, key, value string) {
+	q := r.URL.Query()
+	q.Set(key, value)
+	r.URL.RawQuery = q.Encode()
+}
+
+// uiList opens one object type of the list page under its own route: the list
+// handler reads the type from the query (ADR 0152).
+func (s *Server) uiList(tab string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		withQuery(r, "tab", tab)
+		s.handleEditor(w, r)
+	}
+}
+
+// uiObject opens one object under its own route. The handlers keep their query
+// parameters, so a path and a query fill the same view.
+func (s *Server) uiObject(path, query string, handle http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		withQuery(r, query, r.PathValue(path))
+		handle(w, r)
+	}
+}
+
+// uiCreate takes the name from a creation form and opens the object's route, so
+// a GET form creates without a route of its own (ADR 0152).
+func uiCreate(collection, param string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get(param)
+		if name == "" {
+			http.Redirect(w, r, collection, http.StatusFound)
+			return
+		}
+		// objectURL carries the rest of the query.
+		http.Redirect(w, r, objectURL(collection, name, r.URL.Query()), http.StatusFound)
+	}
+}
+
+// uiLayout is the shell every operator page parses with its own template.
+//
+//go:embed ui/layout.html
+var uiLayout string
+
+// uiThemeJS is the theme toggle of ADR 0152. It is a file instead of an inline
+// script, so the ten pages share one copy.
+//
+//go:embed ui/theme.js
+var uiThemeJS []byte
+
+func (s *Server) handleUIThemeJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(uiThemeJS)
+}
+
+// styleguideTemplate renders the tokens and the components, so a change to the
+// look has one page to check (ADR 0152).
+//
+//go:embed ui/styleguide.html
+var styleguideTemplate string
+
+var styleguideTmpl = pageTemplate("styleguide", styleguideTemplate, nil)
+
+// styleguideSwatch is one colour of the palette on the styleguide page.
+type styleguideSwatch struct {
+	Token string       // the custom property, e.g. --pb-accent
+	Use   string       // what it means
+	Chip  template.CSS // the declaration that paints it, from a constant
+}
+
+// styleguideView is what the styleguide renders.
+type styleguideView struct {
+	Version    string
+	GoVersion  string
+	Nav        []navItem
+	Breadcrumb []crumb
+	Colors     []styleguideSwatch
+	Spaces     []styleguideSwatch
+}
+
+func (s *Server) handleStyleguide(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	version, goVersion := editorVersion(cfg)
+	view := styleguideView{
+		Version:    version,
+		GoVersion:  goVersion,
+		Nav:        navFor("Styleguide"),
+		Breadcrumb: crumbPath(crumb{Label: "System"}, crumb{Label: "Styleguide"}),
+		Spaces: []styleguideSwatch{
+			{Token: "--pb-space-1", Chip: template.CSS("width: var(--pb-space-1)")},
+			{Token: "--pb-space-2", Chip: template.CSS("width: var(--pb-space-2)")},
+			{Token: "--pb-space-3", Chip: template.CSS("width: var(--pb-space-3)")},
+			{Token: "--pb-space-4", Chip: template.CSS("width: var(--pb-space-4)")},
+			{Token: "--pb-space-5", Chip: template.CSS("width: var(--pb-space-5)")},
+		},
+	}
+	for _, colour := range []struct{ token, use string }{
+		{"--pb-bg", "the page"},
+		{"--pb-surface", "a card or a field"},
+		{"--pb-surface-sunken", "recessed areas"},
+		{"--pb-surface-hover", "a hovered row"},
+		{"--pb-ink", "text"},
+		{"--pb-ink-muted", "labels and hints"},
+		{"--pb-ink-faint", "disabled and empty"},
+		{"--pb-hairline", "a border"},
+		{"--pb-hairline-strong", "an emphasised border"},
+		{"--pb-accent", "a link and the focus ring"},
+		{"--pb-accent-hover", "a pressed button"},
+		{"--pb-accent-bg", "the active entry"},
+		{"--pb-ok", "a device is fine"},
+		{"--pb-warn", "a device is late"},
+		{"--pb-error", "a device or a file failed"},
+		{"--pb-lcd-panel", "the text preview"},
+		{"--pb-lcd-pixel", "the pixel of the text preview"},
+	} {
+		view.Colors = append(view.Colors, styleguideSwatch{
+			Token: colour.token,
+			Use:   colour.use,
+			Chip:  template.CSS("background: var(" + colour.token + ")"),
+		})
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := styleguideTmpl.Execute(w, view); err != nil {
+		slog.Error("styleguide rendering failed", "error", err)
+	}
+}
+
+// uiCommandJS is the command palette behind Cmd+K (ADR 0152). It reads the list
+// APIs in the browser, so the server needs no search route.
+//
+//go:embed ui/command.js
+var uiCommandJS []byte
+
+func (s *Server) handleUICommandJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(uiCommandJS)
+}
+
+// uiDialogJS is the one dialog of the UI, shared by the editors (ADR 0152).
+//
+//go:embed ui/dialog.js
+var uiDialogJS []byte
+
+func (s *Server) handleUIDialogJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(uiDialogJS)
+}
+
 // dashboardDevice is one card of the overview. It carries display-ready texts
 // so the template holds no formatting logic.
 type dashboardDevice struct {
@@ -93,8 +324,10 @@ type dashboardDevice struct {
 	Type          string // display type: the operator's label for the page layout
 	Hardware      string // hardware the device reports; empty until it registered
 	Plan          string // plan name, "no plan" when empty
+	PlanURL       string // the plan's editor, empty without a plan (ADR 0152)
 	Rule          string // active plan rule, empty when unknown
 	Content       string // page name, "notice", "battery warning" or empty
+	PageURL       string // the shown page's editor, empty for a notice
 	ImageURL      string // last served image, else the current page's preview; empty for a placeholder
 	Waiting       string // placeholder text when there is neither an image nor text
 	Power         string // charge state with the charge or voltage, e.g. "Charging · 50 %" (ADR 0051)
@@ -126,10 +359,12 @@ type dashboardDevice struct {
 }
 
 type dashboardPage struct {
-	Version   string // build label: version, commit and commit date
-	GoVersion string
-	Devices   []dashboardDevice
-	Downloads *dashboardDownloads // hint about the release checks (ADR 0060), nil without a download section
+	Version    string // build label: version, commit and commit date
+	GoVersion  string
+	Nav        []navItem // the rail, with the active section (ADR 0152)
+	Breadcrumb []crumb   // the path to this page
+	Devices    []dashboardDevice
+	Downloads  *dashboardDownloads // hint about the release checks (ADR 0060), nil without a download section
 }
 
 // dashboardDownloads is the hint above the device grid: the details live on the
@@ -173,8 +408,10 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			Type:          d.Profile,
 			Hardware:      d.Hardware,
 			Plan:          planText(d.Plan),
+			PlanURL:       planURLFor(d.Plan),
 			Rule:          d.Rule,
 			Content:       contentText(d.deviceState),
+			PageURL:       pageURLFor(d.deviceState),
 			ImageURL:      image,
 			Waiting:       waiting,
 			Power:         powerText(d.Power, d.deviceState),
@@ -218,6 +455,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	page := dashboardPage{
 		Version:   versionText(build, loc),
 		GoVersion: build.Go,
+		Nav:       navFor("Devices"),
 		Devices:   cards,
 		Downloads: s.downloadHint(cfg),
 	}
@@ -236,7 +474,7 @@ func (s *Server) handleDownloadCheck(w http.ResponseWriter, r *http.Request) {
 			s.finishDownloadCheck(cfg, s.downloadOnce(s.ctx, cfg))
 		}()
 	}
-	http.Redirect(w, r, "/ui/downloads", http.StatusSeeOther)
+	http.Redirect(w, r, "/ui/system/downloads", http.StatusSeeOther)
 }
 
 // downloadHint is the dashboard's line about the release checks; nil without a
@@ -370,6 +608,22 @@ func actionsText(d *Device) string {
 }
 
 // contentText names what the device is showing in plain words.
+// planURLFor links the plan of a card; the dashboard opens its editor (ADR 0152).
+func planURLFor(plan string) string {
+	if plan == "" {
+		return ""
+	}
+	return objectURL("/ui/plans", plan, nil)
+}
+
+// pageURLFor links the page a card shows, when it shows a page and not a notice.
+func pageURLFor(st deviceState) string {
+	if st.LastPageKind != "page" || st.LastPage == "" {
+		return ""
+	}
+	return objectURL("/ui/pages", st.LastPage, nil)
+}
+
 func contentText(st deviceState) string {
 	switch {
 	case st.LastPageKind == "page" && st.LastPage != "":

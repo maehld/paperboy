@@ -76,3 +76,51 @@ try {
 } finally {
   dom.window.close();
 }
+
+// dialog.js backs every prompt and confirmation of the editors (ADR 0150). jsdom
+// has no modal dialog, so the check provides the two methods the helper calls
+// and drives the promise instead of a click.
+{
+  const script = await readFile(join(root, "server/internal/paperboy/ui/dialog.js"), "utf8");
+  const dialogDom = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only" });
+  const { window } = dialogDom;
+  window.HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  window.HTMLDialogElement.prototype.close = function (value) {
+    this.returnValue = value;
+    this.dispatchEvent(new window.Event("close"));
+  };
+  window.eval(script);
+
+  const problems = [];
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const asked = window.pbAsk.text({ title: "Rename page", label: "New name", value: "alt" });
+  const dialog = window.document.querySelector("dialog.ask");
+  const input = dialog.querySelector("input");
+  const ok = dialog.querySelector(".ask-ok");
+  check(dialog.querySelector(".ask-title").textContent === "Rename page", "the dialog lost its title");
+  check(input.value === "alt" && !ok.disabled, "the dialog did not start with its value");
+  input.value = "";
+  input.dispatchEvent(new window.Event("input"));
+  check(ok.disabled, "the dialog accepts an empty name");
+  input.value = "neu";
+  input.dispatchEvent(new window.Event("input"));
+  dialog.close("ok");
+  check((await asked) === "neu", "the dialog lost the entered name");
+
+  const cancelled = window.pbAsk.confirm({ title: "Delete?" });
+  dialog.close("");
+  check((await cancelled) === false, "a cancelled confirmation answered true");
+
+  if (problems.length) {
+    for (const problem of problems) console.error(problem);
+    process.exitCode = 1;
+  } else {
+    console.log("dialog.js asked, validated and cancelled");
+  }
+  dialogDom.window.close();
+}

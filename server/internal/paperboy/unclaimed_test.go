@@ -18,13 +18,13 @@ func TestUnclaimedDeviceInEditor(t *testing.T) {
 	if rec := register(t, s, `{"mac":"aa:bb:cc:dd:ee:99","hardware":"sticky","firmware":"0.5.0"}`); rec.Code != http.StatusForbidden {
 		t.Fatalf("unknown device: %d %s", rec.Code, rec.Body)
 	}
-	page := htmlRequest(t, s, "/ui/editor?tab=devices").Body.String()
+	page := htmlRequest(t, s, "/ui/devices").Body.String()
 	if !strings.Contains(page, "Unclaimed hardware") || !strings.Contains(page, "AA:BB:CC:DD:EE:99") ||
 		!strings.Contains(page, "sticky") || !strings.Contains(page, "0.5.0") {
 		t.Fatalf("unclaimed device missing:\n%s", page)
 	}
-	claim := "/ui/editor/device?" + url.Values{"new": {"1"}, "id": {"sticky-ee99"}, "mac": {"AA:BB:CC:DD:EE:99"}}.Encode()
-	if !strings.Contains(page, "id=\"unclaimed-table\"") || !strings.Contains(page, "/ui/editor/device?") {
+	claim := "/ui/devices/sticky-ee99?" + url.Values{"new": {"1"}, "mac": {"AA:BB:CC:DD:EE:99"}}.Encode()
+	if !strings.Contains(page, "id=\"unclaimed-table\"") || !strings.Contains(page, "/ui/devices/") {
 		t.Fatalf("claim link missing:\n%s", page)
 	}
 	// The row itself asks before it opens the new device file (ADR 0080).
@@ -45,7 +45,7 @@ func TestUnclaimedDeviceInEditor(t *testing.T) {
 	if _, err := os.Stat(deviceStateFile(s.devicesDir, "AABBCCDDEE99")); !os.IsNotExist(err) {
 		t.Fatalf("state file survived: %v", err)
 	}
-	if strings.Contains(htmlRequest(t, s, "/ui/editor?tab=devices").Body.String(), "AA:BB:CC:DD:EE:99") {
+	if strings.Contains(htmlRequest(t, s, "/ui/devices").Body.String(), "AA:BB:CC:DD:EE:99") {
 		t.Fatal("the unclaimed row survived the forget")
 	}
 	if rec := request(t, s, http.MethodDelete, "/api/state/devices/nope", nil, nil); rec.Code != http.StatusBadRequest {

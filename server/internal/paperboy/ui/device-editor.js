@@ -168,19 +168,25 @@
     display.value = current || '';
   }
 
+  // renderLinks turns the references of the device into a way onward: its plan,
+  // its preview and its display type (ADR 0152).
   function renderLinks() {
     const box = el('links');
     box.innerHTML = '';
-    if (state.device.plan) {
+    const link = (href, label) => {
       const a = document.createElement('a');
-      a.href = '/ui/plan?device=' + encodeURIComponent(state.id);
-      a.textContent = 'Plan preview of ' + state.id;
+      a.href = href;
+      a.textContent = label;
       box.appendChild(a);
+    };
+    if (state.device.plan) {
+      link('/ui/devices/' + encodeURIComponent(state.id) + '/plan', 'Plan preview');
+      link('/ui/plans/' + encodeURIComponent(state.device.plan), 'Plan ' + state.device.plan);
     }
-    const b = document.createElement('a');
-    b.href = '/ui';
-    b.textContent = 'Dashboard';
-    box.appendChild(b);
+    if (state.device.display_type) {
+      link('/ui/display-types/' + encodeURIComponent(state.device.display_type), 'Display type ' + state.device.display_type);
+    }
+    link('/ui', 'All devices');
   }
 
   // serialize builds the body of PUT /api/devices: only what is set, so the
@@ -321,8 +327,18 @@
   // (ADR 0079).
   async function rename() {
     if (state.isNew || !state.rename) return;
-    if (state.dirty && !confirm('Discard unsaved changes?')) return;
-    const id = (prompt('New ID for ' + state.id + ':', '') || '').trim();
+    if (state.dirty && !(await pbAsk.confirm({
+      title: 'Discard unsaved changes?',
+      text: 'The file keeps what is on disk.',
+      ok: 'Discard',
+    }))) return;
+    const id = await pbAsk.text({
+      title: 'Rename device',
+      label: 'New ID for ' + state.id,
+      value: state.id,
+      pattern: '[a-z0-9-]{1,40}',
+      hint: 'Lower case letters, digits and -.',
+    });
     if (!id || id === state.id) return;
     setStatus('renaming…', '');
     let res;
@@ -348,7 +364,7 @@
       return;
     }
     state.dirty = false;
-    location.href = '/ui/editor/device?id=' + encodeURIComponent(id);
+    location.href = '/ui/devices/' + encodeURIComponent(id);
   }
 
   // pair asks for the code the display shows and hands the confirmation to the
@@ -356,7 +372,12 @@
   async function pair() {
     const p = state.pairing;
     if (!p || (!p.waiting && p.paired)) return;
-    const code = (prompt('Code on the display ' + p.mac + ':', '') || '').trim();
+    const code = await pbAsk.text({
+      title: 'Pair the display',
+      label: 'Code on the display ' + p.mac,
+      hint: 'The display shows it while it waits for its key.',
+      ok: 'Pair',
+    });
     if (!code) return;
     setStatus('pairing…', '');
     let res;
@@ -391,11 +412,10 @@
   // read (ADR 0073).
   async function remove() {
     if (state.isNew) return;
-    const warn = 'Delete devices/' + state.id + '.yaml?' +
-      '\n\nThe device cannot sync until a device file with ' + (state.device.mac || 'its MAC') + ' exists again.' +
+    const text = 'The device cannot sync until a device file with ' + (state.device.mac || 'its MAC') + ' exists again.' +
       (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
       '\n\nA copy stays under state/editor/.';
-    if (!confirm(warn)) return;
+    if (!(await pbAsk.confirm({ title: 'Delete devices/' + state.id + '.yaml?', text: text, ok: 'Delete', danger: true }))) return;
     setStatus('deleting…', '');
     let res;
     try {
@@ -416,7 +436,7 @@
       return;
     }
     state.dirty = false;
-    location.href = '/ui/editor?tab=devices';
+    location.href = '/ui/devices';
   }
 
   // check catches what the API would reject anyway, so the operator sees it

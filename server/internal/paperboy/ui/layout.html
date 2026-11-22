@@ -1,0 +1,36 @@
+<!-- The shell every operator page shares (ADR 0152): the document head, the
+     brand, the rail that names the sections, the breadcrumb and the theme
+     toggle. A page parses this file together with its own template, calls
+     "head" in its head, "chrome" where the section starts and "chrome-end"
+     before </body>. The page keeps its own title and its own styles. -->
+{{define "head"}}<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/ui/tokens.css">
+<link rel="stylesheet" href="/ui/ui.css">
+<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
+{{/* The stored choice must apply before the first paint, or a dark page
+     flashes light. The script is inline for that reason only (ADR 0152). */}}
+<script>try{var t=localStorage.getItem("pb-theme");if(t==="dark"||t==="light")document.documentElement.dataset.theme=t}catch(e){}</script>
+<script src="/ui/theme.js" defer></script>
+<script src="/ui/command.js" defer></script>
+{{end}}
+
+{{define "chrome"}}<header class="topbar">
+  <a class="brand" href="/ui"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></a>
+  <div class="topbar-end">
+    <button class="topsearch" id="cmd-open" type="button" aria-label="Search pages, plans, devices and widgets"><span aria-hidden="true">Search</span><kbd aria-hidden="true">⌘K</kbd></button>
+    <span class="build muted" title="Go {{.GoVersion}}">{{.Version}}</span>
+    <button class="theme" id="theme-toggle" type="button" title="Switch the theme" aria-label="Switch the theme"><span class="theme-label">Dark</span></button>
+  </div>
+</header>
+<div class="shell">
+  <nav class="rail" aria-label="Sections">
+    {{range .Nav}}{{if .Head}}<span class="rail-head">{{.Label}}</span>{{else}}<a href="{{.URL}}"{{if .Active}} class="active" aria-current="page"{{end}}>{{.Label}}</a>{{end}}{{end}}
+  </nav>
+  <main id="main">
+    {{if .Breadcrumb}}<nav class="crumbs" aria-label="Breadcrumb">{{range .Breadcrumb}}{{if .Current}}<span aria-current="page">{{.Label}}</span>{{else if .URL}}<a href="{{.URL}}">{{.Label}}</a>{{else}}<span>{{.Label}}</span>{{end}}{{end}}</nav>{{end}}
+{{end}}
+
+{{define "chrome-end"}}  </main>
+</div>
+{{end}}

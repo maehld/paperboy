@@ -8,57 +8,67 @@ import (
 	"testing"
 )
 
-// titleBarNav is the header navigation every operator page has to show, with
-// one active tab.
-func titleBarNav(active string) string {
-	link := func(href, label string) string {
-		class := ""
-		if label == active {
-			class = ` class="active"`
-		}
-		return "<a" + class + ` href="` + href + `">` + label + "</a>"
+// railOf returns the rail of a page, so a test can check the section it marks
+// without depending on the rest of the document.
+func railOf(t *testing.T, body string) string {
+	t.Helper()
+	start := strings.Index(body, `<nav class="rail"`)
+	if start < 0 {
+		t.Fatalf("the page has no rail")
 	}
-	return "<nav>" + link("/ui", "Dashboard") + " · " + link("/ui/plugins", "Playground") +
-		" · " + link("/ui/editor", "Configuration") + " · " + link("/ui/downloads", "Downloads") +
-		" · " + link("/ui/stats", "Stats") + "</nav>"
+	end := strings.Index(body[start:], "</nav>")
+	if end < 0 {
+		t.Fatalf("the rail is not closed")
+	}
+	return body[start : start+end]
 }
 
-// TestOperatorPagesShareTheTitleBar keeps the brand, the tabs and the version
-// line from drifting apart between the pages (issue 120: the plan preview put
-// the device into the h1), and checks that the plan preview names its device,
-// plan and display type in the muted line instead.
-func TestOperatorPagesShareTheTitleBar(t *testing.T) {
+// TestOperatorPagesShareTheShell keeps the brand, the rail and the section from
+// drifting apart between the pages (ADR 0152; issue 120 put the device into the
+// h1, issue 382 replaced the flat header).
+func TestOperatorPagesShareTheShell(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"AA:BB:CC:DD:EE:01\"\nplan: zimmer\n")
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
 	for _, page := range []struct{ path, active string }{
-		{"/ui", "Dashboard"},
-		{"/ui/downloads", "Downloads"},
-		{"/ui/plugins", "Playground"},
-		{"/ui/editor", "Configuration"},
-		{"/ui/editor/page?name=eins&display=small", "Configuration"},
-		{"/ui/editor/plan?name=zimmer", "Configuration"},
-		{"/ui/editor/device?id=test", "Configuration"},
-		{"/ui/editor/display?name=small", "Configuration"},
-		{"/ui/plan?device=test", "Dashboard"},
-		{"/ui/stats", "Stats"},
+		{"/ui", "Devices"},
+		{"/ui/devices", "Devices"},
+		{"/ui/devices/test", "Devices"},
+		{"/ui/devices/test/plan", "Devices"},
+		{"/ui/display-types", "Devices"},
+		{"/ui/display-types/small", "Devices"},
+		{"/ui/pages", "Pages"},
+		{"/ui/pages/eins?display=small", "Pages"},
+		{"/ui/plans", "Plans"},
+		{"/ui/plans/zimmer", "Plans"},
+		{"/ui/plugins", "Plugins"},
+		{"/ui/system/downloads", "Downloads"},
+		{"/ui/system/stats", "Stats"},
+		{"/ui/system/styleguide", "Styleguide"},
 	} {
 		rec := htmlRequest(t, s, page.path)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("%s: %d %s", page.path, rec.Code, rec.Body)
 		}
 		body := rec.Body.String()
-		if !strings.Contains(body, `<h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy"`) {
-			t.Fatalf("%s: the h1 does not show the brand", page.path)
+		if !strings.Contains(body, `<a class="brand" href="/ui"><img src="/ui/logo.svg" alt="Paperboy"`) {
+			t.Fatalf("%s: the brand does not link to the dashboard", page.path)
 		}
-		if !strings.Contains(body, titleBarNav(page.active)) {
-			t.Fatalf("%s: the navigation differs from the other pages", page.path)
+		rail := railOf(t, body)
+		if !strings.Contains(rail, `class="active" aria-current="page">`+page.active+`</a>`) {
+			t.Fatalf("%s: the rail does not mark %s: %s", page.path, page.active, rail)
+		}
+		if n := strings.Count(rail, `aria-current="page"`); n != 1 {
+			t.Fatalf("%s: the rail marks %d sections", page.path, n)
 		}
 	}
 
-	body := htmlRequest(t, s, "/ui/plan?device=test").Body.String()
-	for _, want := range []string{"device test · plan zimmer · display type small", "Plan zimmer · test · Paperboy"} {
+	body := htmlRequest(t, s, "/ui/devices/test/plan").Body.String()
+	for _, want := range []string{
+		"Plan zimmer · test · Paperboy",
+		`<a href="/ui/devices/test">test</a><span aria-current="page">Plan</span>`,
+	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("plan preview misses %q", want)
 		}
@@ -66,28 +76,37 @@ func TestOperatorPagesShareTheTitleBar(t *testing.T) {
 }
 
 // TestOperatorPagesLinkTheSharedStylesheet keeps the look in one place: every
-// page links /ui/ui.css instead of carrying its own copy of the header, the
-// buttons and the bar (ADR 0076).
+// page links the tokens and /ui/ui.css instead of carrying its own colours and
+// its own copy of the header and the buttons (ADR 0076, ADR 0152).
 func TestOperatorPagesLinkTheSharedStylesheet(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"AA:BB:CC:DD:EE:01\"\nplan: zimmer\n")
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
+	const tokens = `<link rel="stylesheet" href="/ui/tokens.css">`
+	const shared = `<link rel="stylesheet" href="/ui/ui.css">`
 	for _, path := range []string{
-		"/ui", "/ui/downloads", "/ui/plugins", "/ui/plugins",
-		"/ui/editor", "/ui/editor/page?name=eins&display=small", "/ui/editor/plan?name=zimmer",
-		"/ui/editor/device?id=test", "/ui/editor/display?name=small", "/ui/plan?device=test",
-		"/ui/stats",
+		"/ui", "/ui/system/downloads", "/ui/plugins", "/ui/plugins",
+		"/ui/pages", "/ui/pages/eins?display=small", "/ui/plans/zimmer",
+		"/ui/devices/test", "/ui/display-types/small", "/ui/devices/test/plan",
+		"/ui/system/stats",
 	} {
 		body := htmlRequest(t, s, path).Body.String()
-		if !strings.Contains(body, `<link rel="stylesheet" href="/ui/ui.css">`) {
-			t.Fatalf("%s: the shared stylesheet is not linked", path)
+		at := strings.Index(body, tokens)
+		if at < 0 {
+			t.Fatalf("%s: the tokens are not linked", path)
+		}
+		// The tokens define the values the stylesheet uses, so they come first.
+		if css := strings.Index(body, shared); css < at {
+			t.Fatalf("%s: the stylesheet is linked before the tokens", path)
 		}
 	}
 
-	rec := htmlRequest(t, s, "/ui/ui.css")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Header().Get("Content-Type"), "text/css") {
-		t.Fatalf("stylesheet: %d %q", rec.Code, rec.Header().Get("Content-Type"))
+	for _, path := range []string{"/ui/tokens.css", "/ui/ui.css"} {
+		rec := htmlRequest(t, s, path)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Header().Get("Content-Type"), "text/css") {
+			t.Fatalf("%s: %d %q", path, rec.Code, rec.Header().Get("Content-Type"))
+		}
 	}
 }
 
@@ -100,15 +119,15 @@ func TestOperatorPagesCarryTheLogo(t *testing.T) {
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
 	pages := []string{
-		"/ui", "/ui/downloads", "/ui/plugins",
-		"/ui/editor", "/ui/editor/page?name=eins&display=small", "/ui/editor/plan?name=zimmer",
-		"/ui/editor/device?id=test", "/ui/editor/display?name=small", "/ui/plan?device=test",
-		"/ui/stats",
+		"/ui", "/ui/system/downloads", "/ui/plugins",
+		"/ui/pages", "/ui/pages/eins?display=small", "/ui/plans/zimmer",
+		"/ui/devices/test", "/ui/display-types/small", "/ui/devices/test/plan",
+		"/ui/system/stats",
 	}
 	for _, path := range pages {
 		body := htmlRequest(t, s, path).Body.String()
 		for _, want := range []string{
-			`<h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy"`,
+			`<a class="brand" href="/ui"><img src="/ui/logo.svg" alt="Paperboy"`,
 			`<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">`,
 		} {
 			if !strings.Contains(body, want) {
@@ -137,26 +156,27 @@ func TestOperatorPagesCarryTheLogo(t *testing.T) {
 }
 
 // TestEditorBarsShareThePattern verifies that every editor shows one action bar
-// with the link back to its list, the object name and Delete, Reload and Save in
-// that order, so no editor drifts from the others (ADR 0076).
+// with the object name and Delete, Reload and Save in that order, so no editor
+// drifts from the others (ADR 0076). The breadcrumb carries the way back since
+// ADR 0152.
 func TestEditorBarsShareThePattern(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"AA:BB:CC:DD:EE:01\"\nplan: zimmer\n")
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
-	for _, page := range []struct{ path, back, name string }{
-		{"/ui/editor/page?name=eins&display=small", `<a href="/ui/editor?tab=pages">← Pages</a>`, `<h2>page eins</h2>`},
-		{"/ui/editor/plan?name=zimmer", `<a href="/ui/editor?tab=plans">← Plans</a>`, "<h2>plan zimmer</h2>"},
-		{"/ui/editor/device?id=test", `<a href="/ui/editor?tab=devices">← Devices</a>`, "<h2>device test</h2>"},
-		{"/ui/editor/display?name=small", `<a href="/ui/editor?tab=displays">← Display types</a>`, "<h2>display type small</h2>"},
+	for _, page := range []struct{ path, crumb, name string }{
+		{"/ui/pages/eins?display=small", `<a href="/ui/pages">Pages</a>`, `<h2>page eins</h2>`},
+		{"/ui/plans/zimmer", `<a href="/ui/plans">Plans</a>`, "<h2>plan zimmer</h2>"},
+		{"/ui/devices/test", `<a href="/ui">Devices</a>`, "<h2>device test</h2>"},
+		{"/ui/display-types/small", `<a href="/ui/display-types">Display types</a>`, "<h2>display type small</h2>"},
 	} {
 		body := htmlRequest(t, s, page.path).Body.String()
 		if strings.Count(body, `class="bar"`) != 1 {
 			t.Fatalf("%s: expected exactly one action bar", page.path)
 		}
-		for _, want := range []string{page.back, page.name} {
+		for _, want := range []string{page.crumb, page.name} {
 			if !strings.Contains(body, want) {
-				t.Fatalf("%s: the bar misses %q", page.path, want)
+				t.Fatalf("%s: the page misses %q", page.path, want)
 			}
 		}
 		del, reload, save := strings.Index(body, `id="delete"`), strings.Index(body, `id="reload"`), strings.Index(body, `id="save"`)

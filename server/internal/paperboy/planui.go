@@ -24,7 +24,7 @@ import (
 //go:embed ui/plan-editor.html
 var planEditorTemplate string
 
-var planEditorTmpl = template.Must(template.New("plan-editor").Parse(planEditorTemplate))
+var planEditorTmpl = pageTemplate("plan-editor", planEditorTemplate, nil)
 
 //go:embed ui/plan-editor.js
 var planEditorJS []byte
@@ -58,12 +58,14 @@ type planEditorState struct {
 
 // planEditorView is the shell of the plan editor.
 type planEditorView struct {
-	Version   string
-	GoVersion string
-	Name      string
-	Timezone  string // the global timezone the windows are read in (ADR 0033)
-	Error     string
-	Data      template.JS
+	Version    string
+	GoVersion  string
+	Nav        []navItem // the rail, with the active section (ADR 0152)
+	Breadcrumb []crumb   // the path to this page
+	Name       string
+	Timezone   string // the global timezone the windows are read in (ADR 0033)
+	Error      string
+	Data       template.JS
 }
 
 // planEditorData gathers the devices of a plan and the pages with their fit
@@ -121,7 +123,10 @@ func (s *Server) handlePlanEditor(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	name := r.URL.Query().Get("name")
 	version, goVersion := editorVersion(cfg)
-	v := planEditorView{Version: version, GoVersion: goVersion, Name: name, Timezone: cfg.timezoneName()}
+	v := planEditorView{Version: version, GoVersion: goVersion, Name: name, Timezone: cfg.timezoneName(),
+		Nav:        navFor("Plans"),
+		Breadcrumb: crumbPath(crumb{Label: "Plans", URL: "/ui/plans"}, crumb{Label: name}),
+	}
 	if !page.ValidName(name) {
 		v.Error = fmt.Sprintf("plan name %q: only a-z, 0-9 and -", name)
 		renderPlanEditor(w, v, http.StatusBadRequest)

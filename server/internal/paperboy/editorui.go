@@ -30,14 +30,14 @@ import (
 //go:embed ui/editor.html
 var editorListTemplate string
 
-var editorListTmpl = template.Must(template.New("editor").Parse(editorListTemplate))
+var editorListTmpl = pageTemplate("editor", editorListTemplate, nil)
 
 //go:embed ui/editor-page.html
 var editorPageTemplate string
 
-var editorPageTmpl = template.Must(template.New("editor-page").Funcs(template.FuncMap{
+var editorPageTmpl = pageTemplate("editor-page", editorPageTemplate, template.FuncMap{
 	"inc": func(i int) int { return i + 1 },
-}).Parse(editorPageTemplate))
+})
 
 //go:embed ui/editor.js
 var editorJS []byte
@@ -67,17 +67,18 @@ type editorPageGroup struct {
 }
 
 type editorListPage struct {
-	Version   string
-	GoVersion string
-	Groups    []editorPageGroup
-	Kinds     []uiOption         // kinds of the new-page form
-	Grids     []uiOption         // character grids of a text page, by display type
-	Plans     []editorPlanRow    // the plan files next to the pages (ADR 0069)
-	Devices   []editorDeviceRow  // the device files (ADR 0070)
-	Unclaimed []editorUnclaimed  // state files whose MAC no device file uses (ADR 0080)
-	Types     []editorDisplayRow // the display type files (ADR 0071)
-	Tabs      []uiTab            // the object types as sub-tabs
-	Tab       string             // the open sub-tab
+	Version    string
+	GoVersion  string
+	Nav        []navItem // the rail, with the active section (ADR 0152)
+	Breadcrumb []crumb   // the path to this page
+	Groups     []editorPageGroup
+	Kinds      []uiOption         // kinds of the new-page form
+	Grids      []uiOption         // character grids of a text page, by display type
+	Plans      []editorPlanRow    // the plan files next to the pages (ADR 0069)
+	Devices    []editorDeviceRow  // the device files (ADR 0070)
+	Unclaimed  []editorUnclaimed  // state files whose MAC no device file uses (ADR 0080)
+	Types      []editorDisplayRow // the display type files (ADR 0071)
+	Tab        string             // the open sub-tab
 }
 
 // editorUnclaimed is one state file without a device file: hardware that
@@ -131,6 +132,8 @@ type editorPlanRow struct {
 type editorPageView struct {
 	Version        string
 	GoVersion      string
+	Nav            []navItem // the rail, with the active section (ADR 0152)
+	Breadcrumb     []crumb   // the path to this page
 	Name           string
 	Display        string // the preview type (ADR 0110)
 	Text           bool
@@ -182,15 +185,6 @@ type variantType struct {
 	Label    string // default label of the new file
 	Served   string // path of the serving file; empty when a variant can be created
 	Selected bool   // the dialog starts with this type
-}
-
-// uiTab is one sub-tab of a view: the editor's object types.
-type uiTab struct {
-	Name     string
-	Label    string
-	Count    int
-	URL      string
-	Selected bool
 }
 
 // displayLink is one entry of a display type switch: the widgets page for the
@@ -410,8 +404,7 @@ func variantTypeLinks(cfg *Config, name, label, preview string, open *editorPage
 		link := displayLink{Name: display, Selected: display == preview}
 		if open != nil {
 			if p, ok := cfg.Profiles[display]; ok && fileFits(*open, p) {
-				params := url.Values{"name": {name}, "file": {label}, "display": {display}}
-				link.URL = "/ui/editor/page?" + params.Encode()
+				link.URL = objectURL("/ui/pages", name, url.Values{"file": {label}, "display": {display}})
 			}
 		}
 		out = append(out, link)
@@ -471,7 +464,7 @@ func pageEditURL(f editorPageFile, variants map[string]string, displays map[stri
 	if newPage {
 		params.Set("new", "1")
 	}
-	return "/ui/editor/page?" + params.Encode(), ""
+	return objectURL("/ui/pages", f.Name, params), ""
 }
 
 // filePreview picks the display type a page file is opened for: one the page
@@ -554,7 +547,7 @@ func servesTable(cfg *Config, name, label, preview string, files []editorPageFil
 				if label != "" {
 					params.Set("file", label)
 				}
-				row.URL = "/ui/editor/page?" + params.Encode()
+				row.URL = objectURL("/ui/pages", name, params)
 				row.Preview, row.Current = true, c.Display == preview
 				row.URLTitle = "Preview " + c.Display + " with this file"
 			} else if c.File != label {
@@ -783,10 +776,21 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	v := editorListPage{Version: version, GoVersion: goVersion, Tab: tab,
 		Groups: groupPageFiles(files, cfg.Profiles)}
+	switch tab {
+	case "plans":
+		v.Nav = navFor("Plans")
+	case "devices":
+		v.Nav = navFor("Devices")
+	case "displays":
+		v.Nav = navFor("Devices")
+		v.Breadcrumb = []crumb{{Label: "Devices", URL: "/ui"}, crumb{Label: "Display types"}}
+	default:
+		v.Nav = navFor("Pages")
+	}
 	for _, p := range plans {
 		row := editorPlanRow{Name: p.Name, Rules: p.Rules, Fallback: p.Fallback, Error: p.Error}
 		if p.Error == "" {
-			row.OpenURL = "/ui/editor/plan?" + url.Values{"name": {p.Name}}.Encode()
+			row.OpenURL = objectURL("/ui/plans", p.Name, nil)
 		}
 		v.Plans = append(v.Plans, row)
 	}
@@ -801,7 +805,7 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 			row.Address = addresses[key]
 		}
 		if d.Error == "" {
-			row.OpenURL = "/ui/editor/device?" + url.Values{"id": {d.ID}}.Encode()
+			row.OpenURL = objectURL("/ui/devices", d.ID, nil)
 			if !knownProfile(cfg.Profiles, d.Display) {
 				row.Problem = fmt.Sprintf("display type %q is not configured: the device answers with 503 until its file names a configured display type", d.Display)
 			}
@@ -812,7 +816,7 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 		v.Unclaimed = append(v.Unclaimed, editorUnclaimed{
 			MAC: u.MAC, Hardware: u.Hardware, Firmware: u.Firmware, Address: u.ClientIP,
 			FirstSeen: editorTime(cfg, u.FirstSeen), LastSeen: editorTime(cfg, u.LastSeen),
-			ClaimURL:  "/ui/editor/device?" + url.Values{"new": {"1"}, "id": {suggestDeviceID(u)}, "mac": {u.MAC}}.Encode(),
+			ClaimURL:  objectURL("/ui/devices", suggestDeviceID(u), url.Values{"new": {"1"}, "mac": {u.MAC}}),
 			ForgetURL: "/api/state/devices/" + url.PathEscape(u.MAC),
 		})
 	}
@@ -844,7 +848,7 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 			row.Power = powerAuto
 		}
 		if d.Error == "" {
-			row.OpenURL = "/ui/editor/display?" + url.Values{"name": {d.Name}}.Encode()
+			row.OpenURL = objectURL("/ui/display-types", d.Name, nil)
 		}
 		v.Types = append(v.Types, row)
 	}
@@ -861,26 +865,11 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 			v.Grids = append(v.Grids, uiOption{Value: n, Label: fmt.Sprintf("%d×%d (%s)", p.Width, p.Height, n)})
 		}
 	}
-	v.Tabs = []uiTab{
-		{Name: "pages", Label: "Pages", Count: len(v.Groups), URL: editorTabURL("pages")},
-		{Name: "plans", Label: "Plans", Count: len(v.Plans), URL: editorTabURL("plans")},
-		{Name: "devices", Label: "Devices", Count: len(v.Devices), URL: editorTabURL("devices")},
-		{Name: "displays", Label: "Displays", Count: len(v.Types), URL: editorTabURL("displays")},
-	}
-	for i := range v.Tabs {
-		v.Tabs[i].Selected = v.Tabs[i].Name == tab
-	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	if err := editorListTmpl.Execute(w, v); err != nil {
 		slog.Error("page overview rendering failed", "error", err)
 	}
-}
-
-// editorTabURL links one sub-tab; the pages tab no longer carries a display
-// type of its own (ADR 0094).
-func editorTabURL(tab string) string {
-	return "/ui/editor?" + url.Values{"tab": {tab}}.Encode()
 }
 
 // handleEditorPage opens one page file with a preview display type (ADR 0110).
@@ -892,7 +881,10 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	name, label := q.Get("name"), q.Get("file")
 	version, goVersion := editorVersion(cfg)
-	v := editorPageView{Version: version, GoVersion: goVersion, Name: name, File: label}
+	v := editorPageView{Version: version, GoVersion: goVersion, Name: name, File: label,
+		Nav:        navFor("Pages"),
+		Breadcrumb: crumbPath(crumb{Label: "Pages", URL: "/ui/pages"}, crumb{Label: name}),
+	}
 	if !page.ValidName(name) {
 		v.Error = fmt.Sprintf("page name %q: only a-z, 0-9 and -", name)
 		renderEditorPage(w, v, http.StatusBadRequest)

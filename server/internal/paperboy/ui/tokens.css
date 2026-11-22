@@ -1,0 +1,87 @@
+/* Design tokens of the operator UI (ADR 0152). Every page links this file
+   first, then ui.css and editor.css, and names no colour of its own.
+
+   The values move into this file before the look changes: first the tokens
+   carry what the pages already used, then one edit here changes the result
+   everywhere.
+
+   Dark mode needs no second palette. color-scheme tells the browser which
+   branch of light-dark() to use, so a dark system switches the colours on its
+   own and the toggle of ADR 0152 only sets data-theme on <html>.
+   light-dark() needs a browser from 2024. */
+
+:root {
+  color-scheme: light dark;
+
+  /* Surface and ink */
+  --pb-bg: light-dark(#f6f4ef, #1a1917);
+  --pb-surface: light-dark(#ffffff, #232220);
+  --pb-surface-sunken: light-dark(#efebe3, #171716);
+  --pb-surface-hover: light-dark(#e7e2d8, #2c2a26);
+  --pb-ink: light-dark(#16181c, #eceae3);
+  --pb-ink-muted: light-dark(#5f6268, #a7a29a);
+  --pb-ink-faint: light-dark(#6f6a61, #928d84);
+  --pb-hairline: light-dark(#dcd8cf, #3a3731);
+  --pb-hairline-strong: light-dark(#c6c0b4, #4e4a42);
+
+  /* The one interactive accent */
+  --pb-accent: light-dark(#1b4d8f, #7fa9e0);
+  --pb-accent-hover: light-dark(#163e73, #a8c4f0);
+  --pb-accent-bg: light-dark(#e8eef7, #1d2735);
+
+  /* State, used for state only */
+  --pb-ok: light-dark(#1f7a3f, #6cc58a);
+  --pb-ok-bg: light-dark(#edf6ef, #16241a);
+  --pb-warn: light-dark(#96600a, #e0a94e);
+  --pb-warn-bg: light-dark(#fbf3e2, #2a2113);
+  --pb-warn-border: light-dark(#d9b25f, #6b5323);
+  --pb-error: light-dark(#a8291e, #f08a80);
+  --pb-error-bg: light-dark(#fbedeb, #2b1817);
+  --pb-error-border: light-dark(#c97066, #7a3a34);
+
+  /* The text preview, which keeps its own palette (ADR 0116) */
+  --pb-lcd-panel: #0d1c07;
+  --pb-lcd-cell: #18310d;
+  --pb-lcd-pixel: #b9f36a;
+  --pb-lcd-edge: #2b4a18;
+
+  /* Type */
+  --pb-font-body: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --pb-font-mono: ui-monospace, "Go Mono", Consolas, monospace;
+  --pb-text-xs: .8125rem;
+  --pb-text-sm: .875rem;
+  --pb-text-md: .9375rem;
+  --pb-text-lg: 1.5rem;
+
+  /* Space, shape and motion */
+  --pb-space-1: .25rem;
+  --pb-space-2: .5rem;
+  --pb-space-3: .75rem;
+  --pb-space-4: 1rem;
+  --pb-space-5: 1.5rem;
+  --pb-radius-sm: 4px;
+  --pb-radius-md: 6px;
+  --pb-radius-lg: 8px;
+  --pb-rail: 13rem;
+  --pb-topbar: 3.3rem;
+  --pb-shadow-dialog: 0 8px 30px light-dark(rgba(0, 0, 0, .18), rgba(0, 0, 0, .55));
+  --pb-shadow-float: 0 2px 8px light-dark(rgba(0, 0, 0, .25), rgba(0, 0, 0, .55));
+  --pb-shadow-lift: 0 4px 10px light-dark(rgba(0, 0, 0, .35), rgba(0, 0, 0, .6));
+  --pb-backdrop: light-dark(rgba(0, 0, 0, .25), rgba(0, 0, 0, .6));
+  --pb-motion: 120ms;
+
+  /* Tints of the board and of the palette, derived from the accent and the
+     state colours so a theme changes them with its palette. */
+  --pb-accent-soft: color-mix(in srgb, var(--pb-accent) 35%, transparent);
+  --pb-cell-tint: light-dark(rgba(238, 243, 251, .55), rgba(140, 160, 190, .14));
+  --pb-cell-tint-selected: light-dark(rgba(226, 236, 251, .7), rgba(120, 150, 200, .28));
+  --pb-slot-tint: light-dark(rgba(246, 250, 255, .8), rgba(255, 255, 255, .14));
+  --pb-warn-soft: color-mix(in srgb, var(--pb-warn-border) 45%, transparent);
+  --pb-warn-wash: color-mix(in srgb, var(--pb-warn-border) 12%, transparent);
+  --pb-error-wash: color-mix(in srgb, var(--pb-error) 16%, transparent);
+  --pb-lcd-pixel-soft: color-mix(in srgb, var(--pb-lcd-pixel) 35%, transparent);
+}
+
+/* The toggle of ADR 0152 stores its choice in the browser and names it here. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }

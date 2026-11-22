@@ -155,6 +155,7 @@ The web UI: what the operator sees and how content is edited. See [`04-operator-
 | [0125](0125-remove-the-text-widget-path.md) | Remove the text widget path | Accepted, implemented; removes the text action, `Texter`, `Result.lines`, `WidgetRequest.scroll` and the `text` widget kind in protocol 8, and the built-in `Text` method; supersedes the "the text action stays" rule of [ADR-0111](0111-text-pages-from-plugin-values.md) and the widget part of [ADR-0092](0092-scrolling-text-lines.md) |
 | [0136](0136-harden-the-operator-ui.md) | Harden the operator UI against framing and DNS rebinding | Accepted, implemented; amends the same-origin check of [ADR-0096](0096-a-password-for-the-operator-ui.md) with a host allowlist and response headers |
 | [0140](0140-an-explicit-devices-api-answer.md) | An explicit answer for the devices API | Accepted, implemented; replaces the embedded device state with a fixed field set |
+| [0152](0152-a-design-system-and-a-rail-for-the-operator-ui.md) | A design system and a rail for the operator UI | Accepted; amends the one-file rule and the flat navigation of [ADR-0076](0076-one-stylesheet-and-one-navigation.md), the variant flow follows in issue #384 |
 
 ## Plugins
 

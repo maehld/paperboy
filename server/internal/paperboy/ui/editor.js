@@ -8,6 +8,13 @@
   const el = (id) => document.getElementById(id);
   const start = JSON.parse(el('editor-data').textContent);
 
+  // pageHref builds the route of one page file (ADR 0152): the name sits in the
+  // path, the rest stays in the query.
+  function pageHref(name, params) {
+    const rest = params ? params.toString() : '';
+    return '/ui/pages/' + encodeURIComponent(name) + (rest ? '?' + rest : '');
+  }
+
   const state = {
     name: start.name,
     display: start.display, // preview display type
@@ -702,6 +709,159 @@
     }
   }
 
+  // ---- palette ----
+
+  const pinnedKey = 'pb-pinned-widgets';
+  const recentKey = 'pb-recent-widgets';
+
+  // storedList reads a list of widget ids the browser keeps.
+  function storedList(key) {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || '[]');
+      return Array.isArray(value) ? value.filter((item) => typeof item === 'string') : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function storeList(key, list) {
+    try {
+      localStorage.setItem(key, JSON.stringify(list));
+    } catch (e) {
+      // A browser that refuses storage keeps only the list in memory.
+    }
+  }
+
+  function isPinned(id) {
+    return storedList(pinnedKey).includes(id);
+  }
+
+  // togglePin keeps a widget at the top of the palette (ADR 0152).
+  function togglePin(id) {
+    const pinned = storedList(pinnedKey);
+    storeList(pinnedKey, pinned.includes(id) ? pinned.filter((item) => item !== id) : [id, ...pinned]);
+    renderPalette();
+  }
+
+  // rememberWidget keeps the last eight widgets on top.
+  function rememberWidget(id) {
+    const rest = storedList(recentKey).filter((item) => item !== id);
+    storeList(recentKey, [id, ...rest].slice(0, 8));
+  }
+
+  // fitsSelectedCell says whether a widget fits the selected cell: 0 fits, 1
+  // unknown, 2 does not fit. Without a selected cell nothing is known.
+  function fitsSelectedCell(widget) {
+    const cells = state.template && state.template.cells;
+    const cell = cells && typeof state.selected === 'number' ? cells[state.selected] : null;
+    if (!cell || !cell.span) return 1;
+    const grid = cellGrid();
+    const sizes = widget.sizes && widget.sizes.length ? widget.sizes : [{ columns: 2, rows: 2 }];
+    const fits = sizes.some((size) => {
+      const span = mapSpan([size.columns, size.rows], grid);
+      return span[0] <= cell.span[0] && span[1] <= cell.span[1];
+    });
+    return fits ? 0 : 2;
+  }
+
+  // widgetThumb renders the widget small, so 43 entries stay scannable. The
+  // server caches the picture per size and arguments (ADR 0139).
+  function widgetThumb(plugin, widget) {
+    const img = document.createElement('img');
+    img.className = 'thumb';
+    img.loading = 'lazy';
+    img.alt = '';
+    img.src = '/api/widget/' + encodeURIComponent(plugin) + '/' + encodeURIComponent(widget) +
+      '?' + new URLSearchParams({ display: state.display, grid: cellGrid().join('x') }).toString();
+    return img;
+  }
+
+  // widgetButton builds one entry: the picture, the name, the title and the
+  // sizes it declares, plus the pin.
+  function widgetButton(plugin, widget, fits) {
+    const id = plugin + '/' + widget;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'widget' + (state.placing && state.placing.plugin === plugin &&
+      state.placing.widget === widget ? ' active' : '') + (fits === 2 ? ' nofit' : '');
+    b.title = fits === 2 ? 'Does not fit the selected cell' : '';
+    b.appendChild(widgetThumb(plugin, widget.widget));
+    const label = document.createElement('span');
+    label.className = 'label';
+    const strong = document.createElement('strong');
+    strong.textContent = widget.widget;
+    label.appendChild(strong);
+    if (widget.title) {
+      const note = document.createElement('span');
+      note.className = 'note';
+      note.textContent = widget.title;
+      label.appendChild(note);
+    }
+    if (widget.sizes && widget.sizes.length) {
+      const note = document.createElement('span');
+      note.className = 'note';
+      note.textContent = widget.sizes.map((size) => mapSpan([size.columns, size.rows], cellGrid()).join('×')).join(', ');
+      label.appendChild(note);
+    }
+    b.appendChild(label);
+    const pin = document.createElement('span');
+    pin.className = 'pin' + (isPinned(id) ? ' on' : '');
+    pin.textContent = isPinned(id) ? '★' : '☆';
+    pin.title = isPinned(id) ? 'Unpin this widget' : 'Pin this widget';
+    pin.setAttribute('role', 'button');
+    pin.tabIndex = -1;
+    pin.addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePin(id);
+    });
+    b.appendChild(pin);
+    b.addEventListener('click', () => {
+      if (suppressPaletteClick) {
+        suppressPaletteClick = false;
+        return;
+      }
+      rememberWidget(id);
+      pick(plugin, widget);
+    });
+    b.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', plugin + '/' + widget);
+      e.dataTransfer.effectAllowed = 'copy';
+      rememberWidget(id);
+    });
+    return b;
+  }
+
+  // widgetSection renders one group of the palette: a head that collapses it and
+  // the entries, the fitting ones first.
+  function widgetSection(title, entries, collapsed) {
+    const section = document.createElement('div');
+    section.className = 'plugin';
+    const head = document.createElement('div');
+    head.className = 'plugin-head';
+    head.title = 'Show or hide this group';
+    head.appendChild(Object.assign(document.createElement('span'), {
+      className: 'chev',
+      textContent: collapsed ? '▸' : '▾',
+    }));
+    head.appendChild(Object.assign(document.createElement('span'), { textContent: title }));
+    head.appendChild(Object.assign(document.createElement('span'), {
+      className: 'count',
+      textContent: String(entries.length),
+    }));
+    head.addEventListener('click', () => {
+      if (collapsed) state.collapsed.delete(title);
+      else state.collapsed.add(title);
+      renderPalette();
+    });
+    section.appendChild(head);
+    if (collapsed) return section;
+    for (const entry of entries) section.appendChild(entry);
+    return section;
+  }
+
+  // renderPalette lists the widgets of the plugins with a picture each. Pinned
+  // and recent widgets come first, and a selected cell moves the widgets that
+  // fit it to the top of their group (ADR 0152).
   function renderPalette() {
     const box = el('palette');
     box.innerHTML = '';
@@ -719,29 +879,60 @@
     }
     // A text page returns above; the Playground shows image display types only
     // (ADR 0124), so this palette lists image widgets and no text entry.
-    const kind = 'image';
     const filter = state.filter.trim().toLowerCase();
+    const known = new Map();
+    for (const p of state.plugins) {
+      for (const w of (p.description && p.description.widgets) || []) {
+        if (w.kinds && w.kinds.length && !w.kinds.includes('image')) continue;
+        known.set(p.name + '/' + w.widget, { plugin: p.name, widget: w });
+      }
+    }
+    const matches = (list) => list.filter((item) => {
+      const entry = known.get(item);
+      if (!entry) return false;
+      if (!filter) return true;
+      return (entry.plugin + ' ' + entry.widget.widget + ' ' + (entry.widget.title || '')).toLowerCase().includes(filter);
+    });
     let shown = 0;
+
+    if (!filter) {
+      const pinned = matches(storedList(pinnedKey));
+      if (pinned.length) {
+        box.appendChild(widgetSection('Pinned', pinned.map((id) => {
+          const entry = known.get(id);
+          return widgetButton(entry.plugin, entry.widget, fitsSelectedCell(entry.widget));
+        }), false));
+      }
+      const recent = matches(storedList(recentKey)).filter((id) => !isPinned(id));
+      if (recent.length) {
+        box.appendChild(widgetSection('Recent', recent.map((id) => {
+          const entry = known.get(id);
+          return widgetButton(entry.plugin, entry.widget, fitsSelectedCell(entry.widget));
+        }), false));
+      }
+    }
+
     for (const p of state.plugins) {
       const widgets = (p.description && p.description.widgets) || [];
-      const fitting = widgets.filter((w) => !w.kinds || !w.kinds.length || w.kinds.includes(kind));
-      const matches = fitting.filter((w) => !filter ||
+      const fitting = widgets.filter((w) => !w.kinds || !w.kinds.length || w.kinds.includes('image'));
+      const found = fitting.filter((w) => !filter ||
         (p.name + ' ' + w.widget + ' ' + (w.title || '')).toLowerCase().includes(filter));
-      if (filter && !matches.length) continue;
+      if (filter && !found.length) continue;
+      const collapsed = state.collapsed.has(p.name);
+      const title = p.name + (p.description && p.description.title ? ' · ' + p.description.title : '');
       const section = document.createElement('div');
       section.className = 'plugin';
       const head = document.createElement('div');
       head.className = 'plugin-head';
       head.title = 'Show or hide the widgets of this plugin';
-      const collapsed = state.collapsed.has(p.name);
       const chev = document.createElement('span');
       chev.className = 'chev';
       chev.textContent = collapsed ? '▸' : '▾';
       const name = document.createElement('span');
-      name.textContent = p.name + (p.description && p.description.title ? ' · ' + p.description.title : '');
+      name.textContent = title;
       const count = document.createElement('span');
       count.className = 'count';
-      count.textContent = String(matches.length);
+      count.textContent = String(found.length);
       head.append(chev, name, count);
       head.addEventListener('click', () => {
         if (collapsed) state.collapsed.delete(p.name);
@@ -759,30 +950,18 @@
         note.textContent = p.error;
         section.appendChild(note);
       }
-      for (const w of matches) {
+      // The widgets that fit the selected cell come first (ADR 0152).
+      const ranked = found
+        .map((w) => ({ w: w, rank: fitsSelectedCell(w) }))
+        .sort((a, b) => a.rank - b.rank || a.w.widget.localeCompare(b.w.widget));
+      for (const item of ranked) {
         shown++;
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'widget' + (state.placing && state.placing.plugin === p.name && state.placing.widget === w.widget ? ' active' : '');
-        b.textContent = w.widget + (w.title ? ' — ' + w.title : '');
-        if (w.sizes && w.sizes.length) {
-          const s = document.createElement('span');
-          s.className = 'note';
-          s.textContent = w.sizes.map((size) => mapSpan([size.columns, size.rows], cellGrid()).join('×')).join(', ');
-          b.appendChild(s);
-        }
-        b.addEventListener('click', () => pick(p.name, w.widget));
-        b.draggable = true;
-        b.addEventListener('dragstart', (e) => {
-          e.dataTransfer.setData('text/plain', p.name + '/' + w.widget);
-          e.dataTransfer.effectAllowed = 'copy';
-        });
-        section.appendChild(b);
+        section.appendChild(widgetButton(p.name, item.w, item.rank));
       }
       if (!fitting.length) {
         const note = document.createElement('span');
         note.className = 'note';
-        note.textContent = 'no widget for ' + kind + ' displays';
+        note.textContent = 'no widget for image displays';
         section.appendChild(note);
       }
       box.appendChild(section);
@@ -2339,9 +2518,9 @@
       return;
     }
     state.dirty = false;
-    const params = new URLSearchParams({ name: state.name, display: display });
+    const params = new URLSearchParams({ display: display });
     if (doc.file) params.set('file', doc.file);
-    location.href = '/ui/editor/page?' + params.toString();
+    location.href = pageHref(state.name, params);
   }
 
   // changeServes writes the file that serves one display type (ADR 0110). The
@@ -2461,8 +2640,8 @@
       location.href = doc.url;
       return;
     }
-    const params = new URLSearchParams({ name: name, display: state.display, file: label });
-    location.href = '/ui/editor/page?' + params.toString();
+    const params = new URLSearchParams({ display: state.display, file: label });
+    location.href = pageHref(name, params);
   }
 
   // renameVariant gives the open variant a new label; the page rewrites every
@@ -2498,8 +2677,18 @@
   // so the confirmation names them (ADR 0079, 0113).
   async function rename() {
     if (!state.rename) return;
-    if (state.dirty && !confirm('Discard unsaved changes?')) return;
-    const name = (prompt('New name for ' + state.name + ':', '') || '').trim();
+    if (state.dirty && !(await pbAsk.confirm({
+      title: 'Discard unsaved changes?',
+      text: 'The file keeps what is on disk.',
+      ok: 'Discard',
+    }))) return;
+    const name = await pbAsk.text({
+      title: 'Rename page',
+      label: 'New name for ' + state.name,
+      value: state.name,
+      pattern: '[a-z0-9-]{1,40}',
+      hint: 'Lower case letters, digits and -.',
+    });
     if (!name || name === state.name) return;
     setStatus('renaming…', '');
     let res;
@@ -2522,7 +2711,7 @@
       return;
     }
     state.dirty = false;
-    location.href = '/ui/editor/page?name=' + encodeURIComponent(name) + '&display=' + encodeURIComponent(state.display);
+    location.href = pageHref(name, new URLSearchParams({ display: state.display }));
   }
 
   // remove deletes the one file that was opened, after naming the plans that use
@@ -2531,14 +2720,13 @@
   async function remove() {
     if (!state.hash) return;
     const used = state.usedBy || [];
-    let warn = 'Delete ' + targetPath() + '?' +
-      (used.length ? '\n\nPlans that name it: ' + used.join(', ') + '.' : '\n\nNo plan names this page.') +
+    let text = (used.length ? 'Plans that name it: ' + used.join(', ') + '.' : 'No plan names this page.') +
       (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
       '\n\nA copy stays under state/editor/.';
     if (state.file && state.named) {
-      warn += '\n\nThe page still names this file: its display type has no page until the file is back or the entry is removed.';
+      text += '\n\nThe page still names this file: its display type has no page until the file is back or the entry is removed.';
     }
-    if (!confirm(warn)) return;
+    if (!(await pbAsk.confirm({ title: 'Delete ' + targetPath() + '?', text: text, ok: 'Delete', danger: true }))) return;
     setStatus('deleting…', '');
     let res;
     try {
@@ -2561,10 +2749,32 @@
       return;
     }
     state.dirty = false;
-    location.href = '/ui/editor?tab=pages';
+    location.href = '/ui/pages';
+  }
+
+  // renderUsedBy names the plans that use the page, each as a link, so the
+  // operator can walk from the page to its plans (ADR 0152).
+  function renderUsedBy() {
+    const box = el('used-by');
+    if (!box) return;
+    box.textContent = '';
+    const used = state.usedBy || [];
+    if (!used.length) {
+      box.textContent = 'No plan names this page.';
+      return;
+    }
+    box.append('Used by: ');
+    used.forEach((name, i) => {
+      if (i) box.append(', ');
+      const a = document.createElement('a');
+      a.href = '/ui/plans/' + encodeURIComponent(name);
+      a.textContent = name;
+      box.append(a);
+    });
   }
 
   function renderAll() {
+    renderUsedBy();
     renderSettings();
     renderPalette();
     renderBoard();
@@ -2655,6 +2865,34 @@
   on('palette-filter', 'input', () => {
     state.filter = el('palette-filter').value;
     renderPalette();
+  });
+  // The palette answers to the keyboard: / focuses the filter, the arrow keys
+  // walk the entries and Enter places the focused one (ADR 0152).
+  const paletteButtons = () => Array.from(el('palette').querySelectorAll('button.widget'));
+  on('palette-filter', 'keydown', (e) => {
+    if (e.key !== 'ArrowDown') return;
+    const first = paletteButtons()[0];
+    if (!first) return;
+    e.preventDefault();
+    first.focus();
+  });
+  on('palette', 'keydown', (e) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const list = paletteButtons();
+    const at = list.indexOf(document.activeElement);
+    if (at < 0) return;
+    const next = list[at + (e.key === 'ArrowDown' ? 1 : -1)];
+    if (!next) return;
+    e.preventDefault();
+    next.focus();
+  });
+  document.addEventListener('keydown', (e) => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (!el('palette-filter')) return;
+    e.preventDefault();
+    el('palette-filter').focus();
   });
   // The Cells switch over the board; the choice is remembered (ADR 0074).
   if (el('show-cells')) {

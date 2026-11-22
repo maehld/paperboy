@@ -3,7 +3,6 @@ package paperboy
 import (
 	_ "embed"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"math"
 	"net/http"
@@ -20,7 +19,7 @@ import (
 //go:embed ui/virtual.html
 var virtualTemplate string
 
-var virtualTmpl = template.Must(template.New("virtual").Parse(virtualTemplate))
+var virtualTmpl = pageTemplate("virtual", virtualTemplate, nil)
 
 //go:embed ui/virtual.js
 var virtualJS []byte
@@ -28,15 +27,17 @@ var virtualJS []byte
 // virtualPage is what the template needs: the validated configuration and the
 // endpoint the script talks to, so the page parses no query itself.
 type virtualPage struct {
-	Version   string
-	GoVersion string
-	Plan      string
-	Profile   string
-	Width     int
-	Height    int
-	Power     string
-	SyncURL   string
-	ResetURL  string
+	Version    string
+	GoVersion  string
+	Nav        []navItem // the rail, with the active section (ADR 0152)
+	Breadcrumb []crumb   // the path to this page
+	Plan       string
+	Profile    string
+	Width      int
+	Height     int
+	Power      string
+	SyncURL    string
+	ResetURL   string
 }
 
 // virtualOptions is the configuration of one virtual display. Only the plan
@@ -147,15 +148,17 @@ func (s *Server) handleVirtual(w http.ResponseWriter, r *http.Request) {
 	q.Set("display", opt.profile)
 	version, goVersion := editorVersion(cfg)
 	page := virtualPage{
-		Version:   version,
-		GoVersion: goVersion,
-		Plan:      opt.plan,
-		Profile:   opt.profile,
-		Width:     prof.Width,
-		Height:    prof.Height,
-		Power:     opt.power,
-		SyncURL:   "/ui/virtual/sync?" + q.Encode(),
-		ResetURL:  "/ui/virtual/reset?" + q.Encode(),
+		Version:    version,
+		GoVersion:  goVersion,
+		Nav:        navFor("Devices"),
+		Breadcrumb: crumbPath(crumb{Label: "Devices", URL: "/ui"}, crumb{Label: "Virtual display"}),
+		Plan:       opt.plan,
+		Profile:    opt.profile,
+		Width:      prof.Width,
+		Height:     prof.Height,
+		Power:      opt.power,
+		SyncURL:    "/ui/virtual/sync?" + q.Encode(),
+		ResetURL:   "/ui/virtual/reset?" + q.Encode(),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")

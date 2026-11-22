@@ -189,24 +189,24 @@ func TestDownloadInstallsPluginsAndFirmware(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	body := htmlRequest(t, s, "/ui/downloads").Body.String()
+	body := htmlRequest(t, s, "/ui/system/downloads").Body.String()
 	for _, want := range []string{"Release checks", "testplugin", "v2.1.0", "e1001", "e1001-v1.0.0.bin", "Downloaded", "2026-03-04 05:06"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("downloads page lacks %q: %s", want, body)
 		}
 	}
-	if strings.Contains(body, "/ui/editor/device") {
+	if strings.Contains(body, "/ui/devices/") {
 		t.Fatalf("downloads page still lists the devices: %s", body)
 	}
 	// The dashboard keeps a link, not the card: a running check must not
 	// reload every device card.
 	dash := htmlRequest(t, s, "/ui").Body.String()
-	if strings.Contains(dash, "Check now") || !strings.Contains(dash, "href=\"/ui/downloads\"") {
+	if strings.Contains(dash, "Check now") || !strings.Contains(dash, "href=\"/ui/system/downloads\"") {
 		t.Fatalf("dashboard still carries the download card: %s", dash)
 	}
 	// The page polls itself and keeps its own URI, so a notice it was opened
 	// with stays (ADR 0106).
-	if !strings.Contains(body, `hx-get="/ui/downloads"`) || !strings.Contains(body, `hx-trigger="every 5s`) {
+	if !strings.Contains(body, `hx-get="/ui/system/downloads"`) || !strings.Contains(body, `hx-trigger="every 5s`) {
 		t.Fatalf("downloads page does not poll itself: %s", body)
 	}
 	for _, want := range []string{`hx-swap="innerMorph"`, `hx-select="#live > *"`, `id="live"`, `src="/ui/htmx.js"`} {
@@ -217,13 +217,13 @@ func TestDownloadInstallsPluginsAndFirmware(t *testing.T) {
 	if strings.Contains(body, `http-equiv="refresh"`) {
 		t.Fatalf("downloads page still reloads the document: %s", body)
 	}
-	notice := htmlRequest(t, s, "/ui/downloads?pruned=1").Body.String()
-	if !strings.Contains(notice, `hx-get="/ui/downloads?pruned=1"`) {
+	notice := htmlRequest(t, s, "/ui/system/downloads?pruned=1").Body.String()
+	if !strings.Contains(notice, `hx-get="/ui/system/downloads?pruned=1"`) {
 		t.Fatalf("a poll must keep the query string: %s", notice)
 	}
 	// The cleanup preview keeps its list of files still: no poll may change
 	// what the button next to it would delete.
-	preview := htmlRequest(t, s, "/ui/downloads?prune=1").Body.String()
+	preview := htmlRequest(t, s, "/ui/system/downloads?prune=1").Body.String()
 	if strings.Contains(preview, "hx-get=") || strings.Contains(preview, "hx-trigger=") {
 		t.Fatalf("the cleanup preview must not poll: %s", preview)
 	}
@@ -274,7 +274,7 @@ func TestDownloadHonoursPins(t *testing.T) {
 		t.Fatalf("pinned offer: %v", offer)
 	}
 	// The releases page marks a version a pin selects instead of a pin column.
-	body := htmlRequest(t, s, "/ui/downloads").Body.String()
+	body := htmlRequest(t, s, "/ui/system/downloads").Body.String()
 	for _, want := range []string{
 		"v1.2.0 <span class=\"muted\">(pinned)</span>",
 		"0.9.0 <span class=\"muted\">(pinned)</span>",
@@ -399,7 +399,7 @@ func TestDownloadsShowsLastBundles(t *testing.T) {
 	if err := s.downloadOnce(context.Background(), s.config()); err != nil {
 		t.Fatal(err)
 	}
-	body := htmlRequest(t, s, "/ui/downloads").Body.String()
+	body := htmlRequest(t, s, "/ui/system/downloads").Body.String()
 	for _, want := range []string{"Last bundles", "plugins-2026.11.21", "firmware-2026.11.21"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("downloads page lacks %q: %s", want, body)
@@ -459,7 +459,7 @@ func TestDownloadCheckEndpoint(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/ui/download", nil)
 	s.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/ui/downloads" {
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/ui/system/downloads" {
 		t.Fatalf("response: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 	deadline := time.Now().Add(5 * time.Second)
@@ -475,7 +475,7 @@ func TestDownloadCheckEndpoint(t *testing.T) {
 	if _, version := pluginProgram(s.config().PluginsDir, "testplugin", ""); version != "v1.0.0" {
 		t.Fatalf("the button must install the plugin, got %q", version)
 	}
-	body := htmlRequest(t, s, "/ui/downloads").Body.String()
+	body := htmlRequest(t, s, "/ui/system/downloads").Body.String()
 	if !strings.Contains(body, "Check now") {
 		t.Fatalf("the downloads page lacks the check button: %s", body)
 	}
@@ -485,13 +485,13 @@ func TestDownloadCheckEndpoint(t *testing.T) {
 // of drawing an empty page, and the dashboard links the page.
 func TestDownloadsPageWithoutDownloadSection(t *testing.T) {
 	s, _ := testServer(t)
-	body := htmlRequest(t, s, "/ui/downloads").Body.String()
-	for _, want := range []string{"Downloads", "No download section", "Plugins", "Firmware images", "Dashboard"} {
+	body := htmlRequest(t, s, "/ui/system/downloads").Body.String()
+	for _, want := range []string{"Downloads", "No download section", "Plugins", "Firmware images", "Devices"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("downloads page lacks %q: %s", want, body)
 		}
 	}
-	if !strings.Contains(htmlRequest(t, s, "/ui").Body.String(), `href="/ui/downloads"`) {
+	if !strings.Contains(htmlRequest(t, s, "/ui").Body.String(), `href="/ui/system/downloads"`) {
 		t.Fatal("the dashboard does not link the downloads page")
 	}
 }
@@ -547,7 +547,7 @@ func TestPaperboyReleaseHint(t *testing.T) {
 			if !update.Compared || !update.Found || update.Version != tc.want {
 				t.Fatalf("hint after %s: %+v, want version %q", tc.running, update, tc.want)
 			}
-			body := htmlRequest(t, s, "/ui/downloads").Body.String()
+			body := htmlRequest(t, s, "/ui/system/downloads").Body.String()
 			if !strings.Contains(body, tc.page) {
 				t.Fatalf("downloads page lacks %q: %s", tc.page, body)
 			}
@@ -579,7 +579,7 @@ func TestPaperboyReleaseHintForDevBuild(t *testing.T) {
 	if !update.Checked || update.Compared || update.Found || update.Version != "" {
 		t.Fatalf("a dev build must not compare: %+v", update)
 	}
-	if body := htmlRequest(t, s, "/ui/downloads").Body.String(); !strings.Contains(body, "dev build, no comparison") {
+	if body := htmlRequest(t, s, "/ui/system/downloads").Body.String(); !strings.Contains(body, "dev build, no comparison") {
 		t.Fatalf("downloads page lacks the dev build note: %s", body)
 	}
 	if dash := htmlRequest(t, s, "/ui").Body.String(); strings.Contains(dash, "is available") {
@@ -599,7 +599,7 @@ func TestPaperboyReleaseHintWithoutPaperboyTrain(t *testing.T) {
 	if !update.Compared || update.Found || update.Version != "" {
 		t.Fatalf("a source without Paperboy releases: %+v", update)
 	}
-	if body := htmlRequest(t, s, "/ui/downloads").Body.String(); !strings.Contains(body, "no release in the channel") {
+	if body := htmlRequest(t, s, "/ui/system/downloads").Body.String(); !strings.Contains(body, "no release in the channel") {
 		t.Fatalf("downloads page lacks the note about the missing release: %s", body)
 	}
 }

@@ -75,7 +75,7 @@ func TestDashboardShowsDevices(t *testing.T) {
 	// The plan view and the virtual display are actions at the foot of the card
 	// rather than links inside the plan row (ADR 0054, ADR 0091).
 	for _, want := range []string{
-		`<a href="/ui/plan?device=test">Plan preview</a>`,
+		`<a href="/ui/devices/test/plan">Plan preview</a>`,
 		`<a href="/ui/virtual?display=small&amp;plan=zimmer">Virtual display</a>`,
 	} {
 		if !strings.Contains(body, want) {

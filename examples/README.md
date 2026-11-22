@@ -90,12 +90,12 @@ overview.
 panel, the Sticky's denser panel, the E1003's 1872 x 1404 16-level panel and a
 20x4 text display. Copy them into the `displays/` directory of your instance;
 the file name is what pages and devices use, and the editor at
-`/ui/editor?tab=displays` creates more.
+`/ui/display-types` creates more.
 
 `devices/wohnzimmer.yaml` and `devices/lcd.yaml` are two devices ([ADR 0070](../docs/adr/0070-devices-in-their-own-files.md)):
 an ePaper display on the tour plan and a 20×4 text display on the standard plan.
 Copy one into the `devices/` directory of your instance, set the MAC address and
-the display type, or create the device in the editor at `/ui/editor`.
+the display type, or create the device in the editor at `/ui/devices`.
 
 `plugins/demo.ics` is a small calendar for trying the calendar plugin without
 an account: `config: { ics_files: [/path/to/demo.ics] }`.

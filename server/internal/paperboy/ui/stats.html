@@ -1,50 +1,43 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+{{template "head" .}}
 <meta name="htmx-config" content='{"morphIgnore":["data-htmx-powered","open"]}'>
 <title>Paperboy · Stats</title>
-<link rel="stylesheet" href="/ui/ui.css">
-<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <script src="/ui/htmx.js" defer></script>
 <style>
-.card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
+.card { background: var(--pb-surface); border: 1px solid var(--pb-hairline); border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
 .card h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; align-items: baseline; gap: .5rem; }
 .card h2 .muted { font-weight: 400; }
 dl { display: grid; grid-template-columns: 11rem minmax(0, 1fr); align-content: start; gap: .15rem .7rem; margin: 0; font-size: .9rem; }
-dt { color: #666; }
+dt { color: var(--pb-ink-muted); }
 dd { margin: 0; min-width: 0; word-break: break-word; font-variant-numeric: tabular-nums; }
 table { border-collapse: collapse; width: 100%; font-size: .9rem; }
-th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid #eee; vertical-align: baseline; white-space: nowrap; }
+th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid var(--pb-surface-hover); vertical-align: baseline; white-space: nowrap; }
 tr:first-child th { border-top: 0; }
-th { font-weight: 600; color: #666; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+th { font-weight: 600; color: var(--pb-ink-muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.name { font-weight: 600; }
 td.program { font-family: ui-monospace, Consolas, monospace; font-size: .82rem; white-space: normal; word-break: break-all; }
-tr.error td { border-top: 0; padding-top: 0; color: #b00; font-size: .82rem; white-space: normal; word-break: break-word; }
-.empty { margin: 0; padding: 1.2rem 1rem; text-align: center; color: #888; border: 1px dashed #ccc; border-radius: 6px; }
-.hint { margin: .6rem 0 0; font-size: .8rem; color: #666; }
-.obs { border-top: 1px solid #eee; padding-top: .55rem; margin-top: .55rem; }
+tr.error td { border-top: 0; padding-top: 0; color: var(--pb-error); font-size: .82rem; white-space: normal; word-break: break-word; }
+.empty { margin: 0; padding: 1.2rem 1rem; text-align: center; color: var(--pb-ink-faint); border: 1px dashed var(--pb-hairline); border-radius: 6px; }
+.hint { margin: .6rem 0 0; font-size: .8rem; color: var(--pb-ink-muted); }
+.obs { border-top: 1px solid var(--pb-surface-hover); padding-top: .55rem; margin-top: .55rem; }
 .obs:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
 .obs h3 { font-size: .9rem; margin: 0 0 .35rem; display: flex; gap: .5rem; align-items: baseline; }
 .obs h3 .muted { font-weight: 400; font-size: .8rem; }
 .obs ul { margin: 0; padding: 0; list-style: none; }
 .obs li { font-family: ui-monospace, Consolas, monospace; font-size: .78rem; white-space: normal; word-break: break-all; }
-.obs .label { margin: .45rem 0 .15rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: #666; }
-.obs pre { margin: 0; padding: .45rem .5rem; background: #f7f9fc; border: 1px solid #e1e7f0; border-radius: 6px; font: .76rem/1.35 ui-monospace, Consolas, monospace; max-height: 10rem; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+.obs .label { margin: .45rem 0 .15rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--pb-ink-muted); }
+.obs pre { margin: 0; padding: .45rem .5rem; background: var(--pb-surface-sunken); border: 1px solid var(--pb-hairline); border-radius: 6px; font: .76rem/1.35 ui-monospace, Consolas, monospace; max-height: 10rem; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 </style>
 </head>
 <body>
-<header>
-  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
-  <nav><a href="/ui">Dashboard</a> · <a href="/ui/plugins">Playground</a> · <a href="/ui/editor">Configuration</a> · <a href="/ui/downloads">Downloads</a> · <a class="active" href="/ui/stats">Stats</a></nav>
-  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
-</header>
+{{template "chrome" .}}
 {{/* The page polls itself every ten seconds and morphs only the region below,
      so the tables keep their scroll position and nothing flashes (ADR 0106). */}}
 <div id="live"
-     hx-get="/ui/stats"
+     hx-get="/ui/system/stats"
      hx-select="#live > *"
      hx-swap="innerMorph"
      hx-trigger="every 10s [document.visibilityState == 'visible'], visibilitychange from:document [document.visibilityState == 'visible']">
@@ -60,6 +53,7 @@ tr.error td { border-top: 0; padding-top: 0; color: #b00; font-size: .82rem; whi
 <section class="card">
   <h2>Plugins <span class="muted">{{len .Plugins}}</span></h2>
   {{if .Plugins}}
+  <div class="scroll">
   <table>
     <tr>
       <th>Plugin</th><th>State</th><th>Program</th><th class="num">PID</th>
@@ -82,6 +76,7 @@ tr.error td { border-top: 0; padding-top: 0; color: #b00; font-size: .82rem; whi
     {{if .LastError}}<tr class="error"><td></td><td colspan="9">{{.LastError}}</td></tr>{{end}}
     {{end}}
   </table>
+  </div>
   {{else}}
   <p class="empty">No plugins configured.</p>
   {{end}}
@@ -116,10 +111,12 @@ tr.error td { border-top: 0; padding-top: 0; color: #b00; font-size: .82rem; whi
   <dl>
     {{range .Cache}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}
   </dl>
+  <div class="scroll">
   <table style="margin-top:.7rem">
     <tr><th>Age</th><th class="num">Entries</th><th class="num">Images</th><th class="num">Bytes</th></tr>
     {{range .Ages}}<tr><td>{{.Range}}</td><td class="num">{{.Entries}}</td><td class="num">{{.Images}}</td><td class="num">{{.Bytes}}</td></tr>{{end}}
   </table>
+  </div>
 </section>
 
 <section class="card">
@@ -132,10 +129,12 @@ tr.error td { border-top: 0; padding-top: 0; color: #b00; font-size: .82rem; whi
 <section class="card">
   <h2>Timings</h2>
   {{if .Timings}}
+  <div class="scroll">
   <table>
     <tr><th>Operation</th><th class="num">Count</th><th class="num">Last</th><th class="num">Average</th><th class="num">p50</th><th class="num">p95</th><th class="num">Max</th></tr>
     {{range .Timings}}<tr><td>{{.Operation}}</td><td class="num">{{.Count}}</td><td class="num">{{.Last}}</td><td class="num">{{.Avg}}</td><td class="num">{{.P50}}</td><td class="num">{{.P95}}</td><td class="num">{{.Max}}</td></tr>{{end}}
   </table>
+  </div>
   {{else}}
   <p class="empty">Nothing measured yet.</p>
   {{end}}
@@ -145,15 +144,17 @@ tr.error td { border-top: 0; padding-top: 0; color: #b00; font-size: .82rem; whi
 <section class="card">
   <h2>Syncs and polls</h2>
   {{if .Syncs}}
+  <div class="scroll">
   <table>
     <tr><th>Device</th><th class="num">Syncs</th><th class="num">Last</th><th class="num">Average</th><th class="num">p95</th><th class="num">Max</th><th class="num">Polls</th><th class="num">Poll average</th></tr>
     {{range .Syncs}}<tr><td class="name">{{.Device}}</td><td class="num">{{.Syncs}}</td><td class="num">{{.Last}}</td><td class="num">{{.Avg}}</td><td class="num">{{.P95}}</td><td class="num">{{.Max}}</td><td class="num">{{.Polls}}</td><td class="num">{{.PollAvg}}</td></tr>{{end}}
   </table>
+  </div>
   {{else}}
   <p class="empty">No device has synced since the start.</p>
   {{end}}
   <p class="hint">A sync is one wake of a device, a poll is the text display asking for its lines every second.</p>
 </section>
 </div>
-</body>
+{{template "chrome-end"}}</body>
 </html>

@@ -926,11 +926,11 @@
       const row = document.createElement('div');
       row.className = 'device';
       const a = document.createElement('a');
-      a.href = '/ui/plan?device=' + encodeURIComponent(d.id);
+      a.href = '/ui/devices/' + encodeURIComponent(d.id) + '/plan';
       a.textContent = d.id + ' · ' + d.display + ' · preview';
       const edit = document.createElement('a');
       edit.className = 'edit';
-      edit.href = '/ui/editor/device?id=' + encodeURIComponent(d.id);
+      edit.href = '/ui/devices/' + encodeURIComponent(d.id);
       edit.textContent = 'edit';
       row.append(a, edit);
       box.appendChild(row);
@@ -1047,8 +1047,18 @@
   // the confirmation names them (ADR 0079).
   async function rename() {
     if (state.isNew || !state.plan || !state.rename) return;
-    if (state.dirty && !confirm('Discard unsaved changes?')) return;
-    const name = (prompt('New name for ' + state.name + ':', '') || '').trim();
+    if (state.dirty && !(await pbAsk.confirm({
+      title: 'Discard unsaved changes?',
+      text: 'The file keeps what is on disk.',
+      ok: 'Discard',
+    }))) return;
+    const name = await pbAsk.text({
+      title: 'Rename plan',
+      label: 'New name for ' + state.name,
+      value: state.name,
+      pattern: '[a-z0-9-]{1,40}',
+      hint: 'Lower case letters, digits and -.',
+    });
     if (!name || name === state.name) return;
     setStatus('renaming…', '');
     let res;
@@ -1074,7 +1084,7 @@
       return;
     }
     state.dirty = false;
-    location.href = '/ui/editor/plan?name=' + encodeURIComponent(name);
+    location.href = '/ui/plans/' + encodeURIComponent(name);
   }
 
   // remove deletes the file after naming the devices that use it; the server
@@ -1082,11 +1092,10 @@
   async function remove() {
     if (state.isNew || !state.plan) return;
     const used = state.devices.map((d) => d.id);
-    const warn = 'Delete plans/' + state.name + '.yaml?' +
-      (used.length ? '\n\nDevices that use it: ' + used.join(', ') + '.' : '\n\nNo device uses this plan.') +
+    const text = (used.length ? 'Devices that use it: ' + used.join(', ') + '.' : 'No device uses this plan.') +
       (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
       '\n\nA copy stays under state/editor/.';
-    if (!confirm(warn)) return;
+    if (!(await pbAsk.confirm({ title: 'Delete plans/' + state.name + '.yaml?', text: text, ok: 'Delete', danger: true }))) return;
     setStatus('deleting…', '');
     let res;
     try {
@@ -1107,7 +1116,7 @@
       return;
     }
     state.dirty = false;
-    location.href = '/ui/editor?tab=plans';
+    location.href = '/ui/plans';
   }
 
   function renderAll() {

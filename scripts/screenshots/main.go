@@ -8,6 +8,11 @@
 //
 //	go run ./scripts/screenshots/main.go ./scripts/screenshots/mock.go
 //	go run ./scripts/screenshots/main.go ./scripts/screenshots/mock.go -only weather
+//	go run ./scripts/screenshots/main.go ./scripts/screenshots/mock.go -serve
+//
+// The -serve flag starts the instance and prints its address on stdout, so
+// scripts/ui-shots.mjs can take pictures of the operator pages. The instance
+// stops when stdin closes or the process gets a signal.
 //
 // The mock keeps the pictures stable and needs no credentials. xkcd and the
 // Pokémon card show placeholder art, because the repository ships neither the
@@ -28,8 +33,10 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -71,15 +78,16 @@ func main() {
 	only := flag.String("only", "", "render one plugin only")
 	keep := flag.Bool("keep", false, "keep the temporary instance")
 	bin := flag.String("bin", "", "use built binaries from this directory instead of building")
+	serve := flag.Bool("serve", false, "start the instance and wait instead of rendering (for a browser tool)")
 	flag.Parse()
 
-	if err := run(*out, *only, *bin, *keep); err != nil {
+	if err := run(*out, *only, *bin, *keep, *serve); err != nil {
 		fmt.Fprintln(os.Stderr, "screenshots:", err)
 		os.Exit(1)
 	}
 }
 
-func run(out, only, binDir string, keep bool) error {
+func run(out, only, binDir string, keep, serve bool) error {
 	root, err := repoRoot()
 	if err != nil {
 		return err
@@ -139,6 +147,18 @@ func run(out, only, binDir string, keep bool) error {
 	base := "http://" + addr
 	if err := waitReady(base, logFile); err != nil {
 		return fmt.Errorf("%w (log: %s)", err, filepath.Join(tmp, "paperboy.log"))
+	}
+
+	if serve {
+		// A browser tool (scripts/ui-shots.mjs) takes the pictures. Print the
+		// address, then keep the instance alive until stdin closes or the tool
+		// gets a signal.
+		fmt.Println("paperboy=" + base)
+		if keep {
+			fmt.Println("instance=" + instance)
+		}
+		waitForStop()
+		return nil
 	}
 
 	if err := render(out, root, base, only); err != nil {
@@ -490,6 +510,22 @@ func getBody(client *http.Client, u string) ([]byte, error) {
 		fmt.Fprintf(os.Stderr, "warning: %s: %s\n", u, msg)
 	}
 	return data, nil
+}
+
+// waitForStop blocks until stdin closes or the process gets a signal, so a
+// caller can start the instance, take its pictures and stop it again.
+func waitForStop() {
+	done := make(chan struct{})
+	go func() {
+		io.Copy(io.Discard, os.Stdin)
+		close(done)
+	}()
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	select {
+	case <-done:
+	case <-signals:
+	}
 }
 
 // waitReady waits until the server answers the plugin list. That request also

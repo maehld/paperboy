@@ -16,20 +16,20 @@ func TestDeviceEditorOverview(t *testing.T) {
 	writeDeviceFile(t, dir, "kueche", "display_type: small\nmac: \"aa:bb:cc:dd:ee:02\"\nplan: tour\n")
 	writeDeviceFile(t, dir, "kaputt", "display_typ: small\n")
 
-	body := request(t, s, http.MethodGet, "/ui/editor?tab=devices", nil, nil).Body.String()
+	body := request(t, s, http.MethodGet, "/ui/devices", nil, nil).Body.String()
 	for _, want := range []string{
-		"<h2>Devices", `<a href="/ui/editor/device?id=kueche">kueche</a>`, "<td>small</td>", "<td>tour</td>",
-		"/ui/editor/device?id=kueche", "New device", `action="/ui/editor/device"`,
+		"<h2>Devices", `<a href="/ui/devices/kueche">kueche</a>`, "<td data-label=\"Display type\">small</td>", "<td data-label=\"Plan\">tour</td>",
+		"/ui/devices/kueche", "New device", `action="/ui/devices/new"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, body)
 		}
 	}
 	// A broken device file is listed with its error and cannot be opened.
-	if !strings.Contains(body, "<td>kaputt</td>") || !strings.Contains(body, "yaml: unmarshal errors") {
+	if !strings.Contains(body, "<td data-label=\"ID\">kaputt</td>") || !strings.Contains(body, "yaml: unmarshal errors") {
 		t.Fatalf("broken device not reported:\n%s", body)
 	}
-	if strings.Contains(body, "/ui/editor/device?id=kaputt") {
+	if strings.Contains(body, "/ui/devices/kaputt") {
 		t.Fatalf("a broken device file is offered:\n%s", body)
 	}
 }
@@ -43,14 +43,14 @@ func TestDeviceEditorPage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rec := request(t, s, http.MethodGet, "/ui/editor/device?id=kueche", nil, nil)
+	rec := request(t, s, http.MethodGet, "/ui/devices/kueche", nil, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("device editor: %d %s", rec.Code, rec.Body)
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
 		`<script id="device-data" type="application/json">`, `"id":"kueche"`, `"displays":["lcd","small"]`,
-		`src="/ui/editor/device.js"`, `id="mac"`, `id="plan"`, `id="warn"`,
+		`src="/ui/device-editor.js"`, `id="mac"`, `id="plan"`, `id="warn"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("device page lacks %q:\n%s", want, body)
@@ -58,14 +58,14 @@ func TestDeviceEditorPage(t *testing.T) {
 	}
 
 	// A device without a file opens as a new one, but only when asked for.
-	if rec := request(t, s, http.MethodGet, "/ui/editor/device?id=neu&new=1", nil, nil); rec.Code != http.StatusOK ||
+	if rec := request(t, s, http.MethodGet, "/ui/devices/neu?new=1", nil, nil); rec.Code != http.StatusOK ||
 		!strings.Contains(rec.Body.String(), `"new":true`) {
 		t.Fatalf("new device: %d %s", rec.Code, rec.Body)
 	}
-	if rec := request(t, s, http.MethodGet, "/ui/editor/device?id=neu", nil, nil); rec.Code != http.StatusNotFound {
+	if rec := request(t, s, http.MethodGet, "/ui/devices/neu", nil, nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("missing device: %d %s", rec.Code, rec.Body)
 	}
-	for _, path := range []string{"/ui/editor/device?id=Nope", "/ui/editor/device?id=..%2Fx", "/ui/editor/device"} {
+	for _, path := range []string{"/ui/devices/Nope", "/ui/devices/x_y"} {
 		if rec := request(t, s, http.MethodGet, path, nil, nil); rec.Code != http.StatusBadRequest {
 			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
 		}
@@ -75,7 +75,7 @@ func TestDeviceEditorPage(t *testing.T) {
 // TestDeviceEditorScript is served from the binary and talks to the device API.
 func TestDeviceEditorScript(t *testing.T) {
 	s, _ := testServer(t)
-	rec := request(t, s, http.MethodGet, "/ui/editor/device.js", nil, nil)
+	rec := request(t, s, http.MethodGet, "/ui/device-editor.js", nil, nil)
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}

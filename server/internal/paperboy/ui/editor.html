@@ -1,65 +1,62 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+{{template "head" .}}
 <title>Paperboy · Configuration</title>
-<link rel="stylesheet" href="/ui/ui.css">
-<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <style>
-a { color: #134e9c; }
-.tabs .count { margin-left: .35rem; color: #888; font-weight: 400; font-size: .8rem; }
-.card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
+a { color: var(--pb-accent); }
+.card { background: var(--pb-surface); border: 1px solid var(--pb-hairline); border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
 .card h2 { font-size: 1.1rem; margin: 0; display: flex; align-items: baseline; gap: .4rem; }
-.card h2 .count { color: #888; font-size: .85rem; font-weight: 400; }
+.card h2 .count { color: var(--pb-ink-faint); font-size: .85rem; font-weight: 400; }
 .card-head { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-bottom: .7rem; }
 .card-head .spacer { margin-left: auto; }
 .card-head .filter { max-width: 18rem; }
 table { border-collapse: collapse; width: 100%; font-size: .92rem; }
-th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid #eee; vertical-align: baseline; }
+th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid var(--pb-surface-hover); vertical-align: baseline; }
 thead th { border-top: 0; }
-th { font-weight: 600; color: #666; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+th { font-weight: 600; color: var(--pb-ink-muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
 tr.rowlink { cursor: pointer; }
-tr.rowlink:hover td { background: #f6f9fe; }
+tr.rowlink:hover td { background: var(--pb-surface-sunken); }
 td.open { text-align: right; white-space: nowrap; }
 td.page { line-height: 1.25; }
 td.page strong { font-weight: 600; }
-td.page strong.missing { color: #b00; }
-td.variants { white-space: nowrap; color: #444; }
+td.page strong.missing { color: var(--pb-error); }
+td.variants { white-space: nowrap; color: var(--pb-ink); }
 td.variants span[title] { cursor: help; }
-td.variants .broken { color: #b00; }
-td.variants .orphan { color: #a60; }
+td.variants .broken { color: var(--pb-error); }
+td.variants .orphan { color: var(--pb-warn); }
 td.variants .unused { font-style: italic; }
-td.variants .chip a { color: #134e9c; text-decoration: none; }
+td.variants .chip a { color: var(--pb-accent); text-decoration: none; }
 td.variants .chip a:hover { text-decoration: underline; }
 td.num { font-variant-numeric: tabular-nums; }
-.error { margin: .4rem 0 0; padding: .4rem .6rem; background: #fff2f2; border-left: 3px solid #c22; font-size: .85rem; word-break: break-word; }
+.error { margin: .4rem 0 0; padding: .4rem .6rem; background: var(--pb-error-bg); border-left: 3px solid var(--pb-error-border); font-size: .85rem; word-break: break-word; }
 input, select, button { font: inherit; padding: .2rem .35rem; }
-button.delete { border: 0; background: none; color: #b00; font-size: .85rem; padding: 0; margin-left: .6rem; cursor: pointer; text-decoration: underline; }
-button.delete:hover { color: #800; }
-button.delete:disabled { color: #999; cursor: default; text-decoration: none; }
-button.new { border-color: #134e9c; background: #134e9c; color: #fff; }
-button.new:hover { background: #0e3d7c; }
-dialog { border: 1px solid #ccc; border-radius: 8px; padding: 1rem 1.1rem; width: min(26rem, 92vw); box-shadow: 0 8px 30px rgba(0, 0, 0, .18); }
-dialog::backdrop { background: rgba(0, 0, 0, .25); }
+button.delete { border: 0; background: none; color: var(--pb-error); font-size: .85rem; padding: 0; margin-left: .6rem; cursor: pointer; text-decoration: underline; }
+button.delete:hover { color: var(--pb-error); }
+button.delete:disabled { color: var(--pb-ink-faint); cursor: default; text-decoration: none; }
+button.new { border-color: var(--pb-accent); background: var(--pb-accent); color: var(--pb-surface); }
+button.new:hover { background: var(--pb-accent-hover); }
+dialog { border: 1px solid var(--pb-hairline); border-radius: 8px; padding: 1rem 1.1rem; width: min(26rem, 92vw); box-shadow: var(--pb-shadow-dialog); }
+dialog::backdrop { background: var(--pb-backdrop); }
 dialog h3 { margin: 0 0 .7rem; font-size: 1rem; }
 dialog label { display: block; margin-bottom: .6rem; font-size: .9rem; }
 dialog label input, dialog label select { display: block; width: 100%; margin-top: .2rem; }
 dialog .hint { margin: .2rem 0 0; }
 dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .9rem; }
-.hint { margin: .6rem 0 0; font-size: .85rem; color: #666; }
-.empty { margin: 0; padding: 2rem 1rem; text-align: center; color: #888; border: 1px dashed #ccc; }
+.hint { margin: .6rem 0 0; font-size: .85rem; color: var(--pb-ink-muted); }
+.empty { margin: 0; padding: 2rem 1rem; text-align: center; color: var(--pb-ink-faint); border: 1px dashed var(--pb-hairline); }
 </style>
 </head>
 <body>
-<header>
-  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
-  <nav><a href="/ui">Dashboard</a> · <a href="/ui/plugins">Playground</a> · <a class="active" href="/ui/editor">Configuration</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/stats">Stats</a></nav>
-  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
-</header>
-<nav class="tabs">
-  {{range .Tabs}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Label}}<span class="count">{{.Count}}</span></a>{{end}}
+{{template "chrome" .}}
+{{if or (eq .Tab "devices") (eq .Tab "displays")}}
+{{/* Display types belong to the devices section, so the two lists share a
+     sub-navigation instead of a hidden fourth tab (ADR 0152). */}}
+<nav class="switch" aria-label="Devices">
+  <a href="/ui/devices"{{if eq .Tab "devices"}} class="active" aria-current="page"{{end}}>Devices</a>
+  <a href="/ui/display-types"{{if eq .Tab "displays"}} class="active" aria-current="page"{{end}}>Display types</a>
 </nav>
+{{end}}
 {{if eq .Tab "pages"}}
 <section class="card">
   <div class="card-head">
@@ -70,16 +67,16 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   </div>
   {{if not .Kinds}}<p class="empty">No display types configured. Add one under <code>displays/</code>.</p>{{end}}
   {{if .Groups}}
-  <table id="page-table">
+  <table id="page-table" class="cards">
     <thead><tr><th>Page</th><th>Variants</th><th>Kind</th><th>Grid / rows</th><th>Title</th></tr></thead>
     <tbody>
       {{range .Groups}}
       <tr{{if .PageURL}} class="rowlink" data-href="{{.PageURL}}"{{end}}>
-        <td class="page">{{if .PageURL}}<a href="{{.PageURL}}"><strong>{{.Name}}</strong></a>{{else}}<strong{{if .Missing}} class="missing" title="No page file. Create it with New page."{{end}}>{{.Name}}</strong>{{end}}</td>
-        <td class="variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}<span class="chip{{if $v.Class}} {{$v.Class}}{{end}}" title="{{$v.Title}}">{{if $v.URL}}<a href="{{$v.URL}}">{{$v.Label}}</a>{{else}}{{$v.Label}}{{end}}</span>{{end}}</td>
-        <td>{{.Kind}}</td>
-        <td class="num">{{.Grid}}</td>
-        <td>{{.Title}}</td>
+        <td class="page" data-label="Page">{{if .PageURL}}<a href="{{.PageURL}}"><strong>{{.Name}}</strong></a>{{else}}<strong{{if .Missing}} class="missing" title="No page file. Create it with New page."{{end}}>{{.Name}}</strong>{{end}}</td>
+        <td class="variants" data-label="Variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}<span class="chip{{if $v.Class}} {{$v.Class}}{{end}}" title="{{$v.Title}}">{{if $v.URL}}<a href="{{$v.URL}}">{{$v.Label}}</a>{{else}}{{$v.Label}}{{end}}</span>{{end}}</td>
+        <td data-label="Kind">{{.Kind}}</td>
+        <td class="num" data-label="Grid">{{.Grid}}</td>
+        <td data-label="Title">{{.Title}}</td>
       </tr>
       {{if .Note}}<tr class="detail"><td colspan="5"><p class="hint">{{.Note}}</p></td></tr>{{end}}
       {{if .Error}}<tr class="detail"><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
@@ -90,7 +87,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   <p class="empty">No pages yet. A page is <code>pages/&lt;name&gt;.yaml</code>.</p>
   {{end}}
   {{if .Kinds}}<dialog id="new-page">
-    <form method="get" action="/ui/editor/page">
+    <form method="get" action="/ui/pages/new">
       <h3>New page</h3>
       <input type="hidden" name="new" value="1">
       <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. solar" title="lower case letters, digits and -"></label>
@@ -115,14 +112,14 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <button class="new" type="button" data-dialog="new-plan">New plan</button>
   </div>
   {{if .Plans}}
-  <table id="plan-table">
+  <table id="plan-table" class="cards">
     <thead><tr><th>Name</th><th>Rules</th><th>Fallback</th></tr></thead>
     <tbody>
       {{range .Plans}}
       <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
-        <td>{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
-        <td class="num">{{.Rules}}</td>
-        <td>{{.Fallback}}</td>
+        <td data-label="Name">{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
+        <td class="num" data-label="Rules">{{.Rules}}</td>
+        <td data-label="Fallback">{{.Fallback}}</td>
       </tr>
       {{if .Error}}<tr class="detail"><td colspan="3"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
@@ -132,7 +129,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   <p class="empty">No plans yet. A plan is <code>plans/&lt;name&gt;.yaml</code>.</p>
   {{end}}
   <dialog id="new-plan">
-    <form method="get" action="/ui/editor/plan">
+    <form method="get" action="/ui/plans/new">
       <h3>New plan</h3>
       <input type="hidden" name="new" value="1">
       <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. tour" title="lower case letters, digits and -"></label>
@@ -151,16 +148,16 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <button class="new" type="button" data-dialog="new-device">New device</button>
   </div>
   {{if .Devices}}
-  <table id="device-table">
+  <table id="device-table" class="cards">
     <thead><tr><th>ID</th><th>Display type</th><th>MAC</th><th>Address</th><th>Plan</th></tr></thead>
     <tbody>
       {{range .Devices}}
       <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
-        <td>{{if .OpenURL}}<a href="{{.OpenURL}}">{{.ID}}</a>{{else}}{{.ID}}{{end}}</td>
-        <td>{{.Display}}</td>
-        <td class="num">{{.MAC}}</td>
-        <td class="num">{{.Address}}</td>
-        <td>{{.Plan}}</td>
+        <td data-label="ID">{{if .OpenURL}}<a href="{{.OpenURL}}">{{.ID}}</a>{{else}}{{.ID}}{{end}}</td>
+        <td data-label="Display type">{{.Display}}</td>
+        <td class="num" data-label="MAC">{{.MAC}}</td>
+        <td class="num" data-label="Address">{{.Address}}</td>
+        <td data-label="Plan">{{.Plan}}</td>
       </tr>
       {{if .Problem}}<tr class="detail"><td colspan="5"><p class="error">{{.Problem}}</p></td></tr>{{end}}
       {{if .Error}}<tr class="detail"><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
@@ -171,7 +168,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   <p class="empty">No devices yet. A device is <code>devices/&lt;id&gt;.yaml</code>.</p>
   {{end}}
   <dialog id="new-device">
-    <form method="get" action="/ui/editor/device">
+    <form method="get" action="/ui/devices/new">
       <h3>New device</h3>
       <input type="hidden" name="new" value="1">
       <label>ID <input name="id" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. wohnzimmer" title="lower case letters, digits and -"></label>
@@ -187,17 +184,17 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <span class="spacer"></span>
     <input class="filter" type="search" placeholder="Filter unclaimed hardware…" data-filter="unclaimed-table" aria-label="Filter unclaimed hardware">
   </div>
-  <table id="unclaimed-table">
+  <table id="unclaimed-table" class="cards">
     <thead><tr><th>MAC</th><th>Hardware</th><th>Firmware</th><th>Address</th><th>First seen</th><th>Last seen</th><th></th></tr></thead>
     <tbody>
       {{range .Unclaimed}}
       <tr class="rowlink" data-claim="{{.ClaimURL}}" data-mac="{{.MAC}}">
-        <td class="num">{{.MAC}}</td>
-        <td>{{.Hardware}}</td>
-        <td>{{.Firmware}}</td>
-        <td class="num">{{.Address}}</td>
-        <td class="num">{{.FirstSeen}}</td>
-        <td class="num">{{.LastSeen}}</td>
+        <td class="num" data-label="MAC">{{.MAC}}</td>
+        <td data-label="Hardware">{{.Hardware}}</td>
+        <td data-label="Firmware">{{.Firmware}}</td>
+        <td class="num" data-label="Address">{{.Address}}</td>
+        <td class="num" data-label="First seen">{{.FirstSeen}}</td>
+        <td class="num" data-label="Last seen">{{.LastSeen}}</td>
         <td class="open"><a href="{{.ClaimURL}}" data-claim="{{.ClaimURL}}" data-mac="{{.MAC}}">Claim</a><button class="delete" type="button" data-forget="{{.ForgetURL}}" data-mac="{{.MAC}}">Forget</button></td>
       </tr>
       {{end}}
@@ -215,17 +212,17 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <button class="new" type="button" data-dialog="new-display">New display type</button>
   </div>
   {{if .Types}}
-  <table id="display-table">
+  <table id="display-table" class="cards">
     <thead><tr><th>Name</th><th>Kind</th><th>Size</th><th>ppi / charset</th><th>Grays</th><th>Power</th></tr></thead>
     <tbody>
       {{range .Types}}
       <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
-        <td>{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
-        <td>{{.Kind}}</td>
-        <td class="num">{{.Size}}</td>
-        <td>{{.Density}}</td>
-        <td class="num">{{.Gray}}</td>
-        <td>{{.Power}}</td>
+        <td data-label="Name">{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
+        <td data-label="Kind">{{.Kind}}</td>
+        <td class="num" data-label="Size">{{.Size}}</td>
+        <td data-label="Density">{{.Density}}</td>
+        <td class="num" data-label="Levels">{{.Gray}}</td>
+        <td data-label="Power">{{.Power}}</td>
       </tr>
       {{if .Error}}<tr class="detail"><td colspan="6"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
@@ -235,7 +232,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   <p class="empty">No display types yet. A display type is <code>displays/&lt;name&gt;.yaml</code>.</p>
   {{end}}
   <dialog id="new-display">
-    <form method="get" action="/ui/editor/display">
+    <form method="get" action="/ui/display-types/new">
       <h3>New display type</h3>
       <input type="hidden" name="new" value="1">
       <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. wohnzimmer" title="lower case letters, digits and -"></label>
@@ -364,5 +361,5 @@ for (const b of document.querySelectorAll('button[data-forget]')) {
   });
 }
 </script>
-</body>
+{{template "chrome-end"}}</body>
 </html>

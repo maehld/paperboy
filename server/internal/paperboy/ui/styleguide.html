@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{template "head" .}}
+<title>Styleguide · Paperboy</title>
+<style>
+.intro { margin: 0 0 1rem; color: var(--pb-ink-muted); font-size: var(--pb-text-sm); max-width: 60rem; }
+section.card { background: var(--pb-surface); border: 1px solid var(--pb-hairline); border-radius: var(--pb-radius-lg); padding: .9rem; margin-bottom: 1rem; }
+section.card > h2 { font-size: var(--pb-text-md); margin: 0 0 .2rem; }
+section.card > p.hint { margin: 0 0 .8rem; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .5rem; }
+.swatch { border: 1px solid var(--pb-hairline); border-radius: var(--pb-radius-md); overflow: hidden; }
+.swatch .chip { height: 2.2rem; }
+.swatch.space { height: 1.1rem; background: var(--pb-accent); }
+.swatch .meta { padding: .3rem .45rem; font-size: var(--pb-text-xs); }
+.swatch .meta code { display: block; background: none; padding: 0; }
+.typescale p { margin: .2rem 0; }
+.typescale code, .tokens code { color: var(--pb-ink-muted); }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.stack { display: grid; gap: .5rem; max-width: 22rem; }
+table { border-collapse: collapse; width: 100%; font-size: var(--pb-text-sm); }
+th, td { text-align: left; padding: .35rem .5rem; border-bottom: 1px solid var(--pb-hairline); }
+th { color: var(--pb-ink-muted); font-weight: 500; }
+.badge { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; padding: .12rem .45rem; border-radius: 999px; border: 1px solid currentColor; font-weight: 600; }
+.badge.ok { color: var(--pb-ok); }
+.badge.late { color: var(--pb-warn); }
+.badge.never { color: var(--pb-ink-muted); }
+</style>
+</head>
+<body>
+{{template "chrome" .}}
+<p class="intro">Every value and every component the operator pages use. This page links <code>tokens.css</code> and <code>ui.css</code> like the others, so it shows the result of the current theme. A change here means a change in those files (ADR 0152).</p>
+
+<section class="card">
+  <h2>Surfaces and ink</h2>
+  <p class="hint">The palette follows <code>prefers-color-scheme</code> and the theme toggle in the top bar.</p>
+  <div class="swatches">
+    {{range .Colors}}<div class="swatch"><div class="chip" style="{{.Chip}}"></div><div class="meta"><code>{{.Token}}</code><span class="muted">{{.Use}}</span></div></div>{{end}}
+  </div>
+</section>
+
+<section class="card typescale">
+  <h2>Type</h2>
+  <p class="hint">Body text is <code>--pb-text-md</code> on a 1.5 line height. Machine data uses the monospace stack with tabular numbers.</p>
+  <p style="font-size: var(--pb-text-xs)">0.8125rem · small labels and hints <code>--pb-text-xs</code></p>
+  <p style="font-size: var(--pb-text-sm)">0.875rem · table text, buttons <code>--pb-text-sm</code></p>
+  <p style="font-size: var(--pb-text-md)">0.9375rem · body text <code>--pb-text-md</code></p>
+  <p style="font-size: var(--pb-text-lg)">1.5rem · page heading <code>--pb-text-lg</code></p>
+  <p><code style="font-family: var(--pb-font-mono)">0f2a9c4 · tabular · MAC AA:BB:CC:DD:EE:01</code></p>
+</section>
+
+<section class="card">
+  <h2>Buttons</h2>
+  <p class="hint">One primary action per surface. A danger action says what it deletes.</p>
+  <div class="row">
+    <button type="button">Default</button>
+    <button class="primary" type="button">Save</button>
+    <button class="danger" type="button">Delete</button>
+    <button type="button" disabled>Disabled</button>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Fields</h2>
+  <p class="hint">Every field carries a label. A hint sits below it.</p>
+  <div class="stack">
+    <label class="field"><span>Name</span><input value="uebersicht"></label>
+    <label class="field"><span>Display type</span><select><option>e1001</option><option>sticky</option></select></label>
+    <label class="field"><span>Refresh</span><input value="10m"><span class="hint">A number with a unit, e.g. <code>10m</code>.</span></label>
+    <label class="row"><input type="checkbox" checked> <span>Stale widgets</span></label>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Table</h2>
+  <p class="hint">A table is a list of objects. Every row links its object.</p>
+  <table>
+    <thead><tr><th>Page</th><th>Kind</th><th>Grid</th></tr></thead>
+    <tbody>
+      <tr><td><a href="/ui/pages">uebersicht</a></td><td>image</td><td>6 × 8</td></tr>
+      <tr><td><a href="/ui/pages">hinweise</a></td><td>text</td><td>4 rows</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h2>States</h2>
+  <p class="hint">Colour means state and nothing else.</p>
+  <div class="row"><span class="badge ok">ok</span><span class="badge late">late</span><span class="badge never">never</span></div>
+  <p class="status ok">Saved</p>
+  <p class="status error">The file changed on disk</p>
+  <p class="status ok">queued</p>
+  <p class="error">A widget failed: plugin answered 500</p>
+  <p class="hint">A hint explains a field or a consequence.</p>
+  <p class="empty">No pages yet. A page is <code>pages/&lt;name&gt;.yaml</code>.</p>
+</section>
+
+<section class="card">
+  <h2>Dialog</h2>
+  <p class="hint">One native dialog for every prompt and confirmation.</p>
+  <div class="row">
+    <button type="button" id="ask-text">Ask for a name</button>
+    <button class="danger" type="button" id="ask-confirm">Ask before deleting</button>
+  </div>
+</section>
+
+<section class="card tokens">
+  <h2>Space and shape</h2>
+  <p class="hint">Spacing follows a 4 px step. A panel has one radius and no shadow; a dialog has the only shadow.</p>
+  <div class="row">
+    {{range .Spaces}}<span class="swatch space" style="{{.Chip}}"></span>{{end}}
+  </div>
+  <p class="hint">Radii: <code>--pb-radius-sm</code> 4 px, <code>--pb-radius-md</code> 6 px, <code>--pb-radius-lg</code> 8 px.</p>
+</section>
+<script src="/ui/dialog.js"></script>
+<script>
+document.getElementById('ask-text').addEventListener('click', async () => {
+  const name = await pbAsk.text({ title: 'Rename page', label: 'New name', value: 'uebersicht', pattern: '[a-z0-9-]{1,40}', hint: 'Lower case letters, digits and -.' });
+  if (name) alert('would rename to ' + name);
+});
+document.getElementById('ask-confirm').addEventListener('click', async () => {
+  const ok = await pbAsk.confirm({ title: 'Delete pages/uebersicht.yaml?', text: 'Plans that name it: tour, standard.\n\nA copy stays under state/editor/.', ok: 'Delete', danger: true });
+  if (ok) alert('would delete');
+});
+</script>
+{{template "chrome-end"}}</body>
+</html>

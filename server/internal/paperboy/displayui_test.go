@@ -14,25 +14,25 @@ func TestEditorDisplaysTab(t *testing.T) {
 	writeDisplayFile(t, s.config().Dir, "lcd", "kind: text\nsize: [20, 4]\ncharset: ascii\n")
 	writeDisplayFile(t, s.config().Dir, "broken", "size: [\n")
 
-	body := request(t, s, http.MethodGet, "/ui/editor?tab=displays", nil, nil).Body.String()
+	body := request(t, s, http.MethodGet, "/ui/display-types", nil, nil).Body.String()
 	for _, want := range []string{
-		`href="/ui/editor?tab=displays" class="active">Displays<span class="count">3</span>`,
-		`id="display-table"`, `<a href="/ui/editor/display?name=small">small</a>`, ">40 × 20</td>", "125 ppi", ">4</td>",
-		">20 × 4</td>", "<td>ascii</td>", "New display type",
-		"/ui/editor/display?name=small",
+		`<a href="/ui/display-types" class="active" aria-current="page">Display types</a>`,
+		`id="display-table"`, `<a href="/ui/display-types/small">small</a>`, ">40 × 20</td>", "125 ppi", ">4</td>",
+		">20 × 4</td>", "<td data-label=\"Density\">ascii</td>", "New display type",
+		"/ui/display-types/small",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("displays tab lacks %q:\n%s", want, body)
 		}
 	}
-	if strings.Contains(body, "/ui/editor/display?name=broken") {
+	if strings.Contains(body, "/ui/display-types/broken") {
 		t.Fatalf("a file that does not parse is offered:\n%s", body)
 	}
 	if !strings.Contains(body, "class=\"error\"") {
 		t.Fatalf("the broken file is not reported:\n%s", body)
 	}
 	// The other tabs do not carry the display type list.
-	if other := request(t, s, http.MethodGet, "/ui/editor?tab=pages", nil, nil).Body.String(); strings.Contains(other, `id="display-table"`) {
+	if other := request(t, s, http.MethodGet, "/ui/pages", nil, nil).Body.String(); strings.Contains(other, `id="display-table"`) {
 		t.Fatalf("pages tab carries the display type list:\n%s", other)
 	}
 }
@@ -46,7 +46,7 @@ func TestDisplayEditor(t *testing.T) {
 	writePage(t, s, "solar", "hochkant", variantPage)
 	writeDeviceFile(t, s.config().Dir, "flur", "display_type: small\nmac: \"AA:BB:CC:DD:EE:02\"\n")
 
-	rec := request(t, s, http.MethodGet, "/ui/editor/display?name=small", nil, nil)
+	rec := request(t, s, http.MethodGet, "/ui/display-types/small", nil, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("display editor: %d %s", rec.Code, rec.Body)
 	}
@@ -55,9 +55,9 @@ func TestDisplayEditor(t *testing.T) {
 		`id="kind"`, `id="width"`, `id="height"`, `id="gray"`, `id="ppi"`, `id="charset"`,
 		`id="panel-diagonal"`, `id="panel-width"`, `id="panel-height"`,
 		`id="use-diagonal"`, `id="use-width"`, `id="use-height"`, `id="panel-hint"`,
-		`id="min_refresh"`, `id="power"`, `id="yaml"`, `<script src="/ui/editor/display.js"></script>`,
+		`id="min_refresh"`, `id="power"`, `id="yaml"`, `<script src="/ui/display-editor.js"></script>`,
 		// The page names this display type: the editor links the variant.
-		`href="/ui/editor/page?display=small&amp;file=hochkant&amp;name=solar"`, `href="/ui/editor/device?id=flur"`,
+		`href="/ui/pages/solar?display=small&amp;file=hochkant"`, `href="/ui/devices/flur"`,
 		`"pages":["solar"]`,
 		"display type small",
 	} {
@@ -67,14 +67,14 @@ func TestDisplayEditor(t *testing.T) {
 	}
 
 	// A new type needs &new=1; without it the page explains the missing file.
-	if rec := request(t, s, http.MethodGet, "/ui/editor/display?name=neu&new=1", nil, nil); rec.Code != http.StatusOK ||
+	if rec := request(t, s, http.MethodGet, "/ui/display-types/neu?new=1", nil, nil); rec.Code != http.StatusOK ||
 		!strings.Contains(rec.Body.String(), `"new":true`) {
 		t.Fatalf("new display type: %d %s", rec.Code, rec.Body)
 	}
-	if rec := request(t, s, http.MethodGet, "/ui/editor/display?name=neu", nil, nil); rec.Code != http.StatusNotFound {
+	if rec := request(t, s, http.MethodGet, "/ui/display-types/neu", nil, nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("missing display type without new: %d", rec.Code)
 	}
-	for _, path := range []string{"/ui/editor/display?name=Nope", "/ui/editor/display?name=..%2Fx", "/ui/editor/display"} {
+	for _, path := range []string{"/ui/display-types/Nope", "/ui/display-types/x_y"} {
 		if rec := request(t, s, http.MethodGet, path, nil, nil); rec.Code != http.StatusBadRequest {
 			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
 		}
@@ -85,7 +85,7 @@ func TestDisplayEditor(t *testing.T) {
 // type API.
 func TestDisplayEditorScript(t *testing.T) {
 	s := editorServer(t)
-	rec := request(t, s, http.MethodGet, "/ui/editor/display.js", nil, nil)
+	rec := request(t, s, http.MethodGet, "/ui/display-editor.js", nil, nil)
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
