@@ -267,6 +267,17 @@ func (s *Server) handleUIThemeJS(w http.ResponseWriter, r *http.Request) {
 	w.Write(uiThemeJS)
 }
 
+// uiDialogJS is the one dialog of the UI, shared by the editors (ADR 0150).
+//
+//go:embed ui/dialog.js
+var uiDialogJS []byte
+
+func (s *Server) handleUIDialogJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(uiDialogJS)
+}
+
 // dashboardDevice is one card of the overview. It carries display-ready texts
 // so the template holds no formatting logic.
 type dashboardDevice struct {

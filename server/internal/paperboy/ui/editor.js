@@ -2505,8 +2505,18 @@
   // so the confirmation names them (ADR 0079, 0113).
   async function rename() {
     if (!state.rename) return;
-    if (state.dirty && !confirm('Discard unsaved changes?')) return;
-    const name = (prompt('New name for ' + state.name + ':', '') || '').trim();
+    if (state.dirty && !(await pbAsk.confirm({
+      title: 'Discard unsaved changes?',
+      text: 'The file keeps what is on disk.',
+      ok: 'Discard',
+    }))) return;
+    const name = await pbAsk.text({
+      title: 'Rename page',
+      label: 'New name for ' + state.name,
+      value: state.name,
+      pattern: '[a-z0-9-]{1,40}',
+      hint: 'Lower case letters, digits and -.',
+    });
     if (!name || name === state.name) return;
     setStatus('renaming…', '');
     let res;
@@ -2538,14 +2548,13 @@
   async function remove() {
     if (!state.hash) return;
     const used = state.usedBy || [];
-    let warn = 'Delete ' + targetPath() + '?' +
-      (used.length ? '\n\nPlans that name it: ' + used.join(', ') + '.' : '\n\nNo plan names this page.') +
+    let text = (used.length ? 'Plans that name it: ' + used.join(', ') + '.' : 'No plan names this page.') +
       (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
       '\n\nA copy stays under state/editor/.';
     if (state.file && state.named) {
-      warn += '\n\nThe page still names this file: its display type has no page until the file is back or the entry is removed.';
+      text += '\n\nThe page still names this file: its display type has no page until the file is back or the entry is removed.';
     }
-    if (!confirm(warn)) return;
+    if (!(await pbAsk.confirm({ title: 'Delete ' + targetPath() + '?', text: text, ok: 'Delete', danger: true }))) return;
     setStatus('deleting…', '');
     let res;
     try {

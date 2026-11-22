@@ -94,3 +94,14 @@ code { font: .85rem var(--pb-font-mono); background: var(--pb-surface-sunken); p
 .switch { display: flex; flex-wrap: wrap; gap: .8rem; margin: 0 0 .9rem; font-size: .95rem; }
 .switch a { color: var(--pb-accent); text-decoration: none; }
 .switch a.active { font-weight: 700; color: var(--pb-ink); }
+
+/* The one dialog of the UI (ADR 0150): a prompt or a confirmation. */
+dialog.ask { border: 1px solid var(--pb-hairline-strong); border-radius: var(--pb-radius-lg); padding: 1rem 1.1rem; width: min(26rem, 92vw); background: var(--pb-surface); color: var(--pb-ink); box-shadow: var(--pb-shadow-dialog); }
+dialog.ask::backdrop { background: var(--pb-backdrop); }
+dialog.ask .ask-title { margin: 0 0 .5rem; font-size: var(--pb-text-md); font-weight: 600; }
+dialog.ask .ask-text { margin: 0 0 .7rem; font-size: var(--pb-text-sm); color: var(--pb-ink-muted); white-space: pre-line; }
+dialog.ask .ask-field { display: block; margin: 0 0 .5rem; font-size: var(--pb-text-sm); }
+dialog.ask .ask-field span { display: block; margin-bottom: .2rem; color: var(--pb-ink-muted); }
+dialog.ask .ask-field input { width: 100%; }
+dialog.ask .ask-hint { margin: .2rem 0 0; font-size: var(--pb-text-xs); color: var(--pb-ink-muted); }
+dialog.ask .ask-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .9rem; }

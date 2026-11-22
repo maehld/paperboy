@@ -399,8 +399,18 @@
   // use the name keep it, and the confirmation names them (ADR 0079).
   async function rename() {
     if (state.isNew || !state.rename) return;
-    if (state.dirty && !confirm('Discard unsaved changes?')) return;
-    const name = (prompt('New name for ' + state.name + ':', '') || '').trim();
+    if (state.dirty && !(await pbAsk.confirm({
+      title: 'Discard unsaved changes?',
+      text: 'The file keeps what is on disk.',
+      ok: 'Discard',
+    }))) return;
+    const name = await pbAsk.text({
+      title: 'Rename display type',
+      label: 'New name for ' + state.name,
+      value: state.name,
+      pattern: '[a-z0-9-]{1,40}',
+      hint: 'Lower case letters, digits and -.',
+    });
     if (!name || name === state.name) return;
     setStatus('renaming…', '');
     let res;
@@ -436,11 +446,10 @@
     const refs = [];
     if (state.pages.length) refs.push('page variants: ' + state.pages.join(', '));
     if (state.devices.length) refs.push('devices: ' + state.devices.join(', '));
-    const warn = 'Delete displays/' + state.name + '.yaml?' +
-      (refs.length ? '\n\nAlso uses it → ' + refs.join('; ') + '.' : '\n\nNo page variant or device uses this display type.') +
+    const text = (refs.length ? 'Also uses it → ' + refs.join('; ') + '.' : 'No page variant or device uses this display type.') +
       (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
       '\n\nA copy stays under state/editor/.';
-    if (!confirm(warn)) return;
+    if (!(await pbAsk.confirm({ title: 'Delete displays/' + state.name + '.yaml?', text: text, ok: 'Delete', danger: true }))) return;
     setStatus('deleting…', '');
     let res;
     try {

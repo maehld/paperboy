@@ -1047,8 +1047,18 @@
   // the confirmation names them (ADR 0079).
   async function rename() {
     if (state.isNew || !state.plan || !state.rename) return;
-    if (state.dirty && !confirm('Discard unsaved changes?')) return;
-    const name = (prompt('New name for ' + state.name + ':', '') || '').trim();
+    if (state.dirty && !(await pbAsk.confirm({
+      title: 'Discard unsaved changes?',
+      text: 'The file keeps what is on disk.',
+      ok: 'Discard',
+    }))) return;
+    const name = await pbAsk.text({
+      title: 'Rename plan',
+      label: 'New name for ' + state.name,
+      value: state.name,
+      pattern: '[a-z0-9-]{1,40}',
+      hint: 'Lower case letters, digits and -.',
+    });
     if (!name || name === state.name) return;
     setStatus('renaming…', '');
     let res;
@@ -1082,11 +1092,10 @@
   async function remove() {
     if (state.isNew || !state.plan) return;
     const used = state.devices.map((d) => d.id);
-    const warn = 'Delete plans/' + state.name + '.yaml?' +
-      (used.length ? '\n\nDevices that use it: ' + used.join(', ') + '.' : '\n\nNo device uses this plan.') +
+    const text = (used.length ? 'Devices that use it: ' + used.join(', ') + '.' : 'No device uses this plan.') +
       (state.dirty ? '\n\nUnsaved changes are discarded.' : '') +
       '\n\nA copy stays under state/editor/.';
-    if (!confirm(warn)) return;
+    if (!(await pbAsk.confirm({ title: 'Delete plans/' + state.name + '.yaml?', text: text, ok: 'Delete', danger: true }))) return;
     setStatus('deleting…', '');
     let res;
     try {
