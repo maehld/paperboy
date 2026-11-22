@@ -91,7 +91,7 @@ func (s *Server) handleMaintenance(w http.ResponseWriter, r *http.Request) {
 	version, goVersion := editorVersion(cfg)
 	v := maintenanceView{Version: version, GoVersion: goVersion, Self: r.URL.RequestURI(),
 		Nav:        navFor("Maintenance"),
-		Breadcrumb: crumbPath(crumb{Label: "System"}, crumb{Label: "Maintenance"}),
+		Breadcrumb: crumbPath(crumb{Label: "Maintenance"}),
 		Preview:    r.URL.Query().Get("preview")}
 	v.Inventory = s.inventorySection(cfg)
 	v.Devices = s.deviceSection(cfg, s.now(), loc)

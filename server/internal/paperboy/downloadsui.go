@@ -92,7 +92,7 @@ func (s *Server) handlePluginsPage(w http.ResponseWriter, r *http.Request) {
 	v := trainPage{Version: version, GoVersion: goVersion, Self: r.URL.RequestURI(),
 		Kind: "plugins", Title: "Plugins",
 		Nav:        navFor("Plugins"),
-		Breadcrumb: crumbPath(crumb{Label: "System"}, crumb{Label: "Plugins"})}
+		Breadcrumb: crumbPath(crumb{Label: "Plugins"})}
 	s.fillCheck(&v, cfg, loc)
 	specs := cfg.pluginSpecs()
 	for _, p := range cfg.Plugins {
@@ -128,7 +128,7 @@ func (s *Server) handleFirmwarePage(w http.ResponseWriter, r *http.Request) {
 	v := trainPage{Version: version, GoVersion: goVersion, Self: r.URL.RequestURI(),
 		Kind: "firmware", Title: "Firmware",
 		Nav:        navFor("Firmware"),
-		Breadcrumb: crumbPath(crumb{Label: "System"}, crumb{Label: "Firmware"}),
+		Breadcrumb: crumbPath(crumb{Label: "Firmware"}),
 		Issues:     s.firmware.invalidNames()}
 	s.fillCheck(&v, cfg, loc)
 	pinned, hasPin := pinVersion(cfg.Firmware.Version)

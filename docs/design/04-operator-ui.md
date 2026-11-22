@@ -10,7 +10,7 @@ One layout renders the head, the top bar, the rail, the breadcrumb and the theme
 
 - The rail groups its entries. Overview, Pages and Plans stand without a head. *Configuration* holds Devices, Display types and Plugins, *System* holds Playground, Plugins, Firmware, Maintenance, Stats and the Styleguide ([ADR 0153](../adr/0153-an-overview-page-and-a-grouped-rail.md)). Below 64rem the rail wraps into a strip under the brand.
 - The top bar carries the logo lockup, the breadcrumb, the build label and the theme toggle.
-- The breadcrumb replaces the back link. Every page but the overview names its place, so a list is the first step of its editors: `Pages / solar`. Every step but the current one is a link. It starts where the content starts, because the lockup is as wide as the rail. Below 40rem it takes its own line under the lockup.
+- The breadcrumb replaces the back link. Every page but the overview names its place, so a list is the first step of its editors: `Pages / solar`. It names objects, never the groups of the rail. Every step but the current one is a link. It starts where the content starts, because the lockup is as wide as the rail. Below 40rem it takes its own line under the lockup.
 - The shell owns the only `main` element. A page lays out its columns in a `div`, so a page rule never restyles the shell.
 - The theme follows `prefers-color-scheme`. The toggle stores `light` or `dark` in the browser, and the page applies it before the first paint.
 - The first entry is the overview. It is the only page without a breadcrumb, and the lists reach it through the rail instead of a sub-navigation.

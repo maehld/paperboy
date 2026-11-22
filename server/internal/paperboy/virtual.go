@@ -151,7 +151,7 @@ func (s *Server) handleVirtual(w http.ResponseWriter, r *http.Request) {
 		Version:    version,
 		GoVersion:  goVersion,
 		Nav:        navFor("Devices"),
-		Breadcrumb: crumbPath(crumb{Label: "Devices", URL: "/ui"}, crumb{Label: "Virtual display"}),
+		Breadcrumb: crumbPath(crumb{Label: "Devices", URL: "/ui/devices"}, crumb{Label: "Virtual display"}),
 		Plan:       opt.plan,
 		Profile:    opt.profile,
 		Width:      prof.Width,

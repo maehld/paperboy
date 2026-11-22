@@ -225,7 +225,7 @@ func TestEditorBarsShareThePattern(t *testing.T) {
 	for _, page := range []struct{ path, crumb, name string }{
 		{"/ui/pages/eins?display=small", `<a href="/ui/pages">Pages</a>`, `<h2>page eins</h2>`},
 		{"/ui/plans/zimmer", `<a href="/ui/plans">Plans</a>`, "<h2>plan zimmer</h2>"},
-		{"/ui/devices/test", `<a href="/ui">Devices</a>`, "<h2>device test</h2>"},
+		{"/ui/devices/test", `<a href="/ui/devices">Devices</a>`, "<h2>device test</h2>"},
 		{"/ui/display-types/small", `<a href="/ui/display-types">Display types</a>`, "<h2>display type small</h2>"},
 	} {
 		body := htmlRequest(t, s, page.path).Body.String()

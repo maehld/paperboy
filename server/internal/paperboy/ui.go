@@ -257,7 +257,7 @@ func (s *Server) handleStyleguide(w http.ResponseWriter, r *http.Request) {
 		Version:    version,
 		GoVersion:  goVersion,
 		Nav:        navFor("Styleguide"),
-		Breadcrumb: crumbPath(crumb{Label: "System"}, crumb{Label: "Styleguide"}),
+		Breadcrumb: crumbPath(crumb{Label: "Styleguide"}),
 		Spaces: []styleguideSwatch{
 			{Token: "--pb-space-1", Chip: template.CSS("width: var(--pb-space-1)")},
 			{Token: "--pb-space-2", Chip: template.CSS("width: var(--pb-space-2)")},

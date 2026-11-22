@@ -112,7 +112,7 @@ func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 		AtText: at.Format("Mon 2006-01-02 15:04"), Now: isNow}
 	view.Nav = navFor("Devices")
 	view.Breadcrumb = crumbPath(
-		crumb{Label: "Devices", URL: "/ui"},
+		crumb{Label: "Devices", URL: "/ui/devices"},
 		crumb{Label: dev.ID, URL: objectURL("/ui/devices", dev.ID, nil)},
 		crumb{Label: "Plan"},
 	)

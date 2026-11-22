@@ -66,7 +66,7 @@ func (s *Server) handleDisplayEditor(w http.ResponseWriter, r *http.Request) {
 	version, goVersion := editorVersion(cfg)
 	v := displayEditorView{Version: version, GoVersion: goVersion, Name: name,
 		Nav:        navFor("Display types"),
-		Breadcrumb: crumbPath(crumb{Label: "Devices", URL: "/ui"}, crumb{Label: "Display types", URL: "/ui/display-types"}, crumb{Label: name}),
+		Breadcrumb: crumbPath(crumb{Label: "Display types", URL: "/ui/display-types"}, crumb{Label: name}),
 	}
 	if !page.ValidName(name) {
 		v.Error = fmt.Sprintf("display type %q: only a-z, 0-9 and -", name)
