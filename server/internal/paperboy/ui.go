@@ -286,8 +286,10 @@ type dashboardDevice struct {
 	Type          string // display type: the operator's label for the page layout
 	Hardware      string // hardware the device reports; empty until it registered
 	Plan          string // plan name, "no plan" when empty
+	PlanURL       string // the plan's editor, empty without a plan (ADR 0150)
 	Rule          string // active plan rule, empty when unknown
 	Content       string // page name, "notice", "battery warning" or empty
+	PageURL       string // the shown page's editor, empty for a notice
 	ImageURL      string // last served image, else the current page's preview; empty for a placeholder
 	Waiting       string // placeholder text when there is neither an image nor text
 	Power         string // charge state with the charge or voltage, e.g. "Charging · 50 %" (ADR 0051)
@@ -368,8 +370,10 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			Type:          d.Profile,
 			Hardware:      d.Hardware,
 			Plan:          planText(d.Plan),
+			PlanURL:       planURLFor(d.Plan),
 			Rule:          d.Rule,
 			Content:       contentText(d.deviceState),
+			PageURL:       pageURLFor(d.deviceState),
 			ImageURL:      image,
 			Waiting:       waiting,
 			Power:         powerText(d.Power, d.deviceState),
@@ -566,6 +570,22 @@ func actionsText(d *Device) string {
 }
 
 // contentText names what the device is showing in plain words.
+// planURLFor links the plan of a card; the dashboard opens its editor (ADR 0150).
+func planURLFor(plan string) string {
+	if plan == "" {
+		return ""
+	}
+	return objectURL("/ui/plans", plan, nil)
+}
+
+// pageURLFor links the page a card shows, when it shows a page and not a notice.
+func pageURLFor(st deviceState) string {
+	if st.LastPageKind != "page" || st.LastPage == "" {
+		return ""
+	}
+	return objectURL("/ui/pages", st.LastPage, nil)
+}
+
 func contentText(st deviceState) string {
 	switch {
 	case st.LastPageKind == "page" && st.LastPage != "":

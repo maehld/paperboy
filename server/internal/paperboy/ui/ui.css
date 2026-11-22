@@ -105,3 +105,6 @@ dialog.ask .ask-field span { display: block; margin-bottom: .2rem; color: var(--
 dialog.ask .ask-field input { width: 100%; }
 dialog.ask .ask-hint { margin: .2rem 0 0; font-size: var(--pb-text-xs); color: var(--pb-ink-muted); }
 dialog.ask .ask-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .9rem; }
+
+/* A link in running text stays underlined, so colour is not its only cue. */
+a { color: var(--pb-accent); text-underline-offset: 2px; }

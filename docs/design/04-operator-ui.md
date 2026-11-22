@@ -46,11 +46,12 @@ Every answer carries `X-Frame-Options: DENY`, `Content-Security-Policy: frame-an
 - a *Power* row with the charge state (charging, connected, discharging), the charge or the voltage
 - a *Details* block with the display type, the raw battery reading, the last charge and the runtime estimate
 - a *Readings* row with the room's measured values; the catalog names are its tooltip ([ADR 0134](../adr/0134-readings-from-the-device.md))
+- the plan and the shown page as links to their editors
 - the refresh interval and the estimated time to the next sync, the address and the firmware
 - a line for a newer Paperboy release, with the version as its link ([ADR 0101](../adr/0101-a-hint-about-a-newer-paperboy.md)), or a warning when the last release check failed
 - a *Signal* button that queues a beep or blink for the next sync ([ADR 0142](../adr/0142-a-manual-alert-waits-for-the-next-sync.md))
 
-The *Signal* button posts a form and comes back to the cards. A queued request shows in *Details* with its expiry until the next sync. The button is disabled when the request cannot work. A line under it names why: no `alert_methods`, a problem device or no registration.
+A device page links its plan, its plan preview and its display type. A page names the plans that use it. The *Signal* button posts a form and comes back to the cards. A queued request shows in *Details* with its expiry until the next sync. The button is disabled when the request cannot work. A line under it names why: no `alert_methods`, a problem device or no registration.
 
 A device without a file appears as unclaimed hardware with *Claim* and *Forget* ([ADR 0080](../adr/0080-device-state-per-mac.md)). A denied device shows as denied.
 

@@ -2752,7 +2752,29 @@
     location.href = '/ui/pages';
   }
 
+  // renderUsedBy names the plans that use the page, each as a link, so the
+  // operator can walk from the page to its plans (ADR 0150).
+  function renderUsedBy() {
+    const box = el('used-by');
+    if (!box) return;
+    box.textContent = '';
+    const used = state.usedBy || [];
+    if (!used.length) {
+      box.textContent = 'No plan names this page.';
+      return;
+    }
+    box.append('Used by: ');
+    used.forEach((name, i) => {
+      if (i) box.append(', ');
+      const a = document.createElement('a');
+      a.href = '/ui/plans/' + encodeURIComponent(name);
+      a.textContent = name;
+      box.append(a);
+    });
+  }
+
   function renderAll() {
+    renderUsedBy();
     renderSettings();
     renderPalette();
     renderBoard();

@@ -168,19 +168,25 @@
     display.value = current || '';
   }
 
+  // renderLinks turns the references of the device into a way onward: its plan,
+  // its preview and its display type (ADR 0150).
   function renderLinks() {
     const box = el('links');
     box.innerHTML = '';
-    if (state.device.plan) {
+    const link = (href, label) => {
       const a = document.createElement('a');
-      a.href = '/ui/devices/' + encodeURIComponent(state.id) + '/plan';
-      a.textContent = 'Plan preview of ' + state.id;
+      a.href = href;
+      a.textContent = label;
       box.appendChild(a);
+    };
+    if (state.device.plan) {
+      link('/ui/devices/' + encodeURIComponent(state.id) + '/plan', 'Plan preview');
+      link('/ui/plans/' + encodeURIComponent(state.device.plan), 'Plan ' + state.device.plan);
     }
-    const b = document.createElement('a');
-    b.href = '/ui';
-    b.textContent = 'Dashboard';
-    box.appendChild(b);
+    if (state.device.display_type) {
+      link('/ui/display-types/' + encodeURIComponent(state.device.display_type), 'Display type ' + state.device.display_type);
+    }
+    link('/ui', 'All devices');
   }
 
   // serialize builds the body of PUT /api/devices: only what is set, so the

@@ -213,6 +213,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     {{if not .WidgetsPage}}<section class="panel">
       <h3>Page</h3>
       <label class="field"><span>Title</span><input id="title" autocomplete="off"></label>
+      <p class="hint" id="used-by"></p>
       <label class="field"><span>Grid</span><span class="grid2"><input id="cols" type="number" min="1" max="80" title="columns"><span class="times">×</span><input id="rows" type="number" min="1" max="80" title="rows"><button type="button" id="grid-lock" class="lock" aria-pressed="false" aria-label="Keep the grid ratio" title="Keep the grid ratio when one axis changes"><svg class="lock-open" viewBox="0 0 16 16" width="19" height="19" aria-hidden="true" focusable="false"><path d="M4.5 7.5V5a3.5 3.5 0 0 1 6.4-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="2.5" y="7.5" width="11" height="6" rx="1.3" fill="currentColor"/></svg><svg class="lock-closed" viewBox="0 0 16 16" width="19" height="19" aria-hidden="true" focusable="false"><path d="M4.5 7.5V5a3.5 3.5 0 0 1 7 0v2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="2.5" y="7.5" width="11" height="6" rx="1.3" fill="currentColor"/></svg></button></span></label>
       <p class="hint" id="grid-note"></p>
       <div id="style-fields"{{if .TextPage}} hidden{{end}}>
