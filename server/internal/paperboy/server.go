@@ -219,6 +219,7 @@ func (s *Server) uiRoutes() []route {
 		{"GET /ui/tokens.css", s.handleUITokens},
 		{"GET /ui/theme.js", s.handleUIThemeJS},
 		{"GET /ui/dialog.js", s.handleUIDialogJS},
+		{"GET /ui/zoom.js", s.handleUIZoomJS},
 		{"GET /ui/command.js", s.handleUICommandJS},
 		{"GET /ui/htmx.js", s.handleUIHtmx},
 		{"GET /ui/logo.svg", s.handleUILogo},

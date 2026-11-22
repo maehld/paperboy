@@ -5,6 +5,7 @@
 <meta name="htmx-config" content='{"morphIgnore":["data-htmx-powered","open"]}'>
 <title>Overview · Paperboy</title>
 <script src="/ui/htmx.js" defer></script>
+<script src="/ui/zoom.js" defer></script>
 <style>
 .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 .section { font-size: 1.15rem; margin: 0 0 .7rem; }
@@ -24,6 +25,9 @@
 .badge.never, .badge.unregistered { color: var(--pb-ink-muted); }
 .screen { height: 190px; display: flex; align-items: center; justify-content: center; }
 .preview { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; border: 1px solid var(--pb-hairline); background: var(--pb-surface); image-rendering: pixelated; }
+.screen .zoom { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: zoom-in; }
+.screen .zoom-text { overflow-x: auto; }
+.screen .zoom:focus-visible { outline: 2px solid var(--pb-accent); outline-offset: 2px; }
 .screen .empty { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
 .empty { margin: 0; padding: 2rem 1rem; text-align: center; color: var(--pb-ink-faint); border: 1px dashed var(--pb-hairline); }
 .lcd { margin: 0; padding: .6rem .8rem; background: var(--pb-lcd-panel); color: var(--pb-lcd-pixel); font: 1.05rem/1.3 ui-monospace, Consolas, monospace; white-space: pre; overflow-x: auto; border-radius: 4px; }
@@ -45,6 +49,18 @@ dd.oneline .muted { font-size: .78rem; }
 .actions form button { width: 100%; }
 .signal { margin: .4rem 0 0; font-size: .8rem; color: var(--pb-ink-muted); }
 .queued { margin: .7rem 0 0; padding: .5rem .6rem; background: var(--pb-ok-bg); border-left: 3px solid var(--pb-ok); font-size: .85rem; }
+dialog.zoom { max-width: 96vw; max-height: 96vh; border: 1px solid var(--pb-hairline); border-radius: 12px; padding: .8rem; background: var(--pb-surface); color: var(--pb-ink); box-shadow: var(--pb-shadow-dialog); }
+dialog.zoom::backdrop { background: var(--pb-backdrop); }
+dialog.zoom figure { display: flex; flex-direction: column; align-items: center; gap: .5rem; margin: 0; }
+dialog.zoom img { display: block; max-width: 94vw; max-height: 80vh; width: auto; height: auto; image-rendering: pixelated; }
+dialog.zoom pre.lcd { max-width: 94vw; max-height: 80vh; margin: 0; font-size: clamp(1rem, 3.5vw, 2rem); }
+dialog.zoom figcaption { font-size: .9rem; text-align: center; }
+dialog.zoom .zoom-device { font-weight: 600; }
+dialog.zoom a.zoom-page { color: var(--pb-accent); text-underline-offset: 2px; }
+dialog.zoom a.zoom-page:not([href]) { color: inherit; text-decoration: none; }
+dialog.zoom .zoom-served { margin: .15rem 0 0; color: var(--pb-ink-muted); }
+dialog.zoom .zoom-close { position: absolute; top: .25rem; right: .35rem; padding: .1rem .35rem; border: 0; background: none; color: var(--pb-ink-muted); font-size: 1.4rem; line-height: 1; cursor: pointer; }
+dialog.zoom .zoom-close:hover { color: var(--pb-ink); }
 </style>
 </head>
 <body>
@@ -67,10 +83,14 @@ dd.oneline .muted { font-size: .78rem; }
     <h2><a href="/ui/devices/{{.ID}}" title="Edit the device file">{{.ID}}</a> <span class="badge {{.Status}}">{{.Status}}</span></h2>
     <div class="screen">
     {{if .ImageURL}}
-    <img class="preview" id="preview-{{.ID}}" src="{{.ImageURL}}" alt="{{.Content}}" {{if .Width}}width="{{.Width}}" height="{{.Height}}"{{end}}>
+    <button class="zoom" type="button" data-zoom data-kind="image" data-device="{{.ID}}" data-page="{{.Content}}"{{if .PageURL}} data-page-url="{{.PageURL}}"{{end}}{{if .ServedAgo}} data-served="{{.ServedAgo}}"{{end}} aria-label="Enlarge the page {{.Content}} of {{.ID}}">
+      <img class="preview" id="preview-{{.ID}}" src="{{.ImageURL}}" alt="" {{if .Width}}width="{{.Width}}" height="{{.Height}}"{{end}}>
+    </button>
     {{else if .Text}}
-    <pre class="lcd">{{range $i, $l := .Text}}{{if $i}}
+    <button class="zoom zoom-text" type="button" data-zoom data-kind="text" data-device="{{.ID}}" data-page="{{.Content}}"{{if .PageURL}} data-page-url="{{.PageURL}}"{{end}}{{if .ServedAgo}} data-served="{{.ServedAgo}}"{{end}} aria-label="Enlarge the text page of {{.ID}}">
+      <pre class="lcd">{{range $i, $l := .Text}}{{if $i}}
 {{end}}{{$l}}{{end}}</pre>
+    </button>
     {{else}}
     <p class="empty">{{.Waiting}}</p>
     {{end}}
@@ -124,5 +144,18 @@ dd.oneline .muted { font-size: .78rem; }
 </div>
 {{end}}
 </div>
+{{/* The dialog lives outside #live: the 30-second poll morphs only the region
+     above, so an open zoom survives a tick (issue #398). */}}
+<dialog id="zoom" class="zoom">
+  <button class="zoom-close" type="button" data-close aria-label="Close">×</button>
+  <figure>
+    <img alt="">
+    <pre class="lcd" hidden></pre>
+    <figcaption>
+      <p class="zoom-title"><strong class="zoom-device"></strong> · <a class="zoom-page"></a></p>
+      <p class="zoom-served" hidden></p>
+    </figcaption>
+  </figure>
+</dialog>
 {{template "chrome-end"}}</body>
 </html>
