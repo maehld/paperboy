@@ -161,7 +161,6 @@ func TestEditorTextRows(t *testing.T) {
 		`value="paperboy/title" readonly`,
 		`value="0,0" readonly`,
 		`value="20×1" readonly`,
-		`Click a value or Text, then a free slot`,
 		`.cell.text`,
 		`.drop-marker`,
 		`Filter values…`,

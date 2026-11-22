@@ -39,7 +39,10 @@
     drag: null, // {kind, i, axis, grab, at, span, start, moved} while a box moves or resizes
     placing: null, // {plugin, widget} or {plugin, name, value: true} waiting for a cell
     filter: '', // text of the palette filter
-    collapsed: new Set(), // plugins whose widgets the palette hides
+    collapsed: new Set(), // plugins whose values the palette hides
+    collapsedSections: new Set(), // shortcut groups the palette folds (Pinned, Recent)
+    openPlugin: '', // the one plugin group the widget palette shows (ADR 0152)
+    openResolved: false, // the palette picked its group after the plugins answered
     plugins: [],
     dirty: false,
     previewURL: '',
@@ -512,7 +515,6 @@
     renderGridLock(off);
     if (!t) {
       for (const id of ['title', 'cols', 'rows', 'padding', 'rule', 'text-size', 'divider']) el(id).value = '';
-      el('grid-note').textContent = '';
       return;
     }
     if (state.gridLock && !state.gridRatio) state.gridRatio = t.grid.slice();
@@ -520,11 +522,6 @@
     el('title').value = t.title || state.page_title || '';
     el('cols').value = rowsPage() ? state.width : t.grid[0];
     el('rows').value = rowsPage() ? state.height : t.grid[1];
-    el('grid-note').textContent = rowsPage()
-      ? 'Text page: ' + state.width + '×' + state.height + ' characters. Drag a box to move it; its edges resize it.'
-      : text()
-        ? 'The grid is the character grid of the display and cannot be changed.'
-        : cellSizeText(t) + 'Plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid, Paperboy maps them.';
     el('padding').value = s.padding === undefined || s.padding === null ? '' : s.padding;
     el('rule').value = s.rule || '';
     el('text-size').value = s.text_size || '';
@@ -552,6 +549,8 @@
 
   // cellSizeText names the pixels of one cell and how far they are from
   // square, because a lock cannot make every density square.
+  // cellSizeText names the grid and the size of one cell in pixels, for the
+  // note under the board.
   function cellSizeText(t) {
     if (!t || text() || !(state.width > 0 && state.height > 0)) return '';
     const cols = Number(el('cols').value) || t.grid[0];
@@ -561,7 +560,7 @@
     const h = state.height / rows;
     const dev = Math.round(Math.abs(w / h - 1) * 100);
     const shape = dev <= 1 ? ', square' : ', ' + dev + ' % ' + (w > h ? 'wider than tall' : 'taller than wide');
-    return 'Cells ' + Math.round(w) + ' × ' + Math.round(h) + ' px on ' + state.display + shape + '. ';
+    return cols + ' × ' + rows + ' cells, ' + Math.round(w) + ' × ' + Math.round(h) + ' px on ' + state.display + shape;
   }
 
   function renderGridLock(off) {
@@ -716,6 +715,7 @@
 
   const pinnedKey = 'pb-pinned-widgets';
   const recentKey = 'pb-recent-widgets';
+  const openKey = 'pb-open-plugin';
 
   // storedList reads a list of widget ids the browser keeps.
   function storedList(key) {
@@ -732,6 +732,23 @@
       localStorage.setItem(key, JSON.stringify(list));
     } catch (e) {
       // A browser that refuses storage keeps only the list in memory.
+    }
+  }
+
+  // storedValue reads a string the browser keeps; '' when it refuses storage.
+  function storedValue(key) {
+    try {
+      return localStorage.getItem(key) || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function storeValue(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      // A browser that refuses storage keeps only the choice in memory.
     }
   }
 
@@ -752,6 +769,37 @@
     storeList(recentKey, [id, ...rest].slice(0, 8));
   }
 
+  // pluginHasImageWidget says whether the widget palette can list the plugin.
+  function pluginHasImageWidget(p) {
+    return ((p.description && p.description.widgets) || [])
+      .some((w) => !w.kinds || !w.kinds.length || w.kinds.includes('image'));
+  }
+
+  function knownPlugin(name) {
+    return state.plugins.some((p) => p.name === name && pluginHasImageWidget(p));
+  }
+
+  // pluginOfCell names the plugin of a placed cell, or ''.
+  function pluginOfCell(i) {
+    const cells = state.template && state.template.cells;
+    const cell = cells && typeof i === 'number' && i >= 0 ? cells[i] : null;
+    return cell && typeof cell.widget === 'string' ? cell.widget.split('/')[0] : '';
+  }
+
+  // setOpenPlugin makes one plugin group the open one and remembers the choice
+  // in the browser, like the pins (ADR 0152). An empty name folds every group.
+  function setOpenPlugin(name) {
+    state.openPlugin = name;
+    storeValue(openKey, name);
+  }
+
+  // toggleSection folds or unfolds one shortcut group; both start open.
+  function toggleSection(key) {
+    if (state.collapsedSections.has(key)) state.collapsedSections.delete(key);
+    else state.collapsedSections.add(key);
+    renderPalette();
+  }
+
   // fitsSelectedCell says whether a widget fits the selected cell: 0 fits, 1
   // unknown, 2 does not fit. Without a selected cell nothing is known, and on
   // the widgets page a pick replaces the cell, so no widget is a misfit there.
@@ -769,15 +817,38 @@
     return fits ? 0 : 2;
   }
 
-  // widgetThumb renders the widget small, so 43 entries stay scannable. The
-  // server caches the picture per size and arguments (ADR 0139).
+  // Thumbnails load when the entry scrolls into view, so a folded or long
+  // palette asks the server for no picture it does not show. The server caches
+  // each picture per size and arguments (ADR 0139). A browser without an
+  // IntersectionObserver sets every source at once.
+  const thumbObserver = typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const img = entry.target;
+        thumbObserver.unobserve(img);
+        if (img.dataset.src) {
+          img.src = img.dataset.src;
+          delete img.dataset.src;
+        }
+      }
+    }, { rootMargin: '200px' })
+    : null;
+
+  // widgetThumb renders the widget small, so a long palette stays scannable.
   function widgetThumb(plugin, widget) {
     const img = document.createElement('img');
     img.className = 'thumb';
     img.loading = 'lazy';
     img.alt = '';
-    img.src = '/api/widget/' + encodeURIComponent(plugin) + '/' + encodeURIComponent(widget) +
+    const src = '/api/widget/' + encodeURIComponent(plugin) + '/' + encodeURIComponent(widget) +
       '?' + new URLSearchParams({ display: state.display, grid: cellGrid().join('x') }).toString();
+    if (thumbObserver) {
+      img.dataset.src = src;
+      thumbObserver.observe(img);
+    } else {
+      img.src = src;
+    }
     return img;
   }
 
@@ -836,40 +907,51 @@
     return b;
   }
 
-  // widgetSection renders one group of the palette: a head that collapses it and
-  // the entries, the fitting ones first.
-  function widgetSection(title, entries, collapsed) {
-    const section = document.createElement('div');
-    section.className = 'plugin';
-    const head = document.createElement('div');
+  // paletteHead builds the head of a palette group. A toggle makes it a button
+  // that folds the group; without one the head is a plain label, as in the
+  // filtered palette where every group shows its matches.
+  function paletteHead(title, count, open, toggle) {
+    const head = document.createElement(toggle ? 'button' : 'div');
     head.className = 'plugin-head';
-    head.title = 'Show or hide this group';
-    head.appendChild(Object.assign(document.createElement('span'), {
-      className: 'chev',
-      textContent: collapsed ? '▸' : '▾',
-    }));
+    if (toggle) {
+      head.type = 'button';
+      head.title = open ? 'Hide this group' : 'Show this group';
+      head.setAttribute('aria-expanded', open ? 'true' : 'false');
+      head.appendChild(Object.assign(document.createElement('span'), {
+        className: 'chev',
+        textContent: open ? '▾' : '▸',
+      }));
+      head.addEventListener('click', toggle);
+    } else {
+      head.classList.add('static');
+    }
     head.appendChild(Object.assign(document.createElement('span'), { textContent: title }));
     head.appendChild(Object.assign(document.createElement('span'), {
       className: 'count',
-      textContent: String(entries.length),
+      textContent: String(count),
     }));
-    head.addEventListener('click', () => {
-      if (collapsed) state.collapsed.delete(title);
-      else state.collapsed.add(title);
-      renderPalette();
-    });
-    section.appendChild(head);
-    if (collapsed) return section;
+    return head;
+  }
+
+  // widgetSection renders one shortcut group (Pinned, Recent). Each folds on
+  // its own and starts open; the plugin groups below share one open group.
+  function widgetSection(title, entries, folded, toggle) {
+    const section = document.createElement('div');
+    section.className = 'plugin';
+    section.appendChild(paletteHead(title, entries.length, !folded, toggle));
+    if (folded) return section;
     for (const entry of entries) section.appendChild(entry);
     return section;
   }
 
   // renderPalette lists the widgets of the plugins with a picture each. Pinned
-  // and recent widgets come first, and a selected cell moves the widgets that
-  // fit it to the top of their group (ADR 0152).
+  // and recent widgets come first, one plugin group is open and a selected cell
+  // opens the group of its widget (ADR 0152). A filter shows every group with a
+  // match and suspends the fold.
   function renderPalette() {
     const box = el('palette');
     box.innerHTML = '';
+    if (thumbObserver) thumbObserver.disconnect();
     if (rowsPage()) {
       renderValuePalette(box);
       return;
@@ -898,6 +980,15 @@
       if (!filter) return true;
       return (entry.plugin + ' ' + entry.widget.widget + ' ' + (entry.widget.title || '')).toLowerCase().includes(filter);
     });
+    // The first palette open picks the group of the selected cell, else the one
+    // the operator opened last, else the first plugin that offers a widget.
+    if (!state.openResolved) {
+      state.openResolved = true;
+      const remembered = storedValue(openKey);
+      const own = pluginOfCell(state.selected);
+      const first = (state.plugins.find(pluginHasImageWidget) || {}).name || '';
+      state.openPlugin = [own, remembered].find((name) => name && knownPlugin(name)) || first;
+    }
     let shown = 0;
 
     if (!filter) {
@@ -906,14 +997,14 @@
         box.appendChild(widgetSection('Pinned', pinned.map((id) => {
           const entry = known.get(id);
           return widgetButton(entry.plugin, entry.widget, fitsSelectedCell(entry.widget));
-        }), false));
+        }), state.collapsedSections.has('pinned'), () => toggleSection('pinned')));
       }
       const recent = matches(storedList(recentKey)).filter((id) => !isPinned(id));
       if (recent.length) {
         box.appendChild(widgetSection('Recent', recent.map((id) => {
           const entry = known.get(id);
           return widgetButton(entry.plugin, entry.widget, fitsSelectedCell(entry.widget));
-        }), false));
+        }), state.collapsedSections.has('recent'), () => toggleSection('recent')));
       }
     }
 
@@ -923,29 +1014,17 @@
       const found = fitting.filter((w) => !filter ||
         (p.name + ' ' + w.widget + ' ' + (w.title || '')).toLowerCase().includes(filter));
       if (filter && !found.length) continue;
-      const collapsed = state.collapsed.has(p.name);
+      // One plugin group is open; a filter expands every group with a match.
+      const open = !!filter || p.name === state.openPlugin;
       const title = p.name + (p.description && p.description.title ? ' · ' + p.description.title : '');
       const section = document.createElement('div');
       section.className = 'plugin';
-      const head = document.createElement('div');
-      head.className = 'plugin-head';
-      head.title = 'Show or hide the widgets of this plugin';
-      const chev = document.createElement('span');
-      chev.className = 'chev';
-      chev.textContent = collapsed ? '▸' : '▾';
-      const name = document.createElement('span');
-      name.textContent = title;
-      const count = document.createElement('span');
-      count.className = 'count';
-      count.textContent = String(found.length);
-      head.append(chev, name, count);
-      head.addEventListener('click', () => {
-        if (collapsed) state.collapsed.delete(p.name);
-        else state.collapsed.add(p.name);
+      const toggle = filter ? null : () => {
+        setOpenPlugin(open ? '' : p.name);
         renderPalette();
-      });
-      section.appendChild(head);
-      if (collapsed) {
+      };
+      section.appendChild(paletteHead(title, found.length, open, toggle));
+      if (!open) {
         box.appendChild(section);
         continue;
       }
@@ -962,12 +1041,6 @@
       for (const item of ranked) {
         shown++;
         section.appendChild(widgetButton(p.name, item.w, item.rank));
-      }
-      if (!fitting.length) {
-        const note = document.createElement('span');
-        note.className = 'note';
-        note.textContent = 'no widget for image displays';
-        section.appendChild(note);
       }
       box.appendChild(section);
     }
@@ -1002,6 +1075,7 @@
     const span = mapSpan(ref, grid);
     state.template.cells = [{ at: [0, 0], span: span, widget: plugin + '/' + widget, args: {}, style: {} }];
     state.selected = 0;
+    setOpenPlugin(plugin);
   }
 
   function showWidget(plugin, widget) {
@@ -1042,6 +1116,7 @@
     t.cells.push({ at: [x, y], span: span, widget: plugin + '/' + widget, args: {}, style: {} });
     state.selected = t.cells.length - 1;
     state.placing = null;
+    setOpenPlugin(plugin);
     setStatus('');
     changed();
     renderPalette();
@@ -1104,6 +1179,15 @@
 
   // selectCell marks one box without rebuilding the board, so a drag that has
   // just started keeps its element (and its pointer capture).
+  // followSelection opens the palette group of the selected cell, so a widget
+  // can be replaced without a search.
+  function followSelection(i) {
+    const plugin = pluginOfCell(i);
+    if (!plugin || plugin === state.openPlugin || !knownPlugin(plugin)) return;
+    setOpenPlugin(plugin);
+    renderPalette();
+  }
+
   function selectCell(i) {
     state.selected = i;
     const board = el('board');
@@ -1113,6 +1197,7 @@
       }
     }
     renderInspector();
+    followSelection(i);
   }
 
   // paintCell moves a box on the board while the pointer drags it; the model
@@ -1356,10 +1441,13 @@
       }
       board.appendChild(cell);
     });
-    let used = 0;
-    for (const c of t.cells) used += c.span[0] * c.span[1];
-    let note = t.grid[0] + '×' + t.grid[1] + ' cells, ' + used + ' of ' + t.grid[0] * t.grid[1] + ' covered';
-    if (state.placing) note += ' · click a free cell to place ' + state.placing.plugin + '/' + state.placing.widget;
+    let note = '';
+    if (state.placing) {
+      note = 'Click a free cell to place ' + state.placing.plugin + '/' + state.placing.widget + '.';
+    } else {
+      const size = cellSizeText(t);
+      if (size) note = size + '.';
+    }
     el('board-note').textContent = note;
     applyBoardPreview();
   }
@@ -1398,6 +1486,7 @@
     state.selected = i;
     renderBoard();
     renderInspector();
+    followSelection(i);
   }
 
   // ---- inspector ----
