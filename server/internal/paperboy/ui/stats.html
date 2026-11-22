@@ -5,34 +5,35 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="htmx-config" content='{"morphIgnore":["data-htmx-powered","open"]}'>
 <title>Paperboy · Stats</title>
+<link rel="stylesheet" href="/ui/tokens.css">
 <link rel="stylesheet" href="/ui/ui.css">
 <link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <script src="/ui/htmx.js" defer></script>
 <style>
-.card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
+.card { background: var(--pb-surface); border: 1px solid var(--pb-hairline); border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
 .card h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; align-items: baseline; gap: .5rem; }
 .card h2 .muted { font-weight: 400; }
 dl { display: grid; grid-template-columns: 11rem minmax(0, 1fr); align-content: start; gap: .15rem .7rem; margin: 0; font-size: .9rem; }
-dt { color: #666; }
+dt { color: var(--pb-ink-muted); }
 dd { margin: 0; min-width: 0; word-break: break-word; font-variant-numeric: tabular-nums; }
 table { border-collapse: collapse; width: 100%; font-size: .9rem; }
-th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid #eee; vertical-align: baseline; white-space: nowrap; }
+th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid var(--pb-surface-hover); vertical-align: baseline; white-space: nowrap; }
 tr:first-child th { border-top: 0; }
-th { font-weight: 600; color: #666; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+th { font-weight: 600; color: var(--pb-ink-muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.name { font-weight: 600; }
 td.program { font-family: ui-monospace, Consolas, monospace; font-size: .82rem; white-space: normal; word-break: break-all; }
-tr.error td { border-top: 0; padding-top: 0; color: #b00; font-size: .82rem; white-space: normal; word-break: break-word; }
-.empty { margin: 0; padding: 1.2rem 1rem; text-align: center; color: #888; border: 1px dashed #ccc; border-radius: 6px; }
-.hint { margin: .6rem 0 0; font-size: .8rem; color: #666; }
-.obs { border-top: 1px solid #eee; padding-top: .55rem; margin-top: .55rem; }
+tr.error td { border-top: 0; padding-top: 0; color: var(--pb-error); font-size: .82rem; white-space: normal; word-break: break-word; }
+.empty { margin: 0; padding: 1.2rem 1rem; text-align: center; color: var(--pb-ink-faint); border: 1px dashed var(--pb-hairline); border-radius: 6px; }
+.hint { margin: .6rem 0 0; font-size: .8rem; color: var(--pb-ink-muted); }
+.obs { border-top: 1px solid var(--pb-surface-hover); padding-top: .55rem; margin-top: .55rem; }
 .obs:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
 .obs h3 { font-size: .9rem; margin: 0 0 .35rem; display: flex; gap: .5rem; align-items: baseline; }
 .obs h3 .muted { font-weight: 400; font-size: .8rem; }
 .obs ul { margin: 0; padding: 0; list-style: none; }
 .obs li { font-family: ui-monospace, Consolas, monospace; font-size: .78rem; white-space: normal; word-break: break-all; }
-.obs .label { margin: .45rem 0 .15rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: #666; }
-.obs pre { margin: 0; padding: .45rem .5rem; background: #f7f9fc; border: 1px solid #e1e7f0; border-radius: 6px; font: .76rem/1.35 ui-monospace, Consolas, monospace; max-height: 10rem; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+.obs .label { margin: .45rem 0 .15rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--pb-ink-muted); }
+.obs pre { margin: 0; padding: .45rem .5rem; background: var(--pb-surface-sunken); border: 1px solid var(--pb-hairline); border-radius: 6px; font: .76rem/1.35 ui-monospace, Consolas, monospace; max-height: 10rem; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 </style>
 </head>
 <body>

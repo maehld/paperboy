@@ -34,6 +34,18 @@ func (s *Server) handleUICSS(w http.ResponseWriter, r *http.Request) {
 	w.Write(uiCSS)
 }
 
+// uiTokens are the design tokens every page links before the stylesheet: the
+// colours, the type scale, the spacing and the motion (ADR 0150).
+//
+//go:embed ui/tokens.css
+var uiTokens []byte
+
+func (s *Server) handleUITokens(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(uiTokens)
+}
+
 // uiHtmx is the only third-party code the operator UI ships (ADR 0106). The
 // pages that update themselves poll their own URL and let htmx morph only the
 // region that changed, so an opened details block, the focus and the loaded

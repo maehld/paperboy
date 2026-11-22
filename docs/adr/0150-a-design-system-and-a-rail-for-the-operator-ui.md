@@ -45,6 +45,7 @@ The UI looks like a well-printed instrument: paper, ink, hairlines, machine data
 - Breakpoints: 40rem, 64rem and 90rem. Below 40rem a table becomes a card list.
 - Motion takes 120 ms, and `prefers-reduced-motion` turns it off.
 - Dark mode follows `prefers-color-scheme`. A toggle in the header stores the choice in the browser. The server keeps no theme state.
+- `tokens.css` uses `light-dark()` and `color-scheme`, so each colour exists once and the toggle only sets `data-theme` on `<html>`. That needs a browser from 2024.
 
 ### 2. One source of truth, three files
 

@@ -4,6 +4,14 @@
 
 The operator UI runs on the same listener as the device API. It shows what the instance does, and it edits the files that describe it. The header links the pages: Dashboard, Playground, Configuration, Downloads and Stats.
 
+## Look
+
+The UI looks like a well-printed instrument: paper, ink, hairlines, machine data in monospace, and colour only where it means something ([ADR 0150](../adr/0150-a-design-system-and-a-rail-for-the-operator-ui.md)).
+
+`tokens.css` holds every value: colour, type scale, spacing, radius, shadow and motion. `ui.css` holds the components that every page shares. A page links both and keeps layout rules only, and it names no colour of its own.
+
+Light is the default. A dark system switches the palette through `prefers-color-scheme`, because the tokens use `light-dark()` with `color-scheme`. The LCD green belongs to the text preview and never becomes an interface colour.
+
 ## Which route needs what
 
 The server keeps two route tables ([ADR 0096](../adr/0096-a-password-for-the-operator-ui.md)):
@@ -96,7 +104,7 @@ The page file shows one *Variants* table: a row per configured display type with
 
 A variant is a child page: it shows the title of its page file read-only and replaces the table with a *Variant* block. The block lists the display types the page sends to the file, one per line, or `none`. Each type previews the open file, and the current preview type is marked. Two buttons act on the file. *Rename…* asks for a new label; the file moves, and the page rewrites every entry that names the old label. *Reassign…* offers the other pages with a page file; the file moves, and its entries go to that page's map. A variant that no entry names moves without touching a map. A variant that no display type names shows a yellow warning. The editor opens the file at its new place after either action. The page file owns the variants, and the bar carries no page rename on a variant. A variant whose page file is missing stays read-only and offers no action. The pages list links none of its files and names the missing page file.
 
-Every editor has the same action bar: `← <list>` · object · status · Rename · Delete · Reload · Save ([ADR 0076](../adr/0076-one-stylesheet-and-one-navigation.md)). Every page links `ui/ui.css`, shows the logo lockup in its header, links the favicon, and runs one embedded script with no build step. The logo and the favicon are copies of `docs/logo/`, and a test keeps them identical to the design files.
+Every editor has the same action bar: `← <list>` · object · status · Rename · Delete · Reload · Save ([ADR 0076](../adr/0076-one-stylesheet-and-one-navigation.md)). Every page links `tokens.css` and `ui.css`, shows the logo lockup in its header, links the favicon, and runs one embedded script with no build step. The logo and the favicon are copies of `docs/logo/`, and a test keeps them identical to the design files.
 
 On a text page the right inspector shows only the selected cell. It holds `at`, `span`, a *Content* switch between value and literal text, `label`, `labels`, `align` and `overflow`. An enum value shows one label input per declared key, empty means the key itself. The unit is a choice of declared, none and custom; a scale select forces a step. A value with a unit progression offers `auto`, its base unit and every declared step in the scale select. A full-width *Delete cell* button sits at the bottom. A literal text cell has a textarea and no label, labels or unit. With no selection it shows a short hint. A text page hides the style in points and has no rows panel: boxes are placed in two dimensions directly on the board. The page's `overflow` is a field next to *Title*; the stale switch is *Stale values*. The palette lists the declared values and a *Text* entry. Click a value or *Text*, then a free slot; drag a value onto the board. Drag a box to move it and an edge or corner to resize it. A box that does not fit or would overlap is refused. Scrolling boxes stay static on the board, and its note names `scrolls, step N ms`. Without JavaScript the page renders its boxes as read-only fields and saves nothing.
 

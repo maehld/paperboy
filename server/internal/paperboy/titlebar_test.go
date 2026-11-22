@@ -66,13 +66,15 @@ func TestOperatorPagesShareTheTitleBar(t *testing.T) {
 }
 
 // TestOperatorPagesLinkTheSharedStylesheet keeps the look in one place: every
-// page links /ui/ui.css instead of carrying its own copy of the header, the
-// buttons and the bar (ADR 0076).
+// page links the tokens and /ui/ui.css instead of carrying its own colours and
+// its own copy of the header and the buttons (ADR 0076, ADR 0150).
 func TestOperatorPagesLinkTheSharedStylesheet(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"AA:BB:CC:DD:EE:01\"\nplan: zimmer\n")
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
+	const tokens = `<link rel="stylesheet" href="/ui/tokens.css">`
+	const shared = `<link rel="stylesheet" href="/ui/ui.css">`
 	for _, path := range []string{
 		"/ui", "/ui/downloads", "/ui/plugins", "/ui/plugins",
 		"/ui/editor", "/ui/editor/page?name=eins&display=small", "/ui/editor/plan?name=zimmer",
@@ -80,14 +82,21 @@ func TestOperatorPagesLinkTheSharedStylesheet(t *testing.T) {
 		"/ui/stats",
 	} {
 		body := htmlRequest(t, s, path).Body.String()
-		if !strings.Contains(body, `<link rel="stylesheet" href="/ui/ui.css">`) {
-			t.Fatalf("%s: the shared stylesheet is not linked", path)
+		at := strings.Index(body, tokens)
+		if at < 0 {
+			t.Fatalf("%s: the tokens are not linked", path)
+		}
+		// The tokens define the values the stylesheet uses, so they come first.
+		if css := strings.Index(body, shared); css < at {
+			t.Fatalf("%s: the stylesheet is linked before the tokens", path)
 		}
 	}
 
-	rec := htmlRequest(t, s, "/ui/ui.css")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Header().Get("Content-Type"), "text/css") {
-		t.Fatalf("stylesheet: %d %q", rec.Code, rec.Header().Get("Content-Type"))
+	for _, path := range []string{"/ui/tokens.css", "/ui/ui.css"} {
+		rec := htmlRequest(t, s, path)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Header().Get("Content-Type"), "text/css") {
+			t.Fatalf("%s: %d %q", path, rec.Code, rec.Header().Get("Content-Type"))
+		}
 	}
 }
 
