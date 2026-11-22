@@ -76,10 +76,10 @@ func TestPruneDeletesWhatThePreviewListed(t *testing.T) {
 	s := pruneServer(t)
 	cfg := s.config()
 
-	if body := htmlRequest(t, s, "/ui/system/downloads").Body.String(); !strings.Contains(body, "Preview cleanup") {
+	if body := htmlRequest(t, s, "/ui/system/maintenance").Body.String(); !strings.Contains(body, "preview=inventory") {
 		t.Fatalf("the page does not offer the preview: %s", body)
 	}
-	body := htmlRequest(t, s, "/ui/system/downloads?prune=1").Body.String()
+	body := htmlRequest(t, s, "/ui/system/maintenance?preview=inventory").Body.String()
 	for _, want := range []string{"Delete 2 files", "other-v1.0.0", "sticky-v1.0.0.bin"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("preview lacks %q: %s", want, body)
@@ -90,12 +90,13 @@ func TestPruneDeletesWhatThePreviewListed(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/ui/system/downloads/prune", nil)
+	req := httptest.NewRequest("POST", "/ui/system/maintenance/delete", strings.NewReader("kind=inventory"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != 303 {
 		t.Fatalf("prune: %d", rec.Code)
 	}
-	if loc := rec.Header().Get("Location"); loc != "/ui/system/downloads?pruned=2&failed=0" {
+	if loc := rec.Header().Get("Location"); loc != "/ui/system/maintenance?done=inventory&removed=2&failed=0" {
 		t.Fatalf("prune redirect: %q", loc)
 	}
 	for _, gone := range []string{"other-v1.0.0", "sticky-v1.0.0.bin"} {
@@ -116,8 +117,8 @@ func TestPruneDeletesWhatThePreviewListed(t *testing.T) {
 		t.Fatalf("the reported image must stay: %v", err)
 	}
 	// The page confirms the result and nothing is left to prune.
-	body = htmlRequest(t, s, "/ui/system/downloads?pruned=2&failed=0").Body.String()
-	if !strings.Contains(body, "Deleted 2 files.") {
+	body = htmlRequest(t, s, "/ui/system/maintenance?done=inventory&removed=2&failed=0").Body.String()
+	if !strings.Contains(body, "Removed 2 files.") {
 		t.Fatalf("no confirmation: %s", body)
 	}
 	if remove, _ := s.prunePlan(cfg); len(remove) != 0 {
@@ -129,7 +130,7 @@ func TestPruneDeletesWhatThePreviewListed(t *testing.T) {
 func TestPruneWithoutDownloadSection(t *testing.T) {
 	s, _ := testServer(t)
 	writeFiles(t, s.config().PluginsDir, "weather-v1.0.0", "weather-v1.1.0", "weather-v1.2.0")
-	body := htmlRequest(t, s, "/ui/system/downloads?prune=1").Body.String()
+	body := htmlRequest(t, s, "/ui/system/maintenance?preview=inventory").Body.String()
 	if !strings.Contains(body, "weather-v1.0.0") {
 		t.Fatalf("the preview needs no download section: %s", body)
 	}

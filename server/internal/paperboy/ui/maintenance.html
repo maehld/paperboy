@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{template "head" .}}
+<title>Paperboy · Maintenance</title>
+<style>
+a { color: var(--pb-accent); }
+.card { background: var(--pb-surface); border: 1px solid var(--pb-hairline); border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
+.card h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; align-items: baseline; gap: .5rem; }
+.card h2 .muted { font-weight: 400; }
+dl { display: grid; grid-template-columns: 9rem minmax(0, 1fr); align-content: start; gap: .15rem .7rem; margin: 0; font-size: .9rem; }
+dt { color: var(--pb-ink-muted); }
+dd { margin: 0; min-width: 0; word-break: break-word; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid var(--pb-surface-hover); vertical-align: baseline; }
+tr:first-child th { border-top: 0; }
+th { font-weight: 600; color: var(--pb-ink-muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+td.file, td.key { font-family: ui-monospace, Consolas, monospace; font-size: .85rem; word-break: break-all; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.empty { margin: 0; padding: 1.2rem 1rem; text-align: center; color: var(--pb-ink-faint); border: 1px dashed var(--pb-hairline); border-radius: 6px; }
+.error { margin: 0 0 .7rem; padding: .5rem .6rem; background: var(--pb-error-bg); border-left: 3px solid var(--pb-error-border); font-size: .85rem; word-break: break-word; }
+.ok { margin: 0 0 .7rem; padding: .5rem .6rem; background: var(--pb-ok-bg); border-left: 3px solid var(--pb-ok); font-size: .85rem; }
+.actions { margin-top: .8rem; display: flex; flex-wrap: wrap; gap: .5rem; }
+.actions button { font: inherit; font-size: .9rem; padding: .25rem .7rem; border-radius: 6px; border: 1px solid var(--pb-hairline-strong); background: var(--pb-surface-sunken); cursor: pointer; }
+.actions button:hover { background: var(--pb-surface-hover); }
+.actions button.danger { color: var(--pb-error); border-color: var(--pb-error-border); background: var(--pb-error-bg); }
+.actions a.button { display: inline-block; text-decoration: none; color: inherit; font-size: .9rem; padding: .25rem .7rem; border-radius: 6px; border: 1px solid var(--pb-hairline-strong); background: var(--pb-surface-sunken); }
+.actions a.button:hover { background: var(--pb-surface-hover); }
+.actions form { margin: 0; }
+</style>
+</head>
+<body>
+{{template "chrome" .}}
+{{if .Notice}}<p class="ok">{{.Notice}}</p>{{end}}
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<section class="card">
+  <h2>Inventory <span class="muted">plugins/ and firmware/</span></h2>
+  <dl>
+    <dt>Plugins</dt><dd>{{.Inventory.Plugins}}</dd>
+    <dt>Firmware images</dt><dd>{{.Inventory.Firmware}}</dd>
+    <dt>Kept</dt><dd>{{.Inventory.Kept}} files in use, pinned or among the newest versions</dd>
+  </dl>
+  {{if eq .Preview "inventory"}}
+    {{if .Inventory.Files}}
+    <table class="cards">
+      <thead><tr><th>Delete</th><th>Train</th><th>Version</th></tr></thead>
+      <tbody>
+      {{range .Inventory.Files}}<tr><td class="file" data-label="Delete">{{.File}}</td><td data-label="Train">{{.Train}}</td><td class="num" data-label="Version">{{if .Version}}{{.Version}}{{else}}<span class="muted">–</span>{{end}}</td></tr>{{end}}
+      </tbody>
+    </table>
+    <div class="actions">
+      <form method="post" action="/ui/system/maintenance/delete"><input type="hidden" name="kind" value="inventory"><button class="danger" type="submit">Delete {{len .Inventory.Files}} files</button></form>
+      <a class="button" href="/ui/system/maintenance">Cancel</a>
+    </div>
+    {{else}}
+    <p class="empty">Nothing to remove: every file is in use, pinned, or one of the newest versions.</p>
+    <div class="actions"><a class="button" href="/ui/system/maintenance">Back</a></div>
+    {{end}}
+  {{else}}
+  <div class="actions"><a class="button" href="/ui/system/maintenance?preview=inventory">Preview</a></div>
+  {{end}}
+</section>
+<section class="card">
+  <h2>Device state <span class="muted">{{.Devices.States}} files</span></h2>
+  <p>One file per MAC. A device that registers without a device file keeps its state until it is claimed. This removes the unclaimed state that was not seen for {{.Devices.Age}}.</p>
+  {{if eq .Preview "devices"}}
+    {{if .Devices.Orphans}}
+    <table class="cards">
+      <thead><tr><th>MAC</th><th>Hardware</th><th>Last seen</th></tr></thead>
+      <tbody>
+      {{range .Devices.Orphans}}<tr><td class="key" data-label="MAC">{{.MAC}}</td><td data-label="Hardware">{{if .Hardware}}{{.Hardware}}{{else}}<span class="muted">–</span>{{end}}</td><td class="num" data-label="Last seen">{{.SeenText}}</td></tr>{{end}}
+      </tbody>
+    </table>
+    <div class="actions">
+      <form method="post" action="/ui/system/maintenance/delete"><input type="hidden" name="kind" value="devices"><button class="danger" type="submit">Delete {{len .Devices.Orphans}} device states</button></form>
+      <a class="button" href="/ui/system/maintenance">Cancel</a>
+    </div>
+    {{else}}
+    <p class="empty">Nothing to remove: every state file belongs to a device file or was seen recently.</p>
+    <div class="actions"><a class="button" href="/ui/system/maintenance">Back</a></div>
+    {{end}}
+  {{else}}
+  <div class="actions"><a class="button" href="/ui/system/maintenance?preview=devices">Preview</a></div>
+  {{end}}
+</section>
+<section class="card">
+  <h2>Editor backups <span class="muted">{{.Backups.Dirs}} directories</span></h2>
+  <p>Each save and each delete keeps up to ten copies under <code>state/editor/</code>. A deleted page, plan, device or display type keeps its copies; this removes them.</p>
+  {{if eq .Preview "backups"}}
+    {{if .Backups.Orphans}}
+    <table class="cards">
+      <thead><tr><th>Kind</th><th>Object</th><th>Copies</th><th>Size</th><th>Newest</th></tr></thead>
+      <tbody>
+      {{range .Backups.Orphans}}<tr><td data-label="Kind">{{.Kind}}</td><td class="file" data-label="Object">{{.Label}}</td><td class="num" data-label="Copies">{{.Files}}</td><td class="num" data-label="Size">{{.Size}}</td><td class="num" data-label="Newest">{{.Newest}}</td></tr>{{end}}
+      </tbody>
+    </table>
+    <div class="actions">
+      <form method="post" action="/ui/system/maintenance/delete"><input type="hidden" name="kind" value="backups"><button class="danger" type="submit">Delete {{len .Backups.Orphans}} directories</button></form>
+      <a class="button" href="/ui/system/maintenance">Cancel</a>
+    </div>
+    {{else}}
+    <p class="empty">Nothing to remove: every backup belongs to an object that still exists.</p>
+    <div class="actions"><a class="button" href="/ui/system/maintenance">Back</a></div>
+    {{end}}
+  {{else}}
+  <div class="actions"><a class="button" href="/ui/system/maintenance?preview=backups">Preview</a></div>
+  {{end}}
+</section>
+{{template "chrome-end"}}</body>
+</html>

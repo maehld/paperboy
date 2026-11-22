@@ -8,7 +8,7 @@ The operator UI runs on the same listener as the device API. It shows what the i
 
 One layout renders the head, the top bar, the rail, the breadcrumb and the theme toggle for every page ([ADR 0152](../adr/0152-a-design-system-and-a-rail-for-the-operator-ui.md)). A page parses the layout with its own template and keeps its title and its styles.
 
-- The rail groups its entries. Overview, Pages and Plans stand without a head. *Configuration* holds Devices, Display types and Plugins, *System* holds Downloads, Stats and the Styleguide ([ADR 0153](../adr/0153-an-overview-page-and-a-grouped-rail.md)). Below 64rem the rail wraps into a strip under the brand.
+- The rail groups its entries. Overview, Pages and Plans stand without a head. *Configuration* holds Devices, Display types and Plugins, *System* holds Playground, Plugins, Firmware, Maintenance, Stats and the Styleguide ([ADR 0153](../adr/0153-an-overview-page-and-a-grouped-rail.md)). Below 64rem the rail wraps into a strip under the brand.
 - The top bar carries the logo lockup, the breadcrumb, the build label and the theme toggle.
 - The breadcrumb replaces the back link of the editors. Every step but the current one is a link. It starts where the content starts, because the lockup is as wide as the rail. Below 40rem it takes its own line under the lockup.
 - The shell owns the only `main` element. A page lays out its columns in a `div`, so a page rule never restyles the shell.
@@ -66,9 +66,9 @@ Rendered pages live in memory only. After a restart the card falls back to the p
 
 ## Self-updating pages
 
-The overview, the stats page and the downloads page poll themselves ([ADR 0106](../adr/0106-self-updating-pages-with-htmx.md)). Each page wraps its changing part in a region `id="live"` and asks for itself again. htmx morphs the answer into the existing DOM, so a node with the same id keeps its focus, its selection and its place.
+The overview, the stats page and the two release trains poll themselves ([ADR 0106](../adr/0106-self-updating-pages-with-htmx.md)). Each page wraps its changing part in a region `id="live"` and asks for itself again. htmx morphs the answer into the existing DOM, so a node with the same id keeps its focus, its selection and its place.
 
-- The overview polls every 30 seconds, the stats page every 10 seconds, the downloads page every 5 seconds. A hidden tab does not poll, and it refreshes once when it becomes visible again.
+- The overview polls every 30 seconds, the stats page every 10 seconds, the release trains every 5 seconds. A hidden tab does not poll, and it refreshes once when it becomes visible again.
 - The device cards, their *Details* block and their preview carry stable ids, so an opened *Details* block survives a tick.
 - A served picture names its pixel hash: `GET /api/devices/{id}/image?h=<hash>` answers `Cache-Control: private, max-age=31536000, immutable` for the current hash and `no-store` otherwise. A tick therefore downloads no image.
 - The downloads poll keeps the query string of the page. The cleanup preview does not poll at all, so its list cannot change under the button next to it.
@@ -79,17 +79,26 @@ The overview, the stats page and the downloads page poll themselves ([ADR 0106](
 
 `GET /ui/system/stats` is read-only and polls itself ([ADR 0104](../adr/0104-runtime-stats-in-the-web-ui.md), [0106](../adr/0106-self-updating-pages-with-htmx.md)). It shows Paperboy's heap, goroutines, GC, resident memory and CPU. One row per plugin carries state, program, PID, memory, CPU, requests, errors and timings. A second block names what the operating system sees of each plugin. It shows disk bytes, open files and connections with their peer. It names the last exit with its code or signal and the last 50 stderr lines. A signal such as `SIGSYS` explains a plugin that a sandbox or seccomp filter killed. The lists are cut after a few entries and the card says how many follow. Windows reports no observation yet. The widget cache shows entries, images, bytes and age buckets; the rendered pages and the notice pages follow. Named timings carry count, average, p50, p95 and maximum. Per device it shows the syncs with their duration, and the text polls separately. CPU shares compare with the previous view of the page, because they come from a difference of two readings.
 
-## Downloads
+## Release trains
 
-`GET /ui/system/downloads` shows the release side of the instance ([ADR 0060](../adr/0060-download-from-releases.md), [0062](../adr/0062-plugin-updates-and-download-control.md), [0090](../adr/0090-download-cache-and-inventory.md)):
+Each train has a page of its own ([ADR 0154](../adr/0154-split-the-release-trains-and-add-maintenance.md)): `GET /ui/system/plugins` and `GET /ui/system/firmware` ([ADR 0060](../adr/0060-download-from-releases.md), [0062](../adr/0062-plugin-updates-and-download-control.md)). Both show the whole check, because one check installs both trains:
 
-- source, interval, the last check, the running check with its button (`POST /ui/download`)
-- a `Paperboy` row with the newer version or the state of the comparison ([ADR 0101](../adr/0101-a-hint-about-a-newer-paperboy.md))
-- every plugin with its resolved program and version, `(pinned)` behind a version that a pin selects, and the time each program and image arrived
-- the images in `firmware/`, including the old `<hardware>/` layout and the files that are ignored
+- source, interval, the last check and the running check with its button (`POST /ui/download`)
 - the release channel of each train, with a note when the running version is not one the channel would deliver
 - the plugin and firmware bundle that the last check used (`plugins-YYYY.MM.DD`, `firmware-YYYY.MM.DD`), a dash before the first use
-- the size of both inventories and *Preview cleanup*, which lists what it would delete and then deletes exactly that (`POST /ui/system/downloads/prune`, [ADR 0090](../adr/0090-download-cache-and-inventory.md))
+- a `Paperboy` row with the newer version or the state of the comparison ([ADR 0101](../adr/0101-a-hint-about-a-newer-paperboy.md))
+
+The *Plugins* page adds every configured plugin with its resolved program and version. A version a pin selects carries `(pinned)`, and the row names when the program arrived. The *Firmware* page adds the images in `firmware/`, including the old `<hardware>/` layout and the files that are ignored. Each page names the size of its directory and links *Maintenance* for the cleanup.
+
+## Maintenance
+
+`GET /ui/system/maintenance` is the only page that deletes files ([ADR 0090](../adr/0090-download-cache-and-inventory.md), [0154](../adr/0154-split-the-release-trains-and-add-maintenance.md)). It offers three cleanups, each with a preview that lists what would go and a button that deletes exactly that (`POST /ui/system/maintenance/delete`):
+
+- *Inventory*: the files of `plugins/` and `firmware/` that no program, pin, device or recent version needs.
+- *Device state*: the state of a MAC without a device file that was not seen for 30 days. Recent entries stay, because a device that registers waits for a claim ([ADR 0080](../adr/0080-device-state-per-mac.md)).
+- *Editor backups*: the copies under `state/editor/` whose page, plan, device or display type is gone ([ADR 0066](../adr/0066-page-and-plan-api.md)). A save and a delete keep up to ten copies per object.
+
+The page does not poll, so a preview list cannot change under the button that deletes it.
 
 ## Plan preview
 

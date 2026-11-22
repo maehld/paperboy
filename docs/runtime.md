@@ -4,9 +4,9 @@
 
 ## Web UI
 
-Paperboy serves its operator pages on the same address as the device API. They need no token (see [Security](#security)). The overview, the stats page and the downloads page poll themselves and update in place, so a tick does not reload the document ([ADR 0106](adr/0106-self-updating-pages-with-htmx.md)); without JavaScript they stay readable but stop updating.
+Paperboy serves its operator pages on the same address as the device API. They need no token (see [Security](#security)). The overview, the stats page and the two release trains poll themselves and update in place, so a tick does not reload the document ([ADR 0106](adr/0106-self-updating-pages-with-htmx.md)); without JavaScript they stay readable but stop updating.
 
-A rail on the left names the sections: Devices, Pages, Plans, Plugins and System ([ADR 0152](adr/0152-a-design-system-and-a-rail-for-the-operator-ui.md)). `⌘K` or `Ctrl+K` opens a search over the sections and the objects of the instance and jumps to one. The *Styleguide* under System shows every token and component. The rail groups Overview, Pages and Plans above *Configuration* (Devices, Display types, Plugins) and *System* (Downloads, Stats, Styleguide). The top bar carries the logo, the breadcrumb that names the way back, the running build and the theme toggle. The theme follows the operating system; the toggle switches between light and dark and the browser remembers the choice.
+A rail on the left names the sections: Devices, Pages, Plans, Plugins and System ([ADR 0152](adr/0152-a-design-system-and-a-rail-for-the-operator-ui.md)). `⌘K` or `Ctrl+K` opens a search over the sections and the objects of the instance and jumps to one. The *Styleguide* under System shows every token and component. The rail groups Overview, Pages and Plans above *Configuration* (Devices, Display types, Playground) and *System* (Plugins, Firmware, Maintenance, Stats, Styleguide). The top bar carries the logo, the breadcrumb that names the way back, the running build and the theme toggle. The theme follows the operating system; the toggle switches between light and dark and the browser remembers the choice.
 
 ### Devices
 

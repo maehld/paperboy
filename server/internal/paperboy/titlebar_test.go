@@ -43,7 +43,9 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 		{"/ui/plans", "Plans"},
 		{"/ui/plans/zimmer", "Plans"},
 		{"/ui/playground", "Playground"},
-		{"/ui/system/downloads", "Downloads"},
+		{"/ui/system/plugins", "Plugins"},
+		{"/ui/system/firmware", "Firmware"},
+		{"/ui/system/maintenance", "Maintenance"},
 		{"/ui/system/stats", "Stats"},
 		{"/ui/system/styleguide", "Styleguide"},
 	} {
@@ -108,7 +110,7 @@ func TestOperatorPagesLinkTheSharedStylesheet(t *testing.T) {
 	const tokens = `<link rel="stylesheet" href="/ui/tokens.css">`
 	const shared = `<link rel="stylesheet" href="/ui/ui.css">`
 	for _, path := range []string{
-		"/ui", "/ui/system/downloads", "/ui/playground", "/ui/playground",
+		"/ui", "/ui/system/plugins", "/ui/playground", "/ui/playground",
 		"/ui/pages", "/ui/pages/eins?display=small", "/ui/plans/zimmer",
 		"/ui/devices/test", "/ui/display-types/small", "/ui/devices/test/plan",
 		"/ui/system/stats",
@@ -141,7 +143,7 @@ func TestOperatorPagesCarryTheLogo(t *testing.T) {
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
 	pages := []string{
-		"/ui", "/ui/system/downloads", "/ui/playground",
+		"/ui", "/ui/system/plugins", "/ui/playground",
 		"/ui/pages", "/ui/pages/eins?display=small", "/ui/plans/zimmer",
 		"/ui/devices/test", "/ui/display-types/small", "/ui/devices/test/plan",
 		"/ui/system/stats",

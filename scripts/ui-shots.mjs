@@ -44,7 +44,9 @@ const pages = [
   { name: "display-editor", path: "/ui/display-types/sticky" },
   { name: "plan-preview", path: "/ui/devices/wohnzimmer/plan" },
   { name: "virtual-display", path: "/ui/virtual?plan=tour&display=sticky" },
-  { name: "downloads", path: "/ui/system/downloads" },
+  { name: "plugins-system", path: "/ui/system/plugins" },
+  { name: "firmware-system", path: "/ui/system/firmware" },
+  { name: "maintenance", path: "/ui/system/maintenance" },
   { name: "stats", path: "/ui/system/stats" },
   { name: "styleguide", path: "/ui/system/styleguide" },
 ];

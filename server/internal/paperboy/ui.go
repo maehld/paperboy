@@ -138,7 +138,9 @@ func navFor(section string) []navItem {
 		{Label: "Display types", URL: "/ui/display-types"},
 		{Label: "System", Head: true},
 		{Label: "Playground", URL: "/ui/playground"},
-		{Label: "Downloads", URL: "/ui/system/downloads"},
+		{Label: "Plugins", URL: "/ui/system/plugins"},
+		{Label: "Firmware", URL: "/ui/system/firmware"},
+		{Label: "Maintenance", URL: "/ui/system/maintenance"},
 		{Label: "Stats", URL: "/ui/system/stats"},
 		{Label: "Styleguide", URL: "/ui/system/styleguide"},
 	}
@@ -499,8 +501,8 @@ func contentCards(cfg *Config) []dashboardLink {
 }
 
 // handleDownloadCheck starts a release check in the background and returns to
-// the downloads page at once; a second request while one runs changes nothing
-// (ADR 0062). It is the page's only action, so it needs no form token.
+// the train page that asked at once; a second request while one runs changes
+// nothing (ADR 0062). It is the page's only action, so it needs no form token.
 func (s *Server) handleDownloadCheck(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	if cfg.Download != nil && s.download.begin() {
@@ -508,11 +510,15 @@ func (s *Server) handleDownloadCheck(w http.ResponseWriter, r *http.Request) {
 			s.finishDownloadCheck(cfg, s.downloadOnce(s.ctx, cfg))
 		}()
 	}
-	http.Redirect(w, r, "/ui/system/downloads", http.StatusSeeOther)
+	target := "/ui/system/plugins"
+	if r.FormValue("from") == "firmware" {
+		target = "/ui/system/firmware"
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 // downloadHint is the dashboard's line about the release checks; nil without a
-// download section. Details are on the downloads page.
+// download section. Details are on the two train pages.
 func (s *Server) downloadHint(cfg *Config) *dashboardDownloads {
 	if cfg.Download == nil {
 		return nil

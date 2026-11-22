@@ -1,9 +1,6 @@
 package paperboy
 
 import (
-	"fmt"
-	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -230,29 +227,4 @@ func inventorySize(dir string) (files, bytes int64) {
 		bytes += info.Size()
 	}
 	return files, bytes
-}
-
-// handlePrune deletes what the preview listed. It is the only place where
-// Paperboy removes a file the operator did not create, so it touches nothing
-// outside plugins/ and firmware/ (ADR 0090).
-func (s *Server) handlePrune(w http.ResponseWriter, r *http.Request) {
-	cfg := s.config()
-	remove, _ := s.prunePlan(cfg)
-	deleted, failed := 0, 0
-	for _, f := range remove {
-		if err := os.Remove(filepath.Join(f.dir, f.File)); err != nil {
-			// A program that is still running holds its file on Windows; the
-			// next click tries again.
-			slog.Warn("inventory file not removable", "file", f.File, "error", err)
-			failed++
-			continue
-		}
-		slog.Info("inventory file deleted", "train", f.Train, "file", f.File)
-		deleted++
-	}
-	target := "/ui/system/downloads"
-	if deleted > 0 || failed > 0 {
-		target = fmt.Sprintf("/ui/system/downloads?pruned=%d&failed=%d", deleted, failed)
-	}
-	http.Redirect(w, r, target, http.StatusSeeOther)
 }

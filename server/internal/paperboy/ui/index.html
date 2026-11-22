@@ -58,7 +58,7 @@ dd.oneline .muted { font-size: .78rem; }
      hx-select="#live > *"
      hx-swap="innerMorph"
      hx-trigger="every 30s [document.visibilityState == 'visible'], visibilitychange from:document [document.visibilityState == 'visible']">
-{{if .Downloads}}{{if .Downloads.Available}}<p class="update">{{if .Downloads.URL}}<a href="{{.Downloads.URL}}">{{.Downloads.Available}}</a>{{else}}{{.Downloads.Available}}{{end}}</p>{{end}}{{if .Downloads.Error}}<p class="error">The last release check failed · <a href="/ui/system/downloads">Downloads</a></p>{{else if .Downloads.Running}}<p class="muted">Checking for releases… · <a href="/ui/system/downloads">Downloads</a></p>{{end}}{{end}}
+{{if .Downloads}}{{if .Downloads.Available}}<p class="update">{{if .Downloads.URL}}<a href="{{.Downloads.URL}}">{{.Downloads.Available}}</a>{{else}}{{.Downloads.Available}}{{end}}</p>{{end}}{{if .Downloads.Error}}<p class="error">The last release check failed · <a href="/ui/system/plugins">Downloads</a></p>{{else if .Downloads.Running}}<p class="muted">Checking for releases… · <a href="/ui/system/plugins">Downloads</a></p>{{end}}{{end}}
 <h2 class="section">Devices</h2>
 {{if .Devices}}
 <div class="grid" id="devices">
