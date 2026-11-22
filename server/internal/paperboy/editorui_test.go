@@ -122,6 +122,7 @@ func TestEditorOrphanVariant(t *testing.T) {
 		`"file":"hochkant"`,
 		`"orphan":"hochkant"`,
 		`"page_exists":false`,
+		`<p class="page-parent missing">no page file</p>`,
 		"This file belongs to no page.",
 	} {
 		if !strings.Contains(body, want) {
@@ -275,6 +276,7 @@ func TestEditorVariantsPanel(t *testing.T) {
 	for _, want := range []string{
 		`"page_title":"Solar"`,
 		`<h3>Variant</h3>`,
+		`<p class="page-parent"><a href="/ui/pages/solar?display=small" title="pages/solar.yaml">Solar</a></p>`,
 		`<p class="types-label">Assigned display types</p>`,
 		`<ul class="variant-types"><li><a href="/ui/pages/solar?display=small&amp;file=hochkant" class="active" aria-current="true">small</a></li></ul>`,
 	} {
@@ -286,6 +288,10 @@ func TestEditorVariantsPanel(t *testing.T) {
 		if strings.Contains(body, unwanted) {
 			t.Fatalf("the variant carries %q:\n%s", unwanted, body)
 		}
+	}
+	// The page file is the parent: it carries no back link to itself.
+	if page := request(t, s, http.MethodGet, "/ui/pages/solar?display=small", nil, nil).Body.String(); strings.Contains(page, `class="page-parent"`) {
+		t.Fatalf("the page file carries a parent link:\n%s", page)
 	}
 
 	// A variant that no display type names warns that no device shows it; the

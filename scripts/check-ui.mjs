@@ -161,7 +161,7 @@ ${palette}<span id="preview-where"></span><img id="preview-img" hidden><pre id="
 <section id="inspector"></section><button id="copy-cell" type="button"></button><pre id="snippet"></pre>`;
   const editor = `<h2><span id="file-label"></span></h2><span id="preview-where"></span><span id="status"></span>
 <button id="rename" type="button"></button><button id="delete" type="button"></button><button id="save" type="button"></button>
-<input id="title"><p id="used-by"></p><input id="cols" type="number"><input id="rows" type="number">
+<input id="title"><input id="cols" type="number"><input id="rows" type="number">
 <button id="grid-lock" type="button"></button>
 <input id="padding"><input id="rule"><input id="text-size"><input id="divider">
 <select id="notices"><option value="">default</option><option value="none">none</option></select>
@@ -169,7 +169,7 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
 <div id="board"></div><p id="board-note"></p><p id="preview-error" hidden></p><section id="inspector"></section>`;
 
   // open runs the script on one page and answers its requests.
-  const open = async (url, body, data) => {
+  const open = async (url, body, data, routes = {}) => {
     const html = `<!doctype html><html><body>${body}
 <script id="editor-data" type="application/json">${JSON.stringify(data)}</script></body></html>`;
     const editorDom = new JSDOM(html, { url, runScripts: "outside-only", pretendToBeVisual: true });
@@ -183,7 +183,10 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
       const path = String(target);
       const answer = { ok: true, status: 200, headers: { get: () => "image/png" }, blob: async () => ({}), text: async () => "" };
       if (path.startsWith("/api/plugins")) return { ...answer, json: async () => plugins };
-      if (path.startsWith("/api/pages/")) return { ...answer, status: 404, ok: false, json: async () => ({}) };
+      if (path.startsWith("/api/pages/")) {
+        if (routes.page) return { ...answer, json: async () => routes.page };
+        return { ...answer, status: 404, ok: false, json: async () => ({}) };
+      }
       return { ...answer, json: async () => ({}) };
     };
     window.eval(script);
@@ -253,6 +256,20 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
     check(!!slot, "the board offers no free cell while a widget waits");
     if (slot) slot.click();
     check(Array.from(window.document.querySelectorAll("#board .cell")).some((cell) => cell.textContent.includes("demo/clock")), "the board does not show the placed widget");
+    for (const failure of failures) problems.push(failure);
+    editorDom.window.close();
+  }
+
+  // A variant shows the title of its page file, read-only (ADR 0110). The
+  // title used to stay empty because the script never read page_title.
+  {
+    const page = { file: "lcd", hash: "h", template: { kind: "image", grid: [6, 8], style: {}, cells: [] } };
+    const { editorDom, window, failures } = await open("http://localhost/ui/pages/demo?display=e1001&file=lcd", editor,
+      { ...start, file: "lcd", page_title: "Solar" }, { page });
+    const title = window.document.getElementById("title");
+    check(title.value === "Solar", "a variant does not show the title of its page file: " + JSON.stringify(title.value));
+    check(title.readOnly, "a variant lets its inherited title be edited");
+    check(title.title.includes("pages/demo.yaml"), "the inherited title does not name its file: " + JSON.stringify(title.title));
     for (const failure of failures) problems.push(failure);
     editorDom.window.close();
   }
