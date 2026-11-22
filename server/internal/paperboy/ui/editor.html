@@ -19,8 +19,6 @@ tr.rowlink { cursor: pointer; }
 tr.rowlink:hover td { background: var(--pb-surface-sunken); }
 td.open { text-align: right; white-space: nowrap; }
 td.page { line-height: 1.25; }
-td.page strong { font-weight: 600; }
-td.page strong.missing { color: var(--pb-error); }
 td.variants { white-space: nowrap; color: var(--pb-ink); }
 td.variants span[title] { cursor: help; }
 td.variants .broken { color: var(--pb-error); }
@@ -64,7 +62,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <tbody>
       {{range .Groups}}
       <tr{{if .PageURL}} class="rowlink" data-href="{{.PageURL}}"{{end}}>
-        <td class="page" data-label="Page">{{if .PageURL}}<a href="{{.PageURL}}"><strong>{{.Name}}</strong></a>{{else}}<strong{{if .Missing}} class="missing" title="No page file. Create it with New page."{{end}}>{{.Name}}</strong>{{end}}</td>
+        <td class="page name" data-label="Page">{{if .PageURL}}<a href="{{.PageURL}}">{{.Name}}</a>{{else}}<span{{if .Missing}} class="missing" title="No page file. Create it with New page."{{end}}>{{.Name}}</span>{{end}}</td>
         <td class="variants" data-label="Variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}<span class="chip{{if $v.Class}} {{$v.Class}}{{end}}" title="{{$v.Title}}">{{if $v.URL}}<a href="{{$v.URL}}">{{$v.Label}}</a>{{else}}{{$v.Label}}{{end}}</span>{{end}}</td>
         <td data-label="Kind">{{.Kind}}</td>
         <td class="num" data-label="Grid">{{.Grid}}</td>
@@ -109,7 +107,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <tbody>
       {{range .Plans}}
       <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
-        <td data-label="Name">{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
+        <td class="name" data-label="Name">{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
         <td class="num" data-label="Rules">{{.Rules}}</td>
         <td data-label="Fallback">{{.Fallback}}</td>
       </tr>
@@ -145,7 +143,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <tbody>
       {{range .Devices}}
       <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
-        <td data-label="ID">{{if .OpenURL}}<a href="{{.OpenURL}}">{{.ID}}</a>{{else}}{{.ID}}{{end}}</td>
+        <td class="name" data-label="ID">{{if .OpenURL}}<a href="{{.OpenURL}}">{{.ID}}</a>{{else}}{{.ID}}{{end}}</td>
         <td data-label="Display type">{{.Display}}</td>
         <td class="num" data-label="MAC">{{.MAC}}</td>
         <td class="num" data-label="Address">{{.Address}}</td>
@@ -209,7 +207,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <tbody>
       {{range .Types}}
       <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
-        <td data-label="Name">{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
+        <td class="name" data-label="Name">{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
         <td data-label="Kind">{{.Kind}}</td>
         <td class="num" data-label="Size">{{.Size}}</td>
         <td data-label="Density">{{.Density}}</td>

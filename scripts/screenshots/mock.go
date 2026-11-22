@@ -342,7 +342,7 @@ const skodaVIN = "TMBJB9NY5RF999999"
 var timestampPattern = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`)
 
 func (m *mock) skoda(w http.ResponseWriter) {
-	data, err := os.ReadFile(filepath.Join(m.root, "cmd", "myskoda", "testdata", "enyaq.json"))
+	data, err := os.ReadFile(filepath.Join(m.root, "plugins", "cmd", "myskoda", "testdata", "enyaq.json"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -459,7 +459,7 @@ func (m *mock) pokedex(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(path, "type/"):
 		file = "type-electric.json"
 	}
-	data, err := os.ReadFile(filepath.Join(m.root, "cmd", "pokedex", "testdata", file))
+	data, err := os.ReadFile(filepath.Join(m.root, "plugins", "cmd", "pokedex", "testdata", file))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -150,6 +150,11 @@ dialog.cmd .cmd-note { color: var(--pb-ink-muted); font-size: var(--pb-text-xs);
 dialog.cmd .cmd-empty { padding: .8rem .9rem; color: var(--pb-ink-muted); font-size: var(--pb-text-sm); }
 dialog.cmd .cmd-foot { display: flex; justify-content: space-between; gap: 1rem; margin: 0; padding: .45rem .9rem; border-top: 1px solid var(--pb-hairline); font-size: var(--pb-text-xs); color: var(--pb-ink-faint); }
 
+/* The name of the object is the title of its row, so every list shows it bold
+   (ADR 0152). The templates mark it with class="name". */
+td.name { font-weight: 600; }
+td.name .missing { color: var(--pb-error); }
+
 /* A dense table keeps all its columns and scrolls sideways instead of squeezing
    its text on a narrow screen (ADR 0152). */
 .scroll { overflow-x: auto; }

@@ -25,7 +25,7 @@ func TestEditorOverview(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		`<strong>solar</strong>`,
+		`<td class="page name" data-label="Page"><a href="/ui/pages/solar?display=small">solar</a></td>`,
 		// The row opens the page file; the preview type is one the file serves.
 		`class="rowlink" data-href="/ui/pages/solar?display=small"`,
 		`title="pages/solar.hochkant.yaml — serves small"`,
@@ -60,7 +60,7 @@ func TestEditorOverview(t *testing.T) {
 	writePage(t, s, "broken", "klein", "kind: image\nnope: 1\n")
 	body = request(t, s, http.MethodGet, "/ui/pages", nil, nil).Body.String()
 	for _, want := range []string{
-		`<strong class="missing" title="No page file. Create it with New page.">broken</strong>`,
+		`<span class="missing" title="No page file. Create it with New page.">broken</span>`,
 		`class="chip orphan" title="pages/broken.klein.yaml — no display type names it — yaml: unmarshal errors`,
 	} {
 		if !strings.Contains(body, want) {
@@ -74,7 +74,7 @@ func TestEditorOverview(t *testing.T) {
 	body = request(t, s, http.MethodGet, "/ui/pages", nil, nil).Body.String()
 	for _, want := range []string{
 		`title="pages/clock.old.yaml — no display type names it"`,
-		`<strong class="missing" title="No page file. Create it with New page.">clock</strong>`,
+		`<span class="missing" title="No page file. Create it with New page.">clock</span>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, body)
@@ -93,7 +93,7 @@ func TestEditorMissingPageFile(t *testing.T) {
 
 	body := request(t, s, http.MethodGet, "/ui/pages", nil, nil).Body.String()
 	for _, want := range []string{
-		`<strong class="missing" title="No page file. Create it with New page.">alt</strong>`,
+		`<span class="missing" title="No page file. Create it with New page.">alt</span>`,
 		`class="chip orphan" title="pages/alt.klein.yaml`,
 	} {
 		if !strings.Contains(body, want) {
