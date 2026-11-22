@@ -259,10 +259,37 @@ func TestFailedFetchKeepsData(t *testing.T) {
 		t.Error("failed = false")
 	}
 	if changed {
-		t.Error("changed = true on a failure")
+		t.Error("changed = true on the first failure")
+	}
+	if p.cur.offline() {
+		t.Error("offline after one failed request")
 	}
 	if !p.cur.loaded || p.cur.state() != "PRINTING" {
 		t.Errorf("data lost: %+v", p.cur)
+	}
+
+	changed, failed = p.reload(context.Background())
+	if !failed {
+		t.Error("second failure: failed = false")
+	}
+	if !changed {
+		t.Error("second failure: changed = false")
+	}
+	if !p.cur.offline() {
+		t.Error("one failure after the first keeps the widgets online")
+	}
+	if got := p.cur.signature(); got != "offline" {
+		t.Errorf("signature = %q, want offline", got)
+	}
+
+	f.mu.Lock()
+	f.fail = false
+	f.mu.Unlock()
+	if changed, failed := p.reload(context.Background()); failed || !changed {
+		t.Errorf("recovery: changed = %v, failed = %v", changed, failed)
+	}
+	if p.cur.offline() || p.cur.failures != 0 {
+		t.Errorf("still offline after an answer: %+v", p.cur)
 	}
 }
 
@@ -294,14 +321,37 @@ func TestValues(t *testing.T) {
 	}
 }
 
+func TestValuesOffline(t *testing.T) {
+	srv, f := newPrinterServer(t)
+	p := reloaded(t, srv.URL)
+	f.mu.Lock()
+	f.fail = true
+	f.mu.Unlock()
+	for range 2 {
+		p.reload(context.Background())
+	}
+	got, err := p.Values(&plugin.Request{Values: []string{"state", "progress", "nozzle", "job"}})
+	if err != nil {
+		t.Fatalf("values: %v", err)
+	}
+	if v := got["state"].Enum; v == nil || *v != "offline" {
+		t.Errorf("state = %v, want offline", v)
+	}
+	for _, name := range []string{"progress", "nozzle", "job"} {
+		if v := got[name].Text; v == nil || *v != "–" {
+			t.Errorf("%s = %v, want a dash", name, got[name])
+		}
+	}
+}
+
 func TestValuesWithoutData(t *testing.T) {
 	p := newPlugin()
 	got, err := p.Values(&plugin.Request{Values: []string{"state", "progress", "job"}})
 	if err != nil {
 		t.Fatalf("values: %v", err)
 	}
-	if got["state"].Type() != "" {
-		t.Errorf("state = %v, want an empty value", got["state"])
+	if v := got["state"].Enum; v == nil || *v != "offline" {
+		t.Errorf("state = %v, want offline", v)
 	}
 	if v := got["progress"].Text; v == nil || *v != "–" {
 		t.Errorf("progress = %v, want a dash", got["progress"])

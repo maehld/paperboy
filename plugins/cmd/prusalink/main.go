@@ -1,6 +1,7 @@
 // Command prusalink is a Paperboy plugin (ADR 0049) that shows the state of a
 // Prusa 3D printer. It reads the local PrusaLink API of the printer and keeps
-// the last answer, so a page never waits for the machine.
+// the last answer, so a page never waits for the machine. A printer that is
+// switched off shows as offline instead of an error.
 //
 //	plugins:
 //	  prusalink:
@@ -38,10 +39,11 @@ const (
 )
 
 // valueKeys are the states the printer reports, as the keys of the state
-// value (ADR 0127). A plan condition names one of them.
+// value (ADR 0127), and offline for a printer that does not answer. A plan
+// condition names one of them.
 var valueKeys = []string{
 	"idle", "busy", "printing", "paused", "finished",
-	"stopped", "error", "attention", "ready",
+	"stopped", "error", "attention", "ready", "offline",
 }
 
 func main() {
@@ -198,15 +200,18 @@ func (p *prusalink) reload(ctx context.Context) (changed, failed bool) {
 	next := prev
 	var st statusResponse
 	if err := p.get(ctx, "/api/v1/status", &st); err != nil {
+		next.failures = prev.failures + 1
 		next.err = err
 		fmt.Fprintf(os.Stderr, "prusalink: %v\n", err)
 		p.mu.Lock()
 		p.cur = next
+		changed = old != next.signature()
 		p.mu.Unlock()
-		return false, true
+		return changed, true
 	}
 	next.status = st
 	next.loaded = true
+	next.failures = 0
 	next.err = nil
 
 	// The status carries the progress, the job answer the file name. The job
@@ -243,6 +248,7 @@ func (p *prusalink) reload(ctx context.Context) (changed, failed bool) {
 }
 
 // Prepare waits for the first answer and takes the snapshot the widgets draw.
+// A printer that does not answer is no error: the widgets show it as offline.
 func (p *prusalink) Prepare(*plugin.Request) error {
 	p.mu.Lock()
 	ready := p.ready
@@ -251,14 +257,10 @@ func (p *prusalink) Prepare(*plugin.Request) error {
 		select {
 		case <-ready:
 		case <-time.After(requestTimeout):
-			return errors.New("the printer did not answer yet")
 		}
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !p.cur.loaded && p.cur.err != nil {
-		return p.cur.err
-	}
 	p.snap = p.cur
 	return nil
 }

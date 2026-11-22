@@ -17,11 +17,20 @@ var errNoJob = errors.New("no job")
 // snapshot is what the widgets draw. It is copied under the plugin's lock and
 // never changed afterwards.
 type snapshot struct {
-	loaded bool
-	status statusResponse
-	job    jobResponse
-	info   infoResponse
-	err    error // the last failed request, for the log and the first load
+	loaded   bool
+	failures int // failed status requests in a row
+	status   statusResponse
+	job      jobResponse
+	info     infoResponse
+	err      error // the last failed request, for the log
+}
+
+// offline reports whether the printer stopped answering. One failed request
+// after a good answer is a hiccup that keeps the last state; the widgets say
+// offline from the second failure in a row, about 30 seconds later. A printer
+// that never answered is offline at once.
+func (s snapshot) offline() bool {
+	return !s.loaded || s.failures >= 2
 }
 
 type statusResponse struct {
@@ -64,6 +73,19 @@ type infoResponse struct {
 // state is the printer state in capitals, as the API reports it.
 func (s snapshot) state() string {
 	return strings.ToUpper(strings.TrimSpace(s.status.Printer.State))
+}
+
+// stateKey is the key of the state value: offline while the printer does not
+// answer, else the state the printer reports when the plugin declares it.
+func (s snapshot) stateKey() string {
+	if s.offline() {
+		return "offline"
+	}
+	key := strings.ToLower(s.state())
+	if !contains(valueKeys, key) {
+		return ""
+	}
+	return key
 }
 
 // running reports whether a print is active.
@@ -128,8 +150,8 @@ func (s snapshot) message() string {
 // percent and the remaining time whole minutes, so a small move does not
 // redraw the page.
 func (s snapshot) signature() string {
-	if !s.loaded {
-		return "none"
+	if s.offline() {
+		return "offline"
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s|", s.state())

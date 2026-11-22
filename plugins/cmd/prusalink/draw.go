@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -15,20 +14,39 @@ import (
 	"github.com/maehld/paperboy/sdk/render"
 )
 
-// Render draws one widget.
+// Render draws one widget. A printer that does not answer fills the cell with
+// a short notice instead of an error.
 func (p *prusalink) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
-	if !p.snap.loaded {
-		return errors.New("the printer has not answered yet")
+	switch w.Widget {
+	case "printer", "progress", "temperatures":
+	default:
+		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
+	}
+	if p.snap.offline() {
+		return drawOffline(req, w, img)
 	}
 	switch w.Widget {
 	case "printer":
 		return p.drawPrinter(req, w, img)
 	case "progress":
 		return p.drawProgress(req, w, img)
-	case "temperatures":
-		return p.drawTemperatures(req, w, img)
 	}
-	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
+	return p.drawTemperatures(req, w, img)
+}
+
+// drawOffline fills the cell with the offline notice, so a switched-off
+// printer looks the same in every widget.
+func drawOffline(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
+	inner := img.Rect.Inset(max(w.Style.Padding, 0))
+	size := min(design.NewScale(req.TextPx(w), inner.Dy()).Body, float64(inner.Dy())*0.5)
+	if inner.Dx() < 40 || size < render.MinSize {
+		return plugin.TooSmall(w)
+	}
+	baseline := inner.Min.Y + (inner.Dy()+int(size*0.72))/2
+	render.Text(img, req.T("Drucker offline", "Printer offline"),
+		inner.Min.X+inner.Dx()/2, baseline,
+		render.Style{Size: size, Bold: true, Shrink: true}, inner.Dx(), render.Black, render.Center)
+	return nil
 }
 
 // stateLabel names the printer state in the page's language.
