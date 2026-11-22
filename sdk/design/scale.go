@@ -16,6 +16,7 @@ import (
 
 // Factors of the type scale, relative to the page's base text size.
 const (
+	tinyFactor   = 0.55
 	microFactor  = 0.70
 	detailFactor = 0.85
 	titleFactor  = 1.25
@@ -29,6 +30,7 @@ const (
 // text size, so a tile label is the same size in every widget. Only Hero
 // grows with the cell.
 type Scale struct {
+	Tiny   float64
 	Micro  float64
 	Detail float64
 	Body   float64
@@ -41,6 +43,7 @@ type Scale struct {
 func NewScale(base float64, cellHeight int) Scale {
 	base = max(base, render.MinSize)
 	s := Scale{
+		Tiny:   base * tinyFactor,
 		Micro:  base * microFactor,
 		Detail: base * detailFactor,
 		Body:   base,
@@ -60,6 +63,7 @@ func (s Scale) Scaled(f float64) Scale {
 		f = 0
 	}
 	return Scale{
+		Tiny:   s.Tiny * f,
 		Micro:  s.Micro * f,
 		Detail: s.Detail * f,
 		Body:   s.Body * f,
@@ -70,7 +74,8 @@ func (s Scale) Scaled(f float64) Scale {
 
 // floor keeps the roles in order and above the smallest drawn text.
 func (s Scale) floor() Scale {
-	s.Micro = max(s.Micro, render.MinSize)
+	s.Tiny = max(s.Tiny, render.MinSize)
+	s.Micro = max(s.Micro, s.Tiny, render.MinSize)
 	s.Detail = max(s.Detail, s.Micro, render.MinSize)
 	s.Body = max(s.Body, s.Detail, render.MinSize)
 	s.Title = max(s.Title, s.Body, render.MinSize)

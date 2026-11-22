@@ -21,7 +21,7 @@ func ink(img *image.Paletted) int {
 
 func TestNewScale(t *testing.T) {
 	s := NewScale(20, 300)
-	if s.Micro != 14 || s.Detail != 17 || s.Body != 20 || s.Title != 25 || s.Hero != 52 {
+	if s.Tiny != 11 || s.Micro != 14 || s.Detail != 17 || s.Body != 20 || s.Title != 25 || s.Hero != 52 {
 		t.Fatalf("unexpected scale: %+v", s)
 	}
 	short := NewScale(20, 80)
@@ -32,7 +32,7 @@ func TestNewScale(t *testing.T) {
 		t.Fatalf("the cell height changed a role other than hero: %+v", short)
 	}
 	tiny := NewScale(1, 1)
-	if tiny.Micro < render.MinSize || tiny.Detail < render.MinSize ||
+	if tiny.Tiny < render.MinSize || tiny.Micro < render.MinSize || tiny.Detail < render.MinSize ||
 		tiny.Body < render.MinSize || tiny.Title < render.MinSize || tiny.Hero < render.MinSize {
 		t.Fatalf("a role fell below the minimum: %+v", tiny)
 	}

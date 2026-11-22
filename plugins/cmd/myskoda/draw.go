@@ -10,6 +10,7 @@ import (
 
 	xdraw "golang.org/x/image/draw"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -74,15 +75,15 @@ func (m *myskoda) drawBattery(w plugin.WidgetRequest, img *image.Paletted) error
 	if b.Dx() < 40 || b.Dy() < 30 {
 		return plugin.TooSmall(w)
 	}
-	base := m.req.TextPx(w)
+	scale := design.NewScale(m.req.TextPx(w), b.Dy())
 	rule := max(w.Style.Rule, 1)
 	gap := max(int(m.req.MMPx(0.8)+0.5), 2)
 	soc, hasSoC := m.soc()
 
-	facts := m.batteryFacts(w, base)
+	facts := m.batteryFacts(w, scale)
 	factsH := factsHeight(facts, gap)
-	labelH := int(base * 0.9)
-	barH := max(int(base*0.4), rule*2+4)
+	labelH := int(scale.Detail * 1.05)
+	barH := max(int(scale.Body*0.35), rule*2+4)
 	wide := b.Dx() >= b.Dy()*13/10
 
 	value := "–"
@@ -92,15 +93,15 @@ func (m *myskoda) drawBattery(w plugin.WidgetRequest, img *image.Paletted) error
 	if wide {
 		// Meter on the left, facts on the right, both vertically centred.
 		meterW := b.Dx() * 45 / 100
-		big := max(min(float64(b.Dy())*0.55, float64(meterW)*0.48), base*0.9)
+		big := max(min(scale.Hero, float64(meterW)*0.48), scale.Body)
 		groupH := labelH + int(big) + gap + barH
 		y := b.Min.Y + max((b.Dy()-groupH)/2, 0)
-		render.Text(img, m.t("Akku", "Battery"), b.Min.X, y+int(base*0.9), render.Style{Size: base * 0.8}, meterW, color.Black, render.Left)
+		render.Text(img, m.t("Akku", "Battery"), b.Min.X, y+int(scale.Detail*0.95), render.Style{Size: scale.Detail}, meterW, color.Black, render.Left)
 		render.Text(img, value, b.Min.X, y+labelH+int(big), render.Style{Size: big, Bold: true, Shrink: true},
 			meterW, color.Black, render.Left)
 		if hasSoC {
 			bar := image.Rect(b.Min.X, y+labelH+int(big)+gap, b.Min.X+meterW, y+labelH+int(big)+gap+barH)
-			drawMeter(img, bar, float64(soc)/100, rule)
+			design.DrawMeter(img, bar, design.Meter{Fraction: float64(soc) / 100}, rule)
 		}
 		right := image.Rect(b.Min.X+meterW+gap*2, b.Min.Y+(b.Dy()-factsH)/2, b.Max.X, b.Max.Y)
 		drawFacts(img, right, facts, gap)
@@ -108,15 +109,16 @@ func (m *myskoda) drawBattery(w plugin.WidgetRequest, img *image.Paletted) error
 	}
 
 	// Tall cell: meter above the facts.
-	big := max(min(float64(b.Dy())*0.35, float64(b.Dx())*0.55), base*0.9)
+	big := min(scale.Hero, min(float64(b.Dy())*0.35, float64(b.Dx())*0.55))
+	big = max(big, scale.Body)
 	groupH := labelH + int(big) + gap + barH + gap + factsH
 	y := b.Min.Y + max((b.Dy()-groupH)/2, 0)
-	render.Text(img, m.t("Akku", "Battery"), b.Min.X, y+int(base*0.9), render.Style{Size: base * 0.8}, b.Dx(), color.Black, render.Left)
+	render.Text(img, m.t("Akku", "Battery"), b.Min.X, y+int(scale.Detail*0.95), render.Style{Size: scale.Detail}, b.Dx(), color.Black, render.Left)
 	render.Text(img, value, b.Min.X, y+labelH+int(big), render.Style{Size: big, Bold: true, Shrink: true},
 		b.Dx(), color.Black, render.Left)
 	top := y + labelH + int(big) + gap
 	if hasSoC {
-		drawMeter(img, image.Rect(b.Min.X, top, b.Max.X, top+barH), float64(soc)/100, rule)
+		design.DrawMeter(img, image.Rect(b.Min.X, top, b.Max.X, top+barH), design.Meter{Fraction: float64(soc) / 100}, rule)
 	}
 	top += barH + gap
 	drawFacts(img, image.Rect(b.Min.X, top, b.Max.X, b.Max.Y), facts, gap)
@@ -136,8 +138,8 @@ func factsHeight(facts []fact, gap int) int {
 }
 
 // batteryFacts are the lines next to the meter.
-func (m *myskoda) batteryFacts(w plugin.WidgetRequest, base float64) []fact {
-	facts := []fact{{text: m.chargeState(), size: base, bold: true}}
+func (m *myskoda) batteryFacts(w plugin.WidgetRequest, scale design.Scale) []fact {
+	facts := []fact{{text: m.chargeState(), size: scale.Body, bold: true}}
 	if p, ok := m.power(); ok {
 		facts[0].right = m.num(p, 1) + " kW"
 	}
@@ -146,16 +148,16 @@ func (m *myskoda) batteryFacts(w plugin.WidgetRequest, base float64) []fact {
 		if r := m.remaining(); r != "" {
 			line += " · " + r
 		}
-		facts = append(facts, fact{text: line, size: base * 0.85})
+		facts = append(facts, fact{text: line, size: scale.Detail})
 	} else if r := m.remaining(); r != "" {
-		facts = append(facts, fact{text: r, size: base * 0.85})
+		facts = append(facts, fact{text: r, size: scale.Detail})
 	}
 	if target, ok := m.targetSoC(); ok {
-		facts = append(facts, fact{text: fmt.Sprintf("%s %d %%", m.t("Ziel", "Target"), target), size: base * 0.8})
+		facts = append(facts, fact{text: fmt.Sprintf("%s %d %%", m.t("Ziel", "Target"), target), size: scale.Detail})
 	}
 	if c := m.cur.Charging; c != nil {
 		if age := m.captured(c.Captured); age != "" {
-			facts = append(facts, fact{text: age, size: base * 0.7})
+			facts = append(facts, fact{text: age, size: scale.Tiny})
 		}
 	}
 	return facts
@@ -167,9 +169,9 @@ func (m *myskoda) drawCharging(w plugin.WidgetRequest, img *image.Paletted) erro
 	if b.Dx() < 40 || b.Dy() < 24 {
 		return plugin.TooSmall(w)
 	}
-	base := m.req.TextPx(w)
+	scale := design.NewScale(m.req.TextPx(w), b.Dy())
 	gap := max(int(m.req.MMPx(0.8)+0.5), 2)
-	facts := []fact{{text: m.chargeState(), size: base * 1.1, bold: true}}
+	facts := []fact{{text: m.chargeState(), size: scale.Body, bold: true}}
 	if p, ok := m.power(); ok {
 		facts[0].right = m.num(p, 1) + " kW"
 	}
@@ -178,10 +180,10 @@ func (m *myskoda) drawCharging(w plugin.WidgetRequest, img *image.Paletted) erro
 		if target, ok := m.targetSoC(); ok {
 			line = fmt.Sprintf("%d %% → %d %%", soc, target)
 		}
-		facts = append(facts, fact{text: line, size: base * 0.9})
+		facts = append(facts, fact{text: line, size: scale.Detail})
 	}
 	if r := m.remaining(); r != "" {
-		facts = append(facts, fact{text: m.t("Noch ", "Left ") + r, size: base * 0.85})
+		facts = append(facts, fact{text: m.t("Noch ", "Left ") + r, size: scale.Detail})
 	}
 	if w.Arg().Bool("profile", true) {
 		if p := m.currentProfile(); p != nil {
@@ -189,12 +191,12 @@ func (m *myskoda) drawCharging(w plugin.WidgetRequest, img *image.Paletted) erro
 			if p.NextChargingTime != "" {
 				line += " · " + p.NextChargingTime
 			}
-			facts = append(facts, fact{text: line, size: base * 0.8})
+			facts = append(facts, fact{text: line, size: scale.Detail})
 		}
 	}
 	if c := m.cur.Charging; c != nil {
 		if age := m.captured(c.Captured); age != "" {
-			facts = append(facts, fact{text: age, size: base * 0.65})
+			facts = append(facts, fact{text: age, size: scale.Tiny})
 		}
 	}
 	drawFacts(img, b, facts, gap)
@@ -207,18 +209,18 @@ func (m *myskoda) drawProfiles(w plugin.WidgetRequest, img *image.Paletted) erro
 	if b.Dx() < 40 || b.Dy() < 20 {
 		return plugin.TooSmall(w)
 	}
+	scale := design.NewScale(m.req.TextPx(w), b.Dy())
 	list := m.profileList(w.Arg().Int("max", 2))
 	if len(list) == 0 {
-		render.Text(img, m.t("Keine Ladepläne", "No charging plans"), b.Min.X, b.Min.Y+int(m.req.TextPx(w)),
-			render.Style{Size: m.req.TextPx(w), Shrink: true}, b.Dx(), color.Black, render.Left)
+		render.Text(img, m.t("Keine Ladepläne", "No charging plans"), b.Min.X, b.Min.Y+int(scale.Body),
+			render.Style{Size: scale.Body, Shrink: true}, b.Dx(), color.Black, render.Left)
 		return nil
 	}
-	base := m.req.TextPx(w)
 	gap := max(int(m.req.MMPx(0.4)), 1)
 	rule := max(w.Style.Rule, 1)
 	y := b.Min.Y
-	nameSize := base * 0.9
-	timeSize := base * 0.7
+	nameSize := scale.Detail
+	timeSize := scale.Tiny
 	current := m.currentProfile()
 	for _, p := range list {
 		lineH := int(nameSize*1.15) + int(timeSize*1.15) + gap
@@ -318,25 +320,25 @@ func (m *myskoda) drawLocation(w plugin.WidgetRequest, img *image.Paletted) erro
 	if b.Dx() < 40 || b.Dy() < 20 {
 		return plugin.TooSmall(w)
 	}
-	base := m.req.TextPx(w)
+	scale := design.NewScale(m.req.TextPx(w), b.Dy())
 	gap := max(int(m.req.MMPx(0.6)+0.5), 2)
 	p := m.cur.ParkingPosition
 	if p == nil {
-		render.Text(img, m.t("Keine Position", "No position"), b.Min.X, b.Min.Y+int(base),
-			render.Style{Size: base, Shrink: true}, b.Dx(), color.Black, render.Left)
+		render.Text(img, m.t("Keine Position", "No position"), b.Min.X, b.Min.Y+int(scale.Body),
+			render.Style{Size: scale.Body, Shrink: true}, b.Dx(), color.Black, render.Left)
 		return nil
 	}
 	y := b.Min.Y
 	if p.State == "IN_MOTION" {
-		render.Text(img, m.t("Unterwegs", "In motion"), b.Min.X, y+int(base*1.1),
-			render.Style{Size: base * 1.1, Bold: true}, b.Dx(), color.Black, render.Left)
-		y += int(base * 1.4)
+		render.Text(img, m.t("Unterwegs", "In motion"), b.Min.X, y+int(scale.Body),
+			render.Style{Size: scale.Body, Bold: true}, b.Dx(), color.Black, render.Left)
+		y += int(scale.Body * 1.3)
 	} else {
 		address := p.Address
 		if address == "" {
 			address = m.t("Geparkt", "Parked")
 		}
-		size := base
+		size := scale.Body
 		step := int(size * 1.15)
 		room := max((b.Dy()-y+b.Min.Y-gap*2)/max(step, 1), 1)
 		if room > 3 {
@@ -355,12 +357,12 @@ func (m *myskoda) drawLocation(w plugin.WidgetRequest, img *image.Paletted) erro
 	}
 	if gps := p.GPS; gps != nil && w.Arg().Bool("coords", true) {
 		coords := m.num(gps.Latitude, 4) + ", " + m.num(gps.Longitude, 4)
-		render.Text(img, coords, b.Min.X, y+int(base*0.75), render.Style{Size: base * 0.7, Shrink: true},
+		render.Text(img, coords, b.Min.X, y+int(scale.Micro), render.Style{Size: scale.Micro, Shrink: true},
 			b.Dx(), color.Black, render.Left)
-		y += int(base * 0.9)
+		y += int(scale.Micro * 1.25)
 	}
 	if age := m.captured(p.Captured); age != "" {
-		render.Text(img, age, b.Min.X, y+int(base*0.7), render.Style{Size: base * 0.65, Shrink: true},
+		render.Text(img, age, b.Min.X, y+int(scale.Tiny), render.Style{Size: scale.Tiny, Shrink: true},
 			b.Dx(), color.Black, render.Left)
 	}
 	return nil
@@ -372,11 +374,11 @@ func (m *myskoda) drawClimate(w plugin.WidgetRequest, img *image.Paletted) error
 	if b.Dx() < 40 || b.Dy() < 20 {
 		return plugin.TooSmall(w)
 	}
-	base := m.req.TextPx(w)
+	scale := design.NewScale(m.req.TextPx(w), b.Dy())
 	gap := max(int(m.req.MMPx(0.8)+0.5), 2)
 	if m.cur.AirConditioning == nil {
-		render.Text(img, m.t("Keine Klimadaten", "No climate data"), b.Min.X, b.Min.Y+int(base),
-			render.Style{Size: base, Shrink: true}, b.Dx(), color.Black, render.Left)
+		render.Text(img, m.t("Keine Klimadaten", "No climate data"), b.Min.X, b.Min.Y+int(scale.Body),
+			render.Style{Size: scale.Body, Shrink: true}, b.Dx(), color.Black, render.Left)
 		return nil
 	}
 	c := m.cur.AirConditioning
@@ -384,21 +386,21 @@ func (m *myskoda) drawClimate(w plugin.WidgetRequest, img *image.Paletted) error
 	if temp := m.temperature(c.Target); temp != "" {
 		line += " · " + temp
 	}
-	facts := []fact{{text: line, size: base * 1.1, bold: true}}
+	facts := []fact{{text: line, size: scale.Body, bold: true}}
 	if t, ok := m.time(c.ReachAt); ok {
-		facts = append(facts, fact{text: m.t("erreicht ", "reached ") + t.Format("15:04"), size: base * 0.85})
+		facts = append(facts, fact{text: m.t("erreicht ", "reached ") + t.Format("15:04"), size: scale.Detail})
 	}
 	if heat := m.windowHeating(c); heat != "" {
-		facts = append(facts, fact{text: heat, size: base * 0.8})
+		facts = append(facts, fact{text: heat, size: scale.Detail})
 	}
 	if a := m.cur.AuxiliaryHeating; a != nil && a.State != nil && *a.State != "OFF" {
-		facts = append(facts, fact{text: m.t("Standheizung: ", "Auxiliary: ") + m.auxState(*a.State), size: base * 0.8})
+		facts = append(facts, fact{text: m.t("Standheizung: ", "Auxiliary: ") + m.auxState(*a.State), size: scale.Detail})
 	}
 	if v := m.cur.ActiveVentilation; v != nil && v.State != nil && *v.State != "OFF" {
-		facts = append(facts, fact{text: m.t("Lüftung: ", "Ventilation: ") + m.climateToken(*v.State), size: base * 0.8})
+		facts = append(facts, fact{text: m.t("Lüftung: ", "Ventilation: ") + m.climateToken(*v.State), size: scale.Detail})
 	}
 	if age := m.captured(c.Captured); age != "" {
-		facts = append(facts, fact{text: age, size: base * 0.65})
+		facts = append(facts, fact{text: age, size: scale.Tiny})
 	}
 	drawFacts(img, b, facts, gap)
 	return nil
@@ -456,7 +458,7 @@ func (m *myskoda) drawCard(w plugin.WidgetRequest, img *image.Paletted) error {
 	if b.Dx() < 40 || b.Dy() < 30 {
 		return plugin.TooSmall(w)
 	}
-	base := m.req.TextPx(w)
+	scale := design.NewScale(m.req.TextPx(w), b.Dy())
 	gap := max(int(m.req.MMPx(0.8)+0.5), 2)
 	args := w.Arg()
 
@@ -464,7 +466,7 @@ func (m *myskoda) drawCard(w plugin.WidgetRequest, img *image.Paletted) error {
 	bottom := b.Max.Y
 	var lines []fact
 	if args.Bool("name", true) && m.cur.Name != "" {
-		lines = append(lines, fact{text: m.cur.Name, size: base * 1.1, bold: true})
+		lines = append(lines, fact{text: m.cur.Name, size: scale.Body, bold: true})
 	}
 	if args.Bool("state", true) {
 		var parts []string
@@ -475,7 +477,7 @@ func (m *myskoda) drawCard(w plugin.WidgetRequest, img *image.Paletted) error {
 			parts = append(parts, fmt.Sprintf("%d km", r))
 		}
 		parts = append(parts, m.chargeState())
-		lines = append(lines, fact{text: strings.Join(parts, " · "), size: base * 0.8})
+		lines = append(lines, fact{text: strings.Join(parts, " · "), size: scale.Detail})
 	}
 	if len(lines) > 0 {
 		height := 0
@@ -502,14 +504,14 @@ func (m *myskoda) drawCar(w plugin.WidgetRequest, img *image.Paletted) error {
 	if b.Dx() < 40 || b.Dy() < 20 {
 		return plugin.TooSmall(w)
 	}
-	base := m.req.TextPx(w)
+	scale := design.NewScale(m.req.TextPx(w), b.Dy())
 	gap := max(int(m.req.MMPx(0.6)+0.5), 2)
 	args := w.Arg()
 	name := m.cur.Name
 	if name == "" {
 		name = m.cur.VIN
 	}
-	facts := []fact{{text: name, size: base, bold: true}}
+	facts := []fact{{text: name, size: scale.Body, bold: true}}
 	if args.Bool("plate", false) && m.cur.LicensePlate != "" {
 		facts[0].right = m.cur.LicensePlate
 	}
@@ -518,44 +520,26 @@ func (m *myskoda) drawCar(w plugin.WidgetRequest, img *image.Paletted) error {
 		if r, ok := m.rangeKM(); ok {
 			line += fmt.Sprintf(" · %d km", r)
 		}
-		facts = append(facts, fact{text: line, size: base * 0.9})
+		facts = append(facts, fact{text: line, size: scale.Detail})
 	} else if r, ok := m.rangeKM(); ok {
-		facts = append(facts, fact{text: fmt.Sprintf("%d km", r), size: base * 0.9})
+		facts = append(facts, fact{text: fmt.Sprintf("%d km", r), size: scale.Detail})
 	}
-	facts = append(facts, fact{text: m.chargeState(), size: base * 0.85})
-	facts = append(facts, fact{text: m.lockState(), size: base * 0.85})
+	facts = append(facts, fact{text: m.chargeState(), size: scale.Detail})
+	facts = append(facts, fact{text: m.lockState(), size: scale.Detail})
 	if o := m.cur.Odometer; o != nil && o.KM != nil {
-		facts = append(facts, fact{text: m.thousands(*o.KM) + " km", size: base * 0.8})
+		facts = append(facts, fact{text: m.thousands(*o.KM) + " km", size: scale.Tiny})
 	}
 	area := b
 	if soc, ok := m.soc(); ok {
-		barH := max(int(base*0.35), 3)
+		barH := max(int(scale.Body*0.3), 3)
 		if b.Dy() > barH*3 {
 			bar := image.Rect(b.Min.X, b.Max.Y-barH, b.Max.X, b.Max.Y)
-			drawMeter(img, bar, float64(soc)/100, max(w.Style.Rule, 1))
+			design.DrawMeter(img, bar, design.Meter{Fraction: float64(soc) / 100}, max(w.Style.Rule, 1))
 			area.Max.Y = bar.Min.Y - gap
 		}
 	}
 	drawFacts(img, area, facts, gap)
 	return nil
-}
-
-// drawMeter draws an outlined bar filled to frac.
-func drawMeter(img *image.Paletted, r image.Rectangle, frac float64, rule int) {
-	if r.Dx() < 6 || r.Dy() < 3 {
-		return
-	}
-	t := min(max(rule, 1), max(r.Dy()/3, 1))
-	render.HLine(img, r.Min.X, r.Min.Y, r.Max.X, t)
-	render.HLine(img, r.Min.X, r.Max.Y-t, r.Max.X, t)
-	render.VLine(img, r.Min.X, r.Min.Y, r.Max.Y, t)
-	render.VLine(img, r.Max.X-t, r.Min.Y, r.Max.Y, t)
-	frac = min(max(frac, 0), 1)
-	inner := r.Inset(t + 1)
-	inner.Max.X = inner.Min.X + int(float64(inner.Dx())*frac+0.5)
-	if !inner.Empty() {
-		render.FillSolid(img, inner)
-	}
 }
 
 // drawPicture scales src into r keeping its proportions and dithers it onto the

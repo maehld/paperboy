@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -28,15 +29,6 @@ func (p *prusalink) Render(req *plugin.Request, w plugin.WidgetRequest, img *ima
 		return p.drawTemperatures(req, w, img)
 	}
 	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
-}
-
-// mutedColor is a quiet tone: dark gray on four or more levels, black on a
-// one-bit panel, where gray would vanish.
-func mutedColor(img *image.Paletted) color.Color {
-	if render.Levels(img.Palette) >= 4 {
-		return render.DarkGray
-	}
-	return render.Black
 }
 
 // stateLabel names the printer state in the page's language.
@@ -100,17 +92,18 @@ func (p *prusalink) drawPrinter(req *plugin.Request, w plugin.WidgetRequest, img
 		return plugin.TooSmall(w)
 	}
 	rule := max(w.Style.Rule, 1)
-	muted := mutedColor(img)
+	muted := design.Muted(img)
+	scale := design.NewScale(req.TextPx(w), inner.Dy())
 	d := p.snap
 	running := d.running()
 
 	y := inner.Min.Y
-	headerSize := max(base*0.62, render.MinSize)
+	headerSize := scale.Detail
 	stateWidth := inner.Dx()
 	if running {
 		if rem, ok := d.remaining(); ok {
 			txt := durationText(rem)
-			remSize := max(base*0.55, render.MinSize)
+			remSize := scale.Tiny
 			tw := render.Measure(txt, remSize, true)
 			if tw+int(base*0.5) < inner.Dx()/2 {
 				render.Text(img, txt, inner.Max.X, y+int(remSize), render.Style{Size: remSize, Bold: true}, tw+4, render.Black, render.Right)
@@ -121,7 +114,7 @@ func (p *prusalink) drawPrinter(req *plugin.Request, w plugin.WidgetRequest, img
 	render.Text(img, stateLabel(req, d.state()), inner.Min.X, y+int(headerSize), render.Style{Size: headerSize, Bold: true, Shrink: true}, stateWidth, render.Black, render.Left)
 	y += int(headerSize * 1.4)
 
-	small := max(base*0.44, 9)
+	small := scale.Tiny
 	if msg := d.message(); msg != "" && inner.Max.Y-y > int(small*3) {
 		render.Text(img, render.Ellipsize(msg, small, false, inner.Dx()), inner.Min.X, y+int(small), render.Style{Size: small}, inner.Dx(), muted, render.Left)
 		y += int(small * 1.3)
@@ -148,23 +141,23 @@ func (p *prusalink) drawPrinter(req *plugin.Request, w plugin.WidgetRequest, img
 			drawBar(img, image.Rect(inner.Min.X, top, inner.Max.X, top+barH), pct/100, rule)
 		}
 	}
-	tempRow(img, image.Rect(inner.Min.X, bottom, inner.Min.X+inner.Dx()/2, inner.Max.Y), base, muted,
+	tempRow(img, image.Rect(inner.Min.X, bottom, inner.Min.X+inner.Dx()/2, inner.Max.Y), scale, muted,
 		req.T("Düse", "Nozzle"), d.status.Printer.TempNozzle, d.status.Printer.TargetNozzle)
-	tempRow(img, image.Rect(inner.Min.X+inner.Dx()/2, bottom, inner.Max.X, inner.Max.Y), base, muted,
+	tempRow(img, image.Rect(inner.Min.X+inner.Dx()/2, bottom, inner.Max.X, inner.Max.Y), scale, muted,
 		req.T("Bett", "Bed"), d.status.Printer.TempBed, d.status.Printer.TargetBed)
 	return nil
 }
 
 // tempRow draws one label with its temperature, either label above value or on
 // one line when the widget is flat.
-func tempRow(img *image.Paletted, r image.Rectangle, base float64, muted color.Color, label string, cur, target *float64) {
-	if r.Dx() < 40 || r.Dy() < int(base) {
+func tempRow(img *image.Paletted, r image.Rectangle, scale design.Scale, muted color.Color, label string, cur, target *float64) {
+	if r.Dx() < 40 || r.Dy() < int(scale.Body) {
 		return
 	}
-	labelSize := max(base*0.42, 9)
-	valueSize := max(base*0.8, render.MinSize)
+	labelSize := scale.Tiny
+	valueSize := scale.Detail
 	value := tempText(cur, target)
-	if r.Dy() >= int(base*1.7) {
+	if r.Dy() >= int(scale.Body*1.7) {
 		render.Text(img, label, r.Min.X, r.Min.Y+int(labelSize), render.Style{Size: labelSize}, r.Dx(), muted, render.Left)
 		render.Text(img, value, r.Min.X, r.Min.Y+int(labelSize)+int(valueSize*1.05), render.Style{Size: valueSize, Bold: true, Shrink: true}, r.Dx(), render.Black, render.Left)
 		return
@@ -175,15 +168,15 @@ func tempRow(img *image.Paletted, r image.Rectangle, base float64, muted color.C
 
 func (p *prusalink) drawProgress(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	inner := img.Rect.Inset(max(w.Style.Padding, 0))
-	base := max(req.TextPx(w), render.MinSize)
 	if inner.Dx() < 130 || inner.Dy() < 90 {
 		return plugin.TooSmall(w)
 	}
 	d := p.snap
-	muted := mutedColor(img)
+	muted := design.Muted(img)
+	scale := design.NewScale(req.TextPx(w), inner.Dy())
 
 	if !d.running() {
-		bigSize := max(min(base*1.5, float64(inner.Dy())*0.32), render.MinSize)
+		bigSize := max(min(scale.Title, float64(inner.Dy())*0.32), render.MinSize)
 		mid := inner.Min.Y + inner.Dy()/2
 		render.Text(img, stateLabel(req, d.state()), inner.Min.X+inner.Dx()/2, mid,
 			render.Style{Size: bigSize, Bold: true, Shrink: true}, inner.Dx(), render.Black, render.Center)
@@ -191,7 +184,7 @@ func (p *prusalink) drawProgress(req *plugin.Request, w plugin.WidgetRequest, im
 		if sub == "" {
 			sub = req.T("kein Auftrag", "no job")
 		}
-		subSize := max(base*0.5, render.MinSize)
+		subSize := scale.Tiny
 		render.Text(img, render.Ellipsize(sub, subSize, false, inner.Dx()), inner.Min.X+inner.Dx()/2, mid+int(subSize*1.6),
 			render.Style{Size: subSize}, inner.Dx(), muted, render.Center)
 		return nil
@@ -217,10 +210,10 @@ func (p *prusalink) drawProgress(req *plugin.Request, w plugin.WidgetRequest, im
 	}
 	fillRing(img, cx, cy, outer-thickness, outer, -math.Pi/2, -math.Pi/2+2*math.Pi*float64(min(max(pct, 0), 100))/100, render.Black)
 	if diameter >= 56 {
-		pctSize := max(max(diameter*0.22, render.MinSize), base*0.8)
+		pctSize := max(min(scale.Hero, diameter*0.28), render.MinSize)
 		render.Text(img, strconv.Itoa(int(math.Round(pct))), int(cx), int(cy)+int(pctSize*0.28),
 			render.Style{Size: pctSize, Bold: true, Shrink: true}, int(diameter*0.7), render.Black, render.Center)
-		unitSize := max(pctSize*0.45, render.MinSize)
+		unitSize := max(min(scale.Detail, pctSize*0.5), render.MinSize)
 		render.Text(img, "%", int(cx), int(cy)+int(pctSize*0.28)+int(unitSize*1.4),
 			render.Style{Size: unitSize, Bold: true}, int(diameter*0.7), render.Black, render.Center)
 	}
@@ -236,12 +229,12 @@ func (p *prusalink) drawProgress(req *plugin.Request, w plugin.WidgetRequest, im
 		bold  bool
 		color color.Color
 	}
-	lines := []line{{stateLabel(req, d.state()), max(base*0.75, render.MinSize), true, render.Black}}
+	lines := []line{{stateLabel(req, d.state()), scale.Detail, true, render.Black}}
 	if rem, ok := d.remaining(); ok {
-		lines = append(lines, line{durationText(rem), max(base*0.6, render.MinSize), true, render.Black})
+		lines = append(lines, line{durationText(rem), scale.Detail, true, render.Black})
 	}
 	if name := d.jobName(); name != "" {
-		lines = append(lines, line{render.Ellipsize(name, max(base*0.42, 9), false, width), max(base*0.42, 9), false, muted})
+		lines = append(lines, line{render.Ellipsize(name, scale.Tiny, false, width), scale.Tiny, false, muted})
 	}
 	height := 0
 	for _, l := range lines {
@@ -263,7 +256,8 @@ func (p *prusalink) drawTemperatures(req *plugin.Request, w plugin.WidgetRequest
 		return plugin.TooSmall(w)
 	}
 	rule := max(w.Style.Rule, 1)
-	muted := mutedColor(img)
+	muted := design.Muted(img)
+	scale := design.NewScale(req.TextPx(w), inner.Dy())
 	d := p.snap
 	rows := []struct {
 		label  string
@@ -275,9 +269,9 @@ func (p *prusalink) drawTemperatures(req *plugin.Request, w plugin.WidgetRequest
 		{req.T("Bett", "Bed"), d.status.Printer.TempBed, d.status.Printer.TargetBed, 120},
 	}
 	rowH := inner.Dy() / len(rows)
-	labelSize := max(base*0.5, render.MinSize)
-	valueSize := max(min(base*1.6, float64(rowH)*0.35), render.MinSize)
-	barH := max(int(base*0.22), 5)
+	labelSize := scale.Detail
+	valueSize := max(min(scale.Title, float64(rowH)*0.35), render.MinSize)
+	barH := max(int(scale.Body*0.22), 5)
 	for i, row := range rows {
 		top := inner.Min.Y + i*rowH
 		group := int(valueSize) + int(base*0.3) + barH

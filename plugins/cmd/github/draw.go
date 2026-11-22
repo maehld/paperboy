@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"image/color"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -88,10 +88,11 @@ func (p *github) renderRepo(req *plugin.Request, w plugin.WidgetRequest, img *im
 		return plugin.TooSmall(w)
 	}
 	rule := max(w.Style.Rule, 1)
-	muted := mutedColor(img)
+	muted := design.Muted(img)
 	issues, issuesCapped, pulls, pullsCapped, failing := aggregate(list)
+	scale := design.NewScale(req.TextPx(w), inner.Dy())
 
-	titleSize := max(base*0.6, render.MinSize)
+	titleSize := scale.Detail
 	y := inner.Min.Y
 	render.Text(img, repoTitle(list, req), inner.Min.X, y+int(titleSize), render.Style{Size: titleSize, Bold: true, Shrink: true}, inner.Dx(), render.Black, render.Left)
 	y += int(titleSize * 1.5)
@@ -102,9 +103,9 @@ func (p *github) renderRepo(req *plugin.Request, w plugin.WidgetRequest, img *im
 	if inner.Max.Y-y >= int(base*3.2) {
 		footer = int(base * 1.7)
 	}
-	labelSize := max(base*0.45, 9)
+	labelSize := scale.Tiny
 	room := inner.Max.Y - footer - y - int(labelSize*1.15)
-	valueSize := min(base*2.2, float64(room)*0.55)
+	valueSize := min(scale.Hero, float64(room)*0.55)
 	valueSize = max(valueSize, base)
 	baseline := y + int(valueSize)
 
@@ -120,17 +121,17 @@ func (p *github) renderRepo(req *plugin.Request, w plugin.WidgetRequest, img *im
 		render.Text(img, labels[i], x, baseline+int(labelSize*1.35), render.Style{Size: labelSize, Shrink: true}, colW-4, muted, render.Center)
 	}
 	if footer > 0 {
-		drawRepoFooter(req, img, inner, base, rule, footer, list, muted)
+		drawRepoFooter(req, img, inner, scale, rule, footer, list)
 	}
 	return nil
 }
 
 // drawRepoFooter shows the newest commit of the selected repositories.
-func drawRepoFooter(req *plugin.Request, img *image.Paletted, inner image.Rectangle, base float64, rule, height int, list []*repoData, muted color.Color) {
+func drawRepoFooter(req *plugin.Request, img *image.Paletted, inner image.Rectangle, scale design.Scale, rule, height int, list []*repoData) {
 	c, from := newestCommit(list)
 	y := inner.Max.Y - height
 	render.HLine(img, inner.Min.X, y, inner.Max.X, rule)
-	y += rule + int(base*0.2)
+	y += rule + int(scale.Body*0.2)
 	if c.SHA == "" {
 		return
 	}
@@ -138,11 +139,11 @@ func drawRepoFooter(req *plugin.Request, img *image.Paletted, inner image.Rectan
 	if len(list) > 1 && from != nil {
 		title = from.spec.Name + ": " + title
 	}
-	titleSize := max(base*0.5, render.MinSize)
+	titleSize := scale.Tiny
 	render.Text(img, render.Ellipsize(title, titleSize, true, inner.Dx()), inner.Min.X, y+int(titleSize), render.Style{Size: titleSize, Bold: true}, inner.Dx(), render.Black, render.Left)
-	metaSize := max(base*0.4, 9)
+	metaSize := scale.Tiny
 	meta := strings.Join(compact([]string{shortSHA(c.SHA), c.Author, relativeTime(c.Date, now(req), req)}), "  ·  ")
-	render.Text(img, render.Ellipsize(meta, metaSize, false, inner.Dx()), inner.Min.X, y+int(titleSize)+int(metaSize*1.2), render.Style{Size: metaSize}, inner.Dx(), muted, render.Left)
+	render.Text(img, render.Ellipsize(meta, metaSize, false, inner.Dx()), inner.Min.X, y+int(titleSize)+int(metaSize*1.2), render.Style{Size: metaSize}, inner.Dx(), design.Muted(img), render.Left)
 }
 
 func repoTitle(list []*repoData, req *plugin.Request) string {
@@ -285,10 +286,11 @@ func renderList(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted
 		return plugin.TooSmall(w)
 	}
 	rule := max(w.Style.Rule, 1)
-	muted := mutedColor(img)
+	muted := design.Muted(img)
+	scale := design.NewScale(req.TextPx(w), inner.Dy())
 
 	if header != "" {
-		size := max(base*0.55, render.MinSize)
+		size := scale.Detail
 		render.Text(img, header, inner.Min.X, inner.Min.Y+int(size), render.Style{Size: size, Bold: true, Shrink: true}, inner.Dx(), render.Black, render.Left)
 		inner.Min.Y += int(size * 1.6)
 		render.HLine(img, inner.Min.X, inner.Min.Y, inner.Max.X, rule)
@@ -299,7 +301,7 @@ func renderList(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted
 		return nil
 	}
 
-	metaSize := max(base*0.45, 9)
+	metaSize := scale.Tiny
 	metaStep := int(metaSize * 1.45)
 	titleH := int(base * 0.95)
 	showMeta := true
@@ -520,15 +522,6 @@ func dateText(t, n time.Time, lang string) string {
 		return t.Format("Jan 2")
 	}
 	return t.Format("Jan 2, 2006")
-}
-
-// mutedColor keeps secondary text readable on 2-level panels, where a light
-// gray would turn white.
-func mutedColor(img *image.Paletted) color.Color {
-	if render.Levels(img.Palette) >= 4 {
-		return render.DarkGray
-	}
-	return render.Black
 }
 
 // countText marks a count that the first page could not confirm.
