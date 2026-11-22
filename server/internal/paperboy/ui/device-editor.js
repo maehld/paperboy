@@ -113,7 +113,7 @@
 
     el('refresh').placeholder = 'default ' + (state.defaults.refresh || '5m');
     el('refresh-note').textContent =
-      'Default: ' + (state.defaults.refresh || '5m') + '; a plan rule may override it.';
+      'Default: ' + (state.defaults.refresh || '5m') + '; a plan refresh window may override it.';
     el('menu').placeholder = 'default ' + (state.defaults.menu_show || '30s');
   }
 

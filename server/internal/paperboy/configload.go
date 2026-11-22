@@ -109,7 +109,7 @@ func LoadConfig(dir string) (*Config, error) {
 		return nil, fmt.Errorf("%s: providers were replaced by plugins in Paperboy v2 (ADR 0049); move them to plugins with a config section", path)
 	}
 	if f.Defaults.PageTimeout != nil {
-		return nil, fmt.Errorf("%s: defaults.page_timeout was removed: a plan rule decides with on_refresh (ADR 0130); remove it", path)
+		return nil, fmt.Errorf("%s: defaults.page_timeout was removed: the plan decides with on_refresh (ADR 0130); remove it", path)
 	}
 	if f.DisplayTypes != nil {
 		return nil, fmt.Errorf("%s: display types moved to files of their own: create displays/<name>.yaml for every display type and remove the display_types section (ADR 0071)", path)

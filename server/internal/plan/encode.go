@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"go.yaml.in/yaml/v3"
@@ -16,38 +15,60 @@ import (
 
 // Encode writes a plan as a plan file the way Parse reads it (ADR 0066). It
 // rejects an invalid plan before anything is written. The layout is stable and
-// hand-readable: one rule per block, the time window and the page list in flow
-// style.
+// hand-readable: the page list, the refresh schedule and one block per trigger.
 func Encode(p *Plan) ([]byte, error) {
 	if err := p.validate(); err != nil {
 		return nil, err
 	}
 	root := newMap()
-	rules := newSeq(false)
-	for i := range p.Rules {
-		r := &p.Rules[i]
+	pages := newSeq(false)
+	for _, pg := range p.Pages {
+		if !pg.Hidden {
+			pages.Content = append(pages.Content, str(pg.Name))
+			continue
+		}
 		n := newMap()
-		add(n, "name", str(r.Name))
-		add(n, "when", whenNode(&r.When))
-		pages := newSeq(true)
-		for _, name := range r.Pages {
-			pages.Content = append(pages.Content, str(name))
-		}
-		add(n, "pages", pages)
-		if mode := r.Mode(); mode != RefreshCurrent {
-			add(n, "on_refresh", str(string(mode)))
-		}
-		if r.Refresh != 0 {
-			add(n, "refresh", str(duration.Text(time.Duration(r.Refresh))))
-		}
-		if r.Alert != AlertNever {
-			add(n, "alert", str(string(r.Alert)))
-		}
-		rules.Content = append(rules.Content, n)
+		n.Style = yaml.FlowStyle
+		add(n, "page", str(pg.Name))
+		add(n, "hidden", valueNode(true))
+		pages.Content = append(pages.Content, n)
 	}
-	add(root, "rules", rules)
-	if p.Fallback != "" {
-		add(root, "fallback", str(p.Fallback))
+	add(root, "pages", pages)
+	if mode := p.Mode(); mode != RefreshCurrent {
+		add(root, "on_refresh", str(string(mode)))
+	}
+	switch {
+	case len(p.Refresh.Windows) > 0:
+		n := newMap()
+		if p.Refresh.Default != 0 {
+			add(n, "default", str(duration.Text(time.Duration(p.Refresh.Default))))
+		}
+		windows := newSeq(false)
+		for _, w := range p.Refresh.Windows {
+			wn := newMap()
+			wn.Style = yaml.FlowStyle
+			add(wn, "from", quoted(clockString(w.From)))
+			add(wn, "to", quoted(clockString(w.To)))
+			add(wn, "interval", str(duration.Text(time.Duration(w.Interval))))
+			windows.Content = append(windows.Content, wn)
+		}
+		add(n, "windows", windows)
+		add(root, "refresh", n)
+	case p.Refresh.Default != 0:
+		add(root, "refresh", str(duration.Text(time.Duration(p.Refresh.Default))))
+	}
+	if len(p.Triggers) > 0 {
+		triggers := newSeq(false)
+		for _, t := range p.Triggers {
+			n := newMap()
+			add(n, "when", conditionsNode(t.When))
+			add(n, "page", str(t.Page))
+			if t.Alert != AlertNever {
+				add(n, "alert", str(string(t.Alert)))
+			}
+			triggers.Content = append(triggers.Content, n)
+		}
+		add(root, "triggers", triggers)
 	}
 	if len(p.Actions) > 0 {
 		actions := newSeq(false)
@@ -70,49 +91,23 @@ func Encode(p *Plan) ([]byte, error) {
 	return marshalNode(root)
 }
 
-// whenNode writes a time window, e.g. {from: "06:00", to: "09:00", days: [mon, tue]}.
-func whenNode(w *When) *yaml.Node {
-	n := newMap()
-	n.Style = yaml.FlowStyle
-	if w.From != nil && w.To != nil {
-		add(n, "from", quoted(clockString(*w.From)))
-		add(n, "to", quoted(clockString(*w.To)))
-	}
-	if len(w.Days) > 0 {
-		days := newSeq(true)
-		for _, d := range w.Days {
-			days.Content = append(days.Content, str(dayString(time.Weekday(d))))
+// conditionsNode writes the condition list in flow style. Each condition
+// writes its own form in MarshalYAML.
+func conditionsNode(conds Conditions) *yaml.Node {
+	list := newSeq(true)
+	for i := range conds {
+		node, err := conds[i].MarshalYAML()
+		if err != nil {
+			continue // the plan was validated before Encode
 		}
-		add(n, "days", days)
-	}
-	if len(w.Conditions) > 0 {
-		conds := newSeq(false)
-		for _, cond := range w.Conditions {
-			n := newMap()
-			n.Style = yaml.FlowStyle
-			add(n, "value", str(cond.Value))
-			if len(cond.Is) == 1 {
-				add(n, "is", str(cond.Is[0]))
-			} else {
-				is := newSeq(true)
-				for _, key := range cond.Is {
-					is.Content = append(is.Content, str(key))
-				}
-				add(n, "is", is)
-			}
-			conds.Content = append(conds.Content, n)
+		n, ok := node.(*yaml.Node)
+		if !ok {
+			continue
 		}
-		add(n, "conditions", conds)
+		list.Content = append(list.Content, n)
 	}
-	return n
+	return list
 }
-
-func clockString(c Clock) string { return fmt.Sprintf("%02d:%02d", int(c)/60, int(c)%60) }
-
-// dayShort lists the weekday names Encode writes, indexed like time.Weekday.
-var dayShort = [...]string{"sun", "mon", "tue", "wed", "thu", "fri", "sat"}
-
-func dayString(d time.Weekday) string { return dayShort[int(d)%7] }
 
 // ---- JSON marshalling for the editor API (ADR 0066) ----
 
@@ -128,21 +123,6 @@ func (c *Clock) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	*c = clock
-	return nil
-}
-
-func (d Day) MarshalJSON() ([]byte, error) { return json.Marshal(dayString(time.Weekday(d))) }
-
-func (d *Day) UnmarshalJSON(b []byte) error {
-	var s string
-	if err := json.Unmarshal(b, &s); err != nil {
-		return fmt.Errorf("expected a weekday such as \"mo\" or \"mon\"")
-	}
-	wd, ok := dayNames[strings.ToLower(s)]
-	if !ok {
-		return fmt.Errorf("unknown weekday %q", s)
-	}
-	*d = Day(wd)
 	return nil
 }
 

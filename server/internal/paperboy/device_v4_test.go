@@ -44,7 +44,7 @@ func TestSyncEventIDsAreDeduplicated(t *testing.T) {
 	}
 	// A retry may also bundle the event with the next one.
 	out = sendEvents(t, s, dev, "button", next, syncEvent{ID: 2, Type: "button", Button: buttonNext})
-	if st := s.state["AABBCCDDEE01"]; st.Page != 0 || st.LastEventID != 2 {
+	if st := s.state["AABBCCDDEE01"]; st.Page != 2 || st.LastEventID != 2 {
 		t.Fatalf("second press: %+v", st)
 	}
 	if out["wake"] != nil {
@@ -52,7 +52,7 @@ func TestSyncEventIDsAreDeduplicated(t *testing.T) {
 	}
 	// An event without an ID is applied as before.
 	sendEvents(t, s, dev, "button", syncEvent{Type: "button", Button: buttonNext})
-	if st := s.state["AABBCCDDEE01"]; st.Page != 1 {
+	if st := s.state["AABBCCDDEE01"]; st.Page != 3 {
 		t.Fatalf("legacy event: %+v", st)
 	}
 	// A power cycle restarts the firmware's counter, so the server forgets the

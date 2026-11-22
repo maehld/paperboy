@@ -116,43 +116,61 @@ The page editor places the same boxes on the board. Drag moves a box and its edg
 
 ## Which page a device gets
 
-A plan is `plans/<name>.yaml` ([ADR 0025](../adr/0025-plaene-je-display.md), [0127](../adr/0127-plan-conditions-are-values.md)):
+A plan is `plans/<name>.yaml` ([ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md)). It has an ordered page list, a refresh schedule, ordered triggers and the actions of the device menu.
 
 ```yaml
-rules:
-  - name: tag
-    when:
-      from: "06:00"
-      to: "22:00"
-      days: [mo, tu, we, th, fr]
-      conditions: [{ value: dexcom/state, is: [low, urgent] }]
-    pages: [morning, work]
-    on_refresh: cycle
-    refresh: 30m
+pages:
+  - energie
+  - prusa
+  - wetter
+  - { page: zucker, hidden: true }
+
+on_refresh: cycle
+refresh:
+  default: 1h
+  windows:
+    - { from: "07:00", to: "22:00", interval: 10m }
+
+triggers:
+  - when: [{ value: github/state, is: [failing] }]
+    page: zucker
     alert: refresh
-fallback: nacht
+  - when:
+      - { value: weekday, is: [mon, tue, wed, thu, fri] }
+      - { value: time, from: "06:00", to: "09:00" }
+    page: prusa
+
 actions:
   - action: evcc/mode
     args: {loadpoint: 1, mode: pv}
 ```
 
-Rules are tried in order and the first match wins:
+`pages` is the rotation, in order. An entry is a page name or `{page: <name>, hidden: true}`. A hidden page is not in the rotation; only a trigger shows it. At least one page is visible.
 
-- `from` is inclusive, `to` is exclusive. A window that crosses midnight belongs to its start day.
-- `days` accepts German and English day names.
-- `conditions` entries all match (AND). Each entry names a value `plugin/value` and `is`, one key or a list of keys. The keys within one entry are alternatives (OR). A missing value, a failing plugin and an unknown key do not match. A condition never creates a boundary: only time windows do ([ADR 0127](../adr/0127-plan-conditions-are-values.md)).
-- The old condition string `plugin/condition` is rejected with a hint that shows the value form.
-- `timezone` inside a plan is rejected; the global `timezone` applies ([ADR 0033](../adr/0033-global-language-and-timezone.md)). `when.data` of version 1 is rejected with a hint that names `when.conditions`.
+`on_refresh` decides what a timed refresh shows: `cycle` (the next page), `first` (the first page) or `current` (the same page), default `current`. A button press and a sync without a timer do not page on their own. A page that leaves the list is resolved by the mode. `cycle` takes the next page at its declared position, `first` the first page and `current` the page a trigger displaced. An edit keeps the device on its page by name ([ADR 0133](../adr/0133-the-page-cursor-holds-the-page.md)).
 
-A rule lists `pages`, `on_refresh` (what a timed refresh shows) and `refresh` (seconds until the next sync). `on_refresh` is `cycle` (the next page), `first` (the first page) or `current` (the same page), default `current`. A rule change always starts at the first page ([ADR 0130](../adr/0130-what-a-plan-refresh-does.md)). An edit of the page list keeps the device on its page ([ADR 0133](../adr/0133-the-page-cursor-holds-the-page.md)). `UntilNextBoundary` caps the refresh at the next rule change. `fallback` holds the pages of a device whose no rule matches.
+`refresh` is the interval outside its windows. `default` falls back to the interval of the device. A window has `from`, `to` and `interval`. `from` is inclusive and `to` exclusive; a later `to` than `from` crosses midnight. Windows must not overlap. The next edge caps the sleep, so the device changes its interval on time.
 
-`alert` asks the device to signal ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). `once` alerts in the sync that starts the rule. `refresh` alerts at the start and on every timed refresh, so a low glucose value reminds at every refresh. A rule without the key stays quiet. The device decides what an alert is: a beep, a blink or both.
+`triggers` are tried in order and the first match wins. A trigger has `when` conditions, a `page` that must be in `pages`, and an optional `alert`. The page of the first matching trigger that fits the display type is delivered on every sync without button input. A button sync pages the extended list: the visible pages plus the page of the active trigger. A trigger re-asserts at the next sync without input. A trigger whose page does not fit is skipped, and the next matching trigger may apply.
 
-A page of a rule that does not fit the device's display type is skipped. That is no file for the type, the other kind, or a text page whose boxes do not fit the character grid. The file the page names decides; a type that names no variant is served by the page file. The skip is logged once per display type, page and reason. No fitting page at all gives a notice page. A broken page is shown as a notice, not skipped. A render that panics is logged with its stack and answered with a notice page.
+A condition tests a value:
+
+- An enum value of a plugin answers one of the keys in `is`. A missing value, a failing plugin and an unknown key do not match.
+- `weekday` is an enum of the plan with the keys `mon … sun`.
+- `time` takes a window of the day in `from` and `to`.
+- `date` takes a range of local days in `from` and `to`. Without `to` it is the single day of `from`.
+
+Every condition of a trigger must match (AND). The keys within `is` are alternatives (OR). `weekday`, `time` and `date` are built into the plan and evaluated from the local moment, so they need no plugin. The plan's names are bare; `paperboy/time` and `paperboy/date` stay values of a text page. A trigger needs at least one condition.
+
+A trigger lifts the hidden flag of its page while it holds. Its page keeps the declared place in the extended list. When the trigger ends, the page is hidden again and the cursor is resolved by `on_refresh`. A visible trigger page stays where it is.
+
+`alert` asks the device to signal ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). `once` alerts in the sync that starts the trigger. `refresh` alerts at the start and on every sync without button input while it holds, so a low glucose value reminds each time. A trigger without the key stays quiet. The device decides what an alert is: a beep, a blink or both.
+
+A page that does not fit the device's display type is skipped. That is no file for the type, the other kind, or a text page whose boxes do not fit the character grid. The file the page names decides; a type that names no variant is served by the page file. The skip is logged once per display type, page and reason. No fitting page at all gives a notice page. A broken page is shown as a notice, not skipped. A render that panics is logged with its stack and answered with a notice page.
 
 A broken entry costs one display type, not the page ([ADR 0110](../adr/0110-pages-serve-their-kind-and-name-variants.md)). An entry for a type that no longer exists is unused: the file stays and Paperboy writes no log line. A variant file that no entry names is unused too.
 
-Paperboy caches a parsed page by its modification time, so an edit applies with the next sync.
+The pages of a plan are static, so every page and the values of every trigger are warm. A trigger page is not cold. Paperboy caches a parsed page by its modification time, so an edit applies with the next sync.
 
 ## Actions
 
@@ -165,9 +183,9 @@ A plan lists the actions that the device menu offers ([ADR 0057](../adr/0057-plu
 | `title` | Optional title in the menu; by default the action names itself |
 | `id` | Optional plan-local identity |
 
-The identity of an action is its `id`, or `plugin/action` when no `id` is set. As soon as the same action appears twice in a plan, every entry needs its own `id`. Exact duplicates of action and args are rejected. `actions` on a rule or on a page is rejected with a hint: actions belong to the plan.
+The identity of an action is its `id`, or `plugin/action` when no `id` is set. As soon as the same action appears twice in a plan, every entry needs its own `id`. Exact duplicates of action and args are rejected. `actions` on a trigger or on a page is rejected with a hint: actions belong to the plan.
 
-Every rule carries the same action list, so the menu offers the same actions at any time of day.
+The plan carries one action list, so the menu offers the same actions at any time of day.
 
 ## The device menu
 
@@ -199,7 +217,7 @@ stateDiagram-v2
 - With `touch: true`, a smaller control strip sits beneath them: `<` and `>` while the list has more than one page, and `X`. The strip is drawn as controls, not as action cells.
 - `next` and `previous` move the selection. `home` runs the selected action. A long `home` closes the menu and keeps the page. In the strip, `next` past the last action selects `X`, and `home` closes.
 - Long presses inside the menu are ignored. Page changes pause while it is open.
-- With the menu closed, a long `next` or `previous` jumps to the first page of the rule. The server decides this at 700 ms; the firmware only reports `hold_ms`.
+- With the menu closed, a long `next` or `previous` jumps to the first page of the plan. The server decides this at 700 ms; the firmware only reports `hold_ms`.
 
 Paperboy resolves the actions when the menu opens: one `describe` per plugin plus one `actions` request. It caches the answer in `menuState` in the device's state file. The entry keeps the phase (`list`, `confirm`, `running`, `result`), the selection by identity, the offset, the session and the confirmation hash.
 
@@ -226,4 +244,4 @@ On a text page the built-in plugin provides four values. `title` is the page tit
 
 ## Decisions
 
-[ADR 0025](../adr/0025-plaene-je-display.md) (plans) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md) (the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) · [0130](../adr/0130-what-a-plan-refresh-does.md) (what a refresh does) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (a rule alerts)
+[ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md) (plans, refresh windows, triggers) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md) (the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) · [0130](../adr/0130-what-a-plan-refresh-does.md) (what a refresh does), [0133](../adr/0133-the-page-cursor-holds-the-page.md) (the page cursor) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (a trigger alerts)

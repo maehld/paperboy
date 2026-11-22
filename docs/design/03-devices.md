@@ -115,7 +115,7 @@ Events are applied in order before the page is chosen. `previous` wraps. Touches
 
 `readings` carries a bare number per name. Paperboy discards a name its catalog does not know, a reading without a value and a value outside the sensor range. Such a reading never fails the sync, so a broken sensor cannot cost the device its page ([ADR 0134](../adr/0134-readings-from-the-device.md)).
 
-The answer carries `image` with a relative `path` and its `hash`, `refresh_s`, `wake` with `reason` and `after_s`, `listen_s`, `sleep` and `time`. It also carries `rotation` when it is not 0. A plan rule that wants the device to signal sets `beep` and `blink` ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). A manual alert of the operator takes the same path ([ADR 0142](../adr/0142-a-manual-alert-waits-for-the-next-sync.md)). The answer carries the firmware offer of [ADR 0043](../adr/0043-firmware-distribution.md) or `null`.
+The answer carries `image` with a relative `path` and its `hash`, `refresh_s`, `wake` with `reason` and `after_s`, `listen_s`, `sleep` and `time`. It also carries `rotation` when it is not 0. A trigger with an alert asks the device to signal with `beep` and `blink` ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). A manual alert of the operator takes the same path ([ADR 0142](../adr/0142-a-manual-alert-waits-for-the-next-sync.md)). The answer carries the firmware offer of [ADR 0043](../adr/0043-firmware-distribution.md) or `null`.
 
 ## Timing
 
@@ -126,19 +126,19 @@ The refresh has a floor per power source ([ADR 0051](../adr/0051-power-source-re
 
 A device's `refresh` may go down to one second and is clamped at runtime. `sleep: false` tells a mains device to stay awake and sync again after `refresh_s`.
 
-`refresh_s` is the sleep until the next sync, and a timer sync lands on the grid of its interval ([ADR 0129](../adr/0129-align-timer-syncs.md)). Ten minutes give :00, :10 and :20 in the instance timezone. The device paints before it sleeps, so it syncs a few seconds after the slot. A plan boundary caps the sleep; that cap wins and is not stretched, and the next sync aligns again. A slot closer than the floor is skipped, and a slot is never in the past. The grid counts from local midnight, so an interval that does not divide the hour walks through the clock.
+`refresh_s` is the sleep until the next sync, and a timer sync lands on the grid of its interval ([ADR 0129](../adr/0129-align-timer-syncs.md)). Ten minutes give :00, :10 and :20 in the instance timezone. The device paints before it sleeps, so it syncs a few seconds after the slot. A refresh window edge or a trigger edge caps the sleep; that cap wins and is not stretched, and the next sync aligns again. A slot closer than the floor is skipped, and a slot is never in the past. The grid counts from local midnight, so an interval that does not divide the hour walks through the clock.
 
 `listen_s` is 0 for a timer wake and 20 seconds after input, so the firmware can wait for the next press without registering again. While a menu is open, `listen_s` shortens so that `listen_s` plus `wake.after_s` cover the time left until the menu expires ([ADR 0078](../adr/0078-the-menu-stays-open-while-it-is-used.md)).
 
 `wake` is a one-shot next wake: the menu deadline or an action result. The firmware uses it once and goes back to its normal cycle.
 
-A rule's `on_refresh` decides what a timed refresh shows; a rule change starts at the first page ([ADR 0130](../adr/0130-what-a-plan-refresh-does.md)). An edit of the plan keeps the device on its page: the cursor holds the page name ([ADR 0133](../adr/0133-the-page-cursor-holds-the-page.md)). A page the rule lost starts the rule at its first page.
+The plan's `on_refresh` decides what a timed refresh shows ([ADR 0130](../adr/0130-what-a-plan-refresh-does.md)). A button press pages the extended list: the visible pages plus the page of the active trigger. An edit keeps the device on its page: the cursor holds the page name ([ADR 0133](../adr/0133-the-page-cursor-holds-the-page.md)). A page that leaves the list is resolved by the mode. `cycle` takes the next page at its declared position, `first` the first page and `current` the page a trigger displaced ([ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md)).
 
 ## State
 
 `state/devices/<MAC>.json` holds everything the service knows about a device ([ADR 0080](../adr/0080-device-state-per-mac.md)):
 
-- the page cursor: the index, the page name it holds ([ADR 0133](../adr/0133-the-page-cursor-holds-the-page.md)) and the rule it came from
+- the page cursor: the index, the page name it holds ([ADR 0133](../adr/0133-the-page-cursor-holds-the-page.md)) and the active trigger
 - the last battery reading, the last charging episode and the hourly battery samples of the last week
 - the last value of every reading, with the time it was taken
 - the menu, with its phase, selection, session and confirmation hash

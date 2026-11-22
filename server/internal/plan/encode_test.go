@@ -36,7 +36,10 @@ func TestEncodeExamplesRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("reparse: %v\n%s", err, data)
 			}
-			if !reflect.DeepEqual(want.Rules, got.Rules) || want.Fallback != got.Fallback ||
+			if !reflect.DeepEqual(want.Pages, got.Pages) ||
+				!reflect.DeepEqual(want.Refresh, got.Refresh) ||
+				!reflect.DeepEqual(want.Triggers, got.Triggers) ||
+				want.Mode() != got.Mode() ||
 				!reflect.DeepEqual(want.Actions, got.Actions) {
 				t.Fatalf("round trip changed the plan\nwant %+v\ngot  %+v\nyaml:\n%s", want, got, data)
 			}
@@ -44,24 +47,20 @@ func TestEncodeExamplesRoundTrip(t *testing.T) {
 	}
 }
 
-// TestEncodeKeepsPlanLayout verifies the readable layout of a rule.
+// TestEncodeKeepsPlanLayout verifies the readable layout of the sample plan.
 func TestEncodeKeepsPlanLayout(t *testing.T) {
-	p, err := Parse(strings.NewReader(examplePlan), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	p := parse(t, samplePlan)
 	data, err := Encode(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	out := string(data)
 	for _, want := range []string{
-		"  - name: morning\n",
-		`    when: {from: "06:00", to: "09:00", days: [mon, tue]}`,
-		"    pages: [home, week]\n",
-		"    on_refresh: cycle\n",
-		"    refresh: 5m\n",
-		"fallback: evening\n",
+		"pages:\n  - energie\n  - prusa\n  - wetter\n  - {page: zucker, hidden: true}\n",
+		"on_refresh: cycle\n",
+		"refresh:\n  default: 1h\n",
+		`    - {from: "08:00", to: "16:00", interval: 10m}`,
+		"triggers:\n  - when: [{value: dexcom/state, is: [low, urgent]}]\n    page: zucker\n    alert: refresh\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
@@ -69,55 +68,18 @@ func TestEncodeKeepsPlanLayout(t *testing.T) {
 	}
 }
 
-const examplePlan = `
-rules:
-  - name: morning
-    when: { from: "06:00", to: "09:00", days: [mon, tue] }
-    pages: [home, week]
-    on_refresh: cycle
-    refresh: 5m
-  - name: evening
-    pages: [home]
-fallback: evening
-`
-
-// TestEncodeWritesOnRefresh verifies that the old rotate key never reaches a
-// file again (ADR 0130).
-func TestEncodeWritesOnRefresh(t *testing.T) {
-	p := parse(t, "rules: [{name: a, pages: [x], rotate: true}]")
-	data, err := Encode(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), "on_refresh: cycle\n") || strings.Contains(string(data), "rotate:") {
-		t.Fatalf("layout:\n%s", data)
-	}
-}
-
-// TestPlanJSONShowsTheOldRotate verifies that the editor sees the effective
-// mode of an old plan and that the API still accepts the key (ADR 0130).
-func TestPlanJSONShowsTheOldRotate(t *testing.T) {
-	p := parse(t, "rules: [{name: a, pages: [x], rotate: true}]")
-	data, err := json.Marshal(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), `"rotate":true`) {
-		t.Fatalf("json: %s", data)
-	}
-	var got Plan
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.Rules[0].Mode() != RefreshCycle {
-		t.Fatalf("mode: %q", got.Rules[0].Mode())
-	}
-}
-
 // TestEncodeWritesAlert verifies that the mode reaches the file, that a quiet
-// rule writes no key and that the editor API round-trips it (ADR 0131).
+// trigger writes no key and that the editor API round-trips it (ADR 0131).
 func TestEncodeWritesAlert(t *testing.T) {
-	p := parse(t, "rules: [{name: a, pages: [x], alert: refresh}, {name: b, pages: [x]}]")
+	p := parse(t, `
+pages: [x]
+triggers:
+  - when: {value: a/b, is: ok}
+    page: x
+    alert: refresh
+  - when: {value: a/b, is: no}
+    page: x
+`)
 	data, err := Encode(p)
 	if err != nil {
 		t.Fatal(err)
@@ -136,21 +98,27 @@ func TestEncodeWritesAlert(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Rules[0].Alert != AlertRefresh || got.Rules[1].Alert != AlertNever {
-		t.Fatalf("round trip: %+v", got.Rules)
+	if got.Triggers[0].Alert != AlertRefresh || got.Triggers[1].Alert != AlertNever {
+		t.Fatalf("round trip: %+v", got.Triggers)
 	}
 }
 
 // TestEncodeRejectsInvalidPlan verifies that invalid plans never reach a file.
 func TestEncodeRejectsInvalidPlan(t *testing.T) {
 	for name, p := range map[string]*Plan{
-		"no rules":         {Fallback: "home"},
-		"bad name":         {Rules: []Rule{{Name: "Bad", Pages: []string{"home"}}}},
-		"duplicate page":   {Rules: []Rule{{Name: "a", Pages: []string{"home", "home"}}}},
-		"bad refresh mode": {Rules: []Rule{{Name: "a", Pages: []string{"home"}, OnRefresh: "rotate"}}},
-		"bad alert mode":   {Rules: []Rule{{Name: "a", Pages: []string{"home"}, Alert: "sometimes"}}},
-		"half window":      {Rules: []Rule{{Name: "a", Pages: []string{"home"}, When: When{From: clock(600)}}}},
-		"unknown fallback": {Rules: []Rule{{Name: "a", Pages: []string{"home"}}}, Fallback: "nope"},
+		"no pages":         {},
+		"all hidden":       {Pages: []Page{{Name: "home", Hidden: true}}},
+		"bad name":         {Pages: []Page{{Name: "Bad"}}},
+		"duplicate page":   {Pages: []Page{{Name: "home"}, {Name: "home"}}},
+		"bad refresh mode": {Pages: []Page{{Name: "home"}}, OnRefresh: "rotate"},
+		"bad alert mode": {Pages: []Page{{Name: "home"}},
+			Triggers: []Trigger{{When: Conditions{{Value: "a/b", Is: []string{"ok"}}}, Page: "home", Alert: "sometimes"}}},
+		"missing trigger page": {Pages: []Page{{Name: "home"}},
+			Triggers: []Trigger{{When: Conditions{{Value: "a/b", Is: []string{"ok"}}}}}},
+		"overlapping windows": {Pages: []Page{{Name: "home"}}, Refresh: Refresh{Windows: []Window{
+			{From: Clock(8 * 60), To: Clock(16 * 60), Interval: Duration(time.Minute)},
+			{From: Clock(12 * 60), To: Clock(18 * 60), Interval: Duration(time.Minute)},
+		}}},
 	} {
 		if _, err := Encode(p); err == nil {
 			t.Fatalf("%s: expected an error", name)
@@ -158,16 +126,14 @@ func TestEncodeRejectsInvalidPlan(t *testing.T) {
 	}
 }
 
-func clock(minutes int) *Clock { c := Clock(minutes); return &c }
-
-// TestEncodeConditions verifies the written form and the JSON model of value
+// TestEncodeConditions verifies the written form and the JSON model of trigger
 // conditions (ADR 0127): one key as a scalar, several as a list.
 func TestEncodeConditions(t *testing.T) {
 	p := parse(t, `
-rules:
-  - name: zucker
-    when: { conditions: [{value: dexcom/state, is: [low, urgent]}, {value: weather/sky, is: rain}] }
-    pages: [zucker]
+pages: [zucker]
+triggers:
+  - when: [{value: dexcom/state, is: [low, urgent]}, {value: weather/sky, is: rain}]
+    page: zucker
 `)
 	data, err := Encode(p)
 	if err != nil {
@@ -181,37 +147,38 @@ rules:
 	if err != nil {
 		t.Fatalf("reparse: %v\n%s", err, data)
 	}
-	if !reflect.DeepEqual(p.Rules, again.Rules) {
-		t.Fatalf("round trip changed the plan\nwant %+v\ngot  %+v", p.Rules, again.Rules)
+	if !reflect.DeepEqual(p.Triggers, again.Triggers) {
+		t.Fatalf("round trip changed the plan\nwant %+v\ngot  %+v", p.Triggers, again.Triggers)
 	}
 	j, err := json.Marshal(p)
-	if err != nil || !strings.Contains(string(j), `"conditions":[{"value":"dexcom/state","is":["low","urgent"]},{"value":"weather/sky","is":"rain"}]`) {
+	if err != nil || !strings.Contains(string(j), `"when":[{"value":"dexcom/state","is":["low","urgent"]},{"value":"weather/sky","is":"rain"}]`) {
 		t.Fatalf("json: %s %v", j, err)
 	}
-	// The editor API accepts both shapes back.
+	// The editor API accepts one condition as an object and several as a list.
 	var back Plan
-	if err := json.Unmarshal([]byte(`{"rules":[{"name":"a","pages":["x"],"when":{"conditions":[{"value":"d/s","is":"low"},{"value":"w/s","is":["rain","snow"]}]}}]}`), &back); err != nil {
+	if err := json.Unmarshal([]byte(`{"pages":["x"],"triggers":[{"page":"x","when":{"value":"d/s","is":"low"}},{"page":"x","when":[{"value":"d/s","is":"low"},{"value":"w/s","is":["rain","snow"]}]}]}`), &back); err != nil {
 		t.Fatal(err)
 	}
-	if len(back.Rules[0].When.Conditions) != 2 || len(back.Rules[0].When.Conditions[0].Is) != 1 ||
-		len(back.Rules[0].When.Conditions[1].Is) != 2 {
-		t.Fatalf("json conditions: %+v", back.Rules[0].When.Conditions)
+	if len(back.Triggers[0].When) != 1 || len(back.Triggers[1].When) != 2 || len(back.Triggers[1].When[1].Is) != 2 {
+		t.Fatalf("json conditions: %+v", back.Triggers)
 	}
 }
 
-// TestPlanJSONRoundTrip verifies the JSON model the editor API uses: clocks
-// and weekdays keep their written form, and the result encodes to the same
-// plan file.
+// TestPlanJSONRoundTrip verifies the JSON model the editor API uses: clocks keep
+// their written form, a page with and without hidden keeps its shape, and the
+// result encodes to the same plan file.
 func TestPlanJSONRoundTrip(t *testing.T) {
-	p, err := Parse(strings.NewReader(examplePlan), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	p := parse(t, samplePlan)
 	data, err := json.Marshal(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"from":"06:00"`, `"days":["mon","tue"]`, `"refresh":"5m"`} {
+	for _, want := range []string{
+		`"pages":["energie","prusa","wetter",{"page":"zucker","hidden":true}]`,
+		`"from":"08:00"`,
+		`"default":"1h"`,
+		`"on_refresh":"cycle"`,
+	} {
 		if !strings.Contains(string(data), want) {
 			t.Fatalf("missing %s in %s", want, data)
 		}
@@ -220,8 +187,9 @@ func TestPlanJSONRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(p.Rules, got.Rules) || p.Fallback != got.Fallback {
-		t.Fatalf("JSON round trip changed the plan\nwant %+v\ngot  %+v", p.Rules, got.Rules)
+	if !reflect.DeepEqual(p.Pages, got.Pages) || !reflect.DeepEqual(p.Triggers, got.Triggers) ||
+		!reflect.DeepEqual(p.Refresh, got.Refresh) || p.Mode() != got.Mode() {
+		t.Fatalf("JSON round trip changed the plan\nwant %+v\ngot  %+v", p, got)
 	}
 	yamlData, err := Encode(&got)
 	if err != nil {
@@ -231,22 +199,25 @@ func TestPlanJSONRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reparse: %v\n%s", err, yamlData)
 	}
-	if !reflect.DeepEqual(p.Rules, again.Rules) {
-		t.Fatalf("plan changed\nwant %+v\ngot  %+v", p.Rules, again.Rules)
+	if !reflect.DeepEqual(p.Pages, again.Pages) || !reflect.DeepEqual(p.Triggers, again.Triggers) {
+		t.Fatalf("plan changed\nwant %+v\ngot  %+v", p, again)
 	}
 }
 
-// TestDayJSONAcceptsNames verifies that the editor may send the weekday names
-// operators know from the YAML files.
-func TestDayJSONAcceptsNames(t *testing.T) {
-	var d Day
-	if err := json.Unmarshal([]byte(`"monday"`), &d); err != nil || time.Weekday(d) != time.Monday {
-		t.Fatalf("monday: %v %v", d, err)
+// TestRefreshJSONAcceptsBothForms verifies the scalar and the map form the
+// editor may send.
+func TestRefreshJSONAcceptsBothForms(t *testing.T) {
+	var r Refresh
+	if err := json.Unmarshal([]byte(`"10m"`), &r); err != nil || r.Default != Duration(10*time.Minute) || len(r.Windows) != 0 {
+		t.Fatalf("scalar: %+v %v", r, err)
 	}
-	if err := json.Unmarshal([]byte(`"Mon"`), &d); err != nil || time.Weekday(d) != time.Monday {
-		t.Fatalf("Mon: %v %v", d, err)
+	if err := json.Unmarshal([]byte(`{"default":"1h","windows":[{"from":"08:00","to":"16:00","interval":"10m"}]}`), &r); err != nil {
+		t.Fatal(err)
 	}
-	if err := json.Unmarshal([]byte(`"noday"`), &d); err == nil {
-		t.Fatal("unknown weekday accepted")
+	if r.Default != Duration(time.Hour) || len(r.Windows) != 1 || r.Windows[0].Interval != Duration(10*time.Minute) {
+		t.Fatalf("map: %+v", r)
+	}
+	if err := json.Unmarshal([]byte(`{"default":"1h","x":1}`), &r); err == nil {
+		t.Fatal("unknown key accepted")
 	}
 }

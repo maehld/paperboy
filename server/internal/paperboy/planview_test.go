@@ -8,10 +8,10 @@ import (
 	"testing"
 )
 
-// TestPlanViewShowsActiveRule checks that the plan view marks the rule that
-// applies now or at a chosen time, names the next change and previews the
-// pages without touching the device state.
-func TestPlanViewShowsActiveRule(t *testing.T) {
+// TestPlanViewShowsPagesAndInterval checks that the plan view names the
+// effective interval, the next window edge and previews every page without
+// touching the device state.
+func TestPlanViewShowsPagesAndInterval(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	dev := planDevice(t, s)
 	displayPage(t, s, dev)
@@ -25,11 +25,11 @@ func TestPlanViewShowsActiveRule(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		"rule <strong>morgen</strong>",
-		`<section class="rule active">` + "\n  <h2>morgen",
-		"next change Wed 09:00 → tag",
+		"refresh <strong>every 5 min</strong>",
+		"next change Wed 19:00 → every 30 min",
 		"/api/preview/small/eins?at=2026-10-21T08%3A00&amp;device=test",
-		"07:00–09:00",
+		"alarm",
+		"hidden",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("plan view misses %q: %s", want, body)
@@ -37,14 +37,14 @@ func TestPlanViewShowsActiveRule(t *testing.T) {
 	}
 
 	body = htmlRequest(t, s, "/ui/devices/test/plan?at=2026-10-21T20%3A30").Body.String()
-	if !strings.Contains(body, "rule <strong>nacht</strong>") || !strings.Contains(body, "next change Thu 07:00 → morgen") {
+	if !strings.Contains(body, "refresh <strong>every 30 min</strong>") || !strings.Contains(body, "next change Thu 07:00 → every 5 min") {
 		t.Fatalf("plan view at 20:30: %s", body)
 	}
 
 	s.mu.Lock()
 	after := *s.state["AABBCCDDEE01"]
 	s.mu.Unlock()
-	if after.Rule != before.Rule || after.Page != before.Page || after.LastSeen != before.LastSeen {
+	if after.Trigger != before.Trigger || after.Page != before.Page || after.PageName != before.PageName || after.LastSeen != before.LastSeen {
 		t.Fatalf("plan view changed the device state: %+v -> %+v", before, after)
 	}
 
@@ -56,31 +56,30 @@ func TestPlanViewShowsActiveRule(t *testing.T) {
 	}
 }
 
-// TestPlanViewFallback marks a rule that only applies as the fallback.
-func TestPlanViewFallback(t *testing.T) {
-	s, _ := planServer(t, `
-rules:
-  - name: morgen
-    when: { from: "07:00", to: "08:00" }
-    pages: [eins]
-  - name: rest
-    when: { days: [sa] }
-    pages: [zwei]
-fallback: rest
-`)
+// TestPlanViewShowsTrigger marks the page a trigger shows and its condition.
+func TestPlanViewShowsTrigger(t *testing.T) {
+	s, _ := planServer(t, testPlan)
+	withTriggerValue(t, s, "low")
+	dev := planDevice(t, s)
+	displayPage(t, s, dev)
 	body := htmlRequest(t, s, "/ui/devices/test/plan").Body.String()
-	if !strings.Contains(body, "rule <strong>rest</strong> (fallback)") {
-		t.Fatalf("fallback not shown: %s", body)
+	for _, want := range []string{
+		"trigger <strong>alarm</strong>",
+		`<span class="badge active">triggered</span>`,
+		`<span class="badge active">active</span>`,
+		`<span class="badge match">matches</span>`,
+		"alert refresh",
+		"fake/state is low, urgent · now low",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("plan view misses %q: %s", want, body)
+		}
 	}
 }
 
 // TestPlanViewSkippedAndBrokenPages shows why a page is not drawn.
 func TestPlanViewSkippedAndBrokenPages(t *testing.T) {
-	s, _ := planServer(t, `
-rules:
-  - name: alles
-    pages: [eins, fehlt, kaputt]
-`)
+	s, _ := planServer(t, "pages: [eins, fehlt, kaputt]\n")
 	if err := os.WriteFile(filepath.Join(s.config().Pages, "kaputt.yaml"), []byte("kind: image\ngrid: [1, 1]\nnope: 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -97,25 +96,6 @@ rules:
 	}
 	if strings.Contains(body, "/api/preview/small/kaputt") || strings.Contains(body, "/api/preview/small/fehlt") {
 		t.Fatalf("skipped or broken pages must not be previewed: %s", body)
-	}
-}
-
-// TestPlanViewShowsAlert names the rule's alert mode in the preview.
-func TestPlanViewShowsAlert(t *testing.T) {
-	s, _ := planServer(t, `
-rules:
-  - name: alarm
-    pages: [eins]
-    alert: refresh
-  - name: ruhig
-    pages: [zwei]
-`)
-	body := htmlRequest(t, s, "/ui/devices/test/plan").Body.String()
-	if !strings.Contains(body, "· alert refresh") {
-		t.Fatalf("plan view misses the alert mode: %s", body)
-	}
-	if strings.Count(body, "alert ") != 1 {
-		t.Fatalf("a quiet rule must name no alert: %s", body)
 	}
 }
 

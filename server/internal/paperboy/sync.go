@@ -209,8 +209,8 @@ func (x *syncSession) apply() {
 			menuClosed = true
 		}
 		var acts []plan.PlanAction
-		if x.plan.selected {
-			acts = x.plan.selection.Actions
+		if x.plan.plan != nil {
+			acts = x.plan.plan.Actions
 		}
 		// Buttons of a wake that finds the menu open belong to the menu, even
 		// when they close it: dismissing a banner must not turn the page
@@ -500,7 +500,7 @@ func (x *syncSession) logSync() {
 	if x.served.pages > 1 {
 		attrs = append(attrs, "index", x.served.page, "pages", x.served.pages)
 	}
-	attrs = append(attrs, "rule", x.logged.Rule, "reason", req.Reason)
+	attrs = append(attrs, "trigger", x.logged.Trigger, "reason", req.Reason)
 	if x.alert {
 		attrs = append(attrs, "alert", x.alertSource)
 	}

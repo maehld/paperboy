@@ -153,9 +153,8 @@ type pageCoverageEntry struct {
 type editorPlanFile struct {
 	Name     string   `json:"name"`
 	Hash     string   `json:"hash"`
-	Rules    int      `json:"rules"`
-	Pages    []string `json:"pages,omitempty"` // pages the rules name, for the delete warning
-	Fallback string   `json:"fallback,omitempty"`
+	Pages    []string `json:"pages,omitempty"` // every page of the plan, for the delete warning
+	Triggers int      `json:"triggers,omitempty"`
 	Error    string   `json:"error,omitempty"`
 }
 
@@ -788,9 +787,9 @@ func planFiles(dir string, loc *time.Location) ([]editorPlanFile, error) {
 		if p, err := plan.Parse(bytes.NewReader(data), loc); err != nil {
 			f.Error = shortError(err)
 		} else {
-			f.Rules, f.Fallback = len(p.Rules), p.Fallback
-			for _, r := range p.Rules {
-				f.Pages = append(f.Pages, r.Pages...)
+			f.Triggers = len(p.Triggers)
+			for _, pg := range p.Pages {
+				f.Pages = append(f.Pages, pg.Name)
 			}
 		}
 		list = append(list, f)

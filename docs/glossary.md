@@ -23,13 +23,15 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **display type** | The kind of panel that pages fit: kind, size, gray levels, ppi or charset, power, rotation | display, panel, profile, device type |
 | **orphan** | A variant whose page file is missing, and a page that exists only as variants | stray file, leftover |
 | **device** | One panel with Paperboy's firmware, identified by MAC and one file under `devices/` | display, node, client, target |
-| **plan** | The rules that select the pages of one device over time | playlist, schedule |
-| **rule** | One entry of a plan: time window, days, value conditions, pages, `on_refresh`, refresh, `alert` | plan, entry |
-| **on_refresh** | What a timed refresh of a rule shows: `cycle`, `first` or `current`; a rule change always starts at the first page | rotate, paging mode |
-| **alert** | A signal through the device: a rule's `once` when the rule starts and `refresh` at the start and on every timed refresh, or a manual request that waits for the next sync; the device decides between beep, LED and backlight | alarm, tone, beep |
+| **plan** | The pages, the refresh schedule, the triggers and the actions of one device | playlist, schedule |
+| **hidden page** | A page of a plan that is not in the rotation; only a trigger shows it | disabled page, parked page |
+| **on_refresh** | What a timed refresh shows: `cycle`, `first` or `current`; it also resolves a page that left the list | rotate, paging mode |
+| **refresh window** | A part of the day with its own interval: `from`, `to` and `interval`; the next edge caps the sleep | slot, period |
+| **trigger** | One entry of a plan: conditions in `when`, a target page and an optional `alert`, in order | rule, alert rule |
+| **alert** | A signal through the device: a trigger's `once` when it starts and `refresh` on every sync without input while it holds, or a manual request that waits for the next sync; the device decides between beep, LED and backlight | alarm, tone, beep |
 | **alert_methods** | The methods a device may use for an alert: a list of `beep` and `blink`; omitted or empty = silent | outputs, signals |
-| **fallback** | The pages of a device whose no rule matches | default, base |
-| **condition** | A value condition of a rule: a `plugin/value` must answer one of the keys in `is` | predicate, expression, data blocker |
+| **condition** | One test of a trigger: an enum value with `is`, or the plan value `weekday`, `time` or `date` with its window or range | predicate, expression, data blocker |
+| **plan value** | `weekday`, `time` or `date`: a value the plan reads from the local moment, so a condition needs no plugin | built-in value |
 | **action** | Something a plugin can do on request, offered in the device menu | command, task, operation |
 | **menu** | The action overlay on a device, opened with `home` | overlay, dialog |
 | **notice page** | A full-screen page that tells the device why it got no page | hint, error page, message page |

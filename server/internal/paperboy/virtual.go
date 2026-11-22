@@ -99,7 +99,7 @@ func parseVirtualOptions(cfg *Config, q url.Values) (virtualOptions, int, error)
 	}
 	if _, ok := q["page_timeout"]; ok {
 		return virtualOptions{}, http.StatusBadRequest,
-			fmt.Errorf("page_timeout was removed: a plan rule decides with on_refresh (ADR 0130)")
+			fmt.Errorf("page_timeout was removed: the plan decides with on_refresh (ADR 0130)")
 	}
 	switch q.Get("power") {
 	case "":
@@ -206,7 +206,7 @@ func (s *Server) handleVirtualSync(w http.ResponseWriter, r *http.Request) {
 		resp.Image.Path = virtualImagePath(resp.Image.Path)
 	}
 	s.mu.Lock()
-	debug := virtualDebug{Rule: st.Rule, Page: st.Page, Pages: st.LastPages, PageName: st.LastPage,
+	debug := virtualDebug{Trigger: st.Trigger, Page: st.Page, Pages: st.LastPages, PageName: st.LastPage,
 		PageKind: st.LastPageKind, Error: st.LastError}
 	if st.Menu.Open {
 		debug.Menu = st.Menu.Phase
@@ -228,7 +228,7 @@ type virtualSyncResponse struct {
 // virtualDebug names the page selection a device only logs, so the virtual
 // display can show it.
 type virtualDebug struct {
-	Rule     string `json:"rule,omitempty"`
+	Trigger  string `json:"trigger,omitempty"`
 	Page     int    `json:"page"`
 	Pages    int    `json:"pages,omitempty"`
 	PageName string `json:"page_name,omitempty"`

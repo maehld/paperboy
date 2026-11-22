@@ -15,39 +15,44 @@ button.small { padding: .05rem .45rem; font-size: .8rem; line-height: 1.3; }
 .panel-head h3 { font-size: .95rem; margin: 0; }
 .panel-head button { margin-left: auto; }
 .panel h3 { font-size: .95rem; margin: 0 0 .4rem; }
-.hint { margin: .3rem 0 0; }
-label.field { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); gap: .3rem .5rem; align-items: center; font-size: .85rem; }
+.hint { margin: .3rem 0 .5rem; }
+label.field { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .3rem .5rem; align-items: center; font-size: .85rem; }
 label.field > span:first-child { color: var(--pb-ink-muted); }
 input, select { font: inherit; padding: .15rem .3rem; min-width: 0; width: 100%; }
 input[type=checkbox] { width: auto; }
-/* rules */
-.rule { border: 1px solid var(--pb-hairline); border-radius: 8px; padding: .6rem; margin-top: .6rem; background: var(--pb-surface-sunken); }
-.rule.shadowed { border-color: var(--pb-warn-border); background: var(--pb-warn-bg); }
-.rule-head { display: flex; align-items: center; gap: .4rem; margin-bottom: .4rem; }
-.rule-head .num { font-size: .8rem; color: var(--pb-ink-muted); font-variant-numeric: tabular-nums; }
-.rule-head .badge { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: .05rem .4rem; border-radius: 999px; border: 1px solid var(--pb-warn); color: var(--pb-warn); }
-.rule-head .buttons { margin-left: auto; display: flex; gap: .3rem; }
 .rule-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: .4rem .8rem; }
-label.field.wide { grid-column: 1 / -1; }
-.conditions { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
-.condition { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr) auto; gap: .3rem .5rem; align-items: center; }
-.condition .keys { display: flex; flex-wrap: wrap; gap: .15rem .5rem; align-items: center; }
-.condition .keys label { display: inline-flex; gap: .2rem; align-items: center; font-size: .8rem; }
-.condition .remove { padding: .05rem .4rem; border: 1px solid var(--pb-error-border); border-radius: 4px; background: var(--pb-error-bg); color: var(--pb-error); cursor: pointer; }
-.conditions > button { align-self: flex-start; }
+/* order rows */
+.entry { border: 1px solid var(--pb-hairline); border-radius: 8px; padding: .55rem .6rem; margin-top: .5rem; background: var(--pb-surface-sunken); }
+.entry-head { display: flex; align-items: center; gap: .4rem; margin-bottom: .35rem; }
+.entry-head .num { font-size: .8rem; color: var(--pb-ink-muted); font-variant-numeric: tabular-nums; }
+.entry-head .buttons { margin-left: auto; display: flex; gap: .3rem; }
+.entry-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: .35rem .7rem; }
+/* The page and the alert of a trigger need room for a page name. */
+.entry-grid.trigger-grid { grid-template-columns: minmax(14rem, 2fr) minmax(9rem, 1fr); }
 .days { display: flex; flex-wrap: wrap; gap: .35rem; font-size: .82rem; }
 .days label { display: flex; gap: .15rem; align-items: center; }
-.pages { margin: .5rem 0 0; display: flex; flex-direction: column; gap: .2rem; }
-.pages .empty { margin: 0; font-size: .82rem; color: var(--pb-ink-faint); }
-.page-row { display: flex; gap: .35rem; align-items: center; background: var(--pb-surface-sunken); border: 1px solid var(--pb-hairline); border-radius: 4px; padding: .1rem .35rem; font-size: .84rem; }
-/* The page name wins over its display types: they wrap to a second line
-   instead of squeezing the name to nothing on a narrow screen. */
+label.field.wide { grid-column: 1 / -1; }
+.page-row { display: flex; gap: .35rem; align-items: center; background: var(--pb-surface); border: 1px solid var(--pb-hairline); border-radius: 4px; padding: .1rem .35rem; font-size: .84rem; margin-top: .3rem; }
+.page-row.hidden { opacity: .62; }
 .page-row .labels { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .4rem; }
 .page-row .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .page-row .labels .muted { min-width: 0; font-size: .78rem; overflow-wrap: anywhere; }
 .page-row.missing { background: var(--pb-error-bg); border-color: var(--pb-error-border); }
-.add-page { display: flex; gap: .4rem; align-items: center; margin-top: .4rem; font-size: .84rem; }
-.add-page select { flex: 1; }
+.page-row .flag { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--pb-ink-muted); border: 1px solid var(--pb-hairline-strong); border-radius: 999px; padding: 0 .35rem; }
+.add-row { display: flex; gap: .4rem; align-items: center; margin-top: .45rem; font-size: .84rem; }
+.add-row select { flex: 1; }
+.conditions { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.condition { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(0, 2fr) auto; gap: .3rem .5rem; align-items: start; }
+.condition .fields { display: flex; flex-wrap: wrap; gap: .3rem .6rem; align-items: center; min-width: 0; }
+.condition .fields label { display: inline-flex; gap: .2rem; align-items: center; font-size: .8rem; }
+.condition .fields input[type=time] { width: auto; }
+.condition .fields .cond-time, .condition .fields .cond-dates { display: flex; flex-wrap: wrap; gap: .3rem .6rem; align-items: center; min-width: 0; }
+.condition .fields .cond-dates { flex: 1; }
+.condition .fields .cond-dates input { min-width: 12rem; }
+.condition .keys { display: flex; flex-wrap: wrap; gap: .15rem .5rem; align-items: center; }
+.condition .keys label { display: inline-flex; gap: .2rem; align-items: center; font-size: .8rem; }
+.condition .remove { padding: .05rem .4rem; border: 1px solid var(--pb-error-border); border-radius: 4px; background: var(--pb-error-bg); color: var(--pb-error); cursor: pointer; }
+.conditions > button { align-self: flex-start; }
 .warn { margin: .35rem 0 0; padding: .3rem .55rem; font-size: .8rem; background: var(--pb-warn-bg); border-left: 3px solid var(--pb-warn); }
 .warn ul { margin: 0; padding-left: 1rem; }
 .warn p { margin: 0; }
@@ -86,17 +91,40 @@ label.field.wide { grid-column: 1 / -1; }
   <div class="col">
     <section class="panel">
       <div class="panel-head">
-        <h3>Rules</h3>
-        <button id="add-rule" type="button">Add rule</button>
+        <h3>Pages</h3>
       </div>
-      <p class="hint">The first matching rule wins; a rule without from/to matches at any time. Pages are shown in this order, times are in {{.Timezone}}. A condition reads an enum value, e.g. dexcom/state is low; several keys are alternatives, several conditions must all match. Alert lets the device alert once when the rule starts, or on every timed refresh while it applies; a device may beep, blink or both.</p>
-      <div id="rules"></div>
+      <div id="pages"></div>
+      <div class="add-row">
+        <select id="add-page-select"></select>
+        <button id="add-page" type="button">Add page</button>
+      </div>
+      <div id="page-warnings"></div>
     </section>
     <section class="panel">
-      <h3>Fallback</h3>
-      <select id="fallback"></select>
-      <p class="hint">A device shows the fallback when no rule matches; without one it gets a notice page.</p>
-      <div id="fallback-warnings"></div>
+      <div class="panel-head">
+        <h3>Refresh</h3>
+        <button id="add-window" type="button">Add window</button>
+      </div>
+      <div class="rule-grid">
+        <label class="field"><span>Default</span><input id="refresh-default" type="text" autocomplete="off" placeholder="e.g. 1h"></label>
+        <label class="field"><span>On refresh</span>
+          <select id="on-refresh">
+            <option value="current">current</option>
+            <option value="first">first</option>
+            <option value="cycle">cycle</option>
+          </select>
+        </label>
+      </div>
+      <div id="windows"></div>
+      <div id="refresh-warnings"></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head">
+        <h3>Triggers</h3>
+        <button id="add-trigger" type="button">Add trigger</button>
+      </div>
+      <div id="triggers"></div>
+      <div id="trigger-warnings"></div>
     </section>
   </div>
   <div class="col">
@@ -105,7 +133,6 @@ label.field.wide { grid-column: 1 / -1; }
         <h3>Actions</h3>
         <button id="add-action" type="button">Add action</button>
       </div>
-      <p class="hint">Offered by the device menu to every device that uses this plan (ADR 0057).</p>
       <div id="actions"></div>
       <div id="action-warnings"></div>
     </section>

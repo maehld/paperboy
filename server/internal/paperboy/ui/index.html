@@ -96,7 +96,7 @@ dialog.zoom .zoom-close:hover { color: var(--pb-ink); }
     </div>
     <dl>
       <dt>Plan</dt>
-      <dd>{{if .PlanURL}}<a href="{{.PlanURL}}">{{.Plan}}</a>{{else}}{{.Plan}}{{end}}{{if .Rule}} · {{.Rule}}{{end}}</dd>
+      <dd>{{if .PlanURL}}<a href="{{.PlanURL}}">{{.Plan}}</a>{{else}}{{.Plan}}{{end}}{{if .Trigger}} · {{.Trigger}}{{end}}</dd>
       {{if .Content}}<dt>Showing</dt><dd>{{if .PageURL}}<a href="{{.PageURL}}">{{.Content}}</a>{{else}}{{.Content}}{{end}}{{if .ServedAgo}} · {{.ServedAgo}}{{end}}</dd>{{end}}
       <dt>Last seen</dt>
       <dd>{{.SeenAgo}}</dd>

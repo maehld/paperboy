@@ -97,7 +97,7 @@ func imageHash(out map[string]any) string {
 // TestVirtualDisplayPagesWithoutDevice checks the page, the first sync, the
 // paging and that no device state appears anywhere.
 func TestVirtualDisplayPagesWithoutDevice(t *testing.T) {
-	s, _, _ := virtualServer(t, "rules:\n  - name: immer\n    pages: [eins, zwei]\n", "")
+	s, _, _ := virtualServer(t, "pages: [eins, zwei]\n", "")
 
 	rec := htmlRequest(t, s, "/ui/virtual?plan=zimmer&display=small")
 	if rec.Code != http.StatusOK {
@@ -117,8 +117,8 @@ func TestVirtualDisplayPagesWithoutDevice(t *testing.T) {
 	if got := first["refresh_s"].(float64); got != 120 {
 		t.Fatalf("refresh from the query: %v", first["refresh_s"])
 	}
-	if got := debugOf(first)["rule"]; got != "immer" {
-		t.Fatalf("rule: %v", got)
+	if got, ok := debugOf(first)["trigger"]; ok {
+		t.Fatalf("a plan without a trigger must name none: %v", got)
 	}
 	if got := debugOf(first)["page_name"]; got != "eins" {
 		t.Fatalf("page name: %v", got)
@@ -160,7 +160,7 @@ func TestVirtualDisplayPagesWithoutDevice(t *testing.T) {
 // TestVirtualDisplayShowsMenuButDoesNotRunActions follows the menu into the
 // confirmation and stops before the plugin call (ADR 0091).
 func TestVirtualDisplayShowsMenuButDoesNotRunActions(t *testing.T) {
-	s, _, p := virtualServer(t, "rules:\n  - name: immer\n    pages: [eins]\n",
+	s, _, p := virtualServer(t, "pages: [eins]\n",
 		"actions:\n  - action: act/go\n  - action: act/quick\n")
 	query := "plan=zimmer&display=small"
 	base := virtualSync(t, s, query, syncRequest{Reason: "timer"})
@@ -206,7 +206,7 @@ func TestVirtualDisplayShowsMenuButDoesNotRunActions(t *testing.T) {
 // through the UI side of the server (ADR 0091, 0097): a virtual display has no
 // device key, and the device routes answer no page without one.
 func TestVirtualDisplayLoadsItsImage(t *testing.T) {
-	s, _, _ := virtualServer(t, "rules:\n  - name: immer\n    pages: [eins, zwei]\n", "")
+	s, _, _ := virtualServer(t, "pages: [eins, zwei]\n", "")
 	out := virtualSync(t, s, "plan=zimmer&display=small", syncRequest{Reason: "timer"})
 	path := pagePath(out)
 	if !strings.HasPrefix(path, "/ui/virtual/pages/small/eins/") {
@@ -230,7 +230,7 @@ func TestVirtualDisplayLoadsItsImage(t *testing.T) {
 // like the rest of the UI (ADR 0096): the browser that opened the page has the
 // credentials cached, everyone else does not.
 func TestVirtualDisplayImageBehindThePassword(t *testing.T) {
-	s, _, _ := virtualServer(t, "rules:\n  - name: immer\n    pages: [eins]\n", "")
+	s, _, _ := virtualServer(t, "pages: [eins]\n", "")
 	s.config().UI.Password = "geheim"
 	data, err := json.Marshal(syncRequest{Reason: "timer"})
 	if err != nil {
@@ -265,7 +265,7 @@ func TestVirtualDisplayImageBehindThePassword(t *testing.T) {
 // TestVirtualDisplayFetchesItsNotice checks that a notice page is fetched on
 // the UI side as well.
 func TestVirtualDisplayFetchesItsNotice(t *testing.T) {
-	s, _, _ := virtualServer(t, "rules:\n  - name: immer\n    pages: [eins]\n", "")
+	s, _, _ := virtualServer(t, "pages: [eins]\n", "")
 	path := pagePath(virtualSync(t, s, "plan=fehlt&display=small", syncRequest{Reason: "timer"}))
 	if !strings.HasPrefix(path, "/ui/virtual/hints/") {
 		t.Fatalf("notice path %q is not on the UI side", path)
@@ -280,7 +280,7 @@ func TestVirtualDisplayFetchesItsNotice(t *testing.T) {
 // TestVirtualDisplayOptionsRejected checks that a bad URL is answered with the
 // status that names the problem instead of being guessed.
 func TestVirtualDisplayOptionsRejected(t *testing.T) {
-	s, _, _ := virtualServer(t, "rules:\n  - name: immer\n    pages: [eins]\n", "")
+	s, _, _ := virtualServer(t, "pages: [eins]\n", "")
 	cases := []struct {
 		query  string
 		status int
@@ -313,7 +313,7 @@ func TestVirtualDisplayOptionsRejected(t *testing.T) {
 // TestVirtualDisplayTextDisplay checks a text display: lines instead of an
 // image, no listen window and the same paging.
 func TestVirtualDisplayTextDisplay(t *testing.T) {
-	s, _, _ := virtualServer(t, "rules:\n  - name: immer\n    pages: [eins, zwei]\n", "")
+	s, _, _ := virtualServer(t, "pages: [eins, zwei]\n", "")
 	query := "plan=zimmer&display=lcd"
 	first := virtualSync(t, s, query, syncRequest{Reason: "timer"})
 	if first["image"] != nil {
@@ -336,7 +336,7 @@ func TestVirtualDisplayTextDisplay(t *testing.T) {
 // TestVirtualDisplayResetDropsTheSession checks that Reset starts at the first
 // page again.
 func TestVirtualDisplayResetDropsTheSession(t *testing.T) {
-	s, _, _ := virtualServer(t, "rules:\n  - name: immer\n    pages: [eins, zwei]\n", "")
+	s, _, _ := virtualServer(t, "pages: [eins, zwei]\n", "")
 	query := "plan=zimmer&display=small"
 	first := virtualSync(t, s, query, syncRequest{Reason: "timer"})
 	second := virtualPress(t, s, query, imageHash(first), 1, buttonNext)
@@ -364,7 +364,7 @@ func TestVirtualDisplayResetDropsTheSession(t *testing.T) {
 // TestVirtualDisplayMissingPlanGetsNotice checks that a plan without a file is
 // debugged as the notice a device would show.
 func TestVirtualDisplayMissingPlanGetsNotice(t *testing.T) {
-	s, _, _ := virtualServer(t, "rules:\n  - name: immer\n    pages: [eins]\n", "")
+	s, _, _ := virtualServer(t, "pages: [eins]\n", "")
 	out := virtualSync(t, s, "plan=fehlt&display=small", syncRequest{Reason: "timer"})
 	if path := imageOf(out)["path"].(string); !strings.HasPrefix(path, "/ui/virtual/hints/") {
 		t.Fatalf("notice page: %s", path)
@@ -379,7 +379,7 @@ func TestVirtualDisplayMissingPlanGetsNotice(t *testing.T) {
 
 // TestVirtualDisplayServesScript keeps the script reachable.
 func TestVirtualDisplayServesScript(t *testing.T) {
-	s, _, _ := virtualServer(t, "rules:\n  - name: immer\n    pages: [eins]\n", "")
+	s, _, _ := virtualServer(t, "pages: [eins]\n", "")
 	rec := htmlRequest(t, s, "/ui/virtual.js")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "dataset.sync") {
 		t.Fatalf("script: %d", rec.Code)

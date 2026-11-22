@@ -27,7 +27,7 @@
   // describe names what the sync decided, which a device only logs.
   function describe(out) {
     const d = out.debug || {};
-    const parts = ["rule " + (d.rule || "none")];
+    const parts = ["trigger " + (d.trigger || "none")];
     if (d.page_name) {
       const count = d.pages > 1 ? "/" + d.pages : "";
       parts.push("page " + (d.page + 1) + count + " · " + d.page_name);

@@ -83,12 +83,8 @@ func TestPowerConfigValidation(t *testing.T) {
 }
 
 const fastPlan = `
-rules:
-  - name: immer
-    when: { from: "00:00", to: "23:59" }
-    pages: [eins]
-    refresh: 5s
-fallback: immer
+pages: [eins]
+refresh: 5s
 `
 
 // TestSyncPowerReport checks that the reported power source reaches the

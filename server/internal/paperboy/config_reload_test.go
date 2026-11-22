@@ -268,7 +268,7 @@ plugins:
 `
 	}
 	writePageFile(t, filepath.Join(dir, "pages", "eins.yaml"), "kind: image\ngrid: [1, 1]\ncells: [{widget: test/area}]\n")
-	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), "rules: [{name: immer, pages: [eins]}]\n")
+	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), "pages: [eins]\n")
 	if err := os.MkdirAll(filepath.Join(dir, pluginsDirName), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -394,37 +394,33 @@ mac: "AA:BB:CC:DD:EE:01"
 plan: zimmer
 `
 
-// TestConfigReloadMovesPlanRules verifies that the global timezone is part of
-// the plan cache key, so changing it re-parses the plans and the time rules move
-// without a restart (ADR 0033, 0047).
-func TestConfigReloadMovesPlanRules(t *testing.T) {
+// TestConfigReloadMovesPlanWindows verifies that the global timezone is part of
+// the plan cache key, so changing it re-parses the plans and the refresh windows
+// move without a restart (ADR 0033, 0047, 0158).
+func TestConfigReloadMovesPlanWindows(t *testing.T) {
 	dir := t.TempDir()
 	writePageFile(t, filepath.Join(dir, "pages", "eins.yaml"), textPage("eins"))
-	writePageFile(t, filepath.Join(dir, "pages", "zwei.yaml"), textPage("zwei"))
 	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), `
-rules:
-  - name: frueh
-    when: { from: "00:00", to: "09:00" }
-    pages: [eins]
-  - name: tag
-    when: { from: "09:00", to: "23:59" }
-    pages: [zwei]
-fallback: frueh
+pages: [eins]
+refresh:
+  default: 30m
+  windows:
+    - { from: "09:00", to: "17:00", interval: 5m }
 `)
 	writeConfig(t, dir, fmt.Sprintf(timezoneConfig, "UTC"))
 	writeDisplayFile(t, dir, "e1001", timezoneDisplay)
 	writeDeviceFile(t, dir, "flur", planDeviceFile)
 	s := configServer(t, dir) // 08:00 UTC
 	dev := planDevice(t, s)
-	if got := pagePath(displayPage(t, s, dev)); !strings.HasPrefix(got, "/pages/e1001/eins/") {
-		t.Fatalf("page at 08:00 UTC: %q", got)
+	if got := displayPage(t, s, dev)["refresh_s"].(float64); got != 1800 {
+		t.Fatalf("refresh at 08:00 UTC: %v", got)
 	}
 
-	// Central European Summer Time is two hours ahead: 10:00, so the second
-	// rule applies. Without the timezone in the cache key the plan would keep
-	// the first rule.
+	// Central European Summer Time is two hours ahead: 10:00, inside the
+	// window. Without the timezone in the cache key the plan would keep the
+	// default interval.
 	writeConfig(t, dir, fmt.Sprintf(timezoneConfig, "Europe/Berlin"))
-	if got := pagePath(displayPage(t, s, dev)); !strings.HasPrefix(got, "/pages/e1001/zwei/") {
-		t.Fatalf("page after the timezone change: %q", got)
+	if got := displayPage(t, s, dev)["refresh_s"].(float64); got != 300 {
+		t.Fatalf("refresh after the timezone change: %v", got)
 	}
 }

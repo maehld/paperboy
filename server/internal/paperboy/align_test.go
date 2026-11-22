@@ -62,24 +62,23 @@ func TestAlignRefresh(t *testing.T) {
 func TestSyncAlignsTimerSleeps(t *testing.T) {
 	s, now := planServer(t, testPlan)
 
-	// The morning rule has no refresh of its own: the device's ten minutes
-	// align to :00, :10, :20.
+	// Inside the five-minute window the grid is five minutes.
 	*now = time.Date(2026, time.October, 21, 8, 3, 20, 0, time.UTC)
 	dev := planDevice(t, s)
-	if got := displayPage(t, s, dev)["refresh_s"].(float64); got != 400 {
-		t.Fatalf("ten minutes at 08:03:20 must sleep 400 s, got %v", got)
-	}
-
-	// The day rule asks for five minutes, so the grid is five minutes.
-	*now = time.Date(2026, time.October, 21, 10, 3, 20, 0, time.UTC)
 	if got := displayPage(t, s, dev)["refresh_s"].(float64); got != 100 {
-		t.Fatalf("five minutes at 10:03:20 must sleep 100 s, got %v", got)
+		t.Fatalf("five minutes at 08:03:20 must sleep 100 s, got %v", got)
 	}
 
-	// A plan boundary 30 s away caps the sleep at the one-minute floor; the
-	// cap wins and is not stretched onto the grid.
-	*now = time.Date(2026, time.October, 21, 8, 59, 30, 0, time.UTC)
+	// Outside it the default thirty minutes align to :00 and :30.
+	*now = time.Date(2026, time.October, 21, 20, 3, 20, 0, time.UTC)
+	if got := displayPage(t, s, dev)["refresh_s"].(float64); got != 1600 {
+		t.Fatalf("thirty minutes at 20:03:20 must sleep 1600 s, got %v", got)
+	}
+
+	// A window edge 30 s away caps the sleep at the one-minute floor; the cap
+	// wins and is not stretched onto the grid.
+	*now = time.Date(2026, time.October, 21, 18, 59, 30, 0, time.UTC)
 	if got := displayPage(t, s, dev)["refresh_s"].(float64); got != 60 {
-		t.Fatalf("the boundary must keep its sleep: got %v", got)
+		t.Fatalf("the edge must keep its sleep: got %v", got)
 	}
 }

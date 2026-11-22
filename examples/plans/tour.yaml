@@ -1,30 +1,46 @@
-# Tour through all shipped plugins. During the day the device turns to the
-# next page with every refresh; on weekday mornings it shows what matters
-# before leaving the house, and at night it stays on the overview. The first
-# rule shows the printer page while a print runs; the second shows the glucose
-# page while the dexcom state is out of its band; a missing value never
-# matches, so the tour continues.
-rules:
-  - name: printer
-    when: { conditions: [{ value: prusalink/state, is: [printing, paused] }] }
-    pages: [drucker]
-    refresh: 5m
-  - name: glucose
-    when: { conditions: [{ value: dexcom/state, is: [low, urgent, high] }] }
-    pages: [glukose]
-    refresh: 5m
-  - name: morning
-    when: { from: "06:00", to: "09:00", days: [mon, tue, wed, thu, fri] }
-    pages: [unterwegs, uebersicht, woche, energie]
-    on_refresh: cycle
-    refresh: 5m
-  - name: day
-    when: { from: "07:00", to: "22:00" }
-    pages: [uebersicht, status, energie, energie-woche, ertrag, werte, unterwegs, woche, kalender, wetter, laden, auto, glukose, abfahrten, nachrichten, github, spritpreise, pokemon, comic, countdown, geburtstage, drucker]
-    on_refresh: cycle
-    refresh: 10m
-  - name: night
-    when: { from: "22:00", to: "07:00" }
-    pages: [uebersicht]
-    refresh: 30m
-fallback: day
+# Tour through all shipped plugins. The device turns to the next page with
+# every refresh; the schedule keeps it fast during the day and quiet at night.
+# The triggers bring a page to the front while a condition holds. A missing
+# value never matches, so the tour continues. `glukose` is hidden: it is not in
+# the rotation and only the trigger shows it.
+pages:
+  - uebersicht
+  - status
+  - energie
+  - energie-woche
+  - ertrag
+  - werte
+  - unterwegs
+  - woche
+  - kalender
+  - wetter
+  - laden
+  - auto
+  - abfahrten
+  - nachrichten
+  - github
+  - spritpreise
+  - pokemon
+  - comic
+  - countdown
+  - geburtstage
+  - drucker
+  - { page: glukose, hidden: true }
+
+on_refresh: cycle
+refresh:
+  default: 30m
+  windows:
+    - { from: "07:00", to: "22:00", interval: 10m }
+
+triggers:
+  - when: { value: prusalink/state, is: [printing, paused] }
+    page: drucker
+    alert: once
+  - when: { value: dexcom/state, is: [low, urgent, high] }
+    page: glukose
+    alert: refresh
+  - when:
+      - { value: weekday, is: [mon, tue, wed, thu, fri] }
+      - { value: time, from: "06:00", to: "09:00" }
+    page: unterwegs

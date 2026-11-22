@@ -20,7 +20,7 @@ Each fact lives in exactly one place. Update the page that owns a behavior, not 
 | `README.md` | Overview, quick start, documentation index, licence |
 | `docs/setup.md`, `docs/content.md`, `docs/runtime.md`, `docs/releases.md` | What the operator does: instance, configuration, pages, plans, web UI, device API, downloads |
 | `docs/design/01-system.md` | Parts and processes, instance directory, configuration, reload, data flow, code map |
-| `docs/design/02-content.md` | Pages, widgets, grid and style, text pages, plans, value conditions, actions, the menu |
+| `docs/design/02-content.md` | Pages, widgets, grid and style, text pages, plans, triggers, conditions, actions, the menu |
 | `docs/design/03-devices.md` | Display types, device files, device API, state, power, delivery, firmware, hardware findings |
 | `docs/design/04-operator-ui.md` | Overview, stats, downloads, previews, virtual display, editors, page and plan API, password |
 | `docs/design/05-plugins.md` | Protocol, plugin host, versions, state and blobs, value conditions, the shipped plugins |
@@ -53,6 +53,7 @@ The structure is in `docs/design/`; these are the rules that a change must not b
 
 - **Go 1.27 or newer.** Dependencies: `golang.org/x/image` **v0.24.0** (ADR 0013) and `go.yaml.in/yaml/v3` **v3.0.5** (ADR 0024, 0026). Further dependencies only with their own ADR.
 - **No data API and no token.** The operator UI has a password (`ui.password`, ADR 0096); the device API keeps its per-device key (ADR 0042). The two route tables `deviceRoutes` and `uiRoutes` in `Handler` keep them apart, and a test pins the prefix of the device routes.
+- **A plan is pages, refresh windows and triggers.** A trigger names a page of the plan. A sync without button input delivers it; button input pages the extended list. `weekday`, `time` and `date` are plan values, not plugin values (ADR 0158).
 - **A device never gets an error page.** Without a plan, with a missing or broken page or a broken plan it gets a notice page; a failing widget only marks its own cell. A broken configuration file keeps the last valid one.
 - **A plugin request never runs under the state lock.** The configuration snapshot is taken before locking, the plan and its fitting pages are resolved before locking, the plan values are read before locking, page cursor selection happens under the lock, and composing, drawing and writing happen outside it. Interactions with `state/` are atomic, and state belongs to the MAC, not to a file name (ADR 0080).
 - **The instance directory is the configuration.** Files are parsed strictly with a hint for every rejected key, and the same parser validates the runtime and the editor API.
@@ -72,7 +73,7 @@ The structure is in `docs/design/`; these are the rules that a change must not b
 
 Paperboy v2 (ADR 0049) replaced the data document (ADR 0024), the region model (ADR 0032), the block templates with their typography, formats and icons (ADR 0034, 0035, 0038, 0046), exec providers (ADR 0036) and text-line templates (ADR 0044) with plugins that provide widgets on a grid. The ADRs stay as history; the README describes only v2. The spike that led there is documented in `docs/spikes/plugin-fragments.md`. Existing installations migrate by hand; there is no migration code.
 
-Still in place from v1: the device API (ADR 0042) with text displays (ADR 0044, 0045), plans (ADR 0025), configuration reload (ADR 0047), device status and dashboard (ADR 0039, 0040), firmware distribution (ADR 0043) and the battery warning (ADR 0020). ADR 0041's firmware compiles for all four hardware types but is not yet flashed on every device; the rollback test with a deliberately broken image succeeded, so `firmware.update: auto` may be used on real devices. CalDAV against the real iCloud was tested on 2026-11-05 with the v1 provider; the plugin mode uses the same code but has not run against iCloud yet.
+Still in place from v1: the device API (ADR 0042) with text displays (ADR 0044, 0045), plans (ADR 0158), configuration reload (ADR 0047), device status and dashboard (ADR 0039, 0040), firmware distribution (ADR 0043) and the battery warning (ADR 0020). ADR 0041's firmware compiles for all four hardware types but is not yet flashed on every device; the rollback test with a deliberately broken image succeeded, so `firmware.update: auto` may be used on real devices. CalDAV against the real iCloud was tested on 2026-11-05 with the v1 provider; the plugin mode uses the same code but has not run against iCloud yet.
 
 Open: value lists (`for-each`); a SolarAI plugin (it talks to SolarAI over HTTP; SolarAI knows nothing about Paperboy), push delivery to text displays and faster menu steps through partial e-paper updates for overlay screens (the Sticky can do black-and-white partial refreshes, the E1001 in grayscale mode cannot; issue #151).
 

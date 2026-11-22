@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -30,7 +31,7 @@ type servedPage struct {
 	refresh  time.Duration    // sleep time to report, after the plan boundary and timeout caps
 	interval time.Duration    // the regular interval before those caps, for the alignment (ADR 0129)
 	name     string           // page or template name for logging; empty for a notice
-	page     int              // page index within the plan rule, for logging
+	page     int              // page index within the plan pages, for logging
 	pages    int              // pages in the rule, for logging
 	hash     string           // content hash of the PNG or the lines; the device repaints when it changes
 	lines    []string         // text displays: the lines to show (ADR 0044)
@@ -53,7 +54,7 @@ func hashBytes(data []byte) string {
 	return hex.EncodeToString(sum[:6])
 }
 
-// pagePosition is the 0-based page index and page count of a plan rule. The
+// pagePosition is the 0-based page index and page count of the plan pages. The
 // preview uses a single page so that no indicator is appended.
 type pagePosition struct {
 	index int
@@ -346,7 +347,7 @@ func newPlanLoader() *planLoader {
 // get returns the current plan and the error of the last load attempt. p is
 // nil when the plan was never valid; err may be set even when p is usable. Time
 // windows use loc, the global timezone (ADR 0033); a changed timezone re-parses
-// the plan, so reloading the configuration also moves the plan rules (ADR 0047).
+// the plan, so reloading the configuration also moves the plan windows (ADR 0047).
 func (l *planLoader) get(dir, name string, loc *time.Location) (*plan.Plan, error) {
 	path := filepath.Join(dir, name+".yaml")
 	info, err := os.Stat(path)
@@ -371,7 +372,7 @@ func (l *planLoader) get(dir, name string, loc *time.Location) (*plan.Plan, erro
 			entry.p, entry.err = old.p, parseErr
 		}
 	} else {
-		slog.Info("plan loaded", "plan", name, "rules", len(p.Rules))
+		slog.Info("plan loaded", "plan", name, "pages", len(p.Pages))
 	}
 	l.entries[name] = entry
 	return entry.p, entry.err
@@ -406,30 +407,23 @@ type planChoice struct {
 }
 
 // planResolution is a device plan evaluated before the state lock: the plan,
-// the rule it selects and the pages of that rule that fit the display type. A
+// the trigger that matches the values and which pages fit the display type. A
 // slow page read therefore never blocks the other devices (ADR 0138).
 type planResolution struct {
-	plan      *plan.Plan
-	err       error
-	selection plan.Selection
-	selected  bool
-	pages     []string  // pages of the selected rule that fit, in rule order
-	skipped   []string  // "page: reason" for the pages that do not fit
-	fitNotes  []pageFit // one entry per page of the selected rule
+	plan    *plan.Plan
+	err     error
+	trigger string // page of the first matching trigger that fits; "" = none
+	alert   plan.AlertMode
+	fit     map[string]string // declared page → reason it does not fit ("" = fits)
+	noted   map[string]string // pages worth a skip line: visible pages and trigger targets
+	skipped []string          // visible pages that do not fit, "page: reason"
 }
 
-// pageFit is one page of the selected rule and why it does not fit; an empty
-// reason means it fits.
-type pageFit struct {
-	page   string
-	reason string
-}
-
-// resolvePlan loads the plan, selects its rule and keeps the pages that fit the
-// device's display type. It runs outside the state lock; a missing plan or a
-// failing page is part of the answer, not an error of the caller.
+// resolvePlan loads the plan and checks every declared page against the
+// display type. It runs outside the state lock; a missing plan or a failing
+// page is part of the answer, not an error of the caller.
 func (s *Server) resolvePlan(cfg *Config, d *Device, now time.Time, values plan.Values) planResolution {
-	r := planResolution{}
+	r := planResolution{fit: map[string]string{}, noted: map[string]string{}}
 	if d.Plan == "" {
 		return r
 	}
@@ -437,47 +431,111 @@ func (s *Server) resolvePlan(cfg *Config, d *Device, now time.Time, values plan.
 	if r.plan == nil {
 		return r
 	}
-	sel, ok := r.plan.Select(now, values)
-	if !ok {
-		return r
-	}
-	r.selection, r.selected = sel, true
-	for _, name := range sel.Pages {
-		reason := ""
-		if err := s.fits(cfg, d.Profile, name); err == nil {
-			r.pages = append(r.pages, name)
-		} else {
-			reason = err.Error()
-			r.skipped = append(r.skipped, name+": "+reason)
+	for _, pg := range r.plan.Pages {
+		if err := s.fits(cfg, d.Profile, pg.Name); err != nil {
+			r.fit[pg.Name] = err.Error()
 		}
-		r.fitNotes = append(r.fitNotes, pageFit{page: name, reason: reason})
+		if !pg.Hidden {
+			r.noted[pg.Name] = r.fit[pg.Name]
+			if r.fit[pg.Name] != "" {
+				r.skipped = append(r.skipped, pg.Name+": "+r.fit[pg.Name])
+			}
+		}
+	}
+	for _, tr := range r.plan.Triggers {
+		r.noted[tr.Page] = r.fit[tr.Page]
+	}
+	for _, tr := range r.plan.Matching(now, values) {
+		if r.fit[tr.Page] != "" {
+			continue // the page does not fit; the next matching trigger may
+		}
+		r.trigger, r.alert = tr.Page, tr.Alert
+		break
 	}
 	return r
+}
+
+// effective returns the page order a device sees, without the pages that do
+// not fit its display type.
+func (r planResolution) effective(trigger string) []string {
+	out := make([]string, 0, len(r.plan.Pages))
+	for _, name := range r.plan.Effective(trigger) {
+		if r.fit[name] == "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// resolve puts a cursor on a page of the list. A page that left the list is
+// resolved by the refresh mode (ADR 0158): current takes the page before the
+// trigger, cycle the next page at the declared position, first the first page.
+func (r planResolution) resolve(name string, pages []string, mode plan.RefreshMode, before string) string {
+	if len(pages) == 0 {
+		return ""
+	}
+	if slices.Contains(pages, name) {
+		return name
+	}
+	switch mode {
+	case plan.RefreshCurrent:
+		if before != "" && slices.Contains(pages, before) {
+			return before
+		}
+	case plan.RefreshCycle:
+		if next := r.nextAfter(name, pages); next != "" {
+			return next
+		}
+	}
+	return pages[0]
+}
+
+// nextAfter finds the next page of the list after name in the plan's declared
+// order, wrapping once. A name the plan no longer lists has no next page.
+func (r planResolution) nextAfter(name string, pages []string) string {
+	start := -1
+	for i, pg := range r.plan.Pages {
+		if pg.Name == name {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	for k := 1; k <= len(r.plan.Pages); k++ {
+		candidate := r.plan.Pages[(start+k)%len(r.plan.Pages)].Name
+		if slices.Contains(pages, candidate) {
+			return candidate
+		}
+	}
+	return ""
 }
 
 // announceSkippedLocked updates the skip notes and logs a page that stopped
 // fitting once per display type and page. Callers hold s.mu.
 func (s *Server) announceSkippedLocked(d *Device, r planResolution) {
-	for _, f := range r.fitNotes {
-		key := d.Profile + "/" + f.page
-		if f.reason == "" {
+	for name, reason := range r.noted {
+		key := d.Profile + "/" + name
+		if reason == "" {
 			delete(s.skipNotes, key)
 			continue
 		}
-		if s.skipNotes[key] != f.reason {
-			s.skipNotes[key] = f.reason
-			slog.Info("page skipped for display type", "display_type", d.Profile, "page", f.page, "reason", f.reason)
+		if s.skipNotes[key] != reason {
+			s.skipNotes[key] = reason
+			slog.Info("page skipped for display type", "display_type", d.Profile, "page", name, "reason", reason)
 		}
 	}
 }
 
-// choosePlanPage applies a resolved plan under the state lock and advances the
+// choosePlanPage applies a resolved plan under the state lock and moves the
 // page cursor. Callers hold s.mu and pass the configuration snapshot of the
 // request: plan loading and page reads happen before the lock (ADR 0138).
 // Rendering happens later in renderPlan. paused freezes paging while the
-// device menu is open (ADR 0057): the page stays and a timed change waits.
-// timed marks a timed refresh, which is when a rule with alert: refresh alerts
-// again (ADR 0131). A rule change always starts at the first page (ADR 0130).
+// device menu is open (ADR 0057): the page stays, and a trigger waits for the
+// next sync. timed marks a timed refresh, which is when a trigger with
+// alert: refresh alerts again (ADR 0131). Button input pages the extended list
+// and never triggers (ADR 0158).
 func (s *Server) choosePlanPage(res planResolution, cfg *Config, d *Device, st *deviceState, now time.Time, firstContact, timed bool, buttons []string, paused, quiet bool) planChoice {
 	p, err := res.plan, res.err
 	if p == nil {
@@ -494,94 +552,127 @@ func (s *Server) choosePlanPage(res planResolution, cfg *Config, d *Device, st *
 		slog.Warn("plan invalid, using the last valid version", "device", d.ID, "plan", d.Plan, "error", err)
 	}
 	s.announceSkippedLocked(d, res)
-	if !res.selected {
-		title, text := cfg.texts().noSelection()
-		return planChoice{title: title, text: text}
+	base := res.effective("")
+	if len(base) == 0 {
+		title, text := cfg.texts().noFittingPage(d.Profile)
+		return planChoice{title: title, text: shorten(text + " " + joinReasons(res.skipped)),
+			err: fmt.Errorf("plan %s has no page for display type %s: %s", d.Plan, d.Profile, joinReasons(res.skipped))}
 	}
-	sel, pages, skipped := res.selection, res.pages, res.skipped
-	if len(pages) == 0 {
-		title, text := cfg.texts().noFittingPage(sel.Rule, d.Profile)
-		return planChoice{title: title, text: shorten(text + " " + joinReasons(skipped)),
-			err: fmt.Errorf("rule %s has no page for display type %s: %s", sel.Rule, d.Profile, joinReasons(skipped))}
+	mode := p.Mode()
+	prev := st.Trigger
+	// A trigger decides on every sync without button input. A button sync
+	// keeps the last decision and pages the extended list (ADR 0158).
+	trigger := res.trigger
+	if len(buttons) > 0 {
+		trigger = prev
 	}
-	n := len(pages)
-	ruleChanged := st.Rule != sel.Rule
-	if ruleChanged {
-		// A new rule always starts at its first page, also with current.
-		st.Rule, st.Page = sel.Rule, 0
-	} else {
-		if st.PageName != "" && (st.Page < 0 || st.Page >= n || pages[st.Page] != st.PageName) {
-			// The cursor holds the page, not its index: a plan edit that adds,
-			// removes or reorders pages keeps the device on its page, and a
-			// page the rule lost starts the rule at its first page (ADR 0133).
-			st.Page = pageIndex(pages, st.PageName)
-		}
-		// The menu is modal: no paging and no automatic page change.
-		if !paused {
+	if trigger != "" && res.fit[trigger] != "" {
+		trigger = ""
+	}
+	listTrigger := trigger
+	if paused {
+		listTrigger = prev
+	}
+	pages := res.effective(listTrigger)
+	missing := !slices.Contains(pages, st.PageName)
+	// The cursor holds the page, not its index: a plan edit follows the name
+	// (ADR 0133), and a page that left the list is resolved by the mode.
+	st.PageName = res.resolve(st.PageName, pages, mode, st.PageBeforeTrigger)
+	if !paused && trigger != "" && trigger != prev && slices.Contains(base, st.PageName) {
+		// The page this trigger displaces, for on_refresh: current.
+		st.PageBeforeTrigger = st.PageName
+	}
+	alert := false
+	if !paused {
+		switch {
+		case len(buttons) > 0:
 			// Button roles apply in order (ADR 0042): presses made while the
 			// panel was painting arrive together and only the final page is
-			// rendered.
+			// rendered. A button also pages away from a trigger page.
 			for _, role := range buttons {
 				switch role {
 				case buttonNext:
-					st.Page = (st.Page + 1) % n
+					st.PageName = nextPage(pages, st.PageName)
 				case buttonPrevious:
-					st.Page = ((st.Page-1)%n + n) % n
+					st.PageName = prevPage(pages, st.PageName)
 				case buttonHome:
-					st.Page = 0
+					st.PageName = pages[0]
 				}
 			}
-			if len(buttons) == 0 && !firstContact {
-				switch sel.OnRefresh {
-				case plan.RefreshCycle:
-					st.Page = (st.Page + 1) % n
-				case plan.RefreshFirst:
-					st.Page = 0
-				}
+		case trigger != "":
+			st.PageName = trigger
+		case timed && !firstContact && !missing:
+			// Only a timed refresh pages on its own (ADR 0130); a touch or a
+			// retried event never does. A page that just left the list was
+			// resolved above; advancing again would skip one more page.
+			switch mode {
+			case plan.RefreshCycle:
+				st.PageName = nextPage(pages, st.PageName)
+			case plan.RefreshFirst:
+				st.PageName = pages[0]
+			}
+		}
+		st.Trigger = trigger
+		if trigger == "" && prev != "" {
+			// The trigger ended and hid its page again; the cursor was
+			// resolved above, so its memory can go.
+			st.PageBeforeTrigger = ""
+		}
+		if len(buttons) == 0 {
+			switch res.alert {
+			case plan.AlertOnce:
+				alert = trigger != "" && trigger != prev
+			case plan.AlertRefresh:
+				alert = trigger != "" && (trigger != prev || timed)
 			}
 		}
 	}
-	if st.Page < 0 || st.Page >= n {
-		st.Page = 0
+	index := slices.Index(pages, st.PageName)
+	if index < 0 {
+		index = 0
+		st.PageName = pages[0]
 	}
-	page := st.Page
-	st.PageName = pages[page]
+	st.Page = index
 	floor := cfg.minRefresh(d, st.ReportedPower)
-	interval := time.Duration(sel.Refresh)
+	interval := p.Interval(now)
 	if interval == 0 {
 		interval = d.refresh()
 	}
 	interval = max(interval, floor)
 	refresh := interval
-	// Wake up for the next rule change instead of sleeping through it.
-	if until := p.UntilNextBoundary(now); until > 0 && until < refresh {
+	// Wake up at the next window edge instead of sleeping through it.
+	if until := p.UntilNextChange(now); until > 0 && until < refresh {
 		refresh = max(floor, until)
 	}
-	alert := false
-	switch sel.Alert {
-	case plan.AlertOnce:
-		alert = ruleChanged
-	case plan.AlertRefresh:
-		alert = ruleChanged || timed
-	}
-	c := planChoice{page: page, pages: n, name: pages[page], refresh: refresh, interval: interval, actions: sel.Actions,
-		alert: alert}
+	c := planChoice{page: index, pages: len(pages), name: st.PageName, refresh: refresh, interval: interval,
+		actions: p.Actions, alert: alert}
 	if st.BatteryLevel == batteryWarn {
 		c.banners = append(c.banners, cfg.texts().lowBattery(voltageKey(st.BatteryVoltage)))
 	}
 	return c
 }
 
-// pageIndex follows a page name through the pages of a rule. A page that the
-// rule no longer lists starts the rule at its first page; a duplicate name is
-// the first entry, which the plan editor already warns about.
-func pageIndex(pages []string, name string) int {
-	for i, p := range pages {
-		if p == name {
-			return i
-		}
+// nextPage and prevPage walk the effective list, wrapping at its ends.
+func nextPage(pages []string, name string) string {
+	if len(pages) == 0 {
+		return ""
 	}
-	return 0
+	i := slices.Index(pages, name)
+	if i < 0 {
+		return pages[0]
+	}
+	return pages[(i+1)%len(pages)]
+}
+
+func prevPage(pages []string, name string) string {
+	if len(pages) == 0 {
+		return ""
+	}
+	i := slices.Index(pages, name)
+	if i < 0 {
+		return pages[0]
+	}
+	return pages[(i-1+len(pages))%len(pages)]
 }
 
 // renderPlan draws the chosen page or notice outside s.mu. A broken template
