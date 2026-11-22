@@ -14,13 +14,13 @@ A display type is a file under `displays/<name>.yaml` ([ADR 0071](../adr/0071-di
 | `size` | Width and height, in pixels for image types and in characters for text types |
 | `gray_levels` | 1, 4 or 16 for image types ([ADR 0105](../adr/0105-sixteen-gray-levels.md)) |
 | `ppi` | Pixels per inch, 20–1000, for image types |
-| `charset` | `utf8`, `ascii` or `hd44780` for text types |
+| `charset` | `utf8`, `ascii` or `hd44780` for text types; `hd44780` also carries the CGRAM glyphs of [ADR 0155](../adr/0155-cgram-glyphs-on-hd44780-text-displays.md) |
 | `min_refresh` | Fastest refresh the panel accepts, in seconds |
 | `power` | `auto`, `battery` or `mains` ([ADR 0051](../adr/0051-power-source-refresh-policy.md)) |
 | `rotation` | 0, 90, 180 or 270 for image types: the quarter turn from the page to the panel ([ADR 0102](../adr/0102-rotate-pages-onto-the-panel.md)) |
 | `grid` | Columns and rows a new image page of this type starts with, 1 to 80 each, default 6 × 8 ([ADR 0128](../adr/0128-a-default-grid-per-display-type.md)) |
 
-The loader and the API validate with the same function. An image type needs `ppi` and rejects `charset`. A text type allows at most 80 × 24 characters and rejects `ppi`, `gray_levels` and `grid`. A leftover `width_mm` is rejected with a hint: the physical size follows from `ppi` ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md)).
+The loader and the API validate with the same function. An image type needs `ppi` and rejects `charset`. A text type allows at most 80 × 24 characters and rejects `ppi`, `gray_levels` and `grid`. A `hd44780` display draws the CGRAM glyphs of [ADR 0155](../adr/0155-cgram-glyphs-on-hd44780-text-displays.md); an older firmware shows `?` for them until it updates. A leftover `width_mm` is rejected with a hint: the physical size follows from `ppi` ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md)).
 
 ## Device files
 

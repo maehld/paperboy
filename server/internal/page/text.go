@@ -65,12 +65,17 @@ func fit(s string, n int) string {
 	return align(n, clean(s), 'l')
 }
 
-// hd44780Kept are the characters of the A00 ROM the firmware maps itself.
-var hd44780Kept = map[rune]bool{'ä': true, 'ö': true, 'ü': true, 'ß': true, '°': true, 'µ': true}
+// hd44780Kept are the characters the firmware maps itself: the A00 ROM
+// characters and the CGRAM glyphs of ADR 0155.
+var hd44780Kept = map[rune]bool{
+	'ä': true, 'ö': true, 'ü': true, 'ß': true, '°': true, 'µ': true,
+	'←': true, '→': true, '↑': true, '↓': true, '✓': true,
+}
 
 var transliteration = map[rune]string{
 	'ä': "ae", 'ö': "oe", 'ü': "ue", 'Ä': "Ae", 'Ö': "Oe", 'Ü': "Ue", 'ß': "ss",
 	'°': "o", 'µ': "u", '€': "EUR", '—': "-", '–': "-", '−': "-", '…': "...",
+	'←': "<", '→': ">", '↑': "^", '↓': "v", '✓': "OK",
 	'„': "\"", '“': "\"", '”': "\"", '‚': "'", '‘': "'", '’': "'",
 	'\u00a0': " ", '\u202f': " ", '\u2009': " ", '·': ".", '×': "x",
 	'²': "2", '³': "3", '½': "1/2", 'é': "e", 'è': "e", 'á': "a", 'à': "a",
@@ -445,7 +450,8 @@ func formatNumber(f float64, precision int, lang string) string {
 
 // flowNumber marks a signed number as a direction (issue #399). Positive leaves
 // the entity, so the arrow points at the number; negative enters it. A value
-// that rounds to zero keeps the plain number.
+// that rounds to zero keeps the plain number. The charset conversion maps the
+// arrows to ASCII or to the CGRAM glyphs of an HD44780 display (ADR 0155).
 func flowNumber(flow Flow, value float64, precision int, lang string) string {
 	number := roundStep(value, precision)
 	if number == 0 {
@@ -454,9 +460,9 @@ func flowNumber(flow Flow, value float64, precision int, lang string) string {
 	abs := formatNumber(math.Abs(number), precision, lang)
 	if flow.Arrow {
 		if number > 0 {
-			return "< " + abs
+			return "← " + abs
 		}
-		return "> " + abs
+		return "→ " + abs
 	}
 	if number > 0 {
 		return flow.Out + " " + abs
@@ -487,20 +493,21 @@ func formatDuration(seconds int64) string {
 	return fmt.Sprintf("%s%ds", sign, seconds)
 }
 
-// formatDirection turns a trend direction into the ASCII arrows text displays
-// use: ^ up, > flat, v down, doubled for a strong move.
+// formatDirection turns a trend direction into arrows, doubled for a strong
+// move. The charset conversion maps them to ASCII or to the CGRAM glyphs of an
+// HD44780 display (ADR 0155).
 func formatDirection(d int) string {
 	switch d {
 	case 2:
-		return "^^"
+		return "↑↑"
 	case 1:
-		return "^"
+		return "↑"
 	case 0:
-		return ">"
+		return "→"
 	case -1:
-		return "v"
+		return "↓"
 	case -2:
-		return "vv"
+		return "↓↓"
 	}
 	return "?"
 }

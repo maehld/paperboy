@@ -96,7 +96,7 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 | `session-solar` | number | % | | solar share of its session |
 | `remaining` | duration | | | time until it is full |
 
-`grid` and `battery-power` are directional: a positive value leaves the entity, a negative one enters it. A text cell marks the direction with `flow: arrow` or with its own words (issue #399).
+`grid` and `battery-power` are directional: a positive value leaves the entity, a negative one enters it. A text cell marks the direction with `flow: arrow` or with its own words (issue #399). On an HD44780 display `flow: arrow` draws `←` or `→` from CGRAM; `ascii` falls back to `<` and `>` (issue #406).
 
 The table names the base unit the plugin answers in and the larger steps Paperboy may use. Paperboy writes a value in the largest step whose rounded absolute value is at least 1 ([ADR 0122](../adr/0122-hide-and-progress-a-unit.md)). A cell's `scale` forces a step, and `unit: none` hides the unit text.
 
