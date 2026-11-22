@@ -210,9 +210,17 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 	render.HLine(img, b.Min.X, b.Max.Y-rule, b.Max.X, rule)
 }
 
+// textLines splits the text argument into lines. A literal \n and a real line
+// break are the same, and one trailing line break adds no empty line.
+func textLines(s string) []string {
+	s = strings.ReplaceAll(s, `\n`, "\n")
+	s = strings.TrimSuffix(s, "\n")
+	return strings.Split(s, "\n")
+}
+
 func (Plugin) text(w plugin.WidgetRequest, img *image.Paletted) error {
 	a := w.Arg()
-	lines := strings.Split(a.String("text", ""), "\n")
+	lines := textLines(a.String("text", ""))
 	pad := w.Style.Padding
 	b := img.Rect.Inset(pad)
 	if b.Empty() {
