@@ -12,12 +12,12 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/maehld/paperboy/sdk/design"
+	"github.com/maehld/paperboy/sdk/format"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -223,11 +223,7 @@ func (w *weather) MaxAge(*plugin.Request) time.Duration { return 15 * time.Minut
 func (w *weather) t(de, en string) string { return w.req.T(de, en) }
 
 func (w *weather) num(v float64, decimals int) string {
-	s := strconv.FormatFloat(v, 'f', decimals, 64)
-	if w.lang == "de" {
-		s = strings.Replace(s, ".", ",", 1)
-	}
-	return s
+	return format.Number(v, decimals, w.lang)
 }
 
 func (w *weather) temp(v float64) string { return w.num(math.Round(v)+0, 0) + "°" }

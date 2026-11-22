@@ -53,7 +53,7 @@ An argument declares its type, default, whether it is required and its descripti
 
 A widget that cannot draw anything in its cell reports `ErrTooSmall` with the cell size instead of leaving the cell empty. Paperboy draws its hatched notice with that reason, and every shipped plugin does this.
 
-A Go plugin draws with `sdk/render` and can use the shared type scale and components of `sdk/design` ([design language](07-design-language.md), [ADR 0151](../adr/0151-a-shared-design-language-for-plugin-widgets.md)). The package is optional. A plugin keeps its own layout and can paint anything itself.
+A Go plugin draws with `sdk/render` and can use the shared type scale and components of `sdk/design` ([design language](07-design-language.md), [ADR 0151](../adr/0151-a-shared-design-language-for-plugin-widgets.md)). The package is optional. A plugin keeps its own layout and can paint anything itself. Numbers come from `sdk/format.Number`, so one value never gets two spellings.
 
 ## The plugin host
 

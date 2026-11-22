@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"strings"
 
+	"github.com/maehld/paperboy/sdk/format"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -216,11 +217,7 @@ func (f *fuel) t(de, en string) string { return f.req.T(de, en) }
 
 // num formats a number with a decimal comma for German.
 func (f *fuel) num(v float64, decimals int) string {
-	s := fmt.Sprintf("%.*f", decimals, v)
-	if f.lang == "de" {
-		s = strings.Replace(s, ".", ",", 1)
-	}
-	return s
+	return format.Number(v, decimals, f.lang)
 }
 
 // money is a price per litre with three decimals.

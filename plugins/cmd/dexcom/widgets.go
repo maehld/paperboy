@@ -10,6 +10,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/design"
+	"github.com/maehld/paperboy/sdk/format"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -60,8 +62,9 @@ func (d *dexcom) glucoseWidget(req *plugin.Request, w plugin.WidgetRequest, img 
 	stale := age > staleAfter
 	lvl := level(last.value, l)
 
+	scale := design.NewScale(req.TextPx(w), b.Dy())
 	val := d.value(req, l, last.value)
-	size := float64(b.Dy()) * 0.46
+	size := min(scale.Hero, float64(b.Dy())*0.46)
 	arrowSize := int(size * 0.6)
 	maxW := float64(b.Dx() - arrowSize - b.Dy()/8)
 	for size > render.MinSize && float64(render.Measure(val, size, true)) > maxW {
@@ -95,7 +98,7 @@ func (d *dexcom) glucoseWidget(req *plugin.Request, w plugin.WidgetRequest, img 
 		drawTrend(img, x+tw+b.Dy()/16+arrowSize/2, baseline-int(size*0.34), arrowSize, angle, count, fg)
 	}
 
-	small := float64(b.Dy()) * 0.085
+	small := min(scale.Tiny, float64(b.Dy())*0.1)
 	render.TextAt(img, ageLabel(req, age), b.Max.X, b.Min.Y+int(small), small, false, mid, render.Right)
 
 	sub := baseline + int(float64(b.Dy())*0.22)
@@ -133,7 +136,7 @@ func (d *dexcom) glucoseWidget(req *plugin.Request, w plugin.WidgetRequest, img 
 
 // signed formats a change with its sign.
 func (d *dexcom) signed(req *plugin.Request, l limits, v float64) string {
-	s := d.num(req, v, l.decimals)
+	s := format.Number(v, l.decimals, req.Lang())
 	if v > 0 {
 		return "+" + s
 	}
@@ -182,9 +185,9 @@ func (d *dexcom) graphWidget(req *plugin.Request, w plugin.WidgetRequest, img *i
 	// texts follow the base text of the page, but never take more room than the
 	// cell has: a short cell keeps enough height for the plot (a Sticky cell of
 	// 6x3 is 800x180 px while the base text is 52 px tall).
-	base := req.TextPx(w)
-	titleSize := max(min(base*0.9, float64(b.Dy())*0.16), render.MinSize)
-	labelSize := max(min(base*0.6, titleSize*0.7), render.MinSize)
+	scale := design.NewScale(req.TextPx(w), b.Dy())
+	titleSize := max(min(scale.Detail, float64(b.Dy())*0.16), render.MinSize)
+	labelSize := max(min(scale.Micro, titleSize*0.7), render.MinSize)
 	left := render.Measure(fmt.Sprintf("%.0f", l.max), labelSize, false) + 6
 	top := b.Min.Y
 	if header {
@@ -281,7 +284,7 @@ func (d *dexcom) graphWidget(req *plugin.Request, w plugin.WidgetRequest, img *i
 	}
 	if len(window) == 0 {
 		textFit(img, req.T("keine Daten", "no data"), plot.Min.X+plot.Dx()/2, plot.Min.Y+plot.Dy()/2,
-			min(base, float64(plot.Dy())*0.5), false, mid, render.Center, plot.Dx())
+			min(scale.Body, float64(plot.Dy())*0.5), false, mid, render.Center, plot.Dx())
 	}
 	return nil
 }
@@ -434,7 +437,7 @@ func (d *dexcom) valuesWidget(req *plugin.Request, w plugin.WidgetRequest, img *
 	if cols < 1 || cols > 2 {
 		cols = 1
 	}
-	base := req.TextPx(w)
+	scale := design.NewScale(req.TextPx(w), b.Dy())
 	rows := (len(keys) + cols - 1) / cols
 	for rows > 1 && float64(b.Dy())/float64(rows) < render.MinSize*1.8 {
 		rows--
@@ -442,8 +445,8 @@ func (d *dexcom) valuesWidget(req *plugin.Request, w plugin.WidgetRequest, img *
 	n := min(len(keys), rows*cols)
 	rowH := float64(b.Dy()) / float64(rows)
 	cellW := float64(b.Dx()) / float64(cols)
-	label := render.Style{Size: min(rowH*0.5, base*0.9), Shrink: true}
-	value := render.Style{Size: min(rowH*0.58, base), Bold: true, Shrink: true}
+	label := render.Style{Size: min(rowH*0.5, scale.Detail), Shrink: true}
+	value := render.Style{Size: min(rowH*0.58, scale.Body), Bold: true, Shrink: true}
 	gap := max(w.Style.Padding, 4)
 	rule := max(w.Style.Rule, 1)
 	for i := 0; i < n; i++ {
@@ -604,7 +607,7 @@ func (d *dexcom) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 		case "count":
 			out[name] = plugin.NumberValue(float64(s.count))
 		case "band":
-			out[name] = plugin.TextValue(fmt.Sprintf("%s–%s %s", d.num(req, l.low, l.decimals), d.num(req, l.high, l.decimals), l.unit))
+			out[name] = plugin.TextValue(fmt.Sprintf("%s–%s %s", format.Number(l.low, l.decimals, req.Lang()), format.Number(l.high, l.decimals, req.Lang()), l.unit))
 		default:
 			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
 		}

@@ -37,6 +37,13 @@ in every tile of a page. A plugin that ignores the scale can still use
 name ([ADR 0152](../adr/0152-a-tiny-role-for-dense-lists.md)). It is not for a
 tile label or a chart annotation.
 
+## Numbers
+
+`format.Number(value, decimals, language)` writes `12,4` in German and `12.4`
+in English. A plugin uses it instead of a local formatter, so the same value
+never gets two spellings. The package lives in
+[`sdk/format`](../../sdk/format) and has no drawing code.
+
 ### When a component does not fit
 
 Components drop optional content before they shrink type. A tile drops its
@@ -82,10 +89,13 @@ zero to one hundred. A line with `Halo` keeps a white edge above the bars.
 [`departures`](../plugins/departures.md) use the type scale for their dense
 lists. [`myskoda`](../plugins/myskoda.md) and [`prusalink`](../plugins/prusalink.md)
 use the scale, the meter and the secondary ink.
+[`calendar`](../plugins/calendar.md) uses the scale in the agenda and the week
+view; the month grid stays custom. [`dexcom`](../plugins/dexcom.md) uses the
+scale for its reading, graph and value rows; the trend arrows and the target
+band stay custom.
 
-The calendar month, the Pokédex card and xkcd keep their own drawing where the
-components do not fit. The calendar agenda and week, dexcom and the Pokédex
-text follow in a later change.
+The Pokédex card and xkcd keep their own drawing where the components do not
+fit.
 
 ## What the design language does not change
 

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -499,7 +500,8 @@ func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img
 	if area.Empty() || lineH < 1 {
 		return plugin.TooSmall(w)
 	}
-	size := 0.6 * float64(lineH)
+	scale := design.NewScale(req.TextPx(w), area.Dy())
+	size := max(min(scale.Detail, 0.6*float64(lineH)), render.MinSize)
 	baseline := func(i int) int { return area.Min.Y + i*lineH + lineH/2 + int(size*0.36) }
 
 	opts, err := p.widgetArgs(w, lines > 1)
@@ -921,7 +923,8 @@ func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img 
 	}
 	byDay := p.eventsByDay(evs, gridStart, weeks*7)
 	numSize := min(float64(cellH)*0.32, float64(cellW)*0.42)
-	lineSize := max(min(float64(cellH)*0.22, req.TextPx(w)*0.8), req.PtPx(6.3), render.MinSize)
+	scale := design.NewScale(req.TextPx(w), cellH)
+	lineSize := max(min(float64(cellH)*0.22, scale.Micro), req.PtPx(6.3), render.MinSize)
 	for i := range weeks * 7 {
 		day := gridStart.AddDate(0, 0, i)
 		c, r := i%7, i/7
