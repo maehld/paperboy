@@ -80,7 +80,7 @@ Open: value lists (`for-each`); a SolarAI plugin (it talks to SolarAI over HTTP;
 
 ```powershell
 go run ./server/cmd/paperboy -config . -listen :8090
-go test ./server/... ./plugins/... ./sdk/...
+go test ./server/... ./plugins/... ./sdk/...     # Go 1.27, see the gofmt note below
 go vet ./server/... ./plugins/... ./sdk/...
 .\scripts\build.ps1             # paperboy and the plugins into bin/<os>-<arch>/
 ./scripts/package-plugins.sh dist  # plugin zip for the host platform
@@ -88,10 +88,15 @@ go vet ./server/... ./plugins/... ./sdk/...
 ./scripts/check-adr-refs.sh     # every ADR reference in Go code resolves to a document
 ./scripts/screenshots.sh        # plugin page screenshots from a mocked instance into docs/images/plugins/
 ./scripts/design-preview.sh     # the gallery of the design language into docs/images/design/
-npm install --no-save jsdom && node scripts/check-ui.mjs  # smoke-runs virtual.js in jsdom
+npm install --no-save jsdom && node scripts/check-ui.mjs  # smoke-runs virtual.js and dialog.js in jsdom
+npm install --no-save playwright jsdom && node scripts/ui-shots.mjs  # screenshots of every operator page
 ```
 
-- Apply `gofmt` to changed Go files. `node --check` only parses a script; `scripts/check-ui.mjs` also runs it, so an undefined identifier fails.
+- Apply `gofmt` to changed Go files. Take it from the toolchain the module requires: `"$(GOTOOLCHAIN=go1.27.0 go env GOROOT)/bin/gofmt" -w <files>`.
+  `GOTOOLCHAIN` moves `go`, not the `gofmt` binary beside it. An older Go on `PATH` formats with older rules, and CI then fails on *Check formatting* for a file the local run called clean (2026-11-22).
+  `"$(GOTOOLCHAIN=go1.27.0 go env GOROOT)/bin/gofmt" -l server plugins sdk` prints nothing before a commit.
+- `node --check` only parses a script; `scripts/check-ui.mjs` also runs it, so an undefined identifier fails. It runs `virtual.js` and `dialog.js`; `jsdom` has no modal dialog, so the check shims `showModal` and `close`.
+- `scripts/ui-shots.mjs` needs `playwright` (browsers from `~/.cache/ms-playwright`) next to `jsdom`. Install both in one command, because `npm install --no-save` drops the package the other run added.
 - **Windows Firewall blocks per binary path (confirmed 2026-10-22):** `go run` starts the server from a new `%LOCALAPPDATA%\go-build\<hash>\…\paperboy.exe` each time, so every build is a new program for the firewall. A dismissed prompt leaves a permanent **inbound Block** rule for exactly that build: displays on the LAN get "connection refused" or timeouts, while `127.0.0.1` (SolarAI) keeps working. Check with `Get-NetFirewallApplicationFilter | ? Program -like "*paperboy.exe"` and prefer a stable binary from `.\scripts\build.ps1` (`bin\<os>-<arch>\paperboy.exe`) that is allowed once, instead of `go run`.
 - **UTF-8 on Windows:** Windows PowerShell 5 reads UTF-8 files as ANSI, so a `Get-Content … | Set-Content …` round-trip turns „Für“ into „FÃ¼r“. Edit files with the dedicated tools, or read and write them with `[System.IO.File]::ReadAllText`/`WriteAllText` and `UTF8Encoding($false)`; never pipe source files through `Get-Content`/`Set-Content`.
 - Prefer tests for protocol behavior and state transitions.
