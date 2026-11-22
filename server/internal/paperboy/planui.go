@@ -17,8 +17,8 @@ import (
 )
 
 // The plan editor on top of the plan API (ADR 0066): one plan opened for
-// editing, with the rules, the fallback and the actions a device menu offers
-// (ADR 0025, ADR 0057, ADR 0069). Like the page editor it is a server-rendered
+// editing, with the pages, the refresh schedule, the triggers and the actions a
+// device menu offers (ADR 0057, 0069, 0158). Like the page editor it is a server-rendered
 // template plus one embedded script, which works on the JSON model of the API.
 
 //go:embed ui/plan-editor.html
@@ -119,7 +119,7 @@ func (s *Server) planEditorData(cfg *Config, name string) planEditorState {
 
 // handlePlanEditor opens one plan. A plan without a file opens as a new one
 // when the overview asked for it (&new=1); the first save writes the file, and
-// the plan parser wants at least one rule with a page (ADR 0073).
+// the plan parser wants at least one page (ADR 0073).
 func (s *Server) handlePlanEditor(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	name := r.URL.Query().Get("name")

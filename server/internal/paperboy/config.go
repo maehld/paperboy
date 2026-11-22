@@ -239,7 +239,7 @@ type Config struct {
 	Dir         string         // instance directory from -config; holds pages, plans, plugins and state (ADR 0037, 0049)
 	Language    string         // "de" or "en"; built-in texts and number formats
 	Timezone    *time.Location // plans and built-in dates
-	Refresh     Duration       // default interval of a device; a plan rule may override it
+	Refresh     Duration       // default interval of a device; a plan refresh window may override it
 	MenuShow    Duration       // default time the device menu stays open (ADR 0057)
 	Pages       string         // page templates: <dir>/pages
 	Plans       string         // page plans: <dir>/plans

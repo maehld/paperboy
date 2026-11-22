@@ -52,33 +52,31 @@ func (p *planValuePlugin) Values(req *plugin.Request) (map[string]plugin.Value, 
 	return map[string]plugin.Value{"state": plugin.EnumValue(p.key)}, nil
 }
 
-// TestPlanValues feeds a plan's value conditions from the plugin host
-// (ADR 0127): a matching key selects its rule, an empty or failing answer and
+// TestPlanValues feeds a plan's trigger conditions from the plugin host
+// (ADR 0127): a matching key selects its trigger, an empty or failing answer and
 // a plugin that is not configured leave the condition without a match.
 func TestPlanValues(t *testing.T) {
-	s, _ := testServer(t)
+	s, now := testServer(t)
 	p := &planValuePlugin{key: "low"}
 	s.widgets.Builtin["fake"] = p
+	writePageFile(t, filepath.Join(s.config().Pages, "tag.yaml"), textPage("tag"))
+	writePageFile(t, filepath.Join(s.config().Pages, "niedrig.yaml"), textPage("niedrig"))
 	writePlan(t, s, "guard", `
-rules:
-  - name: niedrig
-    when: { conditions: [{value: fake/state, is: [low, urgent]}] }
-    pages: [niedrig]
-  - name: tag
-    pages: [tag]
+pages: [tag, {page: niedrig, hidden: true}]
+triggers:
+  - when: { value: fake/state, is: [low, urgent] }
+    page: niedrig
 `)
 	cfg := s.config()
+	cfg.Devices[0].Plan = "guard"
 	dev := &cfg.Devices[0]
 	values := s.planValues(context.Background(), cfg, "guard", dev.Profile, dev)
 	if values["fake/state"] != "low" {
 		t.Fatalf("plan values: %v", values)
 	}
-	pl, err := s.plans.get(cfg.Plans, "guard", cfg.Timezone)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sel, ok := pl.Select(s.now(), values); !ok || sel.Rule != "niedrig" {
-		t.Fatalf("matching key must select its rule: %+v %v", sel, ok)
+	res := s.resolvePlan(cfg, dev, *now, values)
+	if res.trigger != "niedrig" {
+		t.Fatalf("matching key must select its trigger: %+v", res)
 	}
 
 	// No key from the plugin: the condition does not match.
@@ -86,8 +84,8 @@ rules:
 	if values := s.planValues(context.Background(), cfg, "guard", dev.Profile, dev); values != nil {
 		t.Fatalf("an empty answer created a value: %v", values)
 	}
-	if sel, ok := pl.Select(s.now(), nil); !ok || sel.Rule != "tag" {
-		t.Fatalf("a missing value must fall through: %+v %v", sel, ok)
+	if res := s.resolvePlan(cfg, dev, *now, nil); res.trigger != "" {
+		t.Fatalf("a missing value must not trigger: %+v", res)
 	}
 
 	// A failing plugin is omitted as well.
@@ -98,20 +96,18 @@ rules:
 
 	// A plugin that is not configured answers no value either.
 	writePlan(t, s, "unknown", `
-rules:
-  - name: niedrig
-    when: { conditions: [{value: nope/state, is: low}] }
-    pages: [niedrig]
-  - name: tag
-    pages: [tag]
+pages: [tag, {page: niedrig, hidden: true}]
+triggers:
+  - when: { value: nope/state, is: low }
+    page: niedrig
 `)
 	if values := s.planValues(context.Background(), cfg, "unknown", dev.Profile, dev); values != nil {
 		t.Fatalf("an unknown plugin created a value: %v", values)
 	}
 
-	// A plan without conditions asks no plugin and yields a nil snapshot, and
-	// distinct rules ask each value once.
-	writePlan(t, s, "plain", "rules: [{name: tag, pages: [tag]}]")
+	// A plan without triggers asks no plugin and yields a nil snapshot, and
+	// two triggers naming one value ask it once.
+	writePlan(t, s, "plain", "pages: [tag]")
 	before := p.calls
 	if values := s.planValues(context.Background(), cfg, "plain", dev.Profile, dev); values != nil {
 		t.Fatalf("plain plan asked for values: %v", values)
@@ -120,13 +116,12 @@ rules:
 		t.Fatalf("plain plan asked the plugin %d times", p.calls-before)
 	}
 	writePlan(t, s, "twice", `
-rules:
-  - name: a
-    when: { conditions: [{value: fake/state, is: high}] }
-    pages: [a]
-  - name: b
-    when: { conditions: [{value: fake/state, is: low}] }
-    pages: [b]
+pages: [tag, {page: niedrig, hidden: true}]
+triggers:
+  - when: { value: fake/state, is: high }
+    page: tag
+  - when: { value: fake/state, is: low }
+    page: niedrig
 `)
 	p.key, p.err = "high", nil
 	before = p.calls
@@ -134,7 +129,7 @@ rules:
 		t.Fatalf("twice values: %v", values)
 	}
 	if got := p.calls - before; got != 1 {
-		t.Fatalf("two rules naming one value asked the plugin %d times, want 1", got)
+		t.Fatalf("two triggers naming one value asked the plugin %d times, want 1", got)
 	}
 
 	// A missing plan asks nothing.

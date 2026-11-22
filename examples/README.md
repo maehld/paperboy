@@ -72,17 +72,18 @@ box must fit the character grid of the display.
 The plugin names in the pages are the keys under `plugins` in `paperboy.yaml`;
 `server/cmd/paperboy/paperboy.example.yaml` declares all of them.
 
-`plans/standard.yaml` pages through its pages during the day and shows
-the overview at night. Copy it into the `plans/` directory of your instance and
-point a device at it with `plan: standard`. Its commented `evcc/mode` actions
-switch a loadpoint's charge mode from the device menu, one "now" and one "PV
-only" entry per loadpoint; uncomment the ones you need.
+`plans/standard.yaml` pages through its pages and keeps the day fast and the
+night quiet: the refresh is 30 minutes, with a 10-minute window from 07:00 to
+22:00. Copy it into the `plans/` directory of your instance and point a device
+at it with `plan: standard`. Its commented trigger shows a glucose page while
+`dexcom/state` is low or urgent, and its commented `evcc/mode` actions switch a
+loadpoint's charge mode from the device menu, one "now" and one "PV only" entry
+per loadpoint.
 
 `plans/tour.yaml` rotates through every example page and so through all
 shipped plugins: it shows the glucose page while `dexcom/state` is out of its
-band, on weekday mornings weather, departures, the week and the energy flow
-every 5 minutes, during the day all pages every 10 minutes, at night only the
-overview.
+band, brings `unterwegs` to the front on weekday mornings, and refreshes every
+10 minutes during the day and every 30 minutes at night.
 
 `displays/e1001.yaml`, `displays/sticky.yaml`, `displays/e1003.yaml` and
 `displays/lcd2004.yaml` are four display types ([ADR 0071](../docs/adr/0071-display-types-in-files-of-their-own.md)): an 800 x 480 ePaper

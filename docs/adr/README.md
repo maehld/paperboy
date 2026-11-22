@@ -161,6 +161,7 @@ The web UI: what the operator sees and how content is edited. See [`04-operator-
 | [0154](0154-split-the-release-trains-and-add-maintenance.md) | Split the release trains and add a maintenance page | Accepted, implemented; moves the cleanup of [ADR-0090](0090-download-cache-and-inventory.md) to its own page and adds the state and backup cleanup |
 | [0156](0156-a-title-line-for-the-operator-shell.md) | A title line for the operator shell | Accepted, implemented; amends the top bar, the editor action bars and the list heads of [ADR-0152](0152-a-design-system-and-a-rail-for-the-operator-ui.md) |
 | [0157](0157-drop-the-recent-widgets.md) | Drop the recent widgets from the palette | Accepted, implemented; keeps the pinned widgets of [ADR-0152](0152-a-design-system-and-a-rail-for-the-operator-ui.md) and removes the recent ones |
+| [0158](0158-plans-are-pages-refresh-windows-and-triggers.md) | A plan is pages, refresh windows and triggers | Accepted, implemented; supersedes [ADR-0025](0025-plaene-je-display.md) and amends the conditions of [ADR-0127](0127-plan-conditions-are-values.md), the refresh of [ADR-0130](0130-what-a-plan-refresh-does.md), the alert of [ADR-0131](0131-a-plan-rule-alerts-the-device.md) and the cursor of [ADR-0133](0133-the-page-cursor-holds-the-page.md) |
 
 ## Plugins
 

@@ -122,8 +122,8 @@ type editorDeviceRow struct {
 // editorPlanRow is one plan file in the overview.
 type editorPlanRow struct {
 	Name     string
-	Rules    int
-	Fallback string
+	Pages    int
+	Triggers int
 	Error    string
 	OpenURL  string
 }
@@ -710,7 +710,7 @@ func referenceLabels(refs []displayReference) string {
 	return strings.Join(labels, ", ")
 }
 
-// plansByPage maps a page name to the plans whose rules name it, once each.
+// plansByPage maps a page name to the plans that name it, once each.
 // The delete confirmation and the page editor name the consequences (ADR 0073).
 func plansByPage(plans []editorPlanFile) map[string][]string {
 	index := map[string][]string{}
@@ -797,7 +797,7 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 		v.Breadcrumb = crumbPath(crumb{Label: "Pages"})
 	}
 	for _, p := range plans {
-		row := editorPlanRow{Name: p.Name, Rules: p.Rules, Fallback: p.Fallback, Error: p.Error}
+		row := editorPlanRow{Name: p.Name, Pages: len(p.Pages), Triggers: p.Triggers, Error: p.Error}
 		if p.Error == "" {
 			row.OpenURL = objectURL("/ui/plans", p.Name, nil)
 		}

@@ -1,27 +1,39 @@
 package plan
 
 import (
-	"fmt"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 )
 
 const samplePlan = `
-rules:
-  - name: morgen
-    when: { from: "07:00", to: "09:00", days: [mo, di, mi, do, fr] }
-    pages: [kalender-wetter, solar-overview]
-  - name: tag
-    when: { from: "09:00", to: "19:00" }
-    pages: [solar-gross, solar-battery, solar-history]
-    on_refresh: cycle
-    refresh: 5m
-  - name: nacht
-    when: { from: "19:00", to: "07:00" }
-    pages: [tueren]
-    refresh: 30m
-fallback: nacht
+pages:
+  - energie
+  - prusa
+  - wetter
+  - { page: zucker, hidden: true }
+
+on_refresh: cycle
+refresh:
+  default: 1h
+  windows:
+    - { from: "08:00", to: "16:00", interval: 10m }
+    - { from: "22:00", to: "06:00", interval: 30m }
+
+triggers:
+  - when: { value: dexcom/state, is: [low, urgent] }
+    page: zucker
+    alert: refresh
+  - when:
+      - { value: prusalink/state, is: printing }
+      - { value: weather/temperature, is: warm }
+    page: prusa
+    alert: once
+  - when: [{ value: time, from: "06:00", to: "09:00" }]
+    page: wetter
+  - when: [{ value: date, from: "2026-12-24" }]
+    page: wetter
 `
 
 // berlin is the timezone used by the tests; plans get it from the
@@ -51,414 +63,345 @@ func at(t *testing.T, year int, month time.Month, day, hour, minute int) time.Ti
 
 func TestParse(t *testing.T) {
 	p := parse(t, samplePlan)
-	if len(p.Rules) != 3 || p.Fallback != "nacht" {
+	if len(p.Pages) != 4 || len(p.Triggers) != 4 {
 		t.Fatalf("plan: %+v", p)
 	}
-	tag := p.Rules[1]
-	if tag.Mode() != RefreshCycle || time.Duration(tag.Refresh) != 5*time.Minute {
-		t.Fatalf("tag: %+v", tag)
+	if p.Mode() != RefreshCycle {
+		t.Fatalf("mode: %q", p.Mode())
 	}
-	// German and English weekday names are both accepted.
-	english := parse(t, `
-rules:
-  - name: weekend
-    when: { days: [sat, sun] }
-    pages: [wochenende]
-`)
-	if got := english.Rules[0].When.Days; len(got) != 2 || time.Weekday(got[0]) != time.Saturday || time.Weekday(got[1]) != time.Sunday {
-		t.Fatalf("days: %v", got)
+	if p.Pages[0].Hidden || p.Pages[1].Hidden || p.Pages[2].Hidden || !p.Pages[3].Hidden {
+		t.Fatalf("hidden: %+v", p.Pages)
+	}
+	if p.Pages[3].Name != "zucker" {
+		t.Fatalf("hidden page: %+v", p.Pages[3])
+	}
+	// One condition may be written as a mapping, several as a list.
+	if len(p.Triggers[0].When) != 1 || p.Triggers[0].When[0].Value != "dexcom/state" {
+		t.Fatalf("trigger 1: %+v", p.Triggers[0])
+	}
+	if len(p.Triggers[1].When) != 2 || len(p.Triggers[1].When[1].Is) != 1 {
+		t.Fatalf("trigger 2: %+v", p.Triggers[1])
+	}
+	if len(p.Refresh.Windows) != 2 || p.Refresh.Windows[1].From != Clock(22*60) {
+		t.Fatalf("windows: %+v", p.Refresh.Windows)
+	}
+	if len(p.Triggers[2].When) != 1 || p.Triggers[2].When[0].Kind() != ConditionTime {
+		t.Fatalf("time condition: %+v", p.Triggers[2])
+	}
+	if len(p.Triggers[3].When) != 1 || p.Triggers[3].When[0].Kind() != ConditionDates ||
+		p.Triggers[3].When[0].DateFrom == nil || *p.Triggers[3].When[0].DateFrom != "2026-12-24" {
+		t.Fatalf("date condition: %+v", p.Triggers[3])
 	}
 }
 
-// TestRefreshModes reads the three modes and defaults to current. The old
-// rotate key still means cycle (ADR 0130).
+// TestRefreshModes reads the three modes and defaults to current.
 func TestRefreshModes(t *testing.T) {
-	p := parse(t, `
-rules:
-  - name: cycle
-    pages: [a]
-    on_refresh: cycle
-  - name: first
-    pages: [a]
-    on_refresh: first
-  - name: current
-    pages: [a]
-    on_refresh: current
-  - name: default
-    pages: [a]
-  - name: old
-    pages: [a]
-    rotate: true
-`)
-	want := []RefreshMode{RefreshCycle, RefreshFirst, RefreshCurrent, RefreshCurrent, RefreshCycle}
-	for i, mode := range want {
-		if got := p.Rules[i].Mode(); got != mode {
-			t.Fatalf("rule %s: got %q, want %q", p.Rules[i].Name, got, mode)
+	for _, tc := range []struct {
+		key  string
+		want RefreshMode
+	}{
+		{"", RefreshCurrent},
+		{"on_refresh: current", RefreshCurrent},
+		{"on_refresh: first", RefreshFirst},
+		{"on_refresh: cycle", RefreshCycle},
+	} {
+		src := "pages: [a]\n" + tc.key
+		if got := parse(t, src).Mode(); got != tc.want {
+			t.Fatalf("%q: got %q, want %q", tc.key, got, tc.want)
 		}
-	}
-	sel, ok := p.Select(at(t, 2026, time.October, 21, 12, 0), nil)
-	if !ok || sel.OnRefresh != RefreshCycle {
-		t.Fatalf("selection: %+v %v", sel, ok)
 	}
 }
 
-// TestAlertModes reads the two alert modes, treats never and the missing key as
-// quiet and rejects the boolean of an early sketch (ADR 0131).
+// TestAlertModes reads the two alert modes and treats never and the missing key
+// as quiet (ADR 0131).
 func TestAlertModes(t *testing.T) {
-	p := parse(t, `
-rules:
-  - name: quiet
-    pages: [a]
-  - name: never
-    pages: [a]
-    alert: never
-  - name: once
-    pages: [a]
-    alert: once
-  - name: refresh
-    pages: [a]
-    alert: refresh
-`)
-	want := []AlertMode{AlertNever, AlertNever, AlertOnce, AlertRefresh}
-	for i, mode := range want {
-		if got := p.Rules[i].Alert; got != mode {
-			t.Fatalf("rule %s: got %q, want %q", p.Rules[i].Name, got, mode)
+	for _, tc := range []struct {
+		key  string
+		want AlertMode
+	}{
+		{"", AlertNever},
+		{"alert: never", AlertNever},
+		{"alert: once", AlertOnce},
+		{"alert: refresh", AlertRefresh},
+	} {
+		p := parse(t, "pages: [a]\ntriggers:\n  - when: {value: x/y, is: ok}\n    page: a\n    "+tc.key+"\n")
+		if got := p.Triggers[0].Alert; got != tc.want {
+			t.Fatalf("%q: got %q, want %q", tc.key, got, tc.want)
 		}
 	}
-	// The selection carries the mode.
-	sel, ok := p.Select(at(t, 2026, time.October, 21, 12, 0), nil)
-	if !ok || sel.Alert != AlertNever {
-		t.Fatalf("first rule: %+v %v", sel, ok)
+	if err := parseErr(t, "pages: [a]\ntriggers:\n  - when: {value: x/y, is: ok}\n    page: a\n    alert: loud\n"); !strings.Contains(err, "once or refresh") {
+		t.Fatalf("alert: %v", err)
 	}
-	one := parse(t, "rules: [{name: alarm, pages: [a], alert: refresh}]")
-	if sel, ok := one.Select(at(t, 2026, time.October, 21, 12, 0), nil); !ok || sel.Alert != AlertRefresh {
-		t.Fatalf("refresh: %+v %v", sel, ok)
+}
+
+func TestInterval(t *testing.T) {
+	p := parse(t, samplePlan)
+	for _, tc := range []struct {
+		when time.Time
+		want time.Duration
+	}{
+		{at(t, 2026, time.October, 21, 8, 0), 10 * time.Minute},
+		{at(t, 2026, time.October, 21, 15, 59), 10 * time.Minute},
+		{at(t, 2026, time.October, 21, 16, 0), time.Hour},
+		{at(t, 2026, time.October, 21, 21, 0), time.Hour},
+		{at(t, 2026, time.October, 21, 22, 0), 30 * time.Minute},
+		{at(t, 2026, time.October, 22, 5, 59), 30 * time.Minute},
+		{at(t, 2026, time.October, 22, 6, 0), time.Hour},
+	} {
+		if got := p.Interval(tc.when); got != tc.want {
+			t.Fatalf("%s: got %s, want %s", tc.when.Format("15:04"), got, tc.want)
+		}
+	}
+	// A plan without a schedule leaves the device's refresh in place.
+	if got := parse(t, "pages: [a]").Interval(at(t, 2026, time.October, 21, 12, 0)); got != 0 {
+		t.Fatalf("no schedule: %s", got)
+	}
+}
+
+func TestUntilNextChange(t *testing.T) {
+	p := parse(t, samplePlan)
+	for _, tc := range []struct {
+		when time.Time
+		want time.Duration
+	}{
+		{at(t, 2026, time.October, 21, 7, 50), 10 * time.Minute}, // to 08:00
+		{at(t, 2026, time.October, 21, 8, 0), time.Hour},         // trigger ends at 09:00
+		{at(t, 2026, time.October, 21, 23, 0), 7 * time.Hour},    // to 06:00
+		{at(t, 2026, time.October, 22, 1, 0), 5 * time.Hour},     // to 06:00
+		{at(t, 2026, time.October, 22, 7, 59), 1 * time.Minute},  // to 08:00
+		{at(t, 2026, time.October, 21, 12, 0), 4 * time.Hour},    // to 16:00
+		{at(t, 2026, time.October, 21, 21, 59), 1 * time.Minute}, // to 22:00
+	} {
+		if got := p.UntilNextChange(tc.when); got != tc.want {
+			t.Fatalf("%s: got %s, want %s", tc.when.Format("Mon 15:04"), got, tc.want)
+		}
+	}
+	if got := parse(t, "pages: [a]").UntilNextChange(at(t, 2026, time.October, 21, 12, 0)); got != 0 {
+		t.Fatalf("no schedule: %s", got)
+	}
+	// A trigger window and a date also wake the device.
+	triggers := parse(t, `
+pages: [a]
+triggers:
+  - when: [{ value: time, from: "06:00", to: "09:00" }]
+    page: a
+  - when: [{ value: date, from: "2026-10-22" }]
+    page: a
+`)
+	if got := triggers.UntilNextChange(at(t, 2026, time.October, 21, 5, 50)); got != 10*time.Minute {
+		t.Fatalf("trigger start: %s", got)
+	}
+	if got := triggers.UntilNextChange(at(t, 2026, time.October, 21, 8, 50)); got != 10*time.Minute {
+		t.Fatalf("trigger end: %s", got)
+	}
+	if got := triggers.UntilNextChange(at(t, 2026, time.October, 21, 20, 0)); got != 4*time.Hour {
+		t.Fatalf("date start: %s", got)
+	}
+}
+
+func TestEffective(t *testing.T) {
+	p := parse(t, samplePlan)
+	want := []string{"energie", "prusa", "wetter"}
+	if got := p.Effective(""); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("without trigger: %v", got)
+	}
+	// The trigger page keeps its declared place.
+	want = []string{"energie", "prusa", "wetter", "zucker"}
+	if got := p.Effective("zucker"); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("with trigger: %v", got)
+	}
+	// A visible trigger page does not appear twice.
+	want = []string{"energie", "prusa", "wetter"}
+	if got := p.Effective("prusa"); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("visible trigger: %v", got)
+	}
+}
+
+func TestTriggerMatches(t *testing.T) {
+	p := parse(t, samplePlan)
+	matching := func(values Values) []string {
+		pages := []string{}
+		for _, tr := range p.Matching(at(t, 2026, time.October, 21, 12, 0), values) {
+			pages = append(pages, tr.Page)
+		}
+		return pages
+	}
+	if got := matching(Values{"dexcom/state": "low"}); len(got) != 1 || got[0] != "zucker" {
+		t.Fatalf("low should match zucker: %v", got)
+	}
+	if got := matching(Values{"dexcom/state": "normal"}); len(got) != 0 {
+		t.Fatalf("normal should not match: %v", got)
+	}
+	if got := matching(nil); len(got) != 0 {
+		t.Fatalf("a missing value should not match: %v", got)
+	}
+	// Several conditions must all match; a missing one means no match.
+	if got := matching(Values{"prusalink/state": "printing", "weather/temperature": "warm"}); len(got) != 1 || got[0] != "prusa" {
+		t.Fatalf("both conditions should match: %v", got)
+	}
+	if got := matching(Values{"prusalink/state": "printing"}); len(got) != 0 {
+		t.Fatalf("a missing condition should not match: %v", got)
+	}
+}
+
+// TestTimeTrigger matches a window of the day, the weekday and both together.
+func TestTimeTrigger(t *testing.T) {
+	p := parse(t, `
+pages: [a, b, c]
+triggers:
+  - when: [{ value: time, from: "06:00", to: "09:00" }]
+    page: a
+  - when: [{ value: time, from: "22:00", to: "06:00" }]
+    page: b
+  - when: [{ value: weekday, is: [wed] }]
+    page: c
+`)
+	page := func(when time.Time) string {
+		if trs := p.Matching(when, nil); len(trs) > 0 {
+			return trs[0].Page
+		}
+		return ""
+	}
+	if got := page(at(t, 2026, time.October, 21, 7, 30)); got != "a" {
+		t.Fatalf("wednesday morning: %q", got)
+	}
+	if got := page(at(t, 2026, time.October, 21, 9, 0)); got != "c" {
+		t.Fatalf("the window ends at 09:00; wednesday remains: %q", got)
+	}
+	if got := page(at(t, 2026, time.October, 21, 23, 0)); got != "b" {
+		t.Fatalf("wednesday night: %q", got)
+	}
+	if got := page(at(t, 2026, time.October, 22, 1, 0)); got != "b" {
+		t.Fatalf("after midnight: %q", got)
+	}
+	if got := page(at(t, 2026, time.October, 22, 6, 0)); got != "a" {
+		t.Fatalf("the night window ends and the morning window starts: %q", got)
+	}
+	if got := page(at(t, 2026, time.October, 22, 7, 30)); got != "a" {
+		t.Fatalf("thursday morning: %q", got)
+	}
+	// The weekday is the local day now, also after midnight.
+	if got := page(at(t, 2026, time.October, 22, 12, 0)); got != "" {
+		t.Fatalf("thursday noon: %q", got)
+	}
+	// Both together: Wednesday morning only.
+	both := parse(t, `
+pages: [a]
+triggers:
+  - when:
+      - { value: weekday, is: [wed] }
+      - { value: time, from: "06:00", to: "09:00" }
+    page: a
+`)
+	if len(both.Matching(at(t, 2026, time.October, 21, 7, 30), nil)) != 1 {
+		t.Fatal("wednesday morning should match")
+	}
+	if len(both.Matching(at(t, 2026, time.October, 22, 7, 30), nil)) != 0 {
+		t.Fatal("thursday morning should not match")
+	}
+}
+
+// TestDateTrigger matches a local calendar day and nothing around it.
+func TestDateTrigger(t *testing.T) {
+	p := parse(t, `
+pages: [a]
+triggers:
+  - when: [{ value: date, from: "2026-12-24", to: "2026-12-26" }]
+    page: a
+`)
+	for _, tc := range []struct {
+		when time.Time
+		want bool
+	}{
+		{at(t, 2026, time.December, 24, 0, 0), true},
+		{at(t, 2026, time.December, 24, 23, 59), true},
+		{at(t, 2026, time.December, 25, 12, 0), true},
+		{at(t, 2026, time.December, 26, 0, 0), false},
+		{at(t, 2026, time.December, 23, 23, 59), false},
+	} {
+		if got := len(p.Matching(tc.when, nil)) == 1; got != tc.want {
+			t.Fatalf("%s: matched=%v, want %v", tc.when.Format("2006-01-02 15:04"), got, tc.want)
+		}
+	}
+	// Without to the window is one day.
+	one := parse(t, "pages: [a]\ntriggers:\n  - when: [{ value: date, from: \"2026-12-24\" }]\n    page: a\n")
+	if len(one.Matching(at(t, 2026, time.December, 24, 23, 0), nil)) != 1 {
+		t.Fatal("the single day should match")
+	}
+	if len(one.Matching(at(t, 2026, time.December, 25, 0, 0), nil)) != 0 {
+		t.Fatal("the next day should not match")
 	}
 }
 
 func TestParseErrors(t *testing.T) {
-	cases := map[string]string{
-		"unknown field":      "rules: [{name: a, pages: [x]}]\nextra: 1",
-		"rules missing":      "rules: []",
-		"timezone in plan":   "timezone: Europe/Berlin\nrules: [{name: a, pages: [x]}]",
-		"duplicate rule":     "rules: [{name: a, pages: [x]}, {name: a, pages: [y]}]",
-		"bad rule name":      "rules: [{name: Morgen, pages: [x]}]",
-		"pages missing":      "rules: [{name: a}]",
-		"bad page name":      "rules: [{name: a, pages: [Solar]}]",
-		"duplicate page":     "rules: [{name: a, pages: [x, x]}]",
-		"refresh too short":  "rules: [{name: a, pages: [x], refresh: 500ms}]",
-		"unknown refresh":    "rules: [{name: a, pages: [x], on_refresh: rotate}]",
-		"rotate conflict":    "rules: [{name: a, pages: [x], rotate: true, on_refresh: first}]",
-		"alert bool":         "rules: [{name: a, pages: [x], alert: true}]",
-		"unknown alert":      "rules: [{name: a, pages: [x], alert: sometimes}]",
-		"old alert name":     "rules: [{name: a, pages: [x], alert: always}]",
-		"data condition":     "rules: [{name: a, pages: [x], when: {data: [{path: tuer, equals: offen}]}}]",
-		"from without to":    "rules: [{name: a, pages: [x], when: {from: \"07:00\"}}]",
-		"from equals to":     "rules: [{name: a, pages: [x], when: {from: \"07:00\", to: \"07:00\"}}]",
-		"bad time":           "rules: [{name: a, pages: [x], when: {from: \"7:00\", to: \"09:00\"}}]",
-		"time out of range":  "rules: [{name: a, pages: [x], when: {from: \"25:00\", to: \"09:00\"}}]",
-		"unknown weekday":    "rules: [{name: a, pages: [x], when: {days: [funday]}}]",
-		"unknown fallback":   "rules: [{name: a, pages: [x]}]\nfallback: b",
-		"timezone not given": "rules: [{name: a, pages: [x]}]\ntimezone: 5",
-		"second document":    "rules: [{name: a, pages: [x]}]\n---\nrules: []",
-	}
-	for name, yaml := range cases {
-		if _, err := Parse(strings.NewReader(yaml), berlin(t)); err == nil {
-			t.Fatalf("%s: expected an error", name)
-		}
-	}
-}
-
-func TestPlanActions(t *testing.T) {
-	p := parse(t, `
-rules:
-  - name: tag
-    pages: [a]
-  - name: nacht
-    pages: [b]
-fallback: nacht
-actions:
-  - action: evcc/mode
-    args: { loadpoint: 0, mode: now }
-    id: charge-now
-    title: Charge now
-  - action: evcc/mode
-    args: { loadpoint: 1, mode: now }
-    id: charge-now-2
-  - paperboy/refresh
-`)
-	if len(p.Actions) != 3 {
-		t.Fatalf("actions: %+v", p.Actions)
-	}
-	if got := p.Actions[0].Key(); got != "charge-now" {
-		t.Fatalf("identity with id: %q", got)
-	}
-	if got := p.Actions[2].Key(); got != "paperboy/refresh" {
-		t.Fatalf("identity without id: %q", got)
-	}
-	if got := fmt.Sprint(p.Actions[0].Args["loadpoint"]); got != "0" {
-		t.Fatalf("args: %v", p.Actions[0].Args)
-	}
-	if p.Actions[0].Title != "Charge now" {
-		t.Fatalf("title: %q", p.Actions[0].Title)
-	}
-	// Every selection carries the plan's actions, matching rule and fallback.
-	for _, now := range []time.Time{
-		at(t, 2026, time.October, 21, 12, 0),
-		at(t, 2026, time.October, 21, 23, 0),
+	for _, tc := range []struct {
+		name string
+		src  string
+		want string
+	}{
+		{"no pages", "on_refresh: cycle\n", "pages missing"},
+		{"all hidden", "pages: [{page: a, hidden: true}]\n", "every page is hidden"},
+		{"duplicate page", "pages: [a, a]\n", "duplicate page"},
+		{"bad page name", "pages: [A]\n", "only a-z, 0-9 and -"},
+		{"bad mode", "pages: [a]\non_refresh: rotate\n", "expected cycle, first or current"},
+		{"overlap", "pages: [a]\nrefresh:\n  windows:\n    - {from: \"08:00\", to: \"16:00\", interval: 10m}\n    - {from: \"12:00\", to: \"18:00\", interval: 10m}\n", "overlap"},
+		{"same edges", "pages: [a]\nrefresh:\n  windows:\n    - {from: \"08:00\", to: \"08:00\", interval: 10m}\n", "from and to must differ"},
+		{"short interval", "pages: [a]\nrefresh:\n  windows:\n    - {from: \"08:00\", to: \"16:00\", interval: 500ms}\n", "at least 1s"},
+		{"short default", "pages: [a]\nrefresh: 500ms\n", "at least 1s"},
+		{"trigger page not in plan", "pages: [a]\ntriggers:\n  - when: {value: x/y, is: ok}\n    page: b\n", "is not in pages"},
+		{"trigger page missing", "pages: [a]\ntriggers:\n  - when: {value: x/y, is: ok}\n", "page missing"},
+		{"condition without keys", "pages: [a]\ntriggers:\n  - when: {value: x/y}\n    page: a\n", "is missing"},
+		{"duplicate condition", "pages: [a]\ntriggers:\n  - when: [{value: x/y, is: ok}, {value: x/y, is: no}]\n    page: a\n", "duplicate condition"},
+		{"bad condition value", "pages: [a]\ntriggers:\n  - when: {value: xy, is: ok}\n    page: a\n", "expected plugin/value"},
+		{"trigger without when", "pages: [a]\ntriggers:\n  - page: a\n", "when missing"},
+		{"empty condition", "pages: [a]\ntriggers:\n  - when: [{}]\n    page: a\n", "expected plugin/value"},
+		{"half time", "pages: [a]\ntriggers:\n  - when: [{ value: time, from: \"06:00\" }]\n    page: a\n", "from and to must be given together"},
+		{"equal edges", "pages: [a]\ntriggers:\n  - when: [{ value: time, from: \"06:00\", to: \"06:00\" }]\n    page: a\n", "from and to must differ"},
+		{"bad date", "pages: [a]\ntriggers:\n  - when: [{ value: date, from: 2026-13-01 }]\n    page: a\n", "expected a date as"},
+		{"date order", "pages: [a]\ntriggers:\n  - when: [{ value: date, from: \"2026-12-26\", to: \"2026-12-24\" }]\n    page: a\n", "must be in order"},
+		{"mixed condition", "pages: [a]\ntriggers:\n  - when: [{ value: time, from: \"06:00\", to: \"09:00\", is: [x] }]\n    page: a\n", "takes from and to, not is"},
+		{"old rules", "rules: [{name: a, pages: [a]}]\n", "rules and fallback are gone"},
+		{"old fallback", "pages: [a]\nfallback: a\n", "rules and fallback are gone"},
+		{"unknown key", "pages: [a]\nfoo: 1\n", "field foo not found"},
+		{"unknown page key", "pages: [{page: a, hidden: true, x: 1}]\n", "field x not found"},
+		{"unknown refresh key", "pages: [a]\nrefresh: {default: 1h, x: 1}\n", "field x not found"},
+		{"second document", "pages: [a]\n---\npages: [b]\n", "only one YAML document"},
 	} {
-		sel, ok := p.Select(now, nil)
-		if !ok || len(sel.Actions) != 3 || sel.Actions[1].ID != "charge-now-2" {
-			t.Fatalf("selection at %s: %+v %v", now.Format(time.RFC3339), sel, ok)
+		if err := parseErr(t, tc.src); !strings.Contains(err, tc.want) {
+			t.Fatalf("%s: got %q, want %q", tc.name, err, tc.want)
 		}
 	}
 }
 
-func TestPlanActionErrors(t *testing.T) {
-	cases := map[string]string{
-		"actions on a rule":      "rules: [{name: a, pages: [x], actions: [{action: a/b}]}]",
-		"action missing":         "rules: [{name: a, pages: [x]}]\nactions: [{id: a}]",
-		"action without plugin":  "rules: [{name: a, pages: [x]}]\nactions: [{action: refresh}]",
-		"action with bad name":   "rules: [{name: a, pages: [x]}]\nactions: [{action: evcc/Mode}]",
-		"bad id":                 "rules: [{name: a, pages: [x]}]\nactions: [{action: a/b, id: Charge}]",
-		"missing id":             "rules: [{name: a, pages: [x]}]\nactions: [{action: a/b, id: x}, {action: a/b}]",
-		"duplicate id":           "rules: [{name: a, pages: [x]}]\nactions: [{action: a/b, id: x}, {action: c/d, id: x}]",
-		"duplicate action":       "rules: [{name: a, pages: [x]}]\nactions: [{action: a/b, id: x}, {action: a/b, id: y}]",
-		"duplicate action mixed": "rules: [{name: a, pages: [x]}]\nactions: [{action: a/b, id: x, args: {a: 1, b: 2}}, {action: a/b, id: y, args: {b: 2, a: 1}}]",
+func parseErr(t *testing.T, yaml string) string {
+	t.Helper()
+	_, err := Parse(strings.NewReader(yaml), berlin(t))
+	if err == nil {
+		t.Fatalf("expected an error for %q", yaml)
 	}
-	for name, yaml := range cases {
-		if _, err := Parse(strings.NewReader(yaml), berlin(t)); err == nil {
-			t.Fatalf("%s: expected an error", name)
-		}
-	}
+	return err.Error()
 }
 
-func TestSelect(t *testing.T) {
+func TestJSONRoundTrip(t *testing.T) {
 	p := parse(t, samplePlan)
-	cases := []struct {
-		at   time.Time
-		rule string
-	}{
-		{at(t, 2026, time.October, 21, 6, 59), "nacht"},  // before the morning window
-		{at(t, 2026, time.October, 21, 7, 0), "morgen"},  // from is inclusive
-		{at(t, 2026, time.October, 21, 8, 59), "morgen"}, // Wednesday
-		{at(t, 2026, time.October, 21, 9, 0), "tag"},     // to is exclusive
-		{at(t, 2026, time.October, 21, 18, 59), "tag"},
-		{at(t, 2026, time.October, 21, 19, 0), "nacht"},
-		{at(t, 2026, time.October, 25, 8, 0), "nacht"}, // Sunday: fallback
-		{at(t, 2026, time.October, 25, 12, 0), "tag"},  // Sunday noon
+	data, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, c := range cases {
-		sel, ok := p.Select(c.at, nil)
-		if !ok || sel.Rule != c.rule {
-			t.Fatalf("%s: got %q (%v), want %q", c.at.Format(time.RFC3339), sel.Rule, ok, c.rule)
-		}
+	var back Plan
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatal(err)
 	}
-	if sel, _ := p.Select(at(t, 2026, time.October, 21, 12, 0), nil); len(sel.Pages) != 3 || sel.OnRefresh != RefreshCycle {
-		t.Fatalf("tag selection: %+v", sel)
+	if got := back.Effective("zucker"); strings.Join(got, ",") != "energie,prusa,wetter,zucker" {
+		t.Fatalf("pages: %v", got)
 	}
-}
-
-func TestSelectAcrossMidnightAndDays(t *testing.T) {
-	p := parse(t, `
-rules:
-  - name: freitagnacht
-    when: { from: "22:00", to: "06:00", days: [fr] }
-    pages: [nacht]
-`)
-	// Saturday 03:00 belongs to the window that started on Friday.
-	if sel, ok := p.Select(at(t, 2026, time.October, 24, 3, 0), nil); !ok || sel.Rule != "freitagnacht" {
-		t.Fatalf("Saturday night: %+v %v", sel, ok)
+	if back.Refresh.Windows[1].Interval != Duration(30*time.Minute) {
+		t.Fatalf("windows: %+v", back.Refresh.Windows)
 	}
-	// Friday 03:00 belongs to Thursday's window.
-	if _, ok := p.Select(at(t, 2026, time.October, 23, 3, 0), nil); ok {
-		t.Fatal("Friday morning must not match")
+	if len(back.Triggers) != 4 || back.Triggers[1].When[1].Value != "weather/temperature" {
+		t.Fatalf("triggers: %+v", back.Triggers)
 	}
-	// Saturday 07:00 is outside the window.
-	if _, ok := p.Select(at(t, 2026, time.October, 24, 7, 0), nil); ok {
-		t.Fatal("Saturday morning must not match")
-	}
-}
-
-func TestSelectFirstMatchWins(t *testing.T) {
-	p := parse(t, `
-rules:
-  - name: genau
-    when: { from: "12:00", to: "12:30" }
-    pages: [a]
-  - name: immer
-    pages: [b]
-`)
-	if sel, _ := p.Select(at(t, 2026, time.October, 21, 12, 10), nil); sel.Rule != "genau" {
-		t.Fatalf("first rule must win: %+v", sel)
-	}
-	if sel, _ := p.Select(at(t, 2026, time.October, 21, 13, 0), nil); sel.Rule != "immer" {
-		t.Fatalf("always rule: %+v", sel)
-	}
-}
-
-func TestSelectFallback(t *testing.T) {
-	// Without a fallback, a gap leaves no selection.
-	p := parse(t, `
-rules:
-  - name: tag
-    when: { from: "09:00", to: "19:00" }
-    pages: [a]
-`)
-	if _, ok := p.Select(at(t, 2026, time.October, 21, 20, 0), nil); ok {
-		t.Fatal("no rule must match outside the window")
-	}
-	// A fallback applies regardless of its own time window.
-	p = parse(t, `
-rules:
-  - name: tag
-    when: { from: "09:00", to: "19:00" }
-    pages: [a]
-  - name: notfall
-    when: { from: "09:00", to: "10:00" }
-    pages: [b]
-fallback: notfall
-`)
-	if sel, ok := p.Select(at(t, 2026, time.October, 21, 20, 0), nil); !ok || sel.Rule != "notfall" {
-		t.Fatalf("fallback selection: %+v %v", sel, ok)
-	}
-}
-
-// TestSelectConditions checks that a rule with value conditions only matches
-// while a value answers one of its keys, together with its time window
-// (ADR 0127).
-func TestSelectConditions(t *testing.T) {
-	p := parse(t, `
-rules:
-  - name: unterzucker
-    when: { conditions: [{value: dexcom/state, is: [low, urgent]}] }
-    pages: [zucker]
-  - name: tag
-    when: { from: "07:00", to: "22:00" }
-    pages: [uebersicht]
-`)
-	now := at(t, 2026, time.October, 21, 12, 0)
-	if sel, ok := p.Select(now, Values{"dexcom/state": "low"}); !ok || sel.Rule != "unterzucker" {
-		t.Fatalf("matching key: %+v %v", sel, ok)
-	}
-	if sel, ok := p.Select(now, Values{"dexcom/state": "urgent"}); !ok || sel.Rule != "unterzucker" {
-		t.Fatalf("second matching key: %+v %v", sel, ok)
-	}
-	if sel, ok := p.Select(now, Values{"dexcom/state": "normal"}); !ok || sel.Rule != "tag" {
-		t.Fatalf("other key: %+v %v", sel, ok)
-	}
-	// A missing value counts as no match, never as a warning page.
-	if sel, ok := p.Select(now, nil); !ok || sel.Rule != "tag" {
-		t.Fatalf("nil values: %+v %v", sel, ok)
-	}
-	if p.Matches(0, now, Values{"dexcom/state": "low"}) != true || p.Matches(0, now, nil) {
-		t.Fatal("Matches must consider values")
-	}
-
-	// Conditions combine with the time window as AND.
-	p = parse(t, `
-rules:
-  - name: nachts
-    when: { from: "22:00", to: "06:00", conditions: [{value: dexcom/state, is: low}] }
-    pages: [zucker]
-`)
-	if _, ok := p.Select(at(t, 2026, time.October, 21, 12, 0), Values{"dexcom/state": "low"}); ok {
-		t.Fatal("conditions must not override the time window")
-	}
-	if _, ok := p.Select(at(t, 2026, time.October, 21, 23, 0), nil); ok {
-		t.Fatal("a missing value must not match")
-	}
-	// A scalar is is one key; several entries combine as AND.
-	p = parse(t, `
-rules:
-  - name: a
-    when: { conditions: [{value: dexcom/state, is: low}, {value: weather/sky, is: [rain, snow]}] }
-    pages: [x]
-`)
-	if _, ok := p.Select(now, Values{"dexcom/state": "low", "weather/sky": "rain"}); !ok {
-		t.Fatal("both conditions must match")
-	}
-	if _, ok := p.Select(now, Values{"dexcom/state": "low", "weather/sky": "sun"}); ok {
-		t.Fatal("an unmatched second condition must not match")
-	}
-}
-
-func TestConditionErrors(t *testing.T) {
-	cases := map[string]string{
-		"data":            `rules: [{name: a, pages: [x], when: {data: [{path: a}]}}]`,
-		"old string":      `rules: [{name: a, pages: [x], when: {conditions: [dexcom/low]}}]`,
-		"missing plugin":  `rules: [{name: a, pages: [x], when: {conditions: [{value: low, is: a}]}}]`,
-		"bad name":        `rules: [{name: a, pages: [x], when: {conditions: [{value: dexcom/Low, is: a}]}}]`,
-		"missing key":     `rules: [{name: a, pages: [x], when: {conditions: [{value: dexcom/state}]}}]`,
-		"empty key list":  `rules: [{name: a, pages: [x], when: {conditions: [{value: dexcom/state, is: []}]}}]`,
-		"duplicate value": `rules: [{name: a, pages: [x], when: {conditions: [{value: dexcom/state, is: low}, {value: dexcom/state, is: high}]}}]`,
-		"unknown field":   `rules: [{name: a, pages: [x], when: {conditions: [{value: dexcom/state, is: low, label: Low}]}}]`,
-	}
-	for name, yaml := range cases {
-		if _, err := Parse(strings.NewReader(yaml), berlin(t)); err == nil {
-			t.Fatalf("%s: expected an error", name)
-		}
-	}
-	// The hints name the replacement.
-	if _, err := Parse(strings.NewReader(cases["data"]), berlin(t)); err == nil || !strings.Contains(err.Error(), "when.conditions") {
-		t.Fatalf("data hint: %v", err)
-	}
-	if _, err := Parse(strings.NewReader(cases["old string"]), berlin(t)); err == nil || !strings.Contains(err.Error(), "no longer a condition") {
-		t.Fatalf("old condition hint: %v", err)
-	}
-}
-
-func TestUntilNextBoundary(t *testing.T) {
-	p := parse(t, samplePlan)
-	cases := []struct {
-		at   time.Time
-		want time.Duration
-	}{
-		{at(t, 2026, time.October, 21, 6, 30), 30 * time.Minute},
-		{at(t, 2026, time.October, 21, 8, 30), 30 * time.Minute},
-		{at(t, 2026, time.October, 21, 9, 0), 10 * time.Hour}, // window ends at 09:00, next is 19:00
-		{at(t, 2026, time.October, 21, 12, 0), 7 * time.Hour},
-		{at(t, 2026, time.October, 21, 19, 10), 11*time.Hour + 50*time.Minute},
-	}
-	for _, c := range cases {
-		if got := p.UntilNextBoundary(c.at); got != c.want {
-			t.Fatalf("%s: got %v, want %v", c.at.Format(time.RFC3339), got, c.want)
-		}
-	}
-}
-
-func TestUntilNextBoundaryDays(t *testing.T) {
-	p := parse(t, `
-rules:
-  - name: montag
-    when: { from: "07:00", to: "09:00", days: [mo] }
-    pages: [a]
-  - name: garnicht
-    pages: [b]
-`)
-	now := at(t, 2026, time.October, 21, 12, 0) // Wednesday
-	want := at(t, 2026, time.October, 26, 7, 0).Sub(now)
-	if got := p.UntilNextBoundary(now); got != want {
-		t.Fatalf("got %v, want %v", got, want)
-	}
-	if got := parse(t, "rules: [{name: a, pages: [x]}]").UntilNextBoundary(now); got != 0 {
-		t.Fatalf("a rule without times has no boundary: %v", got)
-	}
-}
-
-func TestUntilNextBoundaryDST(t *testing.T) {
-	p := parse(t, `
-rules:
-  - name: tag
-    when: { from: "07:00", to: "09:00" }
-    pages: [a]
-`)
-	// Spring forward on 2026-03-29: 02:00 CET becomes 03:00 CEST.
-	if got := p.UntilNextBoundary(at(t, 2026, time.March, 29, 1, 30)); got != 4*time.Hour+30*time.Minute {
-		t.Fatalf("spring: got %v", got)
-	}
-	// Fall back on 2026-10-25: 03:00 CEST becomes 02:00 CET.
-	if got := p.UntilNextBoundary(at(t, 2026, time.October, 25, 1, 30)); got != 6*time.Hour+30*time.Minute {
-		t.Fatalf("autumn: got %v", got)
+	if back.Mode() != RefreshCycle {
+		t.Fatalf("mode: %q", back.Mode())
 	}
 }

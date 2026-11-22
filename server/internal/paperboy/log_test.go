@@ -33,7 +33,7 @@ func logLines(out, marker string) []string {
 // its index, so the log can be read without opening the plan.
 func TestSyncLogUsesPageName(t *testing.T) {
 	logs := captureLog(t)
-	s, _ := planServer(t, "rules: [{name: tag, pages: [eins, zwei], on_refresh: cycle}]\n")
+	s, _ := planServer(t, "pages: [eins, zwei]\non_refresh: cycle\n")
 	dev := planDevice(t, s)
 	displayPage(t, s, dev)
 	displayPage(t, s, dev)
@@ -120,7 +120,7 @@ func TestSyncLogsPowerChange(t *testing.T) {
 // regular page.
 func TestSyncLogMarksNoticePages(t *testing.T) {
 	logs := captureLog(t)
-	s, _ := planServer(t, "rules: [{name: tag, pages: [fehlt]}]\n")
+	s, _ := planServer(t, "pages: [fehlt]\n")
 	dev := planDevice(t, s)
 	displayPage(t, s, dev)
 	out := logs()

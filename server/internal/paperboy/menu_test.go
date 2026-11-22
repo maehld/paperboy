@@ -64,7 +64,7 @@ const menuPlanActions = `actions:
 // menuServer starts a server with a two-page plan and the menu actions above.
 func menuServer(t *testing.T, actions string, tweak func(*Device)) (*Server, *time.Time, *menuPlugin) {
 	t.Helper()
-	return menuServerRules(t, "rules:\n  - name: immer\n    pages: [eins, zwei]\n", actions, tweak)
+	return menuServerRules(t, "pages: [eins, zwei]\n", actions, tweak)
 }
 
 // menuServerRules is menuServer with a plan of the caller's rules.
@@ -575,7 +575,7 @@ func TestMenuTapExtendsTheDeadline(t *testing.T) {
 // at (ADR 0057).
 func TestMenuExpiryKeepsThePageWhileRotating(t *testing.T) {
 	s, now, _ := menuServerRules(t,
-		"rules:\n  - name: immer\n    pages: [eins, zwei]\n    on_refresh: cycle\n", menuPlanActions, nil)
+		"pages: [eins, zwei]\non_refresh: cycle\n", menuPlanActions, nil)
 	dev := menuDevice(t, s)
 	base := pagePath(displayPage(t, s, dev))
 	press(t, s, dev, buttonHome)

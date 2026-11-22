@@ -117,7 +117,7 @@ The repository has three Go modules ([ADR 0146](../adr/0146-server-plugins-and-f
 | `server/internal/paperboy/` | Configuration, device API, plans, state, operator UI, downloads |
 | `server/internal/atomicfile/` | Replace a file in one step |
 | `server/internal/page/` | Page parsing and composition from widgets and values |
-| `server/internal/plan/` | Time rules that select pages |
+| `server/internal/plan/` | Plans: pages, refresh windows and triggers |
 | `server/internal/widget/` | Plugin processes, widget and value cache, background refresh |
 | `server/internal/builtin/` | Built-in plugin `paperboy`: header, text, clock, logo, battery, device status, values |
 | `server/internal/download/` | Release lists, archives and verification |

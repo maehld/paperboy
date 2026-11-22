@@ -38,19 +38,9 @@ func (t texts) deviceThatShows() string {
 	return t.variant("das Gerät, das die Seite zeigt", "the device that shows the page")
 }
 
-func (t texts) noSelection() (string, string) {
-	return t.variant(
-			"Keine Seite festgelegt",
-			"No page selected",
-		), t.variant(
-			"Für diese Situation passt keine Regel und kein fallback.",
-			"No rule and no fallback match the current situation.",
-		)
-}
-
-func (t texts) noFittingPage(rule, profile string) (string, string) {
+func (t texts) noFittingPage(profile string) (string, string) {
 	return t.variant("Keine passende Seite", "No matching page"),
-		t.variant("Regel "+rule+" hat keine Seite für "+profile+".", "Rule "+rule+" has no page for "+profile+".")
+		t.variant("Dieser Plan hat keine Seite für "+profile+".", "This plan has no page for "+profile+".")
 }
 
 func (t texts) pageError(name string) string {

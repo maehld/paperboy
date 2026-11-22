@@ -25,34 +25,37 @@ var planViewTmpl = pageTemplate("plan", planViewTemplate, nil)
 const atLayout = "2006-01-02T15:04"
 
 type planViewPage struct {
-	Name     string
-	ImageURL string   // image displays: the page preview
-	Width    int      // preview size in pixels
-	Height   int      //
-	Text     []string // text displays: the rendered lines
-	Skipped  string   // reason the device skips the page for its display type
-	Error    string   // page file or render error; the device shows a notice
+	Name      string
+	Hidden    bool
+	ImageURL  string   // image displays: the page preview
+	Width     int      // preview size in pixels
+	Height    int      //
+	Text      []string // text displays: the rendered lines
+	Skipped   string   // reason the device skips the page for its display type
+	Error     string   // page file or render error; the device shows a notice
+	Triggered bool     // a trigger shows this page now
 }
 
-type planViewRule struct {
-	Name       string
-	When       string
-	OnRefresh  string
-	Refresh    string
-	Alert      string // once or refresh; empty when the rule stays quiet
-	Active     bool   // the rule the device shows at the selected time
-	Fallback   bool   // the plan's fallback rule
+// planViewTrigger is one trigger of the plan and whether it matches the values
+// the plugins answer now (ADR 0127). Triggers carry no labels, so the view
+// names the key.
+type planViewTrigger struct {
+	Number     int
+	Page       string
+	Alert      string // once or refresh; empty when the trigger stays quiet
+	Active     bool   // the trigger the device follows now
+	Matches    bool   // every condition answers one of its keys
 	Conditions []planViewCondition
-	Pages      []planViewPage
+	PageNote   string // the page does not fit the display type
 }
 
-// planViewCondition is one value condition of a rule and the key it answers
-// right now (ADR 0127). Plan conditions carry no labels; the view shows the
-// key.
 type planViewCondition struct {
-	Value   string // plugin/value
-	Is      string // the accepted keys, comma-separated
-	Current string // the key the value answers now; empty when it has none
+	Kind    string // value, time or dates
+	Value   string // value: plugin/value
+	Is      string // value: the accepted keys, comma-separated
+	Current string // value: the key it answers now; empty when it has none
+	Time    string // time: the recurring window
+	Dates   string // dates: the calendar days
 	Active  bool
 }
 
@@ -61,7 +64,7 @@ type planView struct {
 	GoVersion  string
 	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
-	FileHint   string
+	FileHint   string    // the file path in the title line
 	Device     string
 	Profile    string
 	Plan       string
@@ -69,18 +72,19 @@ type planView struct {
 	At         string // selected time as atLayout
 	AtText     string // selected time for reading
 	Now        bool   // the selected time is now
-	Active     string // active rule, empty when none applies
-	ByFallback bool   // the active rule applies as the fallback only
-	Next       string // next rule change, empty when the plan has no time windows
+	Interval   string // refresh interval at the selected time
+	Next       string // next window edge and the interval behind it
+	Trigger    string // page the device would show because of a trigger
+	Triggered  bool
 	Error      string // plan missing, broken or not configured
-	Conditions bool   // a rule uses value conditions (ADR 0127)
-	Rules      []planViewRule
+	Pages      []planViewPage
+	Triggers   []planViewTrigger
 }
 
-// handlePlanView previews the plan of one device: its rules, the active one at
-// the selected time and every page as the device would draw it. It never
-// touches the device state, so the page cursor and the state file stay as
-// they are; rendering happens without the state lock.
+// handlePlanView previews the plan of one device: its pages, the effective
+// refresh interval at the selected time and every trigger with its current
+// value. It never touches the device state, so the page cursor and the state
+// file stay as they are; rendering happens without the state lock.
 func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	id := r.URL.Query().Get("device")
@@ -138,64 +142,76 @@ func (s *Server) handlePlanView(w http.ResponseWriter, r *http.Request) {
 		}
 		view.Error = "Plan invalid, the last valid version is shown: " + shortError(err)
 	}
-	// Conditions are live; the selected time only moves the time windows
-	// (ADR 0127).
+	// Trigger values are live; the selected time only reads the refresh
+	// windows (ADR 0158).
 	values := s.evaluatePlanValues(r.Context(), cfg, p, dev.Profile, dev)
-	for _, rule := range p.Rules {
-		if len(rule.When.Conditions) > 0 {
-			view.Conditions = true
-			break
-		}
-	}
-	sel, ok := p.Select(at, values)
-	if ok {
-		view.Active = sel.Rule
-		view.ByFallback = true
-		for i := range p.Rules {
-			if p.Rules[i].Name == sel.Rule && p.Matches(i, at, values) {
-				view.ByFallback = false
-			}
-		}
-	}
-	if until := p.UntilNextBoundary(at); until > 0 {
+	res := s.resolvePlan(cfg, dev, at, values)
+	view.Trigger, view.Triggered = res.trigger, res.trigger != ""
+	view.Interval = intervalText(int(atInterval(dev, p, at) / time.Second))
+	if until := p.UntilNextChange(at); until > 0 {
 		next := at.Add(until)
 		view.Next = next.Format("Mon 15:04")
-		if nsel, ok := p.Select(next, values); ok {
-			view.Next += " → " + nsel.Rule
+		var parts []string
+		if d := p.Interval(next); d > 0 && d != p.Interval(at) {
+			parts = append(parts, intervalText(int(d/time.Second)))
+		}
+		for _, tr := range p.Matching(next, values) {
+			if tr.Page != res.trigger {
+				parts = append(parts, tr.Page)
+				break
+			}
+		}
+		if len(parts) > 0 {
+			view.Next += " → " + strings.Join(parts, " · ")
 		}
 	}
 	text := cfg.Profiles[dev.Profile].text()
-	for _, rule := range p.Rules {
-		vr := planViewRule{Name: rule.Name, When: whenText(rule.When), OnRefresh: string(rule.Mode()),
-			Alert: string(rule.Alert), Active: rule.Name == view.Active, Fallback: rule.Name == p.Fallback}
-		for _, cond := range rule.When.Conditions {
-			current, has := values[cond.Value]
-			active := false
-			if has {
-				for _, key := range cond.Is {
-					if key == current {
-						active = true
-						break
-					}
-				}
+	for i, tr := range p.Triggers {
+		vt := planViewTrigger{Number: i + 1, Page: tr.Page, Alert: string(tr.Alert),
+			Active: tr.Page == res.trigger, PageNote: res.fit[tr.Page]}
+		for _, m := range p.Matching(at, values) {
+			if m.Page == tr.Page {
+				vt.Matches = true
 			}
-			vr.Conditions = append(vr.Conditions, planViewCondition{Value: cond.Value,
-				Is: strings.Join(cond.Is, ", "), Current: current, Active: active})
 		}
-		if rule.Refresh > 0 {
-			vr.Refresh = intervalText(int(time.Duration(rule.Refresh) / time.Second))
+		for _, cond := range tr.When {
+			vc := planViewCondition{Kind: string(cond.Kind()), Active: cond.Matches(at, values)}
+			switch cond.Kind() {
+			case plan.ConditionValue:
+				vc.Value, vc.Is, vc.Current = cond.Value, strings.Join(cond.Is, ", "), values[cond.Value]
+				if cond.Value == plan.BuiltinWeekday {
+					vc.Current = plan.WeekdayKey(at)
+				}
+			case plan.ConditionTime:
+				vc.Time = windowText(cond)
+			case plan.ConditionDates:
+				vc.Dates = datesText(cond)
+			}
+			vt.Conditions = append(vt.Conditions, vc)
 		}
-		for _, name := range rule.Pages {
-			vr.Pages = append(vr.Pages, s.planViewPage(cfg, dev.ID, dev.Profile, name, text, at))
-		}
-		view.Rules = append(view.Rules, vr)
+		view.Triggers = append(view.Triggers, vt)
+	}
+	for _, pg := range p.Pages {
+		vp := s.planViewPage(cfg, dev.ID, dev.Profile, pg.Name, text, at)
+		vp.Hidden = pg.Hidden
+		vp.Triggered = pg.Name == res.trigger
+		view.Pages = append(view.Pages, vp)
 	}
 	s.writePlanView(w, view)
 }
 
-// planViewPage resolves one page of a rule the way the device would: skipped
-// when it does not fit the display type, a notice when it is broken. id names
-// the device, so a preview shows its status widgets (ADR 0123).
+// atInterval is the refresh interval the plan yields at a moment; 0 means the
+// device's own refresh, which the view names as well.
+func atInterval(d *Device, p *plan.Plan, at time.Time) time.Duration {
+	if interval := p.Interval(at); interval > 0 {
+		return interval
+	}
+	return d.refresh()
+}
+
+// planViewPage resolves one page the way the device would: skipped when it does
+// not fit the display type, a notice when it is broken. id names the device, so
+// a preview shows its status widgets (ADR 0123).
 func (s *Server) planViewPage(cfg *Config, id, profile, name string, text bool, at time.Time) planViewPage {
 	vp := planViewPage{Name: name}
 	if err := s.fits(cfg, profile, name); err != nil {
@@ -230,36 +246,24 @@ func (s *Server) writePlanView(w http.ResponseWriter, view planView) {
 	}
 }
 
-// whenText describes a time window, e.g. "07:00–09:00 · mon, tue".
-func whenText(w plan.When) string {
-	var parts []string
-	if w.From != nil && w.To != nil {
-		parts = append(parts, clockText(*w.From)+"–"+clockText(*w.To))
+// windowText writes a window of the day for reading: "07:00–09:00".
+func windowText(c plan.Condition) string {
+	if c.From == nil || c.To == nil {
+		return ""
 	}
-	if len(w.Days) > 0 {
-		days := make([]string, len(w.Days))
-		for i, d := range w.Days {
-			days[i] = strings.ToLower(time.Weekday(d).String()[:3])
-		}
-		parts = append(parts, strings.Join(days, ", "))
-	}
-	if len(w.Conditions) > 0 {
-		parts = append(parts, "if "+conditionsText(w.Conditions))
-	}
-	if len(parts) == 0 {
-		return "always"
-	}
-	return strings.Join(parts, " · ")
+	return clockText(*c.From) + "–" + clockText(*c.To)
 }
 
-// conditionsText writes value conditions for reading: "dexcom/state is low or
-// urgent", several conditions joined by "and".
-func conditionsText(conds []plan.Condition) string {
-	parts := make([]string, 0, len(conds))
-	for _, cond := range conds {
-		parts = append(parts, cond.Value+" is "+strings.Join(cond.Is, " or "))
+// datesText writes a range of days for reading: "2026-12-24" or
+// "2026-12-24 – 2026-12-26".
+func datesText(c plan.Condition) string {
+	if c.DateFrom == nil {
+		return ""
 	}
-	return strings.Join(parts, " and ")
+	if c.DateTo == nil {
+		return string(*c.DateFrom)
+	}
+	return string(*c.DateFrom) + " – " + string(*c.DateTo)
 }
 
 func clockText(c plan.Clock) string {

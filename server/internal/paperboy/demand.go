@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/maehld/paperboy/server/internal/builtin"
-	"github.com/maehld/paperboy/server/internal/plan"
 )
 
 // demandGrace is how long after the expected contact a device still counts as
@@ -44,7 +43,7 @@ func (s *Server) pluginDemand() map[string]time.Time {
 			continue
 		}
 		st, ok := states[d.stateKey()]
-		if !ok || st.LastSeen.IsZero() || st.Rule == "" {
+		if !ok || st.LastSeen.IsZero() {
 			continue
 		}
 		refresh := time.Duration(st.LastRefresh) * time.Second
@@ -66,17 +65,14 @@ func (s *Server) pluginDemand() map[string]time.Time {
 		if p == nil {
 			continue
 		}
-		rule := ruleNamed(p, st.Rule)
-		if rule == nil {
-			continue
-		}
-
+		// The pages of a plan are static, so every page is warm, hidden or
+		// not, and a trigger page never arrives cold (ADR 0158).
 		needed := map[string]bool{}
-		for _, name := range rule.Pages {
-			if s.fits(cfg, d.Profile, name) != nil {
+		for _, pg := range p.Pages {
+			if s.fits(cfg, d.Profile, pg.Name) != nil {
 				continue
 			}
-			t, err := s.pages.get(cfg.Pages, name, d.Profile)
+			t, err := s.pages.get(cfg.Pages, pg.Name, d.Profile)
 			if err != nil || t == nil {
 				continue
 			}
@@ -89,10 +85,14 @@ func (s *Server) pluginDemand() map[string]time.Time {
 				}
 			}
 		}
-		for _, cond := range rule.When.Conditions {
-			plugin, _, ok := strings.Cut(cond.Value, "/")
-			if ok && plugin != "" && plugin != builtin.Name {
-				needed[plugin] = true
+		// A trigger decides on every sync, so its values must answer even
+		// while the device shows another page.
+		for _, tr := range p.Triggers {
+			for _, cond := range tr.When {
+				plugin, _, ok := strings.Cut(cond.Value, "/")
+				if ok && plugin != "" && plugin != builtin.Name {
+					needed[plugin] = true
+				}
 			}
 		}
 		for plugin := range needed {
@@ -102,14 +102,4 @@ func (s *Server) pluginDemand() map[string]time.Time {
 		}
 	}
 	return out
-}
-
-// ruleNamed returns the rule a device last used, or nil when the plan changed.
-func ruleNamed(p *plan.Plan, name string) *plan.Rule {
-	for i := range p.Rules {
-		if p.Rules[i].Name == name {
-			return &p.Rules[i]
-		}
-	}
-	return nil
 }

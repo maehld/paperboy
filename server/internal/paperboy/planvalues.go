@@ -10,11 +10,11 @@ import (
 	"github.com/maehld/paperboy/server/internal/plan"
 )
 
-// planValues asks the plugins for the values a plan's rules name (ADR 0127).
+// planValues asks the plugins for the values a plan's triggers name (ADR 0127).
 // It runs outside the state lock, because a plugin request is I/O. The answers
-// become the plan.Values that select the page. A failing plugin, an unknown
-// value and an empty answer are omitted, so missing data never selects an
-// alert page; the plan falls through to its next rule instead.
+// become the plan.Values that select the trigger. A failing plugin, an unknown
+// value and an empty answer are omitted, so missing data never shows a trigger
+// page; the plan continues with its next trigger.
 func (s *Server) planValues(ctx context.Context, cfg *Config, planName, profile string, d *Device) plan.Values {
 	if planName == "" {
 		return nil
@@ -33,8 +33,11 @@ func (s *Server) planValues(ctx context.Context, cfg *Config, planName, profile 
 func (s *Server) evaluatePlanValues(ctx context.Context, cfg *Config, p *plan.Plan, profile string, d *Device) plan.Values {
 	var refs []string
 	seen := map[string]bool{}
-	for _, r := range p.Rules {
-		for _, cond := range r.When.Conditions {
+	for _, tr := range p.Triggers {
+		for _, cond := range tr.When {
+			if cond.Value == plan.BuiltinWeekday || cond.Value == plan.BuiltinTime || cond.Value == plan.BuiltinDate {
+				continue // the plan evaluates them from the moment
+			}
 			if seen[cond.Value] {
 				continue
 			}

@@ -90,12 +90,8 @@ func pollText(t *testing.T, s *Server, key, shown string) *httptest.ResponseReco
 }
 
 const textPlan = `
-rules:
-  - name: immer
-    when: { from: "06:00", to: "22:00" }
-    pages: [eins, zwei, kaputt]
-    refresh: 2s
-fallback: immer
+pages: [eins, zwei, kaputt]
+refresh: 2s
 `
 
 func TestTextDeviceSyncAndPoll(t *testing.T) {
@@ -232,7 +228,7 @@ func TestTextDeviceFirmwareOffer(t *testing.T) {
 // text displays skips pages that do not fit the device (ADR 0049): an image
 // page without a text variant and a text page with the wrong grid.
 func TestPlanSkipsPagesForOtherDisplays(t *testing.T) {
-	s, _ := textServer(t, "rules: [{name: immer, pages: [bild, schmal, zwei]}]\n")
+	s, _ := textServer(t, "pages: [bild, schmal, zwei]\n")
 	writePageFile(t, filepath.Join(s.config().Pages, "bild.yaml"), "kind: image\ngrid: [8, 2]\ncells: [{widget: paperboy/text, args: {text: bild}}]\n")
 	writePageFile(t, filepath.Join(s.config().Pages, "schmal.yaml"), "kind: text\ncells:\n  - { at: [0, 0], span: [9, 1], value: paperboy/title }\n")
 	dev := planDevice(t, s)
@@ -249,7 +245,7 @@ func TestPlanSkipsPagesForOtherDisplays(t *testing.T) {
 		t.Fatalf("skip notes: %v", s.skipNotes)
 	}
 
-	writePageFile(t, filepath.Join(s.config().Plans, "zimmer.yaml"), "rules: [{name: bilder, pages: [bild]}]\n")
+	writePageFile(t, filepath.Join(s.config().Plans, "zimmer.yaml"), "pages: [bild]\n")
 	stamp := time.Now().Add(time.Minute)
 	os.Chtimes(filepath.Join(s.config().Plans, "zimmer.yaml"), stamp, stamp)
 	lines := strings.Join(anyStrings(displayPage(t, s, dev)["text"].(map[string]any)["lines"]), "|")

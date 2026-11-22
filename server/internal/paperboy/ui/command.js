@@ -12,7 +12,7 @@
   const sections = [
     { label: "Devices", hint: "the fleet", url: "/ui", group: "Go to" },
     { label: "Pages", hint: "page files and variants", url: "/ui/pages", group: "Go to" },
-    { label: "Plans", hint: "rules per device", url: "/ui/plans", group: "Go to" },
+    { label: "Plans", hint: "pages per device", url: "/ui/plans", group: "Go to" },
     { label: "Playground", hint: "one widget in its cell", url: "/ui/playground", group: "Go to" },
     { label: "Plugins", hint: "installed programs and the release check", url: "/ui/system/plugins", group: "Go to" },
     { label: "Firmware", hint: "installed images and the release check", url: "/ui/system/firmware", group: "Go to" },
@@ -51,7 +51,7 @@
     for (const plan of arrayOf(plans, "plans")) {
       list.push({
         label: plan.name,
-        hint: plan.rules + " rules · fallback " + plan.fallback,
+        hint: (plan.pages || []).length + " pages · " + (plan.triggers || 0) + " triggers",
         group: "Plans",
         url: "/ui/plans/" + encodeURIComponent(plan.name),
       });

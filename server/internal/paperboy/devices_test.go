@@ -85,7 +85,7 @@ func TestDevicesAPIShowsServedPage(t *testing.T) {
 	if info["last_page_url"] != "/api/devices/test/image" {
 		t.Fatalf("page url %v", info["last_page_url"])
 	}
-	if info["last_refresh"] != float64(600) || info["status"] != "ok" {
+	if info["last_refresh"] != float64(300) || info["status"] != "ok" {
 		t.Fatalf("refresh/status: %v", info)
 	}
 	if _, ok := info["last_error"]; ok {
@@ -105,7 +105,7 @@ func TestDevicesAPIShowsServedPage(t *testing.T) {
 // as a notice page together with the render error, so the API never claims a
 // page that was not drawn.
 func TestDevicesAPIReportsNoticeKeepsError(t *testing.T) {
-	s, _ := planServer(t, "rules: [{name: tag, pages: [kaputt]}]\n")
+	s, _ := planServer(t, "pages: [kaputt]\n")
 	writePageFile(t, s.config().Pages+"/kaputt.yaml", "kind: image\ngrid: [1, 1]\ncells: [\n")
 	dev := planDevice(t, s)
 	displayPage(t, s, dev)

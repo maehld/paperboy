@@ -73,7 +73,7 @@ func TestDashboardShowsDevices(t *testing.T) {
 	if !strings.Contains(body, lastImagePath("test")+"?h=") {
 		t.Fatalf("the served image must name its hash: %s", body)
 	}
-	for _, want := range []string{"zimmer", "eins", "every 10 min · next in 10 min", "3.74 V · 61 %", "small <span class=\"muted\">(sticky)</span>"} {
+	for _, want := range []string{"zimmer", "eins", "every 5 min · next in 5 min", "3.74 V · 61 %", "small <span class=\"muted\">(sticky)</span>"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("dashboard misses %q: %s", want, body)
 		}
@@ -128,7 +128,7 @@ func TestOverviewCounts(t *testing.T) {
 	}
 	plans := filepath.Join(dir, "plans")
 	writePageFile(t, filepath.Join(plans, "gut.yaml"), testPlan)
-	writePageFile(t, filepath.Join(plans, "kaputt.yaml"), "rules: [")
+	writePageFile(t, filepath.Join(plans, "kaputt.yaml"), "pages: [")
 	writePageFile(t, filepath.Join(plans, "notes.txt"), "x")
 	if n, err := planCount(plans); err != nil || n != 2 {
 		t.Fatalf("planCount = %d, %v; want 2", n, err)

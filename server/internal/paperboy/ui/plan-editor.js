@@ -13,7 +13,7 @@
     name: start.name,
     devices: start.devices || [],
     displays: start.displays || [], // display types of the devices that use this plan
-    pages: start.pages || [],
+    pages: start.pages || [], // page files of the instance
     plugins: [],
     plan: null,
     hash: '',
@@ -23,7 +23,7 @@
     dirty: false,
   };
 
-  let ruleNodes = [];
+  let triggerNodes = [];
 
   // ---- status ----
 
@@ -59,31 +59,50 @@
     return state.pages.find((p) => p.name === name) || null;
   }
 
-  function ruleNames() {
-    return state.plan ? state.plan.rules.map((r) => r.name).filter((n) => n) : [];
+  function planPages() {
+    return state.plan ? state.plan.pages.map((p) => p.page) : [];
+  }
+
+  function asList(v) {
+    if (Array.isArray(v)) return v;
+    if (v === undefined || v === null || v === '') return [];
+    return [v];
+  }
+
+  // normalizeCondition keeps the fields of all three forms. The value names
+  // what the condition tests; the others stay so that switching back keeps
+  // them.
+  function normalizeCondition(c) {
+    const cond = c && typeof c === 'object' ? c : {};
+    return {
+      value: cond.value || '',
+      is: asList(cond.is).map(String),
+      from: cond.from || '',
+      to: cond.to || '',
+    };
   }
 
   function normalize(p) {
-    p.rules = (p.rules || []).map((r) => {
-      const w = r.when || {};
+    p.pages = (p.pages || []).map((entry) => {
+      if (typeof entry === 'string') return { page: entry, hidden: false };
+      return { page: (entry && entry.page) || '', hidden: !!(entry && entry.hidden) };
+    });
+    p.on_refresh = p.on_refresh || 'current';
+    const refresh = p.refresh;
+    if (!refresh) p.refresh = { default: '', windows: [] };
+    else if (typeof refresh === 'string') p.refresh = { default: refresh, windows: [] };
+    else p.refresh = {
+      default: refresh.default || '',
+      windows: (refresh.windows || []).map((w) => ({ from: w.from || '', to: w.to || '', interval: w.interval || '' })),
+    };
+    p.triggers = (p.triggers || []).map((t) => {
+      const when = Array.isArray(t.when) ? t.when : t.when ? [t.when] : [];
       return {
-        name: r.name || '',
-        when: {
-          from: w.from || '',
-          to: w.to || '',
-          days: (w.days || []).filter((d) => DAYS.includes(d)),
-          conditions: (w.conditions || []).map((c) => ({
-            value: c && typeof c === 'object' ? (c.value || '') : '',
-            is: c && typeof c === 'object' ? (Array.isArray(c.is) ? c.is.slice() : c.is ? [c.is] : []) : [],
-          })),
-        },
-        pages: (r.pages || []).slice(),
-        on_refresh: r.on_refresh || (r.rotate ? 'cycle' : 'current'),
-        refresh: r.refresh || '',
-        alert: r.alert || '',
+        when: when.map(normalizeCondition),
+        page: t.page || '',
+        alert: t.alert || '',
       };
     });
-    p.fallback = p.fallback || '';
     p.actions = (p.actions || []).map((a) => ({
       action: a.action || '',
       args: a.args || {},
@@ -93,27 +112,40 @@
     return p;
   }
 
+  // serializeCondition sends the value and the fields of its form.
+  function serializeCondition(c) {
+    if (c.value === 'time' || c.value === 'date') {
+      const out = { value: c.value };
+      if (c.from) out.from = c.from;
+      if (c.to) out.to = c.to;
+      return out;
+    }
+    return { value: c.value, is: c.is.slice() };
+  }
+
   // serialize builds the body of PUT /api/plans: only what the API knows, with
-  // empty windows, days and durations left out.
+  // empty windows, durations and optional keys left out.
   function serialize() {
     const p = state.plan;
-    const out = {
-      rules: p.rules.map((r) => {
-        const rule = { name: r.name, when: {}, pages: r.pages.slice() };
-        if (r.when.from && r.when.to) {
-          rule.when.from = r.when.from;
-          rule.when.to = r.when.to;
-        }
-        const days = DAYS.filter((d) => r.when.days.includes(d));
-        if (days.length) rule.when.days = days;
-        if (r.when.conditions.length) rule.when.conditions = r.when.conditions.slice();
-        if (r.on_refresh && r.on_refresh !== 'current') rule.on_refresh = r.on_refresh;
-        if (r.refresh) rule.refresh = r.refresh;
-        if (r.alert) rule.alert = r.alert;
-        return rule;
-      }),
-    };
-    if (p.fallback) out.fallback = p.fallback;
+    const out = { pages: p.pages.map((e) => (e.hidden ? { page: e.page, hidden: true } : e.page)) };
+    if (p.on_refresh && p.on_refresh !== 'current') out.on_refresh = p.on_refresh;
+    const windows = p.refresh.windows
+      .filter((w) => w.from && w.to && w.interval)
+      .map((w) => ({ from: w.from, to: w.to, interval: w.interval }));
+    if (windows.length) {
+      const refresh = { windows };
+      if (p.refresh.default) refresh.default = p.refresh.default;
+      out.refresh = refresh;
+    } else if (p.refresh.default) {
+      out.refresh = p.refresh.default;
+    }
+    if (p.triggers.length) {
+      out.triggers = p.triggers.map((t) => {
+        const trigger = { when: t.when.map(serializeCondition), page: t.page };
+        if (t.alert) trigger.alert = t.alert;
+        return trigger;
+      });
+    }
     if (p.actions.length) {
       out.actions = p.actions.map((a) => {
         const action = { action: a.action };
@@ -146,11 +178,26 @@
     return input;
   }
 
-  function small(label, action) {
+  function timeInput(value) {
+    const input = document.createElement('input');
+    input.type = 'time';
+    input.value = value || '';
+    return input;
+  }
+
+  function dateInput(value) {
+    const input = document.createElement('input');
+    input.type = 'date';
+    input.value = value || '';
+    return input;
+  }
+
+  function small(label, action, title) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'small';
     b.textContent = label;
+    if (title) b.title = title;
     if (action) b.addEventListener('click', action);
     else b.disabled = true;
     return b;
@@ -176,116 +223,260 @@
     box.appendChild(warn);
   }
 
-  // ---- rules ----
+  // ---- pages ----
 
-  function renderRules() {
-    const box = el('rules');
+  function renderPages() {
+    const box = el('pages');
     box.innerHTML = '';
-    ruleNodes = [];
+    if (state.readOnly || !state.plan) {
+      box.innerHTML = '<p class="hint">The file does not read as a plan; fix it by hand and reload.</p>';
+      renderAddPage();
+      return;
+    }
+    if (!state.plan.pages.length) {
+      box.innerHTML = '<p class="hint">No pages yet; a plan needs at least one visible page.</p>';
+    }
+    state.plan.pages.forEach((entry, i) => box.appendChild(pageRow(entry, i)));
+    renderAddPage();
+    renderWarnings();
+  }
+
+  function pageRow(entry, i) {
+    const row = document.createElement('div');
+    row.className = 'page-row' + (entry.hidden ? ' hidden' : '');
+    const info = pageInfo(entry.page);
+    if (entry.page && !info) row.classList.add('missing');
+    const labels = document.createElement('span');
+    labels.className = 'labels';
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = entry.page || '(no page)';
+    labels.appendChild(name);
+    if (entry.hidden) {
+      const flag = document.createElement('span');
+      flag.className = 'flag';
+      flag.textContent = 'hidden';
+      labels.appendChild(flag);
+    }
+    const meta = document.createElement('span');
+    meta.className = 'muted';
+    meta.textContent = info
+      ? info.error || (info.serves && info.serves.length ? info.serves.join(' · ') : 'no display type')
+      : 'no page file';
+    labels.appendChild(meta);
+    row.append(
+      labels,
+      small(entry.hidden ? 'Show' : 'Hide', () => {
+        entry.hidden = !entry.hidden;
+        changed();
+        renderPages();
+      }, entry.hidden ? 'Put the page back into the rotation' : 'Take the page out of the rotation; only a trigger shows it'),
+      small('↑', i > 0 ? () => movePage(i, -1) : null),
+      small('↓', i < state.plan.pages.length - 1 ? () => movePage(i, 1) : null),
+      small('×', () => {
+        state.plan.pages.splice(i, 1);
+        changed();
+        renderPages();
+        renderTriggers();
+      }, 'Remove the page from the plan'),
+    );
+    return row;
+  }
+
+  function movePage(i, step) {
+    const to = i + step;
+    if (to < 0 || to >= state.plan.pages.length) return;
+    const [entry] = state.plan.pages.splice(i, 1);
+    state.plan.pages.splice(to, 0, entry);
+    changed();
+    renderPages();
+  }
+
+  // renderAddPage offers the page files the plan does not name yet.
+  function renderAddPage() {
+    const select = el('add-page-select');
+    select.innerHTML = '';
+    const free = state.pages.filter((p) => !planPages().includes(p.name));
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = free.length ? 'add a page…' : 'no other page files';
+    select.appendChild(none);
+    for (const p of free) {
+      const option = document.createElement('option');
+      option.value = p.name;
+      option.textContent = p.name;
+      select.appendChild(option);
+    }
+    el('add-page').disabled = !free.length || !state.plan;
+  }
+
+  if (el('add-page')) {
+    el('add-page').addEventListener('click', () => {
+      const name = el('add-page-select').value;
+      if (!name || !state.plan) return;
+      state.plan.pages.push({ page: name, hidden: false });
+      changed();
+      renderPages();
+      renderTriggers();
+    });
+  }
+
+  // ---- refresh ----
+
+  function renderRefresh() {
+    if (state.readOnly || !state.plan) return;
+    el('refresh-default').value = state.plan.refresh.default;
+    el('on-refresh').value = state.plan.on_refresh;
+    const box = el('windows');
+    box.innerHTML = '';
+    if (!state.plan.refresh.windows.length) {
+      box.innerHTML = '<p class="hint">No window; the default applies all day.</p>';
+    }
+    state.plan.refresh.windows.forEach((w, i) => box.appendChild(windowRow(w, i)));
+    renderWarnings();
+  }
+
+  function windowRow(w, i) {
+    const row = document.createElement('div');
+    row.className = 'entry';
+    const head = document.createElement('div');
+    head.className = 'entry-head';
+    const num = document.createElement('span');
+    num.className = 'num';
+    num.textContent = '#' + (i + 1);
+    const buttons = document.createElement('div');
+    buttons.className = 'buttons';
+    buttons.append(
+      small('↑', i > 0 ? () => moveWindow(i, -1) : null),
+      small('↓', i < state.plan.refresh.windows.length - 1 ? () => moveWindow(i, 1) : null),
+      small('×', () => {
+        state.plan.refresh.windows.splice(i, 1);
+        changed();
+        renderRefresh();
+      }),
+    );
+    head.append(num, buttons);
+    row.appendChild(head);
+
+    const grid = document.createElement('div');
+    grid.className = 'entry-grid';
+    const from = timeInput(w.from);
+    from.addEventListener('change', () => {
+      w.from = from.value;
+      changed();
+    });
+    grid.appendChild(field('From', from));
+    const to = timeInput(w.to);
+    to.addEventListener('change', () => {
+      w.to = to.value;
+      changed();
+    });
+    grid.appendChild(field('To', to));
+    const interval = textInput(w.interval, 'e.g. 10m');
+    interval.addEventListener('input', () => {
+      w.interval = interval.value.trim();
+      changed();
+    });
+    grid.appendChild(field('Interval', interval));
+    row.appendChild(grid);
+    return row;
+  }
+
+  function moveWindow(i, step) {
+    const to = i + step;
+    if (to < 0 || to >= state.plan.refresh.windows.length) return;
+    const [w] = state.plan.refresh.windows.splice(i, 1);
+    state.plan.refresh.windows.splice(to, 0, w);
+    changed();
+    renderRefresh();
+  }
+
+  if (el('add-window')) {
+    el('add-window').addEventListener('click', () => {
+      if (!state.plan) return;
+      state.plan.refresh.windows.push({ from: '08:00', to: '16:00', interval: '10m' });
+      changed();
+      renderRefresh();
+    });
+    el('refresh-default').addEventListener('input', () => {
+      if (!state.plan) return;
+      state.plan.refresh.default = el('refresh-default').value.trim();
+      changed();
+    });
+    el('on-refresh').addEventListener('change', () => {
+      if (!state.plan) return;
+      state.plan.on_refresh = el('on-refresh').value;
+      changed();
+    });
+  }
+
+  // ---- triggers ----
+
+  function renderTriggers() {
+    const box = el('triggers');
+    box.innerHTML = '';
+    triggerNodes = [];
     if (state.readOnly || !state.plan) {
       box.innerHTML = '<p class="hint">The file does not read as a plan; fix it by hand and reload.</p>';
       return;
     }
-    if (!state.plan.rules.length) {
-      box.innerHTML = '<p class="hint">No rules yet; a plan needs at least one rule with a page.</p>';
-      return;
+    if (!state.plan.triggers.length) {
+      box.innerHTML = '<p class="hint">No triggers; the device only cycles through its pages.</p>';
     }
-    state.plan.rules.forEach((rule, i) => box.appendChild(ruleCard(rule, i)));
+    state.plan.triggers.forEach((trigger, i) => box.appendChild(triggerCard(trigger, i)));
     renderWarnings();
   }
 
-  function ruleCard(rule, i) {
+  function triggerCard(trigger, i) {
     const card = document.createElement('section');
-    card.className = 'rule';
+    card.className = 'entry';
 
     const head = document.createElement('div');
-    head.className = 'rule-head';
+    head.className = 'entry-head';
     const num = document.createElement('span');
     num.className = 'num';
     num.textContent = '#' + (i + 1);
-    const badge = document.createElement('span');
-    badge.className = 'badge';
-    badge.textContent = 'shadowed';
-    badge.hidden = true;
     const buttons = document.createElement('div');
     buttons.className = 'buttons';
     buttons.append(
-      small('↑', i > 0 ? () => moveRule(i, -1) : null),
-      small('↓', i < state.plan.rules.length - 1 ? () => moveRule(i, 1) : null),
-      small('×', () => removeRule(i)),
+      small('↑', i > 0 ? () => moveTrigger(i, -1) : null),
+      small('↓', i < state.plan.triggers.length - 1 ? () => moveTrigger(i, 1) : null),
+      small('×', () => {
+        state.plan.triggers.splice(i, 1);
+        changed();
+        renderTriggers();
+      }),
     );
-    head.append(num, badge, buttons);
+    head.append(num, buttons);
     card.appendChild(head);
 
     const grid = document.createElement('div');
-    grid.className = 'rule-grid';
-    const name = textInput(rule.name, 'e.g. day');
-    name.pattern = '[a-z0-9-]{1,40}';
-    name.addEventListener('input', () => {
-      const previous = rule.name;
-      const next = name.value;
-      if (previous && state.plan.fallback === previous) state.plan.fallback = next;
-      rule.name = next;
-      renderFallback();
-      changed();
-    });
-    grid.appendChild(field('Name', name));
+    grid.className = 'entry-grid trigger-grid';
 
-    const from = document.createElement('input');
-    from.type = 'time';
-    from.value = rule.when.from;
-    from.addEventListener('change', () => {
-      rule.when.from = from.value;
-      changed();
-    });
-    grid.appendChild(field('From', from));
-    const to = document.createElement('input');
-    to.type = 'time';
-    to.value = rule.when.to;
-    to.addEventListener('change', () => {
-      rule.when.to = to.value;
-      changed();
-    });
-    grid.appendChild(field('To', to));
-
-    const days = document.createElement('span');
-    days.className = 'days';
-    for (const d of DAYS) {
-      const label = document.createElement('label');
-      const box = document.createElement('input');
-      box.type = 'checkbox';
-      box.checked = rule.when.days.includes(d);
-      box.addEventListener('change', () => {
-        rule.when.days = DAYS.filter((x) => (x === d ? box.checked : rule.when.days.includes(x)));
-        changed();
-      });
-      const text = document.createElement('span');
-      text.textContent = d;
-      label.append(box, text);
-      days.appendChild(label);
-    }
-    grid.appendChild(field('Days', days));
-
-    const refresh = textInput(rule.refresh, 'e.g. 10m');
-    refresh.addEventListener('input', () => {
-      rule.refresh = refresh.value.trim();
-      changed();
-    });
-    grid.appendChild(field('Refresh', refresh));
-
-    const onRefresh = document.createElement('select');
-    for (const mode of ['current', 'first', 'cycle']) {
+    // The target page must be one of the plan's pages; a hidden page is fine.
+    const page = document.createElement('select');
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = 'choose a page…';
+    page.appendChild(none);
+    for (const entry of state.plan.pages) {
       const option = document.createElement('option');
-      option.value = mode;
-      option.textContent = mode;
-      onRefresh.appendChild(option);
+      option.value = entry.page;
+      option.textContent = entry.page + (entry.hidden ? ' (hidden)' : '');
+      page.appendChild(option);
     }
-    onRefresh.value = rule.on_refresh;
-    onRefresh.addEventListener('change', () => {
-      rule.on_refresh = onRefresh.value;
+    if (trigger.page && !planPages().includes(trigger.page)) {
+      const option = document.createElement('option');
+      option.value = trigger.page;
+      option.textContent = trigger.page + ' (not in pages)';
+      page.appendChild(option);
+    }
+    page.value = trigger.page;
+    page.addEventListener('change', () => {
+      trigger.page = page.value;
       changed();
     });
-    grid.appendChild(field('On refresh', onRefresh));
+    grid.appendChild(field('Page', page));
 
     const alertSelect = document.createElement('select');
     for (const [value, label] of [['', 'never'], ['once', 'once'], ['refresh', 'on refresh']]) {
@@ -294,9 +485,9 @@
       option.textContent = label;
       alertSelect.appendChild(option);
     }
-    alertSelect.value = rule.alert;
+    alertSelect.value = trigger.alert;
     alertSelect.addEventListener('change', () => {
-      rule.alert = alertSelect.value;
+      trigger.alert = alertSelect.value;
       changed();
     });
     grid.appendChild(field('Alert', alertSelect));
@@ -307,232 +498,205 @@
     // by hand is not silently broken.
     const conds = document.createElement('div');
     conds.className = 'conditions';
-    if (!rule.when.conditions.length) {
+    if (!trigger.when.length) {
       const note = document.createElement('span');
       note.className = 'muted';
       note.textContent = allValues().length ? 'no condition' : 'no plugin declares an enum value';
       conds.appendChild(note);
     }
-    rule.when.conditions.forEach((cond) => conds.appendChild(conditionRow(rule, cond)));
+    trigger.when.forEach((cond) => conds.appendChild(conditionRow(trigger, cond)));
     const addCond = document.createElement('button');
     addCond.type = 'button';
     addCond.textContent = 'Add condition';
     addCond.addEventListener('click', () => {
       const first = allValues()[0];
-      rule.when.conditions.push({ value: first ? first.value : '', is: [] });
+      trigger.when.push({ value: first ? first.value : '', is: [] });
       changed();
-      renderRules();
+      renderTriggers();
     });
     conds.appendChild(addCond);
-    const condField = field('Conditions', conds);
-    condField.classList.add('wide');
-    grid.appendChild(condField);
     card.appendChild(grid);
 
-    const pages = document.createElement('div');
-    pages.className = 'pages';
-    if (!rule.pages.length) {
-      const empty = document.createElement('p');
-      empty.className = 'empty';
-      empty.textContent = 'No pages; a rule needs at least one.';
-      pages.appendChild(empty);
-    }
-    rule.pages.forEach((page, j) => pages.appendChild(pageRow(rule, j, page)));
-    card.appendChild(pages);
-
-    const add = document.createElement('div');
-    add.className = 'add-page';
-    const select = document.createElement('select');
-    const free = state.pages.filter((p) => !rule.pages.includes(p.name));
-    const none = document.createElement('option');
-    none.value = '';
-    none.textContent = free.length ? 'add a page…' : 'no other pages';
-    select.appendChild(none);
-    for (const p of free) {
-      const option = document.createElement('option');
-      option.value = p.name;
-      option.textContent = p.name;
-      select.appendChild(option);
-    }
-    const addButton = document.createElement('button');
-    addButton.type = 'button';
-    addButton.textContent = 'Add';
-    addButton.disabled = !free.length;
-    addButton.addEventListener('click', () => {
-      if (!select.value) return;
-      rule.pages.push(select.value);
-      changed();
-      renderRules();
-    });
-    add.append(select, addButton);
-    card.appendChild(add);
+    const condField = field('Conditions', conds);
+    condField.classList.add('wide');
+    card.appendChild(condField);
 
     const warnings = document.createElement('div');
     card.appendChild(warnings);
-    ruleNodes[i] = { card, badge, warnings };
+    triggerNodes[i] = { card, warnings };
     return card;
   }
 
-  function pageRow(rule, j, page) {
-    const row = document.createElement('div');
-    row.className = 'page-row';
-    const info = pageInfo(page);
-    if (!info) row.classList.add('missing');
-    const label = document.createElement('span');
-    label.className = 'name';
-    label.textContent = page;
-    const meta = document.createElement('span');
-    meta.className = 'muted';
-    meta.textContent = info
-      ? info.serves && info.serves.length ? info.serves.join(' · ') : 'no display type'
-      : 'no file';
-    const labels = document.createElement('span');
-    labels.className = 'labels';
-    labels.append(label, meta);
-    row.append(
-      labels,
-      small('↑', j > 0 ? () => movePage(rule, j, -1) : null),
-      small('↓', j < rule.pages.length - 1 ? () => movePage(rule, j, 1) : null),
-      small('×', () => {
-        rule.pages.splice(j, 1);
-        changed();
-        renderRules();
-      }),
-    );
-    return row;
-  }
-
-  function movePage(rule, j, step) {
-    const to = j + step;
-    if (to < 0 || to >= rule.pages.length) return;
-    const [page] = rule.pages.splice(j, 1);
-    rule.pages.splice(to, 0, page);
-    changed();
-    renderRules();
-  }
-
-  function moveRule(i, step) {
+  function moveTrigger(i, step) {
     const to = i + step;
-    if (to < 0 || to >= state.plan.rules.length) return;
-    const [rule] = state.plan.rules.splice(i, 1);
-    state.plan.rules.splice(to, 0, rule);
+    if (to < 0 || to >= state.plan.triggers.length) return;
+    const [trigger] = state.plan.triggers.splice(i, 1);
+    state.plan.triggers.splice(to, 0, trigger);
     changed();
-    renderRules();
+    renderTriggers();
   }
 
-  function removeRule(i) {
-    state.plan.rules.splice(i, 1);
+  function addTrigger() {
+    if (!state.plan) return;
+    const first = allValues()[0];
+    const page = state.plan.pages.find((p) => p.hidden) || state.plan.pages[0];
+    state.plan.triggers.push({
+      when: first ? [{ value: first.value, is: [], from: '', to: '' }] : [],
+      page: page ? page.page : '',
+      alert: '',
+    });
     changed();
-    renderRules();
+    renderTriggers();
   }
 
   // ---- warnings ----
 
-  function alwaysMatches(w) {
-    return !w.from && !w.to && !w.days.length && !w.conditions.length;
+  function looksDuration(s) {
+    return /^\d+(\.\d+)?(ns|us|µs|ms|s|m|h)(\d+(\.\d+)?(ns|us|µs|ms|s|m|h))*$/.test(s);
   }
 
-  function conditionKey(w) {
-    return w.conditions.map((c) => c.value + '=' + c.is.slice().sort().join('+')).sort().join(';');
+  // minuteSet expands a window to the minutes it covers, so overlaps are
+  // visible on a day that wraps at midnight.
+  function minuteSet(w) {
+    const out = new Set();
+    if (!w.from || !w.to) return out;
+    const from = toMinutes(w.from);
+    const to = toMinutes(w.to);
+    if (from < 0 || to < 0) return out;
+    for (let m = from; m !== to; m = (m + 1) % 1440) out.add(m);
+    return out;
   }
 
-  function windowKey(w) {
-    return w.from + '|' + w.to + '|' + DAYS.filter((d) => w.days.includes(d)).join(',') + '|' + conditionKey(w);
+  function toMinutes(clock) {
+    const match = /^(\d\d):(\d\d)$/.exec(clock || '');
+    if (!match) return -1;
+    return Number(match[1]) * 60 + Number(match[2]);
   }
 
-  // shadowReason names the earlier rule that keeps a rule from ever matching:
-  // one that matches at any time, or one with the same time window and the
-  // same conditions.
-  function shadowReason(i) {
-    const rules = state.plan.rules;
-    for (let j = 0; j < i; j++) {
-      const name = rules[j].name || 'rule #' + (j + 1);
-      if (alwaysMatches(rules[j].when)) return 'never matches: ' + name + ' matches at any time and comes first';
-      if (windowKey(rules[j].when) === windowKey(rules[i].when)) {
-        return 'never matches: ' + name + ' has the same time window and conditions and comes first';
+  function pageMessages() {
+    const messages = [];
+    const seen = {};
+    let visible = 0;
+    for (const entry of state.plan.pages) {
+      if (!entry.page) {
+        messages.push('a page entry is empty');
+        continue;
+      }
+      if (seen[entry.page]) messages.push(entry.page + ': listed twice');
+      seen[entry.page] = true;
+      if (!entry.hidden) visible++;
+      const info = pageInfo(entry.page);
+      if (!info) {
+        messages.push(entry.page + ': no page file');
+        continue;
+      }
+      if (info.error) messages.push(entry.page + ': ' + info.error);
+      else if (state.displays.length && !state.displays.some((d) => info.serves && info.serves.includes(d))) {
+        messages.push(entry.page + ': fits no display type of this plan');
       }
     }
-    return '';
+    if (state.plan.pages.length && !visible) messages.push('every page is hidden; the device would only show a trigger page');
+    return messages;
+  }
+
+  function refreshMessages() {
+    const messages = [];
+    const refresh = state.plan.refresh;
+    if (refresh.default && !looksDuration(refresh.default)) messages.push('default ' + refresh.default + ': expected a duration such as 1h');
+    if (!refresh.default && !refresh.windows.length) messages.push('no default and no window: the device keeps its own refresh');
+    const sets = refresh.windows.map((w) => minuteSet(w));
+    refresh.windows.forEach((w, i) => {
+      const label = 'window #' + (i + 1);
+      if (!w.from || !w.to) messages.push(label + ': from and to are required');
+      else if (w.from === w.to) messages.push(label + ': from and to must differ');
+      if (!w.interval) messages.push(label + ': interval is missing');
+      else if (!looksDuration(w.interval)) messages.push(label + ': ' + w.interval + ' is not a duration such as 10m');
+      for (let j = 0; j < i; j++) {
+        if (sets[i] && sets[j] && [...sets[i]].some((m) => sets[j].has(m))) {
+          messages.push('window #' + (i + 1) + ' overlaps window #' + (j + 1));
+        }
+      }
+    });
+    return messages;
+  }
+
+  function triggerKey(t) {
+    return JSON.stringify(t.when.map(serializeCondition));
+  }
+
+  function triggerMessages(trigger, i) {
+    const messages = [];
+    if (!trigger.page) {
+      messages.push('choose a page');
+    } else if (!planPages().includes(trigger.page)) {
+      messages.push(trigger.page + ' is not in pages; add it above or choose another page');
+    } else {
+      const info = pageInfo(trigger.page);
+      if (info) {
+        for (const display of state.displays) {
+          const why = info.fits && info.fits[display];
+          if (why) messages.push(display + ' skips ' + trigger.page + ' (' + why + ')');
+        }
+      }
+    }
+    if (!trigger.when.length) messages.push('a trigger needs at least one condition');
+    const seen = {};
+    trigger.when.forEach((cond, ci) => {
+      const label = 'condition ' + (ci + 1);
+      if (cond.value === 'time') {
+        if ((cond.from && !cond.to) || (!cond.from && cond.to)) {
+          messages.push(label + ': from and to must be given together');
+        }
+        if (cond.from && cond.from === cond.to) messages.push(label + ': from and to must differ');
+        if (!cond.from && !cond.to) messages.push(label + ': give from and to');
+        return;
+      }
+      if (cond.value === 'date') {
+        if (!cond.from) messages.push(label + ': from is missing');
+        else if (!/^\d{4}-\d{2}-\d{2}$/.test(cond.from)) messages.push(label + ': from is not YYYY-MM-DD');
+        if (cond.to && !/^\d{4}-\d{2}-\d{2}$/.test(cond.to)) messages.push(label + ': to is not YYYY-MM-DD');
+        if (cond.from && cond.to && cond.to <= cond.from) messages.push(label + ': from and to must be in order');
+        return;
+      }
+      if (!cond.value) {
+        messages.push(label + ': choose a value');
+        return;
+      }
+      if (seen[cond.value]) messages.push('duplicate condition ' + cond.value);
+      seen[cond.value] = true;
+      const spec = valueSpec(cond.value);
+      if (!spec) messages.push(cond.value + ': no plugin declares this value');
+      else if (spec.type !== 'enum') messages.push(cond.value + ': not an enum value');
+      if (!cond.is.length) messages.push(cond.value + ': choose at least one key');
+      for (const key of cond.is) {
+        if (spec && Array.isArray(spec.enum) && !spec.enum.includes(key)) {
+          messages.push(cond.value + ': no key ' + key);
+        }
+      }
+    });
+    for (let j = 0; j < i; j++) {
+      const other = state.plan.triggers[j];
+      if (other.page === trigger.page && triggerKey(other) === triggerKey(trigger)) {
+        messages.push('never fires: #' + (j + 1) + ' has the same condition and page and comes first');
+      }
+    }
+    return messages;
   }
 
   function renderWarnings() {
     if (state.readOnly || !state.plan) return;
-    const seen = {};
-    state.plan.rules.forEach((rule, i) => {
-      const messages = [];
-      if (!/^[a-z0-9-]{1,40}$/.test(rule.name)) messages.push('name: only a-z, 0-9 and -');
-      if (seen[rule.name]) messages.push('duplicate rule name ' + rule.name);
-      seen[rule.name] = true;
-      const { from, to } = rule.when;
-      if ((from && !to) || (!from && to)) messages.push('from and to must be given together');
-      if (from && to && from === to) messages.push('from and to must differ');
-      const seenConds = {};
-      for (const cond of rule.when.conditions) {
-        if (!cond.value) {
-          messages.push('condition: choose a value');
-          continue;
-        }
-        if (seenConds[cond.value]) messages.push('duplicate condition ' + cond.value);
-        seenConds[cond.value] = true;
-        const spec = valueSpec(cond.value);
-        if (!spec) messages.push(cond.value + ': no plugin declares this value');
-        else if (spec.type !== 'enum') messages.push(cond.value + ': not an enum value');
-        if (!cond.is.length) messages.push(cond.value + ': choose at least one key');
-        for (const key of cond.is) {
-          if (spec && Array.isArray(spec.enum) && !spec.enum.includes(key)) {
-            messages.push(cond.value + ': no key ' + key);
-          }
-        }
-      }
-      if (!rule.pages.length) messages.push('no pages');
-      for (const page of new Set(rule.pages)) {
-        if (rule.pages.filter((p) => p === page).length > 1) messages.push('page ' + page + ' is listed twice');
-        if (!pageInfo(page)) messages.push(page + ': no page file');
-      }
-      for (const display of state.displays) {
-        for (const page of rule.pages) {
-          const info = pageInfo(page);
-          const why = info && info.fits && info.fits[display];
-          if (why) messages.push(display + ' skips ' + page + ' (' + why + ')');
-        }
-      }
-      const shadow = shadowReason(i);
-      if (shadow) messages.push(shadow);
-      const node = ruleNodes[i];
-      if (!node) return;
-      node.card.classList.toggle('shadowed', !!shadow);
-      node.badge.hidden = !shadow;
-      renderMessages(node.warnings, messages);
+    renderMessages(el('page-warnings'), pageMessages());
+    renderMessages(el('refresh-warnings'), refreshMessages());
+    state.plan.triggers.forEach((trigger, i) => {
+      const node = triggerNodes[i];
+      if (node) renderMessages(node.warnings, triggerMessages(trigger, i));
     });
-    renderFallbackWarnings();
+    renderMessages(el('trigger-warnings'), []);
   }
 
-  function renderFallbackWarnings() {
-    const messages = [];
-    const fallback = state.plan.fallback;
-    if (fallback && !ruleNames().includes(fallback)) messages.push('fallback ' + fallback + ': no such rule');
-    renderMessages(el('fallback-warnings'), messages);
-  }
+  // ---- values ----
 
-  function renderFallback() {
-    const select = el('fallback');
-    select.innerHTML = '';
-    const none = document.createElement('option');
-    none.value = '';
-    none.textContent = 'none (the device gets a notice)';
-    select.appendChild(none);
-    for (const name of ruleNames()) {
-      const option = document.createElement('option');
-      option.value = name;
-      option.textContent = name;
-      select.appendChild(option);
-    }
-    select.value = state.plan && ruleNames().includes(state.plan.fallback) ? state.plan.fallback : '';
-  }
-
-  // ---- actions ----
-
-  // allValues lists the enum values a rule condition may name.
+  // allValues lists the enum values a trigger condition may name.
   function allValues() {
     const out = [];
     for (const plugin of state.plugins) {
@@ -544,23 +708,42 @@
     return out.sort((a, b) => a.value.localeCompare(b.value));
   }
 
+  // The plan's own weekday enum; it needs no plugin (ADR 0156).
+  const PLAN_ENUMS = { weekday: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] };
+
   function valueSpec(value) {
+    if (PLAN_ENUMS[value]) return { type: 'enum', enum: PLAN_ENUMS[value] };
     const found = allValues().find((v) => v.value === value);
     return found ? found.spec : null;
   }
 
   function conditionKeys(value) {
+    if (PLAN_ENUMS[value]) return PLAN_ENUMS[value].slice();
     const spec = valueSpec(value);
     return spec && Array.isArray(spec.enum) ? spec.enum.slice() : [];
   }
 
-  // conditionRow edits one value condition: the value to read and the keys it
-  // must answer. Stored unknown keys stay visible as their key.
-  function conditionRow(rule, cond) {
+  // conditionValues lists what a condition may test: the enum values of the
+  // configured plugins and the two plan values for a window and a day.
+  function conditionValues() {
+    const out = allValues().map((v) => ({ value: v.value, label: v.value }));
+    out.push(
+      { value: 'weekday', label: 'weekday' },
+      { value: 'time', label: 'time' },
+      { value: 'date', label: 'date' },
+    );
+    return out.sort((a, b) => a.value.localeCompare(b.value));
+  }
+
+  // conditionRow edits one condition. Its value names what it tests, so the
+  // value select is the only switch: an enum shows its keys, time the window,
+  // and date its days. Unknown stored values stay visible.
+  function conditionRow(trigger, cond) {
     const row = document.createElement('div');
     row.className = 'condition';
+
     const select = document.createElement('select');
-    const offered = allValues();
+    const offered = conditionValues();
     const none = document.createElement('option');
     none.value = '';
     none.textContent = offered.length ? 'choose a value…' : 'no enum value declared';
@@ -568,7 +751,7 @@
     for (const v of offered) {
       const option = document.createElement('option');
       option.value = v.value;
-      option.textContent = v.value;
+      option.textContent = v.label;
       select.appendChild(option);
     }
     if (cond.value && !offered.some((v) => v.value === cond.value)) {
@@ -580,19 +763,54 @@
     select.value = cond.value || '';
     select.addEventListener('change', () => {
       cond.value = select.value;
-      cond.is = cond.is.filter((key) => conditionKeys(cond.value).includes(key));
       changed();
-      renderRules();
+      renderTriggers();
     });
-    const keys = document.createElement('span');
-    keys.className = 'keys';
+
+    const fields = document.createElement('span');
+    fields.className = 'fields';
+    if (cond.value === 'time') {
+      fields.appendChild(rangeFields(cond, 'time'));
+    } else if (cond.value === 'date') {
+      fields.appendChild(rangeFields(cond, 'date'));
+    } else {
+      fields.appendChild(valueConditionFields(cond));
+    }
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'remove';
+    remove.title = 'Remove this condition';
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      const i = trigger.when.indexOf(cond);
+      if (i >= 0) trigger.when.splice(i, 1);
+      changed();
+      renderTriggers();
+    });
+
+    row.append(select, fields, remove);
+    return row;
+  }
+
+  function tinyLabel(text, control) {
+    const label = document.createElement('label');
+    const span = document.createElement('span');
+    span.textContent = text;
+    label.append(span, control);
+    return label;
+  }
+
+  function valueConditionFields(cond) {
+    const wrap = document.createElement('span');
+    wrap.className = 'keys';
     const declared = conditionKeys(cond.value);
     const all = declared.concat(cond.is.filter((key) => !declared.includes(key)));
     if (!all.length) {
       const note = document.createElement('span');
       note.className = 'muted';
-      note.textContent = cond.value ? 'this value declares no keys' : 'choose a value first';
-      keys.appendChild(note);
+      note.textContent = cond.value === 'paperboy/weekday' ? 'this value declares no keys' : cond.value ? 'this value declares no keys' : 'choose a value first';
+      wrap.appendChild(note);
     }
     for (const key of all) {
       const label = document.createElement('label');
@@ -606,22 +824,33 @@
       const text = document.createElement('span');
       text.textContent = declared.includes(key) ? key : key + ' (not declared)';
       label.append(box, text);
-      keys.appendChild(label);
+      wrap.appendChild(label);
     }
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'remove';
-    remove.title = 'Remove this condition';
-    remove.textContent = '×';
-    remove.addEventListener('click', () => {
-      const i = rule.when.conditions.indexOf(cond);
-      if (i >= 0) rule.when.conditions.splice(i, 1);
-      changed();
-      renderRules();
-    });
-    row.append(select, keys, remove);
-    return row;
+    return wrap;
   }
+
+  // rangeFields edits the from and to of a window of the day or a range of
+  // days. Both write plain strings; the server checks the format.
+  function rangeFields(cond, kind) {
+    const wrap = document.createElement('span');
+    wrap.className = 'cond-time';
+    const make = kind === 'time' ? timeInput : dateInput;
+    const from = make(cond.from);
+    from.addEventListener('change', () => {
+      cond.from = from.value;
+      changed();
+    });
+    wrap.appendChild(tinyLabel('From', from));
+    const to = make(cond.to);
+    to.addEventListener('change', () => {
+      cond.to = to.value;
+      changed();
+    });
+    wrap.appendChild(tinyLabel('To', to));
+    return wrap;
+  }
+
+  // ---- actions ----
 
   function allActions() {
     const out = [];
@@ -939,17 +1168,6 @@
 
   // ---- load and save ----
 
-  function addRule() {
-    if (!state.plan) return;
-    const taken = new Set(ruleNames());
-    let n = state.plan.rules.length + 1;
-    while (taken.has('rule-' + n)) n++;
-    state.plan.rules.push({ name: 'rule-' + n, when: { from: '', to: '', days: [], conditions: [] }, pages: [], on_refresh: 'current', refresh: '', alert: '' });
-    changed();
-    renderRules();
-    renderFallback();
-  }
-
   function addAction() {
     if (!state.plan) return;
     state.plan.actions.push({ action: '', args: {}, id: '', title: '' });
@@ -970,11 +1188,11 @@
   async function load() {
     setStatus('');
     if (state.isNew) {
-      state.plan = normalize({ rules: [] });
+      state.plan = normalize({ pages: [] });
       state.hash = '';
       state.readOnly = false;
       state.dirty = false;
-      setStatus('a new plan; add a rule with its pages, then Save writes plans/' + state.name + '.yaml', '');
+      setStatus('a new plan; add its pages, then Save writes plans/' + state.name + '.yaml', '');
       renderAll();
       return;
     }
@@ -1000,7 +1218,7 @@
       state.readOnly = true;
       setStatus('this file does not read as a plan: ' + doc.error, 'error');
     } else {
-      state.plan = normalize(doc.plan || { rules: [] });
+      state.plan = normalize(doc.plan || { pages: [] });
       state.readOnly = false;
     }
     renderAll();
@@ -1120,8 +1338,9 @@
   }
 
   function renderAll() {
-    renderFallback();
-    renderRules();
+    renderPages();
+    renderRefresh();
+    renderTriggers();
     renderActions();
     renderDevices();
     updateWhere();
@@ -1134,13 +1353,8 @@
   el('delete').addEventListener('click', remove);
   el('rename').addEventListener('click', rename);
   el('reload').addEventListener('click', () => location.reload());
-  el('add-rule').addEventListener('click', addRule);
+  el('add-trigger').addEventListener('click', addTrigger);
   el('add-action').addEventListener('click', addAction);
-  el('fallback').addEventListener('change', () => {
-    if (!state.plan) return;
-    state.plan.fallback = el('fallback').value;
-    changed();
-  });
   window.addEventListener('beforeunload', (e) => {
     if (!state.dirty) return;
     e.preventDefault();

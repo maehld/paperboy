@@ -427,7 +427,7 @@ func TestPlansListReadAndSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	planPath := filepath.Join(s.config().Plans, "tour.yaml")
-	if err := os.WriteFile(planPath, []byte("rules:\n  - name: day\n    pages: [solar]\n"), 0o644); err != nil {
+	if err := os.WriteFile(planPath, []byte("pages: [solar]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -435,7 +435,7 @@ func TestPlansListReadAndSave(t *testing.T) {
 	if rec := request(t, s, http.MethodGet, "/api/plans", nil, &list); rec.Code != http.StatusOK {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
 	}
-	if len(list.Plans) != 1 || list.Plans[0].Name != "tour" || list.Plans[0].Rules != 1 || list.Plans[0].Hash == "" {
+	if len(list.Plans) != 1 || list.Plans[0].Name != "tour" || len(list.Plans[0].Pages) != 1 || list.Plans[0].Hash == "" {
 		t.Fatalf("plans: %+v", list.Plans)
 	}
 
@@ -444,8 +444,7 @@ func TestPlansListReadAndSave(t *testing.T) {
 		t.Fatalf("read: %d %s", rec.Code, rec.Body)
 	}
 	changed := *read.Plan
-	changed.Fallback = "day"
-	changed.Rules[0].OnRefresh = plan.RefreshFirst
+	changed.OnRefresh = plan.RefreshFirst
 	rec := request(t, s, http.MethodPut, "/api/plans/tour", planSave{Hash: read.Hash, Plan: &changed}, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("save: %d %s", rec.Code, rec.Body)
@@ -454,7 +453,7 @@ func TestPlansListReadAndSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "fallback: day") || !strings.Contains(string(data), "on_refresh: first") {
+	if !strings.Contains(string(data), "on_refresh: first") {
 		t.Fatalf("file:\n%s", data)
 	}
 	if _, err := plan.Parse(bytes.NewReader(data), nil); err != nil {
@@ -463,7 +462,7 @@ func TestPlansListReadAndSave(t *testing.T) {
 	if rec := request(t, s, http.MethodPut, "/api/plans/tour", planSave{Hash: read.Hash, Plan: &changed}, nil); rec.Code != http.StatusConflict {
 		t.Fatalf("stale hash: %d", rec.Code)
 	}
-	invalid := plan.Plan{Rules: []plan.Rule{{Name: "day", Pages: []string{"solar", "solar"}}}}
+	invalid := plan.Plan{Pages: []plan.Page{{Name: "solar"}, {Name: "solar"}}}
 	if rec := request(t, s, http.MethodPut, "/api/plans/tour", planSave{Plan: &invalid}, nil); rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid plan: %d %s", rec.Code, rec.Body)
 	}

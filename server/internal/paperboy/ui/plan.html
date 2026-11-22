@@ -5,14 +5,9 @@
 <title>{{if .Plan}}Plan {{.Plan}} · {{end}}{{.Device}} · Paperboy</title>
 <style>
 form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
-.summary { margin: 0 0 1rem; }
-.rule { background: var(--pb-surface); border: 1px solid var(--pb-hairline); border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
-.rule.active { border: 2px solid var(--pb-ok); }
-.rule h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
-.conditions { margin: -.3rem 0 .6rem; font-size: .85rem; color: var(--pb-ink); }
-.badge { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; padding: .12rem .45rem; border-radius: 999px; border: 1px solid currentColor; font-weight: 600; }
-.badge.active { color: var(--pb-ok); }
-.badge.fallback { color: var(--pb-ink-muted); }
+.summary { margin: 0 0 .3rem; }
+.hint { margin: 0 0 1rem; }
+h2 { font-size: 1.05rem; margin: 1.4rem 0 .6rem; }
 .pages { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
 figure { margin: 0; }
 figcaption { font-size: .9rem; margin-bottom: .3rem; }
@@ -21,6 +16,15 @@ figcaption { font-size: .9rem; margin-bottom: .3rem; }
 .skipped { margin: 0; padding: 1rem; color: var(--pb-ink-muted); border: 1px dashed var(--pb-hairline); font-size: .85rem; }
 .error { margin: 0 0 1rem; padding: .5rem .6rem; background: var(--pb-error-bg); border-left: 3px solid var(--pb-error-border); font-size: .85rem; word-break: break-word; }
 figure .error { margin: 0; }
+.badge { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; padding: .12rem .45rem; border-radius: 999px; border: 1px solid currentColor; font-weight: 600; }
+.badge.active { color: var(--pb-ok); }
+.badge.match { color: var(--pb-ink-muted); }
+.triggers { display: grid; gap: .6rem; }
+.trigger { background: var(--pb-surface); border: 1px solid var(--pb-hairline); border-radius: 8px; padding: .8rem; }
+.trigger.active { border: 2px solid var(--pb-ok); }
+.trigger h3 { font-size: .95rem; margin: 0 0 .4rem; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.condition { margin: .2rem 0; font-size: .85rem; }
+.trigger .skipped { padding: .5rem; }
 </style>
 </head>
 <body>
@@ -33,30 +37,42 @@ figure .error { margin: 0; }
   {{if .VirtualURL}}<a href="{{.VirtualURL}}">Virtual display</a>{{end}}
 </form>
 {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
-{{if .Rules}}
-<p class="summary">{{if .Now}}Now{{else}}At{{end}} ({{.AtText}}):
-  {{if .Active}}rule <strong>{{.Active}}</strong>{{if .ByFallback}} (fallback){{end}}{{else}}no rule applies, the device shows a notice{{end}}{{if .Next}} · next change {{.Next}}{{end}}{{if .Conditions}} · conditions evaluated now{{end}}</p>
-{{range .Rules}}
-<section class="rule{{if .Active}} active{{end}}">
-  <h2>{{.Name}}
-    {{if .Active}}<span class="badge active">active</span>{{end}}
-    {{if .Fallback}}<span class="badge fallback">fallback</span>{{end}}
-    <span class="muted">{{.When}} · {{.OnRefresh}}{{if .Refresh}} · {{.Refresh}}{{end}}{{if .Alert}} · alert {{.Alert}}{{end}}</span>
-  </h2>
-  {{if .Conditions}}<p class="conditions">{{range $i, $c := .Conditions}}{{if $i}} · {{end}}{{$c.Value}} is {{$c.Is}} · now {{if $c.Current}}{{$c.Current}}{{else}}no value{{end}} <span class="badge{{if $c.Active}} active{{end}}">{{if $c.Active}}match{{else}}no match{{end}}</span>{{end}}</p>{{end}}
-  <div class="pages">
-    {{range .Pages}}
-    <figure>
-      <figcaption>{{.Name}}</figcaption>
-      {{if .Skipped}}<p class="skipped">Skipped: {{.Skipped}}</p>
-      {{else if .Error}}<p class="error">{{.Error}}</p>
-      {{else if .ImageURL}}<img class="preview" src="{{.ImageURL}}" alt="{{.Name}}" width="{{.Width}}" height="{{.Height}}" loading="lazy">
-      {{else}}<pre class="lcd">{{range $i, $l := .Text}}{{if $i}}
+{{if .Pages}}
+<p class="summary">{{if .Now}}Now{{else}}At{{end}} ({{.AtText}}): refresh <strong>{{.Interval}}</strong>{{if .Next}} · next change {{.Next}}{{end}}{{if .Triggered}} · trigger <strong>{{.Trigger}}</strong>{{end}}</p>
+<p class="hint">Trigger values are evaluated now; the time only selects the refresh window. A hidden page is not in the rotation and only a trigger shows it.</p>
+<h2>Pages</h2>
+<div class="pages">
+  {{range .Pages}}
+  <figure>
+    <figcaption>{{.Name}}{{if .Hidden}} <span class="badge">hidden</span>{{end}}{{if .Triggered}} <span class="badge active">triggered</span>{{end}}</figcaption>
+    {{if .Skipped}}<p class="skipped">Skipped: {{.Skipped}}</p>
+    {{else if .Error}}<p class="error">{{.Error}}</p>
+    {{else if .ImageURL}}<img class="preview" src="{{.ImageURL}}" alt="{{.Name}}" width="{{.Width}}" height="{{.Height}}" loading="lazy">
+    {{else}}<pre class="lcd">{{range $i, $l := .Text}}{{if $i}}
 {{end}}{{$l}}{{end}}</pre>{{end}}
-    </figure>
+  </figure>
+  {{end}}
+</div>
+{{if .Triggers}}
+<h2>Triggers</h2>
+<div class="triggers">
+  {{range .Triggers}}
+  <section class="trigger{{if .Active}} active{{end}}">
+    <h3>#{{.Number}} → {{.Page}}
+      {{if .Active}}<span class="badge active">active</span>{{end}}
+      {{if .Matches}}<span class="badge match">matches</span>{{end}}
+      {{if .Alert}}<span class="muted">alert {{.Alert}}</span>{{end}}
+    </h3>
+    {{range .Conditions}}
+    <p class="condition">
+      {{if eq .Kind "time"}}{{.Time}}{{else if eq .Kind "dates"}}{{.Dates}}{{else}}{{.Value}} is {{.Is}} · now {{if .Current}}{{.Current}}{{else}}no value{{end}}{{end}}
+      <span class="badge{{if .Active}} active{{end}}">{{if .Active}}match{{else}}no match{{end}}</span>
+    </p>
     {{end}}
-  </div>
-</section>
+    {{if .PageNote}}<p class="skipped">Skipped: {{.PageNote}}</p>{{end}}
+  </section>
+  {{end}}
+</div>
 {{end}}
 {{end}}
 {{template "chrome-end"}}</body>

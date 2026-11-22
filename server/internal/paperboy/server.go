@@ -126,6 +126,9 @@ func New(cfg *Config) (*Server, error) {
 		logs: newLogSeen(), fwNotes: map[string]string{}, pages: newPageLoader(), skipNotes: map[string]string{},
 		started: time.Now(), stats: stats.NewRegistry(), pluginCPU: map[int]*stats.Gauge{}}
 	s.firmware = newFirmwareStore(cfg.FirmwareDir)
+	// The host answers the built-in values from the same clock as the plan and
+	// the sync, so a fixed test clock reaches them too.
+	s.widgets.Now = func() time.Time { return s.now() }
 	s.download = newDownloadStatus()
 	// A plan named in the configuration is reported when it is missing or broken
 	// (ADR 0026); the device gets a notice page instead of an error, so a
@@ -405,7 +408,7 @@ type deviceAPIInfo struct {
 	Hardware          string          `json:"hardware,omitempty"`
 	WakeReason        string          `json:"wake_reason,omitempty"`
 	BatteryLevel      string          `json:"battery_level,omitempty"`
-	Rule              string          `json:"rule,omitempty"`
+	Trigger           string          `json:"trigger,omitempty"`
 	Charge            *chargeEpisode  `json:"charge,omitempty"`
 	LastCharge        *chargeEpisode  `json:"last_charge,omitempty"`
 	BatteryHistory    []batterySample `json:"battery_history,omitempty"`
@@ -440,7 +443,7 @@ func (d deviceInfo) api() deviceAPIInfo {
 		ClientIP: st.ClientIP, BatteryVoltage: st.BatteryVoltage, BatteryPercent: st.BatteryPercent,
 		BatteryMAH: st.BatteryMAH, BatteryMA: st.BatteryMA, BatteryCharging: st.BatteryCharging,
 		RSSI: st.RSSI, Firmware: st.Firmware, Hardware: st.Hardware, WakeReason: st.WakeReason,
-		BatteryLevel: st.BatteryLevel, Rule: st.Rule, Charge: st.Charge, LastCharge: st.LastCharge,
+		BatteryLevel: st.BatteryLevel, Trigger: st.Trigger, Charge: st.Charge, LastCharge: st.LastCharge,
 		BatteryHistory: st.BatteryHistory, ReportedPower: st.ReportedPower, TouchReported: st.TouchReported,
 		PairedAt: st.PairedAt, LastPage: st.LastPage, LastPageKind: st.LastPageKind,
 		LastPageHash: st.LastPageHash, LastPages: st.LastPages, ScrollHash: st.ScrollHash,

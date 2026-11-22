@@ -92,13 +92,13 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 <section class="card">
   {{if .Plans}}
   <table id="plan-table" class="cards">
-    <thead><tr><th>Name</th><th>Rules</th><th>Fallback</th></tr></thead>
+    <thead><tr><th>Name</th><th>Pages</th><th>Triggers</th></tr></thead>
     <tbody>
       {{range .Plans}}
       <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
         <td class="name" data-label="Name">{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
-        <td class="num" data-label="Rules">{{.Rules}}</td>
-        <td data-label="Fallback">{{.Fallback}}</td>
+        <td class="num" data-label="Pages">{{.Pages}}</td>
+        <td class="num" data-label="Triggers">{{.Triggers}}</td>
       </tr>
       {{if .Error}}<tr class="detail"><td colspan="3"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}

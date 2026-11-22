@@ -48,10 +48,7 @@ func TestBatteryConfig(t *testing.T) {
 }
 
 func TestBatteryWarningFlow(t *testing.T) {
-	s, _ := planServer(t, `rules:
-  - name: tag
-    pages: [eins, zwei]
-`)
+	s, _ := planServer(t, "pages: [eins, zwei]\n")
 	s.config().Battery = &Battery{WarnVolts: 3.45, CriticalVolts: 3.3, HysteresisVolts: 0.1}
 	dev := planDevice(t, s)
 	setVolts := func(v float64) { dev.req.Battery = &syncBattery{Volts: v} }

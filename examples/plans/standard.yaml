@@ -1,22 +1,28 @@
-rules:
-  - name: tag
-    when: { from: "07:00", to: "22:00" }
-    pages: [uebersicht, kalender, wetter, laden, hinweise]
-    refresh: 10m
-  - name: nacht
-    when: { from: "22:00", to: "07:00" }
-    pages: [uebersicht]
-    refresh: 30m
-fallback: tag
+# A plan is an ordered list of pages and a refresh schedule. The device cycles
+# through the pages on every timed refresh; the schedule keeps the day fast and
+# the night quiet. `hinweise` is a text page, so image displays skip it.
+pages: [uebersicht, kalender, wetter, laden, hinweise]
 
-# A rule can require a plugin value, e.g. the glucose state of the dexcom
-# plugin (ADR 0127). This rule shows a glucose page while the reading is low or
-# urgent and otherwise falls through; it needs the dexcom plugin and a page
-# named glukose.
-#  - name: glucose
-#    when: { conditions: [{ value: dexcom/state, is: [low, urgent] }] }
-#    pages: [glukose]
-#    refresh: 5m
+on_refresh: cycle
+refresh:
+  default: 30m
+  windows:
+    - { from: "07:00", to: "22:00", interval: 10m }
+
+# A trigger brings a page to the front while a plugin value matches (ADR 0127).
+# This one needs the dexcom plugin and a page named glukose; a hidden page is
+# not in the rotation and only a trigger shows it. A missing value never
+# matches, so the device continues with its pages.
+# triggers:
+#   - when: { value: dexcom/state, is: [low, urgent] }
+#     page: glukose
+#     alert: refresh
+#
+# A trigger also takes a time window, weekdays or single calendar days:
+#   - when: [{ value: time, from: "06:00", to: "09:00" }]
+#     page: uebersicht
+#   - when: [{ value: date, from: "2026-12-24", to: "2026-12-26" }]
+#     page: weihnachten
 
 # Actions the device menu offers (ADR 0057). They belong to the plan, so every
 # page above offers them. evcc's "mode" action switches the charge mode of one

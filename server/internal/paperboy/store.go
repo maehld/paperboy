@@ -18,17 +18,21 @@ import (
 
 // deviceState is persisted per device in state/devices/<MAC>.json (ADR 0080).
 type deviceState struct {
-	APIKey          string    `json:"api_key"`
-	Page            int       `json:"page"`
-	PageName        string    `json:"page_name,omitempty"` // page the cursor holds; a plan edit follows it (ADR 0133)
-	FirstSeen       time.Time `json:"first_seen,omitzero"`
-	LastSeen        time.Time `json:"last_seen,omitzero"`
-	ClientIP        string    `json:"client_ip,omitempty"` // source address of the last register, sync or text poll
-	BatteryVoltage  string    `json:"battery_voltage,omitempty"`
-	BatteryPercent  *float64  `json:"battery_percent,omitempty"`  // fuel gauge, if the hardware has one
-	BatteryMAH      *float64  `json:"battery_mah,omitempty"`      // remaining capacity from the fuel gauge
-	BatteryMA       *float64  `json:"battery_ma,omitempty"`       // current from the fuel gauge, positive while charging
-	BatteryCharging *bool     `json:"battery_charging,omitempty"` // charger's own state (e.g. the Sticky's STAT pin)
+	APIKey   string `json:"api_key"`
+	Page     int    `json:"page"`
+	PageName string `json:"page_name,omitempty"` // page the cursor holds; a plan edit follows it (ADR 0133)
+	Trigger  string `json:"trigger,omitempty"`   // page a trigger shows right now (ADR 0158)
+	// PageBeforeTrigger is the page the trigger displaced, for on_refresh:
+	// current when the trigger page leaves the list again (ADR 0158).
+	PageBeforeTrigger string    `json:"page_before_trigger,omitempty"`
+	FirstSeen         time.Time `json:"first_seen,omitzero"`
+	LastSeen          time.Time `json:"last_seen,omitzero"`
+	ClientIP          string    `json:"client_ip,omitempty"` // source address of the last register, sync or text poll
+	BatteryVoltage    string    `json:"battery_voltage,omitempty"`
+	BatteryPercent    *float64  `json:"battery_percent,omitempty"`  // fuel gauge, if the hardware has one
+	BatteryMAH        *float64  `json:"battery_mah,omitempty"`      // remaining capacity from the fuel gauge
+	BatteryMA         *float64  `json:"battery_ma,omitempty"`       // current from the fuel gauge, positive while charging
+	BatteryCharging   *bool     `json:"battery_charging,omitempty"` // charger's own state (e.g. the Sticky's STAT pin)
 	// Readings are the last measured values of the room, keyed by the name of
 	// the reading catalog (ADR 0134). At names the moment of the measurement, so
 	// a value a later sync did not bring does not look fresh.
@@ -38,7 +42,6 @@ type deviceState struct {
 	Hardware     string                   `json:"hardware,omitempty"` // firmware image type, e.g. "sticky"
 	WakeReason   string                   `json:"wake_reason,omitempty"`
 	BatteryLevel string                   `json:"battery_level,omitempty"` // "", "warn" or "critical"
-	Rule         string                   `json:"rule,omitempty"`          // name of the active plan rule
 
 	// Charging episodes from the fuel gauge current (issue #205): the one that
 	// runs right now and the last one that finished.

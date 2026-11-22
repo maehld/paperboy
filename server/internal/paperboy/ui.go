@@ -355,7 +355,7 @@ type dashboardDevice struct {
 	Hardware      string // hardware the device reports; empty until it registered
 	Plan          string // plan name, "no plan" when empty
 	PlanURL       string // the plan's editor, empty without a plan (ADR 0152)
-	Rule          string // active plan rule, empty when unknown
+	Trigger       string // page the active trigger shows, empty when none
 	Content       string // page name, "notice", "battery warning" or empty
 	PageURL       string // the shown page's editor, empty for a notice
 	ImageURL      string // last served image, else the current page's preview; empty for a placeholder
@@ -449,7 +449,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			Hardware:      d.Hardware,
 			Plan:          planText(d.Plan),
 			PlanURL:       planURLFor(d.Plan),
-			Rule:          d.Rule,
+			Trigger:       d.Trigger,
 			Content:       contentText(d.deviceState),
 			PageURL:       pageURLFor(d.deviceState),
 			ImageURL:      image,

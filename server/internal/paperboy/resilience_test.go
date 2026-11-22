@@ -10,7 +10,7 @@ import (
 // the device still gets an answer and the server keeps working. Regression test
 // for a request hanging forever and taking every later request with it.
 func TestDisplaySurvivesRenderingPanic(t *testing.T) {
-	s, _ := planServer(t, "rules: [{name: tag, pages: [eins]}]\n")
+	s, _ := planServer(t, "pages: [eins]\n")
 	dev := planDevice(t, s)
 	// A missing widget host makes the page renderer panic.
 	widgets := s.widgets
@@ -33,7 +33,7 @@ func TestDisplaySurvivesRenderingPanic(t *testing.T) {
 // affects its own page: the request still ends with a notice and the next
 // request renders normally.
 func TestDisplayPageErrorsKeepDeviceWorking(t *testing.T) {
-	s, _ := planServer(t, "rules: [{name: tag, pages: [kaputt]}]\n")
+	s, _ := planServer(t, "pages: [kaputt]\n")
 	writePageFile(t, s.config().Pages+"/kaputt.yaml", "kind: image\ngrid: [1, 1]\ncells: [\n")
 	dev := planDevice(t, s)
 	if got := pagePath(displayPage(t, s, dev)); !strings.HasPrefix(got, "/hints/") {

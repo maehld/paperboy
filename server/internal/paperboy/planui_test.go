@@ -10,15 +10,16 @@ import (
 	"github.com/maehld/paperboy/server/internal/plan"
 )
 
-const testEditablePlan = `rules:
-  - name: day
-    when: { from: "07:00", to: "22:00", days: [mon, tue] }
-    pages: [solar, lcd]
-    on_refresh: cycle
-    refresh: 10m
-  - name: night
-    pages: [solar]
-fallback: night
+const testEditablePlan = `pages: [solar, {page: lcd, hidden: true}]
+on_refresh: cycle
+refresh:
+  default: 30m
+  windows:
+    - { from: "07:00", to: "22:00", interval: 10m }
+triggers:
+  - when: { value: fake/state, is: [low, urgent] }
+    page: lcd
+    alert: once
 actions:
   - action: evcc/mode
     args: { loadpoint: 0, mode: pv }
@@ -64,7 +65,7 @@ func TestPlanEditor(t *testing.T) {
 		`"devices":[{"id":"test","display":"small"}]`,
 		`"displays":["small"]`,
 		`<script src="/ui/plan-editor.js"></script>`,
-		`id="rules"`, `id="actions"`, `id="fallback"`, `id="devices"`,
+		`id="pages"`, `id="triggers"`, `id="actions"`, `id="devices"`,
 		`href="/ui/pages"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -141,7 +142,7 @@ func TestPlanEditorCreatesPlan(t *testing.T) {
 	}
 
 	// The first save writes the file; a plan needs one rule with a page.
-	created := plan.Plan{Rules: []plan.Rule{{Name: "day", Pages: []string{"solar"}}}}
+	created := plan.Plan{Pages: []plan.Page{{Name: "solar"}}}
 	if rec := request(t, s, http.MethodPut, "/api/plans/neu", planSave{Plan: &created}, nil); rec.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body)
 	}
@@ -160,11 +161,11 @@ func TestPlanEditorCreatesPlan(t *testing.T) {
 // TestEditorOverviewPlans lists the plans next to the pages (ADR 0069).
 func TestEditorOverviewPlans(t *testing.T) {
 	s := planEditorServer(t)
-	writePlanFile(t, s, "broken", "rules:\n  - name: day\n    pages: [solar]\n    nope: 1\n")
+	writePlanFile(t, s, "broken", "pages: [solar]\nnope: 1\n")
 
 	body := request(t, s, http.MethodGet, "/ui/plans", nil, nil).Body.String()
 	for _, want := range []string{
-		"<h1>Plans</h1>", "/ui/plans/tour", `<a href="/ui/plans/tour">tour</a>`, "<td data-label=\"Fallback\">night</td>",
+		"<h1>Plans</h1>", "/ui/plans/tour", `<a href="/ui/plans/tour">tour</a>`, "<td class=\"num\" data-label=\"Triggers\">1</td>",
 		"<td class=\"name\" data-label=\"Name\">broken</td>", "yaml: unmarshal errors",
 		`href="/ui/pages"`, // the way back to the pages
 	} {
