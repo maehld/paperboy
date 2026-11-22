@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"math"
@@ -9,58 +11,61 @@ import (
 	"github.com/maehld/paperboy/sdk/render"
 )
 
-// balanceRow is one line of the balance. num is the value in W; a row without
-// power shows a dash and stays in place, so the balance never jumps.
+// balanceRow is one line of the balance. num is the value in W or kWh; a row
+// without a value shows a dash and stays in place, so the balance never jumps.
 type balanceRow struct {
 	icon, label, value string
 	num                float64
 	idle               bool
 }
 
+// balanceTotals are the numbers of one balance, in W or in kWh. The set of rows
+// follows the hardware (battery, loadpoints), not the values.
+type balanceTotals struct {
+	pv, gridImport, gridExport      float64
+	batteryCharge, batteryDischarge float64
+	home, charging                  float64
+	chargingCount                   int
+	hasBattery, hasLoadpoints       bool
+	energy                          bool // kWh of a period instead of the W of /api/state
+}
+
 // balanceRows builds the fixed rows of the balance: sources on the left,
-// consumers on the right. The set of rows depends on the hardware (battery,
-// loadpoints), not on the current values.
-func (e *evcc) balanceRows() (left, right []balanceRow) {
-	s := e.cur
-	g := s.gridPower()
+// consumers on the right.
+func (e *evcc) balanceRows(t balanceTotals) (left, right []balanceRow) {
+	value := e.power
+	idle := float64(flowIdle)
+	if t.energy {
+		value, idle = e.kwhShort, flowIdleEnergy
+	}
 	left = append(left,
-		balanceRow{"sun", "PV", e.power(s.PVPower), s.PVPower, false},
-		balanceRow{"grid", e.t("Netzbezug", "Grid import"), e.power(g), max(g, 0), false},
+		balanceRow{"sun", "PV", value(t.pv), t.pv, false},
+		balanceRow{"grid", e.t("Netzbezug", "Grid import"), value(t.gridImport), t.gridImport, false},
 	)
-	if s.hasBattery() {
-		p := max(s.Battery.Power, 0)
-		left = append(left, balanceRow{"battery", e.t("Akku-Entladung", "Battery discharge"), e.power(p), p, false})
+	if t.hasBattery {
+		left = append(left, balanceRow{"battery", e.t("Akku-Entladung", "Battery discharge"), value(t.batteryDischarge), t.batteryDischarge, false})
 	}
-	right = append(right, balanceRow{"home", e.t("Haus", "Home"), e.power(s.HomePower), s.HomePower, false})
-	if len(s.Loadpoints) > 0 {
-		sum, charging := 0.0, 0
-		for i := range s.Loadpoints {
-			lp := &s.Loadpoints[i]
-			sum += lp.ChargePower
-			if lp.ChargePower >= flowIdle {
-				charging++
-			}
-		}
+	right = append(right, balanceRow{"home", e.t("Haus", "Home"), value(t.home), t.home, false})
+	if t.hasLoadpoints {
 		label := e.t("Laden", "Charging")
-		if charging > 1 {
-			label += " (" + e.num(float64(charging), 0) + ")"
+		if t.chargingCount > 1 {
+			label += " (" + e.num(float64(t.chargingCount), 0) + ")"
 		}
-		right = append(right, balanceRow{"car", label, e.power(sum), sum, false})
+		right = append(right, balanceRow{"car", label, value(t.charging), t.charging, false})
 	}
-	if s.hasBattery() {
-		p := max(-s.Battery.Power, 0)
-		right = append(right, balanceRow{"battery", e.t("Akku-Ladung", "Battery charge"), e.power(p), p, false})
+	if t.hasBattery {
+		right = append(right, balanceRow{"battery", e.t("Akku-Ladung", "Battery charge"), value(t.batteryCharge), t.batteryCharge, false})
 	}
-	right = append(right, balanceRow{"grid", e.t("Einspeisung", "Grid export"), e.power(g), max(-g, 0), false})
+	right = append(right, balanceRow{"grid", e.t("Einspeisung", "Grid export"), value(t.gridExport), t.gridExport, false})
 
 	for i := range left {
-		left[i].idle = left[i].num < flowIdle
+		left[i].idle = left[i].num < idle
 		if left[i].idle {
 			left[i].value = "–"
 		}
 	}
 	for i := range right {
-		right[i].idle = right[i].num < flowIdle
+		right[i].idle = right[i].num < idle
 		if right[i].idle {
 			right[i].value = "–"
 		}
@@ -68,10 +73,92 @@ func (e *evcc) balanceRows() (left, right []balanceRow) {
 	return left, right
 }
 
+// balanceNow reads the current power of /api/state.
+func (e *evcc) balanceNow() balanceTotals {
+	s := e.cur
+	g := s.gridPower()
+	t := balanceTotals{
+		pv:            s.PVPower,
+		gridImport:    max(g, 0),
+		gridExport:    max(-g, 0),
+		home:          s.HomePower,
+		hasBattery:    s.hasBattery(),
+		hasLoadpoints: len(s.Loadpoints) > 0,
+	}
+	if t.hasBattery {
+		t.batteryDischarge = max(s.Battery.Power, 0)
+		t.batteryCharge = max(-s.Battery.Power, 0)
+	}
+	for i := range s.Loadpoints {
+		lp := &s.Loadpoints[i]
+		t.charging += lp.ChargePower
+		if lp.ChargePower >= flowIdle {
+			t.chargingCount++
+		}
+	}
+	return t
+}
+
+// balancePeriod sums the energy history of a period, the same day buckets and
+// categories as the flow and the history widget.
+func (e *evcc) balancePeriod(period string) (balanceTotals, error) {
+	from, to, ok := e.periodRange(period)
+	if !ok {
+		return balanceTotals{}, fmt.Errorf("unknown period %q", period)
+	}
+	days, _, histErr := e.historyData()
+	if days == nil {
+		if histErr != nil {
+			return balanceTotals{}, fmt.Errorf("evcc history: %w", histErr)
+		}
+		return balanceTotals{}, errors.New("evcc history is still loading")
+	}
+	row := historyRow{from: from, to: to}
+	sum := func(key, metric string) float64 {
+		list, ok := days[key]
+		if !ok {
+			return 0
+		}
+		return e.historySum(list, row, metric)
+	}
+	s := e.cur
+	t := balanceTotals{
+		pv:               sum("pv", "energy"),
+		gridImport:       sum("grid", "energy"),
+		gridExport:       sum("grid", "return"),
+		batteryCharge:    sum("battery", "energy"),
+		batteryDischarge: sum("battery", "return"),
+		home:             sum("home", "energy"),
+		hasBattery:       s.hasBattery(),
+		hasLoadpoints:    len(s.Loadpoints) > 0,
+		energy:           true,
+	}
+	for i := range s.Loadpoints {
+		energy := sum(loadpointKey(s.Loadpoints[i].Title), "energy")
+		t.charging += energy
+		if energy >= flowIdleEnergy {
+			t.chargingCount++
+		}
+	}
+	return t, nil
+}
+
 // balance draws the energy split as a T-account: sources on the left,
 // consumers on the right, both value columns at the centre line and a total
-// per side. A zero row shows a gray dash in its fixed place.
+// per side. A zero row shows a gray dash in its fixed place. "now" shows the
+// power of /api/state; a period shows the energy of the history in kWh.
 func (e *evcc) balance(w plugin.WidgetRequest, img *image.Paletted) error {
+	period := w.Arg().String("period", "now")
+	var totals balanceTotals
+	if period == "now" {
+		totals = e.balanceNow()
+	} else {
+		t, err := e.balancePeriod(period)
+		if err != nil {
+			return err
+		}
+		totals = t
+	}
 	if img.Rect.Dx() < 260 || img.Rect.Dy() < 120 {
 		return plugin.TooSmall(w)
 	}
@@ -79,7 +166,7 @@ func (e *evcc) balance(w plugin.WidgetRequest, img *image.Paletted) error {
 	if b.Dx() < 240 || b.Dy() < 100 {
 		return plugin.TooSmall(w)
 	}
-	left, right := e.balanceRows()
+	left, right := e.balanceRows(totals)
 	base := e.req.TextPx(w)
 	gray := render.Levels(img.Palette) > 2
 	H := float64(b.Dy())
@@ -150,6 +237,10 @@ func (e *evcc) balance(w plugin.WidgetRequest, img *image.Paletted) error {
 	for _, r := range right {
 		rightSum += r.num
 	}
+	value := e.power
+	if totals.energy {
+		value = e.kwhShort
+	}
 	sumSz := math.Min(totalH*0.55, base*1.05)
 	sumY := int(math.Round(totalTop + totalH/2 + sumSz*0.36))
 	totalInk := color.Color(render.DarkGray)
@@ -158,7 +249,7 @@ func (e *evcc) balance(w plugin.WidgetRequest, img *image.Paletted) error {
 	}
 	render.Text(img, e.t("Summe", "Total"), b.Min.X+int(pad), int(math.Round(totalTop+totalH/2+labelSz*0.35)), render.Style{Size: labelSz, Shrink: true}, int(W/2-pad), totalInk, render.Left)
 	render.Text(img, e.t("Summe", "Total"), b.Max.X-int(pad), int(math.Round(totalTop+totalH/2+labelSz*0.35)), render.Style{Size: labelSz, Shrink: true}, int(W/2-pad), totalInk, render.Right)
-	render.Text(img, e.power(leftSum), int(divX-cpad), sumY, render.Style{Size: sumSz, Bold: true, Shrink: true}, int(W/2-2*cpad), color.Black, render.Right)
-	render.Text(img, e.power(rightSum), int(divX+cpad), sumY, render.Style{Size: sumSz, Bold: true, Shrink: true}, int(W/2-2*cpad), color.Black, render.Left)
+	render.Text(img, value(leftSum), int(divX-cpad), sumY, render.Style{Size: sumSz, Bold: true, Shrink: true}, int(W/2-2*cpad), color.Black, render.Right)
+	render.Text(img, value(rightSum), int(divX+cpad), sumY, render.Style{Size: sumSz, Bold: true, Shrink: true}, int(W/2-2*cpad), color.Black, render.Left)
 	return nil
 }

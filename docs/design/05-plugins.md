@@ -112,7 +112,7 @@ Every plugin has its own version in `plugins/cmd/<plugin>/VERSION`, embedded in 
 | [`calendar`](../plugins/calendar.md) | CalDAV, CardDAV, iCalendar links and files | `agenda`, `birthdays`, `month`, `week` |
 | [`weather`](../plugins/weather.md) | Open-Meteo | `current`, `days`, `hours` |
 | [`fuel`](../plugins/fuel.md) | Tankerkönig (MTS-K) | `prices`, `cheapest`, `history`, values `price`, `station`, `distance`, `open`, `list`, `updated` |
-| [`evcc`](../plugins/evcc.md) | evcc `/api/state` and its energy history | `site`, `flow` (with `period`), `balance`, `loadpoint`, `forecast`, `history`, `chart`, `values`, action `mode` |
+| [`evcc`](../plugins/evcc.md) | evcc `/api/state` and its energy history | `site`, `flow` and `balance` (with `period`), `loadpoint`, `forecast`, `history`, `chart`, `values`, action `mode` |
 | [`departures`](../plugins/departures.md) | EFA rapidJSON | `departures` |
 | [`myskoda`](../plugins/myskoda.md) | MyŠkoda Public API | `battery`, `charging`, `profiles`, `location`, `climate`, `card`, `car`, actions `charging` and `climate` |
 | [`dexcom`](../plugins/dexcom.md) | Dexcom Share | `glucose`, `graph`, `values`, value `state` with the keys `normal`, `low`, `high`, `urgent` |

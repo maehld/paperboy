@@ -6,7 +6,6 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"time"
 
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
@@ -112,11 +111,6 @@ type flowModel struct {
 	lps     int // number of loadpoints at the end of nodes
 	energy  bool
 }
-
-// flowPeriods are the periods of the flow. "now" reads /api/state; the rest
-// reads the day buckets of the energy history, the same source the history
-// widget uses.
-var flowPeriods = []any{"now", "today", "yesterday", "week", "last_week", "month", "last_month", "year", "last_year"}
 
 // flow draws the energy flow: the hub in the middle, PV above, the battery
 // below, the grid left and the home right. Loadpoints are text lines below the
@@ -332,7 +326,7 @@ func (e *evcc) flowNow() *flowModel {
 // flowPeriod sums the energy history of a period. It uses the same categories
 // as the history widget and the same day buckets.
 func (e *evcc) flowPeriod(period string) (*flowModel, error) {
-	from, to, ok := e.flowRange(period)
+	from, to, ok := e.periodRange(period)
 	if !ok {
 		return nil, fmt.Errorf("unknown period %q", period)
 	}
@@ -395,35 +389,6 @@ func (e *evcc) flowPeriod(period string) (*flowModel, error) {
 		n.idle = math.Abs(n.net) < flowIdleEnergy
 	}
 	return m, nil
-}
-
-// flowRange returns the date range of a period, from inclusive and to
-// exclusive, the way the history widget counts its rows.
-func (e *evcc) flowRange(period string) (from, to string, ok bool) {
-	now := e.req.Now.In(e.req.Location())
-	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	monday := day.AddDate(0, 0, -((int(day.Weekday()) + 6) % 7))
-	month := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-	year := time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
-	switch period {
-	case "today":
-		return date(day), date(day.AddDate(0, 0, 1)), true
-	case "yesterday":
-		return date(day.AddDate(0, 0, -1)), date(day), true
-	case "week":
-		return date(monday), date(day.AddDate(0, 0, 1)), true
-	case "last_week":
-		return date(monday.AddDate(0, 0, -7)), date(monday), true
-	case "month":
-		return date(month), date(day.AddDate(0, 0, 1)), true
-	case "last_month":
-		return date(month.AddDate(0, -1, 0)), date(month), true
-	case "year":
-		return date(year), date(day.AddDate(0, 0, 1)), true
-	case "last_year":
-		return date(year.AddDate(-1, 0, 0)), date(year), true
-	}
-	return "", "", false
 }
 
 // kwhShort formats an energy of the flow. Above 10 kWh the decimal would only

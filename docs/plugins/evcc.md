@@ -5,9 +5,9 @@ Shows data from [evcc](https://evcc.io) over its REST API: live values from `/ap
 ## Screenshots
 
 The example page `energie` shows the current energy flow with the site values
-and the charging point. `energie-woche` shows the flow of this week in kWh;
-`ertrag` compares the energy history of today, yesterday, the week, the month
-and the year:
+and the charging point. `energie-woche` shows the flow and the balance of this
+week in kWh; `ertrag` compares the energy history of today, yesterday, the week,
+the month and the year:
 
 ![The energy page](../images/plugins/evcc/page-energie.png)
 
@@ -37,7 +37,7 @@ and the year:
 
 - `site`: PV, home, grid with import/export, home battery or grid price. Args: `columns` (`2` or `4`, default 2).
 - `flow`: energy flow diagram with rounded cards and one line-icon set: the house connection (hub) in the middle, PV above, the battery below, the grid left and the home right. Up to three loadpoints are text lines below the home; a thin tree joins the active ones. The home card stays at the vertical centre, and the group moves up only when the last row would cross the bottom padding. A period lists only loadpoints whose energy is at least 0.05 kWh, so a period without a charging loadpoint shows no rows and no tree. A link exists only while power or energy flows: arrows point into the hub for PV, grid import and battery discharge, and out to the home, the loadpoints, export and charging. An idle node keeps its card and value but has no link. The grid card reads "Grid import" or "Grid export". Links follow Home Assistant's energy distribution: PV serves the home and the loadpoints first, then charges the battery and exports the rest; a deficit comes from the battery before the grid. Args: `period` (`now` default, or `today`, `yesterday`, `week`, `last_week`, `month`, `last_month`, `year`, `last_year`). `now` reads `/api/state` in W; a period sums the energy history of the same categories as the `history` widget, in kWh, and is as current as `history_refresh`. In small cells the pictograms go first, then the state of charge in the labels, then the labels. Sizes follow the display ppi.
-- `balance`: the energy split as a T-account. Sources stand on the left (PV, grid import, battery discharge), consumers on the right (home, charging, battery charge, export). The rows are fixed, so a value never moves; a zero shows a gray dash. `Charging (n)` groups all loadpoints. Each side sums its values at the bottom. The widget shows the current power only. The two totals can differ a little because evcc measures each category on its own.
+- `balance`: the energy split as a T-account. Sources stand on the left (PV, grid import, battery discharge), consumers on the right (home, charging, battery charge, export). The rows are fixed, so a value never moves; a zero shows a gray dash. `Charging (n)` groups all loadpoints. Each side sums its values at the bottom. Args: `period`, like the `flow` widget. `now` (default) shows the power of `/api/state` in W; a period sums the same categories in kWh and is as current as `history_refresh`. The two totals can differ a little because evcc measures each category on its own.
 - `loadpoint`: vehicle, mode, a state-of-charge bar with the limit as a tick, range, charge power and phases, remaining time, session energy and solar share. Args: `index` (default 0).
 - `forecast`: solar forecast as an area and the grid price as steps for the next `hours` (default 24). Image only.
 - `history`: energy totals for today, yesterday, this week (from Monday), last week, this month, last month and this year. Args: `source` (`pv` default, `battery`, `loadpoint`, `grid` or `home`), `metric` (`energy` default, or `return` for the battery's discharge and the grid's export) and `index` (the loadpoint of `/api/state`, default 0). The values come from evcc's energy history (`/api/history/energy`, one request per group with day buckets), so a year is one request; the long periods drop first when the cell is too small. The battery and the grid show the charged or discharged, imported or exported energy, the loadpoint its charged energy.

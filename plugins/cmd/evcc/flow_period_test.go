@@ -91,12 +91,12 @@ func TestFlowPeriodRange(t *testing.T) {
 		"last_year":  {"2025-01-01", "2026-01-01"},
 	}
 	for period, exp := range want {
-		from, to, ok := e.flowRange(period)
+		from, to, ok := e.periodRange(period)
 		if !ok || from != exp[0] || to != exp[1] {
 			t.Errorf("%s = %q..%q (%v), want %q..%q", period, from, to, ok, exp[0], exp[1])
 		}
 	}
-	if _, _, ok := e.flowRange("tomorrow"); ok {
+	if _, _, ok := e.periodRange("tomorrow"); ok {
 		t.Error("unknown period accepted")
 	}
 }
@@ -143,7 +143,7 @@ func TestFlowPeriodImage(t *testing.T) {
 
 func TestBalanceRows(t *testing.T) {
 	e := flowFixture(t, "flow_two_loadpoints")
-	left, right := e.balanceRows()
+	left, right := e.balanceRows(e.balanceNow())
 	if len(left) != 3 || len(right) != 4 {
 		t.Fatalf("rows = %d/%d, want 3/4", len(left), len(right))
 	}
@@ -155,7 +155,7 @@ func TestBalanceRows(t *testing.T) {
 	}
 
 	e = flowFixture(t, "flow_battery_charging")
-	left, right = e.balanceRows()
+	left, right = e.balanceRows(e.balanceNow())
 	if left[2].value != "–" || !left[2].idle {
 		t.Errorf("discharge = %+v", left[2])
 	}
@@ -164,7 +164,7 @@ func TestBalanceRows(t *testing.T) {
 	}
 
 	e = flowFixture(t, "flow_no_battery")
-	left, right = e.balanceRows()
+	left, right = e.balanceRows(e.balanceNow())
 	if len(left) != 2 || len(right) != 3 {
 		t.Errorf("without battery: %d/%d rows", len(left), len(right))
 	}
@@ -194,11 +194,107 @@ func TestBalanceImage(t *testing.T) {
 	}
 }
 
+func TestBalancePeriodValues(t *testing.T) {
+	e := periodFixture(t)
+	totals, err := e.balancePeriod("today")
+	if err != nil {
+		t.Fatal(err)
+	}
+	left, right := e.balanceRows(totals)
+	wantLeft := []string{"12 kWh", "3,0 kWh", "4,0 kWh"}
+	wantRight := []string{"6,0 kWh", "4,0 kWh", "2,0 kWh", "1,0 kWh"}
+	if len(left) != len(wantLeft) || len(right) != len(wantRight) {
+		t.Fatalf("rows = %d/%d, want %d/%d", len(left), len(right), len(wantLeft), len(wantRight))
+	}
+	for i, want := range wantLeft {
+		if left[i].value != want {
+			t.Errorf("left %d = %q, want %q", i, left[i].value, want)
+		}
+	}
+	for i, want := range wantRight {
+		if right[i].value != want {
+			t.Errorf("right %d = %q, want %q", i, right[i].value, want)
+		}
+	}
+	if right[1].label != "Laden" || right[1].idle {
+		t.Errorf("charging = %+v", right[1])
+	}
+}
+
+func TestBalancePeriodRange(t *testing.T) {
+	e := periodFixture(t)
+	// The fixture's PV has 5 kWh yesterday, which belongs to this week.
+	totals, err := e.balancePeriod("week")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if totals.pv != 17 {
+		t.Fatalf("pv = %v, want 17 kWh", totals.pv)
+	}
+	totals, err = e.balancePeriod("yesterday")
+	if err != nil {
+		t.Fatal(err)
+	}
+	left, right := e.balanceRows(totals)
+	if left[0].value != "5,0 kWh" || left[1].value != "–" || right[0].value != "–" {
+		t.Errorf("yesterday = left %q, %q, right %q", left[0].value, left[1].value, right[0].value)
+	}
+}
+
+func TestBalancePeriodUnknown(t *testing.T) {
+	e := periodFixture(t)
+	if _, err := e.balancePeriod("tomorrow"); err == nil {
+		t.Fatal("unknown period accepted")
+	}
+}
+
+func TestBalancePeriodWithoutHistory(t *testing.T) {
+	e := flowFixture(t, "flow_export")
+	e.req.Now = time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	if _, err := e.balancePeriod("today"); err == nil {
+		t.Fatal("a missing history was accepted")
+	}
+}
+
+func TestBalancePeriodImage(t *testing.T) {
+	for _, name := range []string{"flow_export", "flow_two_loadpoints"} {
+		for _, levels := range []int{2, 4, 16} {
+			for _, size := range [][3]int{{400, 300, 20}, {792, 232, 28}} {
+				e := flowFixture(t, name)
+				e.req.Now = time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+				e.hist = map[string][]energyPoint{
+					"pv":                {energyDay(2026, 11, 18, 30, 0)},
+					"grid":              {energyDay(2026, 11, 18, 3, 5)},
+					"battery":           {energyDay(2026, 11, 18, 2, 4)},
+					"home":              {energyDay(2026, 11, 18, 8, 0)},
+					"loadpoint:Garage":  {energyDay(2026, 11, 18, 12, 0)},
+					"loadpoint:Carport": {energyDay(2026, 11, 18, 6, 0)},
+				}
+				img := render.NewCanvas(size[0], size[1], levels)
+				w := plugin.WidgetRequest{Widget: "balance", Width: size[0], Height: size[1],
+					Style: plugin.Style{Padding: 8, Rule: 1, TextPx: float64(size[2])},
+					Args:  map[string]any{"period": "today"}}
+				if err := e.Render(e.req, w, img); err != nil {
+					t.Fatalf("%s: %v", name, err)
+				}
+				if !hasInk(img) {
+					t.Errorf("%s: empty", name)
+				}
+				if dir := os.Getenv("FLOW_PNG_DIR"); dir != "" {
+					f, _ := os.Create(filepath.Join(dir, "balance-"+name+"-period-"+strconv.Itoa(levels)+"-"+strconv.Itoa(size[0])+"x"+strconv.Itoa(size[1])+".png"))
+					png.Encode(f, img)
+					f.Close()
+				}
+			}
+		}
+	}
+}
+
 func TestBalanceGerman(t *testing.T) {
 	e := flowFixture(t, "flow_two_loadpoints")
 	e.req.Language = "de"
 	e.lang = "de"
-	left, right := e.balanceRows()
+	left, right := e.balanceRows(e.balanceNow())
 	if left[1].label != "Netzbezug" || right[1].label != "Laden (2)" || right[3].label != "Einspeisung" {
 		t.Errorf("labels = %q, %q, %q", left[1].label, right[1].label, right[3].label)
 	}
