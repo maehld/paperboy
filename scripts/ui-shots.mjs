@@ -124,17 +124,30 @@ function stopInstance(child) {
 }
 
 async function settle(page) {
-  // Wait for the previews the server links, then let the layout finish. A poll
-  // that changes a node during the shot would blur the picture.
+  // Previews below the fold carry loading="lazy", so they load only when they
+  // scroll into view. Walk the page first, then back to the top.
+  await page.evaluate(async () => {
+    const step = Math.max(200, Math.round(window.innerHeight * 0.8));
+    for (let y = 0; y < document.documentElement.scrollHeight; y += step) {
+      window.scrollTo(0, y);
+      await new Promise((done) => requestAnimationFrame(() => setTimeout(done, 30)));
+    }
+    window.scrollTo(0, 0);
+  });
+  // Then wait for the pictures. A picture that never answers must not hang the
+  // tool, so the wait has a ceiling.
   await page.evaluate(() =>
-    Promise.all(
-      Array.from(document.images).map((img) =>
-        img.complete ? Promise.resolve() : new Promise((done) => {
-          img.addEventListener("load", done, { once: true });
-          img.addEventListener("error", done, { once: true });
-        }),
+    Promise.race([
+      Promise.all(
+        Array.from(document.images).map((img) =>
+          img.complete ? Promise.resolve() : new Promise((done) => {
+            img.addEventListener("load", done, { once: true });
+            img.addEventListener("error", done, { once: true });
+          }),
+        ),
       ),
-    ),
+      new Promise((done) => setTimeout(done, 5000)),
+    ]),
   );
   await page.waitForTimeout(400);
 }
@@ -156,6 +169,7 @@ async function main() {
         reducedMotion: "reduce",
       });
       const page = await context.newPage();
+      page.setDefaultTimeout(60_000);
       const problems = [];
       page.on("pageerror", (err) => problems.push(`${err.message}`));
       page.on("console", (msg) => {
@@ -163,13 +177,18 @@ async function main() {
       });
       for (const shot of shots) {
         const target = join(options.out, `${shot.name}@${viewport.name}${options.theme === "dark" ? "-dark" : ""}.png`);
-        const answer = await page.goto(base + shot.path, { waitUntil: "load", timeout: 60_000 });
-        if (!answer || !answer.ok()) {
-          console.error(`${shot.name}: HTTP ${answer ? answer.status() : "no answer"}`);
+        try {
+          const answer = await page.goto(base + shot.path, { waitUntil: "load", timeout: 60_000 });
+          if (!answer || !answer.ok()) {
+            console.error(`${shot.name}: HTTP ${answer ? answer.status() : "no answer"}`);
+          }
+          await settle(page);
+          await page.screenshot({ path: target, fullPage: true, animations: "disabled", caret: "hide" });
+          console.log("wrote", target);
+        } catch (err) {
+          // One page must not cost the other pictures.
+          console.error(`${shot.name}@${viewport.name}: ${err.message}`);
         }
-        await settle(page);
-        await page.screenshot({ path: target, fullPage: true, animations: "disabled", caret: "hide" });
-        console.log("wrote", target);
       }
       if (problems.length) {
         console.error(`browser errors on ${viewport.name}:`);
