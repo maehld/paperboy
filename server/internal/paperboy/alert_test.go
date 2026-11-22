@@ -144,7 +144,10 @@ func TestDashboardOffersSignal(t *testing.T) {
 
 	s.config().Devices[0].AlertMethods = nil
 	body = request(t, s, http.MethodGet, "/ui", nil, nil).Body.String()
-	if !strings.Contains(body, "Signal unavailable: the device file names no alert method") {
-		t.Fatalf("a silent device must name the reason: %s", body)
+	if !strings.Contains(body, `title="Signal unavailable: the device file names no alert method: enable beep or blink"`) {
+		t.Fatalf("a silent device must name the reason in the tooltip: %s", body)
+	}
+	if strings.Contains(body, `class="signal"`) {
+		t.Fatalf("the reason must not stay as a visible line: %s", body)
 	}
 }

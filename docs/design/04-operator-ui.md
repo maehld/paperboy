@@ -58,7 +58,7 @@ A card names the device as a link to its device file. The card itself shows:
 - a line for a newer Paperboy release, with the version as its link ([ADR 0101](../adr/0101-a-hint-about-a-newer-paperboy.md)), or a warning when the last release check failed
 - a *Signal* button that queues a beep or blink for the next sync ([ADR 0142](../adr/0142-a-manual-alert-waits-for-the-next-sync.md))
 
-A device page links its plan, its plan preview and its display type. A page names the plans that use it. The *Signal* button posts a form and comes back to the cards. A queued request shows in *Details* with its expiry until the next sync. The button is disabled when the request cannot work. A line under it names why: no `alert_methods`, a problem device or no registration.
+A device page links its plan, its plan preview and its display type. A page names the plans that use it. The *Signal* button posts a form and comes back to the cards. A queued request shows in *Details* with its expiry until the next sync. The button is disabled when the request cannot work. Its tooltip names why: no `alert_methods`, a problem device or no registration.
 
 A device without a file appears as unclaimed hardware with *Claim* and *Forget* ([ADR 0080](../adr/0080-device-state-per-mac.md)). A denied device shows as denied.
 

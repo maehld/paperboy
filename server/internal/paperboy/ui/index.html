@@ -47,7 +47,6 @@ dd.oneline .muted { font-size: .78rem; }
 .actions button:disabled { color: var(--pb-ink-faint); cursor: default; background: var(--pb-surface-sunken); }
 .actions form { display: flex; flex: 1 1 0; }
 .actions form button { width: 100%; }
-.signal { margin: .4rem 0 0; font-size: .8rem; color: var(--pb-ink-muted); }
 .queued { margin: .7rem 0 0; padding: .5rem .6rem; background: var(--pb-ok-bg); border-left: 3px solid var(--pb-ok); font-size: .85rem; }
 dialog.zoom { max-width: 96vw; max-height: 96vh; border: 1px solid var(--pb-hairline); border-radius: 12px; padding: .8rem; background: var(--pb-surface); color: var(--pb-ink); box-shadow: var(--pb-shadow-dialog); }
 dialog.zoom::backdrop { background: var(--pb-backdrop); }
@@ -122,9 +121,8 @@ dialog.zoom .zoom-close:hover { color: var(--pb-ink); }
     <div class="actions">
       <a href="/ui/devices/{{.ID}}/plan">Plan preview</a>
       {{if .VirtualURL}}<a href="{{.VirtualURL}}">Virtual display</a>{{end}}
-      <form method="post" action="/api/devices/{{.ID}}/alert"><button type="submit"{{if .Alert}} disabled title="{{.Alert}}"{{end}}>Signal</button></form>
+      <form method="post" action="/api/devices/{{.ID}}/alert"{{if .Alert}} title="Signal unavailable: {{.Alert}}"{{end}}><button type="submit"{{if .Alert}} disabled{{end}}>Signal</button></form>
     </div>
-    {{if .Alert}}<p class="signal">Signal unavailable: {{.Alert}}</p>{{end}}
     {{if .Alerted}}<p class="queued">Signal queued · the device signals at its next sync</p>{{end}}
     {{if .Refused}}<p class="error">No signal: {{.Refused}}</p>{{end}}
     {{if .Problem}}<p class="error">{{.Problem}} · <a href="/ui/devices/{{.ID}}">edit the device file</a></p>{{end}}
