@@ -152,6 +152,9 @@ a { color: var(--pb-accent); text-underline-offset: 2px; }
 
 /* The search trigger at the foot of the rail and the command palette it opens. */
 .cmd-keys kbd { font-family: var(--pb-font-mono); font-size: .72rem; padding: 0 .25rem; border: 1px solid var(--pb-hairline-strong); border-radius: 3px; color: var(--pb-ink-muted); background: var(--pb-surface); }
+/* The script names the shortcut of the platform. An empty hint stays hidden,
+   so a browser without it shows no wrong key. */
+.rail-search kbd:empty { display: none; }
 
 dialog.cmd { width: min(34rem, 94vw); margin: 12vh auto auto; padding: 0; border: 1px solid var(--pb-hairline-strong); border-radius: var(--pb-radius-lg); background: var(--pb-surface); color: var(--pb-ink); box-shadow: var(--pb-shadow-dialog); }
 dialog.cmd::backdrop { background: var(--pb-backdrop); }

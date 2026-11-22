@@ -5,7 +5,12 @@
 (() => {
   "use strict";
 
-  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || "");
+  // The platform decides what the shortcut is called: a Windows or Linux
+  // operator is not told to press Cmd. userAgentData is the current source;
+  // platform and userAgent cover the browsers that do not send it.
+  const uaData = navigator.userAgentData;
+  const platform = (uaData && uaData.platform) || navigator.platform || navigator.userAgent || "";
+  const isMac = /Mac|iPhone|iPad|iPod|iOS/i.test(platform);
   const key = isMac ? "⌘K" : "Ctrl+K";
 
   // sections are the entries that need no request.
@@ -276,6 +281,8 @@
   const trigger = document.getElementById("cmd-open");
   if (trigger) {
     trigger.title = "Search (" + key + ")";
+    const hint = trigger.querySelector("kbd");
+    if (hint) hint.textContent = key;
     trigger.addEventListener("click", () => show());
   }
 })();

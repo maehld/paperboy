@@ -15,7 +15,7 @@ One layout renders the head, the top bar, the rail, the title line and the theme
 - The theme follows `prefers-color-scheme`. The link at the foot of the rail stores `light` or `dark` in the browser, and the page applies it before the first paint.
 - The first entry is the overview. It names itself as `Overview` in the title line, and the lists reach it through the rail instead of a sub-navigation.
 - Every prompt and confirmation is one native `<dialog>` from `ui/dialog.js`. A rename asks for the name with its pattern, and a delete names the references and marks its button as danger.
-- `⌘K` or `Ctrl+K` opens the command palette. It searches the sections, the pages, the plans, the devices, the display types and the widgets. It reads the list APIs in the browser, so the server has no search route. The Search link at the foot of the rail opens the same palette.
+- `⌘K` or `Ctrl+K` opens the command palette. It searches the sections, the pages, the plans, the devices, the display types and the widgets. It reads the list APIs in the browser, so the server has no search route. The Search link at the foot of the rail opens the same palette; it names the shortcut of the platform.
 - `GET /ui/system/styleguide` renders every token and every component, so a change to the look has one page to check. It links the same stylesheets as the other pages, so it shows the theme in use.
 
 The routes name their object. `/ui/pages/{name}`, `/ui/plans/{name}`, `/ui/devices/{id}`, `/ui/devices/{id}/plan` and `/ui/display-types/{name}` open one object. The lists sit at `/ui/pages`, `/ui/plans`, `/ui/devices` and `/ui/display-types`. Downloads and Stats answer at `/ui/system/downloads` and `/ui/system/stats`. The routes of ADR 0068 and ADR 0076 are gone.
