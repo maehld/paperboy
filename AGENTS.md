@@ -92,8 +92,8 @@ npm install --no-save jsdom && node scripts/check-ui.mjs  # smoke-runs virtual.j
 npm install --no-save playwright jsdom && node scripts/ui-shots.mjs  # screenshots of every operator page
 ```
 
-- Apply `gofmt` to changed Go files. Take it from the toolchain the module requires: `"$(GOTOOLCHAIN=go1.27.0 go env GOROOT)/bin/gofmt" -w <files>`.
-  `GOTOOLCHAIN` moves `go`, not the `gofmt` binary beside it. An older Go on `PATH` formats with older rules, and CI then fails on *Check formatting* for a file the local run called clean (2026-11-22).
+- Apply `gofmt` to changed Go files, and again after every later edit of them. The *Check formatting* job takes no prisoners: a stray blank line left by a scripted edit failed a pull request on 2026-11-22.
+  Use the binary of the toolchain the module requires, because that is what CI runs: `"$(GOTOOLCHAIN=go1.27.0 go env GOROOT)/bin/gofmt" -w <files>`. `GOTOOLCHAIN` moves `go`, not the `gofmt` beside it.
   `"$(GOTOOLCHAIN=go1.27.0 go env GOROOT)/bin/gofmt" -l server plugins sdk` prints nothing before a commit.
 - `node --check` only parses a script; `scripts/check-ui.mjs` also runs it, so an undefined identifier fails. It runs `virtual.js` and `dialog.js`; `jsdom` has no modal dialog, so the check shims `showModal` and `close`.
 - `scripts/ui-shots.mjs` needs `playwright` (browsers from `~/.cache/ms-playwright`) next to `jsdom`. Install both in one command, because `npm install --no-save` drops the package the other run added.
