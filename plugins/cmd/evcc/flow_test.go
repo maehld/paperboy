@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"image/png"
 	"math"
 	"os"
@@ -12,6 +13,39 @@ import (
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
+
+// TestFlowHomeKeepsItsCentre checks the placement: the home card stays in the
+// middle with one or three loadpoints, and moves up only when a row would
+// cross the bottom padding.
+func TestFlowHomeKeepsItsCentre(t *testing.T) {
+	const (
+		cy    = 240.0
+		cardH = 100.0
+		rowH  = 20.0
+		gap   = 10.0
+	)
+	b := image.Rect(0, 0, 800, 480)
+	one, rowsOne := flowPlacement(b, cy, cardH, rowH, gap, 1)
+	three, rowsThree := flowPlacement(b, cy, cardH, rowH, gap, 3)
+	if one != three || one != cy-cardH/2 {
+		t.Errorf("home y = %v with one and %v with three, want %v", one, three, cy-cardH/2)
+	}
+	if len(rowsOne) != 1 || len(rowsThree) != 3 {
+		t.Fatalf("rows = %d and %d, want 1 and 3", len(rowsOne), len(rowsThree))
+	}
+	if rowsThree[0] != one+cardH+gap {
+		t.Errorf("first row y = %v, want %v", rowsThree[0], one+cardH+gap)
+	}
+
+	low := image.Rect(0, 0, 800, 260)
+	top, rows := flowPlacement(low, 130, cardH, rowH, gap, 3)
+	if last := rows[len(rows)-1] + rowH; last > float64(low.Max.Y) {
+		t.Errorf("the last row ends at %v, below %v", last, low.Max.Y)
+	}
+	if top >= 130-cardH/2 {
+		t.Errorf("the group did not move up: home y = %v", top)
+	}
+}
 
 func flowFixture(t *testing.T, name string) *evcc {
 	body, err := os.ReadFile(filepath.Join("testdata", name+".json"))

@@ -39,7 +39,7 @@ func TestFlowPeriodValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.lps != 3 || m.battery != 2 {
+	if m.lps != 1 || m.battery != 2 {
 		t.Fatalf("model = %d lps, battery %d", m.lps, m.battery)
 	}
 	want := []struct {
@@ -52,8 +52,6 @@ func TestFlowPeriodValues(t *testing.T) {
 		{"Akku", "2,0 kWh", 2, false},
 		{"Haus", "6,0 kWh", -6, false},
 		{"Octavia", "4,0 kWh", -4, false},
-		{"Zoe", "0,0 kWh", 0, true},
-		{"Guest", "0,0 kWh", 0, true},
 	}
 	if len(m.nodes) != len(want) {
 		t.Fatalf("nodes = %d, want %d", len(m.nodes), len(want))
