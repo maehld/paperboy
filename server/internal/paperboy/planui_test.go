@@ -164,7 +164,7 @@ func TestEditorOverviewPlans(t *testing.T) {
 
 	body := request(t, s, http.MethodGet, "/ui/plans", nil, nil).Body.String()
 	for _, want := range []string{
-		"<h2>Plans", "/ui/plans/tour", `<a href="/ui/plans/tour">tour</a>`, "<td data-label=\"Fallback\">night</td>",
+		"<h1>Plans</h1>", "/ui/plans/tour", `<a href="/ui/plans/tour">tour</a>`, "<td data-label=\"Fallback\">night</td>",
 		"<td class=\"name\" data-label=\"Name\">broken</td>", "yaml: unmarshal errors",
 		`href="/ui/pages"`, // the way back to the pages
 	} {

@@ -71,6 +71,7 @@ type editorListPage struct {
 	GoVersion  string
 	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
+	FileHint   string    // the count in the title line
 	Groups     []editorPageGroup
 	Kinds      []uiOption         // kinds of the new-page form
 	Grids      []uiOption         // character grids of a text page, by display type
@@ -140,6 +141,7 @@ type editorPageView struct {
 	Error          string
 	File           string        // the label of the open file; empty: the page file
 	FilePath       string        // pages/<name>[.<label>].yaml
+	FileHint       string        // the file path in the title line
 	Notice         string        // the preview type is not the file the editor shows
 	NoticeWarn     bool          // the notice is a warning, not a hint
 	Orphan         bool          // the open variant has no page file
@@ -871,6 +873,16 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 			v.Grids = append(v.Grids, uiOption{Value: n, Label: fmt.Sprintf("%d×%d (%s)", p.Width, p.Height, n)})
 		}
 	}
+	switch tab {
+	case "plans":
+		v.FileHint = fmt.Sprintf("%d plans", len(v.Plans))
+	case "devices":
+		v.FileHint = fmt.Sprintf("%d devices", len(v.Devices))
+	case "displays":
+		v.FileHint = fmt.Sprintf("%d display types", len(v.Types))
+	default:
+		v.FileHint = fmt.Sprintf("%d pages", len(v.Groups))
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	if err := editorListTmpl.Execute(w, v); err != nil {
@@ -889,7 +901,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	version, goVersion := editorVersion(cfg)
 	v := editorPageView{Version: version, GoVersion: goVersion, Name: name, File: label,
 		Nav:        navFor("Pages"),
-		Breadcrumb: crumbPath(crumb{Label: "Pages", URL: "/ui/pages"}, crumb{Label: name}),
+		Breadcrumb: crumbPath(crumb{Label: "Pages", URL: "/ui/pages"}, crumb{Label: "Page " + name}),
 	}
 	if !page.ValidName(name) {
 		v.Error = fmt.Sprintf("page name %q: only a-z, 0-9 and -", name)
@@ -1042,6 +1054,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	}
 	v.Display, v.Text = display, p.text()
 	v.FilePath = pageFileName(name, label)
+	v.FileHint = v.FilePath
 	// The page file owns the variants map, so only it lists the Variants table.
 	// A variant points back to its page (ADR 0110). The display type switch
 	// belongs to the widgets page only.

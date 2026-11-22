@@ -41,6 +41,7 @@ type displayEditorView struct {
 	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
 	Name       string
+	FileHint   string // displays/<name>.yaml in the title
 	New        bool
 	Error      string
 	Pages      []displayReference
@@ -64,9 +65,9 @@ func (s *Server) handleDisplayEditor(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	name := q.Get("name")
 	version, goVersion := editorVersion(cfg)
-	v := displayEditorView{Version: version, GoVersion: goVersion, Name: name,
+	v := displayEditorView{Version: version, GoVersion: goVersion, Name: name, FileHint: "displays/" + name + ".yaml",
 		Nav:        navFor("Display types"),
-		Breadcrumb: crumbPath(crumb{Label: "Display types", URL: "/ui/display-types"}, crumb{Label: name}),
+		Breadcrumb: crumbPath(crumb{Label: "Display types", URL: "/ui/display-types"}, crumb{Label: "Display type " + name}),
 	}
 	if !page.ValidName(name) {
 		v.Error = fmt.Sprintf("display type %q: only a-z, 0-9 and -", name)

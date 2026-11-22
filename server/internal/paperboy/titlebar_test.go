@@ -64,11 +64,11 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 		if n := strings.Count(rail, `aria-current="page"`); n != 1 {
 			t.Fatalf("%s: the rail marks %d sections", page.path, n)
 		}
-		// The breadcrumb belongs to the top bar, and the shell owns the only
+		// The title line belongs to the top bar, and the shell owns the only
 		// main element: a page that styles its own main also restyles the
 		// shell (issue 391).
-		if crumbs := strings.Index(body, `<nav class="crumbs"`); crumbs > strings.Index(body, `<div class="shell">`) {
-			t.Fatalf("%s: the breadcrumb left the top bar", page.path)
+		if title := strings.Index(body, `<nav class="titleline"`); title < 0 || title > strings.Index(body, `<div class="shell">`) {
+			t.Fatalf("%s: the title line left the top bar", page.path)
 		}
 		if n := strings.Count(body, "<main"); n != 1 {
 			t.Fatalf("%s: the page has %d main elements", page.path, n)
@@ -91,7 +91,8 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 	body := htmlRequest(t, s, "/ui/devices/test/plan").Body.String()
 	for _, want := range []string{
 		"Plan zimmer · test · Paperboy",
-		`<a href="/ui/devices/test">test</a><span aria-current="page">Plan</span>`,
+		`<a href="/ui/devices/test">test</a>`,
+		`<h1>Plan</h1>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("plan preview misses %q", want)
@@ -99,38 +100,36 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 	}
 }
 
-// TestListsNameThemselvesInTheBreadcrumb keeps the top bar honest: every page
-// but the overview names where the operator is, and a list is the first step of
-// its editors (ADR 0152).
+// TestListsNameThemselvesInTheTitle keeps the top bar honest: every page but
+// the overview names where the operator is, and a list is the first step of its
+// editors (ADR 0152).
 func TestListsNameThemselvesInTheBreadcrumb(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"AA:BB:CC:DD:EE:01\"\nplan: zimmer\n")
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
-	for _, page := range []struct{ path, crumb string }{
-		{"/ui/pages", `<span aria-current="page">Pages</span>`},
-		{"/ui/plans", `<span aria-current="page">Plans</span>`},
-		{"/ui/devices", `<span aria-current="page">Devices</span>`},
-		{"/ui/display-types", `<span aria-current="page">Display types</span>`},
-		{"/ui/playground?display=small", `<span aria-current="page">Playground</span>`},
-		{"/ui/system/plugins", `<span aria-current="page">Plugins</span>`},
-		{"/ui/system/firmware", `<span aria-current="page">Firmware</span>`},
-		{"/ui/system/maintenance", `<span aria-current="page">Maintenance</span>`},
-		{"/ui/system/stats", `<span aria-current="page">Stats</span>`},
-		{"/ui/system/styleguide", `<span aria-current="page">Styleguide</span>`},
+	for _, page := range []struct{ path, title string }{
+		{"/ui", `<h1>Overview</h1>`},
+		{"/ui/pages", `<h1>Pages</h1>`},
+		{"/ui/plans", `<h1>Plans</h1>`},
+		{"/ui/devices", `<h1>Devices</h1>`},
+		{"/ui/display-types", `<h1>Display types</h1>`},
+		{"/ui/playground?display=small", `<h1>Playground</h1>`},
+		{"/ui/system/plugins", `<h1>Plugins</h1>`},
+		{"/ui/system/firmware", `<h1>Firmware</h1>`},
+		{"/ui/system/maintenance", `<h1>Maintenance</h1>`},
+		{"/ui/system/stats", `<h1>Stats</h1>`},
+		{"/ui/system/styleguide", `<h1>Styleguide</h1>`},
 	} {
 		body := htmlRequest(t, s, page.path).Body.String()
-		if !strings.Contains(body, `<nav class="crumbs"`) {
-			t.Fatalf("%s: the page has no breadcrumb", page.path)
+		if !strings.Contains(body, `<nav class="titleline"`) {
+			t.Fatalf("%s: the page has no title line", page.path)
 		}
-		if !strings.Contains(body, page.crumb) {
-			t.Fatalf("%s: the breadcrumb does not end in %q", page.path, page.crumb)
+		if !strings.Contains(body, page.title) {
+			t.Fatalf("%s: the title line does not end in %q", page.path, page.title)
 		}
 	}
-	// The overview is the root of every path, so it names none.
-	if strings.Contains(htmlRequest(t, s, "/ui").Body.String(), `<nav class="crumbs"`) {
-		t.Fatal("the overview must not carry a breadcrumb")
-	}
+
 }
 
 // TestOperatorPagesLinkTheSharedStylesheet keeps the look in one place: every
@@ -213,26 +212,26 @@ func TestOperatorPagesCarryTheLogo(t *testing.T) {
 	}
 }
 
-// TestEditorBarsShareThePattern verifies that every editor shows one action bar
-// with the object name and Delete, Reload and Save in that order, so no editor
-// drifts from the others (ADR 0076). The breadcrumb carries the way back since
-// ADR 0152.
+// TestEditorActionsShareThePattern verifies that every editor shows its object
+// in the title line and Delete, Reload and Save in that order, so no editor
+// drifts from the others (ADR 0076). The title line carries the way back since
+// issue 397.
 func TestEditorBarsShareThePattern(t *testing.T) {
 	s, _ := planServer(t, testPlan)
 	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"AA:BB:CC:DD:EE:01\"\nplan: zimmer\n")
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
-	for _, page := range []struct{ path, crumb, name string }{
-		{"/ui/pages/eins?display=small", `<a href="/ui/pages">Pages</a>`, `<h2>page eins</h2>`},
-		{"/ui/plans/zimmer", `<a href="/ui/plans">Plans</a>`, "<h2>plan zimmer</h2>"},
-		{"/ui/devices/test", `<a href="/ui/devices">Devices</a>`, "<h2>device test</h2>"},
-		{"/ui/display-types/small", `<a href="/ui/display-types">Display types</a>`, "<h2>display type small</h2>"},
+	for _, page := range []struct{ path, crumb, title string }{
+		{"/ui/pages/eins?display=small", `<a href="/ui/pages">Pages</a>`, `<h1>Page eins</h1>`},
+		{"/ui/plans/zimmer", `<a href="/ui/plans">Plans</a>`, `<h1>Plan zimmer</h1>`},
+		{"/ui/devices/test", `<a href="/ui/devices">Devices</a>`, `<h1>Device test</h1>`},
+		{"/ui/display-types/small", `<a href="/ui/display-types">Display types</a>`, `<h1>Display type small</h1>`},
 	} {
 		body := htmlRequest(t, s, page.path).Body.String()
-		if strings.Count(body, `class="bar"`) != 1 {
-			t.Fatalf("%s: expected exactly one action bar", page.path)
+		if strings.Count(body, `<nav class="titleline"`) != 1 {
+			t.Fatalf("%s: expected exactly one title line", page.path)
 		}
-		for _, want := range []string{page.crumb, page.name} {
+		for _, want := range []string{page.crumb, page.title} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("%s: the page misses %q", page.path, want)
 			}
@@ -244,11 +243,11 @@ func TestEditorBarsShareThePattern(t *testing.T) {
 	}
 
 	// The widgets page has no object and no action of its own, so it has no
-	// bar: its status sits next to the display type switch (ADR 0076).
+	// actions: its status sits in the title line (ADR 0076).
 	body := htmlRequest(t, s, "/ui/playground").Body.String()
-	for _, unwanted := range []string{`class="bar"`, `id="reload"`, `id="save"`, `id="delete"`} {
+	for _, unwanted := range []string{`id="reload"`, `id="save"`, `id="delete"`} {
 		if strings.Contains(body, unwanted) {
-			t.Fatalf("the widgets page grew an action bar (%s)", unwanted)
+			t.Fatalf("the widgets page grew an action (%s)", unwanted)
 		}
 	}
 	if !strings.Contains(body, `id="status"`) {

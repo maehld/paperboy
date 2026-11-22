@@ -1,3 +1,4 @@
+{{define "title-actions"}}<button id="reset" type="button">Reset</button><button id="full" type="button">Full screen</button>{{end}}
 <!doctype html>
 <html lang="en">
 <head>
@@ -26,13 +27,6 @@ body.show .screen { border: 0; padding: 0; }
 </head>
 <body data-sync="{{.SyncURL}}" data-reset="{{.ResetURL}}">
 {{template "chrome" .}}
-<div class="bar">
-  <h2>Virtual display</h2>
-  <span class="muted">plan {{.Plan}} · display type {{.Profile}} · {{.Width}}×{{.Height}} · {{.Power}}</span>
-  <span class="spacer"></span>
-  <button id="reset" type="button">Reset</button>
-  <button id="full" type="button">Full screen</button>
-</div>
 <main class="screen" id="screen">
   <img id="image" alt="The page this display serves" width="{{.Width}}" height="{{.Height}}" hidden>
   <div id="text" data-cols="{{.Width}}" data-rows="{{.Height}}" hidden></div>

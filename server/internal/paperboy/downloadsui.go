@@ -37,7 +37,8 @@ type trainPage struct {
 	GoVersion  string
 	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
-	Self       string    // this page's URI, so a poll keeps its query string (ADR 0106)
+	FileHint   string
+	Self       string // this page's URI, so a poll keeps its query string (ADR 0106)
 
 	Kind  string // "plugins" or "firmware", for the ids of the page
 	Title string

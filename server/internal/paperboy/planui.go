@@ -63,6 +63,7 @@ type planEditorView struct {
 	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
 	Name       string
+	FileHint   string // plans/<name>.yaml in the title
 	Timezone   string // the global timezone the windows are read in (ADR 0033)
 	Error      string
 	Data       template.JS
@@ -123,9 +124,9 @@ func (s *Server) handlePlanEditor(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	name := r.URL.Query().Get("name")
 	version, goVersion := editorVersion(cfg)
-	v := planEditorView{Version: version, GoVersion: goVersion, Name: name, Timezone: cfg.timezoneName(),
+	v := planEditorView{Version: version, GoVersion: goVersion, Name: name, FileHint: "plans/" + name + ".yaml", Timezone: cfg.timezoneName(),
 		Nav:        navFor("Plans"),
-		Breadcrumb: crumbPath(crumb{Label: "Plans", URL: "/ui/plans"}, crumb{Label: name}),
+		Breadcrumb: crumbPath(crumb{Label: "Plans", URL: "/ui/plans"}, crumb{Label: "Plan " + name}),
 	}
 	if !page.ValidName(name) {
 		v.Error = fmt.Sprintf("plan name %q: only a-z, 0-9 and -", name)

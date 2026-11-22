@@ -33,7 +33,8 @@ type maintenanceView struct {
 	GoVersion  string
 	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
-	Self       string    // this page's URI
+	FileHint   string
+	Self       string // this page's URI
 
 	Preview string // which cleanup is open: "", "inventory", "devices" or "backups"
 	Notice  string // result of the last action, empty before one

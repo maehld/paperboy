@@ -246,6 +246,7 @@ type styleguideView struct {
 	GoVersion  string
 	Nav        []navItem
 	Breadcrumb []crumb
+	FileHint   string
 	Colors     []styleguideSwatch
 	Spaces     []styleguideSwatch
 }
@@ -296,6 +297,18 @@ func (s *Server) handleStyleguide(w http.ResponseWriter, r *http.Request) {
 	if err := styleguideTmpl.Execute(w, view); err != nil {
 		slog.Error("styleguide rendering failed", "error", err)
 	}
+}
+
+// uiTitlebarJS collapses the secondary title-bar actions into one menu on a
+// narrow screen (issue #397).
+//
+//go:embed ui/titlebar.js
+var uiTitlebarJS []byte
+
+func (s *Server) handleUITitlebarJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(uiTitlebarJS)
 }
 
 // uiZoomJS opens the dashboard preview in a modal (issue #398). The dialog
@@ -380,6 +393,7 @@ type dashboardPage struct {
 	GoVersion  string
 	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
+	FileHint   string
 	Devices    []dashboardDevice
 	Content    []dashboardLink     // the lists below the devices
 	Downloads  *dashboardDownloads // hint about the release checks (ADR 0060), nil without a download section
@@ -479,12 +493,13 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	page := dashboardPage{
-		Version:   versionText(build, loc),
-		GoVersion: build.Go,
-		Nav:       navFor("Overview"),
-		Devices:   cards,
-		Content:   contentCards(cfg),
-		Downloads: s.downloadHint(cfg),
+		Version:    versionText(build, loc),
+		GoVersion:  build.Go,
+		Nav:        navFor("Overview"),
+		Breadcrumb: crumbPath(crumb{Label: "Overview"}),
+		Devices:    cards,
+		Content:    contentCards(cfg),
+		Downloads:  s.downloadHint(cfg),
 	}
 	if err := dashboardTmpl.Execute(w, page); err != nil {
 		slog.Error("dashboard rendering failed", "error", err)
