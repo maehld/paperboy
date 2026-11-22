@@ -103,7 +103,7 @@ func TestVirtualDisplayPagesWithoutDevice(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("page: %d %s", rec.Code, rec.Body)
 	}
-	for _, want := range []string{"Virtual display", "plan zimmer", "display type small", `data-sync="/ui/virtual/sync?display=small&amp;plan=zimmer"`} {
+	for _, want := range []string{"<h1>Virtual display</h1>", "plan zimmer · small", `data-sync="/ui/virtual/sync?display=small&amp;plan=zimmer"`} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("page misses %q: %s", want, rec.Body)
 		}

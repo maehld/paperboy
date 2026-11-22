@@ -1,3 +1,4 @@
+{{define "title-actions"}}<button id="rename" type="button" hidden>Rename</button><button id="delete" type="button" class="danger" hidden>Delete</button><button id="reload" type="button">Reload</button><button class="primary" id="save" type="button">Save</button>{{end}}
 <!doctype html>
 <html lang="en">
 <head>
@@ -34,16 +35,6 @@ pre.file { margin: 0; padding: .5rem .6rem; background: var(--pb-surface-sunken)
 {{if .Error}}
 <p class="error">{{.Error}}</p>
 {{else}}
-<div class="bar">
-  <h2>display type {{.Name}}</h2>
-  <span class="muted" id="where"></span>
-  <span class="spacer"></span>
-  <span class="status" id="status"></span>
-  <button id="rename" type="button" hidden>Rename</button>
-  <button id="delete" type="button" class="danger" hidden>Delete</button>
-  <button id="reload" type="button">Reload</button>
-  <button class="primary" id="save" type="button">Save</button>
-</div>
 <div class="columns">
   <div class="col">
     <section class="panel">

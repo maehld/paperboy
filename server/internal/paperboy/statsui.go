@@ -107,6 +107,7 @@ type statsView struct {
 	GoVersion  string
 	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
+	FileHint   string
 	Platform   string
 	Paperboy   []statsFact
 	Plugins    []statsPlugin

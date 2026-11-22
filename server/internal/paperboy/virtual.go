@@ -36,6 +36,7 @@ type virtualPage struct {
 	Width      int
 	Height     int
 	Power      string
+	FileHint   string
 	SyncURL    string
 	ResetURL   string
 }
@@ -157,6 +158,7 @@ func (s *Server) handleVirtual(w http.ResponseWriter, r *http.Request) {
 		Width:      prof.Width,
 		Height:     prof.Height,
 		Power:      opt.power,
+		FileHint:   "plan " + opt.plan + " · " + opt.profile,
 		SyncURL:    "/ui/virtual/sync?" + q.Encode(),
 		ResetURL:   "/ui/virtual/reset?" + q.Encode(),
 	}

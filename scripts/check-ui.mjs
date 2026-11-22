@@ -149,9 +149,9 @@ try {
   };
   const palette = `<input id="palette-filter" type="search"><div id="palette"></div>`;
   const playground = `<div id="display-switch"><a data-display="e1001">e1001</a><span id="status"></span></div>
-${palette}<span id="where"></span><img id="preview-img" hidden><pre id="preview-text" hidden></pre><p id="preview-error" hidden></p>
+${palette}<span id="preview-where"></span><img id="preview-img" hidden><pre id="preview-text" hidden></pre><p id="preview-error" hidden></p>
 <section id="inspector"></section><button id="copy-cell" type="button"></button><pre id="snippet"></pre>`;
-  const editor = `<h2><span id="file-label"></span></h2><span id="where"></span><span id="status"></span>
+  const editor = `<h2><span id="file-label"></span></h2><span id="preview-where"></span><span id="status"></span>
 <button id="rename" type="button"></button><button id="delete" type="button"></button><button id="save" type="button"></button>
 <input id="title"><p id="used-by"></p><input id="cols" type="number"><input id="rows" type="number">
 <button id="grid-lock" type="button"></button><p id="grid-note"></p>

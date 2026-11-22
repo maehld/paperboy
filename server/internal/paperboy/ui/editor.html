@@ -1,3 +1,4 @@
+{{define "title-actions"}}{{if eq .Tab "pages"}}{{if .Kinds}}<button class="new" type="button" data-dialog="new-page">New page</button>{{end}}{{else if eq .Tab "plans"}}<button class="new" type="button" data-dialog="new-plan">New plan</button>{{else if eq .Tab "devices"}}<button class="new" type="button" data-dialog="new-device">New device</button>{{else if eq .Tab "displays"}}<button class="new" type="button" data-dialog="new-display">New display type</button>{{end}}{{end}}
 <!doctype html>
 <html lang="en">
 <head>
@@ -49,12 +50,6 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 {{template "chrome" .}}
 {{if eq .Tab "pages"}}
 <section class="card">
-  <div class="card-head">
-    <h2>Pages{{if .Groups}} <span class="count">{{len .Groups}}</span>{{end}}</h2>
-    <span class="spacer"></span>
-    <input class="filter" type="search" placeholder="Filter pages…" data-filter="page-table" aria-label="Filter pages">
-    {{if .Kinds}}<button class="new" type="button" data-dialog="new-page">New page</button>{{end}}
-  </div>
   {{if not .Kinds}}<p class="empty">No display types configured. Add one under <code>displays/</code>.</p>{{end}}
   {{if .Groups}}
   <table id="page-table" class="cards">
@@ -95,12 +90,6 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 {{end}}
 {{if eq .Tab "plans"}}
 <section class="card">
-  <div class="card-head">
-    <h2>Plans{{if .Plans}} <span class="count">{{len .Plans}}</span>{{end}}</h2>
-    <span class="spacer"></span>
-    <input class="filter" type="search" placeholder="Filter plans…" data-filter="plan-table" aria-label="Filter plans">
-    <button class="new" type="button" data-dialog="new-plan">New plan</button>
-  </div>
   {{if .Plans}}
   <table id="plan-table" class="cards">
     <thead><tr><th>Name</th><th>Rules</th><th>Fallback</th></tr></thead>
@@ -131,12 +120,6 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 {{end}}
 {{if eq .Tab "devices"}}
 <section class="card">
-  <div class="card-head">
-    <h2>Devices{{if .Devices}} <span class="count">{{len .Devices}}</span>{{end}}</h2>
-    <span class="spacer"></span>
-    <input class="filter" type="search" placeholder="Filter devices…" data-filter="device-table" aria-label="Filter devices">
-    <button class="new" type="button" data-dialog="new-device">New device</button>
-  </div>
   {{if .Devices}}
   <table id="device-table" class="cards">
     <thead><tr><th>ID</th><th>Display type</th><th>MAC</th><th>Address</th><th>Plan</th></tr></thead>
@@ -171,8 +154,6 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 <section class="card">
   <div class="card-head">
     <h2>Unclaimed hardware <span class="count">{{len .Unclaimed}}</span></h2>
-    <span class="spacer"></span>
-    <input class="filter" type="search" placeholder="Filter unclaimed hardware…" data-filter="unclaimed-table" aria-label="Filter unclaimed hardware">
   </div>
   <table id="unclaimed-table" class="cards">
     <thead><tr><th>MAC</th><th>Hardware</th><th>Firmware</th><th>Address</th><th>First seen</th><th>Last seen</th><th></th></tr></thead>
@@ -195,12 +176,6 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 {{end}}
 {{if eq .Tab "displays"}}
 <section class="card">
-  <div class="card-head">
-    <h2>Display types{{if .Types}} <span class="count">{{len .Types}}</span>{{end}}</h2>
-    <span class="spacer"></span>
-    <input class="filter" type="search" placeholder="Filter display types…" data-filter="display-table" aria-label="Filter display types">
-    <button class="new" type="button" data-dialog="new-display">New display type</button>
-  </div>
   {{if .Types}}
   <table id="display-table" class="cards">
     <thead><tr><th>Name</th><th>Kind</th><th>Size</th><th>ppi / charset</th><th>Grays</th><th>Power</th></tr></thead>

@@ -1,8 +1,9 @@
 <!-- The shell every operator page shares (ADR 0152): the document head, the
-     top bar with the brand, the breadcrumb and the theme toggle, and the rail
-     that names the sections. A page parses this file together with its own template, calls
-     "head" in its head, "chrome" where the section starts and "chrome-end"
-     before </body>. The page keeps its own title and its own styles. -->
+     top bar with the brand, the object title and its actions, and the rail
+     that names the sections. A page parses this file together with its own
+     template, calls "head" in its head, "chrome" where the section starts and
+     "chrome-end" before </body>. The page keeps its own title and its own
+     styles. -->
 {{define "head"}}<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/ui/tokens.css">
@@ -16,17 +17,22 @@
 {{end}}
 
 {{define "chrome"}}<header class="topbar">
-  <a class="brand" href="/ui"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></a>
-  {{if .Breadcrumb}}<nav class="crumbs" aria-label="Breadcrumb">{{range .Breadcrumb}}{{if .Current}}<span aria-current="page">{{.Label}}</span>{{else if .URL}}<a href="{{.URL}}">{{.Label}}</a>{{else}}<span>{{.Label}}</span>{{end}}{{end}}</nav>{{end}}
+  <div class="heading">
+    <a class="brand" href="/ui"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></a>
+    {{if .Breadcrumb}}<nav class="titleline" aria-label="Breadcrumb">{{range .Breadcrumb}}{{if .Current}}<h1>{{.Label}}</h1>{{else if .URL}}<a href="{{.URL}}">{{.Label}}</a><span class="sep" aria-hidden="true">/</span>{{else}}<span>{{.Label}}</span><span class="sep" aria-hidden="true">/</span>{{end}}{{end}}{{if .FileHint}}<span class="file" id="where">{{.FileHint}}</span>{{end}}</nav>{{end}}
+  </div>
   <div class="topbar-end">
-    <button class="topsearch" id="cmd-open" type="button" aria-label="Search pages, plans, devices and widgets"><span aria-hidden="true">Search</span><kbd aria-hidden="true">⌘K</kbd></button>
-    <span class="build muted" title="Go {{.GoVersion}}">{{.Version}}</span>
-    <button class="theme" id="theme-toggle" type="button" title="Switch the theme" aria-label="Switch the theme"><span class="theme-label">Dark</span></button>
+    <span class="status" id="status"></span>
+    {{block "title-actions" .}}{{end}}
   </div>
 </header>
 <div class="shell">
   <nav class="rail" aria-label="Sections">
     {{range .Nav}}{{if .Head}}<span class="rail-head">{{.Label}}</span>{{else}}<a href="{{.URL}}"{{if .Active}} class="active" aria-current="page"{{end}}>{{.Label}}</a>{{end}}{{end}}
+    <div class="rail-foot">
+      <button class="rail-search" id="cmd-open" type="button" aria-label="Search pages, plans, devices and widgets"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg> Search <kbd aria-hidden="true">⌘K</kbd></button>
+      <div class="rail-meta"><span class="build" title="Go {{.GoVersion}}">{{.Version}}</span><button class="theme" id="theme-toggle" type="button" title="Switch the theme" aria-label="Switch the theme"><span class="theme-label">Dark</span></button></div>
+    </div>
   </nav>
   <main id="main">
 {{end}}

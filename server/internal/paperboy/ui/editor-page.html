@@ -1,3 +1,4 @@
+{{define "title-actions"}}{{if not .WidgetsPage}}<button id="rename" type="button" hidden>Rename</button><button id="delete" type="button" class="danger" hidden>Delete</button><button id="reload" type="button">Reload</button><button class="primary" id="save" type="button">Save</button>{{end}}{{end}}
 <!doctype html>
 <html lang="en">
 <head>
@@ -188,21 +189,11 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 {{else if .NoImageDisplay}}
 <p class="warn" id="playground-notice">The Playground shows image widgets only. Every configured display type is a text display. Edit text pages under <a href="/ui/pages">Pages</a>.</p>
 {{else}}
-{{if not .WidgetsPage}}<div class="bar">
-  <h2>page {{.Name}}{{with .File}} - <span id="file-label">{{.}}</span>{{end}}</h2>
-  <span class="spacer"></span>
-  <span class="status" id="status"></span>
-  <button id="rename" type="button" hidden>Rename</button>
-  <button id="delete" type="button" class="danger" hidden>Delete</button>
-  <button id="reload" type="button">Reload</button>
-  <button class="primary" id="save" type="button">Save</button>
-</div>
-{{if .Notice}}{{if .NoticeWarn}}<p class="warn" id="file-notice">{{.Notice}}</p>{{else}}<p class="hint" id="file-notice">{{.Notice}}</p>{{end}}{{end}}
+{{if not .WidgetsPage}}{{if .Notice}}{{if .NoticeWarn}}<p class="warn" id="file-notice">{{.Notice}}</p>{{else}}<p class="hint" id="file-notice">{{.Notice}}</p>{{end}}{{end}}
 {{if .Orphan}}<p class="warn">This file belongs to no page. Create <code>pages/{{.Name}}.yaml</code> with New page in the pages list to use it.</p>{{end}}{{end}}
 {{if .Displays}}<div class="switch" id="display-switch">
   <span class="muted">Display type:</span>
   {{range .Displays}}<a href="{{.URL}}" data-display="{{.Name}}"{{if .Selected}} class="active"{{end}}>{{.Name}}</a>{{end}}
-  {{if .WidgetsPage}}<span class="status" id="status"></span>{{end}}
 </div>{{end}}
 {{if .TextFallback}}<p class="hint" id="playground-notice">The Playground shows image widgets only. Text displays are edited under <a href="/ui/pages">Pages</a>.</p>{{end}}
 <div class="columns">
@@ -257,7 +248,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   </div>
   <div class="col">
     {{if .WidgetsPage}}<section class="panel preview single">
-      <div class="panel-head"><h3>Preview</h3><span class="muted" id="where"></span></div>
+      <div class="panel-head"><h3>Preview</h3><span class="muted" id="preview-where"></span></div>
       <img id="preview-img" alt="Preview of the widget" hidden>
       <pre class="lcd" id="preview-text" hidden></pre>
       <p class="error" id="preview-error" hidden></p>

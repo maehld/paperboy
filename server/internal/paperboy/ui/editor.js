@@ -92,7 +92,7 @@
   function updateWhere() {
     if (!state.widgetsPage) return;
     const c = state.template && state.template.cells[0];
-    el('where').textContent = [
+    el('preview-where').textContent = [
       c ? c.widget + ' · ' + c.span[0] + '×' + c.span[1] : 'no widget yet',
       state.display + ' display',
     ].join(' · ');

@@ -246,6 +246,7 @@ type styleguideView struct {
 	GoVersion  string
 	Nav        []navItem
 	Breadcrumb []crumb
+	FileHint   string
 	Colors     []styleguideSwatch
 	Spaces     []styleguideSwatch
 }
@@ -380,6 +381,7 @@ type dashboardPage struct {
 	GoVersion  string
 	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
+	FileHint   string
 	Devices    []dashboardDevice
 	Content    []dashboardLink     // the lists below the devices
 	Downloads  *dashboardDownloads // hint about the release checks (ADR 0060), nil without a download section

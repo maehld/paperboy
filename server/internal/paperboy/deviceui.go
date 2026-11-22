@@ -36,6 +36,7 @@ type deviceEditorView struct {
 	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
 	ID         string
+	FileHint   string // devices/<id>.yaml in the title
 	New        bool
 	Error      string
 	Data       template.JS
@@ -62,9 +63,9 @@ func (s *Server) handleDeviceEditor(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	id := q.Get("id")
 	version, goVersion := editorVersion(cfg)
-	v := deviceEditorView{Version: version, GoVersion: goVersion, ID: id,
+	v := deviceEditorView{Version: version, GoVersion: goVersion, ID: id, FileHint: "devices/" + id + ".yaml",
 		Nav:        navFor("Devices"),
-		Breadcrumb: crumbPath(crumb{Label: "Devices", URL: "/ui/devices"}, crumb{Label: id}),
+		Breadcrumb: crumbPath(crumb{Label: "Devices", URL: "/ui/devices"}, crumb{Label: "Device " + id}),
 	}
 	if !page.ValidName(id) {
 		v.Error = fmt.Sprintf("device id %q: only a-z, 0-9 and -", id)

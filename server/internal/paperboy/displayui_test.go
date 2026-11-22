@@ -59,7 +59,7 @@ func TestDisplayEditor(t *testing.T) {
 		// The page names this display type: the editor links the variant.
 		`href="/ui/pages/solar?display=small&amp;file=hochkant"`, `href="/ui/devices/flur"`,
 		`"pages":["solar"]`,
-		"display type small",
+		"<h1>Display type small</h1>",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("display editor lacks %q:\n%s", want, body)
