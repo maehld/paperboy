@@ -13,8 +13,10 @@
     { label: "Devices", hint: "the fleet", url: "/ui", group: "Go to" },
     { label: "Pages", hint: "page files and variants", url: "/ui/pages", group: "Go to" },
     { label: "Plans", hint: "rules per device", url: "/ui/plans", group: "Go to" },
-    { label: "Plugins", hint: "the Playground", url: "/ui/plugins", group: "Go to" },
-    { label: "Downloads", hint: "plugins and firmware", url: "/ui/system/downloads", group: "Go to" },
+    { label: "Playground", hint: "one widget in its cell", url: "/ui/playground", group: "Go to" },
+    { label: "Plugins", hint: "installed programs and the release check", url: "/ui/system/plugins", group: "Go to" },
+    { label: "Firmware", hint: "installed images and the release check", url: "/ui/system/firmware", group: "Go to" },
+    { label: "Maintenance", hint: "clean up what Paperboy no longer needs", url: "/ui/system/maintenance", group: "Go to" },
     { label: "Stats", hint: "runtime, plugins, caches", url: "/ui/system/stats", group: "Go to" },
     { label: "Styleguide", hint: "tokens and components", url: "/ui/system/styleguide", group: "Go to" },
   ];
@@ -89,7 +91,7 @@
             hint: plugin.name + (widget.title ? " · " + widget.title : ""),
             group: "Widgets",
             keywords: plugin.name + " " + widget.widget + " " + (widget.title || ""),
-            url: "/ui/plugins?" + new URLSearchParams({
+            url: "/ui/playground?" + new URLSearchParams({
               widget: plugin.name + "/" + widget.widget,
               display: imageType,
             }).toString(),

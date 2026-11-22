@@ -6,7 +6,7 @@
 //
 //   npm install --no-save playwright
 //   node scripts/ui-shots.mjs                  # into bin/ui-shots/
-//   node scripts/ui-shots.mjs --only dashboard
+//   node scripts/ui-shots.mjs --only overview
 //   node scripts/ui-shots.mjs --theme dark     # system dark mode
 //   node scripts/ui-shots.mjs --bin bin/linux-amd64
 //
@@ -31,8 +31,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Every page of the operator UI, with the example content it needs.
 const pages = [
-  { name: "dashboard", path: "/ui" },
-  { name: "playground", path: "/ui/plugins" },
+  { name: "overview", path: "/ui" },
+  { name: "playground", path: "/ui/playground" },
   { name: "configuration-pages", path: "/ui/pages" },
   { name: "configuration-plans", path: "/ui/plans" },
   { name: "configuration-devices", path: "/ui/devices" },
@@ -44,7 +44,9 @@ const pages = [
   { name: "display-editor", path: "/ui/display-types/sticky" },
   { name: "plan-preview", path: "/ui/devices/wohnzimmer/plan" },
   { name: "virtual-display", path: "/ui/virtual?plan=tour&display=sticky" },
-  { name: "downloads", path: "/ui/system/downloads" },
+  { name: "plugins-system", path: "/ui/system/plugins" },
+  { name: "firmware-system", path: "/ui/system/firmware" },
+  { name: "maintenance", path: "/ui/system/maintenance" },
   { name: "stats", path: "/ui/system/stats" },
   { name: "styleguide", path: "/ui/system/styleguide" },
 ];

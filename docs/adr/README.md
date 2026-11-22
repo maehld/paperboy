@@ -156,6 +156,8 @@ The web UI: what the operator sees and how content is edited. See [`04-operator-
 | [0136](0136-harden-the-operator-ui.md) | Harden the operator UI against framing and DNS rebinding | Accepted, implemented; amends the same-origin check of [ADR-0096](0096-a-password-for-the-operator-ui.md) with a host allowlist and response headers |
 | [0140](0140-an-explicit-devices-api-answer.md) | An explicit answer for the devices API | Accepted, implemented; replaces the embedded device state with a fixed field set |
 | [0152](0152-a-design-system-and-a-rail-for-the-operator-ui.md) | A design system and a rail for the operator UI | Accepted; amends the one-file rule and the flat navigation of [ADR-0076](0076-one-stylesheet-and-one-navigation.md), the variant flow follows in issue #384 |
+| [0153](0153-an-overview-page-and-a-grouped-rail.md) | An overview page and a grouped rail | Accepted, implemented; replaces the first rail entry and the sub-navigation of [ADR-0152](0152-a-design-system-and-a-rail-for-the-operator-ui.md) |
+| [0154](0154-split-the-release-trains-and-add-maintenance.md) | Split the release trains and add a maintenance page | Accepted, implemented; moves the cleanup of [ADR-0090](0090-download-cache-and-inventory.md) to its own page and adds the state and backup cleanup |
 
 ## Plugins
 

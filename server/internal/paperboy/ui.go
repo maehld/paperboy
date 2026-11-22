@@ -130,12 +130,17 @@ func crumbPath(items ...crumb) []crumb {
 // navFor returns the rail with the section marked (ADR 0152).
 func navFor(section string) []navItem {
 	items := []navItem{
-		{Label: "Devices", URL: "/ui"},
+		{Label: "Overview", URL: "/ui"},
 		{Label: "Pages", URL: "/ui/pages"},
 		{Label: "Plans", URL: "/ui/plans"},
-		{Label: "Plugins", URL: "/ui/plugins"},
+		{Label: "Configuration", Head: true},
+		{Label: "Devices", URL: "/ui/devices"},
+		{Label: "Display types", URL: "/ui/display-types"},
 		{Label: "System", Head: true},
-		{Label: "Downloads", URL: "/ui/system/downloads"},
+		{Label: "Playground", URL: "/ui/playground"},
+		{Label: "Plugins", URL: "/ui/system/plugins"},
+		{Label: "Firmware", URL: "/ui/system/firmware"},
+		{Label: "Maintenance", URL: "/ui/system/maintenance"},
 		{Label: "Stats", URL: "/ui/system/stats"},
 		{Label: "Styleguide", URL: "/ui/system/styleguide"},
 	}
@@ -252,7 +257,7 @@ func (s *Server) handleStyleguide(w http.ResponseWriter, r *http.Request) {
 		Version:    version,
 		GoVersion:  goVersion,
 		Nav:        navFor("Styleguide"),
-		Breadcrumb: crumbPath(crumb{Label: "System"}, crumb{Label: "Styleguide"}),
+		Breadcrumb: crumbPath(crumb{Label: "Styleguide"}),
 		Spaces: []styleguideSwatch{
 			{Token: "--pb-space-1", Chip: template.CSS("width: var(--pb-space-1)")},
 			{Token: "--pb-space-2", Chip: template.CSS("width: var(--pb-space-2)")},
@@ -364,7 +369,16 @@ type dashboardPage struct {
 	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
 	Devices    []dashboardDevice
+	Content    []dashboardLink     // the lists below the devices
 	Downloads  *dashboardDownloads // hint about the release checks (ADR 0060), nil without a download section
+}
+
+// dashboardLink is one list below the device cards: the configuration the
+// devices are made of (ADR 0153).
+type dashboardLink struct {
+	Label string
+	URL   string
+	Count int
 }
 
 // dashboardDownloads is the hint above the device grid: the details live on the
@@ -455,8 +469,9 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	page := dashboardPage{
 		Version:   versionText(build, loc),
 		GoVersion: build.Go,
-		Nav:       navFor("Devices"),
+		Nav:       navFor("Overview"),
 		Devices:   cards,
+		Content:   contentCards(cfg),
 		Downloads: s.downloadHint(cfg),
 	}
 	if err := dashboardTmpl.Execute(w, page); err != nil {
@@ -464,9 +479,30 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// contentCards counts the lists below the device cards, so the overview names
+// what the instance holds without opening every list (ADR 0153). Pages and
+// plans count from a directory listing, because the configuration holds only
+// their paths; the display types count from the configuration, which loads
+// them. A list that does not read stays out instead of showing a wrong count.
+func contentCards(cfg *Config) []dashboardLink {
+	cards := []dashboardLink{}
+	if n, err := pageCount(cfg.Pages); err == nil {
+		cards = append(cards, dashboardLink{Label: "Pages", URL: "/ui/pages", Count: n})
+	} else {
+		slog.Warn("page count for the overview failed", "error", err)
+	}
+	if n, err := planCount(cfg.Plans); err == nil {
+		cards = append(cards, dashboardLink{Label: "Plans", URL: "/ui/plans", Count: n})
+	} else {
+		slog.Warn("plan count for the overview failed", "error", err)
+	}
+	cards = append(cards, dashboardLink{Label: "Display types", URL: "/ui/display-types", Count: len(cfg.Profiles)})
+	return cards
+}
+
 // handleDownloadCheck starts a release check in the background and returns to
-// the downloads page at once; a second request while one runs changes nothing
-// (ADR 0062). It is the page's only action, so it needs no form token.
+// the train page that asked at once; a second request while one runs changes
+// nothing (ADR 0062). It is the page's only action, so it needs no form token.
 func (s *Server) handleDownloadCheck(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	if cfg.Download != nil && s.download.begin() {
@@ -474,11 +510,15 @@ func (s *Server) handleDownloadCheck(w http.ResponseWriter, r *http.Request) {
 			s.finishDownloadCheck(cfg, s.downloadOnce(s.ctx, cfg))
 		}()
 	}
-	http.Redirect(w, r, "/ui/system/downloads", http.StatusSeeOther)
+	target := "/ui/system/plugins"
+	if r.FormValue("from") == "firmware" {
+		target = "/ui/system/firmware"
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 // downloadHint is the dashboard's line about the release checks; nil without a
-// download section. Details are on the downloads page.
+// download section. Details are on the two train pages.
 func (s *Server) downloadHint(cfg *Config) *dashboardDownloads {
 	if cfg.Download == nil {
 		return nil

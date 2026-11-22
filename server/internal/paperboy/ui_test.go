@@ -3,6 +3,7 @@ package paperboy
 import (
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +42,22 @@ func TestDashboardShowsDevices(t *testing.T) {
 	}
 	if !strings.Contains(body, `src="/ui/htmx.js"`) {
 		t.Fatal("the dashboard must load the vendored script")
+	}
+
+	// The overview names its two sections: the devices and the lists below
+	// them, each card with its count (ADR 0153). The device name opens the
+	// device file.
+	for _, want := range []string{
+		`<h2 class="section">Devices</h2>`,
+		`<h2 class="section">Everything else</h2>`,
+		`<a href="/ui/devices/test" title="Edit the device file">test</a>`,
+		`<a href="/ui/pages"><span class="label">Pages</span><span class="count">`,
+		`<a href="/ui/plans"><span class="label">Plans</span><span class="count">`,
+		`<a href="/ui/display-types"><span class="label">Display types</span><span class="count">1</span></a>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("overview misses %q: %s", want, body)
+		}
 	}
 
 	dev := planDevice(t, s)
@@ -94,6 +111,31 @@ func TestDashboardShowsDevices(t *testing.T) {
 
 	if rec := htmlRequest(t, s, "/unknown"); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown path: %d", rec.Code)
+	}
+}
+
+// TestOverviewCounts keeps the counts of the overview in step with the lists:
+// a page with two variants counts once, a plan that does not parse counts like
+// the list shows it, and files the lists skip stay out (ADR 0153).
+func TestOverviewCounts(t *testing.T) {
+	dir := t.TempDir()
+	pages := filepath.Join(dir, "pages")
+	for _, name := range []string{"eins.yaml", "eins.quer.yaml", "eins.hoch.yaml", "zwei.yaml", "not readme.txt"} {
+		writePageFile(t, filepath.Join(pages, name), textPage("eins"))
+	}
+	if n, err := pageCount(pages); err != nil || n != 2 {
+		t.Fatalf("pageCount = %d, %v; want 2", n, err)
+	}
+	plans := filepath.Join(dir, "plans")
+	writePageFile(t, filepath.Join(plans, "gut.yaml"), testPlan)
+	writePageFile(t, filepath.Join(plans, "kaputt.yaml"), "rules: [")
+	writePageFile(t, filepath.Join(plans, "notes.txt"), "x")
+	if n, err := planCount(plans); err != nil || n != 2 {
+		t.Fatalf("planCount = %d, %v; want 2", n, err)
+	}
+	// A missing directory is empty, not an error: a new instance has no pages.
+	if n, err := pageCount(filepath.Join(dir, "nope")); err != nil || n != 0 {
+		t.Fatalf("pageCount of a missing directory = %d, %v; want 0", n, err)
 	}
 }
 

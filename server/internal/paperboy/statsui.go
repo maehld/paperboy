@@ -164,7 +164,7 @@ func (s *Server) statsView(now time.Time, loc *time.Location) statsView {
 		Version:    versionText(build, loc),
 		GoVersion:  build.Go,
 		Nav:        navFor("Stats"),
-		Breadcrumb: crumbPath(crumb{Label: "System"}, crumb{Label: "Stats"}),
+		Breadcrumb: crumbPath(crumb{Label: "Stats"}),
 		Platform:   runtime.GOOS + "/" + runtime.GOARCH,
 	}
 	view.Paperboy = s.paperboyFacts(now, loc)

@@ -78,7 +78,7 @@ The inventory is never touched automatically. A check keeps one archive per asse
 - The channel follows the running version: a final version hears about finals, a prerelease also about prereleases.
 - A development build and a source without a Paperboy release stay silent.
 - The dashboard shows `2.14.0 is available` with the version as the link, but only for the public GitHub host.
-- The downloads page has a `Paperboy` row with the state of the comparison.
+- Both release train pages have a `Paperboy` row with the state of the comparison.
 - The journal gets one line per version.
 
 ## Versions and names
@@ -87,7 +87,7 @@ The inventory is never touched automatically. A check keeps one archive per asse
 
 ## Pruning
 
-The downloads page lists what *Preview cleanup* would delete, and the button deletes exactly that ([ADR 0090](../adr/0090-download-cache-and-inventory.md)). `prune.go` keeps:
+The maintenance page lists what *Preview* would delete, and the button deletes exactly that ([ADR 0090](../adr/0090-download-cache-and-inventory.md), [0154](../adr/0154-split-the-release-trains-and-add-maintenance.md)). It also removes the state of devices without a device file and the editor backups of deleted objects. `prune.go` keeps:
 
 - the resolved program of every plugin,
 - every version that a pin names,

@@ -32,18 +32,20 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
 	for _, page := range []struct{ path, active string }{
-		{"/ui", "Devices"},
+		{"/ui", "Overview"},
 		{"/ui/devices", "Devices"},
 		{"/ui/devices/test", "Devices"},
 		{"/ui/devices/test/plan", "Devices"},
-		{"/ui/display-types", "Devices"},
-		{"/ui/display-types/small", "Devices"},
+		{"/ui/display-types", "Display types"},
+		{"/ui/display-types/small", "Display types"},
 		{"/ui/pages", "Pages"},
 		{"/ui/pages/eins?display=small", "Pages"},
 		{"/ui/plans", "Plans"},
 		{"/ui/plans/zimmer", "Plans"},
-		{"/ui/plugins", "Plugins"},
-		{"/ui/system/downloads", "Downloads"},
+		{"/ui/playground", "Playground"},
+		{"/ui/system/plugins", "Plugins"},
+		{"/ui/system/firmware", "Firmware"},
+		{"/ui/system/maintenance", "Maintenance"},
 		{"/ui/system/stats", "Stats"},
 		{"/ui/system/styleguide", "Styleguide"},
 	} {
@@ -62,6 +64,28 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 		if n := strings.Count(rail, `aria-current="page"`); n != 1 {
 			t.Fatalf("%s: the rail marks %d sections", page.path, n)
 		}
+		// The breadcrumb belongs to the top bar, and the shell owns the only
+		// main element: a page that styles its own main also restyles the
+		// shell (issue 391).
+		if crumbs := strings.Index(body, `<nav class="crumbs"`); crumbs > strings.Index(body, `<div class="shell">`) {
+			t.Fatalf("%s: the breadcrumb left the top bar", page.path)
+		}
+		if n := strings.Count(body, "<main"); n != 1 {
+			t.Fatalf("%s: the page has %d main elements", page.path, n)
+		}
+	}
+
+	// The rail groups its entries: the lists of the configuration and the
+	// system tools carry a head, and no list hides behind another (ADR 0153).
+	rail := railOf(t, htmlRequest(t, s, "/ui").Body.String())
+	for _, want := range []string{
+		`<span class="rail-head">Configuration</span>`,
+		`<span class="rail-head">System</span>`,
+		`href="/ui/devices"`, `href="/ui/display-types"`, `href="/ui/playground"`,
+	} {
+		if !strings.Contains(rail, want) {
+			t.Fatalf("the rail misses %q: %s", want, rail)
+		}
 	}
 
 	body := htmlRequest(t, s, "/ui/devices/test/plan").Body.String()
@@ -72,6 +96,40 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("plan preview misses %q", want)
 		}
+	}
+}
+
+// TestListsNameThemselvesInTheBreadcrumb keeps the top bar honest: every page
+// but the overview names where the operator is, and a list is the first step of
+// its editors (ADR 0152).
+func TestListsNameThemselvesInTheBreadcrumb(t *testing.T) {
+	s, _ := planServer(t, testPlan)
+	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"AA:BB:CC:DD:EE:01\"\nplan: zimmer\n")
+	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
+
+	for _, page := range []struct{ path, crumb string }{
+		{"/ui/pages", `<span aria-current="page">Pages</span>`},
+		{"/ui/plans", `<span aria-current="page">Plans</span>`},
+		{"/ui/devices", `<span aria-current="page">Devices</span>`},
+		{"/ui/display-types", `<span aria-current="page">Display types</span>`},
+		{"/ui/playground?display=small", `<span aria-current="page">Playground</span>`},
+		{"/ui/system/plugins", `<span aria-current="page">Plugins</span>`},
+		{"/ui/system/firmware", `<span aria-current="page">Firmware</span>`},
+		{"/ui/system/maintenance", `<span aria-current="page">Maintenance</span>`},
+		{"/ui/system/stats", `<span aria-current="page">Stats</span>`},
+		{"/ui/system/styleguide", `<span aria-current="page">Styleguide</span>`},
+	} {
+		body := htmlRequest(t, s, page.path).Body.String()
+		if !strings.Contains(body, `<nav class="crumbs"`) {
+			t.Fatalf("%s: the page has no breadcrumb", page.path)
+		}
+		if !strings.Contains(body, page.crumb) {
+			t.Fatalf("%s: the breadcrumb does not end in %q", page.path, page.crumb)
+		}
+	}
+	// The overview is the root of every path, so it names none.
+	if strings.Contains(htmlRequest(t, s, "/ui").Body.String(), `<nav class="crumbs"`) {
+		t.Fatal("the overview must not carry a breadcrumb")
 	}
 }
 
@@ -86,7 +144,7 @@ func TestOperatorPagesLinkTheSharedStylesheet(t *testing.T) {
 	const tokens = `<link rel="stylesheet" href="/ui/tokens.css">`
 	const shared = `<link rel="stylesheet" href="/ui/ui.css">`
 	for _, path := range []string{
-		"/ui", "/ui/system/downloads", "/ui/plugins", "/ui/plugins",
+		"/ui", "/ui/system/plugins", "/ui/playground", "/ui/playground",
 		"/ui/pages", "/ui/pages/eins?display=small", "/ui/plans/zimmer",
 		"/ui/devices/test", "/ui/display-types/small", "/ui/devices/test/plan",
 		"/ui/system/stats",
@@ -119,7 +177,7 @@ func TestOperatorPagesCarryTheLogo(t *testing.T) {
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
 	pages := []string{
-		"/ui", "/ui/system/downloads", "/ui/plugins",
+		"/ui", "/ui/system/plugins", "/ui/playground",
 		"/ui/pages", "/ui/pages/eins?display=small", "/ui/plans/zimmer",
 		"/ui/devices/test", "/ui/display-types/small", "/ui/devices/test/plan",
 		"/ui/system/stats",
@@ -167,7 +225,7 @@ func TestEditorBarsShareThePattern(t *testing.T) {
 	for _, page := range []struct{ path, crumb, name string }{
 		{"/ui/pages/eins?display=small", `<a href="/ui/pages">Pages</a>`, `<h2>page eins</h2>`},
 		{"/ui/plans/zimmer", `<a href="/ui/plans">Plans</a>`, "<h2>plan zimmer</h2>"},
-		{"/ui/devices/test", `<a href="/ui">Devices</a>`, "<h2>device test</h2>"},
+		{"/ui/devices/test", `<a href="/ui/devices">Devices</a>`, "<h2>device test</h2>"},
 		{"/ui/display-types/small", `<a href="/ui/display-types">Display types</a>`, "<h2>display type small</h2>"},
 	} {
 		body := htmlRequest(t, s, page.path).Body.String()
@@ -187,7 +245,7 @@ func TestEditorBarsShareThePattern(t *testing.T) {
 
 	// The widgets page has no object and no action of its own, so it has no
 	// bar: its status sits next to the display type switch (ADR 0076).
-	body := htmlRequest(t, s, "/ui/plugins").Body.String()
+	body := htmlRequest(t, s, "/ui/playground").Body.String()
 	for _, unwanted := range []string{`class="bar"`, `id="reload"`, `id="save"`, `id="delete"`} {
 		if strings.Contains(body, unwanted) {
 			t.Fatalf("the widgets page grew an action bar (%s)", unwanted)

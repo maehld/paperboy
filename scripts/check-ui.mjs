@@ -1,6 +1,7 @@
-// Smoke-runs a browser script in jsdom, so an undefined identifier that
-// `node --check` cannot see fails here. It loads the virtual display, answers
-// one sync with a scrolling text page and waits for one marquee step.
+// Smoke-runs the browser scripts in jsdom, so an undefined identifier that
+// `node --check` cannot see fails here. The first run loads the virtual
+// display, answers one sync with a scrolling text page and waits for one
+// marquee step. The dialog helper and the page editor follow below.
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -123,4 +124,106 @@ try {
     console.log("dialog.js asked, validated and cancelled");
   }
   dialogDom.window.close();
+}
+
+// editor.js draws the widget palette of the Playground and of the page editor
+// (ADR 0152). The check clicks an entry in both, because a palette that names
+// its widgets wrongly still renders and only fails on the click (issue #391).
+{
+  const script = await readFile(join(root, "server/internal/paperboy/ui/editor.js"), "utf8");
+  const plugins = {
+    plugins: [{
+      name: "demo",
+      description: {
+        title: "Demo",
+        widgets: [
+          { widget: "clock", title: "Clock", sizes: [{ columns: 2, rows: 1 }] },
+          { widget: "chart", title: "Chart", sizes: [{ columns: 6, rows: 4 }] },
+        ],
+      },
+    }],
+  };
+  const start = {
+    name: "demo", display: "e1001", kind: "image", width: 800, height: 480,
+    grid: [6, 8], reference: [6, 8], displays: [{ name: "e1001", kind: "image", width: 800, height: 480 }],
+  };
+  const palette = `<input id="palette-filter" type="search"><div id="palette"></div>`;
+  const playground = `<div id="display-switch"><a data-display="e1001">e1001</a><span id="status"></span></div>
+${palette}<span id="where"></span><img id="preview-img" hidden><pre id="preview-text" hidden></pre><p id="preview-error" hidden></p>
+<section id="inspector"></section><button id="copy-cell" type="button"></button><pre id="snippet"></pre>`;
+  const editor = `<h2><span id="file-label"></span></h2><span id="where"></span><span id="status"></span>
+<button id="rename" type="button"></button><button id="delete" type="button"></button><button id="save" type="button"></button>
+<input id="title"><p id="used-by"></p><input id="cols" type="number"><input id="rows" type="number">
+<button id="grid-lock" type="button"></button><p id="grid-note"></p>
+<input id="padding"><input id="rule"><input id="text-size"><input id="divider">
+<select id="notices"><option value="">default</option><option value="none">none</option></select>
+${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" checked>
+<div id="board"></div><p id="board-note"></p><p id="preview-error" hidden></p><section id="inspector"></section>`;
+
+  // open runs the script on one page and answers its requests.
+  const open = async (url, body, data) => {
+    const html = `<!doctype html><html><body>${body}
+<script id="editor-data" type="application/json">${JSON.stringify(data)}</script></body></html>`;
+    const editorDom = new JSDOM(html, { url, runScripts: "outside-only", pretendToBeVisual: true });
+    const { window } = editorDom;
+    const failures = [];
+    window.addEventListener("error", (event) => failures.push(event.error || event.message));
+    window.addEventListener("unhandledrejection", (event) => failures.push(event.reason));
+    window.URL.createObjectURL = () => "blob:preview";
+    window.URL.revokeObjectURL = () => {};
+    window.fetch = async (target) => {
+      const path = String(target);
+      const answer = { ok: true, status: 200, headers: { get: () => "image/png" }, blob: async () => ({}), text: async () => "" };
+      if (path.startsWith("/api/plugins")) return { ...answer, json: async () => plugins };
+      if (path.startsWith("/api/pages/")) return { ...answer, status: 404, ok: false, json: async () => ({}) };
+      return { ...answer, json: async () => ({}) };
+    };
+    window.eval(script);
+    await sleep(30);
+    return { editorDom, window, failures };
+  };
+  const entry = (window, name) => Array.from(window.document.querySelectorAll("#palette button.widget"))
+    .find((button) => button.querySelector("strong").textContent === name);
+
+  const problems = [];
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  // The Playground shows the widget a click names and keeps it in the link.
+  {
+    const { editorDom, window, failures } = await open("http://localhost/ui/playground?display=e1001", playground, { ...start, widgets_page: true });
+    check(window.document.querySelectorAll("#palette button.widget").length === 2, "the Playground palette does not list the widgets");
+    check(!window.document.querySelector("#palette button.widget.nofit"), "the Playground marks a widget as a misfit");
+    entry(window, "chart").click();
+    await sleep(10);
+    check(new URLSearchParams(window.location.search).get("widget") === "demo/chart", "a click in the Playground names " + new URLSearchParams(window.location.search).get("widget"));
+    check(window.document.getElementById("snippet").textContent.includes("widget: demo/chart"), "the snippet does not name the picked widget");
+    check(window.localStorage.getItem("pb-recent-widgets") === '["demo/chart"]', "the recent list holds " + window.localStorage.getItem("pb-recent-widgets"));
+    entry(window, "clock").querySelector(".pin").click();
+    check(window.localStorage.getItem("pb-pinned-widgets") === '["demo/clock"]', "the pinned list holds " + window.localStorage.getItem("pb-pinned-widgets"));
+    check(Array.from(window.document.querySelectorAll("#palette .plugin-head")).some((head) => head.textContent.includes("Pinned")), "a pinned widget gets no group");
+    for (const failure of failures) problems.push(failure);
+    editorDom.window.close();
+  }
+
+  // The page editor marks the picked entry and places it on the clicked cell.
+  {
+    const { editorDom, window, failures } = await open("http://localhost/ui/pages/demo?display=e1001", editor, { ...start, new: true });
+    entry(window, "clock").click();
+    check(entry(window, "clock").classList.contains("active"), "a click in the page editor does not mark the entry");
+    const slot = window.document.querySelector("#board .slot");
+    check(!!slot, "the board offers no free cell while a widget waits");
+    if (slot) slot.click();
+    check(Array.from(window.document.querySelectorAll("#board .cell")).some((cell) => cell.textContent.includes("demo/clock")), "the board does not show the placed widget");
+    for (const failure of failures) problems.push(failure);
+    editorDom.window.close();
+  }
+
+  if (problems.length) {
+    for (const problem of problems) console.error(problem);
+    process.exitCode = 1;
+  } else {
+    console.log("editor.js picked, pinned and placed a palette widget");
+  }
 }

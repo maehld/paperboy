@@ -22,7 +22,7 @@ Each fact lives in exactly one place. Update the page that owns a behavior, not 
 | `docs/design/01-system.md` | Parts and processes, instance directory, configuration, reload, data flow, code map |
 | `docs/design/02-content.md` | Pages, widgets, grid and style, text pages, plans, value conditions, actions, the menu |
 | `docs/design/03-devices.md` | Display types, device files, device API, state, power, delivery, firmware, hardware findings |
-| `docs/design/04-operator-ui.md` | Dashboard, stats, downloads, previews, virtual display, editors, page and plan API, password |
+| `docs/design/04-operator-ui.md` | Overview, stats, downloads, previews, virtual display, editors, page and plan API, password |
 | `docs/design/05-plugins.md` | Protocol, plugin host, versions, state and blobs, value conditions, the shipped plugins |
 | `docs/design/06-delivery.md` | Release trains, assets, workflows, the download client, cache, inventory |
 | `docs/design/07-design-language.md` | The shared type scale and the components of plugin widgets |
@@ -88,14 +88,14 @@ go vet ./server/... ./plugins/... ./sdk/...
 ./scripts/check-adr-refs.sh     # ADR references and document links resolve
 ./scripts/screenshots.sh        # plugin page screenshots from a mocked instance into docs/images/plugins/
 ./scripts/design-preview.sh     # the gallery of the design language into docs/images/design/
-npm install --no-save jsdom && node scripts/check-ui.mjs  # smoke-runs virtual.js and dialog.js in jsdom
+npm install --no-save jsdom && node scripts/check-ui.mjs  # smoke-runs virtual.js, dialog.js and editor.js in jsdom
 npm install --no-save playwright jsdom && node scripts/ui-shots.mjs  # screenshots of every operator page
 ```
 
 - Apply `gofmt` to changed Go files, and again after every later edit of them. The *Check formatting* job takes no prisoners: a stray blank line left by a scripted edit failed a pull request on 2026-11-22.
   Use the binary of the toolchain the module requires, because that is what CI runs: `"$(GOTOOLCHAIN=go1.27.0 go env GOROOT)/bin/gofmt" -w <files>`. `GOTOOLCHAIN` moves `go`, not the `gofmt` beside it.
   `"$(GOTOOLCHAIN=go1.27.0 go env GOROOT)/bin/gofmt" -l server plugins sdk` prints nothing before a commit.
-- `node --check` only parses a script; `scripts/check-ui.mjs` also runs it, so an undefined identifier fails. It runs `virtual.js` and `dialog.js`; `jsdom` has no modal dialog, so the check shims `showModal` and `close`.
+- `node --check` only parses a script; `scripts/check-ui.mjs` also runs it, so an undefined identifier fails. It runs `virtual.js`, `dialog.js` and `editor.js`; `jsdom` has no modal dialog, so the check shims `showModal` and `close`. The editor run clicks a palette entry in the Playground and in the page editor, because a wrong widget name only fails on the click (issue #391).
 - `scripts/ui-shots.mjs` needs `playwright` (browsers from `~/.cache/ms-playwright`) next to `jsdom`. Install both in one command, because `npm install --no-save` drops the package the other run added.
 - **Windows Firewall blocks per binary path (confirmed 2026-10-22):** `go run` starts the server from a new `%LOCALAPPDATA%\go-build\<hash>\…\paperboy.exe` each time, so every build is a new program for the firewall. A dismissed prompt leaves a permanent **inbound Block** rule for exactly that build: displays on the LAN get "connection refused" or timeouts, while `127.0.0.1` (SolarAI) keeps working. Check with `Get-NetFirewallApplicationFilter | ? Program -like "*paperboy.exe"` and prefer a stable binary from `.\scripts\build.ps1` (`bin\<os>-<arch>\paperboy.exe`) that is allowed once, instead of `go run`.
 - **UTF-8 on Windows:** Windows PowerShell 5 reads UTF-8 files as ANSI, so a `Get-Content … | Set-Content …` round-trip turns „Für“ into „FÃ¼r“. Edit files with the dedicated tools, or read and write them with `[System.IO.File]::ReadAllText`/`WriteAllText` and `UTF8Encoding($false)`; never pipe source files through `Get-Content`/`Set-Content`.

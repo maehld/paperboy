@@ -23,11 +23,12 @@
 
 body { margin: 0; font: var(--pb-text-md)/1.4 var(--pb-font-body); background: var(--pb-bg); color: var(--pb-ink); }
 
-/* The shell (ADR 0152): the top bar carries the brand and the build, the rail
-   names the sections and keeps its place while the page scrolls, and the
-   breadcrumb names the way back. */
+/* The shell (ADR 0152): the top bar carries the brand, the breadcrumb that
+   names the way back and the build, and the rail names the sections and keeps
+   its place while the page scrolls. The brand is as wide as the rail, so the
+   breadcrumb starts where the content starts. */
 .topbar { display: flex; align-items: center; gap: 1rem; padding: .55rem 1.25rem; min-height: var(--pb-topbar); border-bottom: 1px solid var(--pb-hairline); background: var(--pb-surface); }
-.brand { display: flex; align-items: center; }
+.brand { display: flex; align-items: center; flex: none; width: calc(var(--pb-rail) - .75rem); }
 .brand img { display: block; height: 1.7rem; width: auto; }
 /* The lockup is black ink. A dark page inverts it, so the mark stays visible. */
 @media (prefers-color-scheme: dark) {
@@ -46,13 +47,14 @@ body { margin: 0; font: var(--pb-text-md)/1.4 var(--pb-font-body); background: v
 .rail-head { padding: .9rem .6rem .25rem; font-size: var(--pb-text-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--pb-ink-faint); }
 
 main { padding: 1rem 1.5rem 3rem; min-width: 0; }
-.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0 0 .9rem; font-size: var(--pb-text-xs); color: var(--pb-ink-muted); }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; min-width: 0; font-size: var(--pb-text-xs); color: var(--pb-ink-muted); }
 .crumbs a { color: var(--pb-ink-muted); text-decoration: none; }
 .crumbs a:hover { color: var(--pb-accent); }
 .crumbs > * + *::before { content: "/"; margin-right: .4rem; color: var(--pb-ink-faint); }
 .crumbs [aria-current] { color: var(--pb-ink); }
 
 @media (max-width: 64rem) {
+  .brand { width: auto; }
   .shell { grid-template-columns: minmax(0, 1fr); }
   .rail { position: static; flex-direction: row; flex-wrap: wrap; min-height: 0; padding: .35rem .9rem; border-right: 0; border-bottom: 1px solid var(--pb-hairline); }
   .rail-head { display: none; }
@@ -127,7 +129,10 @@ a { color: var(--pb-accent); text-underline-offset: 2px; }
 .topsearch kbd, .cmd-keys kbd { font-family: var(--pb-font-mono); font-size: .72rem; padding: 0 .25rem; border: 1px solid var(--pb-hairline-strong); border-radius: 3px; color: var(--pb-ink-muted); background: var(--pb-surface); }
 @media (max-width: 64rem) { .topsearch kbd { display: none; } }
 @media (max-width: 40rem) {
-  .topbar { gap: .5rem; padding: .45rem .75rem; }
+  /* A phone has no room beside the brand: the breadcrumb takes its own line. */
+  .topbar { flex-wrap: wrap; gap: .5rem; padding: .45rem .75rem; }
+  .topbar-end { flex: 1; min-width: 0; justify-content: flex-end; }
+  .crumbs { order: 1; flex-basis: 100%; }
   .build { max-width: 8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .topsearch { padding: .1rem .4rem; }
 }
@@ -144,6 +149,11 @@ dialog.cmd .cmd-label { font-weight: 600; font-size: var(--pb-text-sm); font-fam
 dialog.cmd .cmd-note { color: var(--pb-ink-muted); font-size: var(--pb-text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 dialog.cmd .cmd-empty { padding: .8rem .9rem; color: var(--pb-ink-muted); font-size: var(--pb-text-sm); }
 dialog.cmd .cmd-foot { display: flex; justify-content: space-between; gap: 1rem; margin: 0; padding: .45rem .9rem; border-top: 1px solid var(--pb-hairline); font-size: var(--pb-text-xs); color: var(--pb-ink-faint); }
+
+/* The name of the object is the title of its row, so every list shows it bold
+   (ADR 0152). The templates mark it with class="name". */
+td.name { font-weight: 600; }
+td.name .missing { color: var(--pb-error); }
 
 /* A dense table keeps all its columns and scrolls sideways instead of squeezing
    its text on a narrow screen (ADR 0152). */

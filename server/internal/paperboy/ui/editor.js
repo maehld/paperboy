@@ -750,8 +750,10 @@
   }
 
   // fitsSelectedCell says whether a widget fits the selected cell: 0 fits, 1
-  // unknown, 2 does not fit. Without a selected cell nothing is known.
+  // unknown, 2 does not fit. Without a selected cell nothing is known, and on
+  // the widgets page a pick replaces the cell, so no widget is a misfit there.
   function fitsSelectedCell(widget) {
+    if (state.widgetsPage) return 1;
     const cells = state.template && state.template.cells;
     const cell = cells && typeof state.selected === 'number' ? cells[state.selected] : null;
     if (!cell || !cell.span) return 1;
@@ -779,11 +781,11 @@
   // widgetButton builds one entry: the picture, the name, the title and the
   // sizes it declares, plus the pin.
   function widgetButton(plugin, widget, fits) {
-    const id = plugin + '/' + widget;
+    const id = plugin + '/' + widget.widget;
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'widget' + (state.placing && state.placing.plugin === plugin &&
-      state.placing.widget === widget ? ' active' : '') + (fits === 2 ? ' nofit' : '');
+      state.placing.widget === widget.widget ? ' active' : '') + (fits === 2 ? ' nofit' : '');
     b.title = fits === 2 ? 'Does not fit the selected cell' : '';
     b.appendChild(widgetThumb(plugin, widget.widget));
     const label = document.createElement('span');
@@ -821,10 +823,10 @@
         return;
       }
       rememberWidget(id);
-      pick(plugin, widget);
+      pick(plugin, widget.widget);
     });
     b.addEventListener('dragstart', (e) => {
-      e.dataTransfer.setData('text/plain', plugin + '/' + widget);
+      e.dataTransfer.setData('text/plain', id);
       e.dataTransfer.effectAllowed = 'copy';
       rememberWidget(id);
     });
@@ -2080,10 +2082,10 @@
       for (const a of links.querySelectorAll('a[data-display]')) {
         const own = new URLSearchParams(params);
         own.set('display', a.dataset.display);
-        a.href = '/ui/plugins?' + own.toString();
+        a.href = '/ui/playground?' + own.toString();
       }
     }
-    history.replaceState(null, '', '/ui/plugins?' + params.toString());
+    history.replaceState(null, '', '/ui/playground?' + params.toString());
   }
 
   // widgetParams is the query of a widgets page link: the display type, the

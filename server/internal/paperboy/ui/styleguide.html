@@ -73,12 +73,12 @@ th { color: var(--pb-ink-muted); font-weight: 500; }
 
 <section class="card">
   <h2>Table</h2>
-  <p class="hint">A table is a list of objects. Every row links its object.</p>
+  <p class="hint">A table is a list of objects. Every row links its object, and the name of the object is the row's title: bold, in every list (<code>td.name</code>).</p>
   <table>
     <thead><tr><th>Page</th><th>Kind</th><th>Grid</th></tr></thead>
     <tbody>
-      <tr><td><a href="/ui/pages">uebersicht</a></td><td>image</td><td>6 × 8</td></tr>
-      <tr><td><a href="/ui/pages">hinweise</a></td><td>text</td><td>4 rows</td></tr>
+      <tr><td class="name"><a href="/ui/pages">uebersicht</a></td><td>image</td><td>6 × 8</td></tr>
+      <tr><td class="name"><a href="/ui/pages">hinweise</a></td><td>text</td><td>4 rows</td></tr>
     </tbody>
   </table>
 </section>

@@ -64,7 +64,7 @@ func (s *Server) handleDeviceEditor(w http.ResponseWriter, r *http.Request) {
 	version, goVersion := editorVersion(cfg)
 	v := deviceEditorView{Version: version, GoVersion: goVersion, ID: id,
 		Nav:        navFor("Devices"),
-		Breadcrumb: crumbPath(crumb{Label: "Devices", URL: "/ui"}, crumb{Label: id}),
+		Breadcrumb: crumbPath(crumb{Label: "Devices", URL: "/ui/devices"}, crumb{Label: id}),
 	}
 	if !page.ValidName(id) {
 		v.Error = fmt.Sprintf("device id %q: only a-z, 0-9 and -", id)

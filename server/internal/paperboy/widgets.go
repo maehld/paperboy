@@ -178,8 +178,8 @@ func (s *Server) handleWidgetsPage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	version, goVersion := editorVersion(cfg)
 	v := editorPageView{Version: version, GoVersion: goVersion, WidgetsPage: true,
-		Nav:        navFor("Plugins"),
-		Breadcrumb: crumbPath(crumb{Label: "Plugins"}),
+		Nav:        navFor("Playground"),
+		Breadcrumb: crumbPath(crumb{Label: "Playground"}),
 	}
 	display, fellBack := playgroundDisplay(cfg, q.Get("display"))
 	switch {
@@ -208,7 +208,7 @@ func (s *Server) handleWidgetsPage(w http.ResponseWriter, r *http.Request) {
 	for _, n := range imageDisplayNames(cfg) {
 		link.Set("display", n)
 		v.Displays = append(v.Displays, displayLink{Name: n, Selected: n == display,
-			URL: "/ui/plugins?" + link.Encode()})
+			URL: "/ui/playground?" + link.Encode()})
 	}
 	var span, grid [2]int
 	if sz, err := parseSize(q.Get("span")); err == nil {

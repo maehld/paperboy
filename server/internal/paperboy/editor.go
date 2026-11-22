@@ -231,6 +231,29 @@ func pageFileParts(file string) (name, label string, ok bool) {
 // GET /api/pages and the editor's overview (ADR 0068, 0110). A file that does
 // not parse still appears, with its error, so it can be found. A variant whose
 // page file is missing is an orphan.
+// pageCount counts the pages in a directory without reading them. A page with
+// variants counts once, and a file that does not parse counts like the lists
+// show it (ADR 0153).
+func pageCount(dir string) (int, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	names := map[string]bool{}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if name, _, ok := pageFileParts(e.Name()); ok {
+			names[name] = true
+		}
+	}
+	return len(names), nil
+}
+
 func pageFiles(dir string) ([]editorPageFile, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -718,6 +741,28 @@ func (s *Server) handleSetServes(w http.ResponseWriter, r *http.Request) {
 // planFiles lists the plan files of the instance directory: the data behind
 // GET /api/plans and the editor's overview (ADR 0068, 0069). Times are checked
 // in the global timezone.
+// planCount counts the plan files without parsing them, so the overview names
+// as many plans as the list shows (ADR 0153).
+func planCount(dir string) (int, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	count := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if name, found := strings.CutSuffix(e.Name(), ".yaml"); found && page.ValidName(name) {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func planFiles(dir string, loc *time.Location) ([]editorPlanFile, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

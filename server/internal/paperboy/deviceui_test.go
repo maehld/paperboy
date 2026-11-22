@@ -26,7 +26,7 @@ func TestDeviceEditorOverview(t *testing.T) {
 		}
 	}
 	// A broken device file is listed with its error and cannot be opened.
-	if !strings.Contains(body, "<td data-label=\"ID\">kaputt</td>") || !strings.Contains(body, "yaml: unmarshal errors") {
+	if !strings.Contains(body, "<td class=\"name\" data-label=\"ID\">kaputt</td>") || !strings.Contains(body, "yaml: unmarshal errors") {
 		t.Fatalf("broken device not reported:\n%s", body)
 	}
 	if strings.Contains(body, "/ui/devices/kaputt") {
