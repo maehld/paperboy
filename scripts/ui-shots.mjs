@@ -42,7 +42,7 @@ const pages = [
   { name: "plan-editor", path: "/ui/plans/standard" },
   { name: "device-editor", path: "/ui/devices/wohnzimmer" },
   { name: "display-editor", path: "/ui/display-types/sticky" },
-  { name: "plan-preview", path: "/ui/plan?device=wohnzimmer" },
+  { name: "plan-preview", path: "/ui/devices/wohnzimmer/plan" },
   { name: "virtual-display", path: "/ui/virtual?plan=tour&display=sticky" },
   { name: "downloads", path: "/ui/system/downloads" },
   { name: "stats", path: "/ui/system/stats" },
