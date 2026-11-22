@@ -324,11 +324,105 @@ cells:
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"Netz > 400 W", "Akku lädt 400 W", "Akku entlädt 400 W", "Null 0 W"}
+	want := []string{"Netz → 400 W", "Akku lädt 400 W", "Akku entlädt 400 W", "Null 0 W"}
 	for i, w := range want {
 		if got := strings.TrimRight(text.Lines[i], " "); got != w {
 			t.Errorf("line %d = %q, want %q", i+1, got, w)
 		}
+	}
+}
+
+// TestTextGlyphsByCharset covers the CGRAM glyphs and their ASCII fallbacks
+// (ADR 0155): arrows, trend and a checkmark.
+func TestTextGlyphsByCharset(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader(`
+kind: text
+cells:
+  - { at: [0, 0], span: [20, 1], value: e/out, flow: arrow }
+  - { at: [0, 1], span: [20, 1], value: e/grid, flow: arrow }
+  - { at: [0, 2], span: [20, 1], value: e/trend }
+  - { at: [0, 3], span: [20, 1], text: "✓" }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	power := plugin.ValueSpec{Name: "power", Type: plugin.ValueNumber, Unit: "W", Precision: 0}
+	trend := plugin.ValueSpec{Name: "trend", Type: plugin.ValueDirection}
+	src := valueSource(map[string]ValueResult{
+		"e/out":   {Value: plugin.NumberValue(400), Spec: power},
+		"e/grid":  {Value: plugin.NumberValue(-400), Spec: power},
+		"e/trend": {Value: plugin.DirectionValue(1), Spec: trend},
+	})
+	want := map[string][]string{
+		CharsetUTF8:    {"← 400 W", "→ 400 W", "↑", "✓"},
+		CharsetASCII:   {"< 400 W", "> 400 W", "^", "OK"},
+		CharsetHD44780: {"← 400 W", "→ 400 W", "↑", "✓"},
+	}
+	for charset, lines := range want {
+		text, err := tmpl.RenderText(Display{Width: 20, Height: 4, Text: true, Charset: charset}, Context{Values: src})
+		if err != nil {
+			t.Fatalf("%s: %v", charset, err)
+		}
+		for i, w := range lines {
+			if got := strings.TrimRight(text.Lines[i], " "); got != w {
+				t.Errorf("%s line %d = %q, want %q", charset, i+1, got, w)
+			}
+		}
+	}
+}
+
+// TestTextDirectionGlyphs covers every trend step and its ASCII fallback.
+func TestTextDirectionGlyphs(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader(`
+kind: text
+cells:
+  - { at: [0, 0], span: [10, 1], value: e/two }
+  - { at: [0, 1], span: [10, 1], value: e/one }
+  - { at: [0, 2], span: [10, 1], value: e/flat }
+  - { at: [0, 3], span: [10, 1], value: e/minus }
+  - { at: [0, 4], span: [10, 1], value: e/minus2 }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := plugin.ValueSpec{Name: "trend", Type: plugin.ValueDirection}
+	src := valueSource(map[string]ValueResult{
+		"e/two":    {Value: plugin.DirectionValue(2), Spec: spec},
+		"e/one":    {Value: plugin.DirectionValue(1), Spec: spec},
+		"e/flat":   {Value: plugin.DirectionValue(0), Spec: spec},
+		"e/minus":  {Value: plugin.DirectionValue(-1), Spec: spec},
+		"e/minus2": {Value: plugin.DirectionValue(-2), Spec: spec},
+	})
+	want := map[string][]string{
+		CharsetUTF8:    {"↑↑", "↑", "→", "↓", "↓↓"},
+		CharsetASCII:   {"^^", "^", ">", "v", "vv"},
+		CharsetHD44780: {"↑↑", "↑", "→", "↓", "↓↓"},
+	}
+	for charset, lines := range want {
+		text, err := tmpl.RenderText(Display{Width: 10, Height: 5, Text: true, Charset: charset}, Context{Values: src})
+		if err != nil {
+			t.Fatalf("%s: %v", charset, err)
+		}
+		for i, w := range lines {
+			if got := strings.TrimRight(text.Lines[i], " "); got != w {
+				t.Errorf("%s line %d = %q, want %q", charset, i+1, got, w)
+			}
+		}
+	}
+}
+
+func TestConvertGlyphs(t *testing.T) {
+	for charset, want := range map[string]string{
+		CharsetUTF8:    "←→↑↓✓",
+		CharsetASCII:   "<>^vOK",
+		CharsetHD44780: "←→↑↓✓",
+	} {
+		if got := Convert(charset, "←→↑↓✓"); got != want {
+			t.Errorf("%s: %q, want %q", charset, got, want)
+		}
+	}
+	if got := Convert(CharsetHD44780, "äöüß°µ"); got != "äöüß°µ" {
+		t.Errorf("the A00 characters changed: %q", got)
 	}
 }
 

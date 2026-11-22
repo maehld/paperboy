@@ -57,7 +57,7 @@ cells:
 - A box carries exactly one of `text` and `value`. `text` is literal text, may span lines and has no label or unit. A value cell names `<plugin>/<key>`.
 - `at` and `span` are `[column, row]` and `[columns, rows]`. Boxes must stay inside the grid and must not overlap. Unused lines and columns stay blank.
 - Page `overflow` is `strip`, `wrap` or `scroll`; a cell overrides it. `strip` cuts the content, `wrap` reflows at word boundaries and cuts at the box height, and `scroll` moves a wider line horizontally or extra lines vertically.
-- A value cell can set `label`, `unit` and `align` (`left`, `right` or `decimal`), and `scale` for a value with a unit progression. A number cell can set `flow: arrow` for `<` and `>`, or name the words `out` and `in`. A literal text cell has no label or unit.
+- A value cell can set `label`, `unit` and `align` (`left`, `right` or `decimal`), and `scale` for a value with a unit progression. A number cell can set `flow: arrow` for `←` and `→`, or name the words `out` and `in`. On `ascii` these show as `<` and `>`. A literal text cell has no label or unit.
 - Paperboy formats values with the global language and the declared precision. It converts label, value and text to the display charset. A missing value shows `? …`; a stale value marks `!` in the last column of line 1. A text value may carry several lines, one per record; the box shows them line by line.
 - A text page fits a display when every box fits the character grid. Other text sizes need a variant.
 - The editor places and resizes boxes on the board. It hides the style in points, has no rows panel, and edits text or value, label, the unit choice and scale, flow, align and overflow in the right inspector. The stale switch is *Stale values*.

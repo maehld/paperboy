@@ -1203,7 +1203,8 @@ inline bool pb_scroll_tick() {
 }
 
 // Maps the UTF-8 characters Paperboy keeps for charset hd44780 to the codes
-// of the HD44780 A00 character ROM; anything else outside ASCII becomes '?'.
+// of the HD44780 A00 character ROM or to the CGRAM slots of ADR 0155; anything
+// else outside ASCII becomes '?'.
 inline std::string pb_hd44780(const std::string &s) {
   std::string out;
   for (size_t i = 0; i < s.size(); i++) {
@@ -1213,6 +1214,7 @@ inline std::string pb_hd44780(const std::string &s) {
       continue;
     }
     unsigned char n = i + 1 < s.size() ? (unsigned char) s[i + 1] : 0;
+    unsigned char n2 = i + 2 < s.size() ? (unsigned char) s[i + 2] : 0;
     char mapped = '?';
     if (c == 0xC3 && n == 0xA4) mapped = (char) 0xE1;       // ä
     else if (c == 0xC3 && n == 0xB6) mapped = (char) 0xEF;  // ö
@@ -1224,6 +1226,12 @@ inline std::string pb_hd44780(const std::string &s) {
     else if (c == 0xC3 && n == 0x84) mapped = 'A';          // Ä
     else if (c == 0xC3 && n == 0x96) mapped = 'O';          // Ö
     else if (c == 0xC3 && n == 0x9C) mapped = 'U';          // Ü
+    // CGRAM slots 1-5 (user_characters in lcd2004.yaml).
+    else if (c == 0xE2 && n == 0x86 && n2 == 0x90) mapped = (char) 0x01;  // ←
+    else if (c == 0xE2 && n == 0x86 && n2 == 0x92) mapped = (char) 0x02;  // →
+    else if (c == 0xE2 && n == 0x86 && n2 == 0x91) mapped = (char) 0x03;  // ↑
+    else if (c == 0xE2 && n == 0x86 && n2 == 0x93) mapped = (char) 0x04;  // ↓
+    else if (c == 0xE2 && n == 0x9C && n2 == 0x93) mapped = (char) 0x05;  // ✓
     out += mapped;
     // Skip the continuation bytes of this character.
     while (i + 1 < s.size() && ((unsigned char) s[i + 1] & 0xC0) == 0x80) {

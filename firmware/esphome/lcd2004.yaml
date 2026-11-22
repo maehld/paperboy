@@ -9,9 +9,10 @@
 
 substitutions:
   hardware: lcd2004
+  # 2.9.0 draws the arrows and the checkmark from CGRAM (ADR 0155).
   # 2.7.0 adds the beep and blink scripts of the sync answer (ADR 0131).
   # 2.6.0 combined the scroll engine with the update screen of 2.5.0.
-  fw_version: "2.8.0"
+  fw_version: "2.9.0"
   # Characters per row; the display lambda prints each row in this width.
   text_columns: "20"
   # Optional default for the Paperboy URL entered in the web UI.
@@ -41,6 +42,19 @@ display:
     dimensions: 20x4
     address: 0x27
     update_interval: never
+    # The CGRAM glyphs of ADR 0155: left, right, up and down arrow, checkmark.
+    # Position 0 is unusable because print() stops at byte 0x00.
+    user_characters:
+      - position: 1
+        data: [0, 4, 8, 31, 8, 4, 0, 0]
+      - position: 2
+        data: [0, 4, 2, 31, 2, 4, 0, 0]
+      - position: 3
+        data: [4, 14, 31, 4, 4, 4, 4, 0]
+      - position: 4
+        data: [0, 4, 4, 4, 4, 31, 14, 4]
+      - position: 5
+        data: [0, 1, 2, 4, 20, 8, 0, 0]
     lambda: |-
       for (int row = 0; row < 4; row++) {
         it.print(0, row, pb_hd44780(pb_row(row, ${text_columns})).c_str());

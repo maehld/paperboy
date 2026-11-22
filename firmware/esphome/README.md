@@ -184,9 +184,10 @@ the plan decides ([ADR 0045](../../docs/adr/0045-text-poll-interval-from-the-pla
 retried once a minute). Unchanged text is a `204` and leaves the LCD alone;
 ESPHome would log any non-2xx answer as a failure. Setup instructions (Wi-Fi hotspot, address for
 the Paperboy URL, unknown MAC, the pairing code) appear on the LCD itself. Paperboy converts the
-text for `charset: hd44780` and keeps only `ä ö ü ß ° µ`, which the firmware
-maps to the A00 character ROM (`pb_hd44780`); a display with the A02 ROM would
-show other glyphs for them.
+text for `charset: hd44780` and keeps `ä ö ü ß ° µ`, which the firmware maps
+to the A00 character ROM (`pb_hd44780`); a display with the A02 ROM would show
+other glyphs for them. `←`, `→`, `↑`, `↓` and `✓` come from the five CGRAM
+characters that `lcd2004.yaml` loads at boot ([ADR 0155](../../docs/adr/0155-cgram-glyphs-on-hd44780-text-displays.md)). An older firmware shows `?` for these five glyphs until it updates; the new firmware still draws ASCII `<`, `>`, `^` and `v` from an older server.
 
 A text page sends `scrolls` with every scrolling box: `row`, `col`, `width`,
 `height`, the full `text`, the first `window`, `direction` (`horizontal`,
