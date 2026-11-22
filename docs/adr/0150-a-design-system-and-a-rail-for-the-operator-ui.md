@@ -58,7 +58,7 @@ The principle of ADR 0076 stays: a page cannot drift from the others. The one-fi
 One partial (`ui/layout.html`) holds the document head, the header, the rail and the breadcrumb. Every page parses it and fills a block. The navigation therefore exists once.
 
 - Left rail on desktop: Devices, Pages, Plans, Plugins, System. A drawer below 64rem.
-- System holds Downloads and Stats.
+- System holds Downloads, Stats and the Styleguide.
 - The Playground becomes a tool under Plugins. The palette and every widget card link to it, and the route stays.
 - A breadcrumb replaces `← <list>`. It names the whole path and every part is a link.
 - A command palette on `⌘K`/`Ctrl+K` searches pages, plans, devices, display types and widgets. It reads the existing list APIs in the browser. The server gets no search route.

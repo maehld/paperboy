@@ -12,11 +12,13 @@
      flashes light. The script is inline for that reason only (ADR 0150). */}}
 <script>try{var t=localStorage.getItem("pb-theme");if(t==="dark"||t==="light")document.documentElement.dataset.theme=t}catch(e){}</script>
 <script src="/ui/theme.js" defer></script>
+<script src="/ui/command.js" defer></script>
 {{end}}
 
 {{define "chrome"}}<header class="topbar">
   <a class="brand" href="/ui"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></a>
   <div class="topbar-end">
+    <button class="topsearch" id="cmd-open" type="button" aria-label="Search pages, plans, devices and widgets"><span aria-hidden="true">Search</span><kbd aria-hidden="true">⌘K</kbd></button>
     <span class="build muted" title="Go {{.GoVersion}}">{{.Version}}</span>
     <button class="theme" id="theme-toggle" type="button" title="Switch the theme" aria-label="Switch the theme"><span class="theme-label">Dark</span></button>
   </div>

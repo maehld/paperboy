@@ -137,6 +137,7 @@ func navFor(section string) []navItem {
 		{Label: "System", Head: true},
 		{Label: "Downloads", URL: "/ui/system/downloads"},
 		{Label: "Stats", URL: "/ui/system/stats"},
+		{Label: "Styleguide", URL: "/ui/system/styleguide"},
 	}
 	for i := range items {
 		items[i].Active = items[i].Label == section
@@ -217,6 +218,91 @@ func (s *Server) handleUIThemeJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(uiThemeJS)
+}
+
+// styleguideTemplate renders the tokens and the components, so a change to the
+// look has one page to check (ADR 0150).
+//
+//go:embed ui/styleguide.html
+var styleguideTemplate string
+
+var styleguideTmpl = pageTemplate("styleguide", styleguideTemplate, nil)
+
+// styleguideSwatch is one colour of the palette on the styleguide page.
+type styleguideSwatch struct {
+	Token string       // the custom property, e.g. --pb-accent
+	Use   string       // what it means
+	Chip  template.CSS // the declaration that paints it, from a constant
+}
+
+// styleguideView is what the styleguide renders.
+type styleguideView struct {
+	Version    string
+	GoVersion  string
+	Nav        []navItem
+	Breadcrumb []crumb
+	Colors     []styleguideSwatch
+	Spaces     []styleguideSwatch
+}
+
+func (s *Server) handleStyleguide(w http.ResponseWriter, r *http.Request) {
+	cfg := s.config()
+	version, goVersion := editorVersion(cfg)
+	view := styleguideView{
+		Version:    version,
+		GoVersion:  goVersion,
+		Nav:        navFor("Styleguide"),
+		Breadcrumb: crumbPath(crumb{Label: "System"}, crumb{Label: "Styleguide"}),
+		Spaces: []styleguideSwatch{
+			{Token: "--pb-space-1", Chip: template.CSS("width: var(--pb-space-1)")},
+			{Token: "--pb-space-2", Chip: template.CSS("width: var(--pb-space-2)")},
+			{Token: "--pb-space-3", Chip: template.CSS("width: var(--pb-space-3)")},
+			{Token: "--pb-space-4", Chip: template.CSS("width: var(--pb-space-4)")},
+			{Token: "--pb-space-5", Chip: template.CSS("width: var(--pb-space-5)")},
+		},
+	}
+	for _, colour := range []struct{ token, use string }{
+		{"--pb-bg", "the page"},
+		{"--pb-surface", "a card or a field"},
+		{"--pb-surface-sunken", "recessed areas"},
+		{"--pb-surface-hover", "a hovered row"},
+		{"--pb-ink", "text"},
+		{"--pb-ink-muted", "labels and hints"},
+		{"--pb-ink-faint", "disabled and empty"},
+		{"--pb-hairline", "a border"},
+		{"--pb-hairline-strong", "an emphasised border"},
+		{"--pb-accent", "a link and the focus ring"},
+		{"--pb-accent-hover", "a pressed button"},
+		{"--pb-accent-bg", "the active entry"},
+		{"--pb-ok", "a device is fine"},
+		{"--pb-warn", "a device is late"},
+		{"--pb-error", "a device or a file failed"},
+		{"--pb-lcd-panel", "the text preview"},
+		{"--pb-lcd-pixel", "the pixel of the text preview"},
+	} {
+		view.Colors = append(view.Colors, styleguideSwatch{
+			Token: colour.token,
+			Use:   colour.use,
+			Chip:  template.CSS("background: var(" + colour.token + ")"),
+		})
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := styleguideTmpl.Execute(w, view); err != nil {
+		slog.Error("styleguide rendering failed", "error", err)
+	}
+}
+
+// uiCommandJS is the command palette behind Cmd+K (ADR 0150). It reads the list
+// APIs in the browser, so the server needs no search route.
+//
+//go:embed ui/command.js
+var uiCommandJS []byte
+
+func (s *Server) handleUICommandJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(uiCommandJS)
 }
 
 // uiDialogJS is the one dialog of the UI, shared by the editors (ADR 0150).

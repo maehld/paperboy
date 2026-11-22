@@ -45,6 +45,7 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 		{"/ui/plugins", "Plugins"},
 		{"/ui/system/downloads", "Downloads"},
 		{"/ui/system/stats", "Stats"},
+		{"/ui/system/styleguide", "Styleguide"},
 	} {
 		rec := htmlRequest(t, s, page.path)
 		if rec.Code != http.StatusOK {

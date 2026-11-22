@@ -46,6 +46,7 @@ const pages = [
   { name: "virtual-display", path: "/ui/virtual?plan=tour&display=sticky" },
   { name: "downloads", path: "/ui/system/downloads" },
   { name: "stats", path: "/ui/system/stats" },
+  { name: "styleguide", path: "/ui/system/styleguide" },
 ];
 
 // Two viewports: a laptop screen and a phone. The phone picture shows whether a

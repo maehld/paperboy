@@ -8,12 +8,14 @@ The operator UI runs on the same listener as the device API. It shows what the i
 
 One layout renders the head, the top bar, the rail, the breadcrumb and the theme toggle for every page ([ADR 0150](../adr/0150-a-design-system-and-a-rail-for-the-operator-ui.md)). A page parses the layout with its own template and keeps its title and its styles.
 
-- The rail names the sections: Devices, Pages, Plans, Plugins and System. System holds Downloads and Stats. Below 64rem the rail wraps into a strip under the brand.
+- The rail names the sections: Devices, Pages, Plans, Plugins and System. System holds Downloads, Stats and the Styleguide. Below 64rem the rail wraps into a strip under the brand.
 - The breadcrumb replaces the back link of the editors. Every step but the current one is a link.
 - The top bar carries the logo lockup, the build label and the theme toggle.
 - The theme follows `prefers-color-scheme`. The toggle stores `light` or `dark` in the browser, and the page applies it before the first paint.
 - A device is the first entry, so `/ui` is the dashboard and the device section. Display types share a sub-navigation with the device list.
 - Every prompt and confirmation is one native `<dialog>` from `ui/dialog.js`. A rename asks for the name with its pattern, and a delete names the references and marks its button as danger.
+- `⌘K` or `Ctrl+K` opens the command palette. It searches the sections, the pages, the plans, the devices, the display types and the widgets. It reads the list APIs in the browser, so the server has no search route. The top bar carries a Search button that opens the same palette.
+- `GET /ui/system/styleguide` renders every token and every component, so a change to the look has one page to check. It links the same stylesheets as the other pages, so it shows the theme in use.
 
 The routes name their object. `/ui/pages/{name}`, `/ui/plans/{name}`, `/ui/devices/{id}`, `/ui/devices/{id}/plan` and `/ui/display-types/{name}` open one object. The lists sit at `/ui/pages`, `/ui/plans`, `/ui/devices` and `/ui/display-types`. Downloads and Stats answer at `/ui/system/downloads` and `/ui/system/stats`. The routes of ADR 0068 and ADR 0076 are gone.
 
