@@ -158,19 +158,17 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) error {
 	}
 	grid.rect = rectAt(float64(b.Min.X), cy-cardH/2, sideW, cardH)
 
-	// Home and chargers form one group, centred vertically. The chargers are
-	// text lines, so they need far less height than cards.
+	// The chargers are text lines, so they need far less height than cards. A
+	// group that does not fit shrinks its rows before the home card moves.
 	rowH := math.Min(cardH*0.40, 30)
 	groupH := cardH + float64(nlp)*rowH + float64(nlp)*gap
 	if groupH > H && nlp > 0 {
 		rowH = math.Max((H-cardH-float64(nlp)*gap)/float64(nlp), 10)
-		groupH = cardH + float64(nlp)*rowH + float64(nlp)*gap
 	}
-	gy := cy - groupH/2
-	home.rect = rectAt(float64(b.Max.X)-sideW, gy, sideW, cardH)
+	homeTop, rowY := flowPlacement(b, cy, cardH, rowH, gap, nlp)
+	home.rect = rectAt(float64(b.Max.X)-sideW, homeTop, sideW, cardH)
 	for i, n := range lpn {
-		y := gy + cardH + gap + float64(i)*(rowH+gap)
-		n.rect = rectAt(float64(b.Max.X)-sideW, y, sideW, rowH)
+		n.rect = rectAt(float64(b.Max.X)-sideW, rowY[i], sideW, rowH)
 	}
 
 	stroke := math.Max(e.req.PtPx(1.2), 1)
@@ -234,6 +232,25 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) error {
 		e.flowTextRow(img, n, home.rect.Min.X+int(sideW*0.10), home.rect.Max.X, base)
 	}
 	return nil
+}
+
+// flowPlacement keeps the home card at the vertical centre. The loadpoint rows
+// sit below it, and the whole group moves up only when the last row would
+// cross the bottom padding.
+func flowPlacement(b image.Rectangle, cy, cardH, rowH, gap float64, n int) (float64, []float64) {
+	top := cy - cardH/2
+	groupH := cardH + float64(n)*(rowH+gap)
+	switch {
+	case groupH > float64(b.Dy()):
+		top = float64(b.Min.Y)
+	case top+groupH > float64(b.Max.Y):
+		top -= top + groupH - float64(b.Max.Y)
+	}
+	rows := make([]float64, n)
+	for i := range rows {
+		rows[i] = top + cardH + gap + float64(i)*(rowH+gap)
+	}
+	return top, rows
 }
 
 // flowArrow draws the link of one node. Every path runs from the node to the
@@ -346,7 +363,11 @@ func (e *evcc) flowPeriod(period string) (*flowModel, error) {
 		if i >= 3 {
 			break
 		}
-		lps = append(lps, &s.Loadpoints[i])
+		lp := &s.Loadpoints[i]
+		if sum(loadpointKey(lp.Title), "energy") < flowIdleEnergy {
+			continue
+		}
+		lps = append(lps, lp)
 	}
 	m := &flowModel{battery: -1, lps: len(lps), energy: true}
 	gridLabel := e.t("Netz", "Grid")
