@@ -60,7 +60,7 @@ func TestWidgetsPage(t *testing.T) {
 	s.config().Profiles["lcd"] = Profile{Kind: kindText, Charset: "ascii", Width: 20, Height: 4}
 	s.config().Timezone = time.UTC
 
-	body := preview(t, s, "/ui/plugins").Body.String()
+	body := preview(t, s, "/ui/playground").Body.String()
 	for _, want := range []string{
 		`"widgets_page":true`, `"display":"small"`, `"kind":"image"`, `id="palette"`, `id="inspector"`, `id="snippet"`,
 		`id="preview-img"`, "Copy cell",
@@ -79,7 +79,7 @@ func TestWidgetsPage(t *testing.T) {
 	// The link carries the widget, its size and its args, and the display type
 	// switch keeps them too, so a click opens the same cell on another type
 	// (issue #171). Text display types are not offered (ADR 0124).
-	body = preview(t, s, "/ui/plugins?display=small&widget=paperboy/clock&span=3x2&arg.format=date&arg.date=dd").Body.String()
+	body = preview(t, s, "/ui/playground?display=small&widget=paperboy/clock&span=3x2&arg.format=date&arg.date=dd").Body.String()
 	for _, want := range []string{`"widget":"paperboy/clock"`, `"span":[3,2]`, `"format":"date"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("widgets page link misses %q: %s", want, body)
@@ -90,7 +90,7 @@ func TestWidgetsPage(t *testing.T) {
 	switchBox = strings.ReplaceAll(switchBox, "&amp;", "&")
 	for _, want := range []string{
 		`data-display="small"`,
-		`href="/ui/plugins?arg.date=dd&arg.format=date&display=small&span=3x2&widget=paperboy%2Fclock"`,
+		`href="/ui/playground?arg.date=dd&arg.format=date&display=small&span=3x2&widget=paperboy%2Fclock"`,
 	} {
 		if !strings.Contains(switchBox, want) {
 			t.Fatalf("display type switch misses %q: %s", want, switchBox)
@@ -105,7 +105,7 @@ func TestWidgetsPage(t *testing.T) {
 	// A link with a text display type falls back to an image type and names the
 	// page editor, because a text page is a character grid of boxes and no cell
 	// the Playground makes is valid in it (ADR 0111, 0124).
-	body = preview(t, s, "/ui/plugins?display=lcd&widget=paperboy/text&span=20x4").Body.String()
+	body = preview(t, s, "/ui/playground?display=lcd&widget=paperboy/text&span=20x4").Body.String()
 	for _, want := range []string{`"display":"small"`, `"kind":"image"`, `"grid":[6,8]`,
 		`id="playground-notice"`, `href="/ui/pages"`, "Text displays are edited under"} {
 		if !strings.Contains(body, want) {
@@ -119,10 +119,10 @@ func TestWidgetsPage(t *testing.T) {
 	}
 
 	// A link to the removed gallery still opens the widgets page.
-	if body := preview(t, s, "/ui/plugins?tab=gallery").Body.String(); !strings.Contains(body, `"widgets_page":true`) {
+	if body := preview(t, s, "/ui/playground?tab=gallery").Body.String(); !strings.Contains(body, `"widgets_page":true`) {
 		t.Fatalf("an old gallery link does not land on the widgets page: %s", body)
 	}
-	if !strings.Contains(preview(t, s, "/ui").Body.String(), `href="/ui/plugins"`) {
+	if !strings.Contains(preview(t, s, "/ui").Body.String(), `href="/ui/playground"`) {
 		t.Fatal("dashboard does not link the widgets page")
 	}
 }
@@ -137,7 +137,7 @@ func TestWidgetsPageTextOnly(t *testing.T) {
 	s.config().Profiles["lcd"] = Profile{Kind: kindText, Charset: "ascii", Width: 20, Height: 4}
 	s.config().Timezone = time.UTC
 
-	for _, path := range []string{"/ui/plugins", "/ui/plugins?display=lcd", "/ui/plugins?display=small"} {
+	for _, path := range []string{"/ui/playground", "/ui/playground?display=lcd", "/ui/playground?display=small"} {
 		rec := preview(t, s, path)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
@@ -161,7 +161,7 @@ func TestWidgetsPageTextOnly(t *testing.T) {
 
 	// No display type at all is a configuration error, not a text-only instance.
 	delete(s.config().Profiles, "lcd")
-	if rec := preview(t, s, "/ui/plugins"); rec.Code != http.StatusBadRequest ||
+	if rec := preview(t, s, "/ui/playground"); rec.Code != http.StatusBadRequest ||
 		!strings.Contains(rec.Body.String(), "no display type is configured") {
 		t.Fatalf("no display type: %d %s", rec.Code, rec.Body)
 	}

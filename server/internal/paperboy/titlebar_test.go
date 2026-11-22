@@ -42,7 +42,7 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 		{"/ui/pages/eins?display=small", "Pages"},
 		{"/ui/plans", "Plans"},
 		{"/ui/plans/zimmer", "Plans"},
-		{"/ui/plugins", "Plugins"},
+		{"/ui/playground", "Playground"},
 		{"/ui/system/downloads", "Downloads"},
 		{"/ui/system/stats", "Stats"},
 		{"/ui/system/styleguide", "Styleguide"},
@@ -79,7 +79,7 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 	for _, want := range []string{
 		`<span class="rail-head">Configuration</span>`,
 		`<span class="rail-head">System</span>`,
-		`href="/ui/devices"`, `href="/ui/display-types"`, `href="/ui/plugins"`,
+		`href="/ui/devices"`, `href="/ui/display-types"`, `href="/ui/playground"`,
 	} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the rail misses %q: %s", want, rail)
@@ -108,7 +108,7 @@ func TestOperatorPagesLinkTheSharedStylesheet(t *testing.T) {
 	const tokens = `<link rel="stylesheet" href="/ui/tokens.css">`
 	const shared = `<link rel="stylesheet" href="/ui/ui.css">`
 	for _, path := range []string{
-		"/ui", "/ui/system/downloads", "/ui/plugins", "/ui/plugins",
+		"/ui", "/ui/system/downloads", "/ui/playground", "/ui/playground",
 		"/ui/pages", "/ui/pages/eins?display=small", "/ui/plans/zimmer",
 		"/ui/devices/test", "/ui/display-types/small", "/ui/devices/test/plan",
 		"/ui/system/stats",
@@ -141,7 +141,7 @@ func TestOperatorPagesCarryTheLogo(t *testing.T) {
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
 	pages := []string{
-		"/ui", "/ui/system/downloads", "/ui/plugins",
+		"/ui", "/ui/system/downloads", "/ui/playground",
 		"/ui/pages", "/ui/pages/eins?display=small", "/ui/plans/zimmer",
 		"/ui/devices/test", "/ui/display-types/small", "/ui/devices/test/plan",
 		"/ui/system/stats",
@@ -209,7 +209,7 @@ func TestEditorBarsShareThePattern(t *testing.T) {
 
 	// The widgets page has no object and no action of its own, so it has no
 	// bar: its status sits next to the display type switch (ADR 0076).
-	body := htmlRequest(t, s, "/ui/plugins").Body.String()
+	body := htmlRequest(t, s, "/ui/playground").Body.String()
 	for _, unwanted := range []string{`class="bar"`, `id="reload"`, `id="save"`, `id="delete"`} {
 		if strings.Contains(body, unwanted) {
 			t.Fatalf("the widgets page grew an action bar (%s)", unwanted)

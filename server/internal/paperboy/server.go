@@ -203,7 +203,7 @@ func (s *Server) uiRoutes() []route {
 		{"GET /ui/system/downloads", s.handleDownloads},
 		{"GET /ui/system/stats", s.handleStats},
 		{"GET /ui/system/styleguide", s.handleStyleguide},
-		{"GET /ui/plugins", s.handleWidgetsPage},
+		{"GET /ui/playground", s.handleWidgetsPage},
 		{"GET /ui/virtual", s.handleVirtual},
 		{"GET /ui/virtual.js", s.handleVirtualJS},
 		// The virtual display has no device key, so it loads its picture

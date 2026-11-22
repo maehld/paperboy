@@ -39,6 +39,7 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **operator UI** | The web pages for the operator, behind `ui.password` | admin UI, frontend |
 | **overview** | `GET /ui`: the device cards and the cards that lead to the lists | dashboard (only for `GET /ui`), start page, home |
 | **plugin host** | The part of Paperboy that starts plugins and caches their widgets and values | widget host, plugin manager |
+| **playground** | `GET /ui/playground`: the page editor without a page, so one widget can be tried on a display type | gallery, widget preview |
 | **release train** | One of the server, plugin or firmware line: `server-v<version>`, `plugins-<date>`, `firmware-<date>` | release channel |
 | **channel** | `stable` or `latest`: which releases an instance installs | train |
 | **bundle** | `paperboy-firmware.zip`, the archive with the image of every hardware type | package |

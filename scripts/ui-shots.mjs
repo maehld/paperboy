@@ -32,7 +32,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Every page of the operator UI, with the example content it needs.
 const pages = [
   { name: "overview", path: "/ui" },
-  { name: "playground", path: "/ui/plugins" },
+  { name: "playground", path: "/ui/playground" },
   { name: "configuration-pages", path: "/ui/pages" },
   { name: "configuration-plans", path: "/ui/plans" },
   { name: "configuration-devices", path: "/ui/devices" },

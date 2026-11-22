@@ -2082,10 +2082,10 @@
       for (const a of links.querySelectorAll('a[data-display]')) {
         const own = new URLSearchParams(params);
         own.set('display', a.dataset.display);
-        a.href = '/ui/plugins?' + own.toString();
+        a.href = '/ui/playground?' + own.toString();
       }
     }
-    history.replaceState(null, '', '/ui/plugins?' + params.toString());
+    history.replaceState(null, '', '/ui/playground?' + params.toString());
   }
 
   // widgetParams is the query of a widgets page link: the display type, the

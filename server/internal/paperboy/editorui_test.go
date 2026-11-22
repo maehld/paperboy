@@ -799,7 +799,7 @@ func TestEditorGridFromDisplayType(t *testing.T) {
 
 	// A Playground link from a page carries the page's grid, so the state and
 	// the preview use the cell the widget really gets.
-	body = request(t, s, http.MethodGet, "/ui/plugins?display=wide&widget=paperboy/clock&span=5x3&grid=10x6", nil, nil).Body.String()
+	body = request(t, s, http.MethodGet, "/ui/playground?display=wide&widget=paperboy/clock&span=5x3&grid=10x6", nil, nil).Body.String()
 	for _, want := range []string{`"display":"wide"`, `"span":[5,3]`, `"grid":[10,6]`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the widgets page lacks %q:\n%s", want, body)
@@ -930,7 +930,7 @@ func TestTextPreviewFont(t *testing.T) {
 // TestEditorNavigation links the editor from the other views.
 func TestEditorNavigation(t *testing.T) {
 	s, _ := testServer(t)
-	for _, path := range []string{"/ui", "/ui/plugins?", "/ui/devices/test/plan"} {
+	for _, path := range []string{"/ui", "/ui/playground?", "/ui/devices/test/plan"} {
 		rec := request(t, s, http.MethodGet, path, nil, nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)

@@ -192,7 +192,7 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
 
   // The Playground shows the widget a click names and keeps it in the link.
   {
-    const { editorDom, window, failures } = await open("http://localhost/ui/plugins?display=e1001", playground, { ...start, widgets_page: true });
+    const { editorDom, window, failures } = await open("http://localhost/ui/playground?display=e1001", playground, { ...start, widgets_page: true });
     check(window.document.querySelectorAll("#palette button.widget").length === 2, "the Playground palette does not list the widgets");
     check(!window.document.querySelector("#palette button.widget.nofit"), "the Playground marks a widget as a misfit");
     entry(window, "chart").click();

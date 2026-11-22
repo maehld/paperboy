@@ -18,14 +18,15 @@ We make `/ui` the overview and group the rail.
 - The first entry is *Overview*, the dashboard under a new name. It heads the device cards with *Devices*. Below them, *Everything else* holds one card per list that carries the instance: Pages, Plans and Display types, each with its count and a link.
 - A device card names the device as a link to its device file.
 - The sub-navigation of the device section goes away. The rail names the objects, so no list hides behind another.
-- The rail groups its entries: Overview, Pages and Plans stand without a head, *Configuration* holds Devices, Display types and Plugins, and *System* keeps Downloads, Stats and the Styleguide.
+- The rail groups its entries: Overview, Pages and Plans stand without a head, *Configuration* holds Devices, Display types and Plugins, and *System* holds Playground, Downloads, Stats and the Styleguide.
+- The Playground loses its name *Plugins*. It is no list of plugins, and the page already calls itself Playground. Its route becomes `GET /ui/playground`; the old route goes away without a redirect.
 - The overview has no breadcrumb. It is the root of every path.
 
 ## Consequences
 
 Every list is one click away from every page, and the rail says which entries are content and which are tools. The overview answers what the instance holds without opening four lists.
 
-The counts read the directories on every dashboard request, which the polling repeats every 30 seconds. A list that does not read stays out of the overview instead of showing a wrong count.
+The counts come from where the data already lives. Pages and plans are files that no configuration snapshot holds, so a directory listing counts them without reading them; a parse per poll would cost the whole pages and plans directory every 30 seconds. Display types and devices come from the configuration. A list that does not read stays out of the overview instead of showing a wrong count.
 
 The name *Dashboard* leaves the operator pages and the documents. Code identifiers keep the name `dashboard` where the overview renders devices; renaming them would not help the operator.
 

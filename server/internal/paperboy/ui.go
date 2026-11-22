@@ -136,8 +136,8 @@ func navFor(section string) []navItem {
 		{Label: "Configuration", Head: true},
 		{Label: "Devices", URL: "/ui/devices"},
 		{Label: "Display types", URL: "/ui/display-types"},
-		{Label: "Plugins", URL: "/ui/plugins"},
 		{Label: "System", Head: true},
+		{Label: "Playground", URL: "/ui/playground"},
 		{Label: "Downloads", URL: "/ui/system/downloads"},
 		{Label: "Stats", URL: "/ui/system/stats"},
 		{Label: "Styleguide", URL: "/ui/system/styleguide"},
@@ -478,21 +478,19 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 // contentCards counts the lists below the device cards, so the overview names
-// what the instance holds without opening every list (ADR 0153). A list that
-// does not read stays out instead of showing a wrong count.
+// what the instance holds without opening every list (ADR 0153). Pages and
+// plans count from a directory listing, because the configuration holds only
+// their paths; the display types count from the configuration, which loads
+// them. A list that does not read stays out instead of showing a wrong count.
 func contentCards(cfg *Config) []dashboardLink {
 	cards := []dashboardLink{}
-	if files, err := pageFiles(cfg.Pages); err == nil {
-		seen := map[string]bool{}
-		for _, f := range files {
-			seen[f.Name] = true
-		}
-		cards = append(cards, dashboardLink{Label: "Pages", URL: "/ui/pages", Count: len(seen)})
+	if n, err := pageCount(cfg.Pages); err == nil {
+		cards = append(cards, dashboardLink{Label: "Pages", URL: "/ui/pages", Count: n})
 	} else {
 		slog.Warn("page count for the overview failed", "error", err)
 	}
-	if plans, err := planFiles(cfg.Plans, cfg.Timezone); err == nil {
-		cards = append(cards, dashboardLink{Label: "Plans", URL: "/ui/plans", Count: len(plans)})
+	if n, err := planCount(cfg.Plans); err == nil {
+		cards = append(cards, dashboardLink{Label: "Plans", URL: "/ui/plans", Count: n})
 	} else {
 		slog.Warn("plan count for the overview failed", "error", err)
 	}
