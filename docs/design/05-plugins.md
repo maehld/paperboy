@@ -97,7 +97,7 @@ The readings of Dexcom in `state/` are acceptable: the operator owns the directo
 
 Every plugin has its own version in `plugins/cmd/<plugin>/VERSION`, embedded in the program ([ADR 0075](../adr/0075-plugin-versions.md)). The plugin zip names the programs `<plugin>-v<version>`. A change to a plugin raises the version in the same commit. The *Plugins* workflow fails a pull request that changes `plugins/cmd/<plugin>` without raising it.
 
-`sdk/plugin` and `sdk/render` are part of every plugin binary, so a change there raises the version of every plugin ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)). `sdk/design` is optional: only a plugin that imports it raises its own version. Other shared code under `sdk/`, `plugins/go.mod` and `plugins/go.sum` only warn.
+`sdk/plugin` and `sdk/render` are part of every plugin binary, so a change there raises the version of every plugin ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)). `sdk/design` and `sdk/format` are optional: only a plugin that imports them raises its own version. Other shared code under `sdk/`, `plugins/go.mod` and `plugins/go.sum` only warn.
 
 `describe` reports the plugin's own version. When it differs from the version in the program's file name, Paperboy logs one warning per plugin.
 
