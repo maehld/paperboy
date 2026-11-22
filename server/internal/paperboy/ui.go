@@ -298,6 +298,18 @@ func (s *Server) handleStyleguide(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// uiZoomJS opens the dashboard preview in a modal (issue #398). The dialog
+// lives outside the polled region, so a tick does not close it.
+//
+//go:embed ui/zoom.js
+var uiZoomJS []byte
+
+func (s *Server) handleUIZoomJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(uiZoomJS)
+}
+
 // uiCommandJS is the command palette behind Cmd+K (ADR 0152). It reads the list
 // APIs in the browser, so the server needs no search route.
 //

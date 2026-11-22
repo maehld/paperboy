@@ -64,6 +64,8 @@ A device without a file appears as unclaimed hardware with *Claim* and *Forget* 
 
 Rendered pages live in memory only. After a restart the card falls back to the page preview, with its own device, or a placeholder ([ADR 0123](../adr/0123-a-sample-device-in-previews.md)).
 
+A click on the preview opens it in a modal at the largest size the viewport holds, with `image-rendering: pixelated`. The modal names the device, the page and the age of the served page, and links the page editor. The image keeps the `src` of the card, so the browser serves it from its cache. A text display's LCD pane opens the same way, larger in the same monospace pane. The dialog sits outside `#live`, so the 30-second poll does not close it. A placeholder or a card without a page image opens nothing (issue #398).
+
 ## Self-updating pages
 
 The overview, the stats page and the two release trains poll themselves ([ADR 0106](../adr/0106-self-updating-pages-with-htmx.md)). Each page wraps its changing part in a region `id="live"` and asks for itself again. htmx morphs the answer into the existing DOM, so a node with the same id keeps its focus, its selection and its place.

@@ -227,3 +227,58 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
     console.log("editor.js picked, pinned and placed a palette widget");
   }
 }
+
+// zoom.js opens the dashboard preview in the dialog outside the polled region
+// (issue #398). jsdom has no modal dialog, so the check shims showModal/close.
+{
+  const script = await readFile(join(root, "server/internal/paperboy/ui/zoom.js"), "utf8");
+  const html = `<!doctype html><html><body>
+<button type="button" data-zoom data-kind="image" data-device="flur" data-page="uebersicht" data-page-url="/ui/pages/uebersicht" data-served="2 min ago"><img src="/image.png"></button>
+<button type="button" data-zoom data-kind="text" data-device="lcd" data-page="hinweise"><pre>eins
+zwei</pre></button>
+<dialog id="zoom"><button data-close></button><figure><img><pre hidden></pre><figcaption><p><strong class="zoom-device"></strong> · <a class="zoom-page"></a></p><p class="zoom-served" hidden></p></figcaption></figure></dialog>
+</body></html>`;
+  const dom = new JSDOM(html, { url: "http://localhost/ui", runScripts: "outside-only" });
+  const { window } = dom;
+  const failures = [];
+  window.addEventListener("error", (event) => failures.push(event.error || event.message));
+  window.HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  window.HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
+  window.eval(script);
+
+  const problems = [];
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+  const buttons = window.document.querySelectorAll("button[data-zoom]");
+  const dialog = window.document.getElementById("zoom");
+
+  buttons[0].click();
+  check(dialog.open, "the image preview did not open the dialog");
+  check(dialog.querySelector("img").src.endsWith("/image.png"), "the dialog lost the preview source");
+  check(!dialog.querySelector("img").hidden && dialog.querySelector("pre").hidden, "the dialog shows the wrong pane");
+  check(dialog.querySelector(".zoom-device").textContent === "flur", "the dialog lost the device");
+  check(dialog.querySelector(".zoom-page").getAttribute("href") === "/ui/pages/uebersicht", "the dialog lost the page link");
+  check(dialog.querySelector(".zoom-served").textContent === "Served 2 min ago", "the dialog lost the served time");
+
+  dialog.querySelector("[data-close]").click();
+  check(!dialog.open, "the close button did not close the dialog");
+
+  buttons[1].click();
+  check(dialog.querySelector("pre").textContent === "eins\nzwei", "the dialog lost the text");
+  check(dialog.querySelector("img").hidden && !dialog.querySelector("pre").hidden, "the text pane is hidden");
+  check(!dialog.querySelector(".zoom-page").hasAttribute("href"), "a page without a URL kept a link");
+
+  for (const failure of failures) problems.push(failure);
+  if (problems.length) {
+    for (const problem of problems) console.error(problem);
+    process.exitCode = 1;
+  } else {
+    console.log("zoom.js opened the image and the text preview");
+  }
+  dom.window.close();
+}
