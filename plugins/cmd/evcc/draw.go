@@ -5,11 +5,10 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/maehld/paperboy/sdk/design"
+	"github.com/maehld/paperboy/sdk/format"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -43,11 +42,7 @@ func (e *evcc) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Pa
 func (e *evcc) t(de, en string) string { return e.req.T(de, en) }
 
 func (e *evcc) num(v float64, decimals int) string {
-	s := strconv.FormatFloat(v, 'f', decimals, 64)
-	if e.lang == "de" {
-		s = strings.Replace(s, ".", ",", 1)
-	}
-	return s
+	return format.Number(v, decimals, e.lang)
 }
 
 // power formats watts as W below 1 kW and kW with one decimal above.

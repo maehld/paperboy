@@ -4,10 +4,9 @@ package main
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/format"
 	"github.com/maehld/paperboy/sdk/plugin"
 )
 
@@ -170,16 +169,8 @@ func level(v float64, l limits) string {
 	return ""
 }
 
-func (d *dexcom) num(req *plugin.Request, v float64, decimals int) string {
-	s := strconv.FormatFloat(v, 'f', decimals, 64)
-	if req.Lang() == "de" {
-		s = strings.Replace(s, ".", ",", 1)
-	}
-	return s
-}
-
 func (d *dexcom) value(req *plugin.Request, l limits, v float64) string {
-	return d.num(req, v, l.decimals)
+	return format.Number(v, l.decimals, req.Lang())
 }
 
 // trendArrow is the ASCII arrow of a trend, for text displays.

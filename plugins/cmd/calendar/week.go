@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -156,7 +157,7 @@ func (p *calendarPlugin) week(req *plugin.Request, w plugin.WidgetRequest, img *
 	if area.Dx() < n*24 || area.Dy() < 60 {
 		return plugin.TooSmall(w)
 	}
-	size := max(req.TextPx(w)*0.6, req.PtPx(6.3), render.MinSize)
+	size := max(design.NewScale(req.TextPx(w), area.Dy()).Tiny, req.PtPx(6.3), render.MinSize)
 	lineH := int(size*1.25 + 0.5)
 	colW := area.Dx() / n
 	x0 := area.Min.X + (area.Dx()-colW*n)/2

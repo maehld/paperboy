@@ -11,6 +11,7 @@ import (
 
 	xdraw "golang.org/x/image/draw"
 
+	"github.com/maehld/paperboy/sdk/format"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -44,14 +45,6 @@ func (p *pokedex) Render(req *plugin.Request, w plugin.WidgetRequest, img *image
 	return drawCard(m, req, req.Lang(), w, img)
 }
 
-func num(v float64, decimals int, lang string) string {
-	s := strconv.FormatFloat(v, 'f', decimals, 64)
-	if lang == "de" {
-		s = strings.Replace(s, ".", ",", 1)
-	}
-	return s
-}
-
 // statLabels are the short names of the six base stats.
 func statLabels(lang string) [6]string {
 	if lang == "de" {
@@ -69,7 +62,7 @@ func (m *mon) typesText(lang string, sep string) string {
 }
 
 func (m *mon) sizeText(lang string) string {
-	return num(float64(m.height)/10, 1, lang) + " m · " + num(float64(m.weight)/10, 1, lang) + " kg"
+	return format.Number(float64(m.height)/10, 1, lang) + " m · " + format.Number(float64(m.weight)/10, 1, lang) + " kg"
 }
 
 func (m *mon) number() string { return fmt.Sprintf("#%04d", m.id) }

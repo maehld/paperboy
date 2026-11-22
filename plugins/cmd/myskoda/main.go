@@ -49,6 +49,7 @@ import (
 	"time"
 
 	"github.com/maehld/paperboy/plugins/internal/imagelimit"
+	"github.com/maehld/paperboy/sdk/format"
 	"github.com/maehld/paperboy/sdk/plugin"
 )
 
@@ -859,11 +860,7 @@ func (m *myskoda) MaxAge(*plugin.Request) time.Duration {
 func (m *myskoda) t(de, en string) string { return m.req.T(de, en) }
 
 func (m *myskoda) num(v float64, decimals int) string {
-	s := strconv.FormatFloat(v, 'f', decimals, 64)
-	if m.lang == "de" {
-		s = strings.Replace(s, ".", ",", 1)
-	}
-	return s
+	return format.Number(v, decimals, m.lang)
 }
 
 func (m *myskoda) soc() (int, bool) {
