@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"image"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -377,6 +378,51 @@ func TestRenderWidgets(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// The legend of the hours widget names the fill patterns; `legend: false`
+// drops it on a cell that needs the room.
+func TestHoursLegendCanBeSwitchedOff(t *testing.T) {
+	base := serve(t, testPayload(t), http.StatusOK)
+	f, err := fetch(context.Background(), http.DefaultClient, base, 52.52, 13.4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := branchOf(f, "de")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := &plugin.Request{Language: "de", Timezone: "Europe/Berlin",
+		Now:  time.Date(2026, 10, 22, 9, 0, 0, 0, time.UTC),
+		Page: plugin.PageInfo{Width: 800, Height: 120, PPI: 236}}
+	p := &weather{cur: &b, req: req, loc: req.Location(), lang: "de"}
+	draw := func(args map[string]any) *image.Paletted {
+		img := render.NewCanvas(800, 120, 4)
+		wr := plugin.WidgetRequest{Widget: "hours", Width: 800, Height: 120,
+			Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 52}, Args: args}
+		if err := p.Render(req, wr, img); err != nil {
+			t.Fatal(err)
+		}
+		return img
+	}
+	count := func(img *image.Paletted, r image.Rectangle) int {
+		n := 0
+		for y := r.Min.Y; y < r.Max.Y; y++ {
+			for x := r.Min.X; x < r.Max.X; x++ {
+				if int(img.ColorIndexAt(x, y)) != len(img.Palette)-1 {
+					n++
+				}
+			}
+		}
+		return n
+	}
+	area := image.Rect(400, 0, 800, 29)
+	if count(draw(nil), area) == 0 {
+		t.Fatal("the legend drew no ink")
+	}
+	if n := count(draw(map[string]any{"legend": false}), area); n != 0 {
+		t.Fatalf("legend: false left %d pixels in the title row", n)
 	}
 }
 

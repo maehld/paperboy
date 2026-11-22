@@ -95,6 +95,12 @@ var markArg = plugin.Arg{
 	Description: "mark the lowest and the highest value",
 }
 
+// legendArg hides the fill legend of the hours widget.
+var legendArg = plugin.Arg{
+	Type: "bool", Default: true,
+	Description: "show which fill means rain, snow or both",
+}
+
 func (w *weather) Describe() plugin.Description {
 	image := []string{plugin.KindImage}
 	return plugin.Description{
@@ -128,7 +134,7 @@ func (w *weather) Describe() plugin.Description {
 				Args:  forecastArgs},
 			{Widget: "hours", Title: "Temperature today", Kinds: image, MinWidth: 200, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}},
-				Args:  map[string]plugin.Arg{"mark": markArg}},
+				Args:  map[string]plugin.Arg{"mark": markArg, "legend": legendArg}},
 		},
 	}
 }
@@ -402,6 +408,14 @@ func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) error {
 	for h := 0; h <= 24; h += 6 {
 		ticks = append(ticks, day.Add(time.Duration(h)*time.Hour))
 	}
+	var legend []design.LegendItem
+	if wr.Arg().Bool("legend", true) {
+		legend = []design.LegendItem{
+			{Label: w.t("Regen %", "rain %"), Fill: "shade"},
+			{Label: w.t("Schnee %", "snow %"), Fill: "hatch"},
+			{Label: w.t("beides %", "mixed %"), Fill: "solid"},
+		}
+	}
 	if !design.DrawTrend(img, b, design.Trend{
 		From: day,
 		To:   day.Add(24 * time.Hour),
@@ -416,13 +430,9 @@ func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) error {
 		TickFormat: func(t time.Time) string {
 			return fmt.Sprintf("%02d", t.Hour())
 		},
-		Now:   w.req.Now.In(w.loc),
-		Label: w.t("Temperatur (°C)", "Temperature (°C)"),
-		Legend: []design.LegendItem{
-			{Label: w.t("Regen %", "rain %"), Fill: "shade"},
-			{Label: w.t("Schnee %", "snow %"), Fill: "hatch"},
-			{Label: w.t("beides %", "mixed %"), Fill: "solid"},
-		},
+		Now:    w.req.Now.In(w.loc),
+		Label:  w.t("Temperatur (°C)", "Temperature (°C)"),
+		Legend: legend,
 		Format: w.temp,
 	}, design.NewScale(w.req.TextPx(wr), b.Dy())) {
 		return plugin.TooSmall(wr)

@@ -226,12 +226,47 @@ func TestTrendMarks(t *testing.T) {
 		t.Fatal("a mark outside the plot drew")
 	}
 	// A label that does not fit drops; the dot stays.
-	if _, ok := markLabelRect(image.Rect(0, 0, 14, 60), image.Pt(7, 30), "210", 12); ok {
+	if _, _, ok := markPlacement(nil, image.Rect(0, 0, 14, 60), image.Pt(7, 30), "210", 12, nil); ok {
 		t.Fatal("a label wider than the plot fit")
 	}
 	narrow := render.NewCanvas(14, 60, 2)
 	if !DrawMark(narrow, narrow.Rect, image.Pt(7, 30), "210", 12) || ink(narrow) == 0 {
 		t.Fatal("a narrow mark dropped its dot")
+	}
+}
+
+func TestTrendSizes(t *testing.T) {
+	title, axis := trendSizes(44, 36, 480)
+	if title != 44 || axis != 36 {
+		t.Fatalf("a tall cell changed the scale: title %v axis %v", title, axis)
+	}
+	title, axis = trendSizes(44, 36, 90)
+	if title != 14.4 || axis != 10.08 {
+		t.Fatalf("a short cell: title %v axis %v", title, axis)
+	}
+	if title, axis := trendSizes(1, 1, 10); title < render.MinSize || axis < render.MinSize {
+		t.Fatalf("a tiny cell fell below the minimum: title %v axis %v", title, axis)
+	}
+}
+
+func TestMarkSeeksAFreePlace(t *testing.T) {
+	img := render.NewCanvas(300, 120, 2)
+	render.FillSolid(img, image.Rect(0, 55, 300, 66))
+	plot := img.Rect
+	box, free, ok := markPlacement(newMarkInk(img, plot), plot, image.Pt(150, 60), "12", 12, nil)
+	if !ok || !free {
+		t.Fatalf("a label beside a thick line: box %v free %v ok %v", box, free, ok)
+	}
+	if newMarkInk(img, plot).count(box) != 0 {
+		t.Fatalf("the label at %v covers the series", box)
+	}
+	if box.Min.Y < 66 {
+		t.Fatalf("a point in the lower half put its label above the line: %v", box)
+	}
+	// A point in the upper half prefers the place above it.
+	box, _, ok = markPlacement(newMarkInk(img, plot), image.Rect(0, 0, 300, 200), image.Pt(150, 40), "12", 12, nil)
+	if !ok || box.Max.Y > 40 {
+		t.Fatalf("a point in the upper half put its label below: %v", box)
 	}
 }
 

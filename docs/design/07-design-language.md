@@ -31,7 +31,10 @@ for the two-level panels:
 
 The roles do not follow the cell height. A label therefore has the same size
 in every tile of a page. A plugin that ignores the scale can still use
-`render.Text` directly.
+`render.Text` directly. A chart is another exception: `DrawTrend` caps its
+title row at 0.16 of the cell height and its axis at 0.7 of that title. A
+short cell keeps room for the plot, a tall cell keeps the scale
+([ADR 0160](../adr/0160-a-trend-chart-reads-in-a-short-cell.md)).
 
 `Tiny` is the second line of a dense list, such as an age, an author or a feed
 name ([ADR 0152](../adr/0152-a-tiny-role-for-dense-lists.md)). It is not for a
@@ -82,10 +85,13 @@ zero to one hundred. A line with `Halo` keeps a white edge above the bars.
 `Marks` label single points, such as the lowest and the highest value of a
 series. `Extrema` finds both points and `ExtremaMarks` turns the `mark`
 argument of a widget into marks. A mark is a dot with a white edge and the
-formatted value beside it. The label goes to the side with more room. It drops
-when two labels would overlap or the plot is too narrow, but the dot stays. A
-plugin with its own chart, such as `dexcom`, draws the same dot with
-`DrawMark`.
+formatted value beside it. The label goes to the nearest free place in the
+plot, above a maximum and below a minimum when the series leave such a place.
+A leader line joins the label to the dot, so the line grows when the curve
+needs the room. The label drops when the plot has no room for it at all, but
+the dot stays. Without a free place the label keeps a white box, so the series
+below does not hide it. A plugin with its own chart, such as `dexcom`, draws
+the same dot with `DrawMark`.
 
 ## Which plugins use it
 

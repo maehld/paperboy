@@ -11,6 +11,16 @@ import (
 	"github.com/maehld/paperboy/sdk/render"
 )
 
+const (
+	// trendTitleShare caps the title row of a chart on a short cell. Without
+	// it a Sticky cell keeps the full Detail size and the plot nearly
+	// vanishes.
+	trendTitleShare = 0.16
+	// trendAxisShare caps the axis labels against the capped title, so the
+	// bottom row keeps its share of the cell too.
+	trendAxisShare = 0.7
+)
+
 // SeriesStyle is how a trend series is drawn.
 type SeriesStyle int
 
@@ -125,8 +135,7 @@ func DrawTrend(dst *image.Paletted, r image.Rectangle, t Trend, s Scale) bool {
 	if format == nil {
 		format = defaultFormat
 	}
-	axisSize := s.Micro
-	titleSize := s.Detail
+	titleSize, axisSize := trendSizes(s.Detail, s.Micro, r.Dy())
 	titleH := 0
 	if t.Label != "" || t.Current != "" || len(t.Legend) > 0 {
 		titleH = lineHeight(titleSize)
@@ -251,7 +260,11 @@ func DrawTrend(dst *image.Paletted, r image.Rectangle, t Trend, s Scale) bool {
 		}
 		drawSeries(dst, plot, se, slo, shi, xAt, yAt, t.BarGap)
 	}
-	var labels []image.Rectangle
+	var used []image.Rectangle
+	var ink *markInk
+	if len(t.Marks) > 0 {
+		ink = newMarkInk(dst, plot)
+	}
 	for _, m := range t.Marks {
 		if m.At.IsZero() || m.At.Before(from) || m.At.After(to) {
 			continue
@@ -268,23 +281,26 @@ func DrawTrend(dst *image.Paletted, r image.Rectangle, t Trend, s Scale) bool {
 		if !inPlot {
 			continue
 		}
-		label := m.Label
-		if box, ok := markLabelRect(plot, at, label, axisSize); ok {
-			// Two labels close to each other would overwrite each other. The
-			// dot stays, the second label drops.
-			for _, used := range labels {
-				if box.Overlaps(used) {
-					label = ""
-					break
-				}
-			}
-			if label != "" {
-				labels = append(labels, box)
-			}
+		box, free, ok := markPlacement(ink, plot, at, m.Label, axisSize, used)
+		if ok {
+			used = append(used, box)
 		}
-		DrawMark(dst, plot, at, label, axisSize)
+		// Another label must not cover this dot either.
+		used = append(used, markDotRect(plot, at))
+		drawMark(dst, plot, at, m.Label, axisSize, box, free, ok)
 	}
 	return true
+}
+
+// trendSizes caps the title row and the axis labels by the cell height. A
+// short cell keeps enough room for the plot; a tall one keeps the type scale.
+func trendSizes(title, axis float64, height int) (float64, float64) {
+	capped := min(title, float64(height)*trendTitleShare)
+	capped = max(capped, render.MinSize)
+	if capped < title {
+		axis = min(axis, capped*trendAxisShare)
+	}
+	return capped, max(axis, render.MinSize)
 }
 
 // Extrema returns the lowest and the highest point of a series. A series
@@ -323,8 +339,9 @@ func ExtremaMarks(mode string, points []Point, format func(float64) string) []Ma
 }
 
 // DrawMark draws a dot at at and, when it fits, the label beside it. The label
-// goes to the side with more room and drops when the plot has no room for it;
-// the dot always stays. DrawMark reports whether the dot was inside the plot.
+// goes to the nearest free place in the plot and a leader line joins it to the
+// dot; the white box is a fallback when the series leave no place free. The
+// dot always stays. DrawMark reports whether the dot was inside the plot.
 func DrawMark(dst *image.Paletted, plot image.Rectangle, at image.Point, label string, size float64) bool {
 	if plot.Empty() || at.X < plot.Min.X || at.X > plot.Max.X ||
 		at.Y < plot.Min.Y || at.Y > plot.Max.Y {
@@ -334,51 +351,161 @@ func DrawMark(dst *image.Paletted, plot image.Rectangle, at image.Point, label s
 	if !ok {
 		return false
 	}
-	dot := markDot(plot)
-	// A white edge keeps the dot readable on a line or a bar.
-	render.FillColor(dst, image.Rect(at.X-dot-1, at.Y-dot-1, at.X+dot+2, at.Y+dot+2), render.White)
-	render.FillColor(dst, image.Rect(at.X-dot, at.Y-dot, at.X+dot+1, at.Y+dot+1), render.Black)
-	box, ok := markLabelRect(plot, at, label, size)
-	if !ok {
-		return true
-	}
-	size = max(size, render.MinSize)
-	// The white box keeps the label readable over a bar or a filled area.
-	render.FillColor(dst, box, render.White)
-	render.TextAt(dst, label, box.Min.X+box.Dx()/2, box.Min.Y+int(math.Round(size*0.8)),
-		size, false, render.Black, render.Center)
+	box, free, withLabel := markPlacement(newMarkInk(dst, plot), plot, at, label, size, nil)
+	drawMark(dst, plot, at, label, size, box, free, withLabel)
 	return true
 }
 
-// markLabelRect returns the rectangle of a mark label and whether the plot has
-// room for it. The label goes below a point in the upper half and above a
-// point in the lower half.
-func markLabelRect(plot image.Rectangle, at image.Point, label string, size float64) (image.Rectangle, bool) {
-	if label == "" || plot.Empty() {
-		return image.Rectangle{}, false
+// drawMark draws the leader line, the dot and, when withLabel is set, the
+// label. A label that is not free gets a white box, so the series below does
+// not hide it.
+func drawMark(dst *image.Paletted, plot image.Rectangle, at image.Point, label string,
+	size float64, box image.Rectangle, free, withLabel bool) {
+	if withLabel {
+		end := nearestPoint(box, at)
+		render.Segment(dst, at.X, at.Y, end.X, end.Y, 1, false)
+	}
+	drawDot(dst, plot, at)
+	if !withLabel {
+		return
 	}
 	size = max(size, render.MinSize)
-	w := render.Measure(label, size, false)
+	if !free {
+		render.FillColor(dst, box, render.White)
+	}
+	render.TextAt(dst, label, box.Min.X+box.Dx()/2, box.Min.Y+int(math.Round(size*0.8)),
+		size, false, render.Black, render.Center)
+}
+
+// drawDot draws the dot of a mark with a white edge, so a line or a bar below
+// does not hide it.
+func drawDot(dst *image.Paletted, plot image.Rectangle, at image.Point) {
+	dot := markDot(plot)
+	render.FillColor(dst, image.Rect(at.X-dot-1, at.Y-dot-1, at.X+dot+2, at.Y+dot+2), render.White)
+	render.FillColor(dst, image.Rect(at.X-dot, at.Y-dot, at.X+dot+1, at.Y+dot+1), render.Black)
+}
+
+// markPlacement finds the nearest free rectangle for a label. A rectangle is
+// free when the drawn series leave it white. The search prefers the side away
+// from the curve: above a point in the upper half, below one in the lower half.
+// A free place on the other side beats a place on the series. Without a free
+// place the nearest rectangle comes back with free false.
+func markPlacement(ink *markInk, plot image.Rectangle, at image.Point, label string, size float64,
+	used []image.Rectangle) (image.Rectangle, bool, bool) {
+	if label == "" || plot.Empty() {
+		return image.Rectangle{}, false, false
+	}
+	size = max(size, render.MinSize)
 	pad := max(int(math.Round(size*0.15)), 1)
-	if w+2*pad > plot.Dx() {
-		return image.Rectangle{}, false
+	w := render.Measure(label, size, false) + 2*pad
+	h := int(math.Round(size*0.8)) + 2*pad
+	if w > plot.Dx() || h > plot.Dy() {
+		return image.Rectangle{}, false, false
 	}
-	height := int(math.Round(size*0.8)) + 2*pad
-	gap := max(markDot(plot), int(math.Round(size*0.2)))
-	x := min(max(at.X, plot.Min.X+w/2+pad), plot.Max.X-w/2-pad)
-	above := image.Rect(x-w/2-pad, at.Y-gap-height, x+w/2+pad, at.Y-gap)
-	below := image.Rect(above.Min.X, at.Y+gap, above.Max.X, at.Y+gap+height)
-	first, second := below, above
-	if at.Y > plot.Min.Y+plot.Dy()/2 {
-		first, second = above, below
-	}
-	for _, box := range []image.Rectangle{first, second} {
-		if box.Min.X >= plot.Min.X && box.Max.X <= plot.Max.X &&
-			box.Min.Y >= plot.Min.Y && box.Max.Y <= plot.Max.Y {
-			return box, true
+	stepX := max(int(math.Round(size)), 4)
+	stepY := max(int(math.Round(size*0.5)), 3)
+	dot := markDotRect(plot, at)
+	above := at.Y < plot.Min.Y+plot.Dy()/2
+	penalty := plot.Dx() + plot.Dy()
+	var box image.Rectangle
+	var free, found bool
+	best := math.MaxInt
+	for y := plot.Min.Y; y+h <= plot.Max.Y; y += stepY {
+		for x := plot.Min.X; x+w <= plot.Max.X; x += stepX {
+			b := image.Rect(x, y, x+w, y+h)
+			if b.Overlaps(dot) || overlaps(b, used) {
+				continue
+			}
+			ok := ink == nil || ink.count(b) == 0
+			score := rectDistance(b, at)
+			if (above && b.Max.Y > at.Y) || (!above && b.Min.Y < at.Y) {
+				score += penalty
+			}
+			switch {
+			case !found:
+				free, box, best, found = ok, b, score, true
+			case ok && !free:
+				free, box, best = true, b, score
+			case ok == free && score < best:
+				box, best = b, score
+			}
 		}
 	}
-	return image.Rectangle{}, false
+	return box, free, found
+}
+
+// nearestPoint returns the point of r that is closest to at.
+func nearestPoint(r image.Rectangle, at image.Point) image.Point {
+	return image.Pt(
+		min(max(at.X, r.Min.X), r.Max.X-1),
+		min(max(at.Y, r.Min.Y), r.Max.Y-1))
+}
+
+// rectDistance returns the distance from at to the nearest edge of r.
+func rectDistance(r image.Rectangle, at image.Point) int {
+	dx := max(r.Min.X-at.X, at.X-(r.Max.X-1), 0)
+	dy := max(r.Min.Y-at.Y, at.Y-(r.Max.Y-1), 0)
+	return dx + dy
+}
+
+// overlaps reports whether r overlaps any of the rectangles.
+func overlaps(r image.Rectangle, list []image.Rectangle) bool {
+	for _, o := range list {
+		if r.Overlaps(o) {
+			return true
+		}
+	}
+	return false
+}
+
+// markDotRect is the area of a mark dot with its white edge.
+func markDotRect(plot image.Rectangle, at image.Point) image.Rectangle {
+	dot := markDot(plot)
+	return image.Rect(at.X-dot-1, at.Y-dot-1, at.X+dot+2, at.Y+dot+2)
+}
+
+// markInk counts the pixels of the series in a rectangle, so a label can seek
+// a free place. The zero value counts nothing.
+type markInk struct {
+	rect   image.Rectangle
+	stride int
+	sum    []int
+}
+
+// newMarkInk builds the prefix sum of the non-white pixels in r.
+func newMarkInk(dst *image.Paletted, r image.Rectangle) *markInk {
+	r = r.Intersect(dst.Rect)
+	if r.Empty() {
+		return nil
+	}
+	w, h := r.Dx()+1, r.Dy()+1
+	m := &markInk{rect: r, stride: w, sum: make([]int, w*h)}
+	white := len(dst.Palette) - 1
+	for y := 0; y < h-1; y++ {
+		row, at := 0, dst.PixOffset(r.Min.X, r.Min.Y+y)
+		for x := 0; x < w-1; x++ {
+			if int(dst.Pix[at+x]) != white {
+				row++
+			}
+			m.sum[(y+1)*w+x+1] = m.sum[y*w+x+1] + row
+		}
+	}
+	return m
+}
+
+// count returns the number of non-white pixels inside r.
+func (m *markInk) count(r image.Rectangle) int {
+	if m == nil {
+		return 0
+	}
+	r = r.Intersect(m.rect)
+	if r.Empty() {
+		return 0
+	}
+	x0, y0 := r.Min.X-m.rect.Min.X, r.Min.Y-m.rect.Min.Y
+	x1, y1 := r.Max.X-m.rect.Min.X, r.Max.Y-m.rect.Min.Y
+	return m.sum[y1*m.stride+x1] - m.sum[y0*m.stride+x1] -
+		m.sum[y1*m.stride+x0] + m.sum[y0*m.stride+x0]
 }
 
 // markDot is the radius of a mark dot.
