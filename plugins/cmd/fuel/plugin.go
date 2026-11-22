@@ -34,6 +34,18 @@ var spanArg = plugin.Arg{
 	Description: "window of the chart, 1h to 168h",
 }
 
+// markArg selects the extrema the history chart labels.
+var markArg = plugin.Arg{
+	Type: "string", Default: "none", Enum: []any{"none", "min", "max", "both"},
+	EnumLabels: map[string]string{
+		"none": "None",
+		"min":  "Cheapest",
+		"max":  "Most expensive",
+		"both": "Both",
+	},
+	Description: "mark the cheapest and the most expensive price",
+}
+
 var fuelValueArgs = map[string]plugin.Arg{"fuel": fuelArg}
 
 // valueArgs are the arguments of every declared value. A values request
@@ -64,7 +76,7 @@ func (f *fuel) Describe() plugin.Description {
 				Args:  map[string]plugin.Arg{"fuel": fuelArg}},
 			{Widget: "history", Title: "Price history", Kinds: image, MinWidth: 220, MinHeight: 90,
 				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 3, Rows: 3}},
-				Args:  map[string]plugin.Arg{"fuel": fuelArg, "span": spanArg}},
+				Args:  map[string]plugin.Arg{"fuel": fuelArg, "span": spanArg, "mark": markArg}},
 		},
 	}
 }

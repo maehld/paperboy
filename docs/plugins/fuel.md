@@ -60,8 +60,10 @@ All widgets are for image displays.
 - `cheapest`: one large price with the station, the distance, the open state
   and since when the price holds. Args: `fuel`.
 - `history`: the cheapest price as a stair line. The left axis names the lowest
-  and the highest price, the lower edge the time. Args: `fuel` and `span` (1h to
-  168h, default `24h`). Without stored points the widget says `No history yet`.
+  and the highest price, the lower edge the time. Args: `fuel`, `span` (1h to
+  168h, default `24h`) and `mark` (`none`, `min`, `max`, `both`) to label the
+  cheapest and the most expensive price; default `none`. Without stored points
+  the widget says `No history yet`.
 
 A price of a closed station counts only when no station with that fuel is open.
 The widgets and the history use the same rule, so the chart ends at the price

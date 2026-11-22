@@ -83,6 +83,18 @@ var forecastArgs = map[string]plugin.Arg{
 	"days": {Type: "int", Default: 5, Description: "number of days, 1 to 5"},
 }
 
+// markArg selects the extrema the chart labels.
+var markArg = plugin.Arg{
+	Type: "string", Default: "none", Enum: []any{"none", "min", "max", "both"},
+	EnumLabels: map[string]string{
+		"none": "None",
+		"min":  "Lowest",
+		"max":  "Highest",
+		"both": "Both",
+	},
+	Description: "mark the lowest and the highest value",
+}
+
 func (w *weather) Describe() plugin.Description {
 	image := []string{plugin.KindImage}
 	return plugin.Description{
@@ -115,7 +127,8 @@ func (w *weather) Describe() plugin.Description {
 				Sizes: []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 2}},
 				Args:  forecastArgs},
 			{Widget: "hours", Title: "Temperature today", Kinds: image, MinWidth: 200, MinHeight: 80,
-				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}}},
+				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}},
+				Args:  map[string]plugin.Arg{"mark": markArg}},
 		},
 	}
 }
@@ -399,6 +412,7 @@ func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) error {
 		Range: &design.Range{Min: lo, Max: hi},
 		Axis:  true,
 		Ticks: ticks,
+		Marks: design.ExtremaMarks(wr.Arg().String("mark", "none"), temps, w.temp),
 		TickFormat: func(t time.Time) string {
 			return fmt.Sprintf("%02d", t.Hour())
 		},

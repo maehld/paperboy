@@ -168,7 +168,7 @@ func drawWeatherTrend(img *image.Paletted, r image.Rectangle, s design.Scale) {
 	var rain []design.Point
 	for h := 0; h <= 24; h++ {
 		t := start.Add(time.Duration(h) * time.Hour)
-		v := 6 + 9*math.Sin((float64(h)-6)/24*2*math.Pi)
+		v := 10 + 5*math.Sin((float64(h)-6)/24*2*math.Pi)
 		temp = append(temp, design.Point{At: t, Value: v})
 		prob := math.Max(0, 55*math.Sin((float64(h)-2)/24*2*math.Pi))
 		if h > 6 && h < 12 {
@@ -190,13 +190,14 @@ func drawWeatherTrend(img *image.Paletted, r image.Rectangle, s design.Scale) {
 			{Points: rain, Style: design.Bars, Scale: &design.Range{Min: 0, Max: 100}, Fill: "shade"},
 			{Points: temp, Style: design.Line, Width: 2, Halo: true},
 		},
-		Range: &design.Range{Min: 3, Max: 17},
+		Range: &design.Range{Min: 4, Max: 16},
 		Axis:  true,
 		Ticks: ticks,
 		TickFormat: func(t time.Time) string {
 			return fmt.Sprintf("%02d", t.Hour())
 		},
 		Now:   start.Add(15 * time.Hour),
+		Marks: design.ExtremaMarks("both", temp, func(v float64) string { return fmt.Sprintf("%.0f°", v) }),
 		Label: "Temperatur (°C)",
 		Legend: []design.LegendItem{
 			{Label: "Regen %", Fill: "shade"},

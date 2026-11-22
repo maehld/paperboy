@@ -180,6 +180,61 @@ func TestTrendDraws(t *testing.T) {
 	}
 }
 
+func TestExtrema(t *testing.T) {
+	from := time.Date(2026, 11, 21, 6, 0, 0, 0, time.UTC)
+	pts := []Point{{At: from, Value: 4}, {At: from.Add(time.Hour), Value: 9}, {At: from.Add(2 * time.Hour), Value: 3}}
+	low, high, ok := Extrema(pts)
+	if !ok || low.Value != 3 || high.Value != 9 || low.At != pts[2].At {
+		t.Fatalf("extrema: low %+v high %+v ok %v", low, high, ok)
+	}
+	if _, _, ok := Extrema(nil); ok {
+		t.Fatal("an empty series has extrema")
+	}
+	format := func(v float64) string { return defaultFormat(v) }
+	if got := ExtremaMarks("none", pts, format); got != nil {
+		t.Fatalf("a mark mode of none returned %v", got)
+	}
+	if got := ExtremaMarks("max", pts, format); len(got) != 1 || got[0].Label != "9" {
+		t.Fatalf("max marks: %+v", got)
+	}
+	if got := ExtremaMarks("both", pts, format); len(got) != 2 || got[1].Label != "9" {
+		t.Fatalf("both marks: %+v", got)
+	}
+}
+
+func TestTrendMarks(t *testing.T) {
+	from := time.Date(2026, 11, 21, 0, 0, 0, 0, time.UTC)
+	pts := []Point{
+		{At: from.Add(time.Hour), Value: 3},
+		{At: from.Add(12 * time.Hour), Value: 21},
+		{At: from.Add(23 * time.Hour), Value: 4},
+	}
+	trend := Trend{
+		From: from, To: from.Add(24 * time.Hour),
+		Series: []Series{{Points: pts, Style: Line, Width: 2}},
+		Marks:  ExtremaMarks("both", pts, func(v float64) string { return defaultFormat(v) }),
+	}
+	img := render.NewCanvas(400, 200, 2)
+	if !DrawTrend(img, img.Rect, trend, NewScale(20, 200)) {
+		t.Fatal("a trend with marks did not draw")
+	}
+	if ink(img) == 0 {
+		t.Fatal("a trend with marks left the canvas empty")
+	}
+	// A mark outside the plot is not drawn.
+	if DrawMark(img, image.Rect(0, 0, 10, 10), image.Pt(20, 5), "9", 8) {
+		t.Fatal("a mark outside the plot drew")
+	}
+	// A label that does not fit drops; the dot stays.
+	if _, ok := markLabelRect(image.Rect(0, 0, 14, 60), image.Pt(7, 30), "210", 12); ok {
+		t.Fatal("a label wider than the plot fit")
+	}
+	narrow := render.NewCanvas(14, 60, 2)
+	if !DrawMark(narrow, narrow.Rect, image.Pt(7, 30), "210", 12) || ink(narrow) == 0 {
+		t.Fatal("a narrow mark dropped its dot")
+	}
+}
+
 func TestSparkline(t *testing.T) {
 	img := render.NewCanvas(100, 30, 2)
 	if !Sparkline(img, img.Rect, []float64{1, 2, 4, 3, 5}, Line, "") {

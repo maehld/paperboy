@@ -63,7 +63,7 @@ at least two pixels. The page's `padding` and `rule` still come from
 |---|---|
 | `Tiles` | A grid of label, value, unit, detail and optional trend arrow, with thin dividers |
 | `DrawHero` | Label, large value with a smaller unit, caption, details, an emphasized note, an optional icon and an optional meter |
-| `DrawTrend` | Line, area, step and bar series over time; axis, ticks, "now" mark, title, current value and legend |
+| `DrawTrend` | Line, area, step and bar series over time; axis, ticks, "now" mark, labelled extrema, title, current value and legend |
 | `Sparkline` | A trend without axes, for a tile or a hero |
 | `DrawMeter` | An outlined fraction bar; a missing reading gets a slash |
 | `Arrow` | A trend arrow for up, flat or down; strength 2 draws a pair |
@@ -78,6 +78,14 @@ no unit. The plugin formats the strings and passes them in.
 show temperature on the value axis and precipitation probability as bars from
 zero to one hundred. A line with `Halo` keeps a white edge above the bars.
 `Ticks` and `TickFormat` set the time axis; `Now` adds the dashed marker.
+
+`Marks` label single points, such as the lowest and the highest value of a
+series. `Extrema` finds both points and `ExtremaMarks` turns the `mark`
+argument of a widget into marks. A mark is a dot with a white edge and the
+formatted value beside it. The label goes to the side with more room. It drops
+when two labels would overlap or the plot is too narrow, but the dot stays. A
+plugin with its own chart, such as `dexcom`, draws the same dot with
+`DrawMark`.
 
 ## Which plugins use it
 
