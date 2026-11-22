@@ -29,7 +29,7 @@ All widgets are for image displays.
 
 - `current`: pictogram, temperature, condition, apparent temperature, wind force, today's range and the next precipitation of the day, e.g. `Rain from 14:00, about 2 h`, `Rain until 15:00` or `No rain today`.
 - `days`: pictogram and range per day. Args: `days: 1..5`.
-- `hours`: today's temperature as a line with the precipitation probability as bars. The fill names the type: rain shaded, snow hatched, a mixed hour solid. The heading names the fill patterns, the dashed line marks now.
+- `hours`: today's temperature as a line with the precipitation probability as bars. The fill names the type: rain shaded, snow hatched, a mixed hour solid. The heading names the fill patterns, the dashed line marks now. Args: `mark` (`none`, `min`, `max`, `both`) labels the lowest and the highest temperature; default `none`.
 
 An event is a contiguous run of hours with at least 0.1 mm. Open-Meteo gives precipitation as water equivalent, so snow counts too. An hour with rain and snow is mixed. The plugin decides about the event at render time, so an old forecast still says when a running event ends.
 

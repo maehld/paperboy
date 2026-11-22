@@ -68,6 +68,8 @@ The readings of the day (`period: day`, the default) or of the last hour (`perio
 
 `header: false` drops the title (`Heute`/`Letzte Stunde`) and the unit, so the chart itself gets the room. The title and the scale labels follow the base text of the page but never take more than a share of the cell, so the chart still draws in a short cell such as a Sticky's `span: [6,3]` (800 × 180 px).
 
+`mark` (`none`, `min`, `max`, `both`) labels the lowest and the highest reading of the shown window; default `none`. The label is the reading in the configured unit, so a day that turns at 210 says `210`.
+
 Image displays only.
 
 ## Widget `values`

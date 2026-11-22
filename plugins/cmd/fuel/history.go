@@ -257,6 +257,7 @@ func (f *fuel) historyWidget(w plugin.WidgetRequest, img *image.Paletted) error 
 		Axis:   true,
 		Grid:   true,
 		Ticks:  ticks,
+		Marks:  design.ExtremaMarks(w.Arg().String("mark", "none"), points, f.money),
 		TickFormat: func(t time.Time) string {
 			return t.In(f.loc).Format(format)
 		},

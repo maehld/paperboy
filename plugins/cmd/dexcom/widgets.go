@@ -252,6 +252,15 @@ func (d *dexcom) graphWidget(req *plugin.Request, w plugin.WidgetRequest, img *i
 		last := window[len(window)-1]
 		dot(img, xAt(last.at), yAt(last.value), max(4, plot.Dy()/45), ink)
 	}
+	// The extrema of the shown window sit on the curve.
+	points := make([]design.Point, len(window))
+	for i, r := range window {
+		points[i] = design.Point{At: r.at, Value: r.value}
+	}
+	for _, m := range design.ExtremaMarks(w.Arg().String("mark", "none"), points,
+		func(v float64) string { return d.value(req, l, v) }) {
+		design.DrawMark(img, plot, image.Pt(xAt(m.At), yAt(m.Value)), m.Label, labelSize)
+	}
 
 	// hour marks
 	if period == "day" {

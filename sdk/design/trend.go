@@ -52,6 +52,17 @@ type Series struct {
 	Width int
 }
 
+// Mark is a labelled point in a trend, such as the highest reading of a day.
+// The plugin chooses the point and formats the label.
+type Mark struct {
+	At    time.Time
+	Value float64
+	// Scale maps the mark onto a series' own range. Without it the mark uses
+	// the trend's axis range.
+	Scale *Range
+	Label string
+}
+
 // LegendItem is one entry of a trend legend.
 type LegendItem struct {
 	Label string
@@ -75,10 +86,13 @@ type Trend struct {
 	Ticks      []time.Time
 	TickFormat func(time.Time) string
 	Now        time.Time
-	Label      string
-	Current    string
-	Legend     []LegendItem
-	Format     func(float64) string
+	// Marks label single points, such as the extrema of a series. A mark
+	// outside the trend span is not drawn.
+	Marks   []Mark
+	Label   string
+	Current string
+	Legend  []LegendItem
+	Format  func(float64) string
 	// BarGap is the space between two bars in pixels; default 1.
 	BarGap int
 }
@@ -237,7 +251,151 @@ func DrawTrend(dst *image.Paletted, r image.Rectangle, t Trend, s Scale) bool {
 		}
 		drawSeries(dst, plot, se, slo, shi, xAt, yAt, t.BarGap)
 	}
+	var labels []image.Rectangle
+	for _, m := range t.Marks {
+		if m.At.IsZero() || m.At.Before(from) || m.At.After(to) {
+			continue
+		}
+		mlo, mhi := lo, hi
+		if m.Scale != nil {
+			mlo, mhi = m.Scale.Min, m.Scale.Max
+		}
+		if mhi <= mlo {
+			continue
+		}
+		at := image.Pt(xAt(m.At), yAt(m.Value, mlo, mhi))
+		at, inPlot := clampMark(plot, at)
+		if !inPlot {
+			continue
+		}
+		label := m.Label
+		if box, ok := markLabelRect(plot, at, label, axisSize); ok {
+			// Two labels close to each other would overwrite each other. The
+			// dot stays, the second label drops.
+			for _, used := range labels {
+				if box.Overlaps(used) {
+					label = ""
+					break
+				}
+			}
+			if label != "" {
+				labels = append(labels, box)
+			}
+		}
+		DrawMark(dst, plot, at, label, axisSize)
+	}
 	return true
+}
+
+// Extrema returns the lowest and the highest point of a series. A series
+// without points answers ok false.
+func Extrema(points []Point) (low, high Point, ok bool) {
+	if len(points) == 0 {
+		return Point{}, Point{}, false
+	}
+	low, high = points[0], points[0]
+	for _, p := range points[1:] {
+		if p.Value < low.Value {
+			low = p
+		}
+		if p.Value > high.Value {
+			high = p
+		}
+	}
+	return low, high, true
+}
+
+// ExtremaMarks returns the marks of the extrema of a series. Mode is "min",
+// "max", "both" or anything else for no marks. Format labels one value.
+func ExtremaMarks(mode string, points []Point, format func(float64) string) []Mark {
+	low, high, ok := Extrema(points)
+	if !ok {
+		return nil
+	}
+	var out []Mark
+	if mode == "min" || mode == "both" {
+		out = append(out, Mark{At: low.At, Value: low.Value, Label: format(low.Value)})
+	}
+	if mode == "max" || mode == "both" {
+		out = append(out, Mark{At: high.At, Value: high.Value, Label: format(high.Value)})
+	}
+	return out
+}
+
+// DrawMark draws a dot at at and, when it fits, the label beside it. The label
+// goes to the side with more room and drops when the plot has no room for it;
+// the dot always stays. DrawMark reports whether the dot was inside the plot.
+func DrawMark(dst *image.Paletted, plot image.Rectangle, at image.Point, label string, size float64) bool {
+	if plot.Empty() || at.X < plot.Min.X || at.X > plot.Max.X ||
+		at.Y < plot.Min.Y || at.Y > plot.Max.Y {
+		return false
+	}
+	at, ok := clampMark(plot, at)
+	if !ok {
+		return false
+	}
+	dot := markDot(plot)
+	// A white edge keeps the dot readable on a line or a bar.
+	render.FillColor(dst, image.Rect(at.X-dot-1, at.Y-dot-1, at.X+dot+2, at.Y+dot+2), render.White)
+	render.FillColor(dst, image.Rect(at.X-dot, at.Y-dot, at.X+dot+1, at.Y+dot+1), render.Black)
+	box, ok := markLabelRect(plot, at, label, size)
+	if !ok {
+		return true
+	}
+	size = max(size, render.MinSize)
+	// The white box keeps the label readable over a bar or a filled area.
+	render.FillColor(dst, box, render.White)
+	render.TextAt(dst, label, box.Min.X+box.Dx()/2, box.Min.Y+int(math.Round(size*0.8)),
+		size, false, render.Black, render.Center)
+	return true
+}
+
+// markLabelRect returns the rectangle of a mark label and whether the plot has
+// room for it. The label goes below a point in the upper half and above a
+// point in the lower half.
+func markLabelRect(plot image.Rectangle, at image.Point, label string, size float64) (image.Rectangle, bool) {
+	if label == "" || plot.Empty() {
+		return image.Rectangle{}, false
+	}
+	size = max(size, render.MinSize)
+	w := render.Measure(label, size, false)
+	pad := max(int(math.Round(size*0.15)), 1)
+	if w+2*pad > plot.Dx() {
+		return image.Rectangle{}, false
+	}
+	height := int(math.Round(size*0.8)) + 2*pad
+	gap := max(markDot(plot), int(math.Round(size*0.2)))
+	x := min(max(at.X, plot.Min.X+w/2+pad), plot.Max.X-w/2-pad)
+	above := image.Rect(x-w/2-pad, at.Y-gap-height, x+w/2+pad, at.Y-gap)
+	below := image.Rect(above.Min.X, at.Y+gap, above.Max.X, at.Y+gap+height)
+	first, second := below, above
+	if at.Y > plot.Min.Y+plot.Dy()/2 {
+		first, second = above, below
+	}
+	for _, box := range []image.Rectangle{first, second} {
+		if box.Min.X >= plot.Min.X && box.Max.X <= plot.Max.X &&
+			box.Min.Y >= plot.Min.Y && box.Max.Y <= plot.Max.Y {
+			return box, true
+		}
+	}
+	return image.Rectangle{}, false
+}
+
+// markDot is the radius of a mark dot.
+func markDot(plot image.Rectangle) int {
+	return max(plot.Dy()/80, 2)
+}
+
+// clampMark moves a point inside the plot so the dot does not cover the axis
+// or the frame. It answers false when the plot is smaller than the dot.
+func clampMark(plot image.Rectangle, at image.Point) (image.Point, bool) {
+	dot := markDot(plot)
+	if plot.Dx() <= 2*dot || plot.Dy() <= 2*dot {
+		return at, false
+	}
+	at.X = min(max(at.X, plot.Min.X+dot), plot.Max.X-dot)
+	at.Y = min(max(at.Y, plot.Min.Y+dot), plot.Max.Y-dot)
+	return at, true
 }
 
 // trendSpan returns the time range of the trend.

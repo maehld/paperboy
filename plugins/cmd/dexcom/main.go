@@ -76,6 +76,18 @@ var configKeys = map[string]plugin.Arg{
 	"max":    {Type: "float", Description: "top of the chart scale; default 300 mg/dL or 15.6 mmol/L"},
 }
 
+// markArg selects the extrema the graph labels.
+var markArg = plugin.Arg{
+	Type: "string", Default: "none", Enum: []any{"none", "min", "max", "both"},
+	EnumLabels: map[string]string{
+		"none": "None",
+		"min":  "Lowest",
+		"max":  "Highest",
+		"both": "Both",
+	},
+	Description: "mark the lowest and the highest reading",
+}
+
 // dexcom holds the configuration and what the service answered last.
 type dexcom struct {
 	plugin.Demand
@@ -149,6 +161,7 @@ func (d *dexcom) Describe() plugin.Description {
 						Description: "which part of the history the chart shows"},
 					"header": {Type: "bool", Default: true,
 						Description: "show the title and the unit above the chart"},
+					"mark": markArg,
 				},
 			},
 			{

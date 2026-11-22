@@ -62,8 +62,10 @@ var pageShots = map[string][]string{
 // needs one to draw something useful.
 var widgetArgs = map[string]map[string]string{
 	"countdown/countdown": {"label": "Weihnachten", "date": "12-24", "since": "01-01"},
-	"fuel/history":        {"span": "24h"},
+	"dexcom/graph":        {"mark": "both"},
+	"fuel/history":        {"span": "24h", "mark": "both"},
 	"paperboy/header":     {"title": "Übersicht"},
+	"weather/hours":       {"mark": "both"},
 }
 
 // plugins are the shipped plugins: the directories under plugins/cmd/ with a
