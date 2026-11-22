@@ -25,6 +25,7 @@
     grid: start.grid, // grid a new page starts with
     file: start.file || '', // label of the open file; empty: the page file
     pageHash: start.page_hash || '', // hash of the page file, for a new variant
+    pageTitle: start.page_title || '', // the title of the page file, inherited by a variant (ADR 0110)
     pageExists: !!start.page_exists, // the page file exists
     displays: start.displays || [], // configured display types (ADR 0110)
     named: !!start.named, // the page names this variant
@@ -283,7 +284,7 @@
   // widget shows it on the device as well.
   function previewBody() {
     const out = serialize();
-    if (state.file) out.title = state.page_title || '';
+    if (state.file) out.title = state.pageTitle || '';
     return out;
   }
 
@@ -509,7 +510,10 @@
     const off = !t || state.readOnly;
     for (const id of ['title', 'padding', 'rule', 'text-size', 'divider', 'notices']) el(id).disabled = off;
     if (el('overflow')) el('overflow').disabled = off;
-    el('title').disabled = off || state.file !== '';
+    el('title').disabled = off;
+    // A variant inherits the title and cannot change it (ADR 0110).
+    el('title').readOnly = state.file !== '';
+    el('title').title = state.file ? 'The page file owns the title: pages/' + state.name + '.yaml' : '';
     el('cols').disabled = off || text();
     el('rows').disabled = off || text();
     renderGridLock(off);
@@ -519,7 +523,7 @@
     }
     if (state.gridLock && !state.gridRatio) state.gridRatio = t.grid.slice();
     const s = t.style || {};
-    el('title').value = t.title || state.page_title || '';
+    el('title').value = t.title || state.pageTitle || '';
     el('cols').value = rowsPage() ? state.width : t.grid[0];
     el('rows').value = rowsPage() ? state.height : t.grid[1];
     el('padding').value = s.padding === undefined || s.padding === null ? '' : s.padding;
@@ -2897,29 +2901,7 @@
     location.href = '/ui/pages';
   }
 
-  // renderUsedBy names the plans that use the page, each as a link, so the
-  // operator can walk from the page to its plans (ADR 0152).
-  function renderUsedBy() {
-    const box = el('used-by');
-    if (!box) return;
-    box.textContent = '';
-    const used = state.usedBy || [];
-    if (!used.length) {
-      box.textContent = 'No plan names this page.';
-      return;
-    }
-    box.append('Used by: ');
-    used.forEach((name, i) => {
-      if (i) box.append(', ');
-      const a = document.createElement('a');
-      a.href = '/ui/plans/' + encodeURIComponent(name);
-      a.textContent = name;
-      box.append(a);
-    });
-  }
-
   function renderAll() {
-    renderUsedBy();
     renderSettings();
     renderPalette();
     renderBoard();
