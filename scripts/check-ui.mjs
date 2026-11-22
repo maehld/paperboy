@@ -141,6 +141,14 @@ try {
           { widget: "chart", title: "Chart", sizes: [{ columns: 6, rows: 4 }] },
         ],
       },
+    }, {
+      name: "extra",
+      description: {
+        title: "Extra",
+        widgets: [
+          { widget: "gauge", title: "Gauge", sizes: [{ columns: 2, rows: 1 }] },
+        ],
+      },
     }],
   };
   const start = {
@@ -189,6 +197,17 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
   const check = (condition, message) => {
     if (!condition) problems.push(message);
   };
+  // section and entriesOf read one palette group by its title, which is the
+  // head's only span without a class (the chevron and the count carry one).
+  const section = (window, name) => Array.from(window.document.querySelectorAll("#palette .plugin"))
+    .find((group) => {
+      const label = Array.from(group.querySelector(".plugin-head").children).find((child) => !child.className);
+      return label && label.textContent.startsWith(name);
+    });
+  const entriesOf = (window, name) => {
+    const group = section(window, name);
+    return group ? Array.from(group.querySelectorAll("button.widget")) : [];
+  };
 
   // The Playground shows the widget a click names and keeps it in the link.
   {
@@ -203,6 +222,23 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
     entry(window, "clock").querySelector(".pin").click();
     check(window.localStorage.getItem("pb-pinned-widgets") === '["demo/clock"]', "the pinned list holds " + window.localStorage.getItem("pb-pinned-widgets"));
     check(Array.from(window.document.querySelectorAll("#palette .plugin-head")).some((head) => head.textContent.includes("Pinned")), "a pinned widget gets no group");
+    // One plugin group is open: the head of another swaps it, and a filter
+    // shows the matches of every group.
+    check(entriesOf(window, "demo").length === 2, "the palette opens more than one plugin group");
+    check(entriesOf(window, "extra").length === 0, "a folded plugin group still lists its widgets");
+    const extraHead = section(window, "extra").querySelector(".plugin-head");
+    extraHead.click();
+    check(entriesOf(window, "demo").length === 0 && entriesOf(window, "extra").length === 1, "a head click does not swap the open plugin group");
+    check(section(window, "extra").querySelector(".plugin-head").getAttribute("aria-expanded") === "true", "the open head does not say aria-expanded");
+    const filter = window.document.getElementById("palette-filter");
+    filter.value = "gauge";
+    filter.dispatchEvent(new window.Event("input"));
+    check(!section(window, "demo"), "a filter lists a group without a match");
+    check(entriesOf(window, "extra").length === 1, "a filter hides the match of a folded group");
+    check(!!section(window, "extra").querySelector(".plugin-head.static"), "a filtered head still claims to fold");
+    filter.value = "";
+    filter.dispatchEvent(new window.Event("input"));
+    check(entriesOf(window, "extra").length === 1 && entriesOf(window, "demo").length === 0, "clearing the filter does not return to the open group");
     for (const failure of failures) problems.push(failure);
     editorDom.window.close();
   }

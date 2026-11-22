@@ -117,9 +117,14 @@ ul.variant-types a.active { font-weight: 700; color: var(--pb-ink); }
 .palette .plugin { border-top: 1px solid var(--pb-surface-hover); padding-top: .5rem; margin-top: .5rem; }
 .palette .plugin:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
 .palette .plugin-head { display: flex; align-items: center; gap: .3rem; margin: 0 0 .3rem; font-size: .85rem; color: var(--pb-ink); font-weight: 600; cursor: pointer; user-select: none; }
+/* A head is a button, so the group folds from the keyboard too. */
+.palette button.plugin-head { width: 100%; margin: 0 0 .3rem; padding: 0; border: 0; border-radius: 0; background: none; text-align: left; }
+.palette button.plugin-head:hover { color: var(--pb-accent); background: none; }
+/* The filtered palette shows every group with a match; its heads do not fold. */
+.palette .plugin-head.static { cursor: default; }
 .palette .plugin-head .chev { color: var(--pb-ink-muted); font-size: .8rem; width: 1rem; }
 .palette .plugin-head .count { margin-left: auto; color: var(--pb-ink-faint); font-size: .72rem; font-weight: 400; }
-/* The palette entries carry a picture, so 43 widgets stay scannable (ADR 0152). */
+/* The palette entries carry a picture, so a long palette stays scannable (ADR 0152). */
 .palette button.widget { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr) auto; gap: .45rem; align-items: center; width: 100%; text-align: left; margin-bottom: .25rem; padding: .2rem .3rem .2rem .2rem; user-select: none; }
 .palette button.widget.active { border-color: var(--pb-accent); background: var(--pb-accent-bg); }
 .palette button.widget.nofit { opacity: .55; }
