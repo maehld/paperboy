@@ -299,6 +299,18 @@ func (s *Server) handleStyleguide(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// uiTitlebarJS collapses the secondary title-bar actions into one menu on a
+// narrow screen (issue #397).
+//
+//go:embed ui/titlebar.js
+var uiTitlebarJS []byte
+
+func (s *Server) handleUITitlebarJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(uiTitlebarJS)
+}
+
 // uiZoomJS opens the dashboard preview in a modal (issue #398). The dialog
 // lives outside the polled region, so a tick does not close it.
 //
@@ -481,12 +493,13 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	page := dashboardPage{
-		Version:   versionText(build, loc),
-		GoVersion: build.Go,
-		Nav:       navFor("Overview"),
-		Devices:   cards,
-		Content:   contentCards(cfg),
-		Downloads: s.downloadHint(cfg),
+		Version:    versionText(build, loc),
+		GoVersion:  build.Go,
+		Nav:        navFor("Overview"),
+		Breadcrumb: crumbPath(crumb{Label: "Overview"}),
+		Devices:    cards,
+		Content:    contentCards(cfg),
+		Downloads:  s.downloadHint(cfg),
 	}
 	if err := dashboardTmpl.Execute(w, page); err != nil {
 		slog.Error("dashboard rendering failed", "error", err)

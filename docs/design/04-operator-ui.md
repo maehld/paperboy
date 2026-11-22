@@ -10,10 +10,10 @@ One layout renders the head, the top bar, the rail, the title line and the theme
 
 - The rail groups its entries. Overview, Pages and Plans stand without a head. *Configuration* holds Devices, Display types and Plugins, *System* holds Playground, Plugins, Firmware, Maintenance, Stats and the Styleguide ([ADR 0153](../adr/0153-an-overview-page-and-a-grouped-rail.md)). Below 64rem the rail wraps into a strip under the brand, and its foot becomes a second row.
 - The top bar carries the logo lockup, the title line and the page actions. The rail foot carries the search hint, the build label and the theme link.
-- The title line replaces the breadcrumb and the editor bar. It reads `Plans / Plan solar`, and the file follows as a muted hint. Every step but the current one is a link. The current object is the `h1`. Below 40rem the file, the status and the build disappear.
+- The title line replaces the breadcrumb and the editor bar. It reads `Plans / Plan solar`, and the file follows as a muted hint. Every step but the current one is a link. The current object is the `h1`. Below 40rem the file, the status and the build disappear, and the secondary actions move into a `⋯` menu.
 - The shell owns the only `main` element. A page lays out its columns in a `div`, so a page rule never restyles the shell.
 - The theme follows `prefers-color-scheme`. The link at the foot of the rail stores `light` or `dark` in the browser, and the page applies it before the first paint.
-- The first entry is the overview. It is the only page without a title line, and the lists reach it through the rail instead of a sub-navigation.
+- The first entry is the overview. It names itself as `Overview` in the title line, and the lists reach it through the rail instead of a sub-navigation.
 - Every prompt and confirmation is one native `<dialog>` from `ui/dialog.js`. A rename asks for the name with its pattern, and a delete names the references and marks its button as danger.
 - `⌘K` or `Ctrl+K` opens the command palette. It searches the sections, the pages, the plans, the devices, the display types and the widgets. It reads the list APIs in the browser, so the server has no search route. The Search link at the foot of the rail opens the same palette.
 - `GET /ui/system/styleguide` renders every token and every component, so a change to the look has one page to check. It links the same stylesheets as the other pages, so it shows the theme in use.

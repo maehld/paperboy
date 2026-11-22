@@ -282,3 +282,59 @@ zwei</pre></button>
   }
   dom.window.close();
 }
+
+// titlebar.js keeps one primary action and moves the rest into the overflow
+// menu on a narrow screen (issue #397). Moving nodes keeps their listeners.
+{
+  const script = await readFile(join(root, "server/internal/paperboy/ui/titlebar.js"), "utf8");
+  const html = `<!doctype html><html><body>
+<div class="topbar-end"><div class="title-actions">
+<button id="rename" type="button" hidden>Rename</button>
+<button id="delete" type="button" class="danger">Delete</button>
+<button id="reload" type="button">Reload</button>
+<button id="save" type="button" class="primary">Save</button>
+</div><div class="action-overflow"><button id="action-more" type="button" aria-expanded="false" hidden>⋯</button><div id="action-menu" role="menu" hidden></div></div></div>
+</body></html>`;
+  const dom = new JSDOM(html, { url: "http://localhost/ui", runScripts: "outside-only" });
+  const { window } = dom;
+  const listeners = [];
+  const media = {
+    matches: true,
+    addEventListener: (type, fn) => type === "change" && listeners.push(fn),
+  };
+  window.matchMedia = () => media;
+  window.eval(script);
+
+  const problems = [];
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+  const actions = window.document.querySelector(".title-actions");
+  const menu = window.document.getElementById("action-menu");
+  const more = window.document.getElementById("action-more");
+  const byId = (id) => window.document.getElementById(id);
+
+  check(!more.hidden, "the narrow title bar has no overflow button");
+  check(actions.contains(byId("save")), "the primary action left the title bar");
+  check(menu.contains(byId("rename")) && menu.contains(byId("delete")) && menu.contains(byId("reload")), "the secondary actions are not in the menu");
+  check(!actions.contains(byId("reload")), "a secondary action stayed in the title bar");
+
+  more.click();
+  check(!menu.hidden && more.getAttribute("aria-expanded") === "true", "the overflow menu did not open");
+  menu.click();
+  check(menu.hidden && more.getAttribute("aria-expanded") === "false", "an action click did not close the menu");
+
+  media.matches = false;
+  for (const fn of listeners) fn();
+  check(more.hidden, "the wide title bar still shows the overflow button");
+  check(["rename", "delete", "reload", "save"].every((id) => actions.contains(byId(id))), "the wide title bar lost an action");
+  check(byId("save").nextElementSibling === null, "the wide title bar changed the action order");
+
+  if (problems.length) {
+    for (const problem of problems) console.error(problem);
+    process.exitCode = 1;
+  } else {
+    console.log("titlebar.js collapsed and restored the actions");
+  }
+  dom.window.close();
+}

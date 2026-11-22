@@ -14,6 +14,7 @@
 <script>try{var t=localStorage.getItem("pb-theme");if(t==="dark"||t==="light")document.documentElement.dataset.theme=t}catch(e){}</script>
 <script src="/ui/theme.js" defer></script>
 <script src="/ui/command.js" defer></script>
+<script src="/ui/titlebar.js" defer></script>
 {{end}}
 
 {{define "chrome"}}<header class="topbar">
@@ -23,7 +24,11 @@
   </div>
   <div class="topbar-end">
     <span class="status" id="status"></span>
-    {{block "title-actions" .}}{{end}}
+    <div class="title-actions">{{block "title-actions" .}}{{end}}</div>
+    <div class="action-overflow">
+      <button class="more" id="action-more" type="button" aria-label="More actions" aria-haspopup="menu" aria-expanded="false" aria-controls="action-menu" hidden>⋯</button>
+      <div class="action-menu" id="action-menu" role="menu" hidden></div>
+    </div>
   </div>
 </header>
 <div class="shell">

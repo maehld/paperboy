@@ -67,10 +67,8 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 		// The title line belongs to the top bar, and the shell owns the only
 		// main element: a page that styles its own main also restyles the
 		// shell (issue 391).
-		if page.path != "/ui" {
-			if title := strings.Index(body, `<nav class="titleline"`); title < 0 || title > strings.Index(body, `<div class="shell">`) {
-				t.Fatalf("%s: the title line left the top bar", page.path)
-			}
+		if title := strings.Index(body, `<nav class="titleline"`); title < 0 || title > strings.Index(body, `<div class="shell">`) {
+			t.Fatalf("%s: the title line left the top bar", page.path)
 		}
 		if n := strings.Count(body, "<main"); n != 1 {
 			t.Fatalf("%s: the page has %d main elements", page.path, n)
@@ -111,6 +109,7 @@ func TestListsNameThemselvesInTheBreadcrumb(t *testing.T) {
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
 	for _, page := range []struct{ path, title string }{
+		{"/ui", `<h1>Overview</h1>`},
 		{"/ui/pages", `<h1>Pages</h1>`},
 		{"/ui/plans", `<h1>Plans</h1>`},
 		{"/ui/devices", `<h1>Devices</h1>`},
@@ -130,10 +129,7 @@ func TestListsNameThemselvesInTheBreadcrumb(t *testing.T) {
 			t.Fatalf("%s: the title line does not end in %q", page.path, page.title)
 		}
 	}
-	// The overview is the root of every path, so it names none.
-	if strings.Contains(htmlRequest(t, s, "/ui").Body.String(), `<nav class="titleline"`) {
-		t.Fatal("the overview must not carry a title line")
-	}
+
 }
 
 // TestOperatorPagesLinkTheSharedStylesheet keeps the look in one place: every
