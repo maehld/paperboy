@@ -463,7 +463,7 @@ Optional interfaces:
 
 A plugin calls `plugin.Serve(handler)` and draws with `sdk/render`, so its
 widgets use the same fonts, gray levels and scalings as Paperboy's own. It can
-add the shared type scale and components of `sdk/design` ([ADR 0150](../adr/0150-a-shared-design-language-for-plugin-widgets.md)).
+add the shared type scale and components of `sdk/design` ([ADR 0151](../adr/0151-a-shared-design-language-for-plugin-widgets.md)).
 
 A plugin with background work embeds `plugin.Demand` and calls `Wait` in its
 `Start` loop:
