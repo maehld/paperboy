@@ -124,7 +124,7 @@ func TestPlanViewUnknownDevice(t *testing.T) {
 	if rec := htmlRequest(t, s, "/ui/devices/nope/plan"); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown device: %d", rec.Code)
 	}
-	if rec := htmlRequest(t, s, "/ui/plan"); rec.Code != http.StatusFound {
-		t.Fatalf("missing device: %d, want the dashboard", rec.Code)
+	if rec := htmlRequest(t, s, "/ui/plan"); rec.Code != http.StatusNotFound {
+		t.Fatalf("the old plan route: %d, want it gone", rec.Code)
 	}
 }

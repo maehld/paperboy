@@ -63,7 +63,7 @@ One partial (`ui/layout.html`) holds the document head, the header, the rail and
 - A breadcrumb replaces `← <list>`. It names the whole path and every part is a link.
 - A command palette on `⌘K`/`Ctrl+K` searches pages, plans, devices, display types and widgets. It reads the existing list APIs in the browser. The server gets no search route.
 
-Routes name the object: `/ui/pages`, `/ui/pages/{name}`, `/ui/plans/{name}`, `/ui/devices/{id}`, `/ui/display-types/{name}`, `/ui/system/downloads` and `/ui/system/stats`. The old routes answer with a redirect. The device routes do not change.
+Routes name the object: `/ui/pages`, `/ui/pages/{name}`, `/ui/plans/{name}`, `/ui/devices/{id}`, `/ui/display-types/{name}`, `/ui/system/downloads` and `/ui/system/stats`. The old routes go away without a redirect. The device routes do not change.
 
 ### 4. Objects link their relations
 

@@ -15,7 +15,7 @@ One layout renders the head, the top bar, the rail, the breadcrumb and the theme
 - A device is the first entry, so `/ui` is the dashboard and the device section. Display types share a sub-navigation with the device list.
 - Every prompt and confirmation is one native `<dialog>` from `ui/dialog.js`. A rename asks for the name with its pattern, and a delete names the references and marks its button as danger.
 
-The routes name their object. `/ui/pages/{name}`, `/ui/plans/{name}`, `/ui/devices/{id}`, `/ui/devices/{id}/plan` and `/ui/display-types/{name}` open one object. The lists sit at `/ui/pages`, `/ui/plans`, `/ui/devices` and `/ui/display-types`. Downloads and Stats answer at `/ui/system/downloads` and `/ui/system/stats`. The old routes of ADR 0068 and ADR 0076 answer with a redirect, so a bookmark keeps working.
+The routes name their object. `/ui/pages/{name}`, `/ui/plans/{name}`, `/ui/devices/{id}`, `/ui/devices/{id}/plan` and `/ui/display-types/{name}` open one object. The lists sit at `/ui/pages`, `/ui/plans`, `/ui/devices` and `/ui/display-types`. Downloads and Stats answer at `/ui/system/downloads` and `/ui/system/stats`. The routes of ADR 0068 and ADR 0076 are gone.
 
 ## Look
 

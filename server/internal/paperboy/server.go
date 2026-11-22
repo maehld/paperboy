@@ -202,16 +202,6 @@ func (s *Server) uiRoutes() []route {
 		{"GET /ui/display-types/new", uiCreate("/ui/display-types", "name")},
 		{"GET /ui/system/downloads", s.handleDownloads},
 		{"GET /ui/system/stats", s.handleStats},
-		// The routes of ADR 0076 and 0068 answer with their new address, so a
-		// bookmark and an old link keep working (ADR 0150).
-		{"GET /ui/editor", uiRedirectEditor()},
-		{"GET /ui/editor/page", uiRedirectObject("/ui/pages", "name")},
-		{"GET /ui/editor/plan", uiRedirectObject("/ui/plans", "name")},
-		{"GET /ui/editor/device", uiRedirectObject("/ui/devices", "id")},
-		{"GET /ui/editor/display", uiRedirectObject("/ui/display-types", "name")},
-		{"GET /ui/plan", uiRedirectPlanView()},
-		{"GET /ui/downloads", uiRedirect("/ui/system/downloads")},
-		{"GET /ui/stats", uiRedirect("/ui/system/stats")},
 		{"GET /ui/plugins", s.handleWidgetsPage},
 		{"GET /ui/virtual", s.handleVirtual},
 		{"GET /ui/virtual.js", s.handleVirtualJS},

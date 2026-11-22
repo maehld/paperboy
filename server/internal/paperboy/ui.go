@@ -188,66 +188,18 @@ func (s *Server) uiObject(path, query string, handle http.HandlerFunc) http.Hand
 	}
 }
 
-// uiRedirect answers an old route with its new address (ADR 0150). The rest of
-// the query follows, so a link with a preview type keeps working.
-func uiRedirect(target string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		for _, key := range []string{"tab", "name", "id", "device"} {
-			q.Del(key)
-		}
-		if encoded := q.Encode(); encoded != "" {
-			target += "?" + encoded
-		}
-		http.Redirect(w, r, target, http.StatusFound)
-	}
-}
-
-// uiRedirectEditor sends the old editor routes to their own sections.
-func uiRedirectEditor() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Query().Get("tab") {
-		case "plans":
-			uiRedirect("/ui/plans")(w, r)
-		case "devices":
-			uiRedirect("/ui/devices")(w, r)
-		case "displays":
-			uiRedirect("/ui/display-types")(w, r)
-		default:
-			uiRedirect("/ui/pages")(w, r)
-		}
-	}
-}
-
-// uiRedirectObject sends an old editor route to the object's own route.
-func uiRedirectObject(collection, param string) http.HandlerFunc {
+// uiCreate takes the name from a creation form and opens the object's route, so
+// a GET form creates without a route of its own (ADR 0150).
+func uiCreate(collection, param string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := r.URL.Query().Get(param)
 		if name == "" {
 			http.Redirect(w, r, collection, http.StatusFound)
 			return
 		}
-		// objectURL already carries the rest of the query.
+		// objectURL carries the rest of the query.
 		http.Redirect(w, r, objectURL(collection, name, r.URL.Query()), http.StatusFound)
 	}
-}
-
-// uiRedirectPlanView sends the old plan preview to the device's own route.
-func uiRedirectPlanView() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := r.URL.Query().Get("device")
-		if id == "" {
-			http.Redirect(w, r, "/ui", http.StatusFound)
-			return
-		}
-		http.Redirect(w, r, objectURL("/ui/devices", id, nil)+"/plan", http.StatusFound)
-	}
-}
-
-// uiCreate takes the name from a creation form and opens the object's route, so
-// a GET form creates without a route of its own.
-func uiCreate(collection, param string) http.HandlerFunc {
-	return uiRedirectObject(collection, param)
 }
 
 // uiLayout is the shell every operator page parses with its own template.

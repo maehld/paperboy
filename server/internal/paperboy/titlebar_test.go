@@ -74,36 +74,6 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 	}
 }
 
-// TestOldUIRoutesRedirect keeps a bookmark and an old link working when the
-// routes name their object (ADR 0150).
-func TestOldUIRoutesRedirect(t *testing.T) {
-	s, _ := planServer(t, testPlan)
-	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"AA:BB:CC:DD:EE:01\"\nplan: zimmer\n")
-	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
-
-	for _, c := range []struct{ from, to string }{
-		{"/ui/editor", "/ui/pages"},
-		{"/ui/editor?tab=plans", "/ui/plans"},
-		{"/ui/editor?tab=devices", "/ui/devices"},
-		{"/ui/editor?tab=displays", "/ui/display-types"},
-		{"/ui/editor/page?name=eins&display=small", "/ui/pages/eins?display=small"},
-		{"/ui/editor/plan?name=zimmer", "/ui/plans/zimmer"},
-		{"/ui/editor/device?id=test", "/ui/devices/test"},
-		{"/ui/editor/display?name=small", "/ui/display-types/small"},
-		{"/ui/plan?device=test", "/ui/devices/test/plan"},
-		{"/ui/downloads", "/ui/system/downloads"},
-		{"/ui/stats?pruned=2", "/ui/system/stats?pruned=2"},
-	} {
-		rec := htmlRequest(t, s, c.from)
-		if rec.Code != http.StatusFound {
-			t.Fatalf("%s: %d, want a redirect", c.from, rec.Code)
-		}
-		if got := rec.Header().Get("Location"); got != c.to {
-			t.Fatalf("%s redirects to %q, want %q", c.from, got, c.to)
-		}
-	}
-}
-
 // TestOperatorPagesLinkTheSharedStylesheet keeps the look in one place: every
 // page links the tokens and /ui/ui.css instead of carrying its own colours and
 // its own copy of the header and the buttons (ADR 0076, ADR 0150).
