@@ -40,6 +40,7 @@ dd.oneline .muted { font-size: .78rem; }
 </head>
 <body>
 {{template "chrome" .}}
+{{template "devices-nav" "dashboard"}}
 {{/* The page polls itself every 30 seconds: the request is the page again, but
      only the region below is swapped in and htmx morphs it, so the scroll
      position, an opened Details block and the loaded previews survive a tick

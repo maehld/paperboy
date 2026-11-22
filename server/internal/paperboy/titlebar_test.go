@@ -62,6 +62,34 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 		if n := strings.Count(rail, `aria-current="page"`); n != 1 {
 			t.Fatalf("%s: the rail marks %d sections", page.path, n)
 		}
+		// The breadcrumb belongs to the top bar, and the shell owns the only
+		// main element: a page that styles its own main also restyles the
+		// shell (issue 391).
+		if crumbs := strings.Index(body, `<nav class="crumbs"`); crumbs > strings.Index(body, `<div class="shell">`) {
+			t.Fatalf("%s: the breadcrumb left the top bar", page.path)
+		}
+		if n := strings.Count(body, "<main"); n != 1 {
+			t.Fatalf("%s: the page has %d main elements", page.path, n)
+		}
+	}
+
+	// The device section has three views, and the rail names only the first:
+	// each view links the other two (issue 391).
+	for _, view := range []struct{ path, active string }{
+		{"/ui", "Dashboard"},
+		{"/ui/devices", "Devices"},
+		{"/ui/display-types", "Display types"},
+	} {
+		body := htmlRequest(t, s, view.path).Body.String()
+		for _, want := range []string{
+			`<a href="/ui"`, `<a href="/ui/devices"`, `<a href="/ui/display-types"`,
+			`class="active" aria-current="page">` + view.active + `</a>`,
+		} {
+			start := strings.Index(body, `<nav class="switch" aria-label="Devices">`)
+			if start < 0 || !strings.Contains(body[start:start+strings.Index(body[start:], "</nav>")], want) {
+				t.Fatalf("%s: the device views miss %q", view.path, want)
+			}
+		}
 	}
 
 	body := htmlRequest(t, s, "/ui/devices/test/plan").Body.String()
