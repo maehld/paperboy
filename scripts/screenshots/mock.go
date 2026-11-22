@@ -298,15 +298,17 @@ func (m *mock) evccHistory(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		// The current day bucket counts as far as the documentation moment
-		// reaches; a picture taken after midnight would otherwise show 0.
+		// reaches; a picture taken after midnight would otherwise show 0. The
+		// values keep the balance's two sides equal, so the T-account picture
+		// does not suggest a bug: 24.5 + 2.1 + 3.1 = 9.6 + 8.8 + 4.2 + 7.1.
 		if step == dayStep && sameDay(t, m.now) {
 			switch group {
 			case "pv":
-				e = 12.4
+				e = 24.5
 			case "home":
 				e = 9.6
 			case "grid":
-				e, ret = 2.1, 8.4
+				e, ret = 2.1, 7.1
 			case "battery":
 				e, ret = 4.2, 3.1
 			case "loadpoint":

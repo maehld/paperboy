@@ -290,6 +290,39 @@ func (e *evcc) today() (from, to string) {
 	return date(day), date(day.AddDate(0, 0, 1))
 }
 
+// periods are the periods of the history widgets. "now" reads /api/state; the
+// rest read the day buckets of the energy history.
+var periods = []any{"now", "today", "yesterday", "week", "last_week", "month", "last_month", "year", "last_year"}
+
+// periodRange returns the date range of a period, from inclusive and to
+// exclusive, the way the history widget counts its rows.
+func (e *evcc) periodRange(period string) (from, to string, ok bool) {
+	now := e.req.Now.In(e.req.Location())
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	monday := day.AddDate(0, 0, -((int(day.Weekday()) + 6) % 7))
+	month := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	year := time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
+	switch period {
+	case "today":
+		return date(day), date(day.AddDate(0, 0, 1)), true
+	case "yesterday":
+		return date(day.AddDate(0, 0, -1)), date(day), true
+	case "week":
+		return date(monday), date(day.AddDate(0, 0, 1)), true
+	case "last_week":
+		return date(monday.AddDate(0, 0, -7)), date(monday), true
+	case "month":
+		return date(month), date(day.AddDate(0, 0, 1)), true
+	case "last_month":
+		return date(month.AddDate(0, -1, 0)), date(month), true
+	case "year":
+		return date(year), date(day.AddDate(0, 0, 1)), true
+	case "last_year":
+		return date(year.AddDate(-1, 0, 0)), date(year), true
+	}
+	return "", "", false
+}
+
 func (e *evcc) historyRows() []historyRow {
 	now := e.req.Now.In(e.req.Location())
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())

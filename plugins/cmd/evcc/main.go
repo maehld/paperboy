@@ -6,6 +6,7 @@
 //   - "flow": an energy flow diagram, boxes for PV, grid, home and battery
 //     joined to the hub by arrows, with the chargers as text below the home;
 //     "balance": the same energies as a T-account with fixed rows and totals,
+//     for now or a period,
 //   - "loadpoint": one charging point with vehicle, mode, state of charge,
 //     charge power and session energy,
 //   - "forecast": the solar forecast and the grid price of the coming hours,
@@ -180,10 +181,13 @@ func (e *evcc) Describe() plugin.Description {
 			{Widget: "flow", Title: "Energy flow diagram", Kinds: image, MinWidth: 240, MinHeight: 200,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 4}},
 				Args: map[string]plugin.Arg{
-					"period": {Type: "string", Default: "now", Description: "now, today, yesterday, week, last_week, month, last_month, year or last_year", Enum: flowPeriods},
+					"period": {Type: "string", Default: "now", Description: "now, today, yesterday, week, last_week, month, last_month, year or last_year", Enum: periods},
 				}},
 			{Widget: "balance", Title: "Energy balance", Kinds: image, MinWidth: 260, MinHeight: 120,
-				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 3}, {Columns: 6, Rows: 4}}},
+				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 3}, {Columns: 6, Rows: 4}},
+				Args: map[string]plugin.Arg{
+					"period": {Type: "string", Default: "now", Description: "now, today, yesterday, week, last_week, month, last_month, year or last_year", Enum: periods},
+				}},
 			{Widget: "loadpoint", Title: "Charging point", Kinds: image, MinWidth: 200, MinHeight: 100,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 3, Rows: 4}, {Columns: 6, Rows: 3}},
 				Args: map[string]plugin.Arg{

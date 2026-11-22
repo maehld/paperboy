@@ -27,8 +27,8 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
   plans and position; `auto.lcd2004.yaml` shows battery, charging and climate
   from the myskoda values on 20×4.
 - `energie.yaml` - evcc energy flow with site values and the charging point.
-- `energie-woche.yaml` - evcc: the energy flow of this week in kWh, with the
-  page header naming the period.
+- `energie-woche.yaml` - evcc: the energy flow and the balance of this week in
+  kWh, with the page header naming the period.
 - `ertrag.yaml` - evcc energy history: PV yield, battery discharge and the
   first loadpoint for today, yesterday, the week, the month and the year.
 - `werte.yaml` - evcc values: today's energy, meter readings and charging
