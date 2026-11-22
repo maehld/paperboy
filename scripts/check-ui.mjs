@@ -162,7 +162,7 @@ ${palette}<span id="preview-where"></span><img id="preview-img" hidden><pre id="
   const editor = `<h2><span id="file-label"></span></h2><span id="preview-where"></span><span id="status"></span>
 <button id="rename" type="button"></button><button id="delete" type="button"></button><button id="save" type="button"></button>
 <input id="title"><p id="used-by"></p><input id="cols" type="number"><input id="rows" type="number">
-<button id="grid-lock" type="button"></button><p id="grid-note"></p>
+<button id="grid-lock" type="button"></button>
 <input id="padding"><input id="rule"><input id="text-size"><input id="divider">
 <select id="notices"><option value="">default</option><option value="none">none</option></select>
 ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" checked>
@@ -246,6 +246,7 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
   // The page editor marks the picked entry and places it on the clicked cell.
   {
     const { editorDom, window, failures } = await open("http://localhost/ui/pages/demo?display=e1001", editor, { ...start, new: true });
+    check(window.document.getElementById("board-note").textContent.includes("px on e1001"), "the board note does not name the cell size");
     entry(window, "clock").click();
     check(entry(window, "clock").classList.contains("active"), "a click in the page editor does not mark the entry");
     const slot = window.document.querySelector("#board .slot");

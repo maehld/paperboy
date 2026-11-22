@@ -515,7 +515,6 @@
     renderGridLock(off);
     if (!t) {
       for (const id of ['title', 'cols', 'rows', 'padding', 'rule', 'text-size', 'divider']) el(id).value = '';
-      el('grid-note').textContent = '';
       return;
     }
     if (state.gridLock && !state.gridRatio) state.gridRatio = t.grid.slice();
@@ -523,11 +522,6 @@
     el('title').value = t.title || state.page_title || '';
     el('cols').value = rowsPage() ? state.width : t.grid[0];
     el('rows').value = rowsPage() ? state.height : t.grid[1];
-    el('grid-note').textContent = rowsPage()
-      ? 'Text page: ' + state.width + '×' + state.height + ' characters. Drag a box to move it; its edges resize it.'
-      : text()
-        ? 'The grid is the character grid of the display and cannot be changed.'
-        : cellSizeText(t) + 'Plugins declare their sizes on a ' + state.reference[0] + '×' + state.reference[1] + ' reference grid, Paperboy maps them.';
     el('padding').value = s.padding === undefined || s.padding === null ? '' : s.padding;
     el('rule').value = s.rule || '';
     el('text-size').value = s.text_size || '';
@@ -555,6 +549,8 @@
 
   // cellSizeText names the pixels of one cell and how far they are from
   // square, because a lock cannot make every density square.
+  // cellSizeText names the grid and the size of one cell in pixels, for the
+  // note under the board.
   function cellSizeText(t) {
     if (!t || text() || !(state.width > 0 && state.height > 0)) return '';
     const cols = Number(el('cols').value) || t.grid[0];
@@ -564,7 +560,7 @@
     const h = state.height / rows;
     const dev = Math.round(Math.abs(w / h - 1) * 100);
     const shape = dev <= 1 ? ', square' : ', ' + dev + ' % ' + (w > h ? 'wider than tall' : 'taller than wide');
-    return 'Cells ' + Math.round(w) + ' × ' + Math.round(h) + ' px on ' + state.display + shape + '. ';
+    return cols + ' × ' + rows + ' cells, ' + Math.round(w) + ' × ' + Math.round(h) + ' px on ' + state.display + shape;
   }
 
   function renderGridLock(off) {
@@ -1445,10 +1441,13 @@
       }
       board.appendChild(cell);
     });
-    let used = 0;
-    for (const c of t.cells) used += c.span[0] * c.span[1];
-    let note = t.grid[0] + '×' + t.grid[1] + ' cells, ' + used + ' of ' + t.grid[0] * t.grid[1] + ' covered';
-    if (state.placing) note += ' · click a free cell to place ' + state.placing.plugin + '/' + state.placing.widget;
+    let note = '';
+    if (state.placing) {
+      note = 'Click a free cell to place ' + state.placing.plugin + '/' + state.placing.widget + '.';
+    } else {
+      const size = cellSizeText(t);
+      if (size) note = size + '.';
+    }
     el('board-note').textContent = note;
     applyBoardPreview();
   }
