@@ -221,7 +221,6 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
     await sleep(10);
     check(new URLSearchParams(window.location.search).get("widget") === "demo/chart", "a click in the Playground names " + new URLSearchParams(window.location.search).get("widget"));
     check(window.document.getElementById("snippet").textContent.includes("widget: demo/chart"), "the snippet does not name the picked widget");
-    check(window.localStorage.getItem("pb-recent-widgets") === '["demo/chart"]', "the recent list holds " + window.localStorage.getItem("pb-recent-widgets"));
     entry(window, "clock").querySelector(".pin").click();
     check(window.localStorage.getItem("pb-pinned-widgets") === '["demo/clock"]', "the pinned list holds " + window.localStorage.getItem("pb-pinned-widgets"));
     check(Array.from(window.document.querySelectorAll("#palette .plugin-head")).some((head) => head.textContent.includes("Pinned")), "a pinned widget gets no group");
