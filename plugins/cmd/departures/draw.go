@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -34,11 +35,11 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 	b := img.Bounds()
 	pad := w.Style.Padding
 	rule := max(w.Style.Rule, 1)
-	base := max(req.TextPx(w), render.MinSize)
-	// A row's text takes rowShare of the base text by default, the share the
-	// calendar agenda uses. The count argument shows that many rows instead
-	// and sizes their text to them, so fewer rows get a bigger text.
-	headSize := max(base*rowShare, render.MinSize)
+	scale := design.NewScale(req.TextPx(w), b.Dy()-2*pad)
+	// A row's text uses Micro by default. The count argument shows that many
+	// rows instead and sizes their text to them, so fewer rows get a bigger
+	// text.
+	headSize := scale.Detail
 	top := b.Min.Y + pad
 	left, right := b.Min.X+pad, b.Max.X-pad
 
@@ -52,8 +53,8 @@ func (p *departures) Render(req *plugin.Request, w plugin.WidgetRequest, img *im
 		return plugin.TooSmall(w)
 	}
 	count := min(max(w.Arg().Int("count", 0), 0), p.max)
-	rows, rowH, size := rowLayout(avail, base, rule, count)
-	small := max(size*0.8, req.PtPx(5.8), render.MinSize)
+	rows, rowH, size := rowLayout(avail, scale, rule, count)
+	small := max(scale.Tiny, req.PtPx(5.8), render.MinSize)
 	deps := v.list
 	if len(deps) > rows {
 		deps = deps[:rows]
@@ -215,9 +216,6 @@ const (
 	// minDestScale is how far a destination may shrink before it is
 	// ellipsized.
 	minDestScale = 0.8
-	// rowShare is the text height of a list row relative to the base text,
-	// the share the calendar agenda uses.
-	rowShare = 0.6
 	// rowLead is the row pitch in text heights: the text plus air for
 	// descenders and the rule between rows.
 	rowLead = 1.4
@@ -228,16 +226,16 @@ func rowPitch(size float64, rule int) int { return int(rowLead*size) + rule }
 
 // rowLayout returns the rows, the row pitch and the text size of a departures
 // list of avail pixels. Without count the list fills the cell with rows at
-// rowShare of the base text. With count it shows that many rows: their text
-// grows up to the base text, and rows that do not fit are dropped.
-func rowLayout(avail int, base float64, rule, count int) (rows, rowH int, size float64) {
+// Micro. With count it shows that many rows: their text grows up to Body, and
+// rows that do not fit are dropped.
+func rowLayout(avail int, scale design.Scale, rule, count int) (rows, rowH int, size float64) {
 	if count <= 0 {
-		size = max(min(rowShare*base, (float64(avail)-float64(rule))/rowLead), render.MinSize)
+		size = max(min(scale.Micro, (float64(avail)-float64(rule))/rowLead), render.MinSize)
 		rowH = rowPitch(size, rule)
 		return max(avail/rowH, 1), rowH, size
 	}
 	rows = min(count, max(avail/rowPitch(render.MinSize, rule), 1))
-	size = min(base, max((float64(avail)/float64(rows)-float64(rule))/rowLead, render.MinSize))
+	size = min(scale.Body, max((float64(avail)/float64(rows)-float64(rule))/rowLead, render.MinSize))
 	return rows, rowPitch(size, rule), size
 }
 

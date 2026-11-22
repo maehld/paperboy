@@ -22,6 +22,7 @@ for the two-level panels:
 
 | Role | Factor | Use |
 |---|---|---|
+| `Tiny` | 0.55 | dense list metadata, "2 h ago" |
 | `Micro` | 0.70 | axis ticks, footnotes, "since 14:20" |
 | `Detail` | 0.85 | details, tile label |
 | `Body` | 1.00 | list rows, normal text |
@@ -31,6 +32,10 @@ for the two-level panels:
 The roles do not follow the cell height. A label therefore has the same size
 in every tile of a page. A plugin that ignores the scale can still use
 `render.Text` directly.
+
+`Tiny` is the second line of a dense list, such as an age, an author or a feed
+name ([ADR 0152](../adr/0152-a-tiny-role-for-dense-lists.md)). It is not for a
+tile label or a chart annotation.
 
 ### When a component does not fit
 
@@ -73,8 +78,14 @@ zero to one hundred. A line with `Halo` keeps a white edge above the bars.
 [`fuel`](../plugins/fuel.md) uses `DrawHero` and `DrawTrend`.
 [`weather`](../plugins/weather.md) uses `DrawHero` and `DrawTrend`.
 [`countdown`](../plugins/countdown.md) uses `DrawHero` and `DrawMeter`.
-The other plugins follow in separate changes. The calendar month, the Pokédex
-card and xkcd keep their own drawing where the components do not fit.
+[`github`](../plugins/github.md), [`rss`](../plugins/rss.md) and
+[`departures`](../plugins/departures.md) use the type scale for their dense
+lists. [`myskoda`](../plugins/myskoda.md) and [`prusalink`](../plugins/prusalink.md)
+use the scale, the meter and the secondary ink.
+
+The calendar month, the Pokédex card and xkcd keep their own drawing where the
+components do not fit. The calendar agenda and week, dexcom and the Pokédex
+text follow in a later change.
 
 ## What the design language does not change
 
@@ -87,7 +98,8 @@ card and xkcd keep their own drawing where the components do not fit.
 ## Decisions
 
 [ADR 0151](../adr/0151-a-shared-design-language-for-plugin-widgets.md) (the
-design language) · [0049](../adr/0049-plugin-widgets.md) (plugin widgets) ·
+design language, extended by [ADR 0152](../adr/0152-a-tiny-role-for-dense-lists.md)
+with `Tiny`) · [0049](../adr/0049-plugin-widgets.md) (plugin widgets) ·
 [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) ·
 [0107](../adr/0107-plugin-builds-reach-installations.md) (plugin versions) ·
 [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge).

@@ -81,6 +81,7 @@ func drawGallery(img *image.Paletted) {
 		size float64
 		text string
 	}{
+		{"Tiny", s.Tiny, "meta line · 2 h ago"},
 		{"Micro", s.Micro, "axis tick · since 14:20"},
 		{"Detail", s.Detail, "detail and tile label"},
 		{"Body", s.Body, "body and list row"},

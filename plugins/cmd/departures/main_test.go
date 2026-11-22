@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -298,22 +299,23 @@ func TestRender(t *testing.T) {
 
 func TestRowLayout(t *testing.T) {
 	const base, rule = 52.4, 2
-	// Default: rows at 0.6 of the base text, as many as fit.
-	rows, rowH, size := rowLayout(390, base, rule, 0)
-	if rows != 8 || rowH != 46 || size < rowShare*base-0.01 || size > rowShare*base+0.01 {
+	scale := design.NewScale(base, 390)
+	// Default: rows at Micro, as many as fit.
+	rows, rowH, size := rowLayout(390, scale, rule, 0)
+	if rows != 7 || rowH != 53 || size != scale.Micro {
 		t.Errorf("auto: %d rows of %d px, text %v", rows, rowH, size)
 	}
-	// Fewer rows make the text bigger, up to the base text.
-	four, _, fourSize := rowLayout(390, base, rule, 4)
-	if four != 4 || fourSize != base {
-		t.Errorf("count 4: %d rows, text %v, want the base text %v", four, fourSize, base)
+	// Fewer rows make the text bigger, up to Body.
+	four, _, fourSize := rowLayout(390, scale, rule, 4)
+	if four != 4 || fourSize != scale.Body {
+		t.Errorf("count 4: %d rows, text %v, want the base text %v", four, fourSize, scale.Body)
 	}
 	// More rows make it smaller than four rows.
-	if _, rowH, s := rowLayout(390, base, rule, 8); s >= fourSize || rowH*8 > 390 {
+	if _, rowH, s := rowLayout(390, scale, rule, 8); s >= fourSize || rowH*8 > 390 {
 		t.Errorf("count 8: text %v of %d px rows, want smaller than %v", s, rowH, fourSize)
 	}
 	// A crowded cell drops rows instead of shrinking below the smallest text.
-	rows, rowH, size = rowLayout(20, base, rule, 8)
+	rows, rowH, size = rowLayout(20, scale, rule, 8)
 	if rows != 2 || rowH != 10 || size != render.MinSize {
 		t.Errorf("crowded: %d rows of %d px, text %v", rows, rowH, size)
 	}

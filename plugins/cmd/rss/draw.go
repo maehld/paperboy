@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 	"image"
-	"image/color"
 	"strings"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -37,8 +37,9 @@ func (p *rss) renderFeed(req *plugin.Request, w plugin.WidgetRequest, img *image
 		return plugin.TooSmall(w)
 	}
 	base := max(req.TextPx(w), render.MinSize)
+	scale := design.NewScale(req.TextPx(w), inner.Dy())
 	rule := max(w.Style.Rule, 1)
-	muted := mutedColor(img)
+	muted := design.Muted(img)
 	now := p.now(req)
 	source := p.sourcesOn(w, name)
 
@@ -47,7 +48,7 @@ func (p *rss) renderFeed(req *plugin.Request, w plugin.WidgetRequest, img *image
 		if name == "" || name == "all" {
 			title = req.T("Alle Quellen", "All feeds")
 		}
-		size := max(base*0.55, render.MinSize)
+		size := scale.Detail
 		render.Text(img, title, inner.Min.X, inner.Min.Y+int(size), render.Style{Size: size, Bold: true, Shrink: true}, inner.Dx(), render.Black, render.Left)
 		inner.Min.Y += int(size * 1.6)
 		render.HLine(img, inner.Min.X, inner.Min.Y, inner.Max.X, rule)
@@ -57,9 +58,9 @@ func (p *rss) renderFeed(req *plugin.Request, w plugin.WidgetRequest, img *image
 		return plugin.TooSmall(w)
 	}
 
-	metaSize := max(base*0.45, 9)
+	metaSize := scale.Tiny
 	metaStep := int(metaSize * 1.45)
-	sumSize := max(base*0.48, 10)
+	sumSize := scale.Tiny
 	sumStep := int(sumSize * 1.45)
 	summaries := w.Arg().Bool("summary", false)
 	metaOn := mode != "none" || source
@@ -86,8 +87,8 @@ func (p *rss) renderFeed(req *plugin.Request, w plugin.WidgetRequest, img *image
 
 	// All titles share one size: the largest that fits every visible title,
 	// down to 0.7 of the base text; longer ones get an ellipsis.
-	titleSize := base
-	for titleSize > base*0.7 && !titlesFit(list[:rows], titleSize, inner.Dx()) {
+	titleSize := scale.Body
+	for titleSize > scale.Micro && !titlesFit(list[:rows], titleSize, inner.Dx()) {
 		titleSize--
 	}
 	titleH := int(titleSize * 0.95)
@@ -148,13 +149,14 @@ func (p *rss) renderHeadline(req *plugin.Request, w plugin.WidgetRequest, img *i
 	}
 	e := list[0]
 	base := max(req.TextPx(w), render.MinSize)
-	muted := mutedColor(img)
+	scale := design.NewScale(req.TextPx(w), inner.Dy())
+	muted := design.Muted(img)
 
 	meta := strings.ToUpper(e.Source)
 	if t := p.timeText(e.Time, p.now(req), mode, req); t != "" {
 		meta += "  ·  " + t
 	}
-	metaSize := max(base*0.45, 9)
+	metaSize := scale.Tiny
 	render.Text(img, render.Ellipsize(meta, metaSize, false, inner.Dx()), inner.Min.X, inner.Min.Y+int(metaSize), render.Style{Size: metaSize}, inner.Dx(), muted, render.Left)
 
 	y := inner.Min.Y + int(metaSize*1.7)
@@ -169,8 +171,8 @@ func (p *rss) renderHeadline(req *plugin.Request, w plugin.WidgetRequest, img *i
 	if w.Arg().Bool("summary", true) && e.Summary != "" {
 		capLines = 3
 	}
-	size := min(base*2, float64(room)*0.32)
-	size = max(size, base)
+	size := min(scale.Hero, float64(room)*0.32)
+	size = max(size, scale.Body)
 	var lines []string
 	for {
 		maxLines := min(max(room/(int(size*1.05)+1), 1), capLines)
@@ -190,7 +192,7 @@ func (p *rss) renderHeadline(req *plugin.Request, w plugin.WidgetRequest, img *i
 	}
 
 	if w.Arg().Bool("summary", true) && e.Summary != "" {
-		ssize := max(base*0.5, 10)
+		ssize := scale.Tiny
 		step := int(ssize * 1.35)
 		y += int(base * 0.35)
 		room := inner.Max.Y - y - int(base*0.3)
@@ -337,15 +339,6 @@ func timeMode(w plugin.WidgetRequest) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("time: %q is not relative, clock or none", mode)
-}
-
-// mutedColor keeps secondary text readable on 2-level panels, where a light
-// gray would turn white.
-func mutedColor(img *image.Paletted) color.Color {
-	if render.Levels(img.Palette) >= 4 {
-		return render.DarkGray
-	}
-	return render.Black
 }
 
 func boolInt(b bool) int {
