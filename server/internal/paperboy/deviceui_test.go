@@ -18,7 +18,7 @@ func TestDeviceEditorOverview(t *testing.T) {
 
 	body := request(t, s, http.MethodGet, "/ui/devices", nil, nil).Body.String()
 	for _, want := range []string{
-		"<h2>Devices", `<a href="/ui/devices/kueche">kueche</a>`, "<td>small</td>", "<td>tour</td>",
+		"<h2>Devices", `<a href="/ui/devices/kueche">kueche</a>`, "<td data-label=\"Display type\">small</td>", "<td data-label=\"Plan\">tour</td>",
 		"/ui/devices/kueche", "New device", `action="/ui/devices/new"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -26,7 +26,7 @@ func TestDeviceEditorOverview(t *testing.T) {
 		}
 	}
 	// A broken device file is listed with its error and cannot be opened.
-	if !strings.Contains(body, "<td>kaputt</td>") || !strings.Contains(body, "yaml: unmarshal errors") {
+	if !strings.Contains(body, "<td data-label=\"ID\">kaputt</td>") || !strings.Contains(body, "yaml: unmarshal errors") {
 		t.Fatalf("broken device not reported:\n%s", body)
 	}
 	if strings.Contains(body, "/ui/devices/kaputt") {

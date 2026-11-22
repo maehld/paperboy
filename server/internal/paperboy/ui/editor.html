@@ -67,16 +67,16 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   </div>
   {{if not .Kinds}}<p class="empty">No display types configured. Add one under <code>displays/</code>.</p>{{end}}
   {{if .Groups}}
-  <table id="page-table">
+  <table id="page-table" class="cards">
     <thead><tr><th>Page</th><th>Variants</th><th>Kind</th><th>Grid / rows</th><th>Title</th></tr></thead>
     <tbody>
       {{range .Groups}}
       <tr{{if .PageURL}} class="rowlink" data-href="{{.PageURL}}"{{end}}>
-        <td class="page">{{if .PageURL}}<a href="{{.PageURL}}"><strong>{{.Name}}</strong></a>{{else}}<strong{{if .Missing}} class="missing" title="No page file. Create it with New page."{{end}}>{{.Name}}</strong>{{end}}</td>
-        <td class="variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}<span class="chip{{if $v.Class}} {{$v.Class}}{{end}}" title="{{$v.Title}}">{{if $v.URL}}<a href="{{$v.URL}}">{{$v.Label}}</a>{{else}}{{$v.Label}}{{end}}</span>{{end}}</td>
-        <td>{{.Kind}}</td>
-        <td class="num">{{.Grid}}</td>
-        <td>{{.Title}}</td>
+        <td class="page" data-label="Page">{{if .PageURL}}<a href="{{.PageURL}}"><strong>{{.Name}}</strong></a>{{else}}<strong{{if .Missing}} class="missing" title="No page file. Create it with New page."{{end}}>{{.Name}}</strong>{{end}}</td>
+        <td class="variants" data-label="Variants">{{range $i, $v := .Variants}}{{if $i}} · {{end}}<span class="chip{{if $v.Class}} {{$v.Class}}{{end}}" title="{{$v.Title}}">{{if $v.URL}}<a href="{{$v.URL}}">{{$v.Label}}</a>{{else}}{{$v.Label}}{{end}}</span>{{end}}</td>
+        <td data-label="Kind">{{.Kind}}</td>
+        <td class="num" data-label="Grid">{{.Grid}}</td>
+        <td data-label="Title">{{.Title}}</td>
       </tr>
       {{if .Note}}<tr class="detail"><td colspan="5"><p class="hint">{{.Note}}</p></td></tr>{{end}}
       {{if .Error}}<tr class="detail"><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
@@ -112,14 +112,14 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <button class="new" type="button" data-dialog="new-plan">New plan</button>
   </div>
   {{if .Plans}}
-  <table id="plan-table">
+  <table id="plan-table" class="cards">
     <thead><tr><th>Name</th><th>Rules</th><th>Fallback</th></tr></thead>
     <tbody>
       {{range .Plans}}
       <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
-        <td>{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
-        <td class="num">{{.Rules}}</td>
-        <td>{{.Fallback}}</td>
+        <td data-label="Name">{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
+        <td class="num" data-label="Rules">{{.Rules}}</td>
+        <td data-label="Fallback">{{.Fallback}}</td>
       </tr>
       {{if .Error}}<tr class="detail"><td colspan="3"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}
@@ -148,16 +148,16 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <button class="new" type="button" data-dialog="new-device">New device</button>
   </div>
   {{if .Devices}}
-  <table id="device-table">
+  <table id="device-table" class="cards">
     <thead><tr><th>ID</th><th>Display type</th><th>MAC</th><th>Address</th><th>Plan</th></tr></thead>
     <tbody>
       {{range .Devices}}
       <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
-        <td>{{if .OpenURL}}<a href="{{.OpenURL}}">{{.ID}}</a>{{else}}{{.ID}}{{end}}</td>
-        <td>{{.Display}}</td>
-        <td class="num">{{.MAC}}</td>
-        <td class="num">{{.Address}}</td>
-        <td>{{.Plan}}</td>
+        <td data-label="ID">{{if .OpenURL}}<a href="{{.OpenURL}}">{{.ID}}</a>{{else}}{{.ID}}{{end}}</td>
+        <td data-label="Display type">{{.Display}}</td>
+        <td class="num" data-label="MAC">{{.MAC}}</td>
+        <td class="num" data-label="Address">{{.Address}}</td>
+        <td data-label="Plan">{{.Plan}}</td>
       </tr>
       {{if .Problem}}<tr class="detail"><td colspan="5"><p class="error">{{.Problem}}</p></td></tr>{{end}}
       {{if .Error}}<tr class="detail"><td colspan="5"><p class="error">{{.Error}}</p></td></tr>{{end}}
@@ -184,17 +184,17 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <span class="spacer"></span>
     <input class="filter" type="search" placeholder="Filter unclaimed hardware…" data-filter="unclaimed-table" aria-label="Filter unclaimed hardware">
   </div>
-  <table id="unclaimed-table">
+  <table id="unclaimed-table" class="cards">
     <thead><tr><th>MAC</th><th>Hardware</th><th>Firmware</th><th>Address</th><th>First seen</th><th>Last seen</th><th></th></tr></thead>
     <tbody>
       {{range .Unclaimed}}
       <tr class="rowlink" data-claim="{{.ClaimURL}}" data-mac="{{.MAC}}">
-        <td class="num">{{.MAC}}</td>
-        <td>{{.Hardware}}</td>
-        <td>{{.Firmware}}</td>
-        <td class="num">{{.Address}}</td>
-        <td class="num">{{.FirstSeen}}</td>
-        <td class="num">{{.LastSeen}}</td>
+        <td class="num" data-label="MAC">{{.MAC}}</td>
+        <td data-label="Hardware">{{.Hardware}}</td>
+        <td data-label="Firmware">{{.Firmware}}</td>
+        <td class="num" data-label="Address">{{.Address}}</td>
+        <td class="num" data-label="First seen">{{.FirstSeen}}</td>
+        <td class="num" data-label="Last seen">{{.LastSeen}}</td>
         <td class="open"><a href="{{.ClaimURL}}" data-claim="{{.ClaimURL}}" data-mac="{{.MAC}}">Claim</a><button class="delete" type="button" data-forget="{{.ForgetURL}}" data-mac="{{.MAC}}">Forget</button></td>
       </tr>
       {{end}}
@@ -212,17 +212,17 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
     <button class="new" type="button" data-dialog="new-display">New display type</button>
   </div>
   {{if .Types}}
-  <table id="display-table">
+  <table id="display-table" class="cards">
     <thead><tr><th>Name</th><th>Kind</th><th>Size</th><th>ppi / charset</th><th>Grays</th><th>Power</th></tr></thead>
     <tbody>
       {{range .Types}}
       <tr{{if .OpenURL}} class="rowlink" data-href="{{.OpenURL}}"{{end}}>
-        <td>{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
-        <td>{{.Kind}}</td>
-        <td class="num">{{.Size}}</td>
-        <td>{{.Density}}</td>
-        <td class="num">{{.Gray}}</td>
-        <td>{{.Power}}</td>
+        <td data-label="Name">{{if .OpenURL}}<a href="{{.OpenURL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
+        <td data-label="Kind">{{.Kind}}</td>
+        <td class="num" data-label="Size">{{.Size}}</td>
+        <td data-label="Density">{{.Density}}</td>
+        <td class="num" data-label="Levels">{{.Gray}}</td>
+        <td data-label="Power">{{.Power}}</td>
       </tr>
       {{if .Error}}<tr class="detail"><td colspan="6"><p class="error">{{.Error}}</p></td></tr>{{end}}
       {{end}}

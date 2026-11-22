@@ -18,7 +18,7 @@ func TestEditorDisplaysTab(t *testing.T) {
 	for _, want := range []string{
 		`<a href="/ui/display-types" class="active" aria-current="page">Display types</a>`,
 		`id="display-table"`, `<a href="/ui/display-types/small">small</a>`, ">40 × 20</td>", "125 ppi", ">4</td>",
-		">20 × 4</td>", "<td>ascii</td>", "New display type",
+		">20 × 4</td>", "<td data-label=\"Density\">ascii</td>", "New display type",
 		"/ui/display-types/small",
 	} {
 		if !strings.Contains(body, want) {

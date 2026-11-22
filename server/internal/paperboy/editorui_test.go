@@ -174,7 +174,7 @@ func TestEditorTextRows(t *testing.T) {
 		t.Fatal("the editor still carries a caption below the board")
 	}
 	list := request(t, s, http.MethodGet, "/ui/pages", nil, nil).Body.String()
-	if !strings.Contains(list, `<td class="num">4 rows</td>`) {
+	if !strings.Contains(list, `<td class="num" data-label="Grid">4 rows</td>`) {
 		t.Fatalf("the pages list does not count the rows:\n%s", list)
 	}
 	for _, want := range []string{"renderTextInspector", "textCellFields", "renderValuePalette",

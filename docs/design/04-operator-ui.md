@@ -25,6 +25,8 @@ The UI looks like a well-printed instrument: paper, ink, hairlines, machine data
 
 `tokens.css` holds every value: colour, type scale, spacing, radius, shadow and motion. `ui.css` holds the components that every page shares. A page links both and keeps layout rules only, and it names no colour of its own.
 
+Below 40rem a list table becomes a card list: `ui.css` lays the cells out one under another and shows the column name from `data-label`. A page that adds a table marks its cells, so no column is cut off.
+
 Light is the default. A dark system switches the palette through `prefers-color-scheme`, because the tokens use `light-dark()` with `color-scheme`. The LCD green belongs to the text preview and never becomes an interface colour.
 
 ## Which route needs what
