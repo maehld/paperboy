@@ -2,12 +2,14 @@ package builtin
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
+	"go.yaml.in/yaml/v3"
 )
 
 func TestValues(t *testing.T) {
@@ -47,6 +49,29 @@ func TestValues(t *testing.T) {
 	req.Values = []string{"nope"}
 	if _, err := (Plugin{}).Values(req); !errors.Is(err, plugin.ErrUnknownValue) {
 		t.Errorf("unknown value: %v", err)
+	}
+}
+
+// Every YAML form reaches the widget as the same two lines: a plain scalar
+// keeps the two characters \n, a double-quoted scalar turns them into a line
+// break, and a block scalar keeps a trailing line break.
+func TestTextLinesFromYAML(t *testing.T) {
+	forms := []string{
+		"text: one\\ntwo\n",
+		"text: 'one\\ntwo'\n",
+		"text: \"one\\ntwo\"\n",
+		"text: |\n  one\n  two\n",
+	}
+	for _, form := range forms {
+		var cell struct {
+			Text string `yaml:"text"`
+		}
+		if err := yaml.Unmarshal([]byte(form), &cell); err != nil {
+			t.Fatalf("%q: %v", form, err)
+		}
+		if got, want := textLines(cell.Text), []string{"one", "two"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("%q: lines = %q, want %q", form, got, want)
+		}
 	}
 }
 
