@@ -21,13 +21,12 @@
    field of the other display kind stays visible (ADR 0076). */
 [hidden] { display: none !important; }
 
-body { margin: 0; padding: 1.5rem; font: var(--pb-text-md)/1.4 var(--pb-font-body); background: var(--pb-bg); color: var(--pb-ink); }
+body { margin: 0; font: var(--pb-text-md)/1.4 var(--pb-font-body); background: var(--pb-bg); color: var(--pb-ink); }
 
-/* The header: brand, the four sections, the build label. The active entry is
-   bold and dark. The brand is the logo lockup, so its items are centred
-   instead of sitting on the text baseline. */
-header { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin-bottom: 1rem; }
-h1 { font-size: 1.5rem; margin: 0; }
+/* The shell (ADR 0150): the top bar carries the brand and the build, the rail
+   names the sections and keeps its place while the page scrolls, and the
+   breadcrumb names the way back. */
+.topbar { display: flex; align-items: center; gap: 1rem; padding: .55rem 1.25rem; min-height: var(--pb-topbar); border-bottom: 1px solid var(--pb-hairline); background: var(--pb-surface); }
 .brand { display: flex; align-items: center; }
 .brand img { display: block; height: 1.7rem; width: auto; }
 /* The lockup is black ink. A dark page inverts it, so the mark stays visible. */
@@ -35,21 +34,40 @@ h1 { font-size: 1.5rem; margin: 0; }
   :root:not([data-theme="light"]) .brand img { filter: invert(1); }
 }
 :root[data-theme="dark"] .brand img { filter: invert(1); }
-.muted { color: var(--pb-ink-muted); font-size: .85rem; }
-nav { font-size: 1rem; }
-header nav { flex: 1 1 auto; }
-nav a { color: var(--pb-accent); text-decoration: none; }
-nav a.active { font-weight: 700; color: var(--pb-ink); }
-.build { margin-left: auto; font-variant-numeric: tabular-nums; }
+.topbar-end { display: flex; align-items: center; gap: .75rem; margin-left: auto; }
+.build { font-variant-numeric: tabular-nums; }
+.theme { padding: .1rem .45rem; line-height: 1.3; }
+
+.shell { display: grid; grid-template-columns: var(--pb-rail) minmax(0, 1fr); align-items: start; }
+.rail { position: sticky; top: 0; display: flex; flex-direction: column; gap: .1rem; padding: .9rem .6rem; border-right: 1px solid var(--pb-hairline); min-height: calc(100dvh - var(--pb-topbar)); }
+.rail a { padding: .35rem .6rem; border-radius: var(--pb-radius-md); color: var(--pb-ink); text-decoration: none; font-size: var(--pb-text-sm); }
+.rail a:hover { background: var(--pb-surface-hover); }
+.rail a.active { background: var(--pb-accent-bg); color: var(--pb-accent); font-weight: 600; }
+.rail-head { padding: .9rem .6rem .25rem; font-size: var(--pb-text-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--pb-ink-faint); }
+
+main { padding: 1rem 1.5rem 3rem; min-width: 0; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0 0 .9rem; font-size: var(--pb-text-xs); color: var(--pb-ink-muted); }
+.crumbs a { color: var(--pb-ink-muted); text-decoration: none; }
+.crumbs a:hover { color: var(--pb-accent); }
+.crumbs > * + *::before { content: "/"; margin-right: .4rem; color: var(--pb-ink-faint); }
+.crumbs [aria-current] { color: var(--pb-ink); }
+
+@media (max-width: 64rem) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .rail { position: static; flex-direction: row; flex-wrap: wrap; min-height: 0; padding: .35rem .9rem; border-right: 0; border-bottom: 1px solid var(--pb-hairline); }
+  .rail-head { display: none; }
+  main { padding: .9rem 1rem 2.5rem; }
+}
 
 /* The action bar of an editor: back link, object name, where, status, actions. */
 .bar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-bottom: .9rem; }
 .bar h2 { font-size: 1.15rem; margin: 0; }
 .bar .spacer { margin-left: auto; }
 
-.status { font-size: .85rem; }
+.status { font-size: var(--pb-text-sm); }
 .status.ok { color: var(--pb-ok); }
 .status.error { color: var(--pb-error); }
+.muted { color: var(--pb-ink-muted); font-size: var(--pb-text-sm); }
 
 button { font: inherit; font-size: .9rem; padding: .25rem .7rem; border-radius: 6px; border: 1px solid var(--pb-hairline-strong); background: var(--pb-surface-sunken); cursor: pointer; }
 button:hover { background: var(--pb-surface-hover); }
@@ -65,11 +83,6 @@ button:disabled { color: var(--pb-ink-faint); cursor: default; background: var(-
 .panel-head h3 { margin: 0; }
 .hint { margin: .4rem 0 0; font-size: .8rem; color: var(--pb-ink-muted); }
 code { font: .85rem var(--pb-font-mono); background: var(--pb-surface-sunken); padding: 0 .2rem; border-radius: 3px; }
-
-/* Sub-tabs of a section (the editor's object types). */
-.tabs { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; border-bottom: 1px solid var(--pb-hairline); margin: 0 0 1rem; }
-.tabs a { padding: .4rem .8rem; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; text-decoration: none; font-size: .95rem; }
-.tabs a.active { background: var(--pb-surface); border-color: var(--pb-hairline); color: var(--pb-ink); font-weight: 600; margin-bottom: -1px; }
 
 /* A row of links that chooses between display types. */
 .switch { display: flex; flex-wrap: wrap; gap: .8rem; margin: 0 0 .9rem; font-size: .95rem; }

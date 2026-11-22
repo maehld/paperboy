@@ -107,7 +107,7 @@ func TestWidgetsPage(t *testing.T) {
 	// the Playground makes is valid in it (ADR 0111, 0124).
 	body = preview(t, s, "/ui/plugins?display=lcd&widget=paperboy/text&span=20x4").Body.String()
 	for _, want := range []string{`"display":"small"`, `"kind":"image"`, `"grid":[6,8]`,
-		`id="playground-notice"`, `href="/ui/editor?tab=pages"`, "Text displays are edited under"} {
+		`id="playground-notice"`, `href="/ui/pages"`, "Text displays are edited under"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("text display fallback misses %q: %s", want, body)
 		}
@@ -144,7 +144,7 @@ func TestWidgetsPageTextOnly(t *testing.T) {
 		}
 		body := rec.Body.String()
 		for _, want := range []string{`id="playground-notice"`, "Every configured display type is a text display",
-			`href="/ui/editor?tab=pages"`} {
+			`href="/ui/pages"`} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("%s misses %q: %s", path, want, body)
 			}

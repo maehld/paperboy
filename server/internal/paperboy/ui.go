@@ -20,7 +20,7 @@ import (
 //go:embed ui/index.html
 var dashboardTemplate string
 
-var dashboardTmpl = template.Must(template.New("dashboard").Parse(dashboardTemplate))
+var dashboardTmpl = pageTemplate("dashboard", dashboardTemplate, nil)
 
 // uiCSS is the stylesheet every operator page links, so the header, the action
 // bar and the buttons cannot drift apart between the pages (ADR 0076).
@@ -97,6 +97,176 @@ func serveSVG(w http.ResponseWriter, data []byte) {
 	w.Write(data)
 }
 
+// pageTemplate parses a page file together with the shared shell (ADR 0150).
+// The page file is the root template, and layout.html adds the named templates
+// it calls: "head", "chrome" and "chrome-end".
+func pageTemplate(name, page string, funcs template.FuncMap) *template.Template {
+	return template.Must(template.New(name).Funcs(funcs).Parse(uiLayout + page))
+}
+
+// navItem is one entry of the rail. A head is a group label and links nowhere.
+type navItem struct {
+	Label  string
+	URL    string
+	Active bool
+	Head   bool
+}
+
+// crumb is one step of the breadcrumb. The last step is the current page.
+type crumb struct {
+	Label   string
+	URL     string
+	Current bool
+}
+
+// crumbPath marks the last step as the current page (ADR 0150).
+func crumbPath(items ...crumb) []crumb {
+	if len(items) > 0 {
+		items[len(items)-1].Current = true
+	}
+	return items
+}
+
+// navFor returns the rail with the section marked (ADR 0150).
+func navFor(section string) []navItem {
+	items := []navItem{
+		{Label: "Devices", URL: "/ui"},
+		{Label: "Pages", URL: "/ui/pages"},
+		{Label: "Plans", URL: "/ui/plans"},
+		{Label: "Plugins", URL: "/ui/plugins"},
+		{Label: "System", Head: true},
+		{Label: "Downloads", URL: "/ui/system/downloads"},
+		{Label: "Stats", URL: "/ui/system/stats"},
+	}
+	for i := range items {
+		items[i].Active = items[i].Label == section
+	}
+	return items
+}
+
+// objectURL builds the route of one object (ADR 0150): the collection, the
+// escaped name and the remaining query. The name and the id leave the query,
+// because the route carries them.
+func objectURL(collection, name string, params url.Values) string {
+	q := url.Values{}
+	for key, value := range params {
+		if key == "name" || key == "id" {
+			continue
+		}
+		q[key] = value
+	}
+	target := collection + "/" + url.PathEscape(name)
+	if encoded := q.Encode(); encoded != "" {
+		target += "?" + encoded
+	}
+	return target
+}
+
+// withQuery sets one query value, so a route can call a handler that still
+// reads the parameters of the old URL shape.
+func withQuery(r *http.Request, key, value string) {
+	q := r.URL.Query()
+	q.Set(key, value)
+	r.URL.RawQuery = q.Encode()
+}
+
+// uiList opens one object type of the list page under its own route: the list
+// handler reads the type from the query (ADR 0150).
+func (s *Server) uiList(tab string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		withQuery(r, "tab", tab)
+		s.handleEditor(w, r)
+	}
+}
+
+// uiObject opens one object under its own route. The handlers keep their query
+// parameters, so a path and a query fill the same view.
+func (s *Server) uiObject(path, query string, handle http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		withQuery(r, query, r.PathValue(path))
+		handle(w, r)
+	}
+}
+
+// uiRedirect answers an old route with its new address (ADR 0150). The rest of
+// the query follows, so a link with a preview type keeps working.
+func uiRedirect(target string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		for _, key := range []string{"tab", "name", "id", "device"} {
+			q.Del(key)
+		}
+		if encoded := q.Encode(); encoded != "" {
+			target += "?" + encoded
+		}
+		http.Redirect(w, r, target, http.StatusFound)
+	}
+}
+
+// uiRedirectEditor sends the old editor routes to their own sections.
+func uiRedirectEditor() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("tab") {
+		case "plans":
+			uiRedirect("/ui/plans")(w, r)
+		case "devices":
+			uiRedirect("/ui/devices")(w, r)
+		case "displays":
+			uiRedirect("/ui/display-types")(w, r)
+		default:
+			uiRedirect("/ui/pages")(w, r)
+		}
+	}
+}
+
+// uiRedirectObject sends an old editor route to the object's own route.
+func uiRedirectObject(collection, param string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get(param)
+		if name == "" {
+			http.Redirect(w, r, collection, http.StatusFound)
+			return
+		}
+		// objectURL already carries the rest of the query.
+		http.Redirect(w, r, objectURL(collection, name, r.URL.Query()), http.StatusFound)
+	}
+}
+
+// uiRedirectPlanView sends the old plan preview to the device's own route.
+func uiRedirectPlanView() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.URL.Query().Get("device")
+		if id == "" {
+			http.Redirect(w, r, "/ui", http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, objectURL("/ui/devices", id, nil)+"/plan", http.StatusFound)
+	}
+}
+
+// uiCreate takes the name from a creation form and opens the object's route, so
+// a GET form creates without a route of its own.
+func uiCreate(collection, param string) http.HandlerFunc {
+	return uiRedirectObject(collection, param)
+}
+
+// uiLayout is the shell every operator page parses with its own template.
+//
+//go:embed ui/layout.html
+var uiLayout string
+
+// uiThemeJS is the theme toggle of ADR 0150. It is a file instead of an inline
+// script, so the ten pages share one copy.
+//
+//go:embed ui/theme.js
+var uiThemeJS []byte
+
+func (s *Server) handleUIThemeJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(uiThemeJS)
+}
+
 // dashboardDevice is one card of the overview. It carries display-ready texts
 // so the template holds no formatting logic.
 type dashboardDevice struct {
@@ -138,10 +308,12 @@ type dashboardDevice struct {
 }
 
 type dashboardPage struct {
-	Version   string // build label: version, commit and commit date
-	GoVersion string
-	Devices   []dashboardDevice
-	Downloads *dashboardDownloads // hint about the release checks (ADR 0060), nil without a download section
+	Version    string // build label: version, commit and commit date
+	GoVersion  string
+	Nav        []navItem // the rail, with the active section (ADR 0150)
+	Breadcrumb []crumb   // the path to this page
+	Devices    []dashboardDevice
+	Downloads  *dashboardDownloads // hint about the release checks (ADR 0060), nil without a download section
 }
 
 // dashboardDownloads is the hint above the device grid: the details live on the
@@ -230,6 +402,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	page := dashboardPage{
 		Version:   versionText(build, loc),
 		GoVersion: build.Go,
+		Nav:       navFor("Devices"),
 		Devices:   cards,
 		Downloads: s.downloadHint(cfg),
 	}
@@ -248,7 +421,7 @@ func (s *Server) handleDownloadCheck(w http.ResponseWriter, r *http.Request) {
 			s.finishDownloadCheck(cfg, s.downloadOnce(s.ctx, cfg))
 		}()
 	}
-	http.Redirect(w, r, "/ui/downloads", http.StatusSeeOther)
+	http.Redirect(w, r, "/ui/system/downloads", http.StatusSeeOther)
 }
 
 // downloadHint is the dashboard's line about the release checks; nil without a

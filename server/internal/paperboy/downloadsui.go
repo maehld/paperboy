@@ -3,7 +3,6 @@ package paperboy
 import (
 	_ "embed"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net/http"
 	"os"
@@ -23,27 +22,29 @@ import (
 //go:embed ui/downloads.html
 var downloadsTemplate string
 
-var downloadsTmpl = template.Must(template.New("downloads").Parse(downloadsTemplate))
+var downloadsTmpl = pageTemplate("downloads", downloadsTemplate, nil)
 
 // downloadsView is the releases page: the checks, the programs they installed
 // and the images the devices run.
 type downloadsView struct {
 	Version         string
 	GoVersion       string
-	Configured      bool   // paperboy.yaml has a download section
-	Source          string // release source
-	Interval        string // "every 24 h"
-	PluginChannel   string // stable or latest (ADR 0089)
-	FirmwareChannel string // stable or latest (ADR 0089)
-	Running         bool   // a check is running right now
-	Self            string // this page's URI, so a poll keeps its query string (ADR 0106)
-	LastCheck       string // time of the last check, "never" before the first one
-	LastOK          string // time of the last successful check, empty when unknown
-	Error           string // last error, empty when the check succeeded
-	Updates         string // what the check says about Paperboy itself (ADR 0101)
-	UpdateURL       string // release page of that version, empty when unknown
-	PluginBundle    string // release tag of the last plugin bundle the check used
-	FirmwareBundle  string // release tag of the last firmware bundle the check used
+	Nav             []navItem // the rail, with the active section (ADR 0150)
+	Breadcrumb      []crumb   // the path to this page
+	Configured      bool      // paperboy.yaml has a download section
+	Source          string    // release source
+	Interval        string    // "every 24 h"
+	PluginChannel   string    // stable or latest (ADR 0089)
+	FirmwareChannel string    // stable or latest (ADR 0089)
+	Running         bool      // a check is running right now
+	Self            string    // this page's URI, so a poll keeps its query string (ADR 0106)
+	LastCheck       string    // time of the last check, "never" before the first one
+	LastOK          string    // time of the last successful check, empty when unknown
+	Error           string    // last error, empty when the check succeeded
+	Updates         string    // what the check says about Paperboy itself (ADR 0101)
+	UpdateURL       string    // release page of that version, empty when unknown
+	PluginBundle    string    // release tag of the last plugin bundle the check used
+	FirmwareBundle  string    // release tag of the last firmware bundle the check used
 	Plugins         []downloadPluginRow
 	Firmware        []downloadFirmwareRow
 	Issues          []string // ignored files in the firmware directory
@@ -86,7 +87,9 @@ func (s *Server) handleDownloads(w http.ResponseWriter, r *http.Request) {
 	}
 	version, goVersion := editorVersion(cfg)
 	v := downloadsView{Version: version, GoVersion: goVersion, Issues: s.firmware.invalidNames(),
-		Self: r.URL.RequestURI()}
+		Nav:        navFor("Downloads"),
+		Breadcrumb: crumbPath(crumb{Label: "System"}, crumb{Label: "Downloads"}),
+		Self:       r.URL.RequestURI()}
 	if cfg.Download != nil {
 		v.Configured = true
 		v.Source = cfg.Download.Source

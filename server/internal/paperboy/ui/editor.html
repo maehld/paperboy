@@ -1,15 +1,10 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+{{template "head" .}}
 <title>Paperboy · Configuration</title>
-<link rel="stylesheet" href="/ui/tokens.css">
-<link rel="stylesheet" href="/ui/ui.css">
-<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <style>
 a { color: var(--pb-accent); }
-.tabs .count { margin-left: .35rem; color: var(--pb-ink-faint); font-weight: 400; font-size: .8rem; }
 .card { background: var(--pb-surface); border: 1px solid var(--pb-hairline); border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
 .card h2 { font-size: 1.1rem; margin: 0; display: flex; align-items: baseline; gap: .4rem; }
 .card h2 .count { color: var(--pb-ink-faint); font-size: .85rem; font-weight: 400; }
@@ -53,14 +48,15 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 </style>
 </head>
 <body>
-<header>
-  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
-  <nav><a href="/ui">Dashboard</a> · <a href="/ui/plugins">Playground</a> · <a class="active" href="/ui/editor">Configuration</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/stats">Stats</a></nav>
-  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
-</header>
-<nav class="tabs">
-  {{range .Tabs}}<a href="{{.URL}}"{{if .Selected}} class="active"{{end}}>{{.Label}}<span class="count">{{.Count}}</span></a>{{end}}
+{{template "chrome" .}}
+{{if or (eq .Tab "devices") (eq .Tab "displays")}}
+{{/* Display types belong to the devices section, so the two lists share a
+     sub-navigation instead of a hidden fourth tab (ADR 0150). */}}
+<nav class="switch" aria-label="Devices">
+  <a href="/ui/devices"{{if eq .Tab "devices"}} class="active" aria-current="page"{{end}}>Devices</a>
+  <a href="/ui/display-types"{{if eq .Tab "displays"}} class="active" aria-current="page"{{end}}>Display types</a>
 </nav>
+{{end}}
 {{if eq .Tab "pages"}}
 <section class="card">
   <div class="card-head">
@@ -91,7 +87,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   <p class="empty">No pages yet. A page is <code>pages/&lt;name&gt;.yaml</code>.</p>
   {{end}}
   {{if .Kinds}}<dialog id="new-page">
-    <form method="get" action="/ui/editor/page">
+    <form method="get" action="/ui/pages/new">
       <h3>New page</h3>
       <input type="hidden" name="new" value="1">
       <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. solar" title="lower case letters, digits and -"></label>
@@ -133,7 +129,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   <p class="empty">No plans yet. A plan is <code>plans/&lt;name&gt;.yaml</code>.</p>
   {{end}}
   <dialog id="new-plan">
-    <form method="get" action="/ui/editor/plan">
+    <form method="get" action="/ui/plans/new">
       <h3>New plan</h3>
       <input type="hidden" name="new" value="1">
       <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. tour" title="lower case letters, digits and -"></label>
@@ -172,7 +168,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   <p class="empty">No devices yet. A device is <code>devices/&lt;id&gt;.yaml</code>.</p>
   {{end}}
   <dialog id="new-device">
-    <form method="get" action="/ui/editor/device">
+    <form method="get" action="/ui/devices/new">
       <h3>New device</h3>
       <input type="hidden" name="new" value="1">
       <label>ID <input name="id" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. wohnzimmer" title="lower case letters, digits and -"></label>
@@ -236,7 +232,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
   <p class="empty">No display types yet. A display type is <code>displays/&lt;name&gt;.yaml</code>.</p>
   {{end}}
   <dialog id="new-display">
-    <form method="get" action="/ui/editor/display">
+    <form method="get" action="/ui/display-types/new">
       <h3>New display type</h3>
       <input type="hidden" name="new" value="1">
       <label>Name <input name="name" required pattern="[a-z0-9-]{1,40}" size="16" placeholder="e.g. wohnzimmer" title="lower case letters, digits and -"></label>
@@ -365,5 +361,5 @@ for (const b of document.querySelectorAll('button[data-forget]')) {
   });
 }
 </script>
-</body>
+{{template "chrome-end"}}</body>
 </html>

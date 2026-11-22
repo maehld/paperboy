@@ -53,7 +53,7 @@ func TestPlanEditor(t *testing.T) {
 	s := planEditorServer(t)
 	s.config().Devices[0].Plan = "tour"
 
-	rec := request(t, s, http.MethodGet, "/ui/editor/plan?name=tour", nil, nil)
+	rec := request(t, s, http.MethodGet, "/ui/plans/tour", nil, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("plan editor: %d %s", rec.Code, rec.Body)
 	}
@@ -65,7 +65,7 @@ func TestPlanEditor(t *testing.T) {
 		`"displays":["small"]`,
 		`<script src="/ui/editor/plan.js"></script>`,
 		`id="rules"`, `id="actions"`, `id="fallback"`, `id="devices"`,
-		`href="/ui/editor"`,
+		`href="/ui/pages"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("plan editor lacks %q:\n%s", want, body)
@@ -80,11 +80,11 @@ func TestPlanEditor(t *testing.T) {
 	}
 
 	// A plan that is not there and a name that cannot be one are explained.
-	if rec := request(t, s, http.MethodGet, "/ui/editor/plan?name=nope", nil, nil); rec.Code != http.StatusNotFound ||
+	if rec := request(t, s, http.MethodGet, "/ui/plans/nope", nil, nil); rec.Code != http.StatusNotFound ||
 		!strings.Contains(rec.Body.String(), "no plan") {
 		t.Fatalf("missing plan: %d %s", rec.Code, rec.Body)
 	}
-	if rec := request(t, s, http.MethodGet, "/ui/editor/plan?name=Nope", nil, nil); rec.Code != http.StatusBadRequest {
+	if rec := request(t, s, http.MethodGet, "/ui/plans/Nope", nil, nil); rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid name: %d", rec.Code)
 	}
 }
@@ -93,7 +93,7 @@ func TestPlanEditor(t *testing.T) {
 // plan; the page list is still there to pick from.
 func TestPlanEditorWithoutDevices(t *testing.T) {
 	s := planEditorServer(t)
-	body := request(t, s, http.MethodGet, "/ui/editor/plan?name=tour", nil, nil).Body.String()
+	body := request(t, s, http.MethodGet, "/ui/plans/tour", nil, nil).Body.String()
 	if !strings.Contains(body, `"devices":[]`) || !strings.Contains(body, `"displays":[]`) {
 		t.Fatalf("device list:\n%s", body)
 	}
@@ -124,7 +124,7 @@ func TestPlanEditorScript(t *testing.T) {
 func TestPlanEditorCreatesPlan(t *testing.T) {
 	s := planEditorServer(t)
 
-	rec := request(t, s, http.MethodGet, "/ui/editor/plan?name=neu&new=1", nil, nil)
+	rec := request(t, s, http.MethodGet, "/ui/plans/neu?new=1", nil, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("new plan: %d %s", rec.Code, rec.Body)
 	}
@@ -148,11 +148,11 @@ func TestPlanEditorCreatesPlan(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(s.config().Plans, "neu.yaml")); err != nil {
 		t.Fatalf("created plan: %v", err)
 	}
-	if rec := request(t, s, http.MethodGet, "/ui/editor/plan?name=neu", nil, nil); rec.Code != http.StatusOK {
+	if rec := request(t, s, http.MethodGet, "/ui/plans/neu", nil, nil); rec.Code != http.StatusOK {
 		t.Fatalf("open the created plan: %d %s", rec.Code, rec.Body)
 	}
 	// Without &new=1 a missing plan stays an error.
-	if rec := request(t, s, http.MethodGet, "/ui/editor/plan?name=neu2", nil, nil); rec.Code != http.StatusNotFound {
+	if rec := request(t, s, http.MethodGet, "/ui/plans/neu2", nil, nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("missing plan without new: %d", rec.Code)
 	}
 }
@@ -162,17 +162,17 @@ func TestEditorOverviewPlans(t *testing.T) {
 	s := planEditorServer(t)
 	writePlanFile(t, s, "broken", "rules:\n  - name: day\n    pages: [solar]\n    nope: 1\n")
 
-	body := request(t, s, http.MethodGet, "/ui/editor?tab=plans", nil, nil).Body.String()
+	body := request(t, s, http.MethodGet, "/ui/plans", nil, nil).Body.String()
 	for _, want := range []string{
-		"<h2>Plans", "/ui/editor/plan?name=tour", `<a href="/ui/editor/plan?name=tour">tour</a>`, "<td>night</td>",
+		"<h2>Plans", "/ui/plans/tour", `<a href="/ui/plans/tour">tour</a>`, "<td>night</td>",
 		"<td>broken</td>", "yaml: unmarshal errors",
-		`href="/ui/editor?tab=pages"`, // the way back to the pages
+		`href="/ui/pages"`, // the way back to the pages
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("overview lacks %q:\n%s", want, body)
 		}
 	}
-	if strings.Contains(body, "/ui/editor/plan?name=broken") {
+	if strings.Contains(body, "/ui/plans/broken") {
 		t.Fatalf("a broken plan is offered:\n%s", body)
 	}
 }

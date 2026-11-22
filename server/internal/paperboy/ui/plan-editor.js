@@ -926,11 +926,11 @@
       const row = document.createElement('div');
       row.className = 'device';
       const a = document.createElement('a');
-      a.href = '/ui/plan?device=' + encodeURIComponent(d.id);
+      a.href = '/ui/devices/' + encodeURIComponent(d.id) + '/plan';
       a.textContent = d.id + ' · ' + d.display + ' · preview';
       const edit = document.createElement('a');
       edit.className = 'edit';
-      edit.href = '/ui/editor/device?id=' + encodeURIComponent(d.id);
+      edit.href = '/ui/devices/' + encodeURIComponent(d.id);
       edit.textContent = 'edit';
       row.append(a, edit);
       box.appendChild(row);
@@ -1074,7 +1074,7 @@
       return;
     }
     state.dirty = false;
-    location.href = '/ui/editor/plan?name=' + encodeURIComponent(name);
+    location.href = '/ui/plans/' + encodeURIComponent(name);
   }
 
   // remove deletes the file after naming the devices that use it; the server
@@ -1107,7 +1107,7 @@
       return;
     }
     state.dirty = false;
-    location.href = '/ui/editor?tab=plans';
+    location.href = '/ui/plans';
   }
 
   function renderAll() {

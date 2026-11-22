@@ -37,7 +37,7 @@ cells:
 - `kind: image` or `kind: text` is required and says which displays a file is for. A plan may serve image and text displays alike. When a device pages through a rule, Paperboy skips pages that do not fit its display type. A page does not fit when no file serves the type or when it has the other kind. It also does not fit when a text box leaves the character grid of the display. Paperboy logs each skip once per display type and page. When no page of the rule fits, the device gets a notice (*No matching page*). Paperboy does not skip a broken page; it shows its error as a notice.
 - **Stale widgets**: when a plugin fails, Paperboy keeps showing its last widgets and marks the page. An image display gets a bar (*Outdated: calendar/agenda*, German *Veraltet: …*), a text display gets `!` in the last column of the first line. `notices: none` turns both off. A widget that never rendered becomes a hatched notice inside its cell with the reason. A plugin that cannot draw in its cell at all answers `cell too small: <width>x<height>` instead of leaving the cell empty, so a cell that is too small for its widget shows that notice.
 - Preview without a device: `GET /api/preview/<display type>/<page>` (PNG, or `text/plain` for text displays; an optional `?at=YYYY-MM-DDTHH:MM` renders the page as at that time in the configured timezone). `GET /api/profiles` lists the display types.
-- The page editor at `/ui/editor` builds a page from the same model (see [Web UI](runtime.md#web-ui)).
+- The page editor at `/ui/pages` builds a page from the same model (see [Web UI](runtime.md#web-ui)).
 
 ### Text pages
 
@@ -67,7 +67,7 @@ The built-in plugin declares `paperboy/title`, `paperboy/time`, `paperboy/date`,
 
 ## Plans
 
-Which pages a device shows is decided by a plan, `<name>.yaml` in `plans/`. A device points to it with `plan: wohnzimmer` in its `devices/<id>.yaml`, and several devices may share a plan. A plan only names pages, so it works for devices of different display types. Create and edit a plan in the browser at `/ui/editor` ([ADR 0069](adr/0069-plan-editor-ui.md), [0072](adr/0072-pages-as-qoi.md)): the *Plans* tab creates one, `/ui/editor/plan?name=<plan>` edits it, and the device page assigns it ([ADR 0070](adr/0070-devices-in-their-own-files.md)). When you delete a plan, a copy stays under `state/editor/`; the confirmation names the devices that still use it.
+Which pages a device shows is decided by a plan, `<name>.yaml` in `plans/`. A device points to it with `plan: wohnzimmer` in its `devices/<id>.yaml`, and several devices may share a plan. A plan only names pages, so it works for devices of different display types. Create and edit a plan in the browser at `/ui/plans` ([ADR 0069](adr/0069-plan-editor-ui.md), [0072](adr/0072-pages-as-qoi.md)): the list creates one, `/ui/plans/<plan>` edits it, and the device page assigns it ([ADR 0070](adr/0070-devices-in-their-own-files.md)). When you delete a plan, a copy stays under `state/editor/`; the confirmation names the devices that still use it.
 
 ```yaml
 rules:

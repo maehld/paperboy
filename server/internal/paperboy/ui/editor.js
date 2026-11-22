@@ -8,6 +8,13 @@
   const el = (id) => document.getElementById(id);
   const start = JSON.parse(el('editor-data').textContent);
 
+  // pageHref builds the route of one page file (ADR 0150): the name sits in the
+  // path, the rest stays in the query.
+  function pageHref(name, params) {
+    const rest = params ? params.toString() : '';
+    return '/ui/pages/' + encodeURIComponent(name) + (rest ? '?' + rest : '');
+  }
+
   const state = {
     name: start.name,
     display: start.display, // preview display type
@@ -2339,9 +2346,9 @@
       return;
     }
     state.dirty = false;
-    const params = new URLSearchParams({ name: state.name, display: display });
+    const params = new URLSearchParams({ display: display });
     if (doc.file) params.set('file', doc.file);
-    location.href = '/ui/editor/page?' + params.toString();
+    location.href = pageHref(state.name, params);
   }
 
   // changeServes writes the file that serves one display type (ADR 0110). The
@@ -2461,8 +2468,8 @@
       location.href = doc.url;
       return;
     }
-    const params = new URLSearchParams({ name: name, display: state.display, file: label });
-    location.href = '/ui/editor/page?' + params.toString();
+    const params = new URLSearchParams({ display: state.display, file: label });
+    location.href = pageHref(name, params);
   }
 
   // renameVariant gives the open variant a new label; the page rewrites every
@@ -2522,7 +2529,7 @@
       return;
     }
     state.dirty = false;
-    location.href = '/ui/editor/page?name=' + encodeURIComponent(name) + '&display=' + encodeURIComponent(state.display);
+    location.href = pageHref(name, new URLSearchParams({ display: state.display }));
   }
 
   // remove deletes the one file that was opened, after naming the plans that use
@@ -2561,7 +2568,7 @@
       return;
     }
     state.dirty = false;
-    location.href = '/ui/editor?tab=pages';
+    location.href = '/ui/pages';
   }
 
   function renderAll() {

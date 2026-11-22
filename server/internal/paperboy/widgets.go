@@ -177,7 +177,10 @@ func (s *Server) handleWidgetsPage(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	q := r.URL.Query()
 	version, goVersion := editorVersion(cfg)
-	v := editorPageView{Version: version, GoVersion: goVersion, WidgetsPage: true}
+	v := editorPageView{Version: version, GoVersion: goVersion, WidgetsPage: true,
+		Nav:        navFor("Plugins"),
+		Breadcrumb: crumbPath(crumb{Label: "Plugins"}),
+	}
 	display, fellBack := playgroundDisplay(cfg, q.Get("display"))
 	switch {
 	case display == "" && len(displayNames(cfg)) == 0:

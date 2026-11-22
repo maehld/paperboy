@@ -250,9 +250,9 @@ func (s *Server) handlePrune(w http.ResponseWriter, r *http.Request) {
 		slog.Info("inventory file deleted", "train", f.Train, "file", f.File)
 		deleted++
 	}
-	target := "/ui/downloads"
+	target := "/ui/system/downloads"
 	if deleted > 0 || failed > 0 {
-		target = fmt.Sprintf("/ui/downloads?pruned=%d&failed=%d", deleted, failed)
+		target = fmt.Sprintf("/ui/system/downloads?pruned=%d&failed=%d", deleted, failed)
 	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }

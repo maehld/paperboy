@@ -1,12 +1,8 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+{{template "head" .}}
 <title>{{if .Plan}}Plan {{.Plan}} · {{end}}{{.Device}} · Paperboy</title>
-<link rel="stylesheet" href="/ui/tokens.css">
-<link rel="stylesheet" href="/ui/ui.css">
-<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <style>
 form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
 .summary { margin: 0 0 1rem; }
@@ -28,17 +24,13 @@ figure .error { margin: 0; }
 </style>
 </head>
 <body>
-<header>
-  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
-  <nav><a class="active" href="/ui">Dashboard</a> · <a href="/ui/plugins">Playground</a> · <a href="/ui/editor">Configuration</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/stats">Stats</a></nav>
-  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
-  <span class="muted">device {{.Device}}{{if .Plan}} · plan {{.Plan}}{{end}} · display type {{.Profile}}{{if .VirtualURL}} · <a href="{{.VirtualURL}}">virtual display</a>{{end}}</span>
-</header>
+{{template "chrome" .}}
 <form method="get" action="/ui/plan">
   <input type="hidden" name="device" value="{{.Device}}">
   <label>Time <input type="datetime-local" name="at" value="{{.At}}"></label>
   <button type="submit">Show</button>
-  <a href="/ui/plan?device={{.Device}}">Now</a>
+  <a href="/ui/devices/{{.Device}}/plan">Now</a>
+  {{if .VirtualURL}}<a href="{{.VirtualURL}}">Virtual display</a>{{end}}
 </form>
 {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
 {{if .Rules}}
@@ -67,5 +59,5 @@ figure .error { margin: 0; }
 </section>
 {{end}}
 {{end}}
-</body>
+{{template "chrome-end"}}</body>
 </html>

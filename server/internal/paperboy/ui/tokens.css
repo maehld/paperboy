@@ -62,6 +62,8 @@
   --pb-radius-sm: 4px;
   --pb-radius-md: 6px;
   --pb-radius-lg: 8px;
+  --pb-rail: 13rem;
+  --pb-topbar: 3.3rem;
   --pb-shadow-dialog: 0 8px 30px light-dark(rgba(0, 0, 0, .18), rgba(0, 0, 0, .55));
   --pb-shadow-float: 0 2px 8px light-dark(rgba(0, 0, 0, .25), rgba(0, 0, 0, .55));
   --pb-shadow-lift: 0 4px 10px light-dark(rgba(0, 0, 0, .35), rgba(0, 0, 0, .6));

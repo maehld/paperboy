@@ -173,7 +173,7 @@
     box.innerHTML = '';
     if (state.device.plan) {
       const a = document.createElement('a');
-      a.href = '/ui/plan?device=' + encodeURIComponent(state.id);
+      a.href = '/ui/devices/' + encodeURIComponent(state.id) + '/plan';
       a.textContent = 'Plan preview of ' + state.id;
       box.appendChild(a);
     }
@@ -348,7 +348,7 @@
       return;
     }
     state.dirty = false;
-    location.href = '/ui/editor/device?id=' + encodeURIComponent(id);
+    location.href = '/ui/devices/' + encodeURIComponent(id);
   }
 
   // pair asks for the code the display shows and hands the confirmation to the
@@ -416,7 +416,7 @@
       return;
     }
     state.dirty = false;
-    location.href = '/ui/editor?tab=devices';
+    location.href = '/ui/devices';
   }
 
   // check catches what the API would reject anyway, so the operator sees it

@@ -279,28 +279,28 @@ func TestEditorRenameButtons(t *testing.T) {
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"aa:bb:cc:dd:ee:01\"\nplan: tour\n")
 
-	for _, tc := range []struct{ tab, link string }{
-		{"pages", "/ui/editor/page?display=small&amp;name=solar"},
-		{"plans", "/ui/editor/plan?name=tour"},
-		{"devices", "/ui/editor/device?id=test"},
-		{"displays", "/ui/editor/display?name=small"},
+	for _, tc := range []struct{ path, link string }{
+		{"/ui/pages", "/ui/pages/solar?display=small"},
+		{"/ui/plans", "/ui/plans/tour"},
+		{"/ui/devices", "/ui/devices/test"},
+		{"/ui/display-types", "/ui/display-types/small"},
 	} {
-		body := request(t, s, http.MethodGet, "/ui/editor?display=small&tab="+tc.tab, nil, nil).Body.String()
+		body := request(t, s, http.MethodGet, tc.path, nil, nil).Body.String()
 		if !strings.Contains(body, `class="rowlink" data-href="`+tc.link+`"`) {
-			t.Fatalf("%s tab lacks the row link %q:\n%s", tc.tab, tc.link, body)
+			t.Fatalf("%s lacks the row link %q:\n%s", tc.path, tc.link, body)
 		}
 		if strings.Contains(body, "data-rename=") || strings.Contains(body, "data-delete=") {
-			t.Fatalf("%s tab still acts on files:\n%s", tc.tab, body)
+			t.Fatalf("%s still acts on files:\n%s", tc.path, body)
 		}
 	}
 
 	// The editors carry the same rename, so the object can be renamed while it
 	// is open; a new object has none (ADR 0079).
 	for _, tc := range []struct{ url, want string }{
-		{"/ui/editor/page?name=solar&display=small", `"rename":{"url":"/api/pages/solar/rename"`},
-		{"/ui/editor/plan?name=tour", `"rename":{"url":"/api/plans/tour/rename"`},
-		{"/ui/editor/device?id=test", `"rename":{"url":"/api/devices/test/rename"`},
-		{"/ui/editor/display?name=small", `"rename":{"url":"/api/displays/small/rename"`},
+		{"/ui/pages/solar?display=small", `"rename":{"url":"/api/pages/solar/rename"`},
+		{"/ui/plans/tour", `"rename":{"url":"/api/plans/tour/rename"`},
+		{"/ui/devices/test", `"rename":{"url":"/api/devices/test/rename"`},
+		{"/ui/display-types/small", `"rename":{"url":"/api/displays/small/rename"`},
 	} {
 		body := request(t, s, http.MethodGet, tc.url, nil, nil).Body.String()
 		if !strings.Contains(body, tc.want) {
@@ -308,10 +308,10 @@ func TestEditorRenameButtons(t *testing.T) {
 		}
 	}
 	for _, url := range []string{
-		"/ui/editor/page?name=fresh&display=small&new=1",
-		"/ui/editor/plan?name=fresh&new=1",
-		"/ui/editor/device?id=fresh&new=1",
-		"/ui/editor/display?name=fresh&new=1",
+		"/ui/pages/fresh?display=small&new=1",
+		"/ui/plans/fresh?new=1",
+		"/ui/devices/fresh?new=1",
+		"/ui/display-types/fresh?new=1",
 	} {
 		if body := request(t, s, http.MethodGet, url, nil, nil).Body.String(); strings.Contains(body, `"rename":`) {
 			t.Fatalf("%s offers a rename for a new object", url)

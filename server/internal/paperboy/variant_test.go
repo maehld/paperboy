@@ -194,7 +194,7 @@ func TestMoveVariant(t *testing.T) {
 	if out.Name != "ziel" || out.File != "hochkant" || out.Path != "pages/ziel.hochkant.yaml" || out.Variants["small"] != "hochkant" {
 		t.Fatalf("answer: %+v", out)
 	}
-	if !strings.Contains(out.URL, "name=ziel") || !strings.Contains(out.URL, "file=hochkant") {
+	if !strings.Contains(out.URL, "/ui/pages/ziel") || !strings.Contains(out.URL, "file=hochkant") {
 		t.Fatalf("editor link: %q", out.URL)
 	}
 	if !fileExists(t, filepath.Join(s.config().Pages, "ziel.hochkant.yaml")) ||

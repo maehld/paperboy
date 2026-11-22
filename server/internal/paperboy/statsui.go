@@ -3,7 +3,6 @@ package paperboy
 import (
 	_ "embed"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net/http"
 	"os"
@@ -24,7 +23,7 @@ import (
 //go:embed ui/stats.html
 var statsTemplate string
 
-var statsTmpl = template.Must(template.New("stats").Parse(statsTemplate))
+var statsTmpl = pageTemplate("stats", statsTemplate, nil)
 
 // statsFact is one row of the description lists: what is measured and its
 // display-ready value.
@@ -104,17 +103,19 @@ const (
 
 // statsView is the whole page.
 type statsView struct {
-	Version   string
-	GoVersion string
-	Platform  string
-	Paperboy  []statsFact
-	Plugins   []statsPlugin
-	Observed  []statsPluginObs
-	Cache     []statsFact
-	Ages      []statsAge
-	PageCache []statsFact
-	Timings   []statsTiming
-	Syncs     []statsSync
+	Version    string
+	GoVersion  string
+	Nav        []navItem // the rail, with the active section (ADR 0150)
+	Breadcrumb []crumb   // the path to this page
+	Platform   string
+	Paperboy   []statsFact
+	Plugins    []statsPlugin
+	Observed   []statsPluginObs
+	Cache      []statsFact
+	Ages       []statsAge
+	PageCache  []statsFact
+	Timings    []statsTiming
+	Syncs      []statsSync
 }
 
 // timingOrder lists the operations in the order a sync runs them; everything
@@ -160,9 +161,11 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) statsView(now time.Time, loc *time.Location) statsView {
 	view := statsView{
-		Version:   versionText(build, loc),
-		GoVersion: build.Go,
-		Platform:  runtime.GOOS + "/" + runtime.GOARCH,
+		Version:    versionText(build, loc),
+		GoVersion:  build.Go,
+		Nav:        navFor("Stats"),
+		Breadcrumb: crumbPath(crumb{Label: "System"}, crumb{Label: "Stats"}),
+		Platform:   runtime.GOOS + "/" + runtime.GOARCH,
 	}
 	view.Paperboy = s.paperboyFacts(now, loc)
 	view.Plugins, view.Observed, view.Cache, view.Ages = s.pluginFacts(now, loc)

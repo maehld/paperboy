@@ -55,7 +55,7 @@ func TestDeviceAddressIsShown(t *testing.T) {
 		t.Fatalf("the dashboard lacks the address:\n%s", body)
 	}
 	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \""+planDeviceMAC+"\"\nplan: zimmer\n")
-	if body := htmlRequest(t, s, "/ui/editor?tab=devices").Body.String(); !strings.Contains(body, "192.0.2.1") {
+	if body := htmlRequest(t, s, "/ui/devices").Body.String(); !strings.Contains(body, "192.0.2.1") {
 		t.Fatalf("the devices tab lacks the address:\n%s", body)
 	}
 
@@ -76,7 +76,7 @@ func TestDeviceAddressIsShown(t *testing.T) {
 	if rec := registerFrom(t, s, "10.9.8.7:5555", `{"mac":"aa:bb:cc:dd:ee:99","hardware":"sticky"}`); rec.Code != http.StatusForbidden {
 		t.Fatalf("unknown device: %d %s", rec.Code, rec.Body)
 	}
-	body := htmlRequest(t, s, "/ui/editor?tab=devices").Body.String()
+	body := htmlRequest(t, s, "/ui/devices").Body.String()
 	if !strings.Contains(body, "AA:BB:CC:DD:EE:99") || !strings.Contains(body, "10.9.8.7") {
 		t.Fatalf("the unclaimed hardware lacks the address:\n%s", body)
 	}

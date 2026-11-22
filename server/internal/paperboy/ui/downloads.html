@@ -1,13 +1,9 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+{{template "head" .}}
 <meta name="htmx-config" content='{"morphIgnore":["data-htmx-powered","open"]}'>
 <title>Paperboy · Downloads</title>
-<link rel="stylesheet" href="/ui/tokens.css">
-<link rel="stylesheet" href="/ui/ui.css">
-<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <script src="/ui/htmx.js" defer></script>
 <style>
 a { color: var(--pb-accent); }
@@ -36,11 +32,7 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 </style>
 </head>
 <body>
-<header>
-  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
-  <nav><a href="/ui">Dashboard</a> · <a href="/ui/plugins">Playground</a> · <a href="/ui/editor">Configuration</a> · <a class="active" href="/ui/downloads">Downloads</a> · <a href="/ui/stats">Stats</a></nav>
-  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
-</header>
+{{template "chrome" .}}
 {{/* The page polls itself and morphs only the region below, so nothing jumps
      while a check runs (ADR 0106). The cleanup preview keeps its list still and
      does not poll at all. */}}
@@ -113,18 +105,18 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
       {{range .Prune}}<tr><td class="file">{{.File}}</td><td class="num">{{if .Version}}{{.Version}}{{else}}<span class="muted">–</span>{{end}}</td></tr>{{end}}
     </table>
     <div class="actions">
-      <form method="post" action="/ui/downloads/prune"><button type="submit">Delete {{len .Prune}} files</button></form>
-      <a class="button" href="/ui/downloads">Cancel</a>
+      <form method="post" action="/ui/system/downloads/prune"><button type="submit">Delete {{len .Prune}} files</button></form>
+      <a class="button" href="/ui/system/downloads">Cancel</a>
     </div>
     {{else}}
     <p class="empty">Nothing to prune: every file is in use, pinned, or one of the newest versions.</p>
-    <div class="actions"><a class="button" href="/ui/downloads">Back</a></div>
+    <div class="actions"><a class="button" href="/ui/system/downloads">Back</a></div>
     {{end}}
   {{else}}
-  <div class="actions"><a class="button" href="/ui/downloads?prune=1">Preview cleanup</a></div>
+  <div class="actions"><a class="button" href="/ui/system/downloads?prune=1">Preview cleanup</a></div>
   {{end}}
 </section>
 {{if .Issues}}<p class="error">Ignored firmware files (expected &lt;hardware&gt;-v&lt;version&gt;.bin): {{range $i, $f := .Issues}}{{if $i}}, {{end}}{{$f}}{{end}}</p>{{end}}
 </div>
-</body>
+{{template "chrome-end"}}</body>
 </html>

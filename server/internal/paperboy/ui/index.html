@@ -1,13 +1,9 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+{{template "head" .}}
 <meta name="htmx-config" content='{"morphIgnore":["data-htmx-powered","open"]}'>
 <title>Paperboy</title>
-<link rel="stylesheet" href="/ui/tokens.css">
-<link rel="stylesheet" href="/ui/ui.css">
-<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <script src="/ui/htmx.js" defer></script>
 <style>
 .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
@@ -43,11 +39,7 @@ dd.oneline .muted { font-size: .78rem; }
 </style>
 </head>
 <body>
-<header>
-  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
-  <nav><a class="active" href="/ui">Dashboard</a> · <a href="/ui/plugins">Playground</a> · <a href="/ui/editor">Configuration</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/stats">Stats</a></nav>
-  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
-</header>
+{{template "chrome" .}}
 {{/* The page polls itself every 30 seconds: the request is the page again, but
      only the region below is swapped in and htmx morphs it, so the scroll
      position, an opened Details block and the loaded previews survive a tick
@@ -57,7 +49,7 @@ dd.oneline .muted { font-size: .78rem; }
      hx-select="#live > *"
      hx-swap="innerMorph"
      hx-trigger="every 30s [document.visibilityState == 'visible'], visibilitychange from:document [document.visibilityState == 'visible']">
-{{if .Downloads}}{{if .Downloads.Available}}<p class="update">{{if .Downloads.URL}}<a href="{{.Downloads.URL}}">{{.Downloads.Available}}</a>{{else}}{{.Downloads.Available}}{{end}}</p>{{end}}{{if .Downloads.Error}}<p class="error">The last release check failed · <a href="/ui/downloads">Downloads</a></p>{{else if .Downloads.Running}}<p class="muted">Checking for releases… · <a href="/ui/downloads">Downloads</a></p>{{end}}{{end}}
+{{if .Downloads}}{{if .Downloads.Available}}<p class="update">{{if .Downloads.URL}}<a href="{{.Downloads.URL}}">{{.Downloads.Available}}</a>{{else}}{{.Downloads.Available}}{{end}}</p>{{end}}{{if .Downloads.Error}}<p class="error">The last release check failed · <a href="/ui/system/downloads">Downloads</a></p>{{else if .Downloads.Running}}<p class="muted">Checking for releases… · <a href="/ui/system/downloads">Downloads</a></p>{{end}}{{end}}
 {{if .Devices}}
 <div class="grid" id="devices">
   {{range .Devices}}
@@ -98,14 +90,14 @@ dd.oneline .muted { font-size: .78rem; }
       </dl>
     </details>
     <div class="actions">
-      <a href="/ui/plan?device={{.ID}}">Plan preview</a>
+      <a href="/ui/devices/{{.ID}}/plan">Plan preview</a>
       {{if .VirtualURL}}<a href="{{.VirtualURL}}">Virtual display</a>{{end}}
       <form method="post" action="/api/devices/{{.ID}}/alert"><button type="submit"{{if .Alert}} disabled title="{{.Alert}}"{{end}}>Signal</button></form>
     </div>
     {{if .Alert}}<p class="signal">Signal unavailable: {{.Alert}}</p>{{end}}
     {{if .Alerted}}<p class="queued">Signal queued · the device signals at its next sync</p>{{end}}
     {{if .Refused}}<p class="error">No signal: {{.Refused}}</p>{{end}}
-    {{if .Problem}}<p class="error">{{.Problem}} · <a href="/ui/editor/device?id={{.ID}}">edit the device file</a></p>{{end}}
+    {{if .Problem}}<p class="error">{{.Problem}} · <a href="/ui/devices/{{.ID}}">edit the device file</a></p>{{end}}
     {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
   </section>
   {{end}}
@@ -114,5 +106,5 @@ dd.oneline .muted { font-size: .78rem; }
 <p class="empty">No devices configured.</p>
 {{end}}
 </div>
-</body>
+{{template "chrome-end"}}</body>
 </html>

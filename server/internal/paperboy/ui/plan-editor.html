@@ -1,12 +1,8 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+{{template "head" .}}
 <title>{{.Name}} · Plan editor · Paperboy</title>
-<link rel="stylesheet" href="/ui/tokens.css">
-<link rel="stylesheet" href="/ui/ui.css">
-<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <style>
 body { padding: 1.5rem 1.5rem 2rem; font-size: 15px; }
 a { color: var(--pb-accent); }
@@ -82,17 +78,11 @@ label.field.wide { grid-column: 1 / -1; }
 </style>
 </head>
 <body>
-<header>
-  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
-  <nav><a href="/ui">Dashboard</a> · <a href="/ui/plugins">Playground</a> · <a class="active" href="/ui/editor">Configuration</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/stats">Stats</a></nav>
-  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
-</header>
+{{template "chrome" .}}
 {{if .Error}}
 <p class="error">{{.Error}}</p>
-<p><a href="/ui/editor?tab=plans">← Plans</a></p>
 {{else}}
 <div class="bar">
-  <a href="/ui/editor?tab=plans">← Plans</a>
   <h2>plan {{.Name}}</h2>
   <span class="muted" id="where"></span>
   <span class="spacer"></span>
@@ -138,5 +128,5 @@ label.field.wide { grid-column: 1 / -1; }
 <script id="plan-data" type="application/json">{{.Data}}</script>
 <script src="/ui/editor/plan.js"></script>
 {{end}}
-</body>
+{{template "chrome-end"}}</body>
 </html>

@@ -426,7 +426,7 @@
       return;
     }
     state.dirty = false;
-    location.href = '/ui/editor/display?name=' + encodeURIComponent(name);
+    location.href = '/ui/display-types/' + encodeURIComponent(name);
   }
 
   // remove deletes the file after naming the pages and devices that reference
@@ -461,7 +461,7 @@
       return;
     }
     state.dirty = false;
-    location.href = '/ui/editor?tab=displays';
+    location.href = '/ui/display-types';
   }
 
   // check catches what the API would reject anyway, so the operator sees it

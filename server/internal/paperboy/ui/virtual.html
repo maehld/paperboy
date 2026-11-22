@@ -1,12 +1,8 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+{{template "head" .}}
 <title>Virtual display · {{.Plan}} · {{.Profile}} · Paperboy</title>
-<link rel="stylesheet" href="/ui/tokens.css">
-<link rel="stylesheet" href="/ui/ui.css">
-<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <style>
 .screen { display: flex; justify-content: center; align-items: center; background: var(--pb-surface); border: 1px solid var(--pb-hairline); border-radius: 8px; padding: 1rem; min-height: 8rem; }
 #image { display: block; max-width: 100%; height: auto; image-rendering: pixelated; }
@@ -29,11 +25,7 @@ body.show .screen { border: 0; padding: 0; }
 </style>
 </head>
 <body data-sync="{{.SyncURL}}" data-reset="{{.ResetURL}}">
-<header>
-  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
-  <nav><a href="/ui">Dashboard</a> · <a href="/ui/plugins">Playground</a> · <a href="/ui/editor">Configuration</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/stats">Stats</a></nav>
-  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
-</header>
+{{template "chrome" .}}
 <div class="bar">
   <h2>Virtual display</h2>
   <span class="muted">plan {{.Plan}} · display type {{.Profile}} · {{.Width}}×{{.Height}} · {{.Power}}</span>
@@ -54,5 +46,5 @@ body.show .screen { border: 0; padding: 0; }
 <details><summary>Last sync</summary><pre id="json"></pre></details>
 <p class="hint">The URL is the configuration: <code>plan</code> and <code>display</code> are required, <code>refresh</code>, <code>menu</code> and <code>power</code> are optional. Keys: ← previous, → next, Enter home; hold a key or a button for a long press. Actions are shown but never run.</p>
 <script src="/ui/virtual.js"></script>
-</body>
+{{template "chrome-end"}}</body>
 </html>

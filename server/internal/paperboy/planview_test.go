@@ -19,7 +19,7 @@ func TestPlanViewShowsActiveRule(t *testing.T) {
 	before := *s.state["AABBCCDDEE01"]
 	s.mu.Unlock()
 
-	rec := htmlRequest(t, s, "/ui/plan?device=test")
+	rec := htmlRequest(t, s, "/ui/devices/test/plan")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("plan view: %d %s", rec.Code, rec.Body)
 	}
@@ -36,7 +36,7 @@ func TestPlanViewShowsActiveRule(t *testing.T) {
 		}
 	}
 
-	body = htmlRequest(t, s, "/ui/plan?device=test&at=2026-10-21T20:30").Body.String()
+	body = htmlRequest(t, s, "/ui/devices/test/plan?at=2026-10-21T20%3A30").Body.String()
 	if !strings.Contains(body, "rule <strong>nacht</strong>") || !strings.Contains(body, "next change Thu 07:00 → morgen") {
 		t.Fatalf("plan view at 20:30: %s", body)
 	}
@@ -48,7 +48,7 @@ func TestPlanViewShowsActiveRule(t *testing.T) {
 		t.Fatalf("plan view changed the device state: %+v -> %+v", before, after)
 	}
 
-	if rec := htmlRequest(t, s, "/ui/plan?device=test&at=tomorrow"); rec.Code != http.StatusBadRequest {
+	if rec := htmlRequest(t, s, "/ui/devices/test/plan?at=tomorrow"); rec.Code != http.StatusBadRequest {
 		t.Fatalf("bad time: %d", rec.Code)
 	}
 	if rec := preview(t, s, "/api/preview/small/eins?at=2026-10-21T20:30"); rec.Code != http.StatusOK {
@@ -68,7 +68,7 @@ rules:
     pages: [zwei]
 fallback: rest
 `)
-	body := htmlRequest(t, s, "/ui/plan?device=test").Body.String()
+	body := htmlRequest(t, s, "/ui/devices/test/plan").Body.String()
 	if !strings.Contains(body, "rule <strong>rest</strong> (fallback)") {
 		t.Fatalf("fallback not shown: %s", body)
 	}
@@ -84,7 +84,7 @@ rules:
 	if err := os.WriteFile(filepath.Join(s.config().Pages, "kaputt.yaml"), []byte("kind: image\ngrid: [1, 1]\nnope: 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	body := htmlRequest(t, s, "/ui/plan?device=test").Body.String()
+	body := htmlRequest(t, s, "/ui/devices/test/plan").Body.String()
 	for _, want := range []string{
 		"Skipped: no page for this display type",
 		`<p class="error">`,
@@ -110,7 +110,7 @@ rules:
   - name: ruhig
     pages: [zwei]
 `)
-	body := htmlRequest(t, s, "/ui/plan?device=test").Body.String()
+	body := htmlRequest(t, s, "/ui/devices/test/plan").Body.String()
 	if !strings.Contains(body, "· alert refresh") {
 		t.Fatalf("plan view misses the alert mode: %s", body)
 	}
@@ -121,10 +121,10 @@ rules:
 
 func TestPlanViewUnknownDevice(t *testing.T) {
 	s, _ := planServer(t, testPlan)
-	if rec := htmlRequest(t, s, "/ui/plan?device=nope"); rec.Code != http.StatusNotFound {
+	if rec := htmlRequest(t, s, "/ui/devices/nope/plan"); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown device: %d", rec.Code)
 	}
-	if rec := htmlRequest(t, s, "/ui/plan"); rec.Code != http.StatusNotFound {
-		t.Fatalf("missing device: %d", rec.Code)
+	if rec := htmlRequest(t, s, "/ui/plan"); rec.Code != http.StatusFound {
+		t.Fatalf("missing device: %d, want the dashboard", rec.Code)
 	}
 }

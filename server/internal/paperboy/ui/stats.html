@@ -1,13 +1,9 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+{{template "head" .}}
 <meta name="htmx-config" content='{"morphIgnore":["data-htmx-powered","open"]}'>
 <title>Paperboy · Stats</title>
-<link rel="stylesheet" href="/ui/tokens.css">
-<link rel="stylesheet" href="/ui/ui.css">
-<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <script src="/ui/htmx.js" defer></script>
 <style>
 .card { background: var(--pb-surface); border: 1px solid var(--pb-hairline); border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
@@ -37,15 +33,11 @@ tr.error td { border-top: 0; padding-top: 0; color: var(--pb-error); font-size: 
 </style>
 </head>
 <body>
-<header>
-  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
-  <nav><a href="/ui">Dashboard</a> · <a href="/ui/plugins">Playground</a> · <a href="/ui/editor">Configuration</a> · <a href="/ui/downloads">Downloads</a> · <a class="active" href="/ui/stats">Stats</a></nav>
-  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
-</header>
+{{template "chrome" .}}
 {{/* The page polls itself every ten seconds and morphs only the region below,
      so the tables keep their scroll position and nothing flashes (ADR 0106). */}}
 <div id="live"
-     hx-get="/ui/stats"
+     hx-get="/ui/system/stats"
      hx-select="#live > *"
      hx-swap="innerMorph"
      hx-trigger="every 10s [document.visibilityState == 'visible'], visibilitychange from:document [document.visibilityState == 'visible']">
@@ -156,5 +148,5 @@ tr.error td { border-top: 0; padding-top: 0; color: var(--pb-error); font-size: 
   <p class="hint">A sync is one wake of a device, a poll is the text display asking for its lines every second.</p>
 </section>
 </div>
-</body>
+{{template "chrome-end"}}</body>
 </html>

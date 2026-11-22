@@ -1,12 +1,8 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+{{template "head" .}}
 <title>{{.Name}} · Display type editor · Paperboy</title>
-<link rel="stylesheet" href="/ui/tokens.css">
-<link rel="stylesheet" href="/ui/ui.css">
-<link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
 <style>
 body { padding: 1.5rem 1.5rem 2rem; font-size: 15px; }
 a { color: var(--pb-accent); }
@@ -35,17 +31,11 @@ pre.file { margin: 0; padding: .5rem .6rem; background: var(--pb-surface-sunken)
 </style>
 </head>
 <body>
-<header>
-  <h1 class="brand"><img src="/ui/logo.svg" alt="Paperboy" width="226" height="48"></h1>
-  <nav><a href="/ui">Dashboard</a> · <a href="/ui/plugins">Playground</a> · <a class="active" href="/ui/editor">Configuration</a> · <a href="/ui/downloads">Downloads</a> · <a href="/ui/stats">Stats</a></nav>
-  <span class="muted build" title="Go {{.GoVersion}}">{{.Version}}</span>
-</header>
+{{template "chrome" .}}
 {{if .Error}}
 <p class="error">{{.Error}}</p>
-<p><a href="/ui/editor?tab=displays">← Display types</a></p>
 {{else}}
 <div class="bar">
-  <a href="/ui/editor?tab=displays">← Display types</a>
   <h2>display type {{.Name}}</h2>
   <span class="muted" id="where"></span>
   <span class="spacer"></span>
@@ -124,5 +114,5 @@ pre.file { margin: 0; padding: .5rem .6rem; background: var(--pb-surface-sunken)
 <script id="display-data" type="application/json">{{.Data}}</script>
 <script src="/ui/editor/display.js"></script>
 {{end}}
-</body>
+{{template "chrome-end"}}</body>
 </html>

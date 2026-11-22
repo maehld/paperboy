@@ -17,13 +17,13 @@ func TestStatsPage(t *testing.T) {
 	dev := planDevice(t, s)
 	displayPage(t, s, dev)
 
-	rec := htmlRequest(t, s, "/ui/stats")
+	rec := htmlRequest(t, s, "/ui/system/stats")
 	if rec.Code != 200 || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/html") {
 		t.Fatalf("stats page: %d %v", rec.Code, rec.Header())
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		`<a class="active" href="/ui/stats">Stats</a>`,
+		`<a href="/ui/system/stats" class="active" aria-current="page">Stats</a>`,
 		"Paperboy <span",
 		"Resident memory",
 		"Plugins",
@@ -111,7 +111,7 @@ func TestStatsPageEmptyInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := htmlRequest(t, s, "/ui/stats").Body.String()
+	body := htmlRequest(t, s, "/ui/system/stats").Body.String()
 	if !strings.Contains(body, "No device has synced") || !strings.Contains(body, "Nothing measured yet") {
 		t.Fatalf("empty instance page:\n%s", body)
 	}
