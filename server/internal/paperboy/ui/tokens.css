@@ -14,30 +14,30 @@
   color-scheme: light dark;
 
   /* Surface and ink */
-  --pb-bg: light-dark(#f2f2f2, #121211);
-  --pb-surface: light-dark(#fff, #1c1c1a);
-  --pb-surface-sunken: light-dark(#fafafa, #232321);
-  --pb-surface-hover: light-dark(#eee, #2a2a27);
-  --pb-ink: light-dark(#111, #eceae5);
-  --pb-ink-muted: light-dark(#666, #a5a29b);
-  --pb-ink-faint: light-dark(#888, #7d7a74);
-  --pb-hairline: light-dark(#ddd, #343330);
-  --pb-hairline-strong: light-dark(#bbb, #4a4844);
+  --pb-bg: light-dark(#f6f4ef, #1a1917);
+  --pb-surface: light-dark(#ffffff, #232220);
+  --pb-surface-sunken: light-dark(#efebe3, #171716);
+  --pb-surface-hover: light-dark(#e7e2d8, #2c2a26);
+  --pb-ink: light-dark(#16181c, #eceae3);
+  --pb-ink-muted: light-dark(#5f6268, #a7a29a);
+  --pb-ink-faint: light-dark(#6f6a61, #928d84);
+  --pb-hairline: light-dark(#dcd8cf, #3a3731);
+  --pb-hairline-strong: light-dark(#c6c0b4, #4e4a42);
 
   /* The one interactive accent */
-  --pb-accent: light-dark(#134e9c, #8ab0e8);
-  --pb-accent-hover: light-dark(#0e3d7c, #a8c4f0);
-  --pb-accent-bg: light-dark(#f1f7ff, #1b2533);
+  --pb-accent: light-dark(#1b4d8f, #7fa9e0);
+  --pb-accent-hover: light-dark(#163e73, #a8c4f0);
+  --pb-accent-bg: light-dark(#e8eef7, #1d2735);
 
   /* State, used for state only */
-  --pb-ok: light-dark(#17692c, #6cc58a);
-  --pb-ok-bg: light-dark(#f1faf2, #16241a);
-  --pb-warn: light-dark(#9a6400, #e0a94e);
-  --pb-warn-bg: light-dark(#fff8e1, #2a2113);
-  --pb-warn-border: light-dark(#e0b34a, #6b5323);
-  --pb-error: light-dark(#b00, #f08a80);
-  --pb-error-bg: light-dark(#fff2f2, #2b1817);
-  --pb-error-border: light-dark(#c22, #7a3a34);
+  --pb-ok: light-dark(#1f7a3f, #6cc58a);
+  --pb-ok-bg: light-dark(#edf6ef, #16241a);
+  --pb-warn: light-dark(#96600a, #e0a94e);
+  --pb-warn-bg: light-dark(#fbf3e2, #2a2113);
+  --pb-warn-border: light-dark(#d9b25f, #6b5323);
+  --pb-error: light-dark(#a8291e, #f08a80);
+  --pb-error-bg: light-dark(#fbedeb, #2b1817);
+  --pb-error-border: light-dark(#c97066, #7a3a34);
 
   /* The text preview, which keeps its own palette (ADR 0116) */
   --pb-lcd-panel: #0d1c07;
@@ -50,7 +50,7 @@
   --pb-font-mono: ui-monospace, "Go Mono", Consolas, monospace;
   --pb-text-xs: .8125rem;
   --pb-text-sm: .875rem;
-  --pb-text-md: 1rem;
+  --pb-text-md: .9375rem;
   --pb-text-lg: 1.5rem;
 
   /* Space, shape and motion */
