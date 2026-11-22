@@ -130,9 +130,12 @@ func crumbPath(items ...crumb) []crumb {
 // navFor returns the rail with the section marked (ADR 0152).
 func navFor(section string) []navItem {
 	items := []navItem{
-		{Label: "Devices", URL: "/ui"},
+		{Label: "Overview", URL: "/ui"},
 		{Label: "Pages", URL: "/ui/pages"},
 		{Label: "Plans", URL: "/ui/plans"},
+		{Label: "Configuration", Head: true},
+		{Label: "Devices", URL: "/ui/devices"},
+		{Label: "Display types", URL: "/ui/display-types"},
 		{Label: "Plugins", URL: "/ui/plugins"},
 		{Label: "System", Head: true},
 		{Label: "Downloads", URL: "/ui/system/downloads"},
@@ -364,7 +367,16 @@ type dashboardPage struct {
 	Nav        []navItem // the rail, with the active section (ADR 0152)
 	Breadcrumb []crumb   // the path to this page
 	Devices    []dashboardDevice
+	Content    []dashboardLink     // the lists below the devices
 	Downloads  *dashboardDownloads // hint about the release checks (ADR 0060), nil without a download section
+}
+
+// dashboardLink is one list below the device cards: the configuration the
+// devices are made of (ADR 0153).
+type dashboardLink struct {
+	Label string
+	URL   string
+	Count int
 }
 
 // dashboardDownloads is the hint above the device grid: the details live on the
@@ -455,13 +467,37 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	page := dashboardPage{
 		Version:   versionText(build, loc),
 		GoVersion: build.Go,
-		Nav:       navFor("Devices"),
+		Nav:       navFor("Overview"),
 		Devices:   cards,
+		Content:   contentCards(cfg),
 		Downloads: s.downloadHint(cfg),
 	}
 	if err := dashboardTmpl.Execute(w, page); err != nil {
 		slog.Error("dashboard rendering failed", "error", err)
 	}
+}
+
+// contentCards counts the lists below the device cards, so the overview names
+// what the instance holds without opening every list (ADR 0153). A list that
+// does not read stays out instead of showing a wrong count.
+func contentCards(cfg *Config) []dashboardLink {
+	cards := []dashboardLink{}
+	if files, err := pageFiles(cfg.Pages); err == nil {
+		seen := map[string]bool{}
+		for _, f := range files {
+			seen[f.Name] = true
+		}
+		cards = append(cards, dashboardLink{Label: "Pages", URL: "/ui/pages", Count: len(seen)})
+	} else {
+		slog.Warn("page count for the overview failed", "error", err)
+	}
+	if plans, err := planFiles(cfg.Plans, cfg.Timezone); err == nil {
+		cards = append(cards, dashboardLink{Label: "Plans", URL: "/ui/plans", Count: len(plans)})
+	} else {
+		slog.Warn("plan count for the overview failed", "error", err)
+	}
+	cards = append(cards, dashboardLink{Label: "Display types", URL: "/ui/display-types", Count: len(cfg.Profiles)})
+	return cards
 }
 
 // handleDownloadCheck starts a release check in the background and returns to

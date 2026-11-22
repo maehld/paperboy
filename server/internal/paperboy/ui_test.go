@@ -43,6 +43,22 @@ func TestDashboardShowsDevices(t *testing.T) {
 		t.Fatal("the dashboard must load the vendored script")
 	}
 
+	// The overview names its two sections: the devices and the lists below
+	// them, each card with its count (ADR 0153). The device name opens the
+	// device file.
+	for _, want := range []string{
+		`<h2 class="section">Devices</h2>`,
+		`<h2 class="section">Everything else</h2>`,
+		`<a href="/ui/devices/test" title="Edit the device file">test</a>`,
+		`<a href="/ui/pages"><span class="label">Pages</span><span class="count">`,
+		`<a href="/ui/plans"><span class="label">Plans</span><span class="count">`,
+		`<a href="/ui/display-types"><span class="label">Display types</span><span class="count">1</span></a>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("overview misses %q: %s", want, body)
+		}
+	}
+
 	dev := planDevice(t, s)
 	percent := 61.0
 	dev.req.Battery = &syncBattery{Volts: 3.74, Percent: &percent}

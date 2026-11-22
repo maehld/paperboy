@@ -6,7 +6,7 @@
 //
 //   npm install --no-save playwright
 //   node scripts/ui-shots.mjs                  # into bin/ui-shots/
-//   node scripts/ui-shots.mjs --only dashboard
+//   node scripts/ui-shots.mjs --only overview
 //   node scripts/ui-shots.mjs --theme dark     # system dark mode
 //   node scripts/ui-shots.mjs --bin bin/linux-amd64
 //
@@ -31,7 +31,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Every page of the operator UI, with the example content it needs.
 const pages = [
-  { name: "dashboard", path: "/ui" },
+  { name: "overview", path: "/ui" },
   { name: "playground", path: "/ui/plugins" },
   { name: "configuration-pages", path: "/ui/pages" },
   { name: "configuration-plans", path: "/ui/plans" },

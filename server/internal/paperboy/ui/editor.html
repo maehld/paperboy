@@ -49,10 +49,6 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 </head>
 <body>
 {{template "chrome" .}}
-{{/* Display types belong to the devices section, so the two lists share a
-     sub-navigation with the dashboard instead of a hidden fourth tab
-     (ADR 0152). */}}
-{{if or (eq .Tab "devices") (eq .Tab "displays")}}{{template "devices-nav" .Tab}}{{end}}
 {{if eq .Tab "pages"}}
 <section class="card">
   <div class="card-head">

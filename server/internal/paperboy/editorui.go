@@ -782,8 +782,7 @@ func (s *Server) handleEditor(w http.ResponseWriter, r *http.Request) {
 	case "devices":
 		v.Nav = navFor("Devices")
 	case "displays":
-		v.Nav = navFor("Devices")
-		v.Breadcrumb = []crumb{{Label: "Devices", URL: "/ui"}, crumb{Label: "Display types"}}
+		v.Nav = navFor("Display types")
 	default:
 		v.Nav = navFor("Pages")
 	}

@@ -8,12 +8,12 @@ The operator UI runs on the same listener as the device API. It shows what the i
 
 One layout renders the head, the top bar, the rail, the breadcrumb and the theme toggle for every page ([ADR 0152](../adr/0152-a-design-system-and-a-rail-for-the-operator-ui.md)). A page parses the layout with its own template and keeps its title and its styles.
 
-- The rail names the sections: Devices, Pages, Plans, Plugins and System. System holds Downloads, Stats and the Styleguide. Below 64rem the rail wraps into a strip under the brand.
+- The rail groups its entries. Overview, Pages and Plans stand without a head. *Configuration* holds Devices, Display types and Plugins, *System* holds Downloads, Stats and the Styleguide ([ADR 0153](../adr/0153-an-overview-page-and-a-grouped-rail.md)). Below 64rem the rail wraps into a strip under the brand.
 - The top bar carries the logo lockup, the breadcrumb, the build label and the theme toggle.
 - The breadcrumb replaces the back link of the editors. Every step but the current one is a link. It starts where the content starts, because the lockup is as wide as the rail. Below 40rem it takes its own line under the lockup.
 - The shell owns the only `main` element. A page lays out its columns in a `div`, so a page rule never restyles the shell.
 - The theme follows `prefers-color-scheme`. The toggle stores `light` or `dark` in the browser, and the page applies it before the first paint.
-- A device is the first entry, so `/ui` is the dashboard and the device section. The section has three views: the dashboard, the device list and the display type list. They share one sub-navigation, so each view links the other two.
+- The first entry is the overview. It is the only page without a breadcrumb, and the lists reach it through the rail instead of a sub-navigation.
 - Every prompt and confirmation is one native `<dialog>` from `ui/dialog.js`. A rename asks for the name with its pattern, and a delete names the references and marks its button as danger.
 - `⌘K` or `Ctrl+K` opens the command palette. It searches the sections, the pages, the plans, the devices, the display types and the widgets. It reads the list APIs in the browser, so the server has no search route. The top bar carries a Search button that opens the same palette.
 - `GET /ui/system/styleguide` renders every token and every component, so a change to the look has one page to check. It links the same stylesheets as the other pages, so it shows the theme in use.
@@ -35,7 +35,7 @@ Light is the default. A dark system switches the palette through `prefers-color-
 The server keeps two route tables ([ADR 0096](../adr/0096-a-password-for-the-operator-ui.md)):
 
 - `deviceRoutes` is what a display touches: the device API, the composed pages, the notice pages and the firmware. These stay open, because a device has no password.
-- `uiRoutes` is everything else: the dashboard, the editors, their API, the previews. Every entry sits behind HTTP Basic auth with `ui.password`, because these pages carry the instance's content: calendars, departures, the energy of the home.
+- `uiRoutes` is everything else: the overview, the editors, their API, the previews. Every entry sits behind HTTP Basic auth with `ui.password`, because these pages carry the instance's content: calendars, departures, the energy of the home.
 
 An empty password keeps the UI open and logs a warning at startup when the listener is not loopback. A test pins the prefix of the device routes, so nothing joins them by accident.
 
@@ -43,9 +43,11 @@ Every answer carries `X-Frame-Options: DENY`, `Content-Security-Policy: frame-an
 
 `ui.hosts` names the host names the UI answers to. With a list, a request whose `Host` header names another site gets `403`. This stops DNS rebinding, where `Host` and `Origin` both point at the attacker. Without a list the UI accepts every host and logs a startup warning when the listener is not loopback. The comparison ignores the port and the case. The device routes are not checked, because a display keeps the address it was configured with.
 
-## Dashboard
+## Overview
 
-`GET /ui` is the operator's first page; `/` redirects to it ([ADR 0040](../adr/0040-operator-dashboard.md)). One card per device shows:
+`GET /ui` is the operator's first page; `/` redirects to it ([ADR 0040](../adr/0040-operator-dashboard.md)). It heads the device cards with *Devices*. Below them, *Everything else* holds one card per list of the instance: Pages, Plans and Display types, each with its count and a link ([ADR 0153](../adr/0153-an-overview-page-and-a-grouped-rail.md)).
+
+A card names the device as a link to its device file. The card itself shows:
 
 - the last page as an image, taken from `GET /api/devices/{id}/image` ([ADR 0097](../adr/0097-page-downloads-take-the-device-key.md))
 - a *Power* row with the charge state (charging, connected, discharging), the charge or the voltage
@@ -64,9 +66,9 @@ Rendered pages live in memory only. After a restart the card falls back to the p
 
 ## Self-updating pages
 
-The dashboard, the stats page and the downloads page poll themselves ([ADR 0106](../adr/0106-self-updating-pages-with-htmx.md)). Each page wraps its changing part in a region `id="live"` and asks for itself again. htmx morphs the answer into the existing DOM, so a node with the same id keeps its focus, its selection and its place.
+The overview, the stats page and the downloads page poll themselves ([ADR 0106](../adr/0106-self-updating-pages-with-htmx.md)). Each page wraps its changing part in a region `id="live"` and asks for itself again. htmx morphs the answer into the existing DOM, so a node with the same id keeps its focus, its selection and its place.
 
-- The dashboard polls every 30 seconds, the stats page every 10 seconds, the downloads page every 5 seconds. A hidden tab does not poll, and it refreshes once when it becomes visible again.
+- The overview polls every 30 seconds, the stats page every 10 seconds, the downloads page every 5 seconds. A hidden tab does not poll, and it refreshes once when it becomes visible again.
 - The device cards, their *Details* block and their preview carry stable ids, so an opened *Details* block survives a tick.
 - A served picture names its pixel hash: `GET /api/devices/{id}/image?h=<hash>` answers `Cache-Control: private, max-age=31536000, immutable` for the current hash and `no-store` otherwise. A tick therefore downloads no image.
 - The downloads poll keeps the query string of the page. The cleanup preview does not poll at all, so its list cannot change under the button next to it.
@@ -113,7 +115,7 @@ The dashboard, the stats page and the downloads page poll themselves ([ADR 0106]
 
 ## Pages, plans, devices and display types
 
-Each list is a page of its own: `/ui/pages`, `/ui/plans`, `/ui/devices` and `/ui/display-types`. The device list and the display type list share a sub-navigation with the dashboard. Each list has one card with its count, a filter field and its new-object button in the header. The Playground is a tool under Plugins. The button asks for a name in a dialog and opens the editor of the new object. The pages tab also asks for the kind, and for a text page its character grid. A new image page starts at the grid of the chosen display type ([ADR 0128](../adr/0128-a-default-grid-per-display-type.md)). The stale switch is *Stale values* on a text page and *Stale widgets* on an image page. A row opens its object: the name is a link and a click on the row follows it. *Rename* and *Delete* live in the editor and name the references ([ADR 0073](../adr/0073-edit-creates-and-deletes.md), [0079](../adr/0079-rename-config-items.md), [0084](../adr/0084-the-overview-links.md)).
+Each list is a page of its own: `/ui/pages`, `/ui/plans`, `/ui/devices` and `/ui/display-types`. Each list has one card with its count, a filter field and its new-object button in the header. The Playground is a tool under Plugins. The button asks for a name in a dialog and opens the editor of the new object. The pages tab also asks for the kind, and for a text page its character grid. A new image page starts at the grid of the chosen display type ([ADR 0128](../adr/0128-a-default-grid-per-display-type.md)). The stale switch is *Stale values* on a text page and *Stale widgets* on an image page. A row opens its object: the name is a link and a click on the row follows it. *Rename* and *Delete* live in the editor and name the references ([ADR 0073](../adr/0073-edit-creates-and-deletes.md), [0079](../adr/0079-rename-config-items.md), [0084](../adr/0084-the-overview-links.md)).
 
 The pages tab lists one row per page ([ADR 0110](../adr/0110-pages-serve-their-kind-and-name-variants.md)). The row shows the page file when it exists, else its first variant, with kind, grid, title and parse error. The variants column lists the other files as chips with their label. A chip tooltip names the path, the display types the page sends to it and any error. The row and the chips open exactly that file. A variant that no display type names is italic and stays a candidate in the *Variants* select. A page without a page file shows its name in red; the operator creates the file with *New page*. Its variants stay read-only until then.
 

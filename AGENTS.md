@@ -22,7 +22,7 @@ Each fact lives in exactly one place. Update the page that owns a behavior, not 
 | `docs/design/01-system.md` | Parts and processes, instance directory, configuration, reload, data flow, code map |
 | `docs/design/02-content.md` | Pages, widgets, grid and style, text pages, plans, value conditions, actions, the menu |
 | `docs/design/03-devices.md` | Display types, device files, device API, state, power, delivery, firmware, hardware findings |
-| `docs/design/04-operator-ui.md` | Dashboard, stats, downloads, previews, virtual display, editors, page and plan API, password |
+| `docs/design/04-operator-ui.md` | Overview, stats, downloads, previews, virtual display, editors, page and plan API, password |
 | `docs/design/05-plugins.md` | Protocol, plugin host, versions, state and blobs, value conditions, the shipped plugins |
 | `docs/design/06-delivery.md` | Release trains, assets, workflows, the download client, cache, inventory |
 | `docs/design/07-design-language.md` | The shared type scale and the components of plugin widgets |

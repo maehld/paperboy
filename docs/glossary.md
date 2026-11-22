@@ -36,7 +36,8 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **stale** | A widget result that is older than its `max_age` and therefore carries the warning bar | expired, outdated |
 | **levels** | The number of gray levels a display type draws: 1, 4 or 16 | gray, grayscale, bpp |
 | **device key** | The secret a device gets at registration and sends as bearer token | token, password |
-| **operator UI** | The web pages for the operator, behind `ui.password` | dashboard (only `GET /ui`), admin UI, frontend |
+| **operator UI** | The web pages for the operator, behind `ui.password` | admin UI, frontend |
+| **overview** | `GET /ui`: the device cards and the cards that lead to the lists | dashboard (only for `GET /ui`), start page, home |
 | **plugin host** | The part of Paperboy that starts plugins and caches their widgets and values | widget host, plugin manager |
 | **release train** | One of the server, plugin or firmware line: `server-v<version>`, `plugins-<date>`, `firmware-<date>` | release channel |
 | **channel** | `stable` or `latest`: which releases an instance installs | train |

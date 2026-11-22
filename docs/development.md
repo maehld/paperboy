@@ -13,7 +13,7 @@ go vet ./server/... ./plugins/... ./sdk/...
 
 The repository has three Go modules ([ADR 0146](adr/0146-server-plugins-and-firmware-in-their-own-directories.md)). `go.work` binds them, so commands from the repository root work. `go build ./...` at the root does not expand a workspace; name the modules instead.
 
-The dashboard header shows version, commit and commit date. The commit and its date come from Go's VCS stamping, which works as long as the Git repository is present. The container image therefore keeps `.git` in the build context and installs the git binary in its build stage (the alpine Go image ships none).
+The top bar shows version, commit and commit date. The commit and its date come from Go's VCS stamping, which works as long as the Git repository is present. The container image therefore keeps `.git` in the build context and installs the git binary in its build stage (the alpine Go image ships none).
 
 The version name cannot come from VCS stamping. Go stamps any working-tree build with a pseudo-version derived from the commit (`v0.0.0-…`), even when the exact commit is tagged. Release builds therefore pass the tag in: `-ldflags "-X github.com/maehld/paperboy/server/internal/paperboy.version=v2.0.0"`. `release.yml`, the container image (`--build-arg VERSION=…`) and `scripts/build.ps1 -Version` do this. A build without it reports `dev` plus the short commit. A build without a repository or with `-buildvcs=false` reports `dev`. `go version -m <binary>` shows what was stamped.
 

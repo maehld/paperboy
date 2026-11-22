@@ -31,16 +31,6 @@
   <main id="main">
 {{end}}
 
-{{/* The device section has three views: the dashboard, the device files and
-     the display types. The dashboard and the two lists call this with their
-     own name, so each view reaches the other two (ADR 0152). */}}
-{{define "devices-nav"}}<nav class="switch" aria-label="Devices">
-  <a href="/ui"{{if eq . "dashboard"}} class="active" aria-current="page"{{end}}>Dashboard</a>
-  <a href="/ui/devices"{{if eq . "devices"}} class="active" aria-current="page"{{end}}>Devices</a>
-  <a href="/ui/display-types"{{if eq . "displays"}} class="active" aria-current="page"{{end}}>Display types</a>
-</nav>
-{{end}}
-
 {{define "chrome-end"}}  </main>
 </div>
 {{end}}

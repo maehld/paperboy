@@ -32,12 +32,12 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 	writeDisplayFile(t, s.config().Dir, "small", "kind: image\nsize: [40, 20]\nppi: 125\n")
 
 	for _, page := range []struct{ path, active string }{
-		{"/ui", "Devices"},
+		{"/ui", "Overview"},
 		{"/ui/devices", "Devices"},
 		{"/ui/devices/test", "Devices"},
 		{"/ui/devices/test/plan", "Devices"},
-		{"/ui/display-types", "Devices"},
-		{"/ui/display-types/small", "Devices"},
+		{"/ui/display-types", "Display types"},
+		{"/ui/display-types/small", "Display types"},
 		{"/ui/pages", "Pages"},
 		{"/ui/pages/eins?display=small", "Pages"},
 		{"/ui/plans", "Plans"},
@@ -73,22 +73,16 @@ func TestOperatorPagesShareTheShell(t *testing.T) {
 		}
 	}
 
-	// The device section has three views, and the rail names only the first:
-	// each view links the other two (issue 391).
-	for _, view := range []struct{ path, active string }{
-		{"/ui", "Dashboard"},
-		{"/ui/devices", "Devices"},
-		{"/ui/display-types", "Display types"},
+	// The rail groups its entries: the lists of the configuration and the
+	// system tools carry a head, and no list hides behind another (ADR 0153).
+	rail := railOf(t, htmlRequest(t, s, "/ui").Body.String())
+	for _, want := range []string{
+		`<span class="rail-head">Configuration</span>`,
+		`<span class="rail-head">System</span>`,
+		`href="/ui/devices"`, `href="/ui/display-types"`, `href="/ui/plugins"`,
 	} {
-		body := htmlRequest(t, s, view.path).Body.String()
-		for _, want := range []string{
-			`<a href="/ui"`, `<a href="/ui/devices"`, `<a href="/ui/display-types"`,
-			`class="active" aria-current="page">` + view.active + `</a>`,
-		} {
-			start := strings.Index(body, `<nav class="switch" aria-label="Devices">`)
-			if start < 0 || !strings.Contains(body[start:start+strings.Index(body[start:], "</nav>")], want) {
-				t.Fatalf("%s: the device views miss %q", view.path, want)
-			}
+		if !strings.Contains(rail, want) {
+			t.Fatalf("the rail misses %q: %s", want, rail)
 		}
 	}
 
