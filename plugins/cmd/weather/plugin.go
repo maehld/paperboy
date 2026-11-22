@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -258,27 +259,25 @@ func (w *weather) current(wr plugin.WidgetRequest, img *image.Paletted) error {
 	if b.Empty() {
 		return plugin.TooSmall(wr)
 	}
-	iconW := min(b.Dy(), b.Dx()/3)
-	icon(c.Symbol).Draw(img, image.Rect(b.Min.X, b.Min.Y, b.Min.X+iconW, b.Max.Y), iconW*85/100, render.Center)
-	right := b.Max.X
+	text := b
 	if wr.Arg().Bool("clothing", false) {
 		cw := min(b.Dy()*2/3, b.Dx()/5)
 		icon(clothing(c)).Draw(img, image.Rect(b.Max.X-cw, b.Min.Y, b.Max.X, b.Max.Y), cw*85/100, render.Center)
-		right -= cw + wr.Style.Padding
+		text.Max.X -= cw + wr.Style.Padding
 	}
-	x := b.Min.X + iconW + wr.Style.Padding
-	width := right - x
-	h := b.Dy()
-	base := w.req.TextPx(wr)
-	big := min(float64(h)*0.36, base*2.6)
-	small := min(float64(h)*0.15, base*0.9)
-	top := b.Min.Y + (h-int(big+3.6*small))/2
-	render.Text(img, w.num(c.Temp, 1)+" °C", x, top+int(big*0.9), render.Style{Size: big, Bold: true, Shrink: true}, width, color.Black, render.Left)
-	render.Text(img, c.Text, x, top+int(big+small*1.1), render.Style{Size: small, Shrink: true}, width, color.Black, render.Left)
-	detail := fmt.Sprintf("%s %s · %s %d · %s %s/%s", w.t("gefühlt", "feels"), w.temp(c.Apparent),
-		w.t("Wind", "wind"), c.Beaufort, w.t("heute", "today"), w.temp(w.cur.Today.Max), w.temp(w.cur.Today.Min))
-	render.Text(img, detail, x, top+int(big+small*2.5), render.Style{Size: small * 0.85, Shrink: true}, width, color.Black, render.Left)
-	render.Text(img, w.eventText(), x, top+int(big+small*3.5), render.Style{Size: small * 0.95, Bold: true, Shrink: true}, width, color.Black, render.Left)
+	detail := fmt.Sprintf("%s %s · %s %d · %s/%s", w.t("gefühlt", "feels"), w.temp(c.Apparent),
+		w.t("Wind", "wind"), c.Beaufort, w.temp(w.cur.Today.Max), w.temp(w.cur.Today.Min))
+	hero := design.Hero{
+		Value:   w.num(c.Temp, 1),
+		Unit:    "°C",
+		Caption: c.Text,
+		Details: []string{detail},
+		Note:    w.eventText(),
+		Icon:    icon(c.Symbol),
+	}
+	if !design.DrawHero(img, text, hero, design.NewScale(w.req.TextPx(wr), b.Dy())) {
+		return plugin.TooSmall(wr)
+	}
 	return nil
 }
 
@@ -372,19 +371,6 @@ func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) error {
 	if len(pts) < 2 {
 		return nil
 	}
-	label := max(min(w.req.TextPx(wr)*0.6, float64(b.Dy())*0.15), w.req.PtPx(5.8), render.MinSize)
-	left := b.Min.X + render.Measure("-10°", label, false) + 6
-	right := b.Max.X - render.Measure("00", label, false)/2
-	top := b.Min.Y + int(label*1.4)
-	bottom := b.Max.Y - int(label*1.4)
-	if right-left < 20 || bottom-top < 20 {
-		return plugin.TooSmall(wr)
-	}
-	titleW := b.Dx()
-	if lx := w.legend(img, b, label); lx > 0 {
-		titleW = lx - b.Min.X - int(label*0.5)
-	}
-	render.Text(img, w.t("Temperatur (°C)", "Temperature (°C)"), b.Min.X, b.Min.Y+int(label), render.Style{Size: label, Bold: true, Shrink: true}, titleW, color.Black, render.Left)
 	lo, hi := 1e9, -1e9
 	type sample struct {
 		t    time.Time
@@ -414,76 +400,41 @@ func (w *weather) hours(wr plugin.WidgetRequest, img *image.Paletted) error {
 	}
 	lo, hi = float64(int(lo)-1), float64(int(hi)+1)
 	day := time.Date(ss[0].t.Year(), ss[0].t.Month(), ss[0].t.Day(), 0, 0, 0, 0, w.loc)
-	x := func(t time.Time) int { return left + int(t.Sub(day).Hours()/24*float64(right-left)) }
-	y := func(v float64) int { return bottom - int((v-lo)/(hi-lo)*float64(bottom-top)) }
-	for _, s := range ss {
-		if s.prob <= 0 {
-			continue
-		}
-		x0 := x(s.t)
-		bar := int(s.prob / 100 * float64(bottom-top))
-		render.Fill(img, image.Rect(x0+1, bottom-bar, x0+max((right-left)/24-1, 2), bottom), s.fill)
+	temps := make([]design.Point, len(ss))
+	rain := make([]design.Point, len(ss))
+	for i, s := range ss {
+		temps[i] = design.Point{At: s.t, Value: s.temp}
+		rain[i] = design.Point{At: s.t, Value: s.prob, Fill: s.fill}
 	}
-	// The halo keeps the temperature line visible in a solid bar.
-	for i := 1; i < len(ss); i++ {
-		segment(img, x(ss[i-1].t), y(ss[i-1].temp), x(ss[i].t), y(ss[i].temp), 4, render.White)
-	}
-	for i := 1; i < len(ss); i++ {
-		render.Segment(img, x(ss[i-1].t), y(ss[i-1].temp), x(ss[i].t), y(ss[i].temp), 2, false)
-	}
-	render.HLine(img, left, bottom, right, 1)
-	for _, v := range []float64{lo, (lo + hi) / 2, hi} {
-		render.Text(img, w.temp(v), left-4, y(v)+int(label*0.35), render.Style{Size: label}, left-b.Min.X, color.Black, render.Right)
-	}
+	ticks := make([]time.Time, 0, 5)
 	for h := 0; h <= 24; h += 6 {
-		t := day.Add(time.Duration(h) * time.Hour)
-		render.VLine(img, x(t), bottom, bottom+3, 1)
-		render.Text(img, fmt.Sprintf("%02d", h%24), x(t), b.Max.Y, render.Style{Size: label}, 40, color.Black, render.Center)
+		ticks = append(ticks, day.Add(time.Duration(h)*time.Hour))
 	}
-	if now := w.req.Now.In(w.loc); now.After(day) && now.Before(day.Add(24*time.Hour)) {
-		render.Segment(img, x(now), top, x(now), bottom, 1, true)
+	if !design.DrawTrend(img, b, design.Trend{
+		From: day,
+		To:   day.Add(24 * time.Hour),
+		Series: []design.Series{
+			{Points: rain, Style: design.Bars, Scale: &design.Range{Min: 0, Max: 100}, Fill: "shade"},
+			{Points: temps, Style: design.Line, Width: 2, Halo: true},
+		},
+		Range: &design.Range{Min: lo, Max: hi},
+		Axis:  true,
+		Ticks: ticks,
+		TickFormat: func(t time.Time) string {
+			return fmt.Sprintf("%02d", t.Hour())
+		},
+		Now:   w.req.Now.In(w.loc),
+		Label: w.t("Temperatur (°C)", "Temperature (°C)"),
+		Legend: []design.LegendItem{
+			{Label: w.t("Regen %", "rain %"), Fill: "shade"},
+			{Label: w.t("Schnee %", "snow %"), Fill: "hatch"},
+			{Label: w.t("beides %", "mixed %"), Fill: "solid"},
+		},
+		Format: w.temp,
+	}, design.NewScale(w.req.TextPx(wr), b.Dy())) {
+		return plugin.TooSmall(wr)
 	}
 	return nil
-}
-
-// legend draws the fill patterns of the bars and their labels into the top
-// right corner and returns the left edge it uses, or 0 when it does not fit.
-func (w *weather) legend(img *image.Paletted, b image.Rectangle, label float64) int {
-	entries := []struct{ fill, text string }{
-		{"shade", w.t("Regen %", "rain %")},
-		{"hatch", w.t("Schnee %", "snow %")},
-		{"solid", w.t("beides %", "mixed %")},
-	}
-	sw := int(label * 1.1)
-	gap := int(label * 0.5)
-	total := 0
-	for _, e := range entries {
-		total += sw + gap + render.Measure(e.text, label, false) + gap
-	}
-	if total > b.Dx()*3/5 {
-		return 0
-	}
-	x := b.Max.X - total
-	baseline := b.Min.Y + int(label)
-	for _, e := range entries {
-		render.Fill(img, image.Rect(x, baseline-sw, x+sw, baseline), e.fill)
-		x += sw + gap
-		tw := render.Measure(e.text, label, false)
-		render.Text(img, e.text, x, baseline, render.Style{Size: label}, tw+2, color.Black, render.Left)
-		x += tw + gap
-	}
-	return b.Max.X - total
-}
-
-// segment draws a thick line in one colour; render.Segment draws black only
-// and the white halo around the temperature line is local to this plugin.
-func segment(img *image.Paletted, x0, y0, x1, y1, thickness int, c color.Color) {
-	steps := max(abs(x1-x0), abs(y1-y0), 1)
-	for i := 0; i <= steps; i++ {
-		x := x0 + (x1-x0)*i/steps
-		y := y0 + (y1-y0)*i/steps
-		render.FillColor(img, image.Rect(x, y, x+thickness, y+thickness), c)
-	}
 }
 
 func abs(v int) int {

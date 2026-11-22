@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -115,43 +116,18 @@ func (f *fuel) cheapest(w plugin.WidgetRequest, img *image.Paletted) error {
 	}
 	v, _ := s.fuel(name)
 
-	h := b.Dy()
-	base := f.req.TextPx(w)
-	big := min(float64(h)*0.36, base*2.8)
-	small := min(float64(h)*0.12, base*0.9)
-	// The baselines: label, price, station, distance and state, since. The
-	// price needs 0.78 of its size above its baseline, so the label clears it.
-	layout := func() (float64, float64, float64, float64, float64) {
-		y0 := small
-		y1 := y0 + small*0.55 + big*0.78
-		y2 := y1 + small*1.35
-		y3 := y2 + small*1.2
-		y4 := y3 + small*1.15
-		return y0, y1, y2, y3, y4
-	}
-	y0, y1, y2, y3, total := layout()
-	if total > float64(h) {
-		k := float64(h) / total
-		big, small = big*k, small*k
-		y0, y1, y2, y3, total = layout()
-	}
-	if big < render.MinSize || small < render.MinSize {
-		return plugin.TooSmall(w)
-	}
-	top := b.Min.Y + (h-int(total))/2
-
-	render.Text(img, fuelLabel(name)+" · €/l", b.Min.X, top+int(y0),
-		render.Style{Size: small, Bold: true, Shrink: true}, b.Dx(), color.Black, render.Left)
-	render.Text(img, f.money(v), b.Min.X, top+int(y1),
-		render.Style{Size: big, Bold: true, Shrink: true}, b.Dx(), color.Black, render.Left)
-	render.Text(img, s.label(), b.Min.X, top+int(y2),
-		render.Style{Size: small, Shrink: true}, b.Dx(), color.Black, render.Left)
-	render.Text(img, f.km(s.Dist)+" · "+f.openText(s.Open), b.Min.X, top+int(y3),
-		render.Style{Size: small * 0.9, Shrink: true}, b.Dx(), color.Black, render.Left)
+	detail := f.km(s.Dist) + " · " + f.openText(s.Open)
 	if since := f.lastChange(name); !since.IsZero() {
-		render.Text(img, f.t("unverändert seit ", "unchanged since ")+since.In(f.loc).Format("15:04"),
-			b.Min.X, top+int(y3+small*1.15),
-			render.Style{Size: small * 0.85, Shrink: true}, b.Dx(), color.Black, render.Left)
+		detail += " · " + f.t("unverändert seit ", "unchanged since ") + since.In(f.loc).Format("15:04")
+	}
+	hero := design.Hero{
+		Label:   fuelLabel(name) + " · €/l",
+		Value:   f.money(v),
+		Caption: s.label(),
+		Details: []string{detail},
+	}
+	if !design.DrawHero(img, b, hero, design.NewScale(f.req.TextPx(w), b.Dy())) {
+		return plugin.TooSmall(w)
 	}
 	return nil
 }
