@@ -110,10 +110,7 @@ func (w *weather) Describe() plugin.Description {
 		},
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "current", Title: "Current weather", Kinds: image, MinWidth: 160, MinHeight: 80,
-				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 3}},
-				Args: map[string]plugin.Arg{
-					"clothing": {Type: "bool", Default: false, Description: "T-shirt or pullover by apparent temperature and wind"},
-				}},
+				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 3}}},
 			{Widget: "days", Title: "Daily forecast", Kinds: image, MinWidth: 200, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 2}},
 				Args:  forecastArgs},
@@ -240,15 +237,6 @@ func (w *weather) Render(req *plugin.Request, wr plugin.WidgetRequest, img *imag
 	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, wr.Widget)
 }
 
-// clothing advises a pullover below 15 °C apparent temperature or above wind
-// force 3, else a T-shirt.
-func clothing(c current) string {
-	if c.Apparent < 15 || c.Beaufort > 3 {
-		return "pullover"
-	}
-	return "tshirt"
-}
-
 func (w *weather) current(wr plugin.WidgetRequest, img *image.Paletted) error {
 	c := w.cur.Current
 	b := img.Rect.Inset(wr.Style.Padding)
@@ -256,11 +244,6 @@ func (w *weather) current(wr plugin.WidgetRequest, img *image.Paletted) error {
 		return plugin.TooSmall(wr)
 	}
 	text := b
-	if wr.Arg().Bool("clothing", false) {
-		cw := min(b.Dy()*2/3, b.Dx()/5)
-		icon(clothing(c)).Draw(img, image.Rect(b.Max.X-cw, b.Min.Y, b.Max.X, b.Max.Y), cw*85/100, render.Center)
-		text.Max.X -= cw + wr.Style.Padding
-	}
 	detail := fmt.Sprintf("%s %s · %s %d · %s/%s", w.t("gefühlt", "feels"), w.temp(c.Apparent),
 		w.t("Wind", "wind"), c.Beaufort, w.temp(w.cur.Today.Max), w.temp(w.cur.Today.Min))
 	hero := design.Hero{

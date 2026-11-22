@@ -13,5 +13,3 @@ plugin embeds them and reduces each picture to a mask of opaque dark pixels
 | `rain.png` | 🌧️ | U+1F327 | <https://github.com/hfg-gmuend/openmoji/blob/master/black/618x618/1F327.png> |
 | `snow.png` | 🌨️ | U+1F328 | <https://github.com/hfg-gmuend/openmoji/blob/master/black/618x618/1F328.png> |
 | `thunder.png` | 🌩️ | U+1F329 | <https://github.com/hfg-gmuend/openmoji/blob/master/black/618x618/1F329.png> |
-| `tshirt.png` | 👕 | U+1F455 | <https://github.com/hfg-gmuend/openmoji/blob/master/black/618x618/1F455.png> |
-| `pullover.png` | 🧥 | U+1F9E5 | <https://github.com/hfg-gmuend/openmoji/blob/master/black/618x618/1F9E5.png> |
