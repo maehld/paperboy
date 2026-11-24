@@ -34,7 +34,6 @@ plan: standard
 refresh: 10m
 power: mains
 actions: deny
-menu_show_duration: 45s
 rotation: 180
 battery: { warn_volts: 3.5, critical_volts: 3.3 }
 alert_methods: [beep, blink]
@@ -48,7 +47,7 @@ firmware: hold
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "refresh: 10m\n") || !strings.Contains(string(data), "menu_show_duration: 45s\n") ||
+	if !strings.Contains(string(data), "refresh: 10m\n") ||
 		!strings.Contains(string(data), "rotation: 180\n") || !strings.Contains(string(data), "alert_methods: [beep, blink]\n") {
 		t.Fatalf("durations, rotation and alert methods:\n%s", data)
 	}
@@ -139,14 +138,22 @@ func TestDeviceFileValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := &Config{Profiles: map[string]Profile{"e1001": {Width: 800, Height: 480, PPI: 125, Power: powerAuto}},
-		Refresh: Duration(5 * time.Minute), MenuShow: Duration(20 * time.Second)}
+		Refresh: Duration(5 * time.Minute)}
 	dev := f.device("kueche", nil)
 	if err := cfg.validateDevice(&dev); err != nil {
 		t.Fatal(err)
 	}
 	if dev.MAC != "AA:BB:CC:DD:EE:01" || dev.Profile != "e1001" || dev.Type != TypePaperboy ||
-		dev.Refresh != Duration(5*time.Minute) || dev.Actions != actionsAllow || dev.MenuShowDuration != Duration(20*time.Second) {
+		dev.Refresh != Duration(5*time.Minute) || dev.Actions != actionsAllow {
 		t.Fatalf("device defaults: %+v", dev)
+	}
+
+	removed, err := parseDeviceFile([]byte("display_type: e1001\nmac: \"aa:bb:cc:dd:ee:01\"\nmenu_show_duration: 45s\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := removed.validate("kueche"); err == nil || !strings.Contains(err.Error(), "removed") {
+		t.Fatalf("menu_show_duration: %v", err)
 	}
 
 	hold, _ := parseDeviceFile([]byte("display_type: e1001\nmac: \"aa:bb:cc:dd:ee:01\"\nfirmware: pin\n"))

@@ -48,22 +48,20 @@ type virtualOptions struct {
 	plan    string
 	profile string
 	refresh time.Duration
-	menu    time.Duration
 	power   string
 }
 
 // device builds the in-memory device a virtual display acts as. It has no MAC
-// and no state file: its cursor and menu live in the server's memory.
+// and no state file: its cursor lives in the server's memory.
 func (o virtualOptions) device() *Device {
 	return &Device{
-		ID:               "virtual",
-		Type:             TypePaperboy,
-		Profile:          o.profile,
-		Plan:             o.plan,
-		Power:            o.power,
-		Refresh:          Duration(o.refresh),
-		MenuShowDuration: Duration(o.menu),
-		Actions:          actionsAllow,
+		ID:      "virtual",
+		Type:    TypePaperboy,
+		Profile: o.profile,
+		Plan:    o.plan,
+		Power:   o.power,
+		Refresh: Duration(o.refresh),
+		Actions: actionsAllow,
 	}
 }
 
@@ -85,21 +83,18 @@ func parseVirtualOptions(cfg *Config, q url.Values) (virtualOptions, int, error)
 	if _, ok := cfg.Profiles[profile]; !ok {
 		return virtualOptions{}, http.StatusNotFound, fmt.Errorf("unknown display type %q", profile)
 	}
-	o := virtualOptions{plan: plan, profile: profile, refresh: time.Duration(cfg.Refresh),
-		menu: time.Duration(cfg.MenuShow), power: powerMains}
-	if o.menu == 0 {
-		o.menu = defaultMenuDuration
-	}
+	o := virtualOptions{plan: plan, profile: profile, refresh: time.Duration(cfg.Refresh), power: powerMains}
 	var err error
 	if o.refresh, err = querySeconds(q, "refresh", o.refresh, time.Second, 0); err != nil {
-		return virtualOptions{}, http.StatusBadRequest, err
-	}
-	if o.menu, err = querySeconds(q, "menu", o.menu, 5*time.Second, menuMaxDuration); err != nil {
 		return virtualOptions{}, http.StatusBadRequest, err
 	}
 	if _, ok := q["page_timeout"]; ok {
 		return virtualOptions{}, http.StatusBadRequest,
 			fmt.Errorf("page_timeout was removed: the plan decides with on_refresh (ADR 0130)")
+	}
+	if _, ok := q["menu"]; ok {
+		return virtualOptions{}, http.StatusBadRequest,
+			fmt.Errorf("menu was removed: the device menu is gone (ADR 0161)")
 	}
 	switch q.Get("power") {
 	case "":
@@ -208,12 +203,6 @@ func (s *Server) handleVirtualSync(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	debug := virtualDebug{Trigger: st.Trigger, Page: st.Page, Pages: st.LastPages, PageName: st.LastPage,
 		PageKind: st.LastPageKind, Error: st.LastError}
-	if st.Menu.Open {
-		debug.Menu = st.Menu.Phase
-		if a := st.Menu.find(st.Menu.Selected); a != nil {
-			debug.Menu += " · " + a.Title
-		}
-	}
 	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, virtualSyncResponse{syncResponse: resp, Debug: debug})
 }
@@ -234,10 +223,9 @@ type virtualDebug struct {
 	PageName string `json:"page_name,omitempty"`
 	PageKind string `json:"page_kind,omitempty"`
 	Error    string `json:"error,omitempty"`
-	Menu     string `json:"menu,omitempty"`
 }
 
-// handleVirtualReset drops the cursor and the menu of one virtual display.
+// handleVirtualReset drops the cursor of one virtual display.
 func (s *Server) handleVirtualReset(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
 	opt, status, err := parseVirtualOptions(cfg, r.URL.Query())

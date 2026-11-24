@@ -70,24 +70,7 @@ func Encode(p *Plan) ([]byte, error) {
 		}
 		add(root, "triggers", triggers)
 	}
-	if len(p.Actions) > 0 {
-		actions := newSeq(false)
-		for _, a := range p.Actions {
-			n := newMap()
-			add(n, "action", str(a.Action))
-			if len(a.Args) > 0 {
-				add(n, "args", valueNode(a.Args))
-			}
-			if a.ID != "" {
-				add(n, "id", str(a.ID))
-			}
-			if a.Title != "" {
-				add(n, "title", str(a.Title))
-			}
-			actions.Content = append(actions.Content, n)
-		}
-		add(root, "actions", actions)
-	}
+
 	return marshalNode(root)
 }
 

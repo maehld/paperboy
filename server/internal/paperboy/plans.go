@@ -182,13 +182,13 @@ func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, po
 }
 
 // hintPage is a generated notice page and the display type it was drawn for:
-// notice pages contain a page of the instance (the menu is drawn over one), so
+// notice pages contain a page of the instance, so
 // a device may only fetch those of its own type (ADR 0097).
 type hintPage struct {
 	data    []byte
 	profile string
 	at      time.Time // when the notice was drawn (ADR 0104)
-	used    time.Time // last download or menu use, for the LRU eviction (ADR 0139)
+	used    time.Time // last download or notice use, for the LRU eviction (ADR 0139)
 }
 
 // maxHints bounds the generated notice pages in memory (ADR 0139). A page that
@@ -402,8 +402,7 @@ type planChoice struct {
 	refresh  time.Duration // sleep time to report, after the plan boundary and timeout caps
 	interval time.Duration // the regular interval before those caps, for the alignment (ADR 0129)
 	banners  []string
-	alert    bool              // let the device alert with this answer (ADR 0131)
-	actions  []plan.PlanAction // the plan's actions for the device menu (ADR 0057)
+	alert    bool // let the device alert with this answer (ADR 0131)
 }
 
 // planResolution is a device plan evaluated before the state lock: the plan,
@@ -531,12 +530,13 @@ func (s *Server) announceSkippedLocked(d *Device, r planResolution) {
 // choosePlanPage applies a resolved plan under the state lock and moves the
 // page cursor. Callers hold s.mu and pass the configuration snapshot of the
 // request: plan loading and page reads happen before the lock (ADR 0138).
-// Rendering happens later in renderPlan. paused freezes paging while the
-// device menu is open (ADR 0057): the page stays, and a trigger waits for the
-// next sync. timed marks a timed refresh, which is when a trigger with
-// alert: refresh alerts again (ADR 0131). Button input pages the extended list
-// and never triggers (ADR 0158).
-func (s *Server) choosePlanPage(res planResolution, cfg *Config, d *Device, st *deviceState, now time.Time, firstContact, timed bool, buttons []string, paused, quiet bool) planChoice {
+// Rendering happens later in renderPlan. buttonInput marks a wake with button
+// input, which keeps the page and the trigger decision so that a trigger
+// waits for the next sync (ADR 0161). timed marks a timed refresh, which is
+// when a trigger with alert: refresh alerts again (ADR 0131). Button input
+// keeps the trigger decision; next and previous page the extended list
+// (ADR 0158).
+func (s *Server) choosePlanPage(res planResolution, cfg *Config, d *Device, st *deviceState, now time.Time, firstContact, timed bool, buttons []string, buttonInput, quiet bool) planChoice {
 	p, err := res.plan, res.err
 	if p == nil {
 		if !quiet {
@@ -561,70 +561,68 @@ func (s *Server) choosePlanPage(res planResolution, cfg *Config, d *Device, st *
 	mode := p.Mode()
 	prev := st.Trigger
 	// A trigger decides on every sync without button input. A button sync
-	// keeps the last decision and pages the extended list (ADR 0158).
+	// keeps the last decision; next and previous page the extended list
+	// (ADR 0158).
 	trigger := res.trigger
-	if len(buttons) > 0 {
+	if buttonInput {
 		trigger = prev
 	}
 	if trigger != "" && res.fit[trigger] != "" {
 		trigger = ""
 	}
-	listTrigger := trigger
-	if paused {
-		listTrigger = prev
-	}
-	pages := res.effective(listTrigger)
+	pages := res.effective(trigger)
 	missing := !slices.Contains(pages, st.PageName)
 	// The cursor holds the page, not its index: a plan edit follows the name
 	// (ADR 0133), and a page that left the list is resolved by the mode.
 	st.PageName = res.resolve(st.PageName, pages, mode, st.PageBeforeTrigger)
-	if !paused && trigger != "" && trigger != prev && slices.Contains(base, st.PageName) {
+	if trigger != "" && trigger != prev && slices.Contains(base, st.PageName) {
 		// The page this trigger displaces, for on_refresh: current.
 		st.PageBeforeTrigger = st.PageName
 	}
 	alert := false
-	if !paused {
-		switch {
-		case len(buttons) > 0:
-			// Button roles apply in order (ADR 0042): presses made while the
-			// panel was painting arrive together and only the final page is
-			// rendered. A button also pages away from a trigger page.
-			for _, role := range buttons {
-				switch role {
-				case buttonNext:
-					st.PageName = nextPage(pages, st.PageName)
-				case buttonPrevious:
-					st.PageName = prevPage(pages, st.PageName)
-				case buttonHome:
-					st.PageName = pages[0]
-				}
-			}
-		case trigger != "":
-			st.PageName = trigger
-		case timed && !firstContact && !missing:
-			// Only a timed refresh pages on its own (ADR 0130); a touch or a
-			// retried event never does. A page that just left the list was
-			// resolved above; advancing again would skip one more page.
-			switch mode {
-			case plan.RefreshCycle:
+	switch {
+	case len(buttons) > 0:
+		// Button roles apply in order (ADR 0042): presses made while the
+		// panel was painting arrive together and only the final page is
+		// rendered. A button also pages away from a trigger page.
+		for _, role := range buttons {
+			switch role {
+			case buttonNext:
 				st.PageName = nextPage(pages, st.PageName)
-			case plan.RefreshFirst:
+			case buttonPrevious:
+				st.PageName = prevPage(pages, st.PageName)
+			case buttonHome:
 				st.PageName = pages[0]
 			}
 		}
-		st.Trigger = trigger
-		if trigger == "" && prev != "" {
-			// The trigger ended and hid its page again; the cursor was
-			// resolved above, so its memory can go.
-			st.PageBeforeTrigger = ""
+	case buttonInput:
+		// A home press keeps the served page, also while a trigger is active
+		// (ADR 0161).
+	case trigger != "":
+		st.PageName = trigger
+	case timed && !firstContact && !missing:
+		// Only a timed refresh pages on its own (ADR 0130); a touch or a
+		// retried event never does. A page that just left the list was
+		// resolved above; advancing again would skip one more page.
+		switch mode {
+		case plan.RefreshCycle:
+			st.PageName = nextPage(pages, st.PageName)
+		case plan.RefreshFirst:
+			st.PageName = pages[0]
 		}
-		if len(buttons) == 0 {
-			switch res.alert {
-			case plan.AlertOnce:
-				alert = trigger != "" && trigger != prev
-			case plan.AlertRefresh:
-				alert = trigger != "" && (trigger != prev || timed)
-			}
+	}
+	st.Trigger = trigger
+	if trigger == "" && prev != "" {
+		// The trigger ended and hid its page again; the cursor was resolved
+		// above, so its memory can go.
+		st.PageBeforeTrigger = ""
+	}
+	if !buttonInput {
+		switch res.alert {
+		case plan.AlertOnce:
+			alert = trigger != "" && trigger != prev
+		case plan.AlertRefresh:
+			alert = trigger != "" && (trigger != prev || timed)
 		}
 	}
 	index := slices.Index(pages, st.PageName)
@@ -645,7 +643,7 @@ func (s *Server) choosePlanPage(res planResolution, cfg *Config, d *Device, st *
 		refresh = max(floor, until)
 	}
 	c := planChoice{page: index, pages: len(pages), name: st.PageName, refresh: refresh, interval: interval,
-		actions: p.Actions, alert: alert}
+		alert: alert}
 	if st.BatteryLevel == batteryWarn {
 		c.banners = append(c.banners, cfg.texts().lowBattery(voltageKey(st.BatteryVoltage)))
 	}

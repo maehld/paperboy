@@ -13,8 +13,6 @@ func demandFixture(t *testing.T, s *Server) {
 triggers:
   - when: { value: dexcom/state, is: low }
     page: seite
-actions:
-  - { action: evcc/mode, args: { mode: now } }
 `)
 	writePage(t, s, "seite", "", `kind: image
 grid: [2, 1]

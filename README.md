@@ -41,7 +41,7 @@ The README gives the overview and the quick start. The details are in these page
 | Page | Contents |
 |---|---|
 | [Setup](docs/setup.md) | instance directory, configuration, display types and devices |
-| [Pages and plans](docs/content.md) | pages, text pages, plans, actions and the device menu |
+| [Pages and plans](docs/content.md) | pages, text pages, plans and triggers |
 | [Runtime](docs/runtime.md) | web UI, device API, intervals and power, battery warning, firmware updates, device logs and security |
 | [Plugins](docs/plugins/README.md) | the plugin host and protocol, and the shipped plugins |
 | [Releases and downloads](docs/releases.md) | release tags and assets, downloads, channels and cleanup |

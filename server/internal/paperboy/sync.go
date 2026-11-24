@@ -3,19 +3,17 @@ package paperboy
 import (
 	"fmt"
 	"log/slog"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/maehld/paperboy/server/internal/plan"
 	"github.com/maehld/paperboy/server/internal/reading"
 )
 
 // syncSession is one wake of a device. serveSync walks it phase by phase: apply
-// changes the state under the lock, persist writes it, runAction lets a menu
-// action run, render draws the page, and finish stores what the device shows
-// and builds the answer. A field that crosses a phase boundary sits here.
+// changes the state under the lock, persist writes it, render draws the page,
+// and finish stores what the device shows and builds the answer. A field that
+// crosses a phase boundary sits here.
 type syncSession struct {
 	s    *Server
 	cfg  *Config
@@ -37,12 +35,9 @@ type syncSession struct {
 	textDisplay                       bool
 	power                             string
 	floor                             time.Duration
-	menu                              menuState
-	menuTouch                         bool
 	choice                            planChoice
 	alert                             bool
 	alertSource                       string
-	invoke                            *menuAction
 
 	served               servedPage
 	refresh              time.Duration
@@ -69,7 +64,6 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	x.plan = s.resolvePlan(cfg, d, now, opt.values)
 	x.apply()
 	x.persist()
-	x.runAction()
 	x.render()
 	return x.finish()
 }
@@ -145,13 +139,11 @@ func (x *syncSession) apply() {
 	}
 
 	var holds []int
-	var touches []syncEvent
 	x.input = req.Reason == "button" || req.Reason == "touch" || req.Reason == "menu" || req.Reason == "result"
 	if req.Reason == "powercycle" {
 		// A power cycle clears the RTC event counter, so the IDs start again
 		// (ADR 0064).
 		st.LastEventID = 0
-		st.Menu.close()
 	}
 	for _, e := range req.Events {
 		// A retried sync resends the same event IDs; anything at or below the
@@ -163,95 +155,28 @@ func (x *syncSession) apply() {
 			st.LastEventID = e.ID
 		}
 		x.input = true
-		switch e.Type {
-		case "button":
+		if e.Type == "button" {
 			x.buttons = append(x.buttons, e.Button)
 			holds = append(holds, e.HoldMS)
-		case "touch":
-			touches = append(touches, e)
 		}
 	}
 
 	x.power = cfg.power(d, st.ReportedPower)
 	x.floor = cfg.minRefresh(d, st.ReportedPower)
 	x.textDisplay = cfg.Profiles[d.Profile].text()
-	// The device menu (ADR 0057) consumes the buttons before the plan sees
-	// them, so a press never both moves the selection and turns the page.
-	menu := st.Menu
-	menuConsumed := false
-	// Whether the menu draws its tap-only controls for this device (ADR 0082).
-	x.menuTouch = cfg.touch(d, st.TouchReported)
-	// A menu that closes without user input (the wake at its deadline, a
-	// replaced result screen) still paused the page while it was open, so that
-	// sync must not turn it either (ADR 0057).
-	menuClosed := false
-	switch {
-	case req.Reason == "powercycle", x.critical, x.textDisplay, d.Actions == actionsDeny, d.Plan == "":
-		menu.close()
-	default:
-		// The deadline is a server-side timer, but the panel keeps the menu
-		// screen until the deadline wake repaints it. A press that arrives while
-		// the device still reports that screen belongs to the menu, even when
-		// the deadline has passed: closing it would swallow the press and the
-		// next one would turn the page (ADR 0078).
-		onScreen := menu.Screen != "" && req.Shown == menu.Screen
-		if menu.Open && !now.Before(menu.expiresAt(d)) && !(onScreen && (len(x.buttons) > 0 || len(touches) > 0)) {
-			slog.Info("menu expired", "device", d.ID)
-			menu.close()
-			menuClosed = true
-		}
-		// A result stays until the next input or the next regular sync; the
-		// result wake itself is the one that brings it, so it must not close
-		// the screen before it is drawn.
-		if menu.Open && menu.Phase == menuResultPhase && len(x.buttons) == 0 &&
-			req.Reason != "button" && req.Reason != "touch" && req.Reason != "result" {
-			menu.close()
-			menuClosed = true
-		}
-		var acts []plan.PlanAction
-		if x.plan.plan != nil {
-			acts = x.plan.plan.Actions
-		}
-		// Buttons of a wake that finds the menu open belong to the menu, even
-		// when they close it: dismissing a banner must not turn the page
-		// (ADR 0067).
-		menuConsumed = menu.Open
-		x.invoke = menu.step(menuInput{buttons: x.buttons, holds: holds, shown: req.Shown, touch: x.menuTouch}, acts, now)
-		if x.invoke == nil && menu.Open {
-			for _, e := range touches {
-				if a := menu.tap(e.X, e.Y, cfg.Profiles[d.Profile], x.menuTouch, req.Shown, now); a != nil {
-					x.invoke = a
-				}
-			}
-		}
-	}
-	// A sync the menu took part in never pages: it is modal, and its own
-	// buttons belong to it even when they close it (ADR 0067).
-	menuSync := menu.Open || menuConsumed || menuClosed
-	var pageButtons []string
-	switch {
-	case menuSync:
-		// The menu consumed the input, so it never pages.
-	case d.Actions != actionsDeny:
-		// A long next/previous jumps to the first page of the rule; a long
-		// home belongs to the open menu and is dropped (ADR 0067).
-		pageButtons = pageRoles(x.buttons, holds)
-	default:
-		// A denied device keeps the old meaning of every button.
-		pageButtons = x.buttons
-	}
-	if d.Actions == actionsDeny && slices.Contains(x.buttons, buttonHome) {
-		slog.Info("device menu denied; home keeps paging", "device", d.ID)
-	}
-	st.Menu = menu
-	x.menu = menu
+	// A button pages, but home only syncs the served page (ADR 0161). A long
+	// next or previous jumps to the first page of the plan.
+	pageButtons := pageRoles(x.buttons, holds)
+	// Button input keeps the trigger decision and the alert quiet, even when
+	// home does not page (ADR 0158, 0161).
+	buttonInput := len(x.buttons) > 0
 	switch {
 	case x.critical: // the warning replaces all pages; buttons only show it again
 		// The cursor starts over when the pages return.
 		st.Page, st.PageName = 0, ""
 	case d.Plan != "":
 		planDone := s.stats.Start("sync.plan")
-		x.choice = s.choosePlanPage(x.plan, cfg, d, st, now, firstContact, req.Reason == "timer", pageButtons, menuSync, false)
+		x.choice = s.choosePlanPage(x.plan, cfg, d, st, now, firstContact, req.Reason == "timer", pageButtons, buttonInput, false)
 		planDone()
 	default:
 		x.choice.title, x.choice.text = cfg.texts().noPlan()
@@ -292,50 +217,11 @@ func (x *syncSession) persist() {
 	}
 }
 
-// runAction runs the action the menu selected, or names it on a virtual display
-// (ADR 0091). Rendering waits for it, so its result can be drawn.
-func (x *syncSession) runAction() {
-	s, cfg, d, now, opt := x.s, x.cfg, x.d, x.now, x.opt
-	menu := x.menu
-	if x.invoke == nil {
-		return
-	}
-	if opt.virtual {
-		// A virtual display stops before the plugin call (ADR 0091): the
-		// banner names the action instead of claiming a result.
-		title := x.invoke.Title
-		if title == "" {
-			title = x.invoke.Action
-		}
-		menu.Phase, menu.Result, menu.ResultOK, menu.Simulated, menu.ConfirmHash =
-			menuResultPhase, title, true, true, ""
-		x.st.Menu = menu
-		x.menu = menu
-		slog.Info("virtual display: action not run", "device", d.ID, "action", x.invoke.Action)
-		return
-	}
-	run := s.startAction(cfg, d, *x.invoke, now)
-	actionDone := s.stats.Start("sync.action")
-	select {
-	case <-run.done:
-	case <-time.After(actionBudget):
-		slog.Info("action still running", "device", d.ID, "action", x.invoke.Action)
-	}
-	actionDone()
-	s.lock("sync.lock")
-	if st := s.state[d.stateKey()]; st != nil {
-		menu = st.Menu
-	}
-	s.mu.Unlock()
-	x.menu = menu
-}
-
-// render draws what the device gets: the battery warning, a plan page, the
-// notice without a plan, and the menu over it. No lock is held, so a slow page
-// or a panicking template never blocks another device.
+// render draws what the device gets: the battery warning, a plan page or the
+// notice without a plan. No lock is held, so a slow page or a panicking
+// template never blocks another device.
 func (x *syncSession) render() {
 	s, cfg, d, now := x.s, x.cfg, x.d, x.now
-	menu := x.menu
 	switch {
 	case x.critical:
 		if p := cfg.Profiles[d.Profile]; p.text() {
@@ -351,10 +237,6 @@ func (x *syncSession) render() {
 		renderDone()
 	default:
 		x.served = s.hint(cfg, d.Profile, x.choice.title, x.choice.text)
-	}
-	if menu.Open && !x.critical && !x.textDisplay {
-		x.served = s.overlayMenu(cfg, d, x.served, &menu, x.menuTouch)
-		x.menu = menu
 	}
 	if x.served.interval == 0 {
 		x.served.interval = x.served.refresh
@@ -389,26 +271,16 @@ func (x *syncSession) render() {
 	}
 }
 
-// finish stores what the device now shows and builds the answer. The state may
-// have changed while the page was rendered (a background action), so the lock
-// is taken again and the menu merged.
+// finish stores what the device now shows and builds the answer.
 func (x *syncSession) finish() syncResponse {
 	s, cfg, d, now, opt := x.s, x.cfg, x.d, x.now, x.opt
-	menu := x.menu
 	s.lock("sync.lock")
-	if !opt.virtual {
-		// A background action may have finished and replaced the menu while
-		// the page was rendered; a virtual display has no such path.
-		x.st = s.state[d.stateKey()]
-	}
 	if st := x.st; st != nil {
-		menu = keepActionResult(menu, st.Menu)
 		st.LastPage, st.LastPageKind, st.LastPageHash = x.shownPage, x.shownKind, x.served.hash
 		st.LastPages = x.served.pages
 		st.LastPageTime, st.LastRefresh, st.LastInterval = now, int(x.refresh.Seconds()), int(x.served.interval.Seconds())
 		st.LastText = x.served.lines
 		st.LastError = x.errText
-		st.Menu = menu
 		if x.textDisplay {
 			x.textPart, st.ScrollHash = textResponse(x.served, cfg.Profiles[d.Profile], st.ScrollHash)
 		}
@@ -417,7 +289,6 @@ func (x *syncSession) finish() syncResponse {
 		}
 	}
 	s.mu.Unlock()
-	x.menu = menu
 	writeDone := s.stats.Start("sync.state_write")
 	s.saveState(d.stateKey(), x.pageData)
 	writeDone()
@@ -426,11 +297,6 @@ func (x *syncSession) finish() syncResponse {
 	if x.input && !x.textDisplay && !opt.virtual {
 		listen = listenAfterInput
 	}
-	wake := menuWake(menu, d, now, x.critical)
-	// The firmware sleeps only after listening, and the one-shot wake counts
-	// from the sync: give the wake the time it needs, so the menu expires when
-	// the panel is repainted instead of listen_s later (ADR 0078).
-	listen, wake = fitWakeToListen(listen, wake)
 	x.logSync()
 	resp := syncResponse{
 		RefreshS: int(x.refresh.Seconds()),
@@ -439,7 +305,6 @@ func (x *syncSession) finish() syncResponse {
 		Time:     now.Unix(),
 		Rotation: cfg.rotation(d),
 		Firmware: x.offer,
-		Wake:     wake,
 	}
 	// The rule or the operator decides whether to signal; the device file
 	// decides which methods it may use (ADR 0132). The firmware ignores a
@@ -506,9 +371,6 @@ func (x *syncSession) logSync() {
 	}
 	if len(x.buttons) > 0 {
 		attrs = append(attrs, "buttons", strings.Join(x.buttons, ","))
-	}
-	if x.menu.Open {
-		attrs = append(attrs, "menu", x.menu.Phase, "action", x.menu.Selected)
 	}
 	attrs = append(attrs, "changed", req.Shown != x.served.hash, "battery", x.logged.BatteryVoltage,
 		"rssi", x.logged.RSSI, "refresh", x.refresh, "power", x.power)

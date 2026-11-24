@@ -123,7 +123,7 @@ type statsView struct {
 // else follows sorted by name.
 var timingOrder = []string{
 	"sync.total", "sync.config", "sync.lock", "sync.values", "sync.plan",
-	"sync.render", "render.widgets", "render.encode", "sync.action",
+	"sync.render", "render.widgets", "render.encode",
 	"sync.state_write", "render.page", "poll.total",
 }
 
@@ -137,7 +137,6 @@ var timingLabels = map[string]string{
 	"sync.render":      "Page render",
 	"render.widgets":   "… waiting for plugins",
 	"render.encode":    "… PNG encoding",
-	"sync.action":      "Running a menu action",
 	"sync.state_write": "Writing the state file",
 	"render.page":      "Every page render (devices, preview, editor)",
 	"poll.total":       "Text poll, whole request",

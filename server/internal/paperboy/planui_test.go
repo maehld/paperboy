@@ -20,10 +20,6 @@ triggers:
   - when: { value: fake/state, is: [low, urgent] }
     page: lcd
     alert: once
-actions:
-  - action: evcc/mode
-    args: { loadpoint: 0, mode: pv }
-    title: Charge
 `
 
 func writePlanFile(t *testing.T, s *Server, name, content string) {
@@ -65,12 +61,15 @@ func TestPlanEditor(t *testing.T) {
 		`"devices":[{"id":"test","display":"small"}]`,
 		`"displays":["small"]`,
 		`<script src="/ui/plan-editor.js"></script>`,
-		`id="pages"`, `id="triggers"`, `id="actions"`, `id="devices"`,
+		`id="pages"`, `id="triggers"`, `id="devices"`,
 		`href="/ui/pages"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("plan editor lacks %q:\n%s", want, body)
 		}
+	}
+	if strings.Contains(body, `id="actions"`) {
+		t.Fatal("the plan editor still offers actions")
 	}
 	// The image page fits the image display, the text page does not.
 	if !strings.Contains(body, `"name":"solar","serves":["small"]`) {

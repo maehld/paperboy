@@ -92,7 +92,6 @@ func LoadConfig(dir string) (*Config, error) {
 		Language:    f.Language,
 		Timezone:    tz,
 		Refresh:     f.Defaults.Refresh,
-		MenuShow:    f.Defaults.MenuShow,
 		Battery:     f.Defaults.Battery,
 		Pages:       filepath.Join(dir, pagesDirName),
 		Plans:       filepath.Join(dir, plansDirName),
@@ -110,6 +109,9 @@ func LoadConfig(dir string) (*Config, error) {
 	}
 	if f.Defaults.PageTimeout != nil {
 		return nil, fmt.Errorf("%s: defaults.page_timeout was removed: the plan decides with on_refresh (ADR 0130); remove it", path)
+	}
+	if f.Defaults.MenuShow != nil {
+		return nil, fmt.Errorf("%s: defaults.menu_show_duration was removed: the device menu is gone (ADR 0161); remove it", path)
 	}
 	if f.DisplayTypes != nil {
 		return nil, fmt.Errorf("%s: display types moved to files of their own: create displays/<name>.yaml for every display type and remove the display_types section (ADR 0071)", path)
@@ -458,15 +460,6 @@ func (c *Config) normalizeDevice(d *Device) error {
 	case actionsDeny:
 	default:
 		return fmt.Errorf("device %s: actions %q: expected allow or deny", d.ID, d.Actions)
-	}
-	if d.MenuShowDuration == 0 {
-		d.MenuShowDuration = c.MenuShow
-	}
-	if d.MenuShowDuration == 0 {
-		d.MenuShowDuration = Duration(defaultMenuDuration)
-	}
-	if time.Duration(d.MenuShowDuration) < 5*time.Second || time.Duration(d.MenuShowDuration) > menuMaxDuration {
-		return fmt.Errorf("device %s: menu_show_duration must be between 5s and %s", d.ID, menuMaxDuration)
 	}
 	return nil
 }

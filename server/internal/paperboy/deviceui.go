@@ -17,7 +17,7 @@ import (
 )
 
 // The device editor on top of the device API (ADR 0070): one device file with
-// its display type, plan, refresh and menu settings, plus a new device. Like the
+// its display type, plan, refresh and action settings, plus a new device. Like the
 // page and plan editors it is a server-rendered template and one embedded
 // script, which works on the JSON model of the API.
 
@@ -51,8 +51,7 @@ type deviceEditorState struct {
 	MAC      string        `json:"mac,omitempty"` // prefill of a claimed state file (ADR 0080)
 	Displays []string      `json:"displays"`
 	Plans    []string      `json:"plans"`
-	Refresh  string        `json:"refresh"`   // default interval
-	MenuShow string        `json:"menu_show"` // default menu duration
+	Refresh  string        `json:"refresh"` // default interval
 	Rename   *renameAction `json:"rename,omitempty"`
 }
 
@@ -91,12 +90,8 @@ func (s *Server) handleDeviceEditor(w http.ResponseWriter, r *http.Request) {
 		renderDeviceEditor(w, v, http.StatusNotFound)
 		return
 	}
-	menuShow := time.Duration(cfg.MenuShow)
-	if menuShow == 0 {
-		menuShow = defaultMenuDuration
-	}
 	st := deviceEditorState{ID: id, New: missing, Displays: displayNames(cfg),
-		Plans: []string{}, Refresh: time.Duration(cfg.Refresh).String(), MenuShow: menuShow.String()}
+		Plans: []string{}, Refresh: time.Duration(cfg.Refresh).String()}
 	if missing {
 		// Claiming hardware from the devices tab prefills its MAC (ADR 0080).
 		st.MAC = formatMAC(q.Get("mac"))

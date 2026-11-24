@@ -51,7 +51,7 @@ Two memory caches hold composed pages ([ADR 0139](../adr/0139-bound-the-page-cac
 5. The plugin host answers from its cache. A missing or expired entry is drawn or answered by the plugin process.
 6. Paperboy quantizes every widget image to the gray levels of the display type, pastes it one to one into the page and hashes the pixels. A text page formats its values and lays them into its boxes (ADR 0118).
 7. The finished page is kept in memory as PNG and as its hash. A device downloads it from `/pages/{display type}/{page}/{hash}.png`, or as QOI with `?format=qoi` for the firmware ([ADR 0072](../adr/0072-pages-as-qoi.md)).
-8. The device paints the page, reports its battery and goes back to sleep, or stays awake for a menu.
+8. The device paints the page, reports its battery and goes back to sleep, or stays awake for further input.
 9. A page that cannot be composed becomes a notice page (`/hints/{hash}.png`), never an error.
 
 ## Instance directory
@@ -89,7 +89,7 @@ Old instances from version 1 still carry `providers/` and `icons/`. Nothing read
 | `language`, `timezone` | Language and zone for every page, plan and plugin ([ADR 0033](../adr/0033-global-language-and-timezone.md)) |
 | `plugins` | One entry per plugin: `version`, `timeout`, `env`, `config` ([ADR 0049](../adr/0049-plugin-widgets.md), [0060](../adr/0060-download-from-releases.md)) |
 | `download` | `source`, `token`, `interval`, `plugin_channel`, `firmware_channel` ([ADR 0060](../adr/0060-download-from-releases.md), [0062](../adr/0062-plugin-updates-and-download-control.md), [0089](../adr/0089-release-channels.md)) |
-| `defaults` | `refresh`, `menu_show_duration` ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md)) |
+| `defaults` | `refresh` |
 | `firmware` | `version` pin for the images an instance installs |
 | `ui` | `password` for the operator UI ([ADR 0096](../adr/0096-a-password-for-the-operator-ui.md)) |
 

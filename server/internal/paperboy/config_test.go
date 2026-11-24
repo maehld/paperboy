@@ -228,6 +228,7 @@ func TestLoadConfigErrors(t *testing.T) {
 	}{
 		{"unknown key", strings.Replace(validConfig, "  refresh: 10m", "  refrsh: 10m", 1), nil, nil, "field refrsh not found"},
 		{"page timeout", strings.Replace(validConfig, "  refresh: 10m", "  refresh: 10m\n  page_timeout: 3m", 1), nil, nil, "on_refresh"},
+		{"menu duration", strings.Replace(validConfig, "  refresh: 10m", "  refresh: 10m\n  menu_show_duration: 30s", 1), nil, nil, "menu_show_duration"},
 		{"server section", "server:\n  upload_token: abc\n" + validConfig, nil, nil, "no data API"},
 		{"providers section", "providers: {}\n" + validConfig, nil, nil, "replaced by plugins"},
 		{"devices section", validConfig + "devices: {}\n", nil, nil, "devices moved to files of their own"},

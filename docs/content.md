@@ -91,8 +91,6 @@ triggers:
       - { value: time, from: "06:00", to: "09:00" }
     page: wetter
 
-actions:
-  - { action: evcc/mode, args: { loadpoint: 1, mode: pv } }
 ```
 
 - `pages` is the rotation, in order. A hidden page is not in it; only a trigger shows it. At least one page stays visible.
@@ -103,7 +101,7 @@ actions:
 
 ### Triggers
 
-A trigger brings a page to the front while its conditions hold. Triggers are tried in order and the first match wins. The first matching trigger whose page fits the display type is delivered on every sync without button input. A button press pages instead, and the next sync without input brings the page back. A trigger whose page does not fit is skipped, and the next matching trigger may apply ([ADR 0158](adr/0158-plans-are-pages-refresh-windows-and-triggers.md)).
+A trigger brings a page to the front while its conditions hold. Triggers are tried in order and the first match wins. The first matching trigger whose page fits the display type is delivered on every sync without button input. `next` or `previous` pages instead, and the next sync without input brings the page back. A short `home` keeps the served page. A trigger whose page does not fit is skipped, and the next matching trigger may apply ([ADR 0158](adr/0158-plans-are-pages-refresh-windows-and-triggers.md)).
 
 - The page must be in `pages`. A hidden page is fine: the trigger lifts it while it holds and hides it again afterwards.
 - `alert` lets the device signal: `once` when the trigger starts, `refresh` at the start and on every sync without input while it holds, or absent to stay quiet ([ADR 0131](adr/0131-a-plan-rule-alerts-the-device.md)). The device decides what an alert is: the Sticky beeps, the E1001 and E1003 beep and blink, the LCD2004 blinks.
@@ -133,38 +131,3 @@ The old rule format (`rules`, `fallback`, `when.conditions: [dexcom/low]`) is re
 
 - Paperboy reloads plans on change without a restart; a broken file keeps the last valid version. A missing or broken page also leads to a notice page, so devices never see a server error.
 - Plans serve devices on the Paperboy firmware.
-
-### Actions
-
-A plan may offer **actions** that plugins provide ([ADR 0057](adr/0057-plugin-actions-from-the-plan.md)): things a user starts from the device menu, such as switching the evcc charge mode. Actions belong to the plan, not to a page, so every page of a plan offers the same list.
-
-```yaml
-actions:
-  - action: evcc/mode
-    args: { loadpoint: 0, mode: now }
-    id: charge-now
-    title: "Charge now"          # optional; otherwise the title of the plugin
-  - action: evcc/mode
-    args: { loadpoint: 1, mode: now }
-    id: charge-now-2             # required: evcc/mode appears twice
-```
-
-- `action` is `plugin/action`. `args` are the arguments of the action from the `describe` answer of the plugin. An action without arguments can be a single string instead of a map.
-- `id` is optional and plan-local. It becomes mandatory for **every** entry of an action as soon as the same `action` appears more than once, and IDs must be unique. The menu keeps its selection by `id`, or by `plugin/action` when there is no `id`, so reordering the list or changing `args`/`title` does not change the identity.
-- Paperboy rejects exact duplicates of `action` and `args`. An unknown plugin, action or argument disables the entry with a reason instead of breaking the plan. Paperboy refuses a plugin that reports another protocol version as a whole ([ADR 0058](adr/0058-plugin-protocol-version-check.md)); it does not use the plugin without its actions.
-- Paperboy rejects an `actions` key on a trigger or a page with a hint.
-
-#### The device menu
-
-A short `home` always opens the menu. It also opens when the plan offers no actions; then it shows a *No actions* (*Keine Aktionen*) banner instead of the action grid. A device with `actions: deny` has no menu. A text display, a device with a critical battery and a device without a plan have no menu either. Paperboy draws the menu as an overlay over the top half of the current page. It has one row with `X`, up to three actions and `<`/`>`, stacked in the same order on portrait displays. The page below stays visible, and the menu pauses page changes.
-
-- `next`/`previous` move the selection and wrap. `<`/`>` page through the list in steps of three.
-- `home` runs the selected action. If the plugin asks for a confirmation (`confirm` in its `describe`), Paperboy shows a confirmation screen first. It runs the action only after the device reports that screen as painted (`shown` hash): the first `home` opens the menu or the confirmation, it never runs an action blind.
-- A menu without a runnable action, and `home` on a disabled action, show the reason of the plugin as a banner.
-- A long `home` closes the menu and keeps the page. On a device with `touch: true` the menu draws a control strip under the actions: `X` closes it, `<`/`>` page the list, and `next` past the last action selects the `X`. On a button-only device the strip is not drawn at all ([ADR 0082](adr/0082-menu-tap-controls-in-a-strip.md)). A tap on a confirming action opens its confirmation first; a tap never opens the menu.
-- With the menu closed, a long `next` or `previous` goes to the first page of the plan. Paperboy ignores long presses inside the menu, so the direction buttons only move the selection there.
-- Unavailable actions stay visible, hatched, with the reason of the plugin. A plugin that is down keeps its actions visible as unavailable instead of hiding them.
-- The menu closes itself after `menu_show_duration` (default 30 s, at most 60 s). It asks for a one-shot wake at that deadline (`wake` in the sync answer, [ADR 0064](adr/0064-device-protocol-v4.md)), so it closes without waiting for the next regular refresh. The empty banner closes after ten seconds at the latest; any input dismisses it.
-- An action gets about five seconds inside the sync. If it is not done by then, a thin banner at the top says *Running …* (*Wird ausgeführt …*), and Paperboy schedules one result wake (`reason: result`) for the outcome. The outcome is a banner too (*Done: …* or *Failed: …*, German *Erledigt: …* or *Fehlgeschlagen: …*) without cells or a close box. The next input or the next regular sync clears it.
-- With `actions: deny`, `home` goes to page 1, and the dashboard marks the device as denied.
-- Plugin actions set target states (e.g. `mode: now`), never toggles, so a repeated sync is safe.

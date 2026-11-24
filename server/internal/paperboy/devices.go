@@ -22,7 +22,7 @@ import (
 
 // Devices live in files of their own (ADR 0070): devices/<id>.yaml, one file
 // per device, parsed as strictly as pages and plans. The file name is the
-// stable device ID; the runtime state (cursor, battery, menu) lives per MAC
+// stable device ID; the runtime state (cursor, battery) lives per MAC
 // under state/devices/ (ADR 0080).
 
 // Alert methods name what an alert may do on a device (ADR 0132). The
@@ -46,11 +46,12 @@ type deviceFile struct {
 	// AlertMethods lists the methods an alert may use: beep, blink or both
 	// (ADR 0132). nil or an empty list keeps the device silent.
 	AlertMethods *[]string `yaml:"alert_methods,omitempty" json:"alert_methods,omitempty"`
-	MenuShow     Duration  `yaml:"menu_show_duration" json:"menu_show_duration,omitempty"`
-	Touch        *bool     `yaml:"touch,omitempty" json:"touch,omitempty"`
-	Rotation     *int      `yaml:"rotation,omitempty" json:"rotation,omitempty"` // overrides the display type, ADR 0102
-	Battery      *Battery  `yaml:"battery,omitempty" json:"battery,omitempty"`
-	Firmware     string    `yaml:"firmware,omitempty" json:"firmware,omitempty"`
+	// MenuShow exists only to reject the removed key with a hint (ADR 0161).
+	MenuShow any      `yaml:"menu_show_duration" json:"-"`
+	Touch    *bool    `yaml:"touch,omitempty" json:"touch,omitempty"`
+	Rotation *int     `yaml:"rotation,omitempty" json:"rotation,omitempty"` // overrides the display type, ADR 0102
+	Battery  *Battery `yaml:"battery,omitempty" json:"battery,omitempty"`
+	Firmware string   `yaml:"firmware,omitempty" json:"firmware,omitempty"`
 }
 
 // parseDeviceFile reads one device file strictly: an unknown key or a second
@@ -68,6 +69,9 @@ func parseDeviceFile(data []byte) (deviceFile, error) {
 
 // validate checks what the file itself decides, before it becomes a Device.
 func (f deviceFile) validate(id string) error {
+	if f.MenuShow != nil {
+		return fmt.Errorf("device %s: menu_show_duration was removed: the device menu is gone (ADR 0161); remove it", id)
+	}
 	switch f.Firmware {
 	case "", firmwareHold:
 	default:
@@ -94,20 +98,19 @@ func (f deviceFile) validate(id string) error {
 // of paperboy.yaml fill an unset device override.
 func (f deviceFile) device(id string, defaults *Battery) Device {
 	return Device{
-		ID:               id,
-		Type:             f.Protocol,
-		MAC:              f.MAC,
-		Profile:          f.DisplayType,
-		Refresh:          f.Refresh,
-		Battery:          copyBattery(defaults, f.Battery),
-		Plan:             f.Plan,
-		Hold:             f.Firmware == firmwareHold,
-		Power:            f.Power,
-		Actions:          f.Actions,
-		AlertMethods:     f.AlertMethods,
-		MenuShowDuration: f.MenuShow,
-		Touch:            f.Touch,
-		Rotation:         f.Rotation,
+		ID:           id,
+		Type:         f.Protocol,
+		MAC:          f.MAC,
+		Profile:      f.DisplayType,
+		Refresh:      f.Refresh,
+		Battery:      copyBattery(defaults, f.Battery),
+		Plan:         f.Plan,
+		Hold:         f.Firmware == firmwareHold,
+		Power:        f.Power,
+		Actions:      f.Actions,
+		AlertMethods: f.AlertMethods,
+		Touch:        f.Touch,
+		Rotation:     f.Rotation,
 	}
 }
 
@@ -230,9 +233,6 @@ func encodeDeviceFile(f *deviceFile) ([]byte, error) {
 			methods.Content = append(methods.Content, plainScalar(method))
 		}
 		set("alert_methods", methods)
-	}
-	if f.MenuShow != 0 {
-		set("menu_show_duration", durationValue(time.Duration(f.MenuShow)))
 	}
 	if f.Touch != nil {
 		set("touch", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: strconv.FormatBool(*f.Touch)})

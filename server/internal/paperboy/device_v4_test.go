@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 )
 
 // sendEvents posts a sync body with the given events and reason.
@@ -74,106 +73,5 @@ func TestSyncAcceptsMenuAndResultReasons(t *testing.T) {
 	}
 	if err := (&syncRequest{Reason: "timer", Events: []syncEvent{{ID: -1, Type: "button", Button: buttonNext}}}).validate(); err == nil {
 		t.Fatal("negative event id accepted")
-	}
-}
-
-func TestMenuWakeForRunningAction(t *testing.T) {
-	d := Device{MenuShowDuration: Duration(30 * time.Second)}
-	now := time.Date(2026, time.November, 7, 12, 0, 0, 0, time.UTC)
-	menu := menuState{Open: true, Phase: menuListPhase, OpenedAt: now.Add(-5 * time.Second)}
-	if w := menuWake(menu, &d, now, false); w == nil || w.Reason != "menu" || w.AfterS != 25 {
-		t.Fatalf("list wake: %+v", w)
-	}
-	menu.Phase = menuConfirmPhase
-	if w := menuWake(menu, &d, now, false); w == nil || w.Reason != "menu" {
-		t.Fatalf("confirm wake: %+v", w)
-	}
-	menu.Phase = menuRunningPhase
-	if w := menuWake(menu, &d, now, false); w == nil || w.Reason != "result" {
-		t.Fatalf("running wake: %+v", w)
-	}
-	menu.Phase = menuResultPhase
-	if w := menuWake(menu, &d, now, false); w != nil {
-		t.Fatalf("result needs no special wake: %+v", w)
-	}
-	menu.Phase = menuListPhase
-	if w := menuWake(menu, &d, now, true); w != nil {
-		t.Fatalf("a battery warning must not schedule a menu wake: %+v", w)
-	}
-	if w := menuWake(menuState{}, &d, now, false); w != nil {
-		t.Fatalf("a closed menu must not schedule a wake: %+v", w)
-	}
-}
-
-func TestResultWakeKeepsTheResult(t *testing.T) {
-	s, _, p := menuServer(t, menuPlanActions, nil)
-	dev := menuDevice(t, s)
-	displayPage(t, s, dev)
-	sendEvents(t, s, dev, "button", syncEvent{ID: 1, Type: "button", Button: buttonHome})
-	// act/go needs a confirmation; act/quick does not. Take the second.
-	sendEvents(t, s, dev, "button", syncEvent{ID: 2, Type: "button", Button: buttonNext})
-	sendEvents(t, s, dev, "button", syncEvent{ID: 3, Type: "button", Button: buttonHome})
-	if len(p.runs) != 1 {
-		t.Fatalf("runs: %v", p.runs)
-	}
-	if st := s.state["AABBCCDDEE02"]; st.Menu.Phase != menuResultPhase {
-		t.Fatalf("phase after the action: %q", st.Menu.Phase)
-	}
-	// The wake that brings an outcome must not close the screen before it is
-	// drawn.
-	sendEvents(t, s, dev, "result")
-	if st := s.state["AABBCCDDEE02"]; !st.Menu.Open || st.Menu.Phase != menuResultPhase {
-		t.Fatalf("result wake: %+v", st.Menu)
-	}
-	// The next regular sync closes it.
-	sendEvents(t, s, dev, "timer")
-	if st := s.state["AABBCCDDEE02"]; st.Menu.Open {
-		t.Fatalf("timer sync must close the result: %+v", st.Menu)
-	}
-}
-
-func TestFinishActionStoresResult(t *testing.T) {
-	s, _, p := menuServer(t, menuPlanActions, nil)
-	dev := menuDevice(t, s)
-	displayPage(t, s, dev)
-	press(t, s, dev, buttonHome)
-	press(t, s, dev, buttonNext)
-
-	s.mu.Lock()
-	st := s.state["AABBCCDDEE02"]
-	st.Menu.Phase = menuRunningPhase
-	st.Menu.Selected = "act/quick"
-	s.mu.Unlock()
-
-	run := &actionRun{done: make(chan struct{}), ok: true, message: "done"}
-	s.mu.Lock()
-	s.actionRuns["AABBCCDDEE02"] = run
-	s.mu.Unlock()
-	s.finishAction("AABBCCDDEE02", "act/quick", run)
-
-	s.mu.Lock()
-	menu := s.state["AABBCCDDEE02"].Menu
-	s.mu.Unlock()
-	if menu.Phase != menuResultPhase || !menu.ResultOK || menu.Result != "done" {
-		t.Fatalf("menu after the run: %+v", menu)
-	}
-	if len(p.runs) != 0 {
-		t.Fatalf("the plugin must not run here: %v", p.runs)
-	}
-	// A run of another action leaves the menu alone.
-	s.mu.Lock()
-	s.state["AABBCCDDEE02"].Menu.Phase = menuRunningPhase
-	s.state["AABBCCDDEE02"].Menu.Selected = "act/quick"
-	s.mu.Unlock()
-	other := &actionRun{done: make(chan struct{}), ok: true}
-	s.mu.Lock()
-	s.actionRuns["test"] = other
-	s.mu.Unlock()
-	s.finishAction("test", "act/off", other)
-	s.mu.Lock()
-	phase := s.state["AABBCCDDEE02"].Menu.Phase
-	s.mu.Unlock()
-	if phase != menuRunningPhase {
-		t.Fatalf("an unrelated run changed the menu: %q", phase)
 	}
 }

@@ -17,9 +17,9 @@ import (
 )
 
 // The plan editor on top of the plan API (ADR 0066): one plan opened for
-// editing, with the pages, the refresh schedule, the triggers and the actions a
-// device menu offers (ADR 0057, 0069, 0158). Like the page editor it is a server-rendered
-// template plus one embedded script, which works on the JSON model of the API.
+// editing, with the pages, the refresh schedule and the triggers (ADR 0069,
+// 0158). Like the page editor it is a server-rendered template plus one
+// embedded script, which works on the JSON model of the API.
 
 //go:embed ui/plan-editor.html
 var planEditorTemplate string

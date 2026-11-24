@@ -116,7 +116,7 @@ The page editor places the same boxes on the board. Drag moves a box and its edg
 
 ## Which page a device gets
 
-A plan is `plans/<name>.yaml` ([ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md)). It has an ordered page list, a refresh schedule, ordered triggers and the actions of the device menu.
+A plan is `plans/<name>.yaml` ([ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md)). It has an ordered page list, a refresh schedule and ordered triggers.
 
 ```yaml
 pages:
@@ -139,10 +139,6 @@ triggers:
       - { value: weekday, is: [mon, tue, wed, thu, fri] }
       - { value: time, from: "06:00", to: "09:00" }
     page: prusa
-
-actions:
-  - action: evcc/mode
-    args: {loadpoint: 1, mode: pv}
 ```
 
 `pages` is the rotation, in order. An entry is a page name or `{page: <name>, hidden: true}`. A hidden page is not in the rotation; only a trigger shows it. At least one page is visible.
@@ -151,7 +147,7 @@ actions:
 
 `refresh` is the interval outside its windows. `default` falls back to the interval of the device. A window has `from`, `to` and `interval`. `from` is inclusive and `to` exclusive; a later `to` than `from` crosses midnight. Windows must not overlap. The next edge caps the sleep, so the device changes its interval on time.
 
-`triggers` are tried in order and the first match wins. A trigger has `when` conditions, a `page` that must be in `pages`, and an optional `alert`. The page of the first matching trigger that fits the display type is delivered on every sync without button input. A button sync pages the extended list: the visible pages plus the page of the active trigger. A trigger re-asserts at the next sync without input. A trigger whose page does not fit is skipped, and the next matching trigger may apply.
+`triggers` are tried in order and the first match wins. A trigger has `when` conditions, a `page` that must be in `pages`, and an optional `alert`. The page of the first matching trigger that fits the display type is delivered on every sync without button input. A button sync pages the extended list: the visible pages plus the page of the active trigger. A short home keeps the served page and the trigger decision. A trigger re-asserts at the next sync without input. A trigger whose page does not fit is skipped, and the next matching trigger may apply.
 
 A condition tests a value:
 
@@ -172,61 +168,6 @@ A broken entry costs one display type, not the page ([ADR 0110](../adr/0110-page
 
 The pages of a plan are static, so every page and the values of every trigger are warm. A trigger page is not cold. Paperboy caches a parsed page by its modification time, so an edit applies with the next sync.
 
-## Actions
-
-A plan lists the actions that the device menu offers ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md)):
-
-| Key | Meaning |
-|---|---|
-| `action` | `plugin/action` |
-| `args` | Arguments of that action |
-| `title` | Optional title in the menu; by default the action names itself |
-| `id` | Optional plan-local identity |
-
-The identity of an action is its `id`, or `plugin/action` when no `id` is set. As soon as the same action appears twice in a plan, every entry needs its own `id`. Exact duplicates of action and args are rejected. `actions` on a trigger or on a page is rejected with a hint: actions belong to the plan.
-
-The plan carries one action list, so the menu offers the same actions at any time of day.
-
-## The device menu
-
-Short `home` opens the menu when the device is not `actions: deny` and has a plan ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md), [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md)). Paperboy draws it over the served page and registers the result as a notice page, so the cached page stays untouched.
-
-```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> Closed
-    Closed --> Empty: home, plan without actions
-    Closed --> Off: home, no action can run
-    Closed --> List: home, plan with actions
-    Empty --> Closed: input or 10 seconds
-    Off --> Closed: input or 10 seconds
-    List --> List: next, previous
-    List --> Confirm: home, action needs confirmation
-    List --> Running: home, action runs
-    Confirm --> Running: home, shown hash matches
-    Confirm --> List: next or previous
-    Running --> Result: action answered
-    Running --> Result: 5 s budget exceeded
-    Result --> Closed: timeout or input
-    List --> Closed: long home or timeout
-    Confirm --> Closed: timeout
-```
-
-- An empty action list becomes a `Keine Aktionen` banner. A menu in which no action can run names the reason to run none. Both close after 10 seconds or on the next input.
-- Otherwise three actions appear in a row, stacked in portrait, over the top half of the display.
-- With `touch: true`, a smaller control strip sits beneath them: `<` and `>` while the list has more than one page, and `X`. The strip is drawn as controls, not as action cells.
-- `next` and `previous` move the selection. `home` runs the selected action. A long `home` closes the menu and keeps the page. In the strip, `next` past the last action selects `X`, and `home` closes.
-- Long presses inside the menu are ignored. Page changes pause while it is open.
-- With the menu closed, a long `next` or `previous` jumps to the first page of the plan. The server decides this at 700 ms; the firmware only reports `hold_ms`.
-
-Paperboy resolves the actions when the menu opens: one `describe` per plugin plus one `actions` request. It caches the answer in `menuState` in the device's state file. The entry keeps the phase (`list`, `confirm`, `running`, `result`), the selection by identity, the offset, the session and the confirmation hash.
-
-An action that needs a confirmation shows `Home = ausführen · Next/Previous = abbrechen` and runs only when the device reports exactly the hash of that screen. The `Ja` and `Nein` cells are the touch targets. Running and result are a banner of an eighth of the display.
-
-An action gets 5 seconds inside the sync. A slower one finishes on its own and a result wake brings the outcome.
-
-Without input, the menu expires after `menu_show_duration` (default 30 seconds, at most 60). Paperboy asks the device for a one-shot wake at that deadline. Every button or touch restarts the deadline. A press that arrives while the device still reports the last served menu screen belongs to the menu, even past the deadline.
-
 ## Built-in widgets
 
 The built-in plugin `paperboy` needs no data and is never cached ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md)):
@@ -244,4 +185,4 @@ On a text page the built-in plugin provides four values. `title` is the page tit
 
 ## Decisions
 
-[ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md) (plans, refresh windows, triggers) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0057](../adr/0057-plugin-actions-from-the-plan.md) (actions) · [0067](../adr/0067-buttons-and-the-menu.md), [0078](../adr/0078-the-menu-stays-open-while-it-is-used.md), [0082](../adr/0082-menu-tap-controls-in-a-strip.md) (the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) · [0130](../adr/0130-what-a-plan-refresh-does.md) (what a refresh does), [0133](../adr/0133-the-page-cursor-holds-the-page.md) (the page cursor) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (a trigger alerts)
+[ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md) (plans, refresh windows, triggers) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0161](../adr/0161-home-syncs-and-the-menu-goes.md) (home and the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) · [0130](../adr/0130-what-a-plan-refresh-does.md) (what a refresh does), [0133](../adr/0133-the-page-cursor-holds-the-page.md) (the page cursor) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (a trigger alerts)

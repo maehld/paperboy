@@ -234,7 +234,7 @@ func (s *Server) handleRenamePlan(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRenameDevice moves one device file and its state, so the renamed device
-// keeps its page cursor, battery reading and menu (ADR 0079). Its MAC is what
+// keeps its page cursor and battery reading (ADR 0079). Its MAC is what
 // the firmware registers with, so no device notices the rename.
 func (s *Server) handleRenameDevice(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()

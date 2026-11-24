@@ -1,7 +1,7 @@
 // Plan editor for Paperboy (ADR 0069). Vanilla JavaScript, no build step: the
-// plan model comes from the plan API (ADR 0066), the actions from the plugin
-// descriptions, and edits stay in the browser until Save writes the file with
-// the hash it was read with.
+// plan model comes from the plan API (ADR 0066), the plugin values from the
+// plugin descriptions, and edits stay in the browser until Save writes the
+// file with the hash it was read with.
 (() => {
   'use strict';
 
@@ -103,12 +103,6 @@
         alert: t.alert || '',
       };
     });
-    p.actions = (p.actions || []).map((a) => ({
-      action: a.action || '',
-      args: a.args || {},
-      id: a.id || '',
-      title: a.title || '',
-    }));
     return p;
   }
 
@@ -144,15 +138,6 @@
         const trigger = { when: t.when.map(serializeCondition), page: t.page };
         if (t.alert) trigger.alert = t.alert;
         return trigger;
-      });
-    }
-    if (p.actions.length) {
-      out.actions = p.actions.map((a) => {
-        const action = { action: a.action };
-        if (a.args && Object.keys(a.args).length) action.args = a.args;
-        if (a.id) action.id = a.id;
-        if (a.title) action.title = a.title;
-        return action;
       });
     }
     return out;
@@ -850,296 +835,6 @@
     return wrap;
   }
 
-  // ---- actions ----
-
-  function allActions() {
-    const out = [];
-    for (const plugin of state.plugins) {
-      for (const action of (plugin.description && plugin.description.actions) || []) {
-        out.push({ value: plugin.name + '/' + action.name, spec: action });
-      }
-    }
-    return out.sort((a, b) => a.value.localeCompare(b.value));
-  }
-
-  function actionSpec(value) {
-    const [plugin, name] = value.split('/');
-    const p = state.plugins.find((x) => x.name === plugin);
-    const actions = (p && p.description && p.description.actions) || [];
-    return actions.find((a) => a.name === name) || null;
-  }
-
-  function renderActions() {
-    const box = el('actions');
-    box.innerHTML = '';
-    if (state.readOnly || !state.plan) {
-      box.innerHTML = '<p class="hint">The file does not read as a plan; fix it by hand and reload.</p>';
-      return;
-    }
-    if (!state.plan.actions.length) {
-      box.innerHTML = '<p class="hint">No actions; the device menu then has no entries.</p>';
-      return;
-    }
-    state.plan.actions.forEach((action, i) => box.appendChild(actionCard(action, i)));
-    renderActionWarnings();
-  }
-
-  function actionCard(action, i) {
-    const card = document.createElement('section');
-    card.className = 'action';
-
-    const head = document.createElement('div');
-    head.className = 'action-head';
-    const select = document.createElement('select');
-    const none = document.createElement('option');
-    none.value = '';
-    none.textContent = 'choose an action…';
-    select.appendChild(none);
-    const offered = allActions();
-    for (const a of offered) {
-      const option = document.createElement('option');
-      option.value = a.value;
-      option.textContent = a.value + (a.spec.title ? ' — ' + a.spec.title : '');
-      select.appendChild(option);
-    }
-    if (action.action && !offered.some((a) => a.value === action.action)) {
-      const option = document.createElement('option');
-      option.value = action.action;
-      option.textContent = action.action + ' (not offered by a configured plugin)';
-      select.appendChild(option);
-    }
-    select.value = action.action;
-    select.addEventListener('change', () => {
-      action.action = select.value;
-      action.args = {};
-      changed();
-      renderActions();
-    });
-    head.append(select, small('×', () => {
-      state.plan.actions.splice(i, 1);
-      changed();
-      renderActions();
-    }));
-    card.appendChild(head);
-
-    const grid = document.createElement('div');
-    grid.className = 'rule-grid';
-    const id = textInput(action.id, 'id');
-    id.pattern = '[a-z0-9-]{1,40}';
-    id.addEventListener('input', () => {
-      action.id = id.value.trim();
-      changed();
-    });
-    grid.appendChild(field('ID', id));
-    const spec = actionSpec(action.action);
-    const title = textInput(action.title, spec && spec.title ? spec.title : 'menu title');
-    title.addEventListener('input', () => {
-      action.title = title.value;
-      changed();
-    });
-    grid.appendChild(field('Title', title));
-    card.appendChild(grid);
-
-    if (!spec && action.action) {
-      const note = document.createElement('p');
-      note.className = 'note';
-      note.textContent = 'Unknown action: a configured plugin has to offer it.';
-      card.appendChild(note);
-    }
-    if (spec && spec.confirm && spec.confirm.required) {
-      const note = document.createElement('p');
-      note.className = 'note';
-      note.textContent = 'Asks for a confirmation before it runs' + (spec.confirm.text ? ': ' + spec.confirm.text : '.');
-      card.appendChild(note);
-    }
-    const args = (spec && spec.args) || {};
-    for (const name of Object.keys(args).sort()) card.appendChild(argField(action, name, args[name]));
-    return card;
-  }
-
-  function argField(action, name, arg) {
-    const wrap = document.createElement('div');
-    wrap.className = 'arg';
-    const label = document.createElement('span');
-    label.className = 'name';
-    label.textContent = name + (arg.required ? ' *' : '');
-    wrap.appendChild(label);
-    const current = action.args[name];
-    let control;
-    if (arg.type === 'bool') {
-      control = document.createElement('input');
-      control.type = 'checkbox';
-      control.checked = current === undefined ? arg.default === true : current === true;
-      control.addEventListener('change', () => {
-        if (control.checked === (arg.default === true)) delete action.args[name];
-        else action.args[name] = control.checked;
-        changed();
-      });
-    } else if (Array.isArray(arg.enum) && arg.enum.length && arg.type !== 'list') {
-      control = document.createElement('select');
-      const none = document.createElement('option');
-      none.value = '';
-      none.textContent = arg.default === undefined || arg.default === null ? 'default' : 'default (' + arg.default + ')';
-      control.appendChild(none);
-      for (const value of arg.enum) {
-        const option = document.createElement('option');
-        option.value = String(value);
-        option.textContent = enumLabel(arg, value);
-        control.appendChild(option);
-      }
-      control.value = current === undefined ? '' : String(current);
-      control.addEventListener('change', () => {
-        if (control.value === '') delete action.args[name];
-        else {
-          const chosen = arg.enum.find((v) => String(v) === control.value);
-          action.args[name] = chosen === undefined ? control.value : chosen;
-        }
-        changed();
-      });
-    } else if (arg.type === 'list' && Array.isArray(arg.enum) && arg.enum.length) {
-      // A list with a fixed set: one check box per value in two columns,
-      // with a select all/none bar when the list is long enough to need it.
-      control = document.createElement('div');
-      control.className = 'checks';
-      control.setAttribute('role', 'group');
-      control.setAttribute('aria-label', name);
-      const chosen = (Array.isArray(current) ? current : Array.isArray(arg.default) ? arg.default : []).map(String);
-      const grid = document.createElement('div');
-      grid.className = 'checks-grid';
-      const boxes = [];
-      let count = null;
-      for (const value of arg.enum) {
-        const item = document.createElement('label');
-        item.className = 'check';
-        const box = document.createElement('input');
-        box.type = 'checkbox';
-        box.value = String(value);
-        box.checked = chosen.includes(String(value));
-        const text = document.createElement('span');
-        text.textContent = enumLabel(arg, value);
-        text.title = String(value);
-        item.append(box, text);
-        grid.appendChild(item);
-        boxes.push(box);
-      }
-      const pick = () => {
-        const picked = boxes.filter((i) => i.checked).map((i) => i.value);
-        if (count) count.textContent = picked.length + ' of ' + boxes.length;
-        // An empty pick stays an empty list when the arg has a default, so
-        // "None" means none and not "show the defaults again".
-        if (picked.length === 0) {
-          if (Array.isArray(arg.default)) action.args[name] = [];
-          else delete action.args[name];
-        } else {
-          action.args[name] = picked;
-        }
-        changed();
-      };
-      if (arg.enum.length > 3) {
-        const bar = document.createElement('div');
-        bar.className = 'checks-bar';
-        count = document.createElement('span');
-        count.className = 'checks-count';
-        count.textContent = chosen.length + ' of ' + arg.enum.length;
-        const actions = document.createElement('span');
-        actions.className = 'checks-actions';
-        for (const [label, title, on] of [['All', 'Select all values', true], ['None', 'Clear the selection', false]]) {
-          const button = document.createElement('button');
-          button.type = 'button';
-          button.textContent = label;
-          button.title = title;
-          button.addEventListener('click', () => {
-            for (const box of boxes) box.checked = on;
-            pick();
-          });
-          actions.appendChild(button);
-        }
-        bar.append(count, actions);
-        control.appendChild(bar);
-      }
-      control.appendChild(grid);
-      for (const box of boxes) box.addEventListener('change', pick);
-    } else {
-      control = document.createElement('input');
-      control.type = 'text';
-      control.autocomplete = 'off';
-      if (arg.default !== undefined && arg.default !== null) control.placeholder = String(arg.default);
-      if (Array.isArray(current)) control.value = current.join(', ');
-      else if (current !== undefined) control.value = String(current);
-      control.addEventListener('input', () => {
-        const raw = control.value;
-        if (raw === '') delete action.args[name];
-        else action.args[name] = argValue(raw, arg);
-        changed();
-      });
-    }
-    wrap.appendChild(control);
-    if (arg.description) {
-      const desc = document.createElement('span');
-      desc.className = 'desc';
-      desc.textContent = arg.description;
-      wrap.appendChild(desc);
-    }
-    return wrap;
-  }
-
-  // enumLabel is the display text of an enum value; the stored value stays
-  // the key, and plugins without labels keep the key as the label.
-  function enumLabel(arg, value) {
-    const key = String(value);
-    return (arg && arg.enum_labels && arg.enum_labels[key]) || key;
-  }
-
-  function argValue(raw, arg) {
-    if (arg && arg.type === 'list') {
-      return raw.split(',').map((s) => s.trim()).filter((s) => s !== '').map(jsonOrString);
-    }
-    return jsonOrString(raw);
-  }
-
-  function jsonOrString(s) {
-    try {
-      return JSON.parse(s);
-    } catch (e) {
-      return s;
-    }
-  }
-
-  function argsKey(args) {
-    return Object.keys(args || {})
-      .sort()
-      .map((k) => k + '=' + JSON.stringify(args[k]))
-      .join('&');
-  }
-
-  // renderActionWarnings checks what the API rejects: an action that appears
-  // more than once needs an id on every entry, ids are unique, and equal
-  // action plus args appear once (ADR 0057).
-  function renderActionWarnings() {
-    if (state.readOnly || !state.plan) return;
-    const messages = [];
-    const count = {};
-    for (const a of state.plan.actions) if (a.action) count[a.action] = (count[a.action] || 0) + 1;
-    const ids = {};
-    const seen = {};
-    for (const a of state.plan.actions) {
-      if (!a.action) {
-        messages.push('an action is missing');
-        continue;
-      }
-      if (count[a.action] > 1 && !a.id) messages.push(a.action + ' appears more than once: every entry needs an id');
-      if (a.id) {
-        if (!/^[a-z0-9-]{1,40}$/.test(a.id)) messages.push('id ' + a.id + ': only a-z, 0-9 and -');
-        else if (ids[a.id]) messages.push('duplicate id ' + a.id);
-        ids[a.id] = true;
-      }
-      const key = a.action + ' ' + argsKey(a.args);
-      if (seen[key]) messages.push('duplicate action and arguments: ' + a.action);
-      seen[key] = true;
-    }
-    renderMessages(el('action-warnings'), messages);
-  }
-
   // ---- devices ----
 
   function renderDevices() {
@@ -1167,13 +862,6 @@
   }
 
   // ---- load and save ----
-
-  function addAction() {
-    if (!state.plan) return;
-    state.plan.actions.push({ action: '', args: {}, id: '', title: '' });
-    changed();
-    renderActions();
-  }
 
   async function loadPlugins() {
     try {
@@ -1341,7 +1029,6 @@
     renderPages();
     renderRefresh();
     renderTriggers();
-    renderActions();
     renderDevices();
     updateWhere();
     updateSave();
@@ -1354,7 +1041,6 @@
   el('rename').addEventListener('click', rename);
   el('reload').addEventListener('click', () => location.reload());
   el('add-trigger').addEventListener('click', addTrigger);
-  el('add-action').addEventListener('click', addAction);
   window.addEventListener('beforeunload', (e) => {
     if (!state.dirty) return;
     e.preventDefault();
