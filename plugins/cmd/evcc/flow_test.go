@@ -47,6 +47,27 @@ func TestFlowHomeKeepsItsCentre(t *testing.T) {
 	}
 }
 
+// TestFlowWidths checks that a tall cell gives PV and the battery the width of
+// the side cards, while a short cell keeps them narrower.
+func TestFlowWidths(t *testing.T) {
+	tests := []struct {
+		name             string
+		W, H             float64
+		side, mid, cardH float64
+	}{
+		{"short cell", 800, 240, 240, 192, 62.4},
+		{"tall cell", 800, 480, 240, 240, 110},
+		{"large cell", 1843, 674, 300, 300, 110},
+	}
+	for _, tt := range tests {
+		side, mid, cardH := flowWidths(tt.W, tt.H)
+		if math.Abs(side-tt.side) > 1e-9 || math.Abs(mid-tt.mid) > 1e-9 || math.Abs(cardH-tt.cardH) > 1e-9 {
+			t.Errorf("%s: flowWidths(%v, %v) = %v, %v, %v; want %v, %v, %v",
+				tt.name, tt.W, tt.H, side, mid, cardH, tt.side, tt.mid, tt.cardH)
+		}
+	}
+}
+
 func flowFixture(t *testing.T, name string) *evcc {
 	body, err := os.ReadFile(filepath.Join("testdata", name+".json"))
 	if err != nil {

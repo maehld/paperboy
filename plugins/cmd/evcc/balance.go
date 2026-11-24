@@ -208,7 +208,7 @@ func (e *evcc) balance(w plugin.WidgetRequest, img *image.Paletted) error {
 					lx += iconW + pad*0.6
 				}
 				labelW := int(divX-cpad-lx) - render.Measure(rt.value, valueSz, true) - int(pad)
-				render.Text(img, rt.label, int(lx), int(math.Round(cy-labelSz*0.05)), render.Style{Size: labelSz, Shrink: true}, labelW, c, render.Left)
+				render.Text(img, rt.label, int(lx), int(math.Round(cy+labelSz*0.36)), render.Style{Size: labelSz, Shrink: true}, labelW, c, render.Left)
 				render.Text(img, rt.value, int(divX-cpad), int(math.Round(cy+valueSz*0.36)), render.Style{Size: valueSz, Bold: true, Shrink: true}, valW, c, render.Right)
 			} else {
 				rx := float64(b.Max.X) - pad
@@ -217,7 +217,7 @@ func (e *evcc) balance(w plugin.WidgetRequest, img *image.Paletted) error {
 					rx -= iconW + pad*0.6
 				}
 				labelW := int(rx-divX-cpad) - render.Measure(rt.value, valueSz, true) - int(pad)
-				render.Text(img, rt.label, int(rx), int(math.Round(cy-labelSz*0.05)), render.Style{Size: labelSz, Shrink: true}, labelW, c, render.Right)
+				render.Text(img, rt.label, int(rx), int(math.Round(cy+labelSz*0.36)), render.Style{Size: labelSz, Shrink: true}, labelW, c, render.Right)
 				render.Text(img, rt.value, int(divX+cpad), int(math.Round(cy+valueSz*0.36)), render.Style{Size: valueSz, Bold: true, Shrink: true}, valW, c, render.Left)
 			}
 			if i > 0 {
