@@ -148,7 +148,9 @@ func (e *evcc) Invoke(req *plugin.Request, call plugin.ActionCall) (plugin.Actio
 // setMode posts the new mode and reads the state again instead of waiting for
 // the next poll, so the following render already shows the new mode.
 func (e *evcc) setMode(req *plugin.Request, index int, mode string) (string, bool) {
-	target := fmt.Sprintf("%s/api/loadpoints/%d/mode/%s", e.base, index, url.PathEscape(mode))
+	// evcc numbers its loadpoints from 1 in the REST API, while the widget
+	// and /api/state use the 0-based index.
+	target := fmt.Sprintf("%s/api/loadpoints/%d/mode/%s", e.base, index+1, url.PathEscape(mode))
 	httpReq, err := http.NewRequest(http.MethodPost, target, nil)
 	if err != nil {
 		return err.Error(), false
