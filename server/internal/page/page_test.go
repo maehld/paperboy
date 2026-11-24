@@ -33,17 +33,18 @@ func TestParseValidatesGrid(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, bad := range map[string]string{
-		"no grid":   "cells: [{widget: a/b}]\n",
-		"no cells":  "grid: [1, 1]\n",
-		"outside":   "grid: [2, 1]\ncells: [{at: [1, 0], span: [2, 1], widget: a/b}]\n",
-		"overlap":   "grid: [2, 1]\ncells: [{span: [2, 1], widget: a/b}, {at: [1, 0], widget: a/c}]\n",
-		"no plugin": "grid: [1, 1]\ncells: [{widget: agenda}]\n",
-		"bad name":  "grid: [1, 1]\ncells: [{widget: Cal/agenda}]\n",
-		"unknown":   "grid: [1, 1]\ncells: [{widget: a/b, colour: red}]\n",
-		"notices":   "grid: [1, 1]\nnotices: bar\ncells: [{widget: a/b}]\n",
-		"old rows":  "rows: [1]\nblocks: [{text: x}]\n",
-		"actions":   "grid: [1, 1]\nactions: [{action: a/b}]\ncells: [{widget: a/b}]\n",
-		"second":    "kind: image\ngrid: [1, 1]\ncells: [{widget: a/b}]\n---\nkind: text\n",
+		"no grid":    "cells: [{widget: a/b}]\n",
+		"no cells":   "grid: [1, 1]\n",
+		"outside":    "grid: [2, 1]\ncells: [{at: [1, 0], span: [2, 1], widget: a/b}]\n",
+		"overlap":    "grid: [2, 1]\ncells: [{span: [2, 1], widget: a/b}, {at: [1, 0], widget: a/c}]\n",
+		"no plugin":  "grid: [1, 1]\ncells: [{widget: agenda}]\n",
+		"bad name":   "grid: [1, 1]\ncells: [{widget: Cal/agenda}]\n",
+		"unknown":    "grid: [1, 1]\ncells: [{widget: a/b, colour: red}]\n",
+		"notices":    "grid: [1, 1]\nnotices: bar\ncells: [{widget: a/b}]\n",
+		"old rows":   "rows: [1]\nblocks: [{text: x}]\n",
+		"actions":    "grid: [1, 1]\nactions: [{action: a/b}]\ncells: [{widget: a/b}]\n",
+		"bad action": "grid: [1, 1]\ncells: [{widget: a/b, action: Mode}]\n",
+		"second":     "kind: image\ngrid: [1, 1]\ncells: [{widget: a/b}]\n---\nkind: text\n",
 	} {
 		if _, err := Parse(strings.NewReader(bad)); err == nil {
 			t.Errorf("%s: accepted", name)
@@ -788,5 +789,32 @@ cells:
 	}
 	if strings.Contains(string(data), "rows:") {
 		t.Fatalf("encoded text page still has rows:\n%s", data)
+	}
+}
+
+// TestCellAction checks the action a cell binds to its plugin's action
+// catalog (ADR 0162).
+func TestCellAction(t *testing.T) {
+	src := "kind: image\ngrid: [2, 1]\ncells: [{at: [0, 0], span: [2, 1], widget: evcc/loadpoint, args: {index: 0}, action: mode}]\n"
+	tp, err := Parse(strings.NewReader(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tp.Cells[0].Action != "mode" || tp.Actionable() != 1 {
+		t.Fatalf("cell action: %+v", tp.Cells[0])
+	}
+	out, err := Encode(tp)
+	if err != nil || !strings.Contains(string(out), "action: mode") {
+		t.Fatalf("encoded page: %v\n%s", err, out)
+	}
+	again, err := Parse(bytes.NewReader(out))
+	if err != nil || again.Cells[0].Action != "mode" {
+		t.Fatalf("round trip: %v %+v", err, again)
+	}
+	if rects := tp.Rects(200, 100); len(rects) != 1 || rects[0] != image.Rect(0, 0, 200, 100) {
+		t.Fatalf("rects: %v", rects)
+	}
+	if _, err := Parse(strings.NewReader("kind: text\ncells: [{at: [0, 0], text: x, action: mode}]\n")); err == nil || !strings.Contains(err.Error(), "image") {
+		t.Fatalf("a text cell accepted an action: %v", err)
 	}
 }

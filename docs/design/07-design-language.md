@@ -111,6 +111,20 @@ band stay custom.
 The Pokédex card and xkcd keep their own drawing where the components do not
 fit.
 
+## The action view
+
+A short home replaces an actionable cell with its options (ADR 0162). Paperboy
+draws this view, so every plugin looks the same:
+
+- a two-pixel frame marks the cell;
+- one tile per choice fills the cell, each with a one-pixel frame;
+- the label is the plugin's title, centred and shrunk to the tile;
+- a disabled choice is hatched, with a grey label on a white plate.
+
+The tiles take the cell's room: two columns, or one in a portrait cell. A cell
+that cannot hold a readable tile says `Cell too small` (German `Feld zu klein`).
+The view is part of the served image, so it costs one repaint.
+
 ## What the design language does not change
 
 - The protocol and its version stay unchanged. This is a Go SDK package.
@@ -125,5 +139,6 @@ fit.
 design language, extended by [ADR 0152](../adr/0152-a-tiny-role-for-dense-lists.md)
 with `Tiny`) · [0049](../adr/0049-plugin-widgets.md) (plugin widgets) ·
 [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) ·
+[0162](../adr/0162-widget-actions-and-the-plugins-choices.md) (the action view) ·
 [0107](../adr/0107-plugin-builds-reach-installations.md) (plugin versions) ·
 [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge).

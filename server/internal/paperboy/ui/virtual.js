@@ -1,6 +1,6 @@
 /* The firmware stand-in of a virtual display (ADR 0091): sync, paint, report
    what is shown, come back for the refresh or the one-shot wake. The server
-   does the plan and the rendering; this file only presses buttons. */
+   does the plan and the rendering; this file presses buttons and taps. */
 (() => {
   "use strict";
   const cfg = {
@@ -230,6 +230,19 @@
       press(button.dataset.role, held);
     });
     button.addEventListener("pointercancel", () => { downAt = 0; });
+  });
+
+  // A click on the picture is a tap, like a finger on the digitiser (ADR 0162).
+  image.addEventListener("click", (event) => {
+    const rect = image.getBoundingClientRect();
+    if (!rect.width || !rect.height || !image.naturalWidth) return;
+    const x = Math.round((event.clientX - rect.left) * image.naturalWidth / rect.width);
+    const y = Math.round((event.clientY - rect.top) * image.naturalHeight / rect.height);
+    events += 1;
+    queue.push({ id: events, type: "touch", x: x, y: y });
+    if (busy) return;
+    clearTimeout(timer);
+    sync("touch");
   });
 
   const keys = { ArrowLeft: "previous", ArrowRight: "next", Enter: "home" };

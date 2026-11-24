@@ -1,6 +1,6 @@
 # myskoda plugin
 
-Shows the state of a Škoda with a connected-vehicle subscription over the [MyŠkoda Public API](https://public.api.connect.skoda-auto.cz/docs). The plugin reads the vehicle in the background, keeps the last answer in memory and sends a change event when a shown value moves. It offers two actions: start and stop charging, and start and stop air conditioning (see [Actions](#actions)). Paperboy does not run actions in this version (ADR 0161).
+Shows the state of a Škoda with a connected-vehicle subscription over the [MyŠkoda Public API](https://public.api.connect.skoda-auto.cz/docs). The plugin reads the vehicle in the background, keeps the last answer in memory and sends a change event when a shown value moves. It offers two actions: start and stop charging, and start and stop air conditioning (see [Actions](#actions)).
 
 The API returns a snapshot: every part carries its own `carCapturedTimestamp`, so the widget shows when the car last sent its data. Parts a vehicle does not support are absent, and a field without a usable value is omitted — the widgets show `–` or leave the line out instead of inventing a value.
 
@@ -98,7 +98,7 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 
 ## Actions
 
-The plugin offers two actions ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md)). Both target a state instead of toggling, so a retried request is safe, and both ask for confirmation before they run. Paperboy does not run actions in this version (ADR 0161); the interface stays for widget actions.
+The plugin offers two actions ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md), [0162](../adr/0162-widget-actions-and-the-plugins-choices.md)). A car widget binds one with `action: charging` or `action: climate`; a short home shows `start` and `stop` in its cell and a tap runs one. Both target a state instead of toggling, so a retried request is safe, and both ask for confirmation before they run; Paperboy ignores it in this version.
 
 | Action | Args | Endpoint |
 |---|---|---|

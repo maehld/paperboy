@@ -68,8 +68,11 @@ type Cell struct {
 	Widget string `yaml:"widget,omitempty" json:"widget,omitempty"`
 	// Args are the arguments of the widget or of the value of a text cell
 	// (ADR 0055, 0120).
-	Args  map[string]any `yaml:"args,omitempty" json:"args,omitempty"`
-	Style *Style         `yaml:"style,omitempty" json:"style,omitempty"`
+	Args map[string]any `yaml:"args,omitempty" json:"args,omitempty"`
+	// Action names one action of the cell's plugin. The plugin decides the
+	// choices; the page only points at the action (ADR 0162).
+	Action string `yaml:"action,omitempty" json:"action,omitempty"`
+	Style  *Style `yaml:"style,omitempty" json:"style,omitempty"`
 	// Text is literal text of a text page; Value is a declared value. Exactly
 	// one of them is set (ADR 0118). Multi-line text keeps its line breaks.
 	Text  string `yaml:"text,omitempty" json:"text,omitempty"`
@@ -327,7 +330,7 @@ func ValidName(s string) bool { return ident.Valid(s) }
 
 func (t *Template) validate() error {
 	if len(t.Actions) > 0 {
-		return fmt.Errorf("actions belong to the plan, not to a page (ADR 0057)")
+		return fmt.Errorf("actions belong to a widget cell: set action on the cell (ADR 0162)")
 	}
 	switch t.Kind {
 	case "":
@@ -385,6 +388,9 @@ func (t *Template) validateGrid() error {
 		if c.Text != "" || c.Value != "" || c.Label != "" || len(c.Labels) > 0 || c.Unit != "" || c.Scale != "" || c.Flow != nil || c.Align != "" || c.Overflow != "" {
 			return fmt.Errorf("%s: text, value, label, labels, unit, scale and flow are for text pages (kind: text); use widget", where)
 		}
+		if c.Action != "" && !ValidName(c.Action) {
+			return fmt.Errorf("%s: action %q: only a-z, 0-9 and -", where, c.Action)
+		}
 		plugin, widget, ok := strings.Cut(c.Widget, "/")
 		if !ok || !ValidName(plugin) || !ValidName(widget) {
 			return fmt.Errorf("%s: widget %q: expected plugin/widget with a-z, 0-9 and -", where, c.Widget)
@@ -441,6 +447,9 @@ func (t *Template) validateText() error {
 		where := fmt.Sprintf("cell %d", i+1)
 		if c.Widget != "" || c.Style != nil {
 			return fmt.Errorf("%s: widget and style are for image pages (kind: image)", where)
+		}
+		if c.Action != "" {
+			return fmt.Errorf("%s: action is for image pages (kind: image)", where)
 		}
 		if c.Scroll {
 			return fmt.Errorf("%s: use overflow: scroll instead of scroll (ADR 0118)", where)

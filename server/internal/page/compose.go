@@ -146,6 +146,25 @@ func text(language, de, en string) string {
 	return de
 }
 
+// Rects returns the pixel rectangle of every cell on a display of w × h
+// pixels, in cell order. It is the geometry the action mode taps against
+// (ADR 0162).
+func (t *Template) Rects(w, h int) []image.Rectangle { return t.cellRects(w, h) }
+
+// Actionable reports how many cells name an action. A text page has none.
+func (t *Template) Actionable() int {
+	if t.Kind != KindImage {
+		return 0
+	}
+	n := 0
+	for _, c := range t.Cells {
+		if c.Action != "" {
+			n++
+		}
+	}
+	return n
+}
+
 // cellRects divides the display into the pixel rectangles of the cells.
 func (t *Template) cellRects(w, h int) []image.Rectangle {
 	cols, rows := t.Grid[0], t.Grid[1]

@@ -38,6 +38,9 @@ type syncSession struct {
 	choice                            planChoice
 	alert                             bool
 	alertSource                       string
+	action                            actionState
+	invoke                            *actionOption
+	touch                             bool
 
 	served               servedPage
 	refresh              time.Duration
@@ -64,6 +67,7 @@ func (s *Server) serveSync(cfg *Config, d *Device, st *deviceState, req *syncReq
 	x.plan = s.resolvePlan(cfg, d, now, opt.values)
 	x.apply()
 	x.persist()
+	x.runWidgetAction()
 	x.render()
 	return x.finish()
 }
@@ -170,17 +174,27 @@ func (x *syncSession) apply() {
 	// Button input keeps the trigger decision and the alert quiet, even when
 	// home does not page (ADR 0158, 0161).
 	buttonInput := len(x.buttons) > 0
+	// The widget action mode belongs to the page the device shows (ADR 0162).
+	action := x.actionMode(st, holds, cfg)
+	x.action = action
 	switch {
 	case x.critical: // the warning replaces all pages; buttons only show it again
 		// The cursor starts over when the pages return.
 		st.Page, st.PageName = 0, ""
 	case d.Plan != "":
 		planDone := s.stats.Start("sync.plan")
-		x.choice = s.choosePlanPage(x.plan, cfg, d, st, now, firstContact, req.Reason == "timer", pageButtons, buttonInput, false)
+		x.choice = s.choosePlanPage(x.plan, cfg, d, st, now, firstContact, req.Reason == "timer", pageButtons, buttonInput, action.Open, false)
 		planDone()
 	default:
 		x.choice.title, x.choice.text = cfg.texts().noPlan()
 	}
+	if action.Open && x.choice.name != action.Page {
+		// The page changed under the mode: the tiles no longer belong to it.
+		action.close()
+		x.invoke = nil
+	}
+	st.Action = action
+	x.action = action
 	// The rule or the operator asks for a signal (ADR 0131, 0142). The request
 	// is consumed here, before the snapshot, so it is one-shot and stored with
 	// the rest of this sync.
@@ -238,6 +252,9 @@ func (x *syncSession) render() {
 	default:
 		x.served = s.hint(cfg, d.Profile, x.choice.title, x.choice.text)
 	}
+	if x.action.Open && !x.critical && !x.textDisplay {
+		x.served = s.overlayActions(cfg, d, x.served, &x.action, now)
+	}
 	if x.served.interval == 0 {
 		x.served.interval = x.served.refresh
 	}
@@ -281,6 +298,7 @@ func (x *syncSession) finish() syncResponse {
 		st.LastPageTime, st.LastRefresh, st.LastInterval = now, int(x.refresh.Seconds()), int(x.served.interval.Seconds())
 		st.LastText = x.served.lines
 		st.LastError = x.errText
+		st.Action = x.action
 		if x.textDisplay {
 			x.textPart, st.ScrollHash = textResponse(x.served, cfg.Profiles[d.Profile], st.ScrollHash)
 		}
@@ -294,9 +312,11 @@ func (x *syncSession) finish() syncResponse {
 	writeDone()
 	x.logPower()
 	listen := time.Duration(0)
-	if x.input && !x.textDisplay && !opt.virtual {
+	if x.input && !x.textDisplay && !opt.virtual && x.touch && d.Actions != actionsDeny && x.served.actionable > 0 {
 		listen = listenAfterInput
 	}
+	wake := actionWake(x.action, now, x.critical)
+	listen, wake = fitWakeToListen(listen, wake)
 	x.logSync()
 	resp := syncResponse{
 		RefreshS: int(x.refresh.Seconds()),
@@ -305,6 +325,7 @@ func (x *syncSession) finish() syncResponse {
 		Time:     now.Unix(),
 		Rotation: cfg.rotation(d),
 		Firmware: x.offer,
+		Wake:     wake,
 	}
 	// The rule or the operator decides whether to signal; the device file
 	// decides which methods it may use (ADR 0132). The firmware ignores a

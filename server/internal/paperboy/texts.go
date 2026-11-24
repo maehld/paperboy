@@ -64,6 +64,9 @@ func (t texts) lowBattery(key string) string {
 	return t.variant("Akku schwach – bitte laden", "Battery low – please charge") + t.voltage(key)
 }
 
+// actionTooSmall is the tile of a cell that cannot hold its options (ADR 0162).
+func (t texts) actionTooSmall() string { return t.variant("Feld zu klein", "Cell too small") }
+
 func (t texts) criticalBattery(key string) (string, string) {
 	return t.variant("Akku fast leer", "Battery almost empty"),
 		t.variant("Bitte jetzt laden", "Please charge now") + t.voltage(key)

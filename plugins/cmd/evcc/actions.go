@@ -15,12 +15,12 @@ import (
 // actionArgs is the schema of the "mode" action. Describe publishes it and
 // Invoke checks against it, so a plan and the run agree on the arguments.
 var actionArgs = map[string]plugin.Arg{
-	"loadpoint": {Type: "int", Required: true, Description: "loadpoint, counted from 0"},
-	"mode":      {Type: "string", Required: true, Description: "evcc charge mode", Enum: []any{"off", "minpv", "pv", "now"}},
+	"index": {Type: "int", Required: true, Description: "loadpoint, counted from 0"},
+	"mode":  {Type: "string", Required: true, Description: "evcc charge mode", Enum: []any{"off", "minpv", "pv", "now"}},
 }
 
-// actionModeLabels names the modes in an action title. The widgets use the
-// shorter labels of modes; an action reads like "Wohnmobil: jetzt laden".
+// actionModeLabels names the modes. A widget action uses the short label as
+// the tile text; the loadpoint is the widget that offers it.
 var actionModeLabels = map[string][2]string{
 	"off":   {"aus", "off"},
 	"minpv": {"Min+PV", "Min+Solar"},
@@ -37,6 +37,24 @@ func actionModeLabel(mode string, lang string) string {
 		return labels[0]
 	}
 	return labels[1]
+}
+
+// actionSpec publishes the mode action. The enum labels name the choices in
+// the page editor; Describe has no request language, so e.lang is the last
+// language the plugin saw.
+func actionSpec(lang string) plugin.ActionSpec {
+	args := make(map[string]plugin.Arg, len(actionArgs))
+	for key, arg := range actionArgs {
+		args[key] = arg
+	}
+	mode := args["mode"]
+	labels := make(map[string]string, len(actionModeLabels))
+	for key := range actionModeLabels {
+		labels[key] = actionModeLabel(key, lang)
+	}
+	mode.EnumLabels = labels
+	args["mode"] = mode
+	return plugin.ActionSpec{Name: "mode", Title: "Charge mode", Args: args, Confirm: &plugin.Confirm{Required: true}}
 }
 
 // loadpointName is the title of a loadpoint for an action. It prefers the
@@ -81,9 +99,9 @@ func actionState(req *plugin.Request, call plugin.ActionCall, data *state, loadE
 		return st
 	}
 	args := call.Arg()
-	index, mode := args.Int("loadpoint", 0), args.String("mode", "")
-	if data != nil && index >= 0 && index < len(data.Loadpoints) {
-		st.Title = loadpointName(data.Loadpoints[index], index, req.Lang()) + ": " + actionModeLabel(mode, req.Lang())
+	index, mode := args.Int("index", 0), args.String("mode", "")
+	if mode != "" {
+		st.Title = actionModeLabel(mode, req.Lang())
 	}
 	if err := args.Check(actionArgs); err != nil {
 		st.Disabled = err.Error()
@@ -114,7 +132,7 @@ func (e *evcc) Invoke(req *plugin.Request, call plugin.ActionCall) (plugin.Actio
 	if err := args.Check(actionArgs); err != nil {
 		return plugin.ActionOutcome{Message: err.Error()}, nil
 	}
-	index, mode := args.Int("loadpoint", 0), args.String("mode", "")
+	index, mode := args.Int("index", 0), args.String("mode", "")
 	message, ok := e.setMode(req, index, mode)
 	out := plugin.ActionOutcome{OK: ok, Message: message}
 	if !ok {

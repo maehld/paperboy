@@ -34,9 +34,9 @@ A device is a file under `devices/<id>.yaml` ([ADR 0070](../adr/0070-devices-in-
 | `plan` | Name of a file under `plans/` |
 | `refresh` | Seconds between syncs, down to 1 |
 | `power` | Overrides the display type ([ADR 0051](../adr/0051-power-source-refresh-policy.md)) |
-| `actions` | `allow` (default) or `deny`: whether the device may run actions ([ADR 0161](../adr/0161-home-syncs-and-the-menu-goes.md)) |
+| `actions` | `allow` (default) or `deny`: whether the device may run actions ([ADR 0162](../adr/0162-widget-actions-and-the-plugins-choices.md)) |
 | `alert_methods` | The methods an alert may use: a list of `beep` and `blink`; omitted or empty = silent ([ADR 0132](../adr/0132-alert-methods-per-device.md)) |
-| `touch` | Lets Paperboy use the device's digitiser ([ADR 0082](../adr/0082-menu-tap-controls-in-a-strip.md)) |
+| `touch` | Lets the action mode use the device's digitiser ([ADR 0162](../adr/0162-widget-actions-and-the-plugins-choices.md)) |
 | `rotation` | Overrides the display type's rotation ([ADR 0102](../adr/0102-rotate-pages-onto-the-panel.md)) |
 | `battery` | Thresholds of the battery warning |
 | `firmware` | `hold` keeps the device on its firmware |
@@ -101,7 +101,7 @@ While `paperboy.yaml` is unusable (a degraded start), register, sync and text po
 
 | Field | Content |
 |---|---|
-| `reason` | `timer`, `button`, `touch`, `powercycle`, `menu` or `result` |
+| `reason` | `timer`, `button`, `touch`, `powercycle`, `menu`, `result` or `action` |
 | `events` | Button roles `next`, `previous` and `home`, in order, each with a monotonic `id`; `hold_ms` for long presses |
 | `shown` | Hash of the page the device displays, which guards the confirmation screen |
 | `battery` | `volts` (required), `percent`, `mah`, `ma` (positive while charging) and `charging` |
@@ -110,7 +110,7 @@ While `paperboy.yaml` is unusable (a degraded start), register, sync and text po
 | `log` | Lines that Paperboy writes one by one; a repeated entry carries `time` and `id` and is written once |
 | `power` | `battery` or `mains`, if the device can tell |
 
-Events are applied in order before the page is chosen. `previous` and `next` page; a short `home` keeps the page; a long `next` or `previous` jumps to the first page (ADR 0161). Paperboy only logs touches. It drops an event `id` that is not newer than `last_event_id` in the state file, so a repeated request cannot move the cursor twice ([ADR 0064](../adr/0064-device-protocol-v4.md)).
+Events are applied in order before the page is chosen. `previous` and `next` page. A short `home` keeps the page or opens the action mode. A long `next` or `previous` jumps to the first page (ADR 0161, 0162). A touch runs an option while the action mode shows its screen; Paperboy logs every other touch. It drops an event `id` that is not newer than `last_event_id` in the state file, so a repeated request cannot move the cursor twice ([ADR 0064](../adr/0064-device-protocol-v4.md)).
 
 `readings` carries a bare number per name. Paperboy discards a name its catalog does not know, a reading without a value and a value outside the sensor range. Such a reading never fails the sync, so a broken sensor cannot cost the device its page ([ADR 0134](../adr/0134-readings-from-the-device.md)).
 
@@ -127,9 +127,9 @@ A device's `refresh` may go down to one second and is clamped at runtime. `sleep
 
 `refresh_s` is the sleep until the next sync, and a timer sync lands on the grid of its interval ([ADR 0129](../adr/0129-align-timer-syncs.md)). Ten minutes give :00, :10 and :20 in the instance timezone. The device paints before it sleeps, so it syncs a few seconds after the slot. A refresh window edge or a trigger edge caps the sleep; that cap wins and is not stretched, and the next sync aligns again. A slot closer than the floor is skipped, and a slot is never in the past. The grid counts from local midnight, so an interval that does not divide the hour walks through the clock.
 
-`listen_s` is 0 for a timer wake and 20 seconds after input, so the firmware can wait for the next press without registering again.
+`listen_s` is 0 for a timer wake. It is 20 seconds after input only on a device with `touch: true`, actions not denied, and a page with an actionable cell (ADR 0162). The firmware then waits for a tap or the next press without registering again.
 
-`wake` is a one-shot next wake. The firmware uses it once and goes back to its normal cycle. No feature sets it in this version.
+`wake` is a one-shot next wake. The action mode asks for one at its 20-second deadline with reason `action` (ADR 0162). The firmware uses it once and goes back to its normal cycle.
 
 The plan's `on_refresh` decides what a timed refresh shows ([ADR 0130](../adr/0130-what-a-plan-refresh-does.md)). A `next` or `previous` press pages the extended list: the visible pages plus the page of the active trigger. A short `home` keeps it. An edit keeps the device on its page: the cursor holds the page name ([ADR 0133](../adr/0133-the-page-cursor-holds-the-page.md)). A page that leaves the list is resolved by the mode. `cycle` takes the next page at its declared position, `first` the first page and `current` the page a trigger displaced ([ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md)).
 
@@ -140,6 +140,7 @@ The plan's `on_refresh` decides what a timed refresh shows ([ADR 0130](../adr/01
 - the page cursor: the index, the page name it holds ([ADR 0133](../adr/0133-the-page-cursor-holds-the-page.md)) and the active trigger
 - the last battery reading, the last charging episode and the hourly battery samples of the last week
 - the last value of every reading, with the time it was taken
+- the action mode: open, page, deadline, the served action view and its options ([ADR 0162](../adr/0162-widget-actions-and-the-plugins-choices.md))
 - a manual alert that waits for the next sync, with its expiry ([ADR 0142](../adr/0142-a-manual-alert-waits-for-the-next-sync.md))
 - the address of the last contact ([ADR 0083](../adr/0083-device-address.md))
 - `last_event_id`, the reported power source and the key

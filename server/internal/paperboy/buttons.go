@@ -40,3 +40,25 @@ func hold(holds []int, i int) int {
 func held(ms int) bool {
 	return time.Duration(ms)*time.Millisecond >= buttonHoldLong
 }
+
+// shortHome reports whether a wake carried a home press that was not held.
+// Only a short home opens the widget action mode (ADR 0162).
+func shortHome(buttons []string, holds []int) bool {
+	for i, b := range buttons {
+		if b == buttonHome && !held(hold(holds, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+// pagePressed reports whether a wake carried next or previous. Either leaves
+// the widget action mode and pages (ADR 0162).
+func pagePressed(buttons []string) bool {
+	for _, b := range buttons {
+		if b == buttonNext || b == buttonPrevious {
+			return true
+		}
+	}
+	return false
+}

@@ -49,7 +49,7 @@ func (f *fakeEvcc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func modeCall(index float64, mode string) plugin.ActionCall {
-	return plugin.ActionCall{Action: "mode", Args: map[string]any{"loadpoint": index, "mode": mode}}
+	return plugin.ActionCall{Action: "mode", Args: map[string]any{"index": index, "mode": mode}}
 }
 
 func newActionPlugin(t *testing.T, handler http.Handler, lang string) (*evcc, *plugin.Request) {
@@ -81,7 +81,7 @@ func TestDescribeModeAction(t *testing.T) {
 	if spec.Title == "" || spec.Confirm == nil || !spec.Confirm.Required {
 		t.Fatalf("a mode change must be confirmed: %+v", spec)
 	}
-	if !spec.Args["loadpoint"].Required || !spec.Args["mode"].Required {
+	if !spec.Args["index"].Required || !spec.Args["mode"].Required {
 		t.Errorf("both args must be required: %+v", spec.Args)
 	}
 	if !spec.Args["mode"].Allows("now") || spec.Args["mode"].Allows("fast") {
@@ -103,7 +103,7 @@ func TestActionStates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantTitles := []string{"Wohnmobil: jetzt laden", "Garage: nur PV", "Wohnmobil: nur PV", "", "Wohnmobil: fast"}
+	wantTitles := []string{"jetzt laden", "nur PV", "nur PV", "jetzt laden", "fast"}
 	for i, want := range wantTitles {
 		if states[i].Title != want {
 			t.Errorf("state %d title: %q, want %q", i, states[i].Title, want)
@@ -127,7 +127,7 @@ func TestActionStates(t *testing.T) {
 	en, enReq := newActionPlugin(t, f, "en")
 	enReq.Actions = []plugin.ActionCall{modeCall(0, "now")}
 	states, err = en.Actions(enReq)
-	if err != nil || states[0].Title != "Wohnmobil: charge now" {
+	if err != nil || states[0].Title != "charge now" {
 		t.Fatalf("english title: %+v %v", states, err)
 	}
 }
@@ -208,7 +208,7 @@ func TestInvokeUnreachable(t *testing.T) {
 func TestInvokeRejectsInvalidCall(t *testing.T) {
 	e := &evcc{}
 	out, err := e.Invoke(&plugin.Request{Language: "en"}, plugin.ActionCall{Action: "mode",
-		Args: map[string]any{"loadpoint": 0.0}})
+		Args: map[string]any{"index": 0.0}})
 	if err != nil || out.OK || !strings.Contains(out.Message, "mode") {
 		t.Fatalf("missing argument: %+v %v", out, err)
 	}

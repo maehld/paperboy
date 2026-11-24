@@ -20,7 +20,7 @@ Each fact lives in exactly one place. Update the page that owns a behavior, not 
 | `README.md` | Overview, quick start, documentation index, licence |
 | `docs/setup.md`, `docs/content.md`, `docs/runtime.md`, `docs/releases.md` | What the operator does: instance, configuration, pages, plans, web UI, device API, downloads |
 | `docs/design/01-system.md` | Parts and processes, instance directory, configuration, reload, data flow, code map |
-| `docs/design/02-content.md` | Pages, widgets, grid and style, text pages, plans, triggers, conditions |
+| `docs/design/02-content.md` | Pages, widgets, grid and style, text pages, widget actions, plans, triggers, conditions |
 | `docs/design/03-devices.md` | Display types, device files, device API, state, power, delivery, firmware, hardware findings |
 | `docs/design/04-operator-ui.md` | Overview, stats, downloads, previews, virtual display, editors, page and plan API, password |
 | `docs/design/05-plugins.md` | Protocol, plugin host, versions, state and blobs, value conditions, the shipped plugins |
@@ -57,7 +57,7 @@ The structure is in `docs/design/`; these are the rules that a change must not b
 - **A device never gets an error page.** Without a plan, with a missing or broken page or a broken plan it gets a notice page; a failing widget only marks its own cell. A broken configuration file keeps the last valid one.
 - **A plugin request never runs under the state lock.** The configuration snapshot is taken before locking, the plan and its fitting pages are resolved before locking, the plan values are read before locking, page cursor selection happens under the lock, and composing, drawing and writing happen outside it. Interactions with `state/` are atomic, and state belongs to the MAC, not to a file name (ADR 0080).
 - **The instance directory is the configuration.** Files are parsed strictly with a hint for every rejected key, and the same parser validates the runtime and the editor API.
-- **A page is a grid of widgets on a 6 × 8 reference grid.** Sizes are physical (points, `ppi`), a widget draws exactly its cell, and a widget that cannot draw there answers `ErrTooSmall` instead of leaving the cell empty.
+- **A page is a grid of widgets on a 6 × 8 reference grid.** Sizes are physical (points, `ppi`), a widget draws exactly its cell, and a widget that cannot draw there answers `ErrTooSmall` instead of leaving the cell empty. A cell may name one action of its plugin; the plugin owns the choices (ADR 0162).
 - **A text page is a character grid of boxes (ADR 0111, 0118, 0120).** It has no pixel `grid`; every box names `at`, `span` and either a declared plugin value with its `args` or literal text, and an `overflow` of strip, wrap or scroll. An enum value cell may carry `labels` per key. Paperboy formats, aligns and maps the content to the charset. The protocol has no text action; text pages read values (ADR 0125). The editor and the virtual display draw the text grid with the vendored pixel font (ADR 0116).
 - **Every plugin is a separate program** with its own version in `plugins/cmd/<plugin>/VERSION`; the protocol is public in `sdk/plugin` and changes only with a version and an ADR (additive where possible; version 8 removed the text action, version 9 adds the schedule event and enum values and removes plan conditions).
 - **A Go plugin draws with `sdk/render` and can use `sdk/design`** ([ADR 0151](docs/adr/0151-a-shared-design-language-for-plugin-widgets.md)). The design language owns the page-wide type scale and the shared tiles, hero, trend, sparkline, meter and arrow components. A component takes a rectangle and plain data, returns whether it drew and never owns the cell; a plugin can still paint its own widget. Numbers come from `sdk/format.Number`, so one value never gets two spellings.
@@ -65,7 +65,7 @@ The structure is in `docs/design/`; these are the rules that a change must not b
 ## Essential rules for devices
 
 - **No upload endpoints and no data API:** pages are composed from plugin widgets and selected by plans.
-- **`home` only syncs the served page.** It does not page and does not open a menu; the device menu is gone (ADR 0161). A long `next` or `previous` jumps to the first page of the plan.
+- **`home` syncs the served page** and opens the widget action mode on a touch device (ADR 0161, 0162). A long `next` or `previous` jumps to the first page of the plan.
 - **Device API (ADR 0042):** plain HTTP status codes; `401` makes the firmware drop its key and register again by MAC, so a lost `state/devices/` only costs the page cursor and the battery level. A device with a `Problem` answers 503, never 401 (ADR 0079). Image paths are relative; the device keeps the Paperboy URL it was configured with. Page and notice downloads carry the device key and only reach the device's own display type (ADR 0097).
 - **Firmware:** compiled for `sticky`, `e1001`, `e1003` and `lcd2004` with the pinned ESPHome. No secrets; the only update path is `ota: http_request` with Paperboy's offer (no native ESPHome OTA, no web UI upload; rescue over USB).
 - **A device sends readings, not sensors.** The sync carries `readings` as `{name, value}`; the catalog in `server/internal/reading` owns unit, precision and range. Paperboy discards an unknown name or an implausible value with a log line instead of failing the sync (ADR 0134).
@@ -76,7 +76,7 @@ Paperboy v2 (ADR 0049) replaced the data document (ADR 0024), the region model (
 
 Still in place from v1: the device API (ADR 0042) with text displays (ADR 0044, 0045), plans (ADR 0158), configuration reload (ADR 0047), device status and dashboard (ADR 0039, 0040), firmware distribution (ADR 0043) and the battery warning (ADR 0020). ADR 0041's firmware compiles for all four hardware types but is not yet flashed on every device; the rollback test with a deliberately broken image succeeded, so `firmware.update: auto` may be used on real devices. CalDAV against the real iCloud was tested on 2026-11-05 with the v1 provider; the plugin mode uses the same code but has not run against iCloud yet.
 
-Open: value lists (`for-each`); a SolarAI plugin (it talks to SolarAI over HTTP; SolarAI knows nothing about Paperboy); push delivery to text displays; and widget actions on the page with their own tap targets (issue #432).
+Open: value lists (`for-each`); a SolarAI plugin (it talks to SolarAI over HTTP; SolarAI knows nothing about Paperboy); push delivery to text displays; and the key selection for widget actions on devices without a digitiser (issue #432).
 
 ## Startup and checks
 

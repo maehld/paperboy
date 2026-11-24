@@ -44,7 +44,7 @@ A variant file carries `kind`, `grid`, `style`, `notices` and `cells`. It inheri
 | `style.text_size` | Base text size in points, 4–144, default 16, capped at 0.12 of the display height |
 | `style.divider` | Lines that Paperboy draws between the cells |
 | `notices` | `show` or `none`: whether a notice page may replace this page |
-| `cells` | Image pages: `at` (column, row), `span` (columns, rows), `widget`, `args`, `style` |
+| `cells` | Image pages: `at` (column, row), `span` (columns, rows), `widget`, `args`, `action`, `style` |
 | `overflow` | Text pages: default `strip`, `wrap` or `scroll` ([text pages](#text-pages)) |
 | `cells` | Text pages: boxes with `at`, `span`, `text` or `value`, `label`, `unit`, `scale`, `flow`, `align` and `overflow` |
 
@@ -66,6 +66,37 @@ For each cell, in this order:
 4. A result that is older than its `max_age` adds the bar `Veraltet: …` at the bottom of the cell.
 
 The built-in plugin draws text, lines and fills, so a page that is only text needs no image file. A page that shows its own device is cached per device; a page that only names other devices stays shared (ADR 0115).
+
+## Widget actions
+
+An image cell may name one action of its plugin: `action: mode` (ADR 0162).
+The page carries no arguments, titles or confirmations; the plugin owns them.
+
+```yaml
+- at: [3, 5]
+  span: [3, 3]
+  widget: evcc/loadpoint
+  args: { index: 0 }
+  action: mode
+```
+
+A short `home` opens the action mode on a device with `touch: true`, an
+`actions` setting other than `deny` and a page with an actionable cell. Paperboy frames every actionable cell and
+replaces it with the plugin's options: one tile per value of the action's one
+required choice argument. A disabled option is hatched. A cell that cannot hold its tiles says `Cell too small`.
+
+The server resolves the options without an argument on the page. The
+widget's arguments fill the action arguments they name (`index`). The
+plugin's `describe` and `actions` answers name the choices, their titles and
+their state. A plugin that is down keeps its cell with the reason.
+
+A tap on a tile runs that call in the sync. The device gets the normal page
+with the new state and the mode closes. A tap outside, a stale `shown` hash or
+20 seconds without input close the mode and serve the plain page. The server
+asks for a one-shot wake of reason `action` at the deadline.
+
+`next` and `previous` page and leave the mode. A long `home` does nothing. The
+keys cannot run an action in this version.
 
 ## Text pages
 
@@ -185,4 +216,4 @@ On a text page the built-in plugin provides four values. `title` is the page tit
 
 ## Decisions
 
-[ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md) (plans, refresh windows, triggers) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0161](../adr/0161-home-syncs-and-the-menu-goes.md) (home and the menu) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) · [0130](../adr/0130-what-a-plan-refresh-does.md) (what a refresh does), [0133](../adr/0133-the-page-cursor-holds-the-page.md) (the page cursor) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (a trigger alerts)
+[ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md) (plans, refresh windows, triggers) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0161](../adr/0161-home-syncs-and-the-menu-goes.md) (home and the menu), [0162](../adr/0162-widget-actions-and-the-plugins-choices.md) (widget actions) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) · [0130](../adr/0130-what-a-plan-refresh-does.md) (what a refresh does), [0133](../adr/0133-the-page-cursor-holds-the-page.md) (the page cursor) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (a trigger alerts)
