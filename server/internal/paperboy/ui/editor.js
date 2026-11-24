@@ -205,9 +205,20 @@
       widget: c.widget,
       args: c.args || {},
       style: c.style || {},
-      action: c.action || '',
+      action: normalizeAction(c.action),
     }));
     return t;
+  }
+
+  // normalizeAction keeps the scalar shorthand and the block in one shape:
+  // the name and the action's own args (ADR 0164).
+  function normalizeAction(action) {
+    if (!action) return null;
+    if (typeof action === 'string') return { name: action, args: {} };
+    return {
+      name: action.name || '',
+      args: action.args && typeof action.args === 'object' ? action.args : {},
+    };
   }
 
   // mapSpan turns a span of the 6×8 reference grid into the page grid, so a
@@ -275,7 +286,15 @@
       const cell = { at: [c.at[0], c.at[1]], span: [c.span[0], c.span[1]], widget: c.widget, args: c.args || {} };
       const style = styleOut(c.style || {});
       if (Object.keys(style).length) cell.style = style;
-      if (c.action) cell.action = c.action;
+      // The action's args belong to the action; the file keeps the scalar
+      // shorthand while the action has no args (ADR 0164).
+      if (c.action && c.action.name) {
+        if (c.action.args && Object.keys(c.action.args).length) {
+          cell.action = { name: c.action.name, args: c.action.args };
+        } else {
+          cell.action = { name: c.action.name };
+        }
+      }
       return cell;
     });
     return out;
@@ -1627,12 +1646,13 @@
     const info = widgetInfo(c.widget.split('/')[0], c.widget.split('/')[1]);
     renderArgFields(box, c, (info && info.args) || {});
 
-    // The cell may name one action of its plugin; the plugin owns the choices
-    // (ADR 0162). The playground has no page, so it hides the choice.
+    // The cell may name one action of its plugin, with the action's own args
+    // (ADR 0164). The playground has no page, so it hides the action.
     if (!state.widgetsPage) {
       const pluginName = c.widget.split('/')[0];
       const pluginInfo = state.plugins.find((p) => p.name === pluginName);
       const offered = (pluginInfo && pluginInfo.description && pluginInfo.description.actions) || [];
+      const current = c.action && c.action.name ? c.action : null;
       const select = document.createElement('select');
       const none = document.createElement('option');
       none.value = '';
@@ -1644,47 +1664,68 @@
         option.textContent = action.title ? action.name + ' — ' + action.title : action.name;
         select.appendChild(option);
       }
-      if (c.action && !offered.some((a) => a.name === c.action)) {
+      if (current && !offered.some((a) => a.name === current.name)) {
         const option = document.createElement('option');
-        option.value = c.action;
-        option.textContent = c.action + ' (not offered by the plugin)';
+        option.value = current.name;
+        option.textContent = current.name + ' (not offered by the plugin)';
         select.appendChild(option);
       }
-      select.value = c.action || '';
+      select.value = current ? current.name : '';
       select.addEventListener('change', () => {
-        if (select.value) c.action = select.value;
-        else delete c.action;
-        changed('inspector');
+        if (select.value) c.action = { name: select.value, args: {} };
+        else c.action = null;
+        // The arguments belong to the action: another action starts empty.
+        changed();
       });
       box.appendChild(field('Action', select));
-      const spec = offered.find((a) => a.name === c.action);
-      const fixed = c.args || {};
-      const free = spec
-        ? Object.keys(spec.args || {}).filter((name) => !(name in fixed) && spec.args[name].required && (spec.args[name].enum || []).length && spec.args[name].type !== 'list')
-        : [];
+
+      const spec = current ? offered.find((a) => a.name === current.name) : null;
+      if (current && spec) {
+        renderArgFields(box, current, spec.args || {}, { action: true, heading: 'Action arguments', rebuild: true });
+      }
+
+      // An empty required enum is the choice; a missing required argument
+      // disables the action on the device. The cell must also hold the tiles.
+      const given = (current && current.args) || {};
+      const free = [];
+      const missing = [];
+      if (spec) {
+        for (const [name, arg] of Object.entries(spec.args || {})) {
+          if (!arg.required) continue;
+          const value = given[name];
+          const empty = value === undefined || value === null || value === '' ||
+            (Array.isArray(value) && value.length === 0);
+          if (!empty) continue;
+          if (Array.isArray(arg.enum) && arg.enum.length && arg.type !== 'list') free.push(name);
+          else missing.push(name);
+        }
+      }
       const choices = free.length === 1 ? (spec.args[free[0]].enum || []) : [];
-      const count = choices.length || 1;
+      const count = missing.length ? 1 : (choices.length || 1);
       const cellW = state.width * c.span[0] / t.grid[0];
       const cellH = state.height * c.span[1] / t.grid[1];
       const innerW = Math.max(0, cellW - 10);
       const innerH = Math.max(0, cellH - 10);
       const cols = innerW < innerH * 1.2 ? 1 : 2;
-      const rows = Math.ceil(count / cols);
+      const rows = Math.max(1, Math.ceil(count / cols));
       const hint = document.createElement('p');
-      if (c.action && !spec) {
+      if (current && !spec) {
         hint.className = 'warn';
         hint.textContent = 'This plugin does not offer the action; the cell shows the reason on the device.';
-      } else if (c.action && free.length > 1) {
+      } else if (missing.length) {
+        hint.className = 'warn';
+        hint.textContent = 'Required argument ' + missing[0] + ' is missing; the device disables the action.';
+      } else if (free.length > 1) {
         hint.className = 'warn';
         hint.textContent = 'The action has more than one choice argument; the device disables it.';
-      } else if (c.action && (innerW / cols < 20 || innerH / rows < 14)) {
+      } else if (current && (innerW / cols < 20 || innerH / rows < 14)) {
         hint.className = 'warn';
         hint.textContent = 'The cell is too small for its options; enlarge it.';
       } else {
         hint.className = 'hint';
-        hint.textContent = c.action
-          ? 'A short home shows ' + count + ' option' + (count === 1 ? '' : 's') + ' here.'
-          : 'The plugin decides the choices. A short home on the device shows them.';
+        if (!current) hint.textContent = 'No action: the cell only draws its widget.';
+        else if (choices.length) hint.textContent = 'A short home shows ' + count + ' option' + (count === 1 ? '' : 's') + ' here.';
+        else hint.textContent = 'A short home shows this action here.';
       }
       box.appendChild(hint);
     }
@@ -1715,14 +1756,17 @@
     updateSave();
   }
 
-  // renderArgFields draws the argument controls of a widget or a value from
-  // the plugin's schema (ADR 0055, 0120).
-  function renderArgFields(box, c, args) {
+  // renderArgFields draws the argument controls of a widget, a value or an
+  // action from the plugin's schema (ADR 0055, 0120, 0164).
+  function renderArgFields(box, c, args, opts) {
+    const actionArg = !!(opts && opts.action);
+    const rebuild = !!(opts && opts.rebuild);
+    const argChanged = () => { if (rebuild) renderInspector(); };
     c.args = c.args || {};
     const names = Object.keys(args).sort();
-    if (names.length) {
+    if (names.length && !(opts && opts.heading === false)) {
       const h = document.createElement('h4');
-      h.textContent = 'Arguments';
+      h.textContent = (opts && opts.heading) || 'Arguments';
       box.appendChild(h);
     }
     for (const name of names) {
@@ -1739,15 +1783,21 @@
         control = document.createElement('input');
         control.type = 'checkbox';
         control.checked = current === undefined ? arg.default === true : current === true;
-        control.addEventListener('change', () => setArg(c, name, control.checked, arg));
+        control.addEventListener('change', () => {
+          setArg(c, name, control.checked, arg);
+          argChanged();
+        });
       } else if (Array.isArray(arg.enum) && arg.enum.length && arg.type !== 'list') {
         control = document.createElement('select');
         const none = document.createElement('option');
         none.value = '';
         // An argument may label its empty value, e.g. the device that shows
-        // the page (ADR 0123).
-        none.textContent = enumLabel(arg, '') ||
-          (arg.default === undefined || arg.default === null ? 'default' : 'default (' + arg.default + ')');
+        // the page (ADR 0123). An empty required enum of an action is the
+        // choice: the device offers its values (ADR 0164).
+        none.textContent = actionArg && arg.required
+          ? 'the device offers the values'
+          : enumLabel(arg, '') ||
+            (arg.default === undefined || arg.default === null ? 'default' : 'default (' + arg.default + ')');
         control.appendChild(none);
         for (const value of arg.enum) {
           const option = document.createElement('option');
@@ -1772,6 +1822,7 @@
             c.args[name] = chosen === undefined ? control.value : chosen;
             changed('inspector');
           }
+          argChanged();
         });
       } else if (arg.type === 'list' && Array.isArray(arg.enum) && arg.enum.length) {
         // A list with a fixed set: one check box per value in two columns,
@@ -1814,9 +1865,11 @@
           if (picked.length === 0 && Array.isArray(arg.default)) {
             c.args[name] = [];
             changed('inspector');
+            argChanged();
             return;
           }
           setArg(c, name, picked, arg);
+          argChanged();
         };
         if (choices.length > 3) {
           const bar = document.createElement('div');
@@ -1858,8 +1911,15 @@
         if (Array.isArray(current)) control.value = current.join(', ');
         else if (current !== undefined) control.value = String(current);
         control.addEventListener('input', () => setArg(c, name, control.value, arg));
+        if (rebuild) control.addEventListener('change', argChanged);
       }
       wrap.appendChild(control);
+      if (actionArg && arg.required && Array.isArray(arg.enum) && arg.enum.length && arg.type !== 'list') {
+        const note = document.createElement('span');
+        note.className = 'desc';
+        note.textContent = 'Empty: the device offers the values.';
+        wrap.appendChild(note);
+      }
       if (arg.description) {
         const desc = document.createElement('span');
         desc.className = 'desc';
@@ -2232,6 +2292,13 @@
     args.sort();
     let s = '{ at: [0, 0], span: [' + c.span[0] + ', ' + c.span[1] + '], widget: ' + plugin + '/' + widget;
     if (args.length) s += ', args: { ' + args.join(', ') + ' }';
+    if (c.action && c.action.name) {
+      const actionArgs = Object.entries(c.action.args || {})
+        .map(([name, value]) => name + ': ' + yamlValue(value)).sort();
+      s += actionArgs.length
+        ? ', action: { name: ' + c.action.name + ', args: { ' + actionArgs.join(', ') + ' } }'
+        : ', action: ' + c.action.name;
+    }
     return s + ' }';
   }
 

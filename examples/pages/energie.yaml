@@ -8,4 +8,4 @@ cells:
   - { at: [0, 0], span: [6, 1], widget: paperboy/header, args: { clock: true } }
   - { at: [0, 1], span: [6, 4], widget: evcc/flow }
   - { at: [0, 5], span: [3, 3], widget: evcc/site, args: { columns: 2 } }
-  - { at: [3, 5], span: [3, 3], widget: evcc/loadpoint, args: { index: 0 }, action: mode }
+  - { at: [3, 5], span: [3, 3], widget: evcc/loadpoint, args: { index: 0 }, action: { name: mode, args: { index: 0 } } }

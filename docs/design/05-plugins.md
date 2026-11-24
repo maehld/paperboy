@@ -34,10 +34,11 @@ Paperboy computes the demand per plugin from the configured devices. It takes th
 | `actions` | The concrete calls of a widget action, the device | State per call: title, `disabled` reason, `confirm` |
 | `action` | One chosen call with its args, the device | `result` with `ok`, `message`, `changed` |
 
-The widget action mode resolves a page cell with `describe`. It makes one
-`actions` call per enum value of the choice argument, and `action` runs the
-chosen call (ADR 0162). The page names the action only. The plugin owns the
-arguments and the choices.
+The widget action mode resolves a page cell and its action block with
+`describe`. It makes one `actions` call per enum value of the choice argument,
+and `action` runs the chosen call ([ADR 0164](../adr/0164-a-widget-action-carries-its-own-arguments.md)).
+The cell names the action and its target args; the plugin owns the schema and
+the choices.
 
 Every request carries `language`, `timezone`, `now` and `levels`, the tone count of the display. `levels` is 1 to 256; a canvas falls back to 2, 4 or 16 tones when it cannot draw the value ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)). The request also carries the `page` with title, number, count and display size, and `ppi` for image displays. A widget also gets `style` with `padding`, `rule` and `text_px` in pixels.
 

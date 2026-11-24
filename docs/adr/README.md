@@ -164,8 +164,9 @@ The web UI: what the operator sees and how content is edited. See [`04-operator-
 | [0157](0157-drop-the-recent-widgets.md) | Drop the recent widgets from the palette | Accepted, implemented; keeps the pinned widgets of [ADR-0152](0152-a-design-system-and-a-rail-for-the-operator-ui.md) and removes the recent ones |
 | [0158](0158-plans-are-pages-refresh-windows-and-triggers.md) | A plan is pages, refresh windows and triggers | Accepted, implemented; supersedes [ADR-0025](0025-plaene-je-display.md) and amends the conditions of [ADR-0127](0127-plan-conditions-are-values.md), the refresh of [ADR-0130](0130-what-a-plan-refresh-does.md), the alert of [ADR-0131](0131-a-plan-rule-alerts-the-device.md) and the cursor of [ADR-0133](0133-the-page-cursor-holds-the-page.md) |
 | [0161](0161-home-syncs-and-the-menu-goes.md) | Home syncs the page and the device menu goes | Accepted, implemented; supersedes [ADR-0057](0057-plugin-actions-from-the-plan.md), [ADR-0067](0067-buttons-and-the-menu.md), [ADR-0078](0078-the-menu-stays-open-while-it-is-used.md) and [ADR-0082](0082-menu-tap-controls-in-a-strip.md) |
-| [0162](0162-widget-actions-and-the-plugins-choices.md) | A widget action and the plugin's choices | Accepted, implemented |
+| [0162](0162-widget-actions-and-the-plugins-choices.md) | A widget action and the plugin's choices | Accepted, implemented; amended by [ADR-0164](0164-a-widget-action-carries-its-own-arguments.md) |
 | [0163](0163-the-action-mode-works-with-the-keys.md) | The action mode works with the keys | Accepted, implemented; amends the long `home` of [ADR-0161](0161-home-syncs-and-the-menu-goes.md) and the touch requirement and key map of [ADR-0162](0162-widget-actions-and-the-plugins-choices.md) |
+| [0164](0164-a-widget-action-carries-its-own-arguments.md) | A widget action carries its own arguments | Accepted, implemented; amends the arguments, title and inheritance of [ADR-0162](0162-widget-actions-and-the-plugins-choices.md) |
 
 ## Plugins
 

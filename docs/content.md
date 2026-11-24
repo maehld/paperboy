@@ -41,11 +41,13 @@ cells:
 
 ### Actions
 
-An image cell may name one action of its plugin with `action` ([ADR 0162](adr/0162-widget-actions-and-the-plugins-choices.md)). The plugin decides the choices; the page carries no arguments or titles.
+An image cell may name one action of its plugin with `action` and give the action its own `args` ([ADR 0164](adr/0164-a-widget-action-carries-its-own-arguments.md)). The plugin decides the choices; the page names the action and its arguments separately from the widget's args. The scalar `action: mode` stays a shorthand for an action without arguments.
 
 ```yaml
-- { at: [3, 5], span: [3, 3], widget: evcc/loadpoint, args: { index: 0 }, action: mode }
+- { at: [3, 5], span: [3, 3], widget: evcc/loadpoint, args: { index: 0 }, action: { name: mode, args: { index: 0 } } }
 ```
+
+A required enum left empty is the choice: the device offers its values as tiles. A set value fixes the call, and the action becomes one tile. An optional argument with a default may stay absent; the plugin applies the default. The plugin labels the tiles in the configured language. A missing required argument keeps the cell with the reason.
 
 On a device whose actions are not denied and a page with an action, a short `home` shows the options in the cell: one tile per choice. A tap runs the chosen option, and the page returns with the new state. A failed call shows a black banner *Action failed: …* (*Aktion fehlgeschlagen: …*) until the next sync.
 

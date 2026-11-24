@@ -158,7 +158,7 @@ func (t *Template) Actionable() int {
 	}
 	n := 0
 	for _, c := range t.Cells {
-		if c.Action != "" {
+		if c.Action != nil && c.Action.Name != "" {
 			n++
 		}
 	}

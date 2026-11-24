@@ -140,6 +140,14 @@ try {
           { widget: "clock", title: "Clock", sizes: [{ columns: 2, rows: 1 }] },
           { widget: "chart", title: "Chart", sizes: [{ columns: 6, rows: 4 }] },
         ],
+        actions: [{
+          name: "mode",
+          title: "Charge mode",
+          args: {
+            index: { type: "int", required: true, description: "loadpoint, counted from 0" },
+            mode: { type: "string", required: true, enum: ["off", "pv"], enum_labels: { off: "Off", pv: "PV" } },
+          },
+        }],
       },
     }, {
       name: "extra",
@@ -255,6 +263,50 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
     check(!!slot, "the board offers no free cell while a widget waits");
     if (slot) slot.click();
     check(Array.from(window.document.querySelectorAll("#board .cell")).some((cell) => cell.textContent.includes("demo/clock")), "the board does not show the placed widget");
+    for (const failure of failures) problems.push(failure);
+    editorDom.window.close();
+  }
+
+  // The inspector binds one action with its own arguments, not the widget's
+  // (ADR 0164). An empty required enum is the choice; a missing one disables
+  // the action on the device.
+  {
+    const page = { file: "", hash: "h", template: { kind: "image", grid: [6, 8], style: {}, cells: [
+      { at: [0, 0], span: [2, 1], widget: "demo/clock", args: {}, action: { name: "mode", args: { index: 0 } } },
+    ] } };
+    const { editorDom, window, failures } = await open("http://localhost/ui/pages/demo?display=e1001", editor, start, { page });
+    const board = window.document.getElementById("board");
+    board.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 480, right: 800, bottom: 480 });
+    const cell = window.document.querySelector("#board .cell");
+    check(!!cell, "the board did not draw the actionable cell");
+    if (cell) {
+      cell.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
+      window.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
+    }
+    const inspector = window.document.getElementById("inspector");
+    const fieldOf = (name) => Array.from(inspector.querySelectorAll("label.field"))
+      .find((label) => label.querySelector("span").textContent === name);
+    const argOf = (name) => Array.from(inspector.querySelectorAll(".arg"))
+      .find((arg) => arg.querySelector(".name").textContent === name + " *");
+    const action = fieldOf("Action");
+    check(action && action.querySelector("select").value === "mode", "the inspector lost the cell action");
+    const index = argOf("index");
+    check(index && index.querySelector("input").value === "0", "the inspector lost the action's own index");
+    const mode = argOf("mode");
+    const select = mode && mode.querySelector("select");
+    check(select && select.value === "" && select.options[0].textContent.includes("device offers"), "an empty required enum is not the choice");
+    check(inspector.textContent.includes("Empty: the device offers the values."), "the action lacks the choice hint");
+    check(inspector.textContent.includes("A short home shows 2 options here."), "the action hint does not count the choices");
+    // A set enum is one fixed tile; the hint follows without a reload.
+    select.value = "pv";
+    select.dispatchEvent(new window.Event("change"));
+    check(inspector.textContent.includes("A short home shows this action here."), "a fixed action still counts choices");
+    // A missing required argument warns live.
+    const indexInput = argOf("index").querySelector("input");
+    indexInput.value = "";
+    indexInput.dispatchEvent(new window.Event("input"));
+    indexInput.dispatchEvent(new window.Event("change"));
+    check(inspector.textContent.includes("Required argument index is missing"), "a missing action argument does not warn");
     for (const failure of failures) problems.push(failure);
     editorDom.window.close();
   }

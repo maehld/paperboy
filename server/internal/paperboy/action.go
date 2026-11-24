@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/maehld/paperboy/sdk/plugin"
@@ -104,6 +105,7 @@ func (a actionState) hit(x, y int) *actionOption {
 type actionJob struct {
 	cell     int
 	plugin   string
+	action   string
 	spec     plugin.ActionSpec
 	args     []map[string]any // one concrete call per option
 	labels   []string         // the enum label of each option; empty for a trigger
@@ -121,22 +123,28 @@ func actionSpec(d *plugin.Description, name string) (plugin.ActionSpec, bool) {
 	return plugin.ActionSpec{}, false
 }
 
-// widgetActionArgs fills the arguments the widget also declares and finds the
-// one remaining required enum argument. The page carries no action arguments;
-// a widget names its subject, and the plugin names the choices (ADR 0162).
-func widgetActionArgs(spec plugin.ActionSpec, widgetArgs map[string]any) (fixed map[string]any, choiceName string, choices []any, reason string) {
+// actionArgs separates the action's fixed arguments from the one required
+// enum that becomes the choice. The action's args come only from the action
+// block; the widget's args never fill them (ADR 0164).
+func actionArgs(spec plugin.ActionSpec, given map[string]any) (fixed map[string]any, choiceName string, choices []any, reason string) {
 	fixed = map[string]any{}
+	names := make([]string, 0, len(spec.Args))
 	for name := range spec.Args {
-		if v, ok := widgetArgs[name]; ok {
-			fixed[name] = v
-		}
+		names = append(names, name)
 	}
-	for name, arg := range spec.Args {
-		if _, ok := fixed[name]; ok {
+	sort.Strings(names)
+	for _, name := range names {
+		arg := spec.Args[name]
+		value, set := given[name]
+		if set && !emptyArg(value) {
+			fixed[name] = value
 			continue
 		}
-		if !arg.Required || len(arg.Enum) == 0 || arg.Type == "list" {
+		if !arg.Required {
 			continue
+		}
+		if len(arg.Enum) == 0 || arg.Type == "list" {
+			return nil, "", nil, fmt.Sprintf("required argument %q is missing", name)
 		}
 		if choiceName != "" {
 			return nil, "", nil, "more than one choice argument"
@@ -144,6 +152,20 @@ func widgetActionArgs(spec plugin.ActionSpec, widgetArgs map[string]any) (fixed 
 		choiceName, choices = name, arg.Enum
 	}
 	return fixed, choiceName, choices, ""
+}
+
+// emptyArg reports whether an argument value counts as not set. An empty
+// required enum is the choice; an empty required string is missing.
+func emptyArg(v any) bool {
+	switch x := v.(type) {
+	case nil:
+		return true
+	case string:
+		return x == ""
+	case []any:
+		return len(x) == 0
+	}
+	return false
 }
 
 // resolveWidgetActions builds the tiles of every actionable cell. A plugin
@@ -156,12 +178,12 @@ func (s *Server) resolveWidgetActions(ctx context.Context, cfg *Config, d *Devic
 	descErr := map[string]string{}
 	var jobs []actionJob
 	for i, cell := range tmpl.Cells {
-		if cell.Action == "" {
+		if cell.Action == nil || cell.Action.Name == "" {
 			continue
 		}
 		name := cell.Plugin()
 		r := rects[i]
-		job := actionJob{cell: i, plugin: name, rect: [4]int{r.Min.X, r.Min.Y, r.Max.X, r.Max.Y}}
+		job := actionJob{cell: i, plugin: name, action: cell.Action.Name, rect: [4]int{r.Min.X, r.Min.Y, r.Max.X, r.Max.Y}}
 		dd, ok := desc[name]
 		if !ok {
 			if reason, failed := descErr[name]; failed {
@@ -179,13 +201,13 @@ func (s *Server) resolveWidgetActions(ctx context.Context, cfg *Config, d *Devic
 			dd = got
 			desc[name] = got
 		}
-		spec, known := actionSpec(dd, cell.Action)
+		spec, known := actionSpec(dd, cell.Action.Name)
 		if !known {
-			job.disabled = fmt.Sprintf("unknown action %s/%s", name, cell.Action)
+			job.disabled = fmt.Sprintf("unknown action %s/%s", name, cell.Action.Name)
 			jobs = append(jobs, job)
 			continue
 		}
-		fixed, choice, choices, reason := widgetActionArgs(spec, cell.Args)
+		fixed, choice, choices, reason := actionArgs(spec, cell.Action.Args)
 		if reason != "" {
 			job.spec, job.disabled = spec, reason
 			jobs = append(jobs, job)
@@ -224,7 +246,7 @@ func (s *Server) resolveWidgetActions(ctx context.Context, cfg *Config, d *Devic
 		for _, i := range indexes {
 			j := &jobs[i]
 			for _, args := range j.args {
-				calls = append(calls, plugin.ActionCall{Action: j.spec.Name, Args: args})
+				calls = append(calls, plugin.ActionCall{Action: j.action, Args: args})
 			}
 		}
 		req := plugin.Request{Version: plugin.Version, Language: cfg.Language, Timezone: cfg.timezoneName(),
@@ -251,12 +273,12 @@ func (s *Server) resolveWidgetActions(ctx context.Context, cfg *Config, d *Devic
 		if job.disabled != "" || len(job.args) == 0 {
 			title := job.spec.Title
 			if title == "" {
-				title = job.spec.Name
+				title = job.action
 			}
 			if title == "" {
 				title = job.disabled
 			}
-			out = append(out, actionOption{Plugin: job.plugin, Action: job.spec.Name, Title: title,
+			out = append(out, actionOption{Plugin: job.plugin, Action: job.action, Title: title,
 				Disabled: job.disabled, Cell: job.cell, Rect: job.rect})
 			continue
 		}
@@ -269,7 +291,10 @@ func (s *Server) resolveWidgetActions(ctx context.Context, cfg *Config, d *Devic
 			if title == "" {
 				title = job.spec.Title
 			}
-			out = append(out, actionOption{Plugin: job.plugin, Action: job.spec.Name, Args: args, Title: title,
+			if title == "" {
+				title = job.action
+			}
+			out = append(out, actionOption{Plugin: job.plugin, Action: job.action, Args: args, Title: title,
 				Disabled: got[n].Disabled, Cell: job.cell, Rect: job.rect})
 		}
 	}

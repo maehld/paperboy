@@ -792,15 +792,16 @@ cells:
 	}
 }
 
-// TestCellAction checks the action a cell binds to its plugin's action
-// catalog (ADR 0162).
+// TestCellAction checks the scalar shorthand and the block with its own args
+// (ADR 0164).
 func TestCellAction(t *testing.T) {
 	src := "kind: image\ngrid: [2, 1]\ncells: [{at: [0, 0], span: [2, 1], widget: evcc/loadpoint, args: {index: 0}, action: mode}]\n"
 	tp, err := Parse(strings.NewReader(src))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tp.Cells[0].Action != "mode" || tp.Actionable() != 1 {
+	action := tp.Cells[0].Action
+	if action == nil || action.Name != "mode" || len(action.Args) != 0 || tp.Actionable() != 1 {
 		t.Fatalf("cell action: %+v", tp.Cells[0])
 	}
 	out, err := Encode(tp)
@@ -808,13 +809,101 @@ func TestCellAction(t *testing.T) {
 		t.Fatalf("encoded page: %v\n%s", err, out)
 	}
 	again, err := Parse(bytes.NewReader(out))
-	if err != nil || again.Cells[0].Action != "mode" {
+	if err != nil || again.Cells[0].Action == nil || again.Cells[0].Action.Name != "mode" {
 		t.Fatalf("round trip: %v %+v", err, again)
 	}
 	if rects := tp.Rects(200, 100); len(rects) != 1 || rects[0] != image.Rect(0, 0, 200, 100) {
 		t.Fatalf("rects: %v", rects)
 	}
-	if _, err := Parse(strings.NewReader("kind: text\ncells: [{at: [0, 0], text: x, action: mode}]\n")); err == nil || !strings.Contains(err.Error(), "image") {
+
+	block := "kind: image\ngrid: [2, 1]\ncells: [{at: [0, 0], span: [2, 1], widget: evcc/loadpoint, action: {name: mode, args: {index: 0, mode: now}}}]\n"
+	tb, err := Parse(strings.NewReader(block))
+	if err != nil {
+		t.Fatal(err)
+	}
+	action = tb.Cells[0].Action
+	if action == nil || action.Name != "mode" || action.Args["index"] != 0 || action.Args["mode"] != "now" {
+		t.Fatalf("action block: %+v", action)
+	}
+	out, err = Encode(tb)
+	if err != nil || !strings.Contains(string(out), "action: {name: mode, args: {index: 0, mode: now}}") {
+		t.Fatalf("encoded block: %v\n%s", err, out)
+	}
+	back, err := Parse(bytes.NewReader(out))
+	if err != nil || !reflect.DeepEqual(back.Cells[0].Action, action) {
+		t.Fatalf("block round trip: %v %+v", err, back.Cells[0].Action)
+	}
+
+	if _, err := Parse(strings.NewReader("kind: text\ncells: [{at: [0, 0], text: x, action: {name: mode}}]\n")); err == nil || !strings.Contains(err.Error(), "image") {
 		t.Fatalf("a text cell accepted an action: %v", err)
+	}
+}
+
+// TestCellActionBlock keeps the block strict: the keys are name and args, a
+// name is required, and args keep their types (ADR 0164).
+func TestCellActionBlock(t *testing.T) {
+	page := func(action string) string {
+		return "kind: image\ngrid: [1, 1]\ncells: [{widget: a/b, action: " + action + "}]\n"
+	}
+	tp, err := Parse(strings.NewReader(page(`{name: mode, args: {index: 0, ratio: 1.5, on: true, names: [a, b]}}`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := tp.Cells[0].Action.Args
+	if args["index"] != 0 || args["ratio"] != 1.5 || args["on"] != true || !reflect.DeepEqual(args["names"], []any{"a", "b"}) {
+		t.Fatalf("args types: %#v", args)
+	}
+	out, err := Encode(tp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := Parse(bytes.NewReader(out))
+	if err != nil || !reflect.DeepEqual(back.Cells[0].Action, tp.Cells[0].Action) {
+		t.Fatalf("args round trip: %v\n%s", err, out)
+	}
+	for name, action := range map[string]string{
+		"unknown key":   `{name: mode, title: Laden}`,
+		"no name":       `{args: {index: 0}}`,
+		"bad name":      `{name: Mode}`,
+		"duplicate key": `{name: mode, name: pv}`,
+		"scalar name":   `Mode`,
+		"sequence":      `[mode]`,
+	} {
+		if _, err := Parse(strings.NewReader(page(action))); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	tp, err = Parse(strings.NewReader(page(`{name: mode, args: {}}`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tp.Cells[0].Action.Args != nil {
+		t.Fatalf("an empty args map must stay absent: %+v", tp.Cells[0].Action.Args)
+	}
+}
+
+// TestActionJSON keeps the editor API on the same model: it reads the scalar
+// and the block, writes the block, and rejects an unknown key (ADR 0164).
+func TestActionJSON(t *testing.T) {
+	var scalar Cell
+	if err := json.Unmarshal([]byte(`{"action":"mode"}`), &scalar); err != nil {
+		t.Fatal(err)
+	}
+	if scalar.Action == nil || scalar.Action.Name != "mode" || len(scalar.Action.Args) != 0 {
+		t.Fatalf("scalar JSON: %+v", scalar.Action)
+	}
+	data, err := json.Marshal(scalar)
+	if err != nil || !strings.Contains(string(data), `"action":{"name":"mode"}`) {
+		t.Fatalf("marshaled scalar: %v %s", err, data)
+	}
+	var block Cell
+	if err := json.Unmarshal([]byte(`{"action":{"name":"mode","args":{"index":0}}}`), &block); err != nil {
+		t.Fatal(err)
+	}
+	if block.Action == nil || block.Action.Args["index"] != float64(0) {
+		t.Fatalf("block JSON: %+v", block.Action)
+	}
+	if err := json.Unmarshal([]byte(`{"action":{"name":"mode","title":"Laden"}}`), &block); err == nil {
+		t.Fatal("an unknown action key was accepted")
 	}
 }
