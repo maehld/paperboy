@@ -41,6 +41,8 @@ type syncSession struct {
 	action                            actionState
 	invoke                            *actionOption
 	touch                             bool
+	actionFailed                      bool
+	actionMessage                     string
 
 	served               servedPage
 	refresh              time.Duration
@@ -254,6 +256,9 @@ func (x *syncSession) render() {
 	}
 	if x.action.Open && !x.critical && !x.textDisplay {
 		x.served = s.overlayActions(cfg, d, x.served, &x.action, now)
+	}
+	if x.actionFailed && !x.critical && !x.textDisplay {
+		x.served = s.actionFailure(cfg, d, x.served, x.actionMessage)
 	}
 	if x.served.interval == 0 {
 		x.served.interval = x.served.refresh

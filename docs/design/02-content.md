@@ -91,7 +91,9 @@ plugin's `describe` and `actions` answers name the choices, their titles and
 their state. A plugin that is down keeps its cell with the reason.
 
 A tap on a tile runs that call in the sync. The device gets the normal page
-with the new state and the mode closes. A tap outside, a stale `shown` hash or
+with the new state and the mode closes. A failed call shows a black banner
+`Action failed: <reason>` (`Aktion fehlgeschlagen: …`); the next sync serves
+the plain page again. A tap outside, a stale `shown` hash or
 20 seconds without input close the mode and serve the plain page. The server
 asks for a one-shot wake of reason `action` at the deadline.
 

@@ -47,7 +47,7 @@ An image cell may name one action of its plugin with `action` ([ADR 0162](adr/01
 - { at: [3, 5], span: [3, 3], widget: evcc/loadpoint, args: { index: 0 }, action: mode }
 ```
 
-On a device with `touch: true` and a page with an action, a short `home` shows the options in the cell: one tile per choice. A tap runs the chosen option and the page returns with the new state. A tap outside, 20 seconds without input or `next`/`previous` closes the view. A device with `actions: deny` and a device without a digitiser never show it.
+On a device with `touch: true` and a page with an action, a short `home` shows the options in the cell: one tile per choice. A tap runs the chosen option and the page returns with the new state. A failed call shows a black banner *Action failed: …* (*Aktion fehlgeschlagen: …*) until the next sync. A tap outside, 20 seconds without input or `next`/`previous` closes the view. A device with `actions: deny` and a device without a digitiser never show it.
 
 The plugin's current choice is hatched when the plugin reports it as unavailable. A cell that is too small for the tiles says *Cell too small* (*Feld zu klein*); enlarge it in the page editor.
 

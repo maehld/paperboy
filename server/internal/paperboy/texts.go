@@ -67,6 +67,15 @@ func (t texts) lowBattery(key string) string {
 // actionTooSmall is the tile of a cell that cannot hold its options (ADR 0162).
 func (t texts) actionTooSmall() string { return t.variant("Feld zu klein", "Cell too small") }
 
+// actionFailed is the banner of a failed widget action (ADR 0162).
+func (t texts) actionFailed(reason string) string {
+	text := t.variant("Aktion fehlgeschlagen", "Action failed")
+	if reason != "" {
+		text += ": " + reason
+	}
+	return text
+}
+
 func (t texts) criticalBattery(key string) (string, string) {
 	return t.variant("Akku fast leer", "Battery almost empty"),
 		t.variant("Bitte jetzt laden", "Please charge now") + t.voltage(key)

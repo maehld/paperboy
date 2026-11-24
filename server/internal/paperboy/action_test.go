@@ -25,6 +25,7 @@ cells:
 // what the server asks and runs.
 type actionPlugin struct {
 	mode  string
+	fail  bool
 	calls []plugin.ActionCall
 	runs  []string
 }
@@ -65,6 +66,9 @@ func (p *actionPlugin) Actions(req *plugin.Request) ([]plugin.ActionState, error
 func (p *actionPlugin) Invoke(_ *plugin.Request, call plugin.ActionCall) (plugin.ActionOutcome, error) {
 	mode := call.Arg().String("mode", "")
 	p.runs = append(p.runs, mode)
+	if p.fail {
+		return plugin.ActionOutcome{OK: false, Message: "nope"}, nil
+	}
 	p.mode = mode
 	return plugin.ActionOutcome{OK: true, Changed: true}, nil
 }
@@ -318,5 +322,39 @@ func TestVirtualDisplayRunsNoAction(t *testing.T) {
 		Events: []syncEvent{{ID: 1, Type: "touch", X: x, Y: y}}})
 	if len(p.runs) != 0 {
 		t.Fatalf("the virtual display ran %v", p.runs)
+	}
+}
+
+// TestActionFailureShowsABanner checks that a failed call is visible on the
+// device and that the next sync serves the plain page again (ADR 0162).
+func TestActionFailureShowsABanner(t *testing.T) {
+	s, dev, p := actionServer(t, actionPage, true)
+	p.fail = true
+	base := displayPage(t, s, dev)
+	mode := press(t, s, dev, buttonHome)
+	st, opts := actionStateOf(t, s)
+	var tap actionOption
+	for _, o := range opts {
+		if o.Title == "now" {
+			tap = o
+		}
+	}
+	x, y := (tap.Rect[0]+tap.Rect[2])/2, (tap.Rect[1]+tap.Rect[3])/2
+	dev.req.Reason = "touch"
+	dev.req.Shown = st.Screen
+	dev.req.Events = []syncEvent{{ID: 1, Type: "touch", X: x, Y: y}}
+	out := displayPage(t, s, dev)
+	if len(p.runs) != 1 {
+		t.Fatalf("the failing tap must run once: %v", p.runs)
+	}
+	if got := pagePath(out); !strings.HasPrefix(got, "/hints/") || got == pagePath(base) || got == pagePath(mode) {
+		t.Fatalf("the failure banner must be a hint image of its own: %q", got)
+	}
+	if st, _ := actionStateOf(t, s); st.Open {
+		t.Fatalf("the failed action must close the mode: %+v", st)
+	}
+	dev.req.Reason = "timer"
+	if got := pagePath(displayPage(t, s, dev)); got != pagePath(base) {
+		t.Fatalf("the next sync must clear the banner: %q vs %q", got, pagePath(base))
 	}
 }

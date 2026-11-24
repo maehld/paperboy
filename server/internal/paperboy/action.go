@@ -274,10 +274,16 @@ func (x *syncSession) runWidgetAction() {
 		Actions: []plugin.ActionCall{{Action: x.invoke.Action, Args: x.invoke.Args}}}
 	out, err := x.s.widgets.Invoke(ctx, x.invoke.Plugin, req)
 	if err != nil {
+		x.actionFailed, x.actionMessage = true, shortError(err)
 		slog.Warn("action failed", "device", x.d.ID, "action", x.invoke.Plugin+"/"+x.invoke.Action, "error", err)
 		return
 	}
-	slog.Info("action run", "device", x.d.ID, "action", x.invoke.Plugin+"/"+x.invoke.Action, "ok", out.OK, "message", out.Message)
+	if !out.OK {
+		x.actionFailed, x.actionMessage = true, out.Message
+		slog.Info("action failed", "device", x.d.ID, "action", x.invoke.Plugin+"/"+x.invoke.Action, "message", out.Message)
+		return
+	}
+	slog.Info("action run", "device", x.d.ID, "action", x.invoke.Plugin+"/"+x.invoke.Action, "ok", true, "message", out.Message)
 }
 
 // actionMode folds the input of one wake into the action mode (ADR 0162). It
