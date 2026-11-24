@@ -326,15 +326,21 @@ func seedState(instance, base string) error {
 	}
 
 	// Device state makes the built-in device widgets show rows instead of
-	// "?" (ADR 0115). LastSeen also keeps the plan demand alive.
+	// "?" (ADR 0115). LastSeen also keeps the plan demand alive. The readings
+	// give the reading widget and the values of ADR 0163 a value in the docs.
 	devices := filepath.Join(instance, "state", "devices")
 	if err := os.MkdirAll(devices, 0o755); err != nil {
 		return err
 	}
 	now := time.Now()
+	readings := map[string]any{
+		"temperature": map[string]any{"value": 21.5, "at": now},
+		"humidity":    map[string]any{"value": 45.0, "at": now},
+	}
 	for mac, extra := range map[string]map[string]any{
 		"AABBCCDDEE01": {"hardware": "e1001", "firmware": "v1.4.2", "battery_voltage": "3.89",
-			"battery_percent": 76.0, "battery_mah": 3050.0, "battery_ma": -38.0, "rssi": "-67"},
+			"battery_percent": 76.0, "battery_mah": 3050.0, "battery_ma": -38.0, "rssi": "-67",
+			"readings": readings},
 		"AABBCCDDEE02": {"hardware": "lcd2004", "firmware": "v1.4.2", "rssi": "-54",
 			"reported_power": "mains"},
 	} {

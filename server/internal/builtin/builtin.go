@@ -13,6 +13,7 @@ import (
 
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
+	"github.com/maehld/paperboy/server/internal/reading"
 )
 
 // Name is the plugin name pages use, e.g. paperboy/header.
@@ -39,6 +40,10 @@ func (Plugin) Describe() plugin.Description {
 			{Name: "now", Title: "Current date and time", Type: plugin.ValueTimestamp},
 			{Name: "long", Title: "Long line", Type: plugin.ValueText},
 			{Name: "block", Title: "Text block", Type: plugin.ValueText},
+			// The room the device hangs in, not the weather outside: the
+			// plugin prefix keeps it apart from weather/temperature.
+			{Name: reading.Temperature, Title: "Room temperature", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
+			{Name: reading.Humidity, Title: "Room humidity", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
 		},
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "header", Title: "Page header", Kinds: image, Sizes: []plugin.Span{{Columns: 6, Rows: 1}, {Columns: 4, Rows: 1}},
@@ -63,6 +68,15 @@ func (Plugin) Describe() plugin.Description {
 					"battery": {Type: "bool", Default: true, Description: "battery charge"},
 					"runtime": {Type: "bool", Default: true, Description: "estimated battery runtime"},
 					"seen":    {Type: "bool", Default: true, Description: "time since the last contact"},
+				}},
+			{Widget: "reading", Title: "Reading", Kinds: image, Sizes: []plugin.Span{{Columns: 1, Rows: 1}, {Columns: 2, Rows: 1}, {Columns: 3, Rows: 1}, {Columns: 3, Rows: 2}},
+				Args: map[string]plugin.Arg{
+					"name":   {Type: "string", Default: reading.Temperature, Description: "reading of the catalog", Enum: readingNames()},
+					"device": {Type: "string", Description: "device id; default the device that shows the page"},
+					"label":  {Type: "bool", Default: false, Description: "the catalog title above the value"},
+					"unit":   {Type: "bool", Default: true, Description: "unit after the value"},
+					"age":    {Type: "bool", Default: true, Description: "age in the caption once the value is older than an hour"},
+					"align":  {Type: "string", Default: "center", Description: "left, center or right", Enum: []any{"left", "center", "right"}},
 				}},
 			{Widget: "text", Title: "Text", Kinds: image, Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 6, Rows: 1}},
 				Args: map[string]plugin.Arg{
@@ -103,6 +117,12 @@ func (Plugin) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 			out[name] = plugin.TextValue("Diese Zeile ist absichtlich zu lang für das Display.")
 		case "block":
 			out[name] = plugin.TextValue("Zeile eins mit einem sehrlangenWort\nZeile zwei\nZeile drei\nZeile vier")
+		case reading.Temperature, reading.Humidity:
+			v, err := readingValue(req, name)
+			if err != nil {
+				return nil, err
+			}
+			out[name] = v
 		default:
 			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
 		}
@@ -137,6 +157,8 @@ func (p Plugin) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.P
 		return p.battery(req, w, img)
 	case "device-status":
 		return p.deviceStatus(req, w, img)
+	case "reading":
+		return p.readingWidget(req, w, img)
 	}
 	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 }

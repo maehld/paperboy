@@ -258,6 +258,8 @@ address.
       "seen_s": 30,
       "power": "battery",
       "battery": {"volts": 3.75, "percent": 84, "charging": false},
+      "readings": {"temperature": {"value": 21.5, "taken": "2026-11-15T09:04:30+01:00"},
+                   "humidity": {"value": 45, "taken": "2026-11-15T09:04:30+01:00"}},
       "runtime_s": 1036800,
       "runtime_span_s": 172800
     },
@@ -277,6 +279,12 @@ address.
 - `battery` carries `volts`, `percent`, `mah`, `ma`, `charging` and `level`
   (`warn` or `critical`). `runtime_s` is the estimated battery runtime; `0`
   means no estimate or a mains device.
+- `readings` maps a key of Paperboy's reading catalog to the last measured value
+  and the moment it was taken ([ADR 0134](../adr/0134-readings-from-the-device.md),
+  [0163](../adr/0163-the-readings-in-the-device-status-and-a-reading-widget.md)).
+  The value is a bare number in the catalog's unit; a device without a reading
+  has no key. The field is additive and does not change the protocol version,
+  because only the built-in plugin receives `server_status` (ADR 0115).
 
 ### `actions`
 

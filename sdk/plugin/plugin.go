@@ -88,7 +88,8 @@ import (
 // carry, and removes the conditions request and describe.conditions. A plugin
 // below 8 is still accepted while it serves values, because nothing asks it
 // for text; Paperboy sends a schedule only to a plugin that reports version 9
-// or newer.
+// or newer. The device status inside server_status grows without a version
+// change, because only the built-in plugin receives it (ADR 0115, 0163).
 // Plugins report the version in every answer (Message.Version); Paperboy
 // refuses a plugin that speaks less than MinVersion (ADR 0081).
 const Version = 9
@@ -198,6 +199,19 @@ type DeviceStatus struct {
 	Page         string `json:"page,omitempty"`      // last page or notice
 	PageKind     string `json:"page_kind,omitempty"` // page, notice or battery
 	Error        string `json:"error,omitempty"`     // last render or plan error
+	// Readings are the last measured values of the device, keyed by the name
+	// of Paperboy's reading catalog, e.g. temperature and humidity (ADR 0134).
+	// A device without a reading has no entry.
+	Readings map[string]Reading `json:"readings,omitempty"`
+}
+
+// Reading is one measured value of a device: a bare number and the moment it
+// was taken (ADR 0134). The reading catalog of Paperboy owns name, unit and
+// precision, so the protocol carries no presentation and one value keeps one
+// spelling.
+type Reading struct {
+	Value float64   `json:"value"`
+	Taken time.Time `json:"taken,omitempty"`
 }
 
 // BatteryStatus is the last battery reading of a device.

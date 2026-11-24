@@ -210,11 +210,12 @@ The built-in plugin `paperboy` needs no data and is never cached ([ADR 0049](../
 | `header` | Title or page title, page indicator, clock, date, subtitle, alignment; the date takes the longest of four forms that fits half the cell, or the free text columns, and is dropped when none fits; `battery: true` adds the gauge of this device at the right, as high as a capital letter of the date, without a number (a text display shows the percentage instead) |
 | `battery` | The battery of one device as a gauge with percentage or voltage; without `device` it shows the device that renders the page; `2x2` puts the value below the gauge, the horizontal spans beside it ([ADR 0121](../adr/0121-segmented-battery-gauge.md)) |
 | `device-status` | One row per device with battery, estimated runtime and the time since the last contact; `devices` selects ids, otherwise it shows the device that renders the page; the stalest row comes first |
+| `reading` | One measured value of a device, `temperature` or `humidity`, with its unit and an optional label; without `device` it shows the device that renders the page; the caption names the age once the value is older than an hour ([ADR 0134](../adr/0134-readings-from-the-device.md), [0163](../adr/0163-the-readings-in-the-device-status-and-a-reading-widget.md)) |
 | `text` | Free text, on text displays an overlong line untrimmed when the cell scrolls |
 | `clock` | Time, date or both |
 | `logo` | The Paperboy mark from its geometry; `wordmark` adds the lockup in Go Mono Bold, image displays only |
 
-On a text page the built-in plugin provides four values. `title` is the page title. `time` and `now` are the current moment. `date` is midnight, so Paperboy writes the date.
+On a text page the built-in plugin provides six values. `title` is the page title. `time` and `now` are the current moment. `date` is midnight, so Paperboy writes the date. `temperature` and `humidity` are the room the device measures.
 
 ## Decisions
 

@@ -134,6 +134,14 @@ func noDeviceText(req *plugin.Request) string {
 	return req.T("kein Gerät", "no device")
 }
 
+// cellNotice draws a short text centered in b, for a cell that has no data to
+// show.
+func cellNotice(req *plugin.Request, w plugin.WidgetRequest, b image.Rectangle, img *image.Paletted, text string) {
+	size := min(float64(b.Dy())*0.6, req.TextPx(w)*1.1)
+	render.Text(img, text, b.Min.X+b.Dx()/2, b.Min.Y+b.Dy()/2+int(size*0.36),
+		render.Style{Size: size, Shrink: true}, b.Dx(), color.Black, render.Center)
+}
+
 // batteryValue is the charge of a device: its percentage, otherwise its
 // voltage. German separates the number and the unit with a space.
 func batteryValue(req *plugin.Request, b *plugin.BatteryStatus) string {
@@ -395,9 +403,7 @@ func (Plugin) deviceStatus(req *plugin.Request, w plugin.WidgetRequest, img *ima
 	}
 	devices := statusDevices(req, a)
 	if len(devices) == 0 {
-		size := min(float64(b.Dy())*0.6, req.TextPx(w)*1.1)
-		render.Text(img, noDeviceText(req), b.Min.X+b.Dx()/2, b.Min.Y+b.Dy()/2+int(size*0.36),
-			render.Style{Size: size, Shrink: true}, b.Dx(), color.Black, render.Center)
+		cellNotice(req, w, b, img, noDeviceText(req))
 		return nil
 	}
 	// Fewer rows than devices are possible in a short cell; the stalest rows

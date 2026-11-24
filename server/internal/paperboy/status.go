@@ -6,6 +6,7 @@ import (
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/server/internal/builtin"
 	"github.com/maehld/paperboy/server/internal/page"
+	"github.com/maehld/paperboy/server/internal/reading"
 )
 
 // previewDeviceID is the id of the sample device a preview without a device
@@ -15,8 +16,9 @@ const previewDeviceID = "preview"
 
 // previewDeviceStatus is the deterministic status of a preview that names no
 // device (ADR 0123). It reads no state file, so every preview shows the same
-// row: ok, 78 %, 4.05 V, not charging and a runtime of about 12 days.
-func previewDeviceStatus(display string) plugin.DeviceStatus {
+// row: ok, 78 %, 4.05 V, not charging, a runtime of about 12 days and 21.5 °C
+// at 45 %.
+func previewDeviceStatus(display string, now time.Time) plugin.DeviceStatus {
 	percent, runtime := 78.0, int64(12*24*time.Hour/time.Second)
 	return plugin.DeviceStatus{
 		ID:           previewDeviceID,
@@ -27,6 +29,10 @@ func previewDeviceStatus(display string) plugin.DeviceStatus {
 		Battery:      &plugin.BatteryStatus{Percent: &percent, Volts: 4.05},
 		RuntimeS:     runtime,
 		RuntimeSpanS: runtime,
+		Readings: map[string]plugin.Reading{
+			reading.Temperature: {Value: 21.5, Taken: now},
+			reading.Humidity:    {Value: 45, Taken: now},
+		},
 	}
 }
 
@@ -52,7 +58,7 @@ func (s *Server) statusSnapshot(cfg *Config, display, self string, selected []st
 	if sd, ok := byID[self]; ok {
 		out.CurrentDeviceStatus = &sd
 	} else if self == "" {
-		sd := previewDeviceStatus(display)
+		sd := previewDeviceStatus(display, now)
 		out.CurrentDeviceStatus = &sd
 	}
 	for _, id := range selected {
@@ -118,11 +124,17 @@ func statusOfDevice(cfg *Config, d *Device, st deviceState, now time.Time) plugi
 			sd.RuntimeSpanS = int64(e.Span / time.Second)
 		}
 	}
+	if len(st.Readings) > 0 {
+		sd.Readings = make(map[string]plugin.Reading, len(st.Readings))
+		for name, r := range st.Readings {
+			sd.Readings[name] = plugin.Reading{Value: r.Value, Taken: r.At}
+		}
+	}
 	return sd
 }
 
 // selectedDeviceIDs collects the ids a page asks for: the devices argument of
-// device-status cells and the device argument of battery cells.
+// device-status cells and the device argument of battery and reading cells.
 func selectedDeviceIDs(t *page.Template) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -131,7 +143,7 @@ func selectedDeviceIDs(t *page.Template) []string {
 		switch c.Widget {
 		case builtin.Name + "/device-status":
 			ids = plugin.Values(c.Args).Strings("devices")
-		case builtin.Name + "/battery":
+		case builtin.Name + "/battery", builtin.Name + "/reading":
 			if id, ok := c.Args["device"].(string); ok {
 				ids = []string{id}
 			}
@@ -169,6 +181,10 @@ func deviceScoped(t *page.Template) bool {
 				return true
 			}
 		case builtin.Name + "/battery":
+			if id, ok := c.Args["device"].(string); !ok || id == "" {
+				return true
+			}
+		case builtin.Name + "/reading":
 			if id, ok := c.Args["device"].(string); !ok || id == "" {
 				return true
 			}

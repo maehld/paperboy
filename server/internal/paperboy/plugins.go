@@ -58,6 +58,7 @@ type pluginInfo struct {
 var deviceArgWidgets = map[string][]string{
 	"battery":       {"device"},
 	"device-status": {"devices"},
+	"reading":       {"device"},
 }
 
 // deviceChoices fills the enum of the built-in device arguments with the
