@@ -25,7 +25,7 @@ body.show { padding: .5rem; }
 body.show .screen { border: 0; padding: 0; }
 </style>
 </head>
-<body data-sync="{{.SyncURL}}" data-reset="{{.ResetURL}}">
+<body data-sync="{{.SyncURL}}" data-reset="{{.ResetURL}}" data-touch="{{if .Touch}}1{{else}}0{{end}}">
 {{template "chrome" .}}
 <main class="screen" id="screen">
   <img id="image" alt="The page this display serves" width="{{.Width}}" height="{{.Height}}" hidden>
@@ -38,7 +38,7 @@ body.show .screen { border: 0; padding: 0; }
 </div>
 <p class="debug" id="debug">waiting for the first sync…</p>
 <details><summary>Last sync</summary><pre id="json"></pre></details>
-<p class="hint">The URL is the configuration: <code>plan</code> and <code>display</code> are required, <code>refresh</code> and <code>power</code> are optional. Keys: ← previous, → next, Enter home; hold a key or a button for a long press. A click on the picture is a tap.</p>
+<p class="hint">The URL is the configuration: <code>plan</code> and <code>display</code> are required, <code>refresh</code> and <code>power</code> are optional. Keys: ← previous, → next, Enter home; hold a key or a button for a long press. A click on the picture is a tap; <code>touch=0</code> plays a device without a digitiser, where the keys select and run an action.</p>
 <script src="/ui/virtual.js"></script>
 {{template "chrome-end"}}</body>
 </html>

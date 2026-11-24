@@ -36,6 +36,7 @@ type virtualPage struct {
 	Width      int
 	Height     int
 	Power      string
+	Touch      bool
 	FileHint   string
 	SyncURL    string
 	ResetURL   string
@@ -49,14 +50,12 @@ type virtualOptions struct {
 	profile string
 	refresh time.Duration
 	power   string
+	touch   bool // the browser plays a digitiser unless touch=0 (ADR 0163)
 }
 
 // device builds the in-memory device a virtual display acts as. It has no MAC
 // and no state file: its cursor lives in the server's memory.
 func (o virtualOptions) device() *Device {
-	// The browser has a pointer, so the virtual display simulates a
-	// digitiser (ADR 0162).
-	touch := true
 	return &Device{
 		ID:      "virtual",
 		Type:    TypePaperboy,
@@ -65,7 +64,7 @@ func (o virtualOptions) device() *Device {
 		Power:   o.power,
 		Refresh: Duration(o.refresh),
 		Actions: actionsAllow,
-		Touch:   &touch,
+		Touch:   &o.touch,
 	}
 }
 
@@ -87,7 +86,8 @@ func parseVirtualOptions(cfg *Config, q url.Values) (virtualOptions, int, error)
 	if _, ok := cfg.Profiles[profile]; !ok {
 		return virtualOptions{}, http.StatusNotFound, fmt.Errorf("unknown display type %q", profile)
 	}
-	o := virtualOptions{plan: plan, profile: profile, refresh: time.Duration(cfg.Refresh), power: powerMains}
+	o := virtualOptions{plan: plan, profile: profile, refresh: time.Duration(cfg.Refresh),
+		power: powerMains, touch: true}
 	var err error
 	if o.refresh, err = querySeconds(q, "refresh", o.refresh, time.Second, 0); err != nil {
 		return virtualOptions{}, http.StatusBadRequest, err
@@ -107,6 +107,14 @@ func parseVirtualOptions(cfg *Config, q url.Values) (virtualOptions, int, error)
 	default:
 		return virtualOptions{}, http.StatusBadRequest,
 			fmt.Errorf("power %q: expected %s or %s", q.Get("power"), powerMains, powerBattery)
+	}
+	switch q.Get("touch") {
+	case "", "1", "true":
+	case "0", "false":
+		o.touch = false
+	default:
+		return virtualOptions{}, http.StatusBadRequest,
+			fmt.Errorf("touch %q: expected 1 or 0", q.Get("touch"))
 	}
 	return o, http.StatusOK, nil
 }
@@ -146,6 +154,9 @@ func (s *Server) handleVirtual(w http.ResponseWriter, r *http.Request) {
 	q := url.Values{}
 	q.Set("plan", opt.plan)
 	q.Set("display", opt.profile)
+	if !opt.touch {
+		q.Set("touch", "0")
+	}
 	version, goVersion := editorVersion(cfg)
 	page := virtualPage{
 		Version:    version,
@@ -157,6 +168,7 @@ func (s *Server) handleVirtual(w http.ResponseWriter, r *http.Request) {
 		Width:      prof.Width,
 		Height:     prof.Height,
 		Power:      opt.power,
+		Touch:      opt.touch,
 		FileHint:   "plan " + opt.plan + " · " + opt.profile,
 		SyncURL:    "/ui/virtual/sync?" + q.Encode(),
 		ResetURL:   "/ui/virtual/reset?" + q.Encode(),

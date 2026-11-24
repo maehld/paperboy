@@ -233,7 +233,8 @@
   });
 
   // A click on the picture is a tap, like a finger on the digitiser (ADR 0162).
-  image.addEventListener("click", (event) => {
+  // A key-only display has no digitiser, so it sends no tap (ADR 0163).
+  if (document.body.dataset.touch !== "0") image.addEventListener("click", (event) => {
     const rect = image.getBoundingClientRect();
     if (!rect.width || !rect.height || !image.naturalWidth) return;
     const x = Math.round((event.clientX - rect.left) * image.naturalWidth / rect.width);

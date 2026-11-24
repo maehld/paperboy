@@ -248,6 +248,7 @@ func TestVirtualDisplayOptionsRejected(t *testing.T) {
 		{"plan=zimmer&display=small&refresh=abc", http.StatusBadRequest},
 		{"plan=zimmer&display=small&page_timeout=300", http.StatusBadRequest},
 		{"plan=zimmer&display=small&power=auto", http.StatusBadRequest},
+		{"plan=zimmer&display=small&touch=abc", http.StatusBadRequest},
 	}
 	for _, c := range cases {
 		if rec := htmlRequest(t, s, "/ui/virtual?"+c.query); rec.Code != c.status {

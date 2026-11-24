@@ -38,14 +38,55 @@ type actionOption struct {
 type actionState struct {
 	Open     bool           `json:"open,omitempty"`
 	Page     string         `json:"page,omitempty"`     // page the options belong to
-	Deadline time.Time      `json:"deadline,omitzero"`  // last tap
+	Deadline time.Time      `json:"deadline,omitzero"`  // last input
 	Screen   string         `json:"screen,omitempty"`   // hash of the served action view
 	Resolved bool           `json:"resolved,omitempty"` // the plugin state is filled in
+	Selected int            `json:"selected,omitempty"` // index into Options; -1 = no runnable option
 	Options  []actionOption `json:"options,omitempty"`
 }
 
 // close drops all action state.
 func (a *actionState) close() { *a = actionState{} }
+
+// choose selects the first runnable option in reading order. A selected option
+// that is still runnable stays, so a repaint keeps the selection (ADR 0163).
+func (a *actionState) choose() {
+	if a.Selected >= 0 && a.Selected < len(a.Options) && a.Options[a.Selected].Disabled == "" {
+		return
+	}
+	a.Selected = -1
+	for i := range a.Options {
+		if a.Options[i].Disabled == "" {
+			a.Selected = i
+			return
+		}
+	}
+}
+
+// moveSelection moves the selection by step options and wraps. Disabled
+// options are skipped, so one press can pass several of them (ADR 0163).
+func (a *actionState) moveSelection(step int) {
+	a.choose()
+	if a.Selected < 0 {
+		return
+	}
+	n := len(a.Options)
+	for i := 1; i <= n; i++ {
+		idx := ((a.Selected+step*i)%n + n) % n
+		if a.Options[idx].Disabled == "" {
+			a.Selected = idx
+			return
+		}
+	}
+}
+
+// chosen returns the selected option when it can run.
+func (a actionState) chosen() *actionOption {
+	if a.Selected < 0 || a.Selected >= len(a.Options) || a.Options[a.Selected].Disabled != "" {
+		return nil
+	}
+	return &a.Options[a.Selected]
+}
 
 // hit returns the option at a page point. A disabled tile is returned too, so
 // the caller can leave the mode open.
@@ -286,21 +327,18 @@ func (x *syncSession) runWidgetAction() {
 	slog.Info("action run", "device", x.d.ID, "action", x.invoke.Plugin+"/"+x.invoke.Action, "ok", true, "message", out.Message)
 }
 
-// actionMode folds the input of one wake into the action mode (ADR 0162). It
-// runs under the state lock: a short home opens the mode, next or previous
-// leaves it and pages, a tap on the served action view runs one option, and a
-// tap elsewhere leaves the mode.
+// actionMode folds the input of one wake into the action mode (ADR 0162,
+// 0163). It runs under the state lock: a short home opens the mode, a tap on
+// the served action view runs one option, and a tap elsewhere leaves the mode.
+// A device with a digitiser keeps that path. A device without one selects with
+// next and previous and runs the selection with a short home.
 func (x *syncSession) actionMode(st *deviceState, holds []int, cfg *Config) actionState {
 	action := st.Action
 	x.touch = cfg.touch(x.d, st.TouchReported)
 	if x.req.Reason == "powercycle" || x.critical || x.textDisplay || x.d.Plan == "" ||
-		x.d.Actions == actionsDeny || !x.touch {
+		x.d.Actions == actionsDeny {
 		action.close()
 		return action
-	}
-	paging := pagePressed(x.buttons)
-	if paging {
-		action.close()
 	}
 	// The deadline wake closes the mode without input.
 	if x.req.Reason == "action" && len(x.req.Events) == 0 {
@@ -309,18 +347,40 @@ func (x *syncSession) actionMode(st *deviceState, holds []int, cfg *Config) acti
 	if action.Open && !x.now.Before(action.Deadline) {
 		action.close()
 	}
-	if !paging && shortHome(x.buttons, holds) {
-		if action.Open {
-			// Ask the plugin again: a mode another device changed is shown
-			// on the next home press.
+	home, homeHeld := homePress(x.buttons, holds)
+	step := selectionStep(x.buttons)
+	if action.Open {
+		switch {
+		case x.touch:
+			// The touch path stays as ADR 0162: a page key leaves the mode,
+			// a second home asks the plugin again.
+			if pagePressed(x.buttons) {
+				action.close()
+			} else if home && !homeHeld {
+				action.Deadline = x.now.Add(actionLifetime)
+				action.Resolved = false
+			}
+		case homeHeld:
+			// A long home closes the key-operated mode (ADR 0163).
+			action.close()
+		case home:
+			// A second short home runs the selection; without a runnable
+			// option it only closes the mode.
+			if opt := action.chosen(); opt != nil {
+				chosen := *opt
+				x.invoke = &chosen
+			}
+			action.close()
+		case step != 0:
+			action.moveSelection(step)
 			action.Deadline = x.now.Add(actionLifetime)
-			action.Resolved = false
-		} else if st.LastPage != "" {
-			action = actionState{Open: true, Page: st.LastPage, Deadline: x.now.Add(actionLifetime)}
 		}
+	} else if home && !homeHeld && st.LastPage != "" {
+		action = actionState{Open: true, Page: st.LastPage, Selected: -1,
+			Deadline: x.now.Add(actionLifetime)}
 	}
 	for _, e := range x.req.Events {
-		if e.Type != "touch" || !action.Open {
+		if e.Type != "touch" || !action.Open || !x.touch {
 			continue
 		}
 		if action.Screen == "" || x.req.Shown != action.Screen {

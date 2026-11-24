@@ -17,7 +17,7 @@ import (
 // overlayActions draws the action view over the served page and registers it
 // as a notice page, so the page cache stays untouched (ADR 0162). A failure
 // leaves the page as it is and closes the mode.
-func (s *Server) overlayActions(cfg *Config, d *Device, served servedPage, a *actionState, now time.Time) (out servedPage) {
+func (s *Server) overlayActions(cfg *Config, d *Device, served servedPage, a *actionState, now time.Time, selection bool) (out servedPage) {
 	out = served
 	defer func() {
 		if r := recover(); r != nil {
@@ -45,6 +45,7 @@ func (s *Server) overlayActions(cfg *Config, d *Device, served servedPage, a *ac
 		}
 		a.Options, a.Resolved, a.Page = opts, true, served.name
 	}
+	a.choose()
 	s.mu.Lock()
 	rp := s.renderedPageLocked(d.Profile, served.name, served.hash)
 	s.mu.Unlock()
@@ -62,7 +63,7 @@ func (s *Server) overlayActions(cfg *Config, d *Device, served servedPage, a *ac
 		a.close()
 		return served
 	}
-	drawActionView(pal, tmpl, cfg.Profiles[d.Profile], cfg.texts(), a)
+	drawActionView(pal, tmpl, cfg.Profiles[d.Profile], cfg.texts(), a, selection)
 	out = s.notice(d.Profile, pal)
 	out.name, out.page, out.pages = served.name, served.page, served.pages
 	out.refresh, out.interval = served.refresh, served.interval
@@ -71,13 +72,22 @@ func (s *Server) overlayActions(cfg *Config, d *Device, served servedPage, a *ac
 }
 
 // drawActionView replaces every actionable cell with its option tiles and
-// records the tile of each option, so the next tap hits it.
-func drawActionView(img *image.Paletted, tmpl *page.Template, p Profile, t texts, a *actionState) {
+// records the tile of each option, so the next tap hits it. selection draws
+// the selected option as an inverted tile on a device without a digitiser
+// (ADR 0163).
+func drawActionView(img *image.Paletted, tmpl *page.Template, p Profile, t texts, a *actionState, selection bool) {
+	type tile struct {
+		rect     image.Rectangle
+		label    string
+		disabled bool
+		option   int // index into a.Options; -1 for the small-cell notice
+	}
 	rects := tmpl.Rects(p.Width, p.Height)
 	byCell := map[int][]int{}
 	for i := range a.Options {
 		byCell[a.Options[i].Cell] = append(byCell[a.Options[i].Cell], i)
 	}
+	var tiles []tile
 	for cell, indexes := range byCell {
 		if cell < 0 || cell >= len(rects) {
 			continue
@@ -111,27 +121,38 @@ func drawActionView(img *image.Paletted, tmpl *page.Template, p Profile, t texts
 				a.Options[i].Disabled = t.actionTooSmall()
 				a.Options[i].Rect = rectOf(inner)
 			}
-			drawTile(img, inner, t.actionTooSmall(), true)
+			tiles = append(tiles, tile{rect: inner, label: t.actionTooSmall(), disabled: true, option: -1})
 			continue
 		}
 		for n, i := range indexes {
 			r, c := n/cols, n%cols
-			tile := image.Rect(
+			rect := image.Rect(
 				inner.Min.X+c*inner.Dx()/cols+2, inner.Min.Y+r*inner.Dy()/rows+2,
 				inner.Min.X+(c+1)*inner.Dx()/cols-2, inner.Min.Y+(r+1)*inner.Dy()/rows-2)
-			a.Options[i].Rect = rectOf(tile)
-			drawTile(img, tile, a.Options[i].Title, a.Options[i].Disabled != "")
+			a.Options[i].Rect = rectOf(rect)
+			tiles = append(tiles, tile{rect: rect, label: a.Options[i].Title,
+				disabled: a.Options[i].Disabled != "", option: i})
 		}
+	}
+	// The cell that cannot hold its options disabled them above; choose after
+	// that pass, so the selection never points at such a tile.
+	a.choose()
+	for _, t := range tiles {
+		drawTile(img, t.rect, t.label, t.disabled, selection && t.option == a.Selected)
 	}
 }
 
 // drawTile paints one option as a button: a frame, a wrapped label and a
-// hatch with a grey label when the plugin cannot run it.
-func drawTile(img *image.Paletted, r image.Rectangle, label string, disabled bool) {
+// hatch with a grey label when the plugin cannot run it. The selected tile is
+// inverted: a black tile with a white label (ADR 0163).
+func drawTile(img *image.Paletted, r image.Rectangle, label string, disabled, selected bool) {
 	if r.Empty() {
 		return
 	}
-	if disabled {
+	switch {
+	case selected:
+		render.FillColor(img, r, render.Black)
+	case disabled:
 		render.Fill(img, r, "hatch")
 	}
 	frameCell(img, r, 1)
@@ -148,7 +169,10 @@ func drawTile(img *image.Paletted, r image.Rectangle, label string, disabled boo
 	top := inner.Min.Y + (inner.Dy()-len(lines)*lineH)/2 + int(size)
 	cx := inner.Min.X + inner.Dx()/2
 	ink := render.Black
-	if disabled {
+	switch {
+	case selected:
+		ink = render.White
+	case disabled:
 		ink = render.DarkGray
 		if len(lines) > 0 {
 			widest := 0

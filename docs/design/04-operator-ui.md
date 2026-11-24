@@ -108,12 +108,13 @@ The page does not poll, so a preview list cannot change under the button that de
 
 ## Virtual display
 
-`GET /ui/virtual?plan=<plan>&display=<type>[&refresh=<s>&power=mains|battery]` plays the firmware in the browser ([ADR 0091](../adr/0091-virtual-display.md)). It shares `serveSync` with the device API, so plan selection, paging, notices and the action mode behave as on a device.
+`GET /ui/virtual?plan=<plan>&display=<type>[&refresh=<s>&power=mains|battery][&touch=0]` plays the firmware in the browser ([ADR 0091](../adr/0091-virtual-display.md)). It shares `serveSync` with the device API, so plan selection, paging, notices and the action mode behave as on a device.
 
 - `POST /ui/virtual/sync` takes the device sync body; `POST /ui/virtual/reset` drops the session.
 - The session is a `deviceState` in memory, keyed by plan and display type. It has no device file, no MAC and no key. It has no entry under `state/devices/` and is absent from `/api/devices`.
 - The URL is the only configuration; an invalid value answers 400.
 - A click on the picture is a tap. The action mode resolves, but Paperboy never runs the action.
+- `touch=0` plays a device without a digitiser. The keys select and run an option, the selection is drawn, and a click is no tap ([ADR 0163](../adr/0163-the-action-mode-works-with-the-keys.md)). Without the parameter the browser plays a digitiser.
 - The answer adds a `debug` object with trigger, page and error for the line below the display.
 - The images come from `/ui/virtual/pages/…` and `/ui/virtual/hints/…`, which serve what the device routes serve, because a browser has no device key ([ADR 0097](../adr/0097-page-downloads-take-the-device-key.md)).
 - A text display paints one character per slot in the same LCD module as the editor board, with the vendored pixel font ([ADR 0116](../adr/0116-a-pixel-font-for-text-previews.md)). The 20 × 4 and 16 × 2 grids do not reflow.
