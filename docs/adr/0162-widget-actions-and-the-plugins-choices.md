@@ -49,8 +49,8 @@ show what can run.
    nothing.
 
 5. **The mode lasts 20 seconds.** A one-shot wake of reason `action` serves the
-   plain page. `listen_s` is 20 only after input on a touch device whose page
-   has an actionable cell; every other wake reports 0.
+   plain page. Every input keeps the device's 20-second input window, because
+   that window also serves the next key press. A timer wake reports 0.
 
 6. **The keys only page.** `next` and `previous` page and leave the mode. A
    long `home` does nothing. A selection with the keys comes later.
@@ -77,8 +77,6 @@ show what can run.
 - **Confirm every action.** `confirm` exists in version 9. Destructive actions
   need a dialog; the charging mode does not. The confirmation can come with the
   key step.
-- **Keep the listen window for pages without actions.** It only serves taps
-  that cannot run. A device sleeps at once instead.
 
 ## Consequences
 

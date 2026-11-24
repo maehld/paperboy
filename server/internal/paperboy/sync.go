@@ -312,7 +312,9 @@ func (x *syncSession) finish() syncResponse {
 	writeDone()
 	x.logPower()
 	listen := time.Duration(0)
-	if x.input && !x.textDisplay && !opt.virtual && x.touch && d.Actions != actionsDeny && x.served.actionable > 0 {
+	if x.input && !x.textDisplay && !opt.virtual {
+		// The window serves the next key press as well as a tap, so every
+		// input keeps it (ADR 0162).
 		listen = listenAfterInput
 	}
 	wake := actionWake(x.action, now, x.critical)

@@ -65,7 +65,7 @@ func (s *Server) overlayActions(cfg *Config, d *Device, served servedPage, a *ac
 	drawActionView(pal, tmpl, cfg.Profiles[d.Profile], cfg.texts(), a)
 	out = s.notice(d.Profile, pal)
 	out.name, out.page, out.pages = served.name, served.page, served.pages
-	out.refresh, out.interval, out.actionable = served.refresh, served.interval, served.actionable
+	out.refresh, out.interval = served.refresh, served.interval
 	a.Screen = out.hash
 	return out
 }

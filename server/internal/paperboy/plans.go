@@ -37,20 +37,16 @@ type servedPage struct {
 	lines    []string         // text displays: the lines to show (ADR 0044)
 	scrolls  []page.ScrollBox // text displays: boxes that scroll (ADR 0118)
 	err      error            // render error that turned the page into a notice
-	// actionable counts the cells that name an action; it decides the listen
-	// window and the action mode (ADR 0162).
-	actionable int
 }
 
 // renderedPage is a page template rendered for one profile and page.
 type renderedPage struct {
-	data       []byte
-	hash       string
-	key        string          // render cache key, per device on device-scoped pages (ADR 0115)
-	pix        []byte          // composed palette indexes; an identical composition reuses data and hash
-	rect       image.Rectangle // bounds of pix
-	at         time.Time       // when the image was encoded; the runtime page ages the cache by it (ADR 0104)
-	actionable int             // cells that name an action (ADR 0162)
+	data []byte
+	hash string
+	key  string          // render cache key, per device on device-scoped pages (ADR 0115)
+	pix  []byte          // composed palette indexes; an identical composition reuses data and hash
+	rect image.Rectangle // bounds of pix
+	at   time.Time       // when the image was encoded; the runtime page ages the cache by it (ADR 0104)
 }
 
 func hashBytes(data []byte) string {
@@ -110,7 +106,7 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	encodeDone := s.stats.Start("render.encode")
 	data := encodePNG(img)
 	encodeDone()
-	return &renderedPage{data: data, hash: hashBytes(data), key: key, pix: img.Pix, rect: img.Rect, at: time.Now(), actionable: tmpl.Actionable()}, nil
+	return &renderedPage{data: data, hash: hashBytes(data), key: key, pix: img.Pix, rect: img.Rect, at: time.Now()}, nil
 }
 
 // deviceInfo names a device for a plugin request (ADR 0111).
@@ -263,7 +259,7 @@ func (s *Server) storePage(profile, name string, rp *renderedPage) servedPage {
 	s.renderedHash[rp.hash] = rp
 	s.pruneRenderedLocked(time.Now())
 	s.mu.Unlock()
-	return servedPage{path: fmt.Sprintf("/pages/%s/%s/%s.png", profile, name, rp.hash), hash: rp.hash, actionable: rp.actionable}
+	return servedPage{path: fmt.Sprintf("/pages/%s/%s/%s.png", profile, name, rp.hash), hash: rp.hash}
 }
 
 // maxRendered and renderedTTL bound the rendered page cache (ADR 0139). The

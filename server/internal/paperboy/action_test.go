@@ -236,8 +236,8 @@ cells:
 	s, dev, _ := actionServer(t, plain, true)
 	base := displayPage(t, s, dev)
 	out := press(t, s, dev, buttonHome)
-	if pagePath(out) != pagePath(base) || out["listen_s"].(float64) != 0 {
-		t.Fatalf("a page without actions must stay plain and silent: %v", out)
+	if pagePath(out) != pagePath(base) || out["listen_s"].(float64) != listenAfterInput.Seconds() {
+		t.Fatalf("a page without actions must stay plain and keep the input window: %v", out)
 	}
 	if st, _ := actionStateOf(t, s); st.Open {
 		t.Fatalf("a page without actions opened the mode: %+v", st)
@@ -246,8 +246,8 @@ cells:
 	s, dev, _ = actionServer(t, actionPage, false)
 	base = displayPage(t, s, dev)
 	out = press(t, s, dev, buttonHome)
-	if pagePath(out) != pagePath(base) || out["listen_s"].(float64) != 0 {
-		t.Fatalf("a device without a digitiser must stay plain and silent: %v", out)
+	if pagePath(out) != pagePath(base) || out["listen_s"].(float64) != listenAfterInput.Seconds() {
+		t.Fatalf("a device without a digitiser must stay plain and keep the input window: %v", out)
 	}
 	if st, _ := actionStateOf(t, s); st.Open {
 		t.Fatalf("a device without a digitiser opened the mode: %+v", st)
@@ -260,8 +260,8 @@ func TestActionModeDisabled(t *testing.T) {
 	s, dev, _ := actionServerWith(t, actionPage, true, true)
 	base := displayPage(t, s, dev)
 	out := press(t, s, dev, buttonHome)
-	if pagePath(out) != pagePath(base) || out["listen_s"].(float64) != 0 {
-		t.Fatalf("actions: deny must keep the page plain: %v", out)
+	if pagePath(out) != pagePath(base) || out["listen_s"].(float64) != listenAfterInput.Seconds() {
+		t.Fatalf("actions: deny must keep the page plain and the input window: %v", out)
 	}
 }
 

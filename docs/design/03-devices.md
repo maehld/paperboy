@@ -127,7 +127,7 @@ A device's `refresh` may go down to one second and is clamped at runtime. `sleep
 
 `refresh_s` is the sleep until the next sync, and a timer sync lands on the grid of its interval ([ADR 0129](../adr/0129-align-timer-syncs.md)). Ten minutes give :00, :10 and :20 in the instance timezone. The device paints before it sleeps, so it syncs a few seconds after the slot. A refresh window edge or a trigger edge caps the sleep; that cap wins and is not stretched, and the next sync aligns again. A slot closer than the floor is skipped, and a slot is never in the past. The grid counts from local midnight, so an interval that does not divide the hour walks through the clock.
 
-`listen_s` is 0 for a timer wake. It is 20 seconds after input only on a device with `touch: true`, actions not denied, and a page with an actionable cell (ADR 0162). The firmware then waits for a tap or the next press without registering again.
+`listen_s` is 0 for a timer wake and 20 seconds after input. The window serves the next key press as well as a tap, so every input keeps it (ADR 0162). The firmware then waits for a tap or the next press without registering again.
 
 `wake` is a one-shot next wake. The action mode asks for one at its 20-second deadline with reason `action` (ADR 0162). The firmware uses it once and goes back to its normal cycle.
 
