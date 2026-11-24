@@ -2,7 +2,7 @@
 
 # Plugins
 
-A plugin is a long-running program that draws widgets. Paperboy starts it, configures it once and then asks it for widgets and actions. Every value on a page comes from a plugin; Paperboy itself holds no data.
+A plugin is a long-running program that draws widgets. Paperboy starts it, configures it once and then asks it for widgets and values. Every value on a page comes from a plugin; Paperboy itself holds no data.
 
 The reference of the protocol is [`../plugins/protocol.md`](../plugins/protocol.md), and every shipped plugin has its own page under [`../plugins/`](../plugins/README.md). This document describes how the parts fit together.
 
@@ -22,7 +22,7 @@ Paperboy and the plugin exchange one JSON object per line: a request on stdin, a
 
 Besides answers, Paperboy may send a line without `id`: the schedule event names when it next needs the plugin's data. An event without `next_refresh` means no demand now. It goes only to a plugin that reports version 9 or newer. A plugin that relies on the schedule requires version 9 and refuses an older host. A plugin ignores events it does not know. `sdk/plugin.Demand` receives the event. `Wait(ctx, floor)` sleeps until the named moment minus 30 seconds, wakes on a new schedule, and never returns earlier than `floor` after the call. A plugin calls it after each fetch, so the floor counts from the end of the fetch. The event format is `{"event":"schedule","next_refresh":"…"}`.
 
-Paperboy computes the demand per plugin from the configured devices. It takes the expected contact (`last_seen + refresh` of the last sync). It also takes every page of the plan that fits the display type, hidden or not, and the values of every trigger condition. Actions do not count; they are resolved when the menu opens. A device that is late or never seen adds no demand until it contacts again, so a powered-off device cannot keep a plugin polling. Previews and the virtual display add no demand either.
+Paperboy computes the demand per plugin from the configured devices. It takes the expected contact (`last_seen + refresh` of the last sync). It also takes every page of the plan that fits the display type, hidden or not, and the values of every trigger condition. Actions do not count. A device that is late or never seen adds no demand until it contacts again, so a powered-off device cannot keep a plugin polling. Previews and the virtual display add no demand either.
 
 | Action | Request carries | Answer carries |
 |---|---|---|
@@ -31,7 +31,7 @@ Paperboy computes the demand per plugin from the configured devices. It takes th
 | `describe` | – | Widgets, values, actions, config keys, blob names, version |
 | `render` | Widgets with pixel `width`/`height`, `args`, `style` | One base64 PNG per widget |
 | `values` | The value keys a text page needs and `value_args`, the arguments of that set | `values` per key |
-| `actions` | Concrete plan actions, the device | State per action: title, `disabled` reason, `confirm` |
+| `actions` | Concrete actions, the device | State per action: title, `disabled` reason, `confirm` |
 | `action` | One action with its args, the device | `result` with `ok`, `message`, `changed` |
 
 Every request carries `language`, `timezone`, `now` and `levels`, the tone count of the display. `levels` is 1 to 256; a canvas falls back to 2, 4 or 16 tones when it cannot draw the value ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)). The request also carries the `page` with title, number, count and display size, and `ppi` for image displays. A widget also gets `style` with `padding`, `rule` and `text_px` in pixels.
@@ -39,6 +39,8 @@ Every request carries `language`, `timezone`, `now` and `levels`, the tone count
 `server_status` is Paperboy's own view of the devices (ADR 0115). It holds `current_device_status`, the device the page is rendered for, and `selected_devices_status`, a map of only the devices the page names in its widget arguments. A status names the id, display type, plan, hardware and firmware. It also names the contact state, last contact, power source, signal and battery reading. The estimated runtime and the last page or error follow. It carries no key, MAC or address. A preview without a device gets the sample device `preview` with fixed values ([ADR 0123](../adr/0123-a-sample-device-in-previews.md)). Only the built-in plugin receives the object; a plugin process would cache stale rows.
 
 A plugin answers with `version`, optionally `state`, `blobs`, `widgets`, `actions`, `result`, `max_age`, `description`, or a `changed` event.
+
+Paperboy does not call `actions` or `action` in this version (ADR 0161). The interface stays for widget actions.
 
 ## What a plugin declares
 

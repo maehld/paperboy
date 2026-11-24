@@ -768,7 +768,7 @@ func (h *Host) versionMismatch(name, file, reported string) {
 
 // Actions asks a plugin for the state of concrete actions (ADR 0057). The
 // answer has one entry per call, in the same order. Unlike widgets, action
-// states are not cached here: the menu asks again whenever it opens, and the
+// states are not cached here: Paperboy asks again whenever it runs an action, and the
 // answer depends on a device and a moment rather than on a page.
 func (h *Host) Actions(ctx context.Context, name string, req plugin.Request) ([]plugin.ActionState, error) {
 	req.Action = plugin.ActionList
@@ -808,7 +808,7 @@ func (h *Host) Actions(ctx context.Context, name string, req plugin.Request) ([]
 }
 
 // Invoke runs one concrete action (ADR 0057). The plugin decides whether it
-// needs a confirmation; the menu has asked before calling this.
+// needs a confirmation; the caller has asked before calling this.
 func (h *Host) Invoke(ctx context.Context, name string, req plugin.Request) (plugin.ActionOutcome, error) {
 	req.Action = plugin.ActionInvoke
 	if handler, ok := h.Builtin[name]; ok {

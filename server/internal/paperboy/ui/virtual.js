@@ -1,6 +1,6 @@
 /* The firmware stand-in of a virtual display (ADR 0091): sync, paint, report
    what is shown, come back for the refresh or the one-shot wake. The server
-   does the plan, the menu and the rendering; this file only presses buttons. */
+   does the plan and the rendering; this file only presses buttons. */
 (() => {
   "use strict";
   const cfg = {
@@ -34,7 +34,6 @@
     } else if (d.page_kind) {
       parts.push("page " + d.page_kind);
     }
-    if (d.menu) parts.push("menu " + d.menu);
     parts.push("refresh " + out.refresh_s + " s");
     if (out.wake) parts.push("wake " + out.wake.reason + " in " + out.wake.after_s + " s");
     if (out.listen_s > 0) parts.push("listen " + out.listen_s + " s");

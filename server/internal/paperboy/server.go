@@ -43,8 +43,6 @@ type Server struct {
 	// display type: in memory only, never in state/devices (ADR 0091).
 	virtual map[string]*deviceState
 	plans   *planLoader // device plans (ADR 0025)
-	// actionRuns holds the actions that outlive their sync (ADR 0064).
-	actionRuns map[string]*actionRun
 
 	rendered     map[string]*renderedPage // "<profile>/<page>[/<device>]" → last render
 	renderedHash map[string]*renderedPage // content hash → render, for the page download
@@ -121,7 +119,7 @@ func New(cfg *Config) (*Server, error) {
 	s := &Server{cfg: newConfigLoader(cfg.Dir, cfg), ctx: context.Background(),
 		widgets:    &widget.Host{Builtin: map[string]plugin.Handler{builtin.Name: builtin.Plugin{}}},
 		devicesDir: devicesDir, now: time.Now, state: state, virtual: map[string]*deviceState{},
-		plans: newPlanLoader(), actionRuns: map[string]*actionRun{}, rendered: map[string]*renderedPage{},
+		plans: newPlanLoader(), rendered: map[string]*renderedPage{},
 		renderedHash: map[string]*renderedPage{}, hints: map[string]hintPage{},
 		logs: newLogSeen(), fwNotes: map[string]string{}, pages: newPageLoader(), skipNotes: map[string]string{},
 		started: time.Now(), stats: stats.NewRegistry(), pluginCPU: map[int]*stats.Gauge{}}
@@ -426,7 +424,6 @@ type deviceAPIInfo struct {
 	LastError         string          `json:"last_error,omitempty"`
 	LastText          []string        `json:"last_text,omitempty"`
 	LastEventID       int64           `json:"last_event_id,omitempty"`
-	Menu              menuState       `json:"menu,omitempty"`
 	FirmwarePending   bool            `json:"firmware_pending,omitempty"`
 	FirmwareFailures  int             `json:"firmware_failures,omitempty"`
 }
@@ -448,7 +445,7 @@ func (d deviceInfo) api() deviceAPIInfo {
 		PairedAt: st.PairedAt, LastPage: st.LastPage, LastPageKind: st.LastPageKind,
 		LastPageHash: st.LastPageHash, LastPages: st.LastPages, ScrollHash: st.ScrollHash,
 		LastPageTime: st.LastPageTime, LastRefresh: st.LastRefresh, LastInterval: st.LastInterval,
-		LastError: st.LastError, LastText: st.LastText, LastEventID: st.LastEventID, Menu: st.Menu,
+		LastError: st.LastError, LastText: st.LastText, LastEventID: st.LastEventID,
 		FirmwarePending: st.FirmwarePending, FirmwareFailures: st.FirmwareFailures,
 	}
 }

@@ -111,8 +111,9 @@ type Plan struct {
 	// Triggers bring a page to the front while their condition holds; the
 	// first matching one wins.
 	Triggers []Trigger `yaml:"triggers" json:"triggers,omitempty"`
-	// Actions are offered by the device menu (ADR 0057).
-	Actions []PlanAction `yaml:"actions" json:"actions,omitempty"`
+	// Actions existed for the device menu (ADR 0057). The key stays to reject
+	// it with a hint (ADR 0161).
+	Actions any `yaml:"actions" json:"-"`
 
 	// The rule model of ADR 0025 is gone. These fields exist only to reject
 	// the old keys with a hint.
@@ -785,44 +786,6 @@ func weekdayKey(key string) bool {
 	return false
 }
 
-// PlanAction is one action a plan offers to every device that uses it
-// (ADR 0057). Action is "plugin/action"; Args are passed to the plugin
-// unchanged. ID is optional and becomes mandatory when Action appears more
-// than once. Title overrides the plugin's own title in the menu.
-type PlanAction struct {
-	Action string         `yaml:"action" json:"action"`
-	Args   map[string]any `yaml:"args" json:"args,omitempty"`
-	ID     string         `yaml:"id" json:"id,omitempty"`
-	Title  string         `yaml:"title" json:"title,omitempty"`
-}
-
-// Key is the plan-local identity of the action: its ID when set, otherwise
-// plugin/action. Selection state uses it, so reordering the list or changing
-// Args or Title keeps the identity (ADR 0057).
-func (a PlanAction) Key() string {
-	if a.ID != "" {
-		return a.ID
-	}
-	return a.Action
-}
-
-// UnmarshalYAML accepts the short form "- plugin/action" next to the full
-// mapping. Unknown keys are rejected by hand because the node decoder does not
-// know the plan's strict mode.
-func (a *PlanAction) UnmarshalYAML(v *yaml.Node) error {
-	if v.Kind == yaml.ScalarNode {
-		return v.Decode(&a.Action)
-	}
-	if v.Kind != yaml.MappingNode {
-		return fmt.Errorf("line %d: expected an action as \"plugin/action\" or a mapping", v.Line)
-	}
-	if err := checkKeys(v, "action", "args", "id", "title"); err != nil {
-		return err
-	}
-	type plain PlanAction
-	return v.Decode((*plain)(a))
-}
-
 // Values is the evaluated plan values keyed by "plugin/value" (ADR 0127). A
 // missing key means the value answered nothing or failed, so its condition
 // does not match.
@@ -1021,7 +984,10 @@ func (p *Plan) validate() error {
 			return fmt.Errorf("trigger %d: %w", i+1, err)
 		}
 	}
-	return p.validateActions()
+	if p.Actions != nil {
+		return fmt.Errorf("actions was removed: actions move to the widget cells (ADR 0161); remove it")
+	}
+	return nil
 }
 
 // validate rejects overlapping windows: a schedule must be unambiguous.
@@ -1075,49 +1041,6 @@ func (t *Trigger) validate(pages map[string]bool) error {
 			return fmt.Errorf("duplicate condition %q", cond.Value)
 		}
 		refs[cond.Value] = true
-	}
-	return nil
-}
-
-// validateActions checks the plan's action list (ADR 0057). Plugins, actions
-// and args are checked by the server, which knows them; here only the shape,
-// the identity and the duplicates are checked.
-func (p *Plan) validateActions() error {
-	count := map[string]int{}
-	for i, a := range p.Actions {
-		if a.Action == "" {
-			return fmt.Errorf("actions[%d]: action missing", i)
-		}
-		if !validRef(a.Action) {
-			return fmt.Errorf("actions[%d]: action %q: expected plugin/action", i, a.Action)
-		}
-		if a.ID != "" && !validName(a.ID) {
-			return fmt.Errorf("actions[%d]: id %q: only a-z, 0-9 and -", i, a.ID)
-		}
-		count[a.Action]++
-	}
-	ids := map[string]bool{}
-	seen := map[string]bool{}
-	for i, a := range p.Actions {
-		if count[a.Action] > 1 && a.ID == "" {
-			return fmt.Errorf("actions[%d]: id required because %s appears more than once", i, a.Action)
-		}
-		key := a.Key()
-		if ids[key] {
-			return fmt.Errorf("actions[%d]: duplicate id %q", i, key)
-		}
-		ids[key] = true
-		// json.Marshal writes map keys in sorted order, so the key tells
-		// equal arguments from different ones.
-		args, err := json.Marshal(a.Args)
-		if err != nil {
-			return fmt.Errorf("actions[%d]: args: %w", i, err)
-		}
-		dup := a.Action + " " + string(args)
-		if seen[dup] {
-			return fmt.Errorf("actions[%d]: duplicate action and args (%s)", i, a.Action)
-		}
-		seen[dup] = true
 	}
 	return nil
 }

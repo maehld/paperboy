@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -148,6 +149,18 @@ func press(t *testing.T, s *Server, dev *testDevice, roles ...string) map[string
 	return out
 }
 
+// pressHeld sends one button wake with the same hold time for every role.
+func pressHeld(t *testing.T, s *Server, dev *testDevice, hold int, roles ...string) map[string]any {
+	t.Helper()
+	dev.req.Reason = "button"
+	for _, role := range roles {
+		dev.req.Events = append(dev.req.Events, syncEvent{Type: "button", Button: role, HoldMS: hold})
+	}
+	out := displayPage(t, s, dev)
+	dev.req.Reason = "timer"
+	return out
+}
+
 func imageOf(out map[string]any) map[string]any {
 	return out["image"].(map[string]any)
 }
@@ -224,7 +237,7 @@ func TestPlanPaging(t *testing.T) {
 		t.Fatalf("next must page and keep the device listening: %v", out)
 	}
 	// A long previous goes back to the first page.
-	if got := pagePath(pressShown(t, s, dev, "", []int{800}, buttonPrevious)); !strings.Contains(got, "/eins/") {
+	if got := pagePath(pressHeld(t, s, dev, 800, buttonPrevious)); !strings.Contains(got, "/eins/") {
 		t.Fatalf("long previous: %q", got)
 	}
 	// previous wraps around within the visible list; alarm stays hidden.
@@ -743,5 +756,74 @@ triggers:
 	*now = time.Date(2026, time.October, 22, 8, 0, 0, 0, time.UTC) // Thursday
 	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/eins/") {
 		t.Fatalf("thursday: %q", got)
+	}
+}
+
+// TestHomeSyncsTheServedPage checks that home only syncs the page and never
+// pages, opens a menu or schedules a wake (ADR 0161).
+func TestHomeSyncsTheServedPage(t *testing.T) {
+	s, _ := planServer(t, testPlan)
+	dev := planDevice(t, s)
+	displayPage(t, s, dev)       // eins
+	press(t, s, dev, buttonNext) // zwei
+	out := press(t, s, dev, buttonHome)
+	if !strings.Contains(pagePath(out), "/zwei/") {
+		t.Fatalf("home moved the page: %q", pagePath(out))
+	}
+	if out["listen_s"].(float64) != listenAfterInput.Seconds() {
+		t.Fatalf("home must keep the device listening: %v", out["listen_s"])
+	}
+	if out["wake"] != nil {
+		t.Fatalf("home scheduled a wake: %v", out["wake"])
+	}
+	if got := pagePath(pressHeld(t, s, dev, 800, buttonHome)); !strings.Contains(got, "/zwei/") {
+		t.Fatalf("a long home changed the page: %q", got)
+	}
+	// The timer cycles from the page home kept, so home did not advance it.
+	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/drei/") {
+		t.Fatalf("the timer must cycle from the page home kept: %q", got)
+	}
+}
+
+// TestHomeKeepsATriggerPage checks that home does not re-assert a trigger or
+// page away from the page a button chose (ADR 0158, 0161).
+func TestHomeKeepsATriggerPage(t *testing.T) {
+	s, _ := planServer(t, testPlan)
+	withTriggerValue(t, s, "low")
+	dev := planDevice(t, s)
+	displayPage(t, s, dev) // alarm, from the trigger
+	press(t, s, dev, buttonNext)
+	if got := pagePath(press(t, s, dev, buttonHome)); !strings.Contains(got, "/eins/") {
+		t.Fatalf("home returned to the trigger page: %q", got)
+	}
+	if st := s.state["AABBCCDDEE01"]; st.Trigger != "alarm" {
+		t.Fatalf("home dropped the trigger: %+v", st)
+	}
+	// A sync without input pins the trigger again.
+	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/alarm/") {
+		t.Fatalf("the timer must pin the trigger again: %q", got)
+	}
+}
+
+// TestPageRoles checks the button roles of one wake (ADR 0161).
+func TestPageRoles(t *testing.T) {
+	cases := []struct {
+		name    string
+		buttons []string
+		holds   []int
+		want    []string
+	}{
+		{"home never pages", []string{buttonHome}, []int{0}, nil},
+		{"long home never pages", []string{buttonHome}, []int{800}, nil},
+		{"next pages", []string{buttonNext}, []int{0}, []string{buttonNext}},
+		{"previous pages", []string{buttonPrevious}, []int{0}, []string{buttonPrevious}},
+		{"long next jumps to the first page", []string{buttonNext}, []int{800}, []string{buttonHome}},
+		{"long previous jumps to the first page", []string{buttonPrevious}, []int{800}, []string{buttonHome}},
+		{"next and home", []string{buttonNext, buttonHome}, []int{0, 0}, []string{buttonNext}},
+	}
+	for _, c := range cases {
+		if got := pageRoles(c.buttons, c.holds); !slices.Equal(got, c.want) {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
 	}
 }

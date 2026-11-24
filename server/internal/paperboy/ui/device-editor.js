@@ -12,7 +12,7 @@
     isNew: !!start.new,
     displays: start.displays || [],
     plans: start.plans || [],
-    defaults: { refresh: start.refresh || '', menu_show: start.menu_show || '' },
+    defaults: { refresh: start.refresh || '' },
     device: empty(),
     hash: '',
     yaml: '',
@@ -31,7 +31,6 @@
       refresh: '',
       actions: '',
       alert_methods: 'none',
-      menu_show_duration: '',
       touch: false,
       power: '',
       rotation: null,
@@ -114,11 +113,10 @@
     el('refresh').placeholder = 'default ' + (state.defaults.refresh || '5m');
     el('refresh-note').textContent =
       'Default: ' + (state.defaults.refresh || '5m') + '; a plan refresh window may override it.';
-    el('menu').placeholder = 'default ' + (state.defaults.menu_show || '30s');
   }
 
   function durations() {
-    return [state.device.refresh, state.device.menu_show_duration];
+    return [state.device.refresh];
   }
 
   // show fills the form from the model; it is called once per load or save.
@@ -130,7 +128,6 @@
     el('refresh').value = d.refresh || '';
     el('actions').value = d.actions || '';
     el('alert_methods').value = d.alert_methods || 'none';
-    el('menu').value = d.menu_show_duration || '';
     el('touch').checked = !!d.touch;
     el('power').value = d.power || '';
     el('rotation').value = d.rotation === null || d.rotation === undefined ? '' : String(d.rotation);
@@ -201,7 +198,6 @@
     if (d.alert_methods === 'beep') out.alert_methods = ['beep'];
     else if (d.alert_methods === 'blink') out.alert_methods = ['blink'];
     else if (d.alert_methods === 'both') out.alert_methods = ['beep', 'blink'];
-    if (d.menu_show_duration) out.menu_show_duration = d.menu_show_duration;
     if (d.touch) out.touch = true;
     if (d.rotation !== null && d.rotation !== undefined && d.rotation !== '') out.rotation = Number(d.rotation);
     const b = {};
@@ -322,8 +318,8 @@
     show();
   }
 
-  // rename moves the device file and its state, so the cursor, battery reading
-  // and menu survive; the firmware registers by MAC and does not notice
+  // rename moves the device file and its state, so the cursor and the battery
+  // reading survive; the firmware registers by MAC and does not notice
   // (ADR 0079).
   async function rename() {
     if (state.isNew || !state.rename) return;
@@ -495,7 +491,6 @@
   onField('refresh', 'refresh');
   onField('actions', 'actions');
   onField('alert_methods', 'alert_methods');
-  onField('menu', 'menu_show_duration');
   onCheck('touch', 'touch');
   onField('power', 'power');
   onField('firmware', 'firmware');

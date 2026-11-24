@@ -98,15 +98,10 @@ type Device struct {
 	Plan    string   // page plan under plans/; empty = notice page
 	Hold    bool     // firmware: hold keeps the device on its firmware version (ADR 0043)
 	Power   string   // auto, battery or mains; empty = the display type's (ADR 0051)
-	// Actions allows the device menu (ADR 0057): "allow" (default) or "deny".
+	// Actions allows the device to run actions: "allow" (default) or "deny".
 	Actions string
-	// MenuShowDuration is how long the menu stays open before it closes
-	// itself; 0 = the default (ADR 0057).
-	MenuShowDuration Duration
-	// Touch turns the menu's tap-only controls on: the strip under the action
-	// cells with the page arrows and the close box, drawn only for devices
-	// whose digitiser the operator wants to use (ADR 0082). Empty = use what
-	// the firmware reported, which defaults to false.
+	// Touch says the operator wants the device's digitiser used. Empty = use
+	// what the firmware reported, which defaults to false (ADR 0082).
 	Touch *bool
 	// AlertMethods lists the methods an alert may use: beep, blink or both
 	// (ADR 0132). nil or an empty list keeps the device silent.
@@ -208,12 +203,6 @@ const (
 	minRefresh     = time.Minute
 	defaultRefresh = 5 * time.Minute
 
-	// The device menu (ADR 0057) stays open this long by default and never
-	// longer than menuMaxDuration, so a forgotten menu does not keep waking the
-	// device.
-	defaultMenuDuration = 30 * time.Second
-	menuMaxDuration     = 60 * time.Second
-
 	actionsAllow = "allow"
 	actionsDeny  = "deny"
 )
@@ -240,7 +229,6 @@ type Config struct {
 	Language    string         // "de" or "en"; built-in texts and number formats
 	Timezone    *time.Location // plans and built-in dates
 	Refresh     Duration       // default interval of a device; a plan refresh window may override it
-	MenuShow    Duration       // default time the device menu stays open (ADR 0057)
 	Pages       string         // page templates: <dir>/pages
 	Plans       string         // page plans: <dir>/plans
 	DisplaysDir string         // display type files: <dir>/displays (ADR 0071)
@@ -309,9 +297,9 @@ func (c *Config) power(d *Device, reported string) string {
 	return powerBattery
 }
 
-// touch reports whether the device menu draws the tap-only control strip
+// touch reports whether Paperboy may use the device digitiser
 // (ADR 0082): the device file wins, otherwise what the firmware reported, and
-// without both the menu stays button-only.
+// without both the digitiser stays unused.
 func (c *Config) touch(d *Device, reported bool) bool {
 	if d.Touch != nil {
 		return *d.Touch
@@ -356,8 +344,8 @@ type fileConfig struct {
 	Old      any    `yaml:"providers"` // removed in v2; rejected with a hint
 	Defaults struct {
 		Refresh     Duration `yaml:"refresh"`
-		PageTimeout any      `yaml:"page_timeout"` // removed by ADR 0130; rejected with a hint
-		MenuShow    Duration `yaml:"menu_show_duration"`
+		PageTimeout any      `yaml:"page_timeout"`       // removed by ADR 0130; rejected with a hint
+		MenuShow    any      `yaml:"menu_show_duration"` // removed by ADR 0161; rejected with a hint
 		Battery     *Battery `yaml:"battery"`
 	} `yaml:"defaults"`
 	Firmware struct {

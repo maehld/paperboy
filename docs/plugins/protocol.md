@@ -293,8 +293,7 @@ request's order.
 
 - `title` overrides the spec's title for this instance.
 - `disabled` is the reason why the action cannot run now; empty means
-  available. A disabled action stays visible in the menu, hatched, instead of
-  disappearing.
+  available. A disabled action carries the reason instead of disappearing.
 - `confirm` overrides the spec's confirmation for this instance.
 - The plugin validates `args` itself against the spec; a bad value becomes a
   `disabled` reason instead of a protocol error. `Values.Check` does both the
@@ -315,7 +314,7 @@ Runs exactly one concrete action. Paperboy sends one `actions` entry.
 ```
 
 - `ok: false` with a `message` means the action ran but failed; Paperboy shows
-  the message and keeps the menu open.
+  the message.
 - A protocol or plugin failure is an `error` answer instead.
 - `changed: true` tells Paperboy to drop the plugin's cached widgets before the
   next render.

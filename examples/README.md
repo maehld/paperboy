@@ -76,9 +76,7 @@ The plugin names in the pages are the keys under `plugins` in `paperboy.yaml`;
 night quiet: the refresh is 30 minutes, with a 10-minute window from 07:00 to
 22:00. Copy it into the `plans/` directory of your instance and point a device
 at it with `plan: standard`. Its commented trigger shows a glucose page while
-`dexcom/state` is low or urgent, and its commented `evcc/mode` actions switch a
-loadpoint's charge mode from the device menu, one "now" and one "PV only" entry
-per loadpoint.
+`dexcom/state` is low or urgent.
 
 `plans/tour.yaml` rotates through every example page and so through all
 shipped plugins: it shows the glucose page while `dexcom/state` is out of its

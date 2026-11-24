@@ -78,10 +78,6 @@ type deviceState struct {
 	LastText     []string  `json:"last_text,omitempty"`     // text displays: the last served lines (ADR 0044)
 	LastEventID  int64     `json:"last_event_id,omitempty"` // highest applied event ID (ADR 0064)
 
-	// The device menu (ADR 0057): open/closed, phase, selection and the
-	// resolved actions.
-	Menu menuState `json:"menu,omitempty"`
-
 	// A manual alert from the operator (ADR 0142). The device cannot confirm a
 	// signal, so the state holds the request and its expiry until the next sync
 	// consumes it.

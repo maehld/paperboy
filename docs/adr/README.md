@@ -55,10 +55,10 @@ The content model: what a page is, what draws in it and when it is shown. See [`
 | [0046](0046-width-aware-value-formatting.md) | Width-aware value formatting for text displays | Superseded by [ADR-0049](0049-plugin-widgets.md) |
 | [0049](0049-plugin-widgets.md) | Paperboy v2 – pages composed from plugin widgets | Accepted, implemented |
 | [0050](0050-physical-scaling-by-display-ppi.md) | Scale widget layout by display PPI | Accepted, implemented |
-| [0057](0057-plugin-actions-from-the-plan.md) | Plugin actions from the plan and the action menu | Accepted, implemented |
-| [0067](0067-buttons-and-the-menu.md) | Buttons – home opens the menu, long presses page | Accepted, implemented |
-| [0078](0078-the-menu-stays-open-while-it-is-used.md) | The menu stays open while it is used | Accepted, implemented |
-| [0082](0082-menu-tap-controls-in-a-strip.md) | The menu's tap controls are their own strip | Accepted, implemented |
+| [0057](0057-plugin-actions-from-the-plan.md) | Plugin actions from the plan and the action menu | Superseded by [ADR-0161](0161-home-syncs-and-the-menu-goes.md) |
+| [0067](0067-buttons-and-the-menu.md) | Buttons – home opens the menu, long presses page | Superseded by [ADR-0161](0161-home-syncs-and-the-menu-goes.md) |
+| [0078](0078-the-menu-stays-open-while-it-is-used.md) | The menu stays open while it is used | Superseded by [ADR-0161](0161-home-syncs-and-the-menu-goes.md) |
+| [0082](0082-menu-tap-controls-in-a-strip.md) | The menu's tap controls are their own strip | Superseded by [ADR-0161](0161-home-syncs-and-the-menu-goes.md) |
 | [0092](0092-scrolling-text-lines.md) | Scrolling lines on text displays | Accepted, implemented |
 | [0095](0095-the-logo-on-pages-and-devices.md) | The Paperboy logo on pages and on the device | Accepted, implemented |
 | [0103](0103-plugin-conditions-in-plans.md) | Show a page while a plugin condition is active | Superseded by [ADR-0127](0127-plan-conditions-are-values.md); replaced the unimplemented `when.data` of [ADR-0025](0025-plaene-je-display.md) with conditions from plugins |
@@ -162,6 +162,7 @@ The web UI: what the operator sees and how content is edited. See [`04-operator-
 | [0156](0156-a-title-line-for-the-operator-shell.md) | A title line for the operator shell | Accepted, implemented; amends the top bar, the editor action bars and the list heads of [ADR-0152](0152-a-design-system-and-a-rail-for-the-operator-ui.md) |
 | [0157](0157-drop-the-recent-widgets.md) | Drop the recent widgets from the palette | Accepted, implemented; keeps the pinned widgets of [ADR-0152](0152-a-design-system-and-a-rail-for-the-operator-ui.md) and removes the recent ones |
 | [0158](0158-plans-are-pages-refresh-windows-and-triggers.md) | A plan is pages, refresh windows and triggers | Accepted, implemented; supersedes [ADR-0025](0025-plaene-je-display.md) and amends the conditions of [ADR-0127](0127-plan-conditions-are-values.md), the refresh of [ADR-0130](0130-what-a-plan-refresh-does.md), the alert of [ADR-0131](0131-a-plan-rule-alerts-the-device.md) and the cursor of [ADR-0133](0133-the-page-cursor-holds-the-page.md) |
+| [0161](0161-home-syncs-and-the-menu-goes.md) | Home syncs the page and the device menu goes | Accepted, implemented; supersedes [ADR-0057](0057-plugin-actions-from-the-plan.md), [ADR-0067](0067-buttons-and-the-menu.md), [ADR-0078](0078-the-menu-stays-open-while-it-is-used.md) and [ADR-0082](0082-menu-tap-controls-in-a-strip.md) |
 
 ## Plugins
 

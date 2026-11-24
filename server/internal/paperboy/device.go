@@ -146,8 +146,8 @@ type syncResponse struct {
 	Blink    bool           `json:"blink,omitempty"`
 	Firmware *firmwareOffer `json:"firmware"` // update offer (ADR 0043); null when none
 	// Wake names the reason of the next wake and how long to sleep until then
-	// (ADR 0064). It overrides refresh_s for exactly one sleep, so the menu can
-	// close at its deadline and a slow action can report its result.
+	// (ADR 0064). It overrides refresh_s for exactly one sleep. Nothing sets it
+	// until widget actions need a deadline or a result (issue #432).
 	Wake *syncWake `json:"wake,omitempty"`
 }
 
@@ -490,45 +490,6 @@ func chargerState(st deviceState) string {
 		return "discharging"
 	}
 	return ""
-}
-
-// menuWake names the one-shot wake the device needs (ADR 0064): the menu
-// deadline while it is open, or a short wake for the result of a running
-// action. Without an open menu the regular refresh applies.
-func menuWake(menu menuState, d *Device, now time.Time, critical bool) *syncWake {
-	if !menu.Open || critical {
-		return nil
-	}
-	switch menu.Phase {
-	case menuRunningPhase:
-		return &syncWake{Reason: "result", AfterS: int(actionBudget.Seconds())}
-	case menuResultPhase:
-		return nil // the next regular sync closes the result
-	}
-	left := menu.expiresAt(d).Sub(now)
-	if left < time.Second {
-		left = time.Second
-	}
-	return &syncWake{Reason: "menu", AfterS: int(left.Seconds())}
-}
-
-// fitWakeToListen shortens a listen window that would swallow a one-shot wake:
-// the firmware listens before it sleeps, so a wake after after_s seconds would
-// arrive listen_s too late. The time it moves out of the window goes into the
-// wake, which then fires when it was meant to (ADR 0078).
-func fitWakeToListen(listen time.Duration, wake *syncWake) (time.Duration, *syncWake) {
-	if wake == nil || wake.AfterS < 1 {
-		return listen, wake
-	}
-	room := int(listen.Seconds())
-	if room > wake.AfterS-1 {
-		room = wake.AfterS - 1
-	}
-	if room < 0 {
-		room = 0
-	}
-	wake.AfterS -= room
-	return time.Duration(room) * time.Second, wake
 }
 
 // handleText answers the text poll of a text display (ADR 0044, 0045): the

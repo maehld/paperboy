@@ -56,26 +56,6 @@ label.field.wide { grid-column: 1 / -1; }
 .warn { margin: .35rem 0 0; padding: .3rem .55rem; font-size: .8rem; background: var(--pb-warn-bg); border-left: 3px solid var(--pb-warn); }
 .warn ul { margin: 0; padding-left: 1rem; }
 .warn p { margin: 0; }
-/* actions */
-.action { border: 1px solid var(--pb-hairline); border-radius: 8px; padding: .6rem; margin-top: .6rem; background: var(--pb-surface-sunken); }
-.action-head { display: flex; gap: .4rem; align-items: center; margin-bottom: .4rem; }
-.action-head select { flex: 1; }
-.action .arg { margin-top: .35rem; }
-.action .arg .name { font-size: .78rem; color: var(--pb-ink-muted); display: block; }
-.action .arg .desc { font-size: .72rem; color: var(--pb-ink-faint); display: block; }
-.action .arg .checks { margin-top: .25rem; }
-.action .arg .checks-bar { display: flex; align-items: center; gap: .4rem; margin-bottom: .3rem; font-size: .74rem; color: var(--pb-ink-muted); }
-.action .arg .checks-count { font-variant-numeric: tabular-nums; }
-.action .arg .checks-actions { display: flex; gap: .25rem; margin-left: auto; }
-.action .arg .checks-actions button { font: inherit; font-size: .74rem; padding: .05rem .45rem; border: 1px solid var(--pb-hairline-strong); border-radius: 999px; background: var(--pb-surface-sunken); color: var(--pb-accent); cursor: pointer; }
-.action .arg .checks-actions button:hover { background: var(--pb-accent-bg); border-color: var(--pb-hairline-strong); }
-.action .arg .checks-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .15rem .35rem; }
-.action .arg .check { display: flex; align-items: center; gap: .35rem; min-width: 0; padding: .18rem .3rem; border: 1px solid transparent; border-radius: 4px; font-size: .78rem; line-height: 1.25; color: var(--pb-ink); cursor: pointer; }
-.action .arg .check:hover { background: var(--pb-surface-sunken); }
-.action .arg .check:has(input:checked) { background: var(--pb-accent-bg); border-color: var(--pb-hairline-strong); color: var(--pb-accent); }
-.action .arg .check input { flex: none; margin: 0; }
-.action .arg .check span { min-width: 0; overflow-wrap: anywhere; }
-.action .note { font-size: .75rem; color: var(--pb-ink-muted); }
 /* devices */
 #devices .device { display: flex; gap: .5rem; align-items: baseline; font-size: .88rem; padding: .1rem 0; }
 #devices .device .edit { margin-left: auto; font-size: .8rem; }
@@ -128,14 +108,6 @@ label.field.wide { grid-column: 1 / -1; }
     </section>
   </div>
   <div class="col">
-    <section class="panel">
-      <div class="panel-head">
-        <h3>Actions</h3>
-        <button id="add-action" type="button">Add action</button>
-      </div>
-      <div id="actions"></div>
-      <div id="action-warnings"></div>
-    </section>
     <section class="panel">
       <h3>Devices</h3>
       <div id="devices"></div>

@@ -377,7 +377,6 @@ type dashboardDevice struct {
 	Address       string   // source address of the last contact, empty when unknown (ADR 0083)
 	ServedAgo     string   // age of the last served page
 	Firmware      string   // running version, available version and update status
-	Menu          string   // open menu phase and selected action (ADR 0057)
 	Actions       string   // "denied", empty when the device may use actions
 	Alert         string   // why a manual alert is not available, empty when it is (ADR 0142)
 	Signal        string   // a manual alert that waits for the next sync, empty when none
@@ -471,7 +470,6 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			Address:       d.ClientIP,
 			ServedAgo:     agoText(d.LastPageTime, now),
 			Firmware:      firmwareText(d),
-			Menu:          menuText(d.deviceState),
 			Actions:       actionsText(devices[d.ID]),
 			Alert:         alertOffer(devices[d.ID], d),
 			Signal:        alertQueuedText(d.PendingAlert, now, loc),
@@ -655,18 +653,7 @@ func planText(plan string) string {
 	return plan
 }
 
-// menuText names the open menu and its selection for the dashboard.
-func menuText(st deviceState) string {
-	if !st.Menu.Open {
-		return ""
-	}
-	if a := st.Menu.find(st.Menu.Selected); a != nil {
-		return st.Menu.Phase + " · " + a.Title
-	}
-	return st.Menu.Phase
-}
-
-// actionsText marks a device that may not use the device menu (ADR 0057).
+// actionsText marks a device that may not run actions.
 func actionsText(d *Device) string {
 	if d != nil && d.Actions == actionsDeny {
 		return "denied"

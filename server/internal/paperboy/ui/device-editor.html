@@ -35,15 +35,14 @@ pre.file { margin: 0; padding: .5rem .6rem; background: var(--pb-surface-sunken)
       <p class="hint">The plan assigns the pages; without one the device shows a notice page. Plans are the files under <code>plans/</code> and are edited on their own page.</p>
     </section>
     <section class="panel">
-      <h3>Refresh and menu</h3>
+      <h3>Refresh and actions</h3>
       <label class="field"><span>refresh</span><input id="refresh" autocomplete="off" spellcheck="false" placeholder=""></label>
       <p class="hint" id="refresh-note"></p>
       <label class="field"><span>actions</span><select id="actions"></select></label>
       <label class="field"><span>alert methods</span><select id="alert_methods"></select></label>
       <p class="hint">An alert uses these methods: a beep, a blink or both. Without them the device stays silent. The hardware ignores a method it lacks (ADR 0132).</p>
-      <label class="field"><span>menu duration</span><input id="menu" autocomplete="off" spellcheck="false" placeholder=""></label>
       <label class="field"><span>touch controls</span><input id="touch" type="checkbox"></label>
-      <p class="hint">The menu opens on a short <code>home</code> press; <code>deny</code> turns it off (ADR 0057). The duration is between 5s and 1m. <em>touch controls</em> draws the close box and the page arrows under the actions for a digitiser; without it the menu is button-only (ADR 0082).</p>
+      <p class="hint"><code>deny</code> turns actions off for this device. <em>touch controls</em> lets Paperboy use the device's digitiser (ADR 0082).</p>
       <label class="field"><span>power</span><select id="power"></select></label>
       <label class="field"><span>rotation</span><select id="rotation"></select></label>
       <label class="field"><span>firmware</span><select id="firmware"></select></label>

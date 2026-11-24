@@ -18,11 +18,10 @@ const demandGrace = time.Minute
 const minDemandGrace = 30 * time.Second
 
 // pluginDemand names, per plugin, the next moment Paperboy needs its data
-// (ADR 0126). It is the earliest expected contact around the rule each device
-// is on: the pages that fit its display type plus the plan's conditions.
-// Actions are resolved when the menu opens and add nothing. A device that is
-// late or never seen adds nothing, so a powered-off device cannot keep a
-// plugin polling.
+// (ADR 0126). It is the earliest expected contact around the trigger each
+// device is on: the pages that fit its display type plus the plan's
+// conditions. A device that is late or never seen adds nothing, so a
+// powered-off device cannot keep a plugin polling.
 func (s *Server) pluginDemand() map[string]time.Time {
 	cfg := s.config()
 	now := s.now()

@@ -303,7 +303,7 @@ for (const a of document.querySelectorAll('a[data-claim]')) {
 // its key, page cursor and battery reading go with it.
 for (const b of document.querySelectorAll('button[data-forget]')) {
   b.addEventListener('click', async () => {
-    if (!confirm('Forget the state of ' + (b.dataset.mac || 'this display') + '?\n\nIts key, page cursor, battery reading and menu are lost; the display registers again on its next sync.')) return;
+    if (!confirm('Forget the state of ' + (b.dataset.mac || 'this display') + '?\n\nIts key, page cursor and battery reading are lost; the display registers again on its next sync.')) return;
     b.disabled = true;
     let res;
     try {

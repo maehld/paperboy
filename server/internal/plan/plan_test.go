@@ -405,3 +405,12 @@ func TestJSONRoundTrip(t *testing.T) {
 		t.Fatalf("mode: %q", back.Mode())
 	}
 }
+
+// TestPlanRejectsActions checks that the menu's action list is rejected with
+// the hint that actions move to the widget cells (ADR 0161).
+func TestPlanRejectsActions(t *testing.T) {
+	got := parseErr(t, "pages: [a]\nactions:\n  - action: evcc/mode\n")
+	if !strings.Contains(got, "removed") || !strings.Contains(got, "widget") {
+		t.Fatalf("actions: %q", got)
+	}
+}
