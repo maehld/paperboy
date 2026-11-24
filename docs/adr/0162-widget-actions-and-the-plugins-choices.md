@@ -44,9 +44,10 @@ show what can run.
    hatched, and a cell that cannot hold its options says so.
 
 4. **A tap runs one option in the sync.** The answer is the normal page with
-   the new state. That is one paint and no confirmation. A tap outside the
-   tiles leaves the mode. A tap whose `shown` hash is not the action view runs
-   nothing.
+   the new state. That is one paint and no confirmation. A failed call shows a
+   black banner with the reason; the next sync serves the plain page again. A
+   tap outside the tiles leaves the mode. A tap whose `shown` hash is not the
+   action view runs nothing.
 
 5. **The mode lasts 20 seconds.** A one-shot wake of reason `action` serves the
    plain page. Every input keeps the device's 20-second input window, because

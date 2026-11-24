@@ -244,3 +244,52 @@ func fitWakeToListen(listen time.Duration, wake *syncWake) (time.Duration, *sync
 	wake.AfterS -= room
 	return time.Duration(room) * time.Second, wake
 }
+
+// actionFailure draws the failure banner over the served page and registers it
+// as a notice page, so the page cache stays untouched (ADR 0162). The next
+// sync serves the plain page again.
+func (s *Server) actionFailure(cfg *Config, d *Device, served servedPage, message string) (out servedPage) {
+	out = served
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("action banner panicked", "device", d.ID, "panic", r, "stack", string(debug.Stack()))
+			out = served
+		}
+	}()
+	if served.name == "" {
+		return served
+	}
+	s.mu.Lock()
+	rp := s.renderedPageLocked(d.Profile, served.name, served.hash)
+	s.mu.Unlock()
+	if rp == nil || len(rp.data) == 0 {
+		return served
+	}
+	img, err := png.Decode(bytes.NewReader(rp.data))
+	if err != nil {
+		return served
+	}
+	pal, ok := img.(*image.Paletted)
+	p := cfg.Profiles[d.Profile]
+	if !ok || pal.Rect.Dx() != p.Width || pal.Rect.Dy() != p.Height {
+		return served
+	}
+	drawFailureBanner(pal, p, cfg.texts().actionFailed(shorten(message)))
+	out = s.notice(d.Profile, pal)
+	out.name, out.page, out.pages = served.name, served.page, served.pages
+	out.refresh, out.interval = served.refresh, served.interval
+	return out
+}
+
+// drawFailureBanner paints a black strip at the top with the failure reason,
+// in the same style as the old action result banner.
+func drawFailureBanner(img *image.Paletted, p Profile, text string) {
+	r := image.Rect(0, 0, p.Width, max(28, p.Height/8)).Intersect(img.Rect)
+	if r.Empty() {
+		return
+	}
+	render.FillColor(img, r, render.Black)
+	size := max(render.MinSize, float64(r.Dy())*0.52)
+	render.Text(img, text, r.Min.X+12, r.Min.Y+r.Dy()/2+int(size*0.36),
+		render.Style{Size: size, Bold: true, Shrink: true}, r.Dx()-24, render.White, render.Left)
+}
