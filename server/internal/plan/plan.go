@@ -985,7 +985,7 @@ func (p *Plan) validate() error {
 		}
 	}
 	if p.Actions != nil {
-		return fmt.Errorf("actions was removed: actions move to the widget cells (ADR 0161); remove it")
+		return fmt.Errorf("actions was removed: actions move to the widget cells (ADR 0162); remove it")
 	}
 	return nil
 }

@@ -1,4 +1,5 @@
-# evcc: energy flow on top, site values and the charging point below.
+# evcc: energy flow on top, site values and the charging point below. A short
+# home shows the charge modes in the loadpoint cell; a tap runs one.
 title: Energie
 kind: image
 grid: [6, 8]
@@ -7,4 +8,4 @@ cells:
   - { at: [0, 0], span: [6, 1], widget: paperboy/header, args: { clock: true } }
   - { at: [0, 1], span: [6, 4], widget: evcc/flow }
   - { at: [0, 5], span: [3, 3], widget: evcc/site, args: { columns: 2 } }
-  - { at: [3, 5], span: [3, 3], widget: evcc/loadpoint, args: { index: 0 } }
+  - { at: [3, 5], span: [3, 3], widget: evcc/loadpoint, args: { index: 0 }, action: mode }

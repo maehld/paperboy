@@ -37,16 +37,20 @@ type servedPage struct {
 	lines    []string         // text displays: the lines to show (ADR 0044)
 	scrolls  []page.ScrollBox // text displays: boxes that scroll (ADR 0118)
 	err      error            // render error that turned the page into a notice
+	// actionable counts the cells that name an action; it decides the listen
+	// window and the action mode (ADR 0162).
+	actionable int
 }
 
 // renderedPage is a page template rendered for one profile and page.
 type renderedPage struct {
-	data []byte
-	hash string
-	key  string          // render cache key, per device on device-scoped pages (ADR 0115)
-	pix  []byte          // composed palette indexes; an identical composition reuses data and hash
-	rect image.Rectangle // bounds of pix
-	at   time.Time       // when the image was encoded; the runtime page ages the cache by it (ADR 0104)
+	data       []byte
+	hash       string
+	key        string          // render cache key, per device on device-scoped pages (ADR 0115)
+	pix        []byte          // composed palette indexes; an identical composition reuses data and hash
+	rect       image.Rectangle // bounds of pix
+	at         time.Time       // when the image was encoded; the runtime page ages the cache by it (ADR 0104)
+	actionable int             // cells that name an action (ADR 0162)
 }
 
 func hashBytes(data []byte) string {
@@ -106,7 +110,7 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	encodeDone := s.stats.Start("render.encode")
 	data := encodePNG(img)
 	encodeDone()
-	return &renderedPage{data: data, hash: hashBytes(data), key: key, pix: img.Pix, rect: img.Rect, at: time.Now()}, nil
+	return &renderedPage{data: data, hash: hashBytes(data), key: key, pix: img.Pix, rect: img.Rect, at: time.Now(), actionable: tmpl.Actionable()}, nil
 }
 
 // deviceInfo names a device for a plugin request (ADR 0111).
@@ -259,7 +263,7 @@ func (s *Server) storePage(profile, name string, rp *renderedPage) servedPage {
 	s.renderedHash[rp.hash] = rp
 	s.pruneRenderedLocked(time.Now())
 	s.mu.Unlock()
-	return servedPage{path: fmt.Sprintf("/pages/%s/%s/%s.png", profile, name, rp.hash), hash: rp.hash}
+	return servedPage{path: fmt.Sprintf("/pages/%s/%s/%s.png", profile, name, rp.hash), hash: rp.hash, actionable: rp.actionable}
 }
 
 // maxRendered and renderedTTL bound the rendered page cache (ADR 0139). The
@@ -536,7 +540,7 @@ func (s *Server) announceSkippedLocked(d *Device, r planResolution) {
 // when a trigger with alert: refresh alerts again (ADR 0131). Button input
 // keeps the trigger decision; next and previous page the extended list
 // (ADR 0158).
-func (s *Server) choosePlanPage(res planResolution, cfg *Config, d *Device, st *deviceState, now time.Time, firstContact, timed bool, buttons []string, buttonInput, quiet bool) planChoice {
+func (s *Server) choosePlanPage(res planResolution, cfg *Config, d *Device, st *deviceState, now time.Time, firstContact, timed bool, buttons []string, buttonInput, paused, quiet bool) planChoice {
 	p, err := res.plan, res.err
 	if p == nil {
 		if !quiet {
@@ -570,59 +574,67 @@ func (s *Server) choosePlanPage(res planResolution, cfg *Config, d *Device, st *
 	if trigger != "" && res.fit[trigger] != "" {
 		trigger = ""
 	}
-	pages := res.effective(trigger)
+	// The action mode is modal: its page and its trigger decision stay
+	// (ADR 0162).
+	listTrigger := trigger
+	if paused {
+		listTrigger = prev
+	}
+	pages := res.effective(listTrigger)
 	missing := !slices.Contains(pages, st.PageName)
 	// The cursor holds the page, not its index: a plan edit follows the name
 	// (ADR 0133), and a page that left the list is resolved by the mode.
 	st.PageName = res.resolve(st.PageName, pages, mode, st.PageBeforeTrigger)
-	if trigger != "" && trigger != prev && slices.Contains(base, st.PageName) {
-		// The page this trigger displaces, for on_refresh: current.
-		st.PageBeforeTrigger = st.PageName
-	}
 	alert := false
-	switch {
-	case len(buttons) > 0:
-		// Button roles apply in order (ADR 0042): presses made while the
-		// panel was painting arrive together and only the final page is
-		// rendered. A button also pages away from a trigger page.
-		for _, role := range buttons {
-			switch role {
-			case buttonNext:
+	if !paused {
+		if trigger != "" && trigger != prev && slices.Contains(base, st.PageName) {
+			// The page this trigger displaces, for on_refresh: current.
+			st.PageBeforeTrigger = st.PageName
+		}
+		switch {
+		case len(buttons) > 0:
+			// Button roles apply in order (ADR 0042): presses made while the
+			// panel was painting arrive together and only the final page is
+			// rendered. A button also pages away from a trigger page.
+			for _, role := range buttons {
+				switch role {
+				case buttonNext:
+					st.PageName = nextPage(pages, st.PageName)
+				case buttonPrevious:
+					st.PageName = prevPage(pages, st.PageName)
+				case buttonHome:
+					st.PageName = pages[0]
+				}
+			}
+		case buttonInput:
+			// A home press keeps the served page, also while a trigger is
+			// active (ADR 0161).
+		case trigger != "":
+			st.PageName = trigger
+		case timed && !firstContact && !missing:
+			// Only a timed refresh pages on its own (ADR 0130); a touch or a
+			// retried event never does. A page that just left the list was
+			// resolved above; advancing again would skip one more page.
+			switch mode {
+			case plan.RefreshCycle:
 				st.PageName = nextPage(pages, st.PageName)
-			case buttonPrevious:
-				st.PageName = prevPage(pages, st.PageName)
-			case buttonHome:
+			case plan.RefreshFirst:
 				st.PageName = pages[0]
 			}
 		}
-	case buttonInput:
-		// A home press keeps the served page, also while a trigger is active
-		// (ADR 0161).
-	case trigger != "":
-		st.PageName = trigger
-	case timed && !firstContact && !missing:
-		// Only a timed refresh pages on its own (ADR 0130); a touch or a
-		// retried event never does. A page that just left the list was
-		// resolved above; advancing again would skip one more page.
-		switch mode {
-		case plan.RefreshCycle:
-			st.PageName = nextPage(pages, st.PageName)
-		case plan.RefreshFirst:
-			st.PageName = pages[0]
+		st.Trigger = trigger
+		if trigger == "" && prev != "" {
+			// The trigger ended and hid its page again; the cursor was
+			// resolved above, so its memory can go.
+			st.PageBeforeTrigger = ""
 		}
-	}
-	st.Trigger = trigger
-	if trigger == "" && prev != "" {
-		// The trigger ended and hid its page again; the cursor was resolved
-		// above, so its memory can go.
-		st.PageBeforeTrigger = ""
-	}
-	if !buttonInput {
-		switch res.alert {
-		case plan.AlertOnce:
-			alert = trigger != "" && trigger != prev
-		case plan.AlertRefresh:
-			alert = trigger != "" && (trigger != prev || timed)
+		if !buttonInput {
+			switch res.alert {
+			case plan.AlertOnce:
+				alert = trigger != "" && trigger != prev
+			case plan.AlertRefresh:
+				alert = trigger != "" && (trigger != prev || timed)
+			}
 		}
 	}
 	index := slices.Index(pages, st.PageName)

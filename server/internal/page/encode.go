@@ -130,6 +130,9 @@ func cellNode(c Cell) *yaml.Node {
 	if len(c.Args) > 0 {
 		add(n, "args", valueNode(c.Args))
 	}
+	if c.Action != "" {
+		add(n, "action", str(c.Action))
+	}
 	if c.Style != nil {
 		if s := styleNode(*c.Style, true); len(s.Content) > 0 {
 			add(n, "style", s)

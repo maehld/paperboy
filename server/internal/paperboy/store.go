@@ -78,6 +78,9 @@ type deviceState struct {
 	LastText     []string  `json:"last_text,omitempty"`     // text displays: the last served lines (ADR 0044)
 	LastEventID  int64     `json:"last_event_id,omitempty"` // highest applied event ID (ADR 0064)
 
+	// Action is the open widget action mode (ADR 0162).
+	Action actionState `json:"action,omitempty"`
+
 	// A manual alert from the operator (ADR 0142). The device cannot confirm a
 	// signal, so the state holds the request and its expiry until the next sync
 	// consumes it.

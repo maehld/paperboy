@@ -119,8 +119,8 @@ power: mains            # optional, overrides the display type (E1001 on USB, AD
 rotation: 0             # optional, overrides the display type (ADR 0102)
 battery: { warn_volts: 3.5 }   # optional; empty values inherit defaults.battery
 firmware: hold          # optional: keep the device on its firmware (ADR 0043)
-actions: allow          # optional: allow (default) or deny actions (ADR 0161)
-touch: false            # optional: let Paperboy use the digitiser (ADR 0082)
+actions: allow          # optional: allow (default) or deny actions (ADR 0162)
+touch: false            # optional: use the digitiser for widget actions (ADR 0162)
 ```
 
 - `protocol` accepts only `paperboy` (the default): devices running the Paperboy firmware ([ADR 0042](adr/0042-device-protocol.md)). Paperboy rejects `trmnl` and `opendisplay` (both removed) and `text-http`/`image-http` (the device API replaced them, [ADR 0044](adr/0044-text-displays-on-the-device-api.md)).
@@ -129,5 +129,5 @@ touch: false            # optional: let Paperboy use the digitiser (ADR 0082)
 - Paperboy keeps the source address of the last register, sync or text poll in the state file of the device (`client_ip`, [ADR 0083](adr/0083-device-address.md)). It shows the address on the dashboard, in the devices tab and in `GET /api/devices`. The address comes from the connection, never from a header, so a reverse proxy in front of Paperboy would show its own address.
 - Pages and notice pages go only to a device that identifies itself with its key ([ADR 0097](adr/0097-page-downloads-take-the-device-key.md)); the firmware sends it with the image download. A key only reaches pages of its own display type. The dashboard shows the last served image through the UI route `/api/devices/<id>/image`, which needs `ui.password` like the rest of the operator UI.
 - A display that registers without a key shows a six-character code on its panel. Press *Pair* in the device editor and type the code; the display takes its key within seconds while its setup screen is up ([ADR 0109](adr/0109-pair-a-display.md)). The display repeats its register, so no reset is needed. The code is valid for ten minutes and five attempts. A display that is forgotten with *Forget* pairs again.
-- `touch: true` lets Paperboy use the device's digitiser ([ADR 0082](adr/0082-menu-tap-controls-in-a-strip.md)). If the key is absent, the value the firmware reported counts.
+- `touch: true` lets a short `home` show the widget actions and a tap run one ([ADR 0162](adr/0162-widget-actions-and-the-plugins-choices.md)). If the key is absent, the value the firmware reported counts.
 - `rotation: 0|90|180|270` overrides the rotation of the display type for one mounting ([ADR 0102](adr/0102-rotate-pages-onto-the-panel.md)): the same `sticky-portrait` type serves a panel that hangs the other way up with `rotation: 270` on its device file. Absent inherits the display type's value; text displays reject a rotation. The firmware applies it while painting and maps touches into the same page, so a tap lands on the point it shows.

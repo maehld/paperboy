@@ -54,6 +54,9 @@ type virtualOptions struct {
 // device builds the in-memory device a virtual display acts as. It has no MAC
 // and no state file: its cursor lives in the server's memory.
 func (o virtualOptions) device() *Device {
+	// The browser has a pointer, so the virtual display simulates a
+	// digitiser (ADR 0162).
+	touch := true
 	return &Device{
 		ID:      "virtual",
 		Type:    TypePaperboy,
@@ -62,6 +65,7 @@ func (o virtualOptions) device() *Device {
 		Power:   o.power,
 		Refresh: Duration(o.refresh),
 		Actions: actionsAllow,
+		Touch:   &touch,
 	}
 }
 

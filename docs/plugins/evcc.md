@@ -122,13 +122,21 @@ cells:
 
 ## Actions
 
-The plugin offers one action, `mode`, which sets an evcc charge mode ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md)). A mode change affects the car, so the action asks for a confirmation. Paperboy does not run actions in this version (ADR 0161); the interface stays for widget actions.
+The plugin offers one action, `mode`, which sets an evcc charge mode ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md), [0162](../adr/0162-widget-actions-and-the-plugins-choices.md)). A loadpoint widget binds it with `action: mode`; a short home shows the four modes in its cell and a tap runs one. A mode change affects the car, so the action asks for a confirmation; Paperboy ignores it in this version.
 
 | Argument | Description |
 |---|---|
-| `loadpoint` | Required. Index into `loadpoints` of `/api/state`, the same order the `loadpoint` widget uses. |
+| `index` | Required. Index into `loadpoints` of `/api/state`; the loadpoint widget passes its own `index`. |
 | `mode` | Required. One of `off`, `minpv`, `pv`, `now`. |
 
-The title names the loadpoint and the mode, e.g. "Wohnmobil: jetzt laden". The action is unavailable while evcc has no data yet, the loadpoint index does not exist or evcc already runs that mode. When evcc is down the entry stays visible as unavailable with the reason; nothing else breaks.
+The title is the short mode label, e.g. "jetzt laden". The action is unavailable while evcc has no data yet, the loadpoint index does not exist or evcc already runs that mode. When evcc is down the cell stays visible with the reason; nothing else breaks.
+
+```yaml
+- at: [3, 5]
+  span: [3, 3]
+  widget: evcc/loadpoint
+  args: { index: 0 }
+  action: mode
+```
 
 A successful action reads `/api/state` again at once instead of waiting for the next poll, so the `loadpoint` widget shows the new mode after the next sync. Actions set a target state and never toggle, so a repeated sync is safe.

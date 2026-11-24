@@ -233,8 +233,8 @@ func TestPlanPaging(t *testing.T) {
 		t.Fatalf("first page: %q", got)
 	}
 	out := press(t, s, dev, buttonNext)
-	if !strings.Contains(pagePath(out), "/zwei/") || out["listen_s"].(float64) != listenAfterInput.Seconds() {
-		t.Fatalf("next must page and keep the device listening: %v", out)
+	if !strings.Contains(pagePath(out), "/zwei/") || out["listen_s"].(float64) != 0 {
+		t.Fatalf("next must page; a page without actions has no listen window: %v", out)
 	}
 	// A long previous goes back to the first page.
 	if got := pagePath(pressHeld(t, s, dev, 800, buttonPrevious)); !strings.Contains(got, "/eins/") {
@@ -643,7 +643,7 @@ func TestResolvePlanSkipsMissingPages(t *testing.T) {
 	}
 	s.mu.Lock()
 	st := &deviceState{}
-	choice := s.choosePlanPage(res, cfg, d, st, *now, true, false, nil, false, true)
+	choice := s.choosePlanPage(res, cfg, d, st, *now, true, false, nil, false, false, true)
 	reason := s.skipNotes["small/fehlt"]
 	s.mu.Unlock()
 	if choice.name != "eins" || choice.pages != 2 {
@@ -770,8 +770,8 @@ func TestHomeSyncsTheServedPage(t *testing.T) {
 	if !strings.Contains(pagePath(out), "/zwei/") {
 		t.Fatalf("home moved the page: %q", pagePath(out))
 	}
-	if out["listen_s"].(float64) != listenAfterInput.Seconds() {
-		t.Fatalf("home must keep the device listening: %v", out["listen_s"])
+	if out["listen_s"].(float64) != 0 {
+		t.Fatalf("a page without actions has no listen window: %v", out["listen_s"])
 	}
 	if out["wake"] != nil {
 		t.Fatalf("home scheduled a wake: %v", out["wake"])

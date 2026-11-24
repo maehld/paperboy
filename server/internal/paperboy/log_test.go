@@ -176,8 +176,8 @@ func TestSyncTouchAndHoldOnlyLogged(t *testing.T) {
 	dev.req.Reason = "touch"
 	dev.req.Events = []syncEvent{{Type: "touch", X: 412, Y: 233}}
 	out := displayPage(t, s, dev)
-	if !strings.Contains(pagePath(out), "/eins/") || out["listen_s"].(float64) != listenAfterInput.Seconds() {
-		t.Fatalf("touch must not page but keep the device listening: %v", out)
+	if !strings.Contains(pagePath(out), "/eins/") || out["listen_s"].(float64) != 0 {
+		t.Fatalf("a touch must not page and a page without actions has no listen window: %v", out)
 	}
 	if lines := logLines(logs(), "display touch"); len(lines) != 1 || !strings.Contains(lines[0], "x=412") {
 		t.Fatalf("touch not logged: %q", lines)

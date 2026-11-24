@@ -169,7 +169,7 @@ func (e *evcc) Describe() plugin.Description {
 		Version: version(),
 		Config:  configKeys,
 		Actions: []plugin.ActionSpec{
-			{Name: "mode", Title: "Charge mode", Args: actionArgs, Confirm: &plugin.Confirm{Required: true}},
+			actionSpec(e.lang),
 		},
 		Values: valueSpecs(),
 		Widgets: []plugin.WidgetInfo{

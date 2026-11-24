@@ -29,7 +29,7 @@ cells:
   - { at: [0, 0], span: [6, 1], widget: paperboy/header }
 ```
 
-- `widget` is `<plugin>/<widget>`. Paperboy passes `args` to the widget unchanged. `at` is the top-left cell (column, row, from 0), and `span` is the size in cells (default `[1, 1]`). Cells must stay inside the grid and must not overlap. Empty cells stay white.
+- `widget` is `<plugin>/<widget>`. Paperboy passes `args` to the widget unchanged. `at` is the top-left cell (column, row, from 0), and `span` is the size in cells (default `[1, 1]`). `action` names one action of the widget's plugin (see [Actions](#actions)). Cells must stay inside the grid and must not overlap. Empty cells stay white.
 - `grid` is `[columns, rows]`, 1 to 80 each. A plugin offers its sizes in halves and quarters of a 6 × 8 reference grid, and the editor maps them onto the page's grid. The display type names the grid a new page starts with, for example `8 × 6` on a 4:3 panel and `10 × 6` on 5:3 ([ADR 0128](adr/0128-a-default-grid-per-display-type.md)). A page keeps its own grid, so a change to the display type never rewrites a page.
 - On an image display the grid divides the pixels. Paperboy asks every plugin for its widgets in exactly the pixel size of the cell and the gray levels of the panel. It quantizes the PNG to the palette (nearest gray, no dithering) and pastes it 1:1, so Paperboy never scales a widget. The PNG has 1, 2 or 4 bits (2, 4 or 16 gray levels), depending on the display type. A plugin that answers with another size gets a notice in its cell.
 - `style` is in points (1 pt = 1/72 inch, [ADR 0050](adr/0050-physical-scaling-by-display-ppi.md)). Paperboy passes it to every widget and converts it to pixels with the `ppi` of the display type. `padding` is the inner margin (default 4.5 pt ≈ 1.6 mm). `rule` is the separator width (default 0.6 pt ≈ 0.2 mm, never thinner than 1 px). `text_size` is the base text height (4–144 pt, default 16 pt, at most 0.12 of the display height), so widgets of different plugins match. `divider` (points, at least 1 px, default 0 = none) draws lines between the cells; Paperboy draws them, not the widgets. The `style` of a cell overrides the page style.
@@ -38,6 +38,18 @@ cells:
 - **Stale widgets**: when a plugin fails, Paperboy keeps showing its last widgets and marks the page. An image display gets a bar (*Outdated: calendar/agenda*, German *Veraltet: …*), a text display gets `!` in the last column of the first line. `notices: none` turns both off. A widget that never rendered becomes a hatched notice inside its cell with the reason. A plugin that cannot draw in its cell at all answers `cell too small: <width>x<height>` instead of leaving the cell empty, so a cell that is too small for its widget shows that notice.
 - Preview without a device: `GET /api/preview/<display type>/<page>` (PNG, or `text/plain` for text displays; an optional `?at=YYYY-MM-DDTHH:MM` renders the page as at that time in the configured timezone). `GET /api/profiles` lists the display types.
 - The page editor at `/ui/pages` builds a page from the same model (see [Web UI](runtime.md#web-ui)).
+
+### Actions
+
+An image cell may name one action of its plugin with `action` ([ADR 0162](adr/0162-widget-actions-and-the-plugins-choices.md)). The plugin decides the choices; the page carries no arguments or titles.
+
+```yaml
+- { at: [3, 5], span: [3, 3], widget: evcc/loadpoint, args: { index: 0 }, action: mode }
+```
+
+On a device with `touch: true` and a page with an action, a short `home` shows the options in the cell: one tile per choice. A tap runs the chosen option and the page returns with the new state. A tap outside, 20 seconds without input or `next`/`previous` closes the view. A device with `actions: deny` and a device without a digitiser never show it.
+
+The plugin's current choice is hatched when the plugin reports it as unavailable. A cell that is too small for the tiles says *Cell too small* (*Feld zu klein*); enlarge it in the page editor.
 
 ### Text pages
 

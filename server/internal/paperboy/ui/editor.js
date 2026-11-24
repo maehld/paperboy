@@ -205,6 +205,7 @@
       widget: c.widget,
       args: c.args || {},
       style: c.style || {},
+      action: c.action || '',
     }));
     return t;
   }
@@ -274,6 +275,7 @@
       const cell = { at: [c.at[0], c.at[1]], span: [c.span[0], c.span[1]], widget: c.widget, args: c.args || {} };
       const style = styleOut(c.style || {});
       if (Object.keys(style).length) cell.style = style;
+      if (c.action) cell.action = c.action;
       return cell;
     });
     return out;
@@ -1624,6 +1626,68 @@
     // arguments from the plugin's schema (ADR 0055)
     const info = widgetInfo(c.widget.split('/')[0], c.widget.split('/')[1]);
     renderArgFields(box, c, (info && info.args) || {});
+
+    // The cell may name one action of its plugin; the plugin owns the choices
+    // (ADR 0162). The playground has no page, so it hides the choice.
+    if (!state.widgetsPage) {
+      const pluginName = c.widget.split('/')[0];
+      const pluginInfo = state.plugins.find((p) => p.name === pluginName);
+      const offered = (pluginInfo && pluginInfo.description && pluginInfo.description.actions) || [];
+      const select = document.createElement('select');
+      const none = document.createElement('option');
+      none.value = '';
+      none.textContent = 'none';
+      select.appendChild(none);
+      for (const action of offered) {
+        const option = document.createElement('option');
+        option.value = action.name;
+        option.textContent = action.title ? action.name + ' — ' + action.title : action.name;
+        select.appendChild(option);
+      }
+      if (c.action && !offered.some((a) => a.name === c.action)) {
+        const option = document.createElement('option');
+        option.value = c.action;
+        option.textContent = c.action + ' (not offered by the plugin)';
+        select.appendChild(option);
+      }
+      select.value = c.action || '';
+      select.addEventListener('change', () => {
+        if (select.value) c.action = select.value;
+        else delete c.action;
+        changed('inspector');
+      });
+      box.appendChild(field('Action', select));
+      const spec = offered.find((a) => a.name === c.action);
+      const fixed = c.args || {};
+      const free = spec
+        ? Object.keys(spec.args || {}).filter((name) => !(name in fixed) && spec.args[name].required && (spec.args[name].enum || []).length && spec.args[name].type !== 'list')
+        : [];
+      const choices = free.length === 1 ? (spec.args[free[0]].enum || []) : [];
+      const count = choices.length || 1;
+      const cellW = state.width * c.span[0] / t.grid[0];
+      const cellH = state.height * c.span[1] / t.grid[1];
+      const innerW = Math.max(0, cellW - 10);
+      const innerH = Math.max(0, cellH - 10);
+      const cols = innerW < innerH * 1.2 ? 1 : 2;
+      const rows = Math.ceil(count / cols);
+      const hint = document.createElement('p');
+      if (c.action && !spec) {
+        hint.className = 'warn';
+        hint.textContent = 'This plugin does not offer the action; the cell shows the reason on the device.';
+      } else if (c.action && free.length > 1) {
+        hint.className = 'warn';
+        hint.textContent = 'The action has more than one choice argument; the device disables it.';
+      } else if (c.action && (innerW / cols < 20 || innerH / rows < 14)) {
+        hint.className = 'warn';
+        hint.textContent = 'The cell is too small for its options; enlarge it.';
+      } else {
+        hint.className = 'hint';
+        hint.textContent = c.action
+          ? 'A short home shows ' + count + ' option' + (count === 1 ? '' : 's') + ' here.'
+          : 'The plugin decides the choices. A short home on the device shows them.';
+      }
+      box.appendChild(hint);
+    }
 
     const style = c.style || {};
     c.style = style;

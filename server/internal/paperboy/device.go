@@ -153,7 +153,7 @@ type syncResponse struct {
 
 // syncWake is a one-shot wake instruction.
 type syncWake struct {
-	Reason string `json:"reason"`  // timer, menu or result
+	Reason string `json:"reason"`  // timer, menu, result or action
 	AfterS int    `json:"after_s"` // seconds until that wake
 }
 
@@ -161,9 +161,9 @@ type syncWake struct {
 // firmware gets wrong is answered with 400 instead of being guessed.
 func (r *syncRequest) validate() error {
 	switch r.Reason {
-	case "timer", "button", "touch", "powercycle", "menu", "result":
+	case "timer", "button", "touch", "powercycle", "menu", "result", "action":
 	default:
-		return fmt.Errorf("reason %q: expected timer, button, touch, powercycle, menu or result", r.Reason)
+		return fmt.Errorf("reason %q: expected timer, button, touch, powercycle, menu, result or action", r.Reason)
 	}
 	for i, e := range r.Events {
 		if e.ID < 0 {
@@ -492,6 +492,16 @@ func chargerState(st deviceState) string {
 	return ""
 }
 
+// hardwareOf reports the firmware target of a device for plugin requests.
+func (s *Server) hardwareOf(d *Device) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if st := s.state[d.stateKey()]; st != nil {
+		return st.Hardware
+	}
+	return ""
+}
+
 // handleText answers the text poll of a text display (ADR 0044, 0045): the
 // lines of the page the cursor points to, without advancing it or writing the
 // state file.
@@ -550,7 +560,7 @@ func (s *Server) handleText(w http.ResponseWriter, r *http.Request) {
 		// stored by the next sync. The copy also keeps a queued manual alert,
 		// because only a sync consumes one (ADR 0142).
 		peek := *st
-		choice = s.choosePlanPage(resolved, cfg, d, &peek, now, true, false, nil, false, true)
+		choice = s.choosePlanPage(resolved, cfg, d, &peek, now, true, false, nil, false, false, true)
 	default:
 		choice.title, choice.text = cfg.texts().noPlan()
 	}

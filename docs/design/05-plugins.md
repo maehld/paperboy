@@ -31,16 +31,19 @@ Paperboy computes the demand per plugin from the configured devices. It takes th
 | `describe` | – | Widgets, values, actions, config keys, blob names, version |
 | `render` | Widgets with pixel `width`/`height`, `args`, `style` | One base64 PNG per widget |
 | `values` | The value keys a text page needs and `value_args`, the arguments of that set | `values` per key |
-| `actions` | Concrete actions, the device | State per action: title, `disabled` reason, `confirm` |
-| `action` | One action with its args, the device | `result` with `ok`, `message`, `changed` |
+| `actions` | The concrete calls of a widget action, the device | State per call: title, `disabled` reason, `confirm` |
+| `action` | One chosen call with its args, the device | `result` with `ok`, `message`, `changed` |
+
+The widget action mode resolves a page cell with `describe`. It makes one
+`actions` call per enum value of the choice argument, and `action` runs the
+chosen call (ADR 0162). The page names the action only. The plugin owns the
+arguments and the choices.
 
 Every request carries `language`, `timezone`, `now` and `levels`, the tone count of the display. `levels` is 1 to 256; a canvas falls back to 2, 4 or 16 tones when it cannot draw the value ([ADR 0107](../adr/0107-plugin-builds-reach-installations.md)). The request also carries the `page` with title, number, count and display size, and `ppi` for image displays. A widget also gets `style` with `padding`, `rule` and `text_px` in pixels.
 
 `server_status` is Paperboy's own view of the devices (ADR 0115). It holds `current_device_status`, the device the page is rendered for, and `selected_devices_status`, a map of only the devices the page names in its widget arguments. A status names the id, display type, plan, hardware and firmware. It also names the contact state, last contact, power source, signal and battery reading. The estimated runtime and the last page or error follow. It carries no key, MAC or address. A preview without a device gets the sample device `preview` with fixed values ([ADR 0123](../adr/0123-a-sample-device-in-previews.md)). Only the built-in plugin receives the object; a plugin process would cache stale rows.
 
 A plugin answers with `version`, optionally `state`, `blobs`, `widgets`, `actions`, `result`, `max_age`, `description`, or a `changed` event.
-
-Paperboy does not call `actions` or `action` in this version (ADR 0161). The interface stays for widget actions.
 
 ## What a plugin declares
 
