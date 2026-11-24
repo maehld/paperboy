@@ -99,6 +99,8 @@ func splitFlows(pv, grid, battery, home float64, lps []float64) []flowShare {
 type flowNode struct {
 	icon, label, short, value string
 	net                       float64 // positive flows into the hub
+	soc                       float64 // state of charge of a battery
+	hasSOC                    bool
 	idle                      bool
 	rect                      image.Rectangle
 }
@@ -130,9 +132,7 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) error {
 	W, H := float64(b.Dx()), float64(b.Dy())
 	gap := math.Max(e.req.MMPx(1.5), 5)
 	hubD := math.Min(math.Min(H*0.24, W*0.10), 100)
-	sideW := math.Min(W*0.30, 300)
-	midW := math.Min(W*0.24, 240)
-	cardH := math.Min(H*0.26, 110)
+	sideW, midW, cardH := flowWidths(W, H)
 	cx := float64(b.Min.X) + W/2
 	cy := float64(b.Min.Y) + H/2
 
@@ -209,6 +209,17 @@ func (e *evcc) flow(w plugin.WidgetRequest, img *image.Paletted) error {
 		e.flowTextRow(img, n, home.rect.Min.X, home.rect.Max.X, base)
 	}
 	return nil
+}
+
+// flowWidths returns the width of the side cards, the width of the top and
+// bottom cards, and the card height. The top and bottom cards stay narrower in
+// a short cell. A tall cell gives them the width of the side cards, so their
+// values and the battery label keep their size.
+func flowWidths(W, H float64) (sideW, midW, cardH float64) {
+	sideW = math.Min(W*0.30, 300)
+	cardH = math.Min(H*0.26, 110)
+	midW = math.Min(math.Max(W*0.24, cardH*2.5), sideW)
+	return sideW, midW, cardH
 }
 
 // flowPlacement keeps the home card at the vertical centre. The loadpoint rows
@@ -290,7 +301,8 @@ func (e *evcc) flowNow() *flowModel {
 		m.nodes = append(m.nodes, &flowNode{icon: "battery",
 			label: e.t("Akku ", "Battery ") + e.num(s.Battery.SoC, 0) + " %",
 			short: e.t("Akku", "Battery"),
-			value: e.power(s.Battery.Power), net: s.Battery.Power})
+			value: e.power(s.Battery.Power), net: s.Battery.Power,
+			soc: s.Battery.SoC, hasSOC: true})
 	}
 	m.nodes = append(m.nodes, &flowNode{icon: "home", label: e.t("Haus", "Home"), short: e.t("Haus", "Home"), value: e.power(s.HomePower), net: -s.HomePower})
 	for _, lp := range lps {
@@ -402,7 +414,15 @@ func (e *evcc) flowCard(img *image.Paletted, n *flowNode, base float64, rule int
 	}
 	tx0 := r.Min.X + pad
 	if iw > 0 {
-		drawFlowIcon(img, n.icon, rectAt(float64(r.Min.X+pad), float64(r.Min.Y+pad), iw, float64(innerH)), color.Black)
+		// The icon occupies a square that is centred on the card's vertical
+		// axis, not a full-height box that leaves it at the top.
+		iconY := float64(r.Min.Y+pad) + (float64(innerH)-iw)/2
+		iconRect := rectAt(float64(r.Min.X+pad), iconY, iw, iw)
+		if n.hasSOC && n.icon == "battery" {
+			drawFlowBattery(img, iconRect, n.soc, color.Black)
+		} else {
+			drawFlowIcon(img, n.icon, iconRect, color.Black)
+		}
 		tx0 += int(iw) + pad/2
 	}
 	textW := r.Max.X - pad - tx0
