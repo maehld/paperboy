@@ -37,12 +37,13 @@ func (f *fakeEvcc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "loadpoint is locked", http.StatusBadRequest)
 			return
 		}
+		// evcc numbers its loadpoints from 1 in the REST API.
 		i, err := strconv.Atoi(parts[2])
-		if err != nil || i < 0 || i >= len(f.modes) {
+		if err != nil || i < 1 || i > len(f.modes) {
 			http.Error(w, "unknown loadpoint", http.StatusNotFound)
 			return
 		}
-		f.modes[i] = parts[4]
+		f.modes[i-1] = parts[4]
 		return
 	}
 	http.NotFound(w, r)
