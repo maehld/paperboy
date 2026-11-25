@@ -164,13 +164,15 @@ Every reTerminal E series device and the Sticky carry a Sensirion SHT4x temperat
 
 The catalog in `server/internal/reading` owns the unit, the precision and the plausible range of every reading. A device sends bare numbers, so a wrong firmware offset cannot label a value falsely. Paperboy stores the last value per device and MAC ([ADR 0080](../adr/0080-device-state-per-mac.md)). The dashboard shows the values as a `Readings` row in the card's details, with the catalog names as the tooltip. A reading the last sync did not bring shows its age.
 
+A page shows the values through `paperboy/reading`, or through the values `paperboy/temperature` and `paperboy/humidity` on a text page ([ADR 0163](../adr/0163-the-readings-in-the-device-status-and-a-reading-widget.md)). Both read the device that renders the page, unless the widget names another device. A reading older than an hour shows its age, so a fresh page never implies a fresh measurement.
+
 The sensor sits next to the panel and the battery, so it reads slightly warm. There is no calibration yet. A later device-file offset applies to the stored value, not to the widget ([ADR 0134](../adr/0134-readings-from-the-device.md)).
 
 ## Device status in widgets
 
-`paperboy/battery`, `paperboy/device-status` and the header's `battery` switch read `server_status` from the plugin request ([ADR 0115](../adr/0115-device-status-in-a-widget.md)). Paperboy fills it from the device the page is rendered for.
+`paperboy/battery`, `paperboy/device-status`, `paperboy/reading` and the header's `battery` switch read `server_status` from the plugin request ([ADR 0115](../adr/0115-device-status-in-a-widget.md)). Paperboy fills it from the device the page is rendered for.
 
-A preview without a device gets a sample device ([ADR 0123](../adr/0123-a-sample-device-in-previews.md)). Its id is `preview`; its status is `ok` and its display type the previewed one. It shows 78 %, 4.05 V, not charging and a runtime of about 12 days. It reads no state file and writes no render cache, so every preview shows the same row.
+A preview without a device gets a sample device ([ADR 0123](../adr/0123-a-sample-device-in-previews.md)). Its id is `preview`; its status is `ok` and its display type the previewed one. It shows 78 %, 4.05 V, not charging, a runtime of about 12 days, 21.5 °C and 45 %. It reads no state file and writes no render cache, so every preview shows the same row.
 
 `GET /api/preview/{display}/{page}?device=<id>` draws the page for that device, so the widgets show its real values. The dashboard fallback and the plan preview pass the parameter. A page that names an unknown id keeps its `unknown` row.
 

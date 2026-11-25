@@ -13,17 +13,33 @@ import (
 type Spec struct {
 	Name      string  // key in the sync body and in the device state
 	Title     string  // operator-facing name
+	TitleDE   string  // German name for a German page
 	Unit      string  // unit the device sends the value in
 	Precision int     // decimals of the unit
 	Min, Max  float64 // plausible range; a value outside is discarded
 }
 
+// Names of the readings, so a key is spelled once.
+const (
+	Temperature = "temperature"
+	Humidity    = "humidity"
+)
+
 // Catalog lists the readings Paperboy accepts. Its order is the display order
 // of the dashboard. A name that is missing here is ignored: a newer firmware
 // may report more than this server knows.
 var Catalog = []Spec{
-	{Name: "temperature", Title: "Temperature", Unit: "°C", Precision: 1, Min: -40, Max: 125},
-	{Name: "humidity", Title: "Humidity", Unit: "%", Precision: 0, Min: 0, Max: 100},
+	{Name: Temperature, Title: "Temperature", TitleDE: "Temperatur", Unit: "°C", Precision: 1, Min: -40, Max: 125},
+	{Name: Humidity, Title: "Humidity", TitleDE: "Luftfeuchtigkeit", Unit: "%", Precision: 0, Min: 0, Max: 100},
+}
+
+// TitleIn returns the operator-facing name in a language, for a widget that
+// labels its value.
+func (s Spec) TitleIn(lang string) string {
+	if lang == "de" && s.TitleDE != "" {
+		return s.TitleDE
+	}
+	return s.Title
 }
 
 // Lookup finds the spec of a reading by name.

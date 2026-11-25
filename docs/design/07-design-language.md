@@ -99,6 +99,8 @@ the same dot with `DrawMark`.
 [`fuel`](../plugins/fuel.md) uses `DrawHero` and `DrawTrend`.
 [`weather`](../plugins/weather.md) uses `DrawHero` and `DrawTrend`.
 [`countdown`](../plugins/countdown.md) uses `DrawHero` and `DrawMeter`.
+The built-in [`paperboy`](../plugins/paperboy.md) uses `DrawHero` for its
+`reading` widget, so a room value reads like any other large value.
 [`github`](../plugins/github.md), [`rss`](../plugins/rss.md) and
 [`departures`](../plugins/departures.md) use the type scale for their dense
 lists. [`myskoda`](../plugins/myskoda.md) and [`prusalink`](../plugins/prusalink.md)

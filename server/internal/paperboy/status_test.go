@@ -41,6 +41,9 @@ func TestStatusSnapshot(t *testing.T) {
 				{Time: now.Add(-24 * time.Hour), Percent: ptrFloat(70)},
 				{Time: now, Percent: ptrFloat(60)},
 			},
+			Readings: map[string]deviceReading{
+				"temperature": {Value: 21.5, At: now.Add(-2 * time.Hour)},
+			},
 		},
 	}}
 
@@ -57,6 +60,15 @@ func TestStatusSnapshot(t *testing.T) {
 	}
 	if got.CurrentDeviceStatus.RuntimeS <= 0 {
 		t.Errorf("runtime missing: %+v", got.CurrentDeviceStatus)
+	}
+	// The readings of the state reach the widget with the moment they were
+	// taken, so a stale value stays visible (ADR 0134, 0163).
+	r, ok := got.CurrentDeviceStatus.Readings["temperature"]
+	if !ok || r.Value != 21.5 || !r.Taken.Equal(now.Add(-2*time.Hour)) {
+		t.Errorf("readings: %+v", got.CurrentDeviceStatus.Readings)
+	}
+	if len(got.CurrentDeviceStatus.Readings) != 1 {
+		t.Errorf("a device has only the readings it reported: %+v", got.CurrentDeviceStatus.Readings)
 	}
 	if len(got.SelectedDevicesStatus) != 2 {
 		t.Fatalf("selected: %+v", got.SelectedDevicesStatus)
@@ -91,6 +103,17 @@ func TestPreviewDevice(t *testing.T) {
 	}
 	if dev.RuntimeS != 12*24*3600 {
 		t.Errorf("preview runtime: %d", dev.RuntimeS)
+	}
+	// The sample device reports the room of ADR 0134, so a preview of a
+	// reading widget draws a value.
+	if len(dev.Readings) != 2 {
+		t.Fatalf("preview readings: %+v", dev.Readings)
+	}
+	if r := dev.Readings["temperature"]; r.Value != 21.5 || !r.Taken.Equal(now) {
+		t.Errorf("preview temperature: %+v", r)
+	}
+	if r := dev.Readings["humidity"]; r.Value != 45 {
+		t.Errorf("preview humidity: %+v", r)
 	}
 	// It is the same on every preview, and it does not touch the state.
 	if again := s.statusSnapshot(cfg, "small", "", nil, now).CurrentDeviceStatus; !reflect.DeepEqual(again, dev) {
@@ -129,9 +152,10 @@ func TestSelectedDeviceIDsAndScope(t *testing.T) {
 		{Widget: "paperboy/device-status"},
 		{Widget: "paperboy/device-status", Args: map[string]any{"devices": []any{"a", "b"}}},
 		{Widget: "paperboy/battery", Args: map[string]any{"device": "c"}},
+		{Widget: "paperboy/reading", Args: map[string]any{"device": "d"}},
 	}}
 	got := selectedDeviceIDs(tmpl)
-	if len(got) != 3 || got[0] != "a" || got[1] != "b" || got[2] != "c" {
+	if len(got) != 4 || got[0] != "a" || got[1] != "b" || got[2] != "c" || got[3] != "d" {
 		t.Fatalf("selected ids: %v", got)
 	}
 	if !deviceScoped(tmpl) {
@@ -141,6 +165,7 @@ func TestSelectedDeviceIDsAndScope(t *testing.T) {
 	selected := &page.Template{Cells: []page.Cell{
 		{Widget: "paperboy/device-status", Args: map[string]any{"devices": []any{"a"}}},
 		{Widget: "paperboy/battery", Args: map[string]any{"device": "a"}},
+		{Widget: "paperboy/reading", Args: map[string]any{"device": "a"}},
 	}}
 	if deviceScoped(selected) {
 		t.Error("a page that names its devices is not device-scoped")
@@ -148,6 +173,10 @@ func TestSelectedDeviceIDsAndScope(t *testing.T) {
 	empty := &page.Template{Cells: []page.Cell{{Widget: "paperboy/battery", Args: map[string]any{"device": ""}}}}
 	if !deviceScoped(empty) {
 		t.Error("an empty device means the current device")
+	}
+	ownReading := &page.Template{Cells: []page.Cell{{Widget: "paperboy/reading"}}}
+	if !deviceScoped(ownReading) {
+		t.Error("a reading of the page's own device is device-scoped")
 	}
 	status := &plugin.ServerStatus{CurrentDeviceStatus: &plugin.DeviceStatus{ID: "kueche"}}
 	if got := statusKey("small", "status", tmpl, status); got != "small/status/kueche" {
