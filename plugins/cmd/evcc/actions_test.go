@@ -82,8 +82,11 @@ func TestDescribeModeAction(t *testing.T) {
 	if spec.Title == "" || spec.Confirm == nil || !spec.Confirm.Required {
 		t.Fatalf("a mode change must be confirmed: %+v", spec)
 	}
-	if !spec.Args["index"].Required || !spec.Args["mode"].Required {
-		t.Errorf("both args must be required: %+v", spec.Args)
+	if spec.Args["index"].Required || spec.Args["index"].Default != 0 {
+		t.Errorf("the index must default to 0: %+v", spec.Args["index"])
+	}
+	if !spec.Args["mode"].Required {
+		t.Errorf("the mode must be required: %+v", spec.Args["mode"])
 	}
 	if !spec.Args["mode"].Allows("now") || spec.Args["mode"].Allows("fast") {
 		t.Errorf("mode enum: %v", spec.Args["mode"].Enum)
@@ -181,6 +184,29 @@ func TestInvokeMode(t *testing.T) {
 	e.mu.Unlock()
 	if shown != "now" {
 		t.Errorf("state was not refreshed: %q", shown)
+	}
+}
+
+// TestActionWithoutIndexUsesTheFirstLoadpoint checks the optional index: a
+// page may omit it, and evcc targets the first loadpoint.
+func TestActionWithoutIndexUsesTheFirstLoadpoint(t *testing.T) {
+	f := &fakeEvcc{modes: []string{"pv", "off"}}
+	e, req := newActionPlugin(t, f, "de")
+	call := plugin.ActionCall{Action: "mode", Args: map[string]any{"mode": "now"}}
+	req.Actions = []plugin.ActionCall{call}
+	states, err := e.Actions(req)
+	if err != nil || len(states) != 1 || states[0].Disabled != "" || states[0].Title != "jetzt laden" {
+		t.Fatalf("state without index: %+v %v", states, err)
+	}
+	out, err := e.Invoke(req, call)
+	if err != nil || !out.OK || !out.Changed {
+		t.Fatalf("invoke without index: %+v %v", out, err)
+	}
+	f.mu.Lock()
+	mode := f.modes[0]
+	f.mu.Unlock()
+	if mode != "now" {
+		t.Errorf("the first loadpoint must change: %q", mode)
 	}
 }
 

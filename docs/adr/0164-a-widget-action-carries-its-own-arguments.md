@@ -35,6 +35,8 @@ page must not repeat those texts, because the plugin localizes them.
    server makes one `actions` call for a fixed action, or one per enum value
    for a choice. More than one empty required enum disables the action. A
    missing required argument that is not a choice disables it with the reason.
+   An optional argument with a default may stay absent; the plugin applies the
+   default.
 
 4. **The plugin labels everything.** The action title and every option title
    come from the plugin in the configured language. The page carries no title
@@ -61,10 +63,12 @@ page must not repeat those texts, because the plugin localizes them.
 
 ## Consequences
 
-- The evcc page writes `action: {name: mode, args: {index: 0}}`. An old scalar
-  `action: mode` no longer takes the widget's `index` and becomes a disabled
-  tile with `required argument "index" is missing`. The operator migrates the
-  file by hand.
+- The evcc page writes `action: {name: mode, args: {index: 0}}` for a loadpoint
+  other than the first. The action's `index` is optional with default 0, so a
+  page may omit it. An old scalar `action: mode` thus targets the first
+  loadpoint. The action never takes the widget's `index`.
+- The editor shows a declared default as a placeholder and writes no value. The
+  plugin applies the default when the argument is absent.
 - A page with a scalar action whose required arguments can stay empty keeps
   working, e.g. the MyŠkoda `charging` and `climate` actions.
 - The page model, the editor snippet and the JSON API carry the block. The page

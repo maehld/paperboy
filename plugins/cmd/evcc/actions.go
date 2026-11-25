@@ -13,9 +13,10 @@ import (
 )
 
 // actionArgs is the schema of the "mode" action. Describe publishes it and
-// Invoke checks against it, so a plan and the run agree on the arguments.
+// Invoke checks against it, so a plan and the run agree on the arguments. The
+// index is optional: without it the action targets the first loadpoint.
 var actionArgs = map[string]plugin.Arg{
-	"index": {Type: "int", Required: true, Description: "loadpoint, counted from 0"},
+	"index": {Type: "int", Default: 0, Description: "loadpoint, counted from 0"},
 	"mode":  {Type: "string", Required: true, Description: "evcc charge mode", Enum: []any{"off", "minpv", "pv", "now"}},
 }
 

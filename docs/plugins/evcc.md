@@ -122,11 +122,11 @@ cells:
 
 ## Actions
 
-The plugin offers one action, `mode`, which sets an evcc charge mode ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md), [0164](../adr/0164-a-widget-action-carries-its-own-arguments.md)). A loadpoint widget binds it with an action block; a short home shows the four modes in its cell and a tap runs one. The action carries its own `index`, because it never inherits the widget's args. A mode change affects the car, so the action asks for a confirmation; Paperboy ignores it in this version.
+The plugin offers one action, `mode`, which sets an evcc charge mode ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md), [0164](../adr/0164-a-widget-action-carries-its-own-arguments.md)). A loadpoint widget binds it with an action block; a short home shows the four modes in its cell and a tap runs one. The action carries its own `index`, because it never inherits the widget's args; without `index` it targets the first loadpoint. A mode change affects the car, so the action asks for a confirmation; Paperboy ignores it in this version.
 
 | Argument | Description |
 |---|---|
-| `index` | Required. Index into `loadpoints` of `/api/state`; set it in the action's `args`. |
+| `index` | Optional. Index into `loadpoints` of `/api/state`; default 0, the first loadpoint. |
 | `mode` | Required. One of `off`, `minpv`, `pv`, `now`. Leave it empty to let the device offer the four modes. |
 
 The plugin labels the fixed tile and the choices with the short mode label, e.g. "jetzt laden". The action is unavailable while evcc has no data yet, the loadpoint index does not exist or evcc already runs that mode. When evcc is down the cell stays visible with the reason; nothing else breaks.
@@ -138,5 +138,7 @@ The plugin labels the fixed tile and the choices with the short mode label, e.g.
   args: { index: 0 }
   action: { name: mode, args: { index: 0 } }
 ```
+
+The page editor shows the default 0 as a placeholder and does not write it. Omit `index` to use the first loadpoint.
 
 A successful action reads `/api/state` again at once instead of waiting for the next poll, so the `loadpoint` widget shows the new mode after the next sync. Actions set a target state and never toggle, so a repeated sync is safe.

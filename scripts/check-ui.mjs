@@ -144,8 +144,9 @@ try {
           name: "mode",
           title: "Charge mode",
           args: {
-            index: { type: "int", required: true, description: "loadpoint, counted from 0" },
+            index: { type: "int", default: 0, description: "loadpoint, counted from 0" },
             mode: { type: "string", required: true, enum: ["off", "pv"], enum_labels: { off: "Off", pv: "PV" } },
+            target: { type: "int", required: true, description: "required target" },
           },
         }],
       },
@@ -272,7 +273,7 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
   // the action on the device.
   {
     const page = { file: "", hash: "h", template: { kind: "image", grid: [6, 8], style: {}, cells: [
-      { at: [0, 0], span: [2, 1], widget: "demo/clock", args: {}, action: { name: "mode", args: { index: 0 } } },
+      { at: [0, 0], span: [2, 1], widget: "demo/clock", args: {}, action: { name: "mode", args: {} } },
     ] } };
     const { editorDom, window, failures } = await open("http://localhost/ui/pages/demo?display=e1001", editor, start, { page });
     const board = window.document.getElementById("board");
@@ -287,26 +288,28 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
     const fieldOf = (name) => Array.from(inspector.querySelectorAll("label.field"))
       .find((label) => label.querySelector("span").textContent === name);
     const argOf = (name) => Array.from(inspector.querySelectorAll(".arg"))
-      .find((arg) => arg.querySelector(".name").textContent === name + " *");
+      .find((arg) => arg.querySelector(".name").textContent.replace(/\s*\*$/, "") === name);
     const action = fieldOf("Action");
     check(action && action.querySelector("select").value === "mode", "the inspector lost the cell action");
     const index = argOf("index");
-    check(index && index.querySelector("input").value === "0", "the inspector lost the action's own index");
+    const indexInput = index && index.querySelector("input");
+    check(indexInput && indexInput.value === "" && indexInput.placeholder === "0", "the action does not show the default index as a placeholder");
     const mode = argOf("mode");
     const select = mode && mode.querySelector("select");
     check(select && select.value === "" && select.options[0].textContent.includes("device offers"), "an empty required enum is not the choice");
     check(inspector.textContent.includes("Empty: the device offers the values."), "the action lacks the choice hint");
+    // A missing required argument warns live.
+    check(inspector.textContent.includes("Required argument target is missing"), "a missing action argument does not warn");
+    const target = argOf("target").querySelector("input");
+    target.value = "0";
+    target.dispatchEvent(new window.Event("input"));
+    target.dispatchEvent(new window.Event("change"));
     check(inspector.textContent.includes("A short home shows 2 options here."), "the action hint does not count the choices");
     // A set enum is one fixed tile; the hint follows without a reload.
-    select.value = "pv";
-    select.dispatchEvent(new window.Event("change"));
+    const fixed = argOf("mode").querySelector("select");
+    fixed.value = "pv";
+    fixed.dispatchEvent(new window.Event("change"));
     check(inspector.textContent.includes("A short home shows this action here."), "a fixed action still counts choices");
-    // A missing required argument warns live.
-    const indexInput = argOf("index").querySelector("input");
-    indexInput.value = "";
-    indexInput.dispatchEvent(new window.Event("input"));
-    indexInput.dispatchEvent(new window.Event("change"));
-    check(inspector.textContent.includes("Required argument index is missing"), "a missing action argument does not warn");
     for (const failure of failures) problems.push(failure);
     editorDom.window.close();
   }
