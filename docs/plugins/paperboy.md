@@ -72,7 +72,7 @@ header:
 The title and its page indicator sit on the left. The right group is
 right-aligned and holds the room temperature, the humidity, the clock and the
 battery, in that order from left to right. Two spaces separate the temperature, the humidity and the clock. The page indicator follows the title
-after two spaces. All text uses one size; only the
+after one space. All text uses one size; only the
 title is bold. The battery shows its gauge without a percentage. The grid below the
 band starts at `cells` row 0. A page hides the band with `header: false`; a
 text display type has no header band. The band is one internal widget; a page

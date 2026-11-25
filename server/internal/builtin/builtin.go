@@ -168,7 +168,7 @@ func (Plugin) band(req *plugin.Request, w plugin.WidgetRequest, img *image.Palet
 	}
 	title := req.Page.Title
 	if a.Bool("page_indicator", true) && req.Page.Count > 1 {
-		title += fmt.Sprintf("  %d/%d", req.Page.Number, req.Page.Count)
+		title += fmt.Sprintf(" %d/%d", req.Page.Number, req.Page.Count)
 	}
 	// The right group, from left to right. Two spaces separate the items.
 	var leftToRight []string
