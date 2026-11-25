@@ -6,7 +6,9 @@ import (
 	"image"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/maehld/paperboy/sdk/plugin"
 )
@@ -135,5 +137,53 @@ triggers:
 	// A missing plan asks nothing.
 	if values := s.planValues(context.Background(), cfg, "gone", dev.Profile, dev); values != nil {
 		t.Fatalf("missing plan asked for values: %v", values)
+	}
+}
+
+// TestPlanValuesIgnoreAStaleAnswer pins issue #458: the host serves the last
+// cached key of a failing plugin, and a plan condition must treat that like a
+// missing answer instead of keeping its trigger page alive.
+func TestPlanValuesIgnoreAStaleAnswer(t *testing.T) {
+	dir := t.TempDir()
+	stateFile := filepath.Join(dir, "plugin-state")
+	writePageFile(t, stateFile, "low")
+	for _, name := range []string{"eins", "alarm"} {
+		writePageFile(t, filepath.Join(dir, "pages", name+".yaml"), textPage(name))
+	}
+	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), `
+pages: [eins, {page: alarm, hidden: true}]
+triggers:
+  - when: { value: test/state, is: [low] }
+    page: alarm
+`)
+	if err := os.MkdirAll(filepath.Join(dir, pluginsDirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	installTestPlugin(t, dir, "test")
+	writeConfig(t, dir, `
+language: de
+plugins:
+  test:
+    env: { PAPERBOY_TEST_PLUGIN: "1" }
+    config: { secret: "s3cret", state_file: '`+stateFile+`' }
+`)
+	writeDisplayFile(t, dir, "e1001", reloadDisplay)
+	writeDeviceFile(t, dir, "flur", planDeviceFile)
+	s := configServer(t, dir)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.Start(ctx)
+
+	dev := planDevice(t, s)
+	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/alarm/") {
+		t.Fatalf("trigger page: %q", got)
+	}
+	// The plugin loses its data. The cache still holds the last key, but it is
+	// older than max_age, so the host serves it as stale.
+	writePageFile(t, stateFile, "gone")
+	base := time.Date(2026, time.October, 21, 8, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return base.Add(2 * time.Second) }
+	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/eins/") {
+		t.Fatalf("a stale answer kept the trigger page: %q", got)
 	}
 }

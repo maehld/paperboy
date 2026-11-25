@@ -78,7 +78,7 @@ A Go plugin draws with `sdk/render` and can use the shared type scale and compon
 - The built-in plugin runs in process and is never cached.
 - Values get the same cache and the same `changed` event as widgets. A describe answer lives for five minutes, because it carries the declarations a text page uses to format a value. An unchanged specification keeps it across configuration reloads; only a changed one drops it. A cached value belongs to the declaration it was made with. A describe answer with different values drops the cached values of that plugin, so a unit never comes from an older program.
 
-The values of a plan's conditions use the normal value cache. Paperboy reads them before it selects a page, outside the state lock, and omits a missing or failing answer, so the condition does not match. A text display that polls every second and a condition that names the same value share that entry.
+The values of a plan's conditions use the normal value cache. Paperboy reads them before it selects a page, outside the state lock. It omits a missing, stale or failing answer, so the condition does not match. A text display that polls every second and a condition that names the same value share that entry.
 
 ## State and blobs
 

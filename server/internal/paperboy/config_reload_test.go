@@ -231,11 +231,18 @@ func installTestPlugin(t *testing.T, dir, name string) {
 	}
 }
 
-// testPlugin fills its widget black when its config says so.
-type testPlugin struct{ black bool }
+// testPlugin fills its widget black when its config says so. It answers one
+// enum value for plan conditions from a file, so a test can take the data away
+// (issue #458).
+type testPlugin struct {
+	black     bool
+	stateFile string
+}
 
 func (p *testPlugin) Describe() plugin.Description {
-	return plugin.Description{Title: "Test", Widgets: []plugin.WidgetInfo{{Widget: "area", Kinds: []string{plugin.KindImage}}}}
+	return plugin.Description{Title: "Test",
+		Widgets: []plugin.WidgetInfo{{Widget: "area", Kinds: []string{plugin.KindImage}}},
+		Values:  []plugin.ValueSpec{{Name: "state", Type: plugin.ValueEnum, Enum: []string{"normal", "low"}}}}
 }
 
 func (p *testPlugin) Configure(cfg plugin.Values, _ *plugin.Request) error {
@@ -243,6 +250,7 @@ func (p *testPlugin) Configure(cfg plugin.Values, _ *plugin.Request) error {
 		return fmt.Errorf("secret not expanded: %v", cfg["secret"])
 	}
 	p.black = cfg.Bool("black", false)
+	p.stateFile = cfg.String("state_file", "")
 	return nil
 }
 
@@ -252,6 +260,32 @@ func (p *testPlugin) Render(_ *plugin.Request, _ plugin.WidgetRequest, img *imag
 	}
 	return nil
 }
+
+func (p *testPlugin) Values(req *plugin.Request) (map[string]plugin.Value, error) {
+	for _, name := range req.Values {
+		if name != "state" {
+			return nil, fmt.Errorf("%w %q", plugin.ErrUnknownValue, name)
+		}
+	}
+	if p.stateFile == "" {
+		return nil, fmt.Errorf("no state file configured")
+	}
+	data, err := os.ReadFile(p.stateFile)
+	if err != nil {
+		return nil, err
+	}
+	switch strings.TrimSpace(string(data)) {
+	case "low":
+		return map[string]plugin.Value{"state": plugin.EnumValue("low")}, nil
+	case "normal":
+		return map[string]plugin.Value{"state": plugin.EnumValue("normal")}, nil
+	}
+	// The data is gone, like a plugin whose source fails.
+	return nil, fmt.Errorf("no data")
+}
+
+// MaxAge keeps a value short, so a test can let the cache go stale.
+func (*testPlugin) MaxAge(*plugin.Request) time.Duration { return time.Second }
 
 // TestConfigReloadReconfiguresPlugins verifies that a plugin gets its config
 // section with ${VAR} expanded, and that a changed section restarts it so the
