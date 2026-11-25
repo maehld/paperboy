@@ -894,6 +894,11 @@ func (p *Plan) UntilNextChange(now time.Time) time.Duration {
 					}
 				}
 				consider(end)
+			case ConditionValue:
+				if c.Value == BuiltinWeekday {
+					// The weekday changes at local midnight (issue #460).
+					consider(atClock(local.AddDate(0, 0, 1), 0))
+				}
 			}
 		}
 	}

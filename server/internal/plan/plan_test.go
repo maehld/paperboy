@@ -197,6 +197,20 @@ triggers:
 	if got := triggers.UntilNextChange(at(t, 2026, time.October, 21, 20, 0)); got != 4*time.Hour {
 		t.Fatalf("date start: %s", got)
 	}
+	// A weekday changes at local midnight, so a plan with that condition wakes
+	// there even when its interval has no midnight slot (issue #460).
+	weekdays := parse(t, `
+pages: [a]
+triggers:
+  - when: [{ value: weekday, is: [mon, tue] }]
+    page: a
+`)
+	if got := weekdays.UntilNextChange(at(t, 2026, time.October, 21, 20, 0)); got != 4*time.Hour {
+		t.Fatalf("weekday midnight: %s", got)
+	}
+	if got := weekdays.UntilNextChange(at(t, 2026, time.October, 21, 0, 0)); got != 24*time.Hour {
+		t.Fatalf("weekday at midnight: %s", got)
+	}
 }
 
 func TestEffective(t *testing.T) {
