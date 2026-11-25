@@ -12,12 +12,14 @@ import (
 )
 
 // actionPage has one cell that offers the test plugin's mode action and one
-// cell that does not, so a tap outside the action view has a target.
+// cell that does not, so a tap outside the action view has a target. The
+// action carries its own index; it no longer inherits the widget's args
+// (ADR 0164).
 const actionPage = `kind: image
 grid: [2, 1]
 style: { padding: 0 }
 cells:
-  - { at: [0, 0], span: [1, 1], widget: act/loadpoint, args: { index: 0 }, action: mode }
+  - { at: [0, 0], span: [1, 1], widget: act/loadpoint, args: { index: 0 }, action: { name: mode, args: { index: 0 } } }
   - { at: [1, 0], span: [1, 1], widget: paperboy/text, args: { text: side } }
 `
 
@@ -34,10 +36,14 @@ func (p *actionPlugin) Describe() plugin.Description {
 	return plugin.Description{
 		Title:   "act",
 		Widgets: []plugin.WidgetInfo{{Widget: "loadpoint", Kinds: []string{plugin.KindImage}}},
-		Actions: []plugin.ActionSpec{{Name: "mode", Title: "Charge mode", Args: map[string]plugin.Arg{
-			"index": {Type: "int", Required: true},
-			"mode":  {Type: "string", Required: true, Enum: []any{"off", "pv", "now"}, EnumLabels: map[string]string{"off": "Off", "pv": "PV", "now": "Now"}},
-		}}},
+		Actions: []plugin.ActionSpec{
+			{Name: "mode", Title: "Charge mode", Args: map[string]plugin.Arg{
+				"index": {Type: "int", Required: true},
+				"mode":  {Type: "string", Required: true, Enum: []any{"off", "pv", "now"}, EnumLabels: map[string]string{"off": "Off", "pv": "PV", "now": "Now"}},
+			}},
+			// A trigger action without arguments: its title is the only label.
+			{Name: "boost", Title: "Boost"},
+		},
 	}
 }
 
@@ -413,7 +419,7 @@ func TestActionLongHomeClosesTheKeyMode(t *testing.T) {
 // TestActionWithoutRunnableOption checks the reason tile: with no runnable
 // option the mode shows the reason and a short home only closes it (ADR 0163).
 func TestActionWithoutRunnableOption(t *testing.T) {
-	page := strings.Replace(actionPage, "action: mode", "action: missing", 1)
+	page := strings.Replace(actionPage, "action: { name: mode, args: { index: 0 } }", "action: missing", 1)
 	s, dev, p := actionServer(t, page, false)
 	base := displayPage(t, s, dev)
 	mode := press(t, s, dev, buttonHome)
@@ -449,7 +455,7 @@ func TestActionModeDisabled(t *testing.T) {
 
 // TestActionUnknownName keeps the cell and logs instead of breaking the page.
 func TestActionUnknownName(t *testing.T) {
-	page := strings.Replace(actionPage, "action: mode", "action: missing", 1)
+	page := strings.Replace(actionPage, "action: { name: mode, args: { index: 0 } }", "action: missing", 1)
 	s, dev, _ := actionServer(t, page, true)
 	base := displayPage(t, s, dev)
 	mode := press(t, s, dev, buttonHome)
@@ -462,8 +468,76 @@ func TestActionUnknownName(t *testing.T) {
 	}
 }
 
-// TestVirtualDisplayRunsNoAction checks that a tap in the browser shows and
-// closes the mode but never calls the plugin (ADR 0091, 0162).
+// TestActionArgsAreTheActionsOwn checks that the action uses its own args and
+// never inherits the widget's (ADR 0164). The empty enum becomes the choice.
+func TestActionArgsAreTheActionsOwn(t *testing.T) {
+	page := `kind: image
+grid: [1, 1]
+style: { padding: 0 }
+cells:
+  - { at: [0, 0], widget: act/loadpoint, args: { index: 0 }, action: { name: mode, args: { index: 1 } } }
+`
+	s, dev, p := actionServer(t, page, true)
+	displayPage(t, s, dev)
+	press(t, s, dev, buttonHome)
+	if len(p.calls) != 3 {
+		t.Fatalf("the empty enum must become three choices: %+v", p.calls)
+	}
+	for _, call := range p.calls {
+		if call.Arg().Int("index", -1) != 1 || call.Arg().String("mode", "") == "" {
+			t.Fatalf("the action must use its own args: %+v", call)
+		}
+	}
+}
+
+// TestActionFixedChoiceIsOneTile checks that a set enum is one fixed call and
+// the plugin's title names its tile (ADR 0164).
+func TestActionFixedChoiceIsOneTile(t *testing.T) {
+	page := strings.Replace(actionPage, "args: { index: 0 } }", "args: { index: 0, mode: now } }", 1)
+	s, dev, p := actionServer(t, page, true)
+	displayPage(t, s, dev)
+	press(t, s, dev, buttonHome)
+	st, opts := actionStateOf(t, s)
+	if !st.Open || len(opts) != 1 || opts[0].Title != "now" || opts[0].Args["mode"] != "now" {
+		t.Fatalf("fixed choice: %+v %+v", st, opts)
+	}
+	if len(p.calls) != 1 || p.calls[0].Arg().String("mode", "") != "now" {
+		t.Fatalf("fixed choice calls: %+v", p.calls)
+	}
+}
+
+// TestActionTitleFallsBackToThePlugin checks a trigger action: the plugin's
+// action title labels the one tile (ADR 0164).
+func TestActionTitleFallsBackToThePlugin(t *testing.T) {
+	page := strings.Replace(actionPage, "action: { name: mode, args: { index: 0 } }", "action: boost", 1)
+	s, dev, _ := actionServer(t, page, true)
+	displayPage(t, s, dev)
+	press(t, s, dev, buttonHome)
+	_, opts := actionStateOf(t, s)
+	if len(opts) != 1 || opts[0].Title != "Boost" {
+		t.Fatalf("plugin title fallback: %+v", opts)
+	}
+}
+
+// TestActionScalarWithoutItsArgsIsDisabled checks that a legacy scalar does
+// not fill the action's required index from the widget (ADR 0164).
+func TestActionScalarWithoutItsArgsIsDisabled(t *testing.T) {
+	page := strings.Replace(actionPage, "action: { name: mode, args: { index: 0 } }", "action: mode", 1)
+	s, dev, p := actionServer(t, page, true)
+	base := displayPage(t, s, dev)
+	mode := press(t, s, dev, buttonHome)
+	st, opts := actionStateOf(t, s)
+	if !st.Open || len(opts) != 1 || !strings.Contains(opts[0].Disabled, "required argument") {
+		t.Fatalf("legacy scalar: %+v %+v", st, opts)
+	}
+	if len(p.calls) != 0 {
+		t.Fatalf("a missing argument must not call the plugin: %+v", p.calls)
+	}
+	if pagePath(mode) == pagePath(base) {
+		t.Fatal("the mode should show the reason tile")
+	}
+}
+
 func TestVirtualDisplayRunsNoAction(t *testing.T) {
 	dir := t.TempDir()
 	writePageFile(t, filepath.Join(dir, "pages", "eins.yaml"), actionPage)

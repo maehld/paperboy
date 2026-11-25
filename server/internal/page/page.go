@@ -69,10 +69,11 @@ type Cell struct {
 	// Args are the arguments of the widget or of the value of a text cell
 	// (ADR 0055, 0120).
 	Args map[string]any `yaml:"args,omitempty" json:"args,omitempty"`
-	// Action names one action of the cell's plugin. The plugin decides the
-	// choices; the page only points at the action (ADR 0162).
-	Action string `yaml:"action,omitempty" json:"action,omitempty"`
-	Style  *Style `yaml:"style,omitempty" json:"style,omitempty"`
+	// Action names one action of the cell's plugin and carries the arguments
+	// of that action. The widget's args and the action's args are separate
+	// (ADR 0164).
+	Action *Action `yaml:"action,omitempty" json:"action,omitempty"`
+	Style  *Style  `yaml:"style,omitempty" json:"style,omitempty"`
 	// Text is literal text of a text page; Value is a declared value. Exactly
 	// one of them is set (ADR 0118). Multi-line text keeps its line breaks.
 	Text  string `yaml:"text,omitempty" json:"text,omitempty"`
@@ -104,6 +105,82 @@ func (c Cell) Plugin() string { p, _, _ := strings.Cut(c.Widget, "/"); return p 
 
 // Name is the widget name without the plugin.
 func (c Cell) Name() string { _, w, _ := strings.Cut(c.Widget, "/"); return w }
+
+// Action names one action of the cell's plugin and the arguments of that
+// action. The scalar form `action: mode` is a shorthand for a block without
+// arguments; a block carries its own args and never inherits the widget's
+// (ADR 0164). The plugin describes the title of the action and of its choices
+// in the configured language.
+type Action struct {
+	Name string         `yaml:"name" json:"name"`
+	Args map[string]any `yaml:"args,omitempty" json:"args,omitempty"`
+}
+
+// UnmarshalYAML reads `action: mode` or `action: {name: mode, args: {...}}`.
+func (a *Action) UnmarshalYAML(n *yaml.Node) error {
+	switch n.Kind {
+	case yaml.ScalarNode:
+		var name string
+		if err := n.Decode(&name); err != nil {
+			return fmt.Errorf("action: %w", err)
+		}
+		*a = Action{Name: name}
+		return nil
+	case yaml.MappingNode:
+		var out Action
+		seen := map[string]bool{}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			key, value := n.Content[i].Value, n.Content[i+1]
+			if seen[key] {
+				return fmt.Errorf("action: duplicate key %q", key)
+			}
+			seen[key] = true
+			switch key {
+			case "name":
+				if err := value.Decode(&out.Name); err != nil {
+					return fmt.Errorf("action: name: %w", err)
+				}
+			case "args":
+				if err := value.Decode(&out.Args); err != nil {
+					return fmt.Errorf("action: args: %w", err)
+				}
+			default:
+				return fmt.Errorf("action: unknown key %q (expected name and args)", key)
+			}
+		}
+		*a = out
+		if len(a.Args) == 0 {
+			a.Args = nil
+		}
+		return nil
+	default:
+		return fmt.Errorf("action: expected a name or a block with name and args")
+	}
+}
+
+// UnmarshalJSON reads the scalar and the block form from the editor API.
+func (a *Action) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		var name string
+		if err := json.Unmarshal(data, &name); err != nil {
+			return err
+		}
+		*a = Action{Name: name}
+		return nil
+	}
+	type actionJSON Action
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	var out actionJSON
+	if err := dec.Decode(&out); err != nil {
+		return fmt.Errorf("action: %w", err)
+	}
+	*a = Action(out)
+	if len(a.Args) == 0 {
+		a.Args = nil
+	}
+	return nil
+}
 
 // Flow marks a signed number as a direction (issue #399): "arrow" draws < for
 // a value that leaves the entity and > for one that enters it, while the map
@@ -330,7 +407,7 @@ func ValidName(s string) bool { return ident.Valid(s) }
 
 func (t *Template) validate() error {
 	if len(t.Actions) > 0 {
-		return fmt.Errorf("actions belong to a widget cell: set action on the cell (ADR 0162)")
+		return fmt.Errorf("actions belong to a widget cell: set action on the cell with name and args (ADR 0164)")
 	}
 	switch t.Kind {
 	case "":
@@ -388,8 +465,13 @@ func (t *Template) validateGrid() error {
 		if c.Text != "" || c.Value != "" || c.Label != "" || len(c.Labels) > 0 || c.Unit != "" || c.Scale != "" || c.Flow != nil || c.Align != "" || c.Overflow != "" {
 			return fmt.Errorf("%s: text, value, label, labels, unit, scale and flow are for text pages (kind: text); use widget", where)
 		}
-		if c.Action != "" && !ValidName(c.Action) {
-			return fmt.Errorf("%s: action %q: only a-z, 0-9 and -", where, c.Action)
+		if c.Action != nil {
+			if c.Action.Name == "" {
+				return fmt.Errorf("%s: action: name is required", where)
+			}
+			if !ValidName(c.Action.Name) {
+				return fmt.Errorf("%s: action %q: only a-z, 0-9 and -", where, c.Action.Name)
+			}
 		}
 		plugin, widget, ok := strings.Cut(c.Widget, "/")
 		if !ok || !ValidName(plugin) || !ValidName(widget) {
@@ -448,7 +530,7 @@ func (t *Template) validateText() error {
 		if c.Widget != "" || c.Style != nil {
 			return fmt.Errorf("%s: widget and style are for image pages (kind: image)", where)
 		}
-		if c.Action != "" {
+		if c.Action != nil {
 			return fmt.Errorf("%s: action is for image pages (kind: image)", where)
 		}
 		if c.Scroll {

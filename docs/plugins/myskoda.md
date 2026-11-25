@@ -98,7 +98,7 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 
 ## Actions
 
-The plugin offers two actions ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md), [0162](../adr/0162-widget-actions-and-the-plugins-choices.md)). A car widget binds one with `action: charging` or `action: climate`; a short home shows `start` and `stop` in its cell and a tap runs one. Both target a state instead of toggling, so a retried request is safe, and both ask for confirmation before they run; Paperboy ignores it in this version.
+The plugin offers two actions ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md), [0164](../adr/0164-a-widget-action-carries-its-own-arguments.md)). A car widget binds one with `action: charging` or `action: climate`; leave `state` empty, so the device offers `start` and `stop` in its cell and a tap runs one. Both target a state instead of toggling, so a retried request is safe, and both ask for confirmation before they run; Paperboy ignores it in this version.
 
 | Action | Args | Endpoint |
 |---|---|---|

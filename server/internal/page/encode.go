@@ -130,8 +130,16 @@ func cellNode(c Cell) *yaml.Node {
 	if len(c.Args) > 0 {
 		add(n, "args", valueNode(c.Args))
 	}
-	if c.Action != "" {
-		add(n, "action", str(c.Action))
+	if c.Action != nil && c.Action.Name != "" {
+		if len(c.Action.Args) == 0 {
+			add(n, "action", str(c.Action.Name))
+		} else {
+			action := newMap()
+			action.Style = yaml.FlowStyle
+			add(action, "name", str(c.Action.Name))
+			add(action, "args", valueNode(c.Action.Args))
+			add(n, "action", action)
+		}
 	}
 	if c.Style != nil {
 		if s := styleNode(*c.Style, true); len(s.Content) > 0 {
