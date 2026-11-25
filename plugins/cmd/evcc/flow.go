@@ -419,7 +419,7 @@ func (e *evcc) flowCard(img *image.Paletted, n *flowNode, base float64, rule int
 		iconY := float64(r.Min.Y+pad) + (float64(innerH)-iw)/2
 		iconRect := rectAt(float64(r.Min.X+pad), iconY, iw, iw)
 		if n.hasSOC && n.icon == "battery" {
-			drawFlowBattery(img, iconRect, n.soc, color.Black)
+			drawFlowBattery(img, iconRect, n.soc)
 		} else {
 			drawFlowIcon(img, n.icon, iconRect, color.Black)
 		}

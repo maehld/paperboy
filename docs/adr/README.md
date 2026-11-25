@@ -197,6 +197,7 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0156](0156-mark-the-extrema-in-a-trend-chart.md) | Mark the extrema in a trend chart | Accepted, implemented; adds labelled marks and the extrema helper to the trend of [ADR-0151](0151-a-shared-design-language-for-plugin-widgets.md), the label placement amended by [ADR-0160](0160-a-trend-chart-reads-in-a-short-cell.md) |
 | [0159](0159-show-an-offline-printer-in-the-prusalink-widgets.md) | Show an offline printer in the prusalink widgets | Accepted, implemented; adds the `offline` state key and amends the failure handling of [ADR-0149](0149-a-prusalink-plugin-for-printer-status.md) |
 | [0160](0160-a-trend-chart-reads-in-a-short-cell.md) | A trend chart reads in a short cell | Accepted, implemented; caps the title and axis of the trend of [ADR-0151](0151-a-shared-design-language-for-plugin-widgets.md) by the cell height and amends the mark labels of [ADR-0156](0156-mark-the-extrema-in-a-trend-chart.md) |
+| [0166](0166-a-shared-battery-gauge.md) | A shared battery gauge | Accepted, implemented; adds `DrawBattery` to [ADR-0151](0151-a-shared-design-language-for-plugin-widgets.md) and uses it for the gauge of [ADR-0121](0121-segmented-battery-gauge.md) and the evcc flow |
 
 ## Delivery and releases
 

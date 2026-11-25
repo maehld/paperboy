@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"math"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/render"
 )
 
@@ -83,49 +84,16 @@ func roundFrame(img *image.Paletted, r image.Rectangle, rad float64, t int) {
 	fillRoundRect(img, inner, math.Max(rad-float64(t), 0), color.White)
 }
 
-// batterySteps is the number of fill segments of the flow battery icon.
-const batterySteps = 4
-
-// batteryStep maps a state of charge to the number of filled segments. A
-// positive charge always shows one segment, so a nearly empty battery does not
-// look empty.
-func batteryStep(soc float64) int {
-	if soc <= 0 {
-		return 0
-	}
-	return min(max(int(math.Round(soc/100*float64(batterySteps))), 1), batterySteps)
-}
-
-// drawFlowBattery draws the battery pictogram with four fill segments. The
-// outline keeps the stroke of the other icons; the segments show the state of
-// charge instead of a fixed sample.
-func drawFlowBattery(img *image.Paletted, r image.Rectangle, soc float64, c color.Color) {
+// drawFlowBattery draws the state of charge with the shared gauge. The flow
+// shows charging and discharging with its arrows and the power value, so the
+// icon carries no bolt and no level.
+func drawFlowBattery(img *image.Paletted, r image.Rectangle, soc float64) {
 	s := math.Min(float64(r.Dx()), float64(r.Dy()))
 	if s < 10 {
 		return
 	}
-	x0, y0 := float64(r.Min.X), float64(r.Min.Y)
-	t := max(s*0.075, 1)
-	body := rectAt(x0+s*0.16, y0+s*0.32, s*0.64, s*0.36)
-	roundFrame(img, body, s*0.08, int(math.Max(t, 1)))
-	render.FillColor(img, rectAt(x0+s*0.80, y0+s*0.43, s*0.08, s*0.14), c)
-	n := batteryStep(soc)
-	if n == 0 {
-		return
-	}
-	inner := body.Inset(int(math.Max(t, 1)) + 1)
-	if inner.Empty() {
-		return
-	}
-	slot := max(inner.Dx()/batterySteps, 1)
-	for i := 0; i < n; i++ {
-		x := inner.Min.X + i*slot
-		w := min(slot, inner.Max.X-x)
-		if i < batterySteps-1 && w > 1 {
-			w--
-		}
-		render.FillColor(img, image.Rect(x, inner.Min.Y, x+w, inner.Max.Y), c)
-	}
+	body := rectAt(float64(r.Min.X)+s*0.16, float64(r.Min.Y)+s*0.32, s*0.72, s*0.36)
+	design.DrawBattery(img, body, design.Battery{Fraction: soc / 100}, max(1, int(math.Round(s*0.075))))
 }
 
 // drawFlowIcon draws one pictogram of the diagram. The caller gives the box the

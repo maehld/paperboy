@@ -69,6 +69,7 @@ at least two pixels. The page's `padding` and `rule` still come from
 | `DrawTrend` | Line, area, step and bar series over time; axis, ticks, "now" mark, labelled extrema, title, current value and legend |
 | `Sparkline` | A trend without axes, for a tile or a hero |
 | `DrawMeter` | An outlined fraction bar; a missing reading gets a slash |
+| `DrawBattery` | A battery gauge with a cap, a segmented charge, a bolt while charging, a slash for a missing reading and a thicker outline for `warn` and `critical` |
 | `Arrow` | A trend arrow for up, flat or down; strength 2 draws a pair |
 | `Muted` | Secondary ink: dark gray on four or more levels, black on one bit |
 | `Notice` | A centered empty state |
@@ -76,6 +77,14 @@ at least two pixels. The page's `padding` and `rule` still come from
 A component draws into an `image.Rectangle` and returns whether it drew. It
 does not import `sdk/plugin`, so it knows no widget request, no language and
 no unit. The plugin formats the strings and passes them in.
+
+`DrawBattery` takes a `Battery` with the charge as a fraction, a missing
+reading, a charging mark and a level. A stroke of zero follows the height. The
+fill never paints over the outer line. On a tall gauge the outline is drawn
+after the fill, and a small gap separates the two. On a short gauge the fill is
+drawn over the inner edge, so it sits on the wall without a white pixel. The
+cap is flat on the left and sits on the body
+([ADR 0166](../adr/0166-a-shared-battery-gauge.md)).
 
 `DrawTrend` supports series with their own `Range`. One chart can therefore
 show temperature on the value axis and precipitation probability as bars from
@@ -100,7 +109,9 @@ the same dot with `DrawMark`.
 [`weather`](../plugins/weather.md) uses `DrawHero` and `DrawTrend`.
 [`countdown`](../plugins/countdown.md) uses `DrawHero` and `DrawMeter`.
 The built-in [`paperboy`](../plugins/paperboy.md) uses `DrawHero` for its
-`reading` widget, so a room value reads like any other large value.
+`reading` widget, so a room value reads like any other large value. It and
+[`evcc`](../plugins/evcc.md) use `DrawBattery`: the built-in `battery` and
+header gauges on one side, the battery of the flow diagram on the other.
 [`github`](../plugins/github.md), [`rss`](../plugins/rss.md) and
 [`departures`](../plugins/departures.md) use the type scale for their dense
 lists. [`myskoda`](../plugins/myskoda.md) and [`prusalink`](../plugins/prusalink.md)
@@ -148,4 +159,5 @@ with `Tiny`) · [0049](../adr/0049-plugin-widgets.md) (plugin widgets) ·
 [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) ·
 [0162](../adr/0162-widget-actions-and-the-plugins-choices.md) (the action view), [0163](../adr/0163-the-action-mode-works-with-the-keys.md) (the selection), [0165](../adr/0165-a-plugin-describes-its-action-options.md) (the active option) ·
 [0107](../adr/0107-plugin-builds-reach-installations.md) (plugin versions) ·
-[0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge).
+[0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) ·
+[0166](../adr/0166-a-shared-battery-gauge.md) (the shared battery gauge).
