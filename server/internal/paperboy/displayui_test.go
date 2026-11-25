@@ -56,7 +56,7 @@ func TestDisplayEditor(t *testing.T) {
 		`id="panel-diagonal"`, `id="panel-width"`, `id="panel-height"`,
 		`id="use-diagonal"`, `id="use-width"`, `id="use-height"`, `id="panel-hint"`,
 		`id="min_refresh"`, `id="power"`, `id="yaml"`, `<script src="/ui/display-editor.js"></script>`,
-		`<script src="/ui/args.js"></script>`, `id="header-parts"`, `id="header-preview-img"`, `id="header-height"`,
+		`id="header-height"`, `id="header-page-indicator"`, `id="header-temperature"`, `id="header-humidity"`, `id="header-clock"`, `id="header-battery"`, `id="header-preview-img"`,
 		// The page names this display type: the editor links the variant.
 		`href="/ui/pages/solar?display=small&amp;file=hochkant"`, `href="/ui/devices/flur"`,
 		`"pages":["solar"]`,
@@ -90,12 +90,12 @@ func TestDisplayEditorScript(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("script: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	for _, want := range []string{"/api/displays/", "PUT", "displays/", "Math.hypot", "25.4", "grid-cols", "suggestedGrid", "/header-preview", "pbArgs.render", "header-preview-img"} {
+	for _, want := range []string{"/api/displays/", "PUT", "displays/", "Math.hypot", "25.4", "grid-cols", "suggestedGrid", "/header-preview", "headerOut", "header-preview-img", "header-clock"} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("script lacks %q", want)
 		}
 	}
-	// The argument fields are one script for both editors.
+	// The argument fields are one script for the page editor.
 	rec = request(t, s, http.MethodGet, "/ui/args.js", nil, nil)
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("args script: %d %s", rec.Code, rec.Header().Get("Content-Type"))

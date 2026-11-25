@@ -11,8 +11,7 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **plugin** | A long-running program that draws widgets and answers actions | provider, backend, service |
 | **widget** | One drawing unit of a plugin, identified as `<plugin>/<widget>` | module, fragment, block |
 | **cell** | One box of a page: a widget on an image page, a value or literal text on a text page | tile, slot |
-| **header band** | The strip above an image display type's grid: one ordered row of widget parts, each with `fill` or a fixed width, and a height in points | header, top bar |
-| **header part** | One widget in the header band's `parts` list | header widget, item |
+| **header band** | The fixed strip above an image display type's grid: the page title and indicator, optional readings, the clock and the battery | header, top bar |
 | **text cell** | One box of a text page: a value or literal text with a column, span, alignment and overflow | row, line, label |
 | **value** | One piece of data a plugin declares by name, for example `evcc/pv`; a text cell shows it | reading, datum, key |
 | **reading** | One measured number a device reports in its sync, named by Paperboy's catalog, for example `temperature` | value, sensor, measurement |

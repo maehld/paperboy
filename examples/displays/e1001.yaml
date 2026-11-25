@@ -7,10 +7,8 @@ gray_levels: 4
 ppi: 125          # pixels per inch: 800 px / 163 mm active width
 header:
   height: 24
-  parts:
-    - { widget: paperboy/title, fill: true }
-    - { widget: paperboy/reading, args: { name: temperature, label: false, age: false }, width: 38 }
-    - { widget: paperboy/battery, width: 30 }
-    - { widget: paperboy/clock, args: { format: auto, align: right }, width: 50 }
+  temperature: true
+  clock: time
+  battery: true
 min_refresh: 60s
 # power: auto      # auto (default: what the firmware reports, else battery), battery or mains (ADR 0051)

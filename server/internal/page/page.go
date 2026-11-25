@@ -106,14 +106,26 @@ type Cell struct {
 
 // Header is the band above the page grid. It belongs to the display type, so
 // every page of that type shares it (ADR 0168). Its height is in points like
-// the page style; the grid divides only the area below the band.
+// the page style; the grid divides only the area below the band. The band is
+// fixed chrome: title, readings, clock and battery, each a switch.
 type Header struct {
-	Height float64      `yaml:"height" json:"height,omitempty"`
-	Parts  []HeaderPart `yaml:"parts" json:"parts,omitempty"`
-	// The old zones. They are rejected with a hint.
-	Left   []HeaderPart `yaml:"left,omitempty" json:"-"`
-	Center []HeaderPart `yaml:"center,omitempty" json:"-"`
-	Right  []HeaderPart `yaml:"right,omitempty" json:"-"`
+	Height        float64 `yaml:"height,omitempty" json:"height,omitempty"`
+	PageIndicator *bool   `yaml:"page_indicator,omitempty" json:"page_indicator,omitempty"`
+	Temperature   bool    `yaml:"temperature,omitempty" json:"temperature,omitempty"`
+	Humidity      bool    `yaml:"humidity,omitempty" json:"humidity,omitempty"`
+	Clock         string  `yaml:"clock,omitempty" json:"clock,omitempty"` // time, date, datetime or none
+	Battery       bool    `yaml:"battery,omitempty" json:"battery,omitempty"`
+	// The old free part list and zones. They are rejected with a hint.
+	Parts  []HeaderPart `yaml:"parts,omitempty" json:"parts,omitempty"`
+	Left   []HeaderPart `yaml:"left,omitempty" json:"left,omitempty"`
+	Center []HeaderPart `yaml:"center,omitempty" json:"center,omitempty"`
+	Right  []HeaderPart `yaml:"right,omitempty" json:"right,omitempty"`
+}
+
+// ShowsPageIndicator reports whether the title carries the page indicator. An
+// absent key shows it.
+func (h *Header) ShowsPageIndicator() bool {
+	return h != nil && (h.PageIndicator == nil || *h.PageIndicator)
 }
 
 // ShowHeader is a page's switch for the display type's header band. A page
@@ -146,9 +158,9 @@ func (s *ShowHeader) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// HeaderPart is one widget of the header. The order of the parts is the
-// visual order. A part either has a fixed Width in points or fills the space
-// that the fixed parts leave (ADR 0168).
+// HeaderPart is one widget of the rendered band. Header.Widgets builds the
+// fixed row; the order is the visual order and a part either has a fixed
+// Width in points or fills the space that the fixed parts leave (ADR 0168).
 type HeaderPart struct {
 	Widget string         `yaml:"widget" json:"widget"`
 	Args   map[string]any `yaml:"args,omitempty" json:"args,omitempty"`
@@ -168,13 +180,25 @@ const maxHeaderPt = 144.0
 // ShowHeader reports whether the page shows its display type's header.
 func (t *Template) ShowHeader() bool { return t.Header == nil || bool(*t.Header) }
 
-// Validate checks the header of a display type and fills its default height.
+// Validate checks the header of a display type and fills its defaults.
 func (h *Header) Validate() error {
 	if h == nil {
 		return nil
 	}
-	if h.Left != nil || h.Center != nil || h.Right != nil {
-		return fmt.Errorf("header.left, header.center and header.right are gone: list every part in header.parts (ADR 0168)")
+	if len(h.Parts) > 0 || h.Left != nil || h.Center != nil || h.Right != nil {
+		return fmt.Errorf("the header band is fixed: set height, temperature, humidity, clock and battery (ADR 0168)")
+	}
+	if h.Clock == "" {
+		h.Clock = "time"
+	}
+	// An explicit true is the default; nil keeps the file short.
+	if h.PageIndicator != nil && *h.PageIndicator {
+		h.PageIndicator = nil
+	}
+	switch h.Clock {
+	case "time", "date", "datetime", "none":
+	default:
+		return fmt.Errorf(`header clock: expected "time", "date", "datetime" or "none", got %q`, h.Clock)
 	}
 	if h.Height == 0 {
 		h.Height = DefaultHeaderPt
@@ -182,27 +206,30 @@ func (h *Header) Validate() error {
 	if h.Height < 1 || h.Height > maxHeaderPt {
 		return fmt.Errorf("header height %g: expected points between 1 and %g", h.Height, maxHeaderPt)
 	}
-	if len(h.Parts) == 0 {
-		return fmt.Errorf("header.parts: at least one part is required")
-	}
-	for i := range h.Parts {
-		p := &h.Parts[i]
-		where := fmt.Sprintf("header part %d (%s)", i+1, p.Widget)
-		if p.Weight != 0 {
-			return fmt.Errorf("%s: weight is gone: set fill: true or width in points (ADR 0168)", where)
-		}
-		if p.Fill && p.Width != 0 {
-			return fmt.Errorf("%s: set either fill: true or width, not both", where)
-		}
-		if !p.Fill && p.Width <= 0 {
-			return fmt.Errorf("%s: set width in points or fill: true", where)
-		}
-		plugin, widget, ok := strings.Cut(p.Widget, "/")
-		if !ok || !ValidName(plugin) || !ValidName(widget) {
-			return fmt.Errorf("%s: widget %q: expected plugin/widget with a-z, 0-9 and -", where, p.Widget)
-		}
-	}
 	return nil
+}
+
+// Widgets is the fixed row of the band. One internal widget draws the whole
+// chrome: title, readings, clock and battery (ADR 0168).
+func (h *Header) Widgets() []HeaderPart {
+	if h == nil {
+		return nil
+	}
+	clock := h.Clock
+	if clock == "" {
+		clock = "time"
+	}
+	return []HeaderPart{{
+		Widget: "paperboy/band",
+		Fill:   true,
+		Args: map[string]any{
+			"page_indicator": h.ShowsPageIndicator(),
+			"temperature":    h.Temperature,
+			"humidity":       h.Humidity,
+			"clock":          clock,
+			"battery":        h.Battery,
+		},
+	}}
 }
 
 // Plugin and widget name of the header part.
@@ -718,7 +745,7 @@ func (t *Template) Fits(d Display) error {
 				fixed += max(int(math.Round(p.Width*ppi/72)), 1)
 			}
 			if fixed > d.Width || (fills > 0 && fixed >= d.Width) {
-				return fmt.Errorf("header parts need %d px, display is %d px wide", fixed, d.Width)
+				return fmt.Errorf("header parts need %d px, display is %d px wide; turn a part off", fixed, d.Width)
 			}
 		}
 	case d.Text:

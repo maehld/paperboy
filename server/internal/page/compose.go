@@ -187,7 +187,7 @@ func (t *Template) headerParts(d Display) []HeaderPart {
 	if !t.ShowHeader() || d.Header == nil {
 		return nil
 	}
-	return d.Header.Parts
+	return d.Header.Widgets()
 }
 
 // BandHeight is the header band's height in pixels. The display type editor
@@ -205,7 +205,8 @@ func (t *Template) rulePx(d Display) int {
 }
 
 // headerRects gives every fixed part its width and shares the remaining width
-// among the fill parts, in drawing order (ADR 0168).
+// among the fill parts, in drawing order. The title fills, so the fixed parts
+// sit at the right edge (ADR 0168).
 func (t *Template) headerRects(d Display) []image.Rectangle {
 	parts := t.headerParts(d)
 	if len(parts) == 0 {

@@ -59,7 +59,7 @@ func TestEncodeKeepsCellLayout(t *testing.T) {
 		"title: Preview\n",
 		"kind: image\n",
 		"grid: [6, 8]\n",
-		"- {at: [0, 0], span: [6, 1], widget: paperboy/header}\n",
+		"- {at: [0, 0], span: [6, 1], widget: paperboy/text, args: {text: x}}\n",
 		"args: {days: 3, start: today}",
 	} {
 		if !strings.Contains(out, want) {
@@ -87,14 +87,17 @@ func TestEncodeHeaderKeepsTheBand(t *testing.T) {
 	out := string(data)
 	for _, want := range []string{
 		"height: 24\n",
-		"parts:\n",
-		"- {widget: paperboy/title, fill: true}\n",
-		"- {widget: paperboy/clock, args: {format: auto}, width: 200}\n",
-		"- {widget: paperboy/reading, width: 100}\n",
+		"temperature: true\n",
+		"humidity: false\n",
+		"clock: time\n",
+		"battery: true\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "parts:") || strings.Contains(out, "page_indicator:") {
+		t.Fatalf("the encoded header carries an old or default key:\n%s", out)
 	}
 }
 
@@ -126,7 +129,7 @@ title: Preview
 kind: image
 grid: [6, 8]
 cells:
-  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
+  - { at: [0, 0], span: [6, 1], widget: paperboy/text, args: {text: x} }
   - { at: [0, 1], span: [6, 7], widget: calendar/week, args: { days: 3, start: today } }
 `
 

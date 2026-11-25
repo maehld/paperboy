@@ -91,12 +91,12 @@ func TestValuesDeclared(t *testing.T) {
 	}
 }
 
-// TestTitleDrawsPageTitle checks the header part: the page title and its page
-// indicator reach the band, and a narrow part still draws the same string.
-func TestTitleDrawsPageTitle(t *testing.T) {
+// TestBandDrawsPageTitle checks the fixed band: the page title and its page
+// indicator reach it, and a narrow band still draws the same string.
+func TestBandDrawsPageTitle(t *testing.T) {
 	req := &plugin.Request{Language: "de", Now: time.Now(), Page: plugin.PageInfo{Title: "Übersicht", Number: 2, Count: 3}}
-	w := plugin.WidgetRequest{Widget: "title", Width: 240, Height: 30,
-		Style: plugin.Style{Padding: 3, TextPx: 16}}
+	w := plugin.WidgetRequest{Widget: "band", Width: 240, Height: 30,
+		Style: plugin.Style{Padding: 3, TextPx: 16}, Args: map[string]any{"page_indicator": true}}
 	img := render.NewCanvas(240, 30, 2)
 	if err := (Plugin{}).Render(req, w, img); err != nil {
 		t.Fatal(err)
@@ -109,7 +109,7 @@ func TestTitleDrawsPageTitle(t *testing.T) {
 		}
 	}
 	if !dark {
-		t.Fatal("title drew no ink")
+		t.Fatal("band drew no ink")
 	}
 }
 
@@ -119,7 +119,7 @@ func TestTooSmallCell(t *testing.T) {
 	req := &plugin.Request{Language: "de"}
 	w := plugin.WidgetRequest{Width: 10, Height: 10, Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 16},
 		Args: map[string]any{"text": "x"}}
-	for _, name := range []string{"text", "title", "clock", "logo"} {
+	for _, name := range []string{"text", "band", "clock", "logo"} {
 		w.Widget = name
 		err := (Plugin{}).Render(req, w, render.NewCanvas(10, 10, 2))
 		if !errors.Is(err, plugin.ErrTooSmall) {

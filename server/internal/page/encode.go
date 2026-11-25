@@ -122,41 +122,35 @@ func textCellNode(c Cell) *yaml.Node {
 	return n
 }
 
-// HeaderNode writes the band of a display type (ADR 0168). The default height
-// is left out.
+// HeaderNode writes the fixed band of a display type: its height and every
+// switch, so the file shows the whole band (ADR 0168).
 func HeaderNode(h Header) *yaml.Node {
 	n := newMap()
-	if h.Height != 0 {
-		add(n, "height", num(h.Height))
+	height := h.Height
+	if height == 0 {
+		height = DefaultHeaderPt
 	}
-	parts := newSeq(false)
-	for _, part := range h.Parts {
-		parts.Content = append(parts.Content, headerPartNode(part))
+	clock := h.Clock
+	if clock == "" {
+		clock = "time"
 	}
-	add(n, "parts", parts)
-	return n
-}
-
-// headerPartNode is one part in flow style, e.g.
-// { widget: paperboy/battery, width: 30 } or
-// { widget: paperboy/title, fill: true }.
-func headerPartNode(p HeaderPart) *yaml.Node {
-	n := newMap()
-	n.Style = yaml.FlowStyle
-	add(n, "widget", str(p.Widget))
-	if len(p.Args) > 0 {
-		add(n, "args", valueNode(p.Args))
+	boolNode := func(v bool) *yaml.Node {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: strconv.FormatBool(v)}
 	}
-	if p.Fill {
-		add(n, "fill", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"})
-	} else {
-		add(n, "width", num(p.Width))
+	add(n, "height", num(height))
+	// true is the default and stays out of the file.
+	if !h.ShowsPageIndicator() {
+		add(n, "page_indicator", boolNode(false))
 	}
+	add(n, "temperature", boolNode(h.Temperature))
+	add(n, "humidity", boolNode(h.Humidity))
+	add(n, "clock", str(clock))
+	add(n, "battery", boolNode(h.Battery))
 	return n
 }
 
 // cellNode is one cell in flow style, e.g.
-// { at: [0, 0], span: [6, 1], widget: paperboy/header }.
+// { at: [0, 0], span: [3, 1], widget: text/comic }.
 func cellNode(c Cell) *yaml.Node {
 	n := newMap()
 	n.Style = yaml.FlowStyle

@@ -178,16 +178,13 @@ func TestSelectedDeviceIDsAndScope(t *testing.T) {
 	if !deviceScoped(ownReading, nil) {
 		t.Error("a reading of the page's own device is device-scoped")
 	}
-	// Header parts read the same device arguments as cells (ADR 0168).
-	header := &page.Header{Parts: []page.HeaderPart{
-		{Widget: "paperboy/reading", Fill: true},
-		{Widget: "paperboy/battery", Args: map[string]any{"device": "a"}, Width: 30},
-	}}
+	// The fixed header parts read the same status as cells (ADR 0168).
+	header := &page.Header{Temperature: true, Battery: true}
 	headerOnly := &page.Template{}
 	if !deviceScoped(headerOnly, header) {
 		t.Error("a reading in the header is device-scoped")
 	}
-	if got := selectedDeviceIDs(headerOnly, header); len(got) != 1 || got[0] != "a" {
+	if got := selectedDeviceIDs(headerOnly, header); len(got) != 0 {
 		t.Errorf("header selected ids: %v", got)
 	}
 	hide := page.ShowHeader(false)

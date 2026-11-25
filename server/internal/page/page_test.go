@@ -23,7 +23,7 @@ kind: image
 grid: [4, 2]
 style: { padding: 4, divider: 2 }
 cells:
-  - { at: [0, 0], span: [4, 1], widget: paperboy/header }
+  - { at: [0, 0], span: [4, 1], widget: paperboy/text, args: {text: x} }
   - { at: [0, 1], widget: cal/agenda, args: { lines: 4 }, style: { padding: 0 } }
   - { at: [1, 1], span: [3, 1], widget: solar/chart }
 `
@@ -163,7 +163,7 @@ func TestRenderImageComposesCells(t *testing.T) {
 					img.Pix[p] = 100 // between dark and light gray
 				}
 				out[i] = Result{Image: img, Stale: true}
-			case "header":
+			case "text":
 				out[i] = Result{Image: image.NewGray(image.Rect(0, 0, w.Width, w.Height))} // black
 			default:
 				out[i] = Result{Err: errors.New("boom")}
@@ -187,7 +187,7 @@ func TestRenderImageComposesCells(t *testing.T) {
 		t.Fatalf("styles: %+v %+v", w[0].Style, w[1].Style)
 	}
 	if gray(img, 200, 50) != 0 {
-		t.Error("header not pasted")
+		t.Error("first cell not pasted")
 	}
 	if gray(img, 250, 130) != 85 {
 		t.Errorf("chart quantized to %d, want 85", gray(img, 250, 130))
@@ -211,11 +211,7 @@ cells:
 `
 
 func testHeader() *Header {
-	return &Header{Height: 24, Parts: []HeaderPart{
-		{Widget: "paperboy/title", Fill: true},
-		{Widget: "paperboy/clock", Args: map[string]any{"format": "auto"}, Width: 200},
-		{Widget: "paperboy/reading", Width: 100},
-	}}
+	return &Header{Height: 24, Temperature: true, Clock: "time", Battery: true}
 }
 
 func TestPageHeaderSwitch(t *testing.T) {
@@ -248,16 +244,28 @@ func TestHeaderValidate(t *testing.T) {
 	if err := h.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if h.Height != DefaultHeaderPt || len(h.Parts) != 3 {
+	if h.Height != DefaultHeaderPt || h.Clock != "time" || !h.Temperature || !h.Battery {
 		t.Fatalf("header: %+v", h)
 	}
+	if parts := h.Widgets(); len(parts) != 1 || parts[0].Widget != "paperboy/band" || !parts[0].Fill {
+		t.Fatalf("widgets: %+v", parts)
+	}
+	if args := h.Widgets()[0].Args; args["page_indicator"] != true || args["battery"] != true || args["clock"] != "time" {
+		t.Fatalf("header widget args: %+v", args)
+	}
+	off := false
+	h.PageIndicator = &off
+	if args := h.Widgets()[0].Args; args["page_indicator"] != false {
+		t.Fatalf("page indicator stays on: %+v", args)
+	}
+	h.PageIndicator = nil
+	if err := h.Validate(); err != nil || h.PageIndicator != nil {
+		t.Fatalf("an explicit true is not the default: %+v %v", h.PageIndicator, err)
+	}
 	for name, bad := range map[string]*Header{
-		"no parts":     {},
-		"height":       {Height: 0.5, Parts: []HeaderPart{{Widget: "a/b", Fill: true}}},
-		"weight":       {Parts: []HeaderPart{{Widget: "a/b", Weight: 1}}},
-		"both":         {Parts: []HeaderPart{{Widget: "a/b", Fill: true, Width: 10}}},
-		"no width":     {Parts: []HeaderPart{{Widget: "a/b"}}},
-		"bad widget":   {Parts: []HeaderPart{{Widget: "nope", Fill: true}}},
+		"height":       {Height: 0.5},
+		"clock":        {Clock: "hourly"},
+		"old parts":    {Parts: []HeaderPart{{Widget: "a/b", Fill: true}}},
 		"old zone key": {Left: []HeaderPart{{Widget: "a/b", Fill: true}}},
 	} {
 		if err := bad.Validate(); err == nil {
@@ -286,18 +294,19 @@ func TestRenderImageHeaderBand(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := got.Widgets
-	if len(w) != 5 {
+	if len(w) != 3 {
 		t.Fatalf("widgets: %+v", w)
 	}
-	// The fixed parts need 300 px; the fill part gets the other 300 px. The
-	// band takes 24 pt at 72 ppi; the rule leaves 23 px for its parts.
-	if w[0].Widget != "title" || w[0].Width != 300 || w[0].Height != 23 ||
-		w[1].Widget != "clock" || w[1].Width != 200 || w[2].Widget != "reading" || w[2].Width != 100 {
-		t.Fatalf("header requests: %+v", w[:3])
+	// One internal widget draws the whole band; the rule leaves 23 px for it.
+	if w[0].Widget != "band" || w[0].Width != 600 || w[0].Height != 23 {
+		t.Fatalf("header request: %+v", w[0])
+	}
+	if w[0].Args["temperature"] != true || w[0].Args["battery"] != true || w[0].Args["clock"] != "time" {
+		t.Fatalf("header args: %+v", w[0].Args)
 	}
 	// The grid divides the 276 px below the band.
-	if w[3].Width != 300 || w[3].Height != 138 || w[4].Width != 300 || w[4].Height != 138 {
-		t.Fatalf("cell requests: %+v", w[3:])
+	if w[1].Width != 300 || w[1].Height != 138 || w[2].Width != 300 || w[2].Height != 138 {
+		t.Fatalf("cell requests: %+v", w[1:])
 	}
 	rects := tmpl.Rects(d)
 	if rects[0] != image.Rect(0, 24, 300, 162) || rects[1] != image.Rect(300, 162, 600, 300) {
@@ -319,10 +328,10 @@ func TestRenderImageHeaderBand(t *testing.T) {
 	if len(got.Widgets) != 2 || got.Widgets[0].Width != 300 || got.Widgets[0].Height != 150 {
 		t.Fatalf("hidden header requests: %+v", got.Widgets)
 	}
-	// Too many fixed pixels do not fit.
-	d.Header = &Header{Parts: []HeaderPart{{Widget: "a/b", Width: 700}, {Widget: "a/c", Fill: true}}}
+	// A band higher than the display does not fit.
+	d.Header = &Header{Height: 400}
 	if err := tmpl.Fits(d); err == nil {
-		t.Error("a header wider than the display fits")
+		t.Error("a band higher than the display fits")
 	}
 }
 

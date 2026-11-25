@@ -16,7 +16,7 @@ title: Ziel
 kind: image
 grid: [2, 2]
 cells:
-  - { at: [0, 0], span: [2, 2], widget: paperboy/header }
+  - { at: [0, 0], span: [2, 2], widget: paperboy/text, args: {text: x} }
 `
 
 // backupFiles counts the versions of one edited file under state/editor/.

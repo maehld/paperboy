@@ -19,7 +19,7 @@ A display type is a file under `displays/<name>.yaml` ([ADR 0071](../adr/0071-di
 | `power` | `auto`, `battery` or `mains` ([ADR 0051](../adr/0051-power-source-refresh-policy.md)) |
 | `rotation` | 0, 90, 180 or 270 for image types: the quarter turn from the page to the panel ([ADR 0102](../adr/0102-rotate-pages-onto-the-panel.md)) |
 | `grid` | Columns and rows a new image page of this type starts with, 1 to 80 each, default 6 × 8 ([ADR 0128](../adr/0128-a-default-grid-per-display-type.md)) |
-| `header` | The band above every page: `height` in points, default 24, and one ordered `parts` list with `fill` or a fixed `width` each ([ADR 0168](../adr/0168-a-header-band-per-display-type.md)) |
+| `header` | The band above every page, present on every image type: `height` in points, default 24, `page_indicator` (default true), `temperature`, `humidity`, `clock` (`time`, `date`, `datetime` or `none`) and `battery` ([ADR 0168](../adr/0168-a-header-band-per-display-type.md)) |
 
 The loader and the API validate with the same function. An image type needs `ppi` and rejects `charset`. A text type allows at most 80 × 24 characters and rejects `ppi`, `gray_levels`, `grid` and `header`. A `hd44780` display draws the CGRAM glyphs of [ADR 0155](../adr/0155-cgram-glyphs-on-hd44780-text-displays.md); an older firmware shows `?` for them until it updates. A leftover `width_mm` is rejected with a hint: the physical size follows from `ppi` ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md)).
 
@@ -171,7 +171,7 @@ The sensor sits next to the panel and the battery, so it reads slightly warm. Th
 
 ## Device status in widgets
 
-`paperboy/battery`, `paperboy/device-status`, `paperboy/reading`, the header band's parts and the old header's `battery` switch read `server_status` from the plugin request ([ADR 0115](../adr/0115-device-status-in-a-widget.md), [0168](../adr/0168-a-header-band-per-display-type.md)). Paperboy fills it from the device the page is rendered for.
+`paperboy/battery`, `paperboy/device-status`, `paperboy/reading` and the header band read `server_status` from the plugin request ([ADR 0115](../adr/0115-device-status-in-a-widget.md), [0168](../adr/0168-a-header-band-per-display-type.md)). Paperboy fills it from the device the page is rendered for.
 
 A preview without a device gets a sample device ([ADR 0123](../adr/0123-a-sample-device-in-previews.md)). Its id is `preview`; its status is `ok` and its display type the previewed one. It shows 78 %, 4.05 V, not charging, a runtime of about 12 days, 21.5 °C and 45 %. It reads no state file and writes no render cache, so every preview shows the same row.
 

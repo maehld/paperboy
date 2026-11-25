@@ -136,17 +136,17 @@ func statusOfDevice(cfg *Config, d *Device, st deviceState, now time.Time) plugi
 // pageWidgets returns the widgets of a page in cell order, then its display
 // type's header parts. A header part reads the same device arguments as a cell
 // (ADR 0168).
+// pageWidgets lists the widgets a page reads status for: its cells and the
+// fixed parts of the display type's header band.
 func pageWidgets(t *page.Template, header *page.Header) []page.Cell {
-	parts := 0
-	if t.ShowHeader() && header != nil {
-		parts = len(header.Parts)
+	var parts []page.HeaderPart
+	if t.ShowHeader() {
+		parts = header.Widgets()
 	}
-	out := make([]page.Cell, 0, len(t.Cells)+parts)
+	out := make([]page.Cell, 0, len(t.Cells)+len(parts))
 	out = append(out, t.Cells...)
-	if parts > 0 {
-		for _, p := range header.Parts {
-			out = append(out, page.Cell{Widget: p.Widget, Args: p.Args})
-		}
+	for _, p := range parts {
+		out = append(out, page.Cell{Widget: p.Widget, Args: p.Args})
 	}
 	return out
 }
@@ -206,8 +206,9 @@ func deviceScoped(t *page.Template, header *page.Header) bool {
 			if id, ok := c.Args["device"].(string); !ok || id == "" {
 				return true
 			}
-		case builtin.Name + "/header":
-			if plugin.Values(c.Args).Bool("battery", false) {
+		case builtin.Name + "/band":
+			vals := plugin.Values(c.Args)
+			if vals.Bool("temperature", false) || vals.Bool("humidity", false) || vals.Bool("battery", false) {
 				return true
 			}
 		}

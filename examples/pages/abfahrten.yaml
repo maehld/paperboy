@@ -5,5 +5,4 @@ variants: {lcd2004: lcd2004}
 grid: [6, 8]
 style: { padding: 4.5, divider: 0.6 }
 cells:
-  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
-  - { at: [0, 1], span: [6, 7], widget: departures/departures, args: { header: true } }
+  - { at: [0, 0], span: [6, 8], widget: departures/departures, args: { header: true } }

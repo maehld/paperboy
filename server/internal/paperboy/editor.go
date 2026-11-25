@@ -1038,6 +1038,9 @@ func (s *Server) handleDisplay(w http.ResponseWriter, r *http.Request) {
 	if f, err := parseDisplayFile(data); err != nil {
 		out.Error = shortError(err)
 	} else {
+		if f.Kind != kindText && f.Header == nil {
+			f.Header = &page.Header{}
+		}
 		out.Display = &f
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -1204,8 +1207,8 @@ func (s *Server) handleDisplayHeaderPreview(w http.ResponseWriter, r *http.Reque
 		writeAPIError(w, http.StatusBadRequest, "%v", err)
 		return
 	}
-	if body.Header == nil || len(body.Header.Parts) == 0 {
-		writeAPIError(w, http.StatusBadRequest, "header needs at least one part")
+	if body.Header == nil {
+		writeAPIError(w, http.StatusBadRequest, "header missing")
 		return
 	}
 	if err := body.Header.Validate(); err != nil {
@@ -1239,7 +1242,9 @@ func (s *Server) renderBand(cfg *Config, display string, header *page.Header, no
 	d.Header = header
 	tmpl := &page.Template{Title: display}
 	status := s.statusSnapshot(cfg, display, "", selectedDeviceIDs(tmpl, d.Header), now)
-	ctx := page.Context{Now: now, Page: 1, Pages: 1, Widgets: s.widgetSource(), Values: s.valueSource(), ServerStatus: status}
+	// A plan with two pages makes the page indicator visible, so the editor can
+	// test its switch (ADR 0168).
+	ctx := page.Context{Now: now, Page: 1, Pages: 2, Widgets: s.widgetSource(), Values: s.valueSource(), ServerStatus: status}
 	full, err := tmpl.RenderImage(d, ctx)
 	if err != nil {
 		return nil, err

@@ -5,8 +5,6 @@ gray_levels: 4
 ppi: 236          # 800 px / 86 mm
 header:
   height: 24
-  parts:
-    - { widget: paperboy/title, fill: true }
-    - { widget: paperboy/reading, args: { name: temperature, label: false, age: false }, width: 38 }
-    - { widget: paperboy/battery, width: 30 }
-    - { widget: paperboy/clock, args: { format: auto, align: right }, width: 50 }
+  temperature: true
+  clock: time
+  battery: true

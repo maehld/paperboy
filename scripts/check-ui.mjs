@@ -339,33 +339,14 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
     editorDom.window.close();
   }
 
-// display-editor.js edits the header band of a display type: a real widget
-// select, the argument fields of the chosen widget and a server-rendered
-// preview (ADR 0168).
+// display-editor.js edits the fixed header band of a display type: title on
+// the left, readings in the middle, clock and battery on the right, with a
+// server-rendered preview (ADR 0168).
 {
   const script = await readFile(join(root, "server/internal/paperboy/ui/display-editor.js"), "utf8");
-  const argsScript = await readFile(join(root, "server/internal/paperboy/ui/args.js"), "utf8");
-  const plugins = {
-    plugins: [{
-      name: "paperboy",
-      description: {
-        title: "Paperboy",
-        widgets: [
-          {
-            widget: "title", title: "Page title",
-            args: {
-              align: { type: "string", default: "left", enum: ["left", "center", "right"], enum_labels: { left: "Left", right: "Right" } },
-              page_indicator: { type: "bool", default: true },
-            },
-          },
-          { widget: "battery", title: "Battery", args: { align: { type: "string", default: "center", enum: ["left", "center", "right"] } } },
-        ],
-      },
-    }],
-  };
   const display = {
     kind: "image", size: [800, 480], ppi: 125, gray_levels: 4,
-    header: { height: 24, parts: [{ widget: "paperboy/title", args: {}, fill: true }] },
+    header: { height: 24, temperature: true, humidity: false, clock: "time", battery: false },
   };
   const body = `<span id="status"></span><span id="where"></span>
 <select id="kind"></select><input id="width"><input id="height"><select id="gray"></select><input id="ppi">
@@ -375,9 +356,11 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
 <label id="width-label">width <input readonly></label><label id="height-label">height <input readonly></label>
 <input id="panel-diagonal"><input id="panel-width"><input id="panel-height">
 <button id="use-diagonal" type="button"></button><button id="use-width" type="button"></button><button id="use-height" type="button"></button>
-<input id="header-height"><div id="header-preview"><img id="header-preview-img" hidden><p id="header-preview-note"></p></div>
-<div id="header-parts"></div>
-<button id="header-enable" type="button"></button><button id="header-add" type="button"></button><button id="header-remove" type="button"></button>
+<input id="header-height">
+<div id="header-preview"><img id="header-preview-img" hidden><p id="header-preview-note"></p></div>
+<input id="header-page-indicator" type="checkbox"><input id="header-temperature" type="checkbox"><input id="header-humidity" type="checkbox">
+<select id="header-clock"><option value="none"></option><option value="time"></option><option value="date"></option><option value="datetime"></option></select>
+<input id="header-battery" type="checkbox">
 <p id="header-hint"></p><pre id="yaml"></pre>
 <button id="save" type="button"></button><button id="delete" type="button"></button><button id="rename" type="button"></button><button id="reload" type="button"></button>
 <script id="display-data" type="application/json">${JSON.stringify({ name: "e1001", new: false })}</script>`;
@@ -393,7 +376,6 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
   window.fetch = async (target) => {
     const path = String(target);
     const answer = { ok: true, status: 200, json: async () => ({}), text: async () => "", blob: async () => ({}) };
-    if (path.startsWith("/api/plugins")) return { ...answer, json: async () => plugins };
     if (path.includes("/header-preview")) {
       previews++;
       return answer;
@@ -401,36 +383,20 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
     if (path.startsWith("/api/displays/")) return { ...answer, json: async () => ({ hash: "h", yaml: "", display }) };
     return answer;
   };
-  window.eval(argsScript);
   window.eval(script);
-  await sleep(80);
-
-  const parts = window.document.querySelectorAll("#header-parts .header-part");
-  check(parts.length === 1, "the display editor does not list the header part");
-  const pick = parts[0] && parts[0].querySelector("select");
-  check(pick && pick.selectedOptions[0] && pick.selectedOptions[0].textContent === "Page title",
-    "the header part does not select the widget by its title");
-  check(pick && pick.querySelector("optgroup") && pick.querySelector("optgroup").label === "Paperboy",
-    "the widget select is not grouped by plugin");
-  if (parts[0]) parts[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  const args = window.document.querySelector(".header-part-args");
-  check(!!args && !!args.querySelector(".arg"), "the header part does not show argument fields");
-  const align = args && Array.from(args.querySelectorAll(".arg"))
-    .find((arg) => arg.querySelector(".name").textContent === "align");
-  const select = align && align.querySelector("select");
-  check(!!select && select.value === "" && select.options.length === 4, "an enum argument is not a select with its values");
-  const indicator = args && Array.from(args.querySelectorAll(".arg"))
-    .find((arg) => arg.querySelector(".name").textContent === "page_indicator");
-  check(!!indicator && indicator.querySelector("input").type === "checkbox", "a bool argument is not a checkbox");
-  select.value = "right";
-  select.dispatchEvent(new window.Event("change"));
   await sleep(400);
+
+  check(window.document.getElementById("header-page-indicator").checked, "the editor does not show the page indicator switch");
+  check(window.document.getElementById("header-temperature").checked, "the editor does not show the temperature switch");
+  check(!window.document.getElementById("header-humidity").checked, "the editor invents a humidity switch value");
+  check(window.document.getElementById("header-clock").value === "time", "the editor does not show the clock choice");
+  check(!window.document.getElementById("header-battery").checked, "the editor invents a battery switch value");
+  check(window.document.getElementById("header-hint").textContent.includes("saved size"), "the header hint does not name the preview basis");
   const img = window.document.getElementById("header-preview-img");
   check(!img.hidden && img.src === "blob:band", "the header band has no preview image");
   check(previews > 0, "the display editor never asks for a band preview");
-  check(!window.document.getElementById("header-hint").textContent.includes("JSON"), "the header hint still mentions JSON");
   for (const failure of failures) problems.push(failure);
-  if (problems.length === 0) console.log("display-editor.js selected a widget, edited its arguments and drew the band preview");
+  if (problems.length === 0) console.log("display-editor.js switched the header parts and drew the band preview");
   dom.window.close();
 }
 

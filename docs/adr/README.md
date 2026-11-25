@@ -169,7 +169,7 @@ The web UI: what the operator sees and how content is edited. See [`04-operator-
 | [0164](0164-a-widget-action-carries-its-own-arguments.md) | A widget action carries its own arguments | Accepted, implemented; amends the arguments, title and inheritance of [ADR-0162](0162-widget-actions-and-the-plugins-choices.md) |
 | [0165](0165-a-plugin-describes-its-action-options.md) | A plugin describes its action options | Accepted, implemented; protocol 10 adds `action_options` and the `active` flag, amends [ADR-0162](0162-widget-actions-and-the-plugins-choices.md) and builds on [ADR-0164](0164-a-widget-action-carries-its-own-arguments.md) |
 | [0167](0167-a-header-band-outside-the-page-grid.md) | A header band outside the page grid | Accepted, implemented; amends the grid of [ADR-0049](0049-plugin-widgets.md), adds `paperboy/title` and `format: auto` to `paperboy/clock`, and keeps `paperboy/header` for existing pages; its three zones are superseded by [ADR-0168](0168-a-header-band-per-display-type.md) |
-| [0168](0168-a-header-band-per-display-type.md) | A header band per display type | Accepted, implemented; replaces the `left`, `center` and `right` zones of [ADR-0167](0167-a-header-band-outside-the-page-grid.md) with one ordered `parts` list, a fixed `width` or `fill` per part, the band in the display type and `header: false` on a page |
+| [0168](0168-a-header-band-per-display-type.md) | A header band per display type | Accepted, implemented; replaces the zones and the free part list of [ADR-0167](0167-a-header-band-outside-the-page-grid.md) with one fixed band in the display type, switches for the page indicator, readings, clock and battery, `header: false` on a page, and removes the `paperboy/header` and `paperboy/title` widgets |
 
 ## Plugins
 

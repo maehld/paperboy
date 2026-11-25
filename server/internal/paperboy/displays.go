@@ -60,7 +60,7 @@ func parseDisplayFile(data []byte) (displayFile, error) {
 }
 
 // check rejects what only the file can carry, before it becomes a Profile.
-func (f displayFile) check(name string) error {
+func (f *displayFile) check(name string) error {
 	if f.WidthMM != nil {
 		return fmt.Errorf("display type %s: width_mm was replaced by ppi (ADR 0050): replace it with ppi = pixels × 25.4 / mm of the same side", name)
 	}
@@ -87,13 +87,18 @@ func (f displayFile) check(name string) error {
 				name, f.Grid[0], f.Grid[1], maxGrid)
 		}
 	}
-	if f.Header != nil {
-		if f.Kind == kindText {
+	if f.Kind == kindText {
+		if f.Header != nil {
 			return fmt.Errorf("display type %s: header only applies to kind image", name)
 		}
-		if err := f.Header.Validate(); err != nil {
-			return fmt.Errorf("display type %s: %w", name, err)
-		}
+		return nil
+	}
+	// Every image display type has a band; an absent key gets the default.
+	if f.Header == nil {
+		f.Header = &page.Header{}
+	}
+	if err := f.Header.Validate(); err != nil {
+		return fmt.Errorf("display type %s: %w", name, err)
 	}
 	return nil
 }
@@ -124,7 +129,12 @@ func (f displayFile) profile() Profile {
 		ScrollStep: step,
 	}
 	p.Grid = f.Grid
-	p.Header = f.Header
+	if f.Kind != kindText {
+		if f.Header == nil {
+			f.Header = &page.Header{}
+		}
+		p.Header = f.Header
+	}
 	return p
 }
 
@@ -225,8 +235,12 @@ func encodeDisplayFile(f *displayFile) ([]byte, error) {
 			Content: []*yaml.Node{intScalar(f.Grid[0]), intScalar(f.Grid[1])}}
 		set("grid", grid)
 	}
-	if f.Header != nil {
-		set("header", page.HeaderNode(*f.Header))
+	if kind != kindText {
+		header := f.Header
+		if header == nil {
+			header = &page.Header{}
+		}
+		set("header", page.HeaderNode(*header))
 	}
 	return marshalFile(root)
 }
@@ -236,7 +250,12 @@ func intScalar(v int) *yaml.Node {
 }
 
 func floatScalar(v float64) *yaml.Node {
-	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!float", Value: strconv.FormatFloat(v, 'f', -1, 64)}
+	// Integral numbers read back as ints into a float field; that keeps
+	// `ppi: 125` readable instead of `ppi: !!float 125`.
+	if v == float64(int64(v)) {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.FormatInt(int64(v), 10)}
+	}
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!float", Value: strconv.FormatFloat(v, 'g', -1, 64)}
 }
 
 // editorDisplayFile is one display type file in the overview of the editor.

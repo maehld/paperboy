@@ -19,7 +19,7 @@ title: Solar
 kind: image
 grid: [2, 2]
 cells:
-  - { at: [0, 0], span: [2, 1], widget: paperboy/header }
+  - { at: [0, 0], span: [2, 1], widget: paperboy/text, args: {text: x} }
   - { at: [0, 1], span: [2, 1], widget: paperboy/text, args: { text: "4,2 kW" } }
 `
 
@@ -130,8 +130,14 @@ func TestPluginsListsBuiltin(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(out.Plugins) != 1 || out.Plugins[0].Name != "paperboy" || out.Plugins[0].Description == nil ||
-		len(out.Plugins[0].Description.Widgets) != 8 {
+		len(out.Plugins[0].Description.Widgets) != 6 {
 		t.Fatalf("plugins: %s", rec.Body)
+	}
+	// The band is internal chrome; the old header and title widgets are gone.
+	for _, w := range out.Plugins[0].Description.Widgets {
+		if w.Widget == "header" || w.Widget == "title" || w.Widget == "band" {
+			t.Errorf("the built-in plugin lists %q", w.Widget)
+		}
 	}
 	// The logo is an image widget: a text display cannot show the mark.
 	for _, w := range out.Plugins[0].Description.Widgets {

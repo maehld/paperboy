@@ -2,7 +2,7 @@
 
 # Content
 
-A page is a grid of cells on an image display and a character grid of boxes on a text display. An image page may reserve a header band above its grid (ADR 0167). Every cell shows one widget from one plugin, and every text cell shows one value a plugin declares. A plan decides which page a device gets and when.
+A page is a grid of cells on an image display and a character grid of boxes on a text display. An image page carries the header band of its display type above its grid (ADR 0168). Every cell shows one widget from one plugin, and every text cell shows one value a plugin declares. A plan decides which page a device gets and when.
 
 ## Pages
 
@@ -54,28 +54,33 @@ The page's own grid divides the pixels below the header band. It is independent 
 
 ## Header band
 
-An image display type may carry a header band above every page
+Every image display type carries a header band above every page
 ([ADR 0167](../adr/0167-a-header-band-outside-the-page-grid.md),
 [0168](../adr/0168-a-header-band-per-display-type.md)). The band lives in
-`displays/<name>.yaml`. `header.height` is in points, 24 by default. `ppi`
-converts it to pixels. The grid divides only the area below the band.
+`displays/<name>.yaml` and is fixed chrome, not a widget row. `header.height`
+is in points, 24 by default. `ppi` converts it to pixels. The grid divides
+only the area below the band.
 
-`header.parts` is one ordered list of widget parts, from left to right. A part
-has `widget`, `args` and either a fixed `width` in points or `fill: true`. A
-fill part shares the width that the fixed parts leave. The header has no cells
-and no fixed column count. `align` belongs to the widget and aligns its content
-inside its part. The old `left`, `center` and `right` keys and the old `weight`
-answer a hint for `parts`, `width` and `fill`.
+The title and its `page_indicator` sit on the left. The right group is
+right-aligned and holds the room `temperature`, the `humidity`, the `clock`
+and the `battery`, in that order from left to right. Two spaces separate the
+temperature, the humidity and the clock. The page indicator follows the title
+after two spaces. Each is a switch:
+`page_indicator`, `temperature`, `humidity` and `battery` are booleans;
+`clock` is `time`, `date`, `datetime` or `none` (default `time`). A reading
+appears when the device measures it. The title, the readings and the clock use
+one text size; only the title is bold. The battery gauge is a little smaller
+and shows no percentage.
+
+The band is one internal widget of the built-in plugin. It draws the text at
+one size, the title bold, and the battery gauge a little smaller. The old
+`parts`, `left`, `center`, `right` and `weight` keys answer a hint for the
+switches. The old `paperboy/header` and `paperboy/title` widgets are gone.
 
 A page writes `header: false` to hide the band; without the key it shows the
-band of its display type. A page carries no header parts. The page title stays
-page-specific because `paperboy/title` reads it. `paperboy/clock` with
-`format: auto` draws the date and the time, and `paperboy/reading` draws a room
-value. The old `paperboy/header` still works in a cell. It is not a header part.
-
-A part that fails shows a notice in its box, like a cell. The band carries the
-display type's rule as a line at its bottom. A text display type has no header
-band.
+band of its display type. A page carries no header settings. The page title
+stays page-specific because the band reads it. A text display type has no
+header band.
 
 ## Image pages
 
@@ -90,7 +95,7 @@ For each cell, in this order:
 3. The image is pasted one to one. There is no scaling at this point: a widget that returns the wrong size gets a hatched notice with the reason.
 4. A result that is older than its `max_age` adds the bar `Veraltet: …` at the bottom of the cell.
 
-Header parts follow the same steps in their boxes. A stale part adds its name to the page bar.
+The band is one widget result and follows the same steps in the band rectangle. A stale band adds its name to the page bar.
 
 The built-in plugin draws text, lines and fills, so a page that is only text needs no image file. A page that shows its own device is cached per device; a page that only names other devices stays shared (ADR 0115).
 
@@ -259,12 +264,10 @@ The pages of a plan are static, so every page and the values of every trigger ar
 
 ## Built-in widgets
 
-The built-in plugin `paperboy` needs no data and is never cached ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md)):
+The built-in plugin `paperboy` needs no data and is never cached ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md)). The header band is internal chrome, not a widget a page places (ADR 0168):
 
 | Widget | Draws |
 |---|---|
-| `header` | The old single-cell header: title or page title, page indicator, clock, date, subtitle, alignment; the date takes the longest of four forms that fits half the cell, or the free text columns, and is dropped when none fits; `battery: true` adds the gauge of this device at the right, as high as a capital letter of the date, without a number (a text display shows the percentage instead) |
-| `title` | The page title and page indicator, as a header part |
 | `battery` | The battery of one device as a gauge with percentage or voltage; without `device` it shows the device that renders the page; `2x2` puts the value below the gauge, the horizontal spans beside it ([ADR 0121](../adr/0121-segmented-battery-gauge.md)) |
 | `device-status` | One row per device with battery, estimated runtime and the time since the last contact; `devices` selects ids, otherwise it shows the device that renders the page; the stalest row comes first |
 | `reading` | One measured value of a device, `temperature` or `humidity`, with its unit and an optional label; without `device` it shows the device that renders the page; the caption names the age once the value is older than an hour ([ADR 0134](../adr/0134-readings-from-the-device.md), [0163](../adr/0163-the-readings-in-the-device-status-and-a-reading-widget.md)) |
