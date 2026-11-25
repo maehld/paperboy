@@ -401,6 +401,30 @@ func TestGraphInAShortCell(t *testing.T) {
 	}
 }
 
+// The default graph covers the last 24 hours instead of the calendar day, so
+// the chart still has data just after midnight.
+func TestGraphWindowRolls(t *testing.T) {
+	now := time.Date(2026, 11, 13, 0, 5, 0, 0, time.UTC)
+	req := &plugin.Request{Now: now, Language: "de"}
+	rs := []reading{{at: now.Add(-10 * time.Minute), value: 120}}
+
+	start, end, title := graphWindow(req, rs, "day")
+	if !end.Equal(now) || end.Sub(start) != 24*time.Hour {
+		t.Errorf("day window is %v to %v, want the last 24 hours", start, end)
+	}
+	if title != "Letzte 24 Stunden" {
+		t.Errorf("day title = %q", title)
+	}
+
+	start, end, title = graphWindow(req, rs, "hour")
+	if !end.Equal(rs[0].at) || end.Sub(start) != time.Hour {
+		t.Errorf("hour window is %v to %v, want the last hour from the newest reading", start, end)
+	}
+	if title != "Letzte Stunde" {
+		t.Errorf("hour title = %q", title)
+	}
+}
+
 // The trend of the values widget is drawn as the arrow of the glucose widget.
 func TestValuesTrendArrow(t *testing.T) {
 	now := time.Date(2026, 11, 13, 20, 0, 0, 0, time.UTC)

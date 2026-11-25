@@ -4,7 +4,8 @@
 // pydexcom use; the sensor itself speaks a proprietary protocol and is not
 // read directly.
 //
-// The service keeps one day of values, so the widgets cover a day and an hour.
+// The service keeps 24 hours of values, so the widgets cover the last 24 hours
+// and the last hour.
 //
 //	plugins:
 //	  dexcom:
@@ -137,11 +138,11 @@ func (d *dexcom) Describe() plugin.Description {
 			{Name: "trend", Title: "Trend", Type: plugin.ValueDirection},
 			{Name: "delta", Title: "Change in 15 min", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
 			{Name: "age", Title: "Age of the reading", Type: plugin.ValueDuration},
-			{Name: "avg", Title: "Average of the day", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
-			{Name: "min", Title: "Lowest of the day", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
-			{Name: "max", Title: "Highest of the day", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
+			{Name: "avg", Title: "Average of the last 24 hours", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
+			{Name: "min", Title: "Lowest of the last 24 hours", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
+			{Name: "max", Title: "Highest of the last 24 hours", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
 			{Name: "in-band", Title: "Share in the target band", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
-			{Name: "count", Title: "Readings of the day", Type: plugin.ValueNumber},
+			{Name: "count", Title: "Readings of the last 24 hours", Type: plugin.ValueNumber},
 			{Name: "band", Title: "Target band", Type: plugin.ValueText},
 		},
 		Widgets: []plugin.WidgetInfo{
@@ -157,7 +158,7 @@ func (d *dexcom) Describe() plugin.Description {
 				MinWidth: 200, MinHeight: 120,
 				Args: map[string]plugin.Arg{
 					"period": {Type: "string", Default: "day", Enum: []any{"day", "hour"},
-						EnumLabels:  map[string]string{"day": "Today", "hour": "Last hour"},
+						EnumLabels:  map[string]string{"day": "Last 24 hours", "hour": "Last hour"},
 						Description: "which part of the history the chart shows"},
 					"header": {Type: "bool", Default: true,
 						Description: "show the title and the unit above the chart"},
