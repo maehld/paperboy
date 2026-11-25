@@ -83,7 +83,12 @@ func actionServerWith(t *testing.T, pageYAML string, touch, deny bool) (*Server,
 	t.Helper()
 	dir := t.TempDir()
 	writePageFile(t, filepath.Join(dir, "pages", "eins.yaml"), pageYAML)
-	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), "pages: [eins]\n")
+	writePageFile(t, filepath.Join(dir, "pages", "zwei.yaml"), `kind: image
+grid: [1, 1]
+cells:
+  - { at: [0, 0], widget: paperboy/text, args: { text: two } }
+`)
+	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), "pages: [eins, zwei]\n")
 	dev := Device{ID: "test", MAC: planDeviceMAC, Profile: "small", Plan: "zimmer", Refresh: Duration(10 * time.Minute)}
 	if touch {
 		on := true
@@ -227,34 +232,207 @@ func TestActionDeadlineWakeClearsTheMode(t *testing.T) {
 	}
 }
 
-// TestActionModeNeedsTouchAndAnAction checks the two switches: a device
-// without a digitiser and a page without an action never open the mode and
-// never keep the device listening (ADR 0162).
-func TestActionModeNeedsTouchAndAnAction(t *testing.T) {
+// optionIndex finds an option by its title, so a test names the choice rather
+// than the order.
+func optionIndex(opts []actionOption, title string) int {
+	for i, o := range opts {
+		if o.Title == title {
+			return i
+		}
+	}
+	return -1
+}
+
+// darkAt reports whether the pixel at x, y is black.
+func darkAt(t *testing.T, s *Server, path string, x, y int) bool {
+	t.Helper()
+	img := decodeImage(t, s, path)
+	if !image.Pt(x, y).In(img.Bounds()) {
+		t.Fatalf("pixel %d,%d outside %s", x, y, path)
+	}
+	r, _, _, _ := img.At(x, y).RGBA()
+	return r == 0
+}
+
+// TestActionModeNeedsAnAction checks that a page without an action never opens
+// the mode and never keeps the device listening (ADR 0162).
+func TestActionModeNeedsAnAction(t *testing.T) {
 	plain := `kind: image
 grid: [1, 1]
 style: { padding: 0 }
 cells:
   - { at: [0, 0], widget: act/loadpoint, args: { index: 0 } }
 `
-	s, dev, _ := actionServer(t, plain, true)
-	base := displayPage(t, s, dev)
-	out := press(t, s, dev, buttonHome)
-	if pagePath(out) != pagePath(base) || out["listen_s"].(float64) != listenAfterInput.Seconds() {
-		t.Fatalf("a page without actions must stay plain and keep the input window: %v", out)
+	for _, touch := range []bool{true, false} {
+		s, dev, _ := actionServer(t, plain, touch)
+		base := displayPage(t, s, dev)
+		out := press(t, s, dev, buttonHome)
+		if pagePath(out) != pagePath(base) || out["listen_s"].(float64) != listenAfterInput.Seconds() {
+			t.Fatalf("touch %v: a page without actions must stay plain and keep the input window: %v", touch, out)
+		}
+		if st, _ := actionStateOf(t, s); st.Open {
+			t.Fatalf("touch %v: a page without actions opened the mode: %+v", touch, st)
+		}
 	}
-	if st, _ := actionStateOf(t, s); st.Open {
-		t.Fatalf("a page without actions opened the mode: %+v", st)
+}
+
+// TestActionModeOpensWithoutDigitiser checks the key path: a short home opens
+// the mode, the first runnable option is selected and drawn as an inverted
+// tile, and a touch device keeps its plain tiles (ADR 0163).
+func TestActionModeOpensWithoutDigitiser(t *testing.T) {
+	s, dev, _ := actionServer(t, actionPage, false)
+	base := displayPage(t, s, dev)
+	mode := press(t, s, dev, buttonHome)
+	if pagePath(mode) == pagePath(base) {
+		t.Fatal("a short home without a digitiser must show the action view")
+	}
+	st, opts := actionStateOf(t, s)
+	if !st.Open {
+		t.Fatalf("the key mode must open: %+v", st)
+	}
+	if st.Selected != optionIndex(opts, "pv") {
+		t.Fatalf("the first runnable option must be selected, got %d in %+v", st.Selected, opts)
+	}
+	w, ok := mode["wake"].(map[string]any)
+	if !ok || w["reason"] != "action" {
+		t.Fatalf("the key mode must ask for the deadline wake: %v", mode["wake"])
+	}
+	rect := opts[st.Selected].Rect
+	if !darkAt(t, s, pagePath(mode), rect[0]+4, rect[1]+4) {
+		t.Fatal("the selected tile must be inverted")
 	}
 
-	s, dev, _ = actionServer(t, actionPage, false)
-	base = displayPage(t, s, dev)
-	out = press(t, s, dev, buttonHome)
-	if pagePath(out) != pagePath(base) || out["listen_s"].(float64) != listenAfterInput.Seconds() {
-		t.Fatalf("a device without a digitiser must stay plain and keep the input window: %v", out)
+	touch, touchDev, _ := actionServer(t, actionPage, true)
+	displayPage(t, touch, touchDev)
+	touchMode := press(t, touch, touchDev, buttonHome)
+	touchState, touchOpts := actionStateOf(t, touch)
+	if touchState.Selected != st.Selected {
+		t.Fatalf("the touch view selects no other option: %d vs %d", touchState.Selected, st.Selected)
+	}
+	other := touchOpts[touchState.Selected].Rect
+	if darkAt(t, touch, pagePath(touchMode), other[0]+4, other[1]+4) {
+		t.Fatal("a touch device must keep its plain tiles without a selection")
+	}
+}
+
+// TestActionKeysMoveTheSelection checks that next and previous move and wrap
+// the selection, skip the disabled option and do not page while the mode is
+// open (ADR 0163).
+func TestActionKeysMoveTheSelection(t *testing.T) {
+	s, dev, p := actionServer(t, actionPage, false)
+	displayPage(t, s, dev)
+	first := press(t, s, dev, buttonHome)
+	st, opts := actionStateOf(t, s)
+	if st.Selected != optionIndex(opts, "pv") {
+		t.Fatalf("first selection: %d in %+v", st.Selected, opts)
+	}
+
+	second := press(t, s, dev, buttonNext)
+	st, _ = actionStateOf(t, s)
+	if !st.Open || st.Selected != optionIndex(opts, "now") || st.Page != "eins" {
+		t.Fatalf("next must select now and keep the page: %+v", st)
+	}
+	if pagePath(second) == pagePath(first) {
+		t.Fatal("moving the selection must repaint the action view")
+	}
+
+	third := press(t, s, dev, buttonNext)
+	st, _ = actionStateOf(t, s)
+	if !st.Open || st.Selected != optionIndex(opts, "pv") {
+		t.Fatalf("next must wrap and skip the disabled option: %+v", st)
+	}
+	if pagePath(third) == pagePath(second) {
+		t.Fatal("the wrapped selection must repaint the action view")
+	}
+
+	press(t, s, dev, buttonPrevious)
+	st, _ = actionStateOf(t, s)
+	if st.Selected != optionIndex(opts, "now") {
+		t.Fatalf("previous must step back: %+v", st)
+	}
+
+	out := press(t, s, dev, buttonHome)
+	if p.mode != "now" || len(p.runs) != 1 {
+		t.Fatalf("a short home must run the selection once: mode %q runs %v", p.mode, p.runs)
+	}
+	if path := pagePath(out); !strings.Contains(path, "/pages/small/eins/") || path == pagePath(first) {
+		t.Fatalf("the run must close the mode and serve the page: %q", path)
 	}
 	if st, _ := actionStateOf(t, s); st.Open {
-		t.Fatalf("a device without a digitiser opened the mode: %+v", st)
+		t.Fatalf("the run must close the mode: %+v", st)
+	}
+
+	// Next pages again once the mode is closed.
+	paged := press(t, s, dev, buttonNext)
+	if !strings.Contains(pagePath(paged), "/pages/small/zwei/") {
+		t.Fatalf("next must page after the mode: %q", pagePath(paged))
+	}
+}
+
+// TestActionKeysFailureShowsABanner checks that a failed key selection shows
+// the banner of ADR 0162 and closes the mode.
+func TestActionKeysFailureShowsABanner(t *testing.T) {
+	s, dev, p := actionServer(t, actionPage, false)
+	p.fail = true
+	base := displayPage(t, s, dev)
+	mode := press(t, s, dev, buttonHome)
+	out := press(t, s, dev, buttonHome)
+	if len(p.runs) != 1 {
+		t.Fatalf("the selected option must run once: %v", p.runs)
+	}
+	if got := pagePath(out); !strings.HasPrefix(got, "/hints/") || got == pagePath(base) || got == pagePath(mode) {
+		t.Fatalf("the failure banner must be a hint image of its own: %q", got)
+	}
+	if st, _ := actionStateOf(t, s); st.Open {
+		t.Fatalf("the failed action must close the mode: %+v", st)
+	}
+	dev.req.Reason = "timer"
+	if got := pagePath(displayPage(t, s, dev)); got != pagePath(base) {
+		t.Fatalf("the next sync must clear the banner: %q vs %q", got, pagePath(base))
+	}
+}
+
+// TestActionLongHomeClosesTheKeyMode checks that a long home leaves the mode
+// without running an option (ADR 0163).
+func TestActionLongHomeClosesTheKeyMode(t *testing.T) {
+	s, dev, p := actionServer(t, actionPage, false)
+	base := displayPage(t, s, dev)
+	press(t, s, dev, buttonHome)
+	out := pressHeld(t, s, dev, int(buttonHoldLong/time.Millisecond)+200, buttonHome)
+	if st, _ := actionStateOf(t, s); st.Open {
+		t.Fatalf("a long home must close the mode: %+v", st)
+	}
+	if len(p.runs) != 0 {
+		t.Fatalf("a long home ran %v", p.runs)
+	}
+	if pagePath(out) != pagePath(base) {
+		t.Fatalf("a long home must serve the plain page: %q vs %q", pagePath(out), pagePath(base))
+	}
+}
+
+// TestActionWithoutRunnableOption checks the reason tile: with no runnable
+// option the mode shows the reason and a short home only closes it (ADR 0163).
+func TestActionWithoutRunnableOption(t *testing.T) {
+	page := strings.Replace(actionPage, "action: mode", "action: missing", 1)
+	s, dev, p := actionServer(t, page, false)
+	base := displayPage(t, s, dev)
+	mode := press(t, s, dev, buttonHome)
+	st, _ := actionStateOf(t, s)
+	if !st.Open || st.Selected != -1 {
+		t.Fatalf("the reason tiles must open without a selection: %+v", st)
+	}
+	if pagePath(mode) == pagePath(base) {
+		t.Fatal("the mode must show the reason tile")
+	}
+	out := press(t, s, dev, buttonHome)
+	if len(p.runs) != 0 {
+		t.Fatalf("a short home without a runnable option ran %v", p.runs)
+	}
+	if st, _ := actionStateOf(t, s); st.Open {
+		t.Fatalf("a short home without a runnable option must close the mode: %+v", st)
+	}
+	if pagePath(out) != pagePath(base) {
+		t.Fatalf("the next answer must be the plain page: %q", pagePath(out))
 	}
 }
 
@@ -322,6 +500,60 @@ func TestVirtualDisplayRunsNoAction(t *testing.T) {
 		Events: []syncEvent{{ID: 1, Type: "touch", X: x, Y: y}}})
 	if len(p.runs) != 0 {
 		t.Fatalf("the virtual display ran %v", p.runs)
+	}
+}
+
+// TestVirtualDisplayKeysRunTheSelection checks the key-only switch of the
+// virtual display: the keys select and close the mode, but Paperboy runs no
+// plugin (ADR 0091, 0163).
+func TestVirtualDisplayKeysRunTheSelection(t *testing.T) {
+	dir := t.TempDir()
+	writePageFile(t, filepath.Join(dir, "pages", "eins.yaml"), actionPage)
+	writePageFile(t, filepath.Join(dir, "plans", "zimmer.yaml"), "pages: [eins]\n")
+	cfg := &Config{Dir: dir, Language: "en", Timezone: time.UTC,
+		Profiles: map[string]Profile{"small": {Width: 400, Height: 300, PPI: 125, Levels: 4}}}
+	if err := cfg.validate(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.now = func() time.Time { return time.Date(2026, time.November, 24, 12, 0, 0, 0, time.UTC) }
+	p := &actionPlugin{mode: "off"}
+	s.widgets.Builtin["act"] = p
+	query := "plan=zimmer&display=small&touch=0"
+	base := virtualSync(t, s, query, syncRequest{Reason: "timer"})
+	mode := virtualPress(t, s, query, imageHash(base), 1, buttonHome)
+	s.mu.Lock()
+	st := s.virtual["zimmer/small"].Action
+	s.mu.Unlock()
+	if !st.Open || st.Selected < 0 {
+		t.Fatalf("the key-only virtual display must select an option: %+v", st)
+	}
+	selected := st.Selected
+	moved := virtualPress(t, s, query, imageHash(mode), 2, buttonNext)
+	s.mu.Lock()
+	st = s.virtual["zimmer/small"].Action
+	s.mu.Unlock()
+	if !st.Open || st.Selected == selected {
+		t.Fatalf("next must move the selection: %d -> %d", selected, st.Selected)
+	}
+	if imageHash(moved) == imageHash(mode) {
+		t.Fatal("the moved selection must repaint")
+	}
+	out := virtualPress(t, s, query, imageHash(moved), 3, buttonHome)
+	if len(p.runs) != 0 {
+		t.Fatalf("the virtual display ran %v", p.runs)
+	}
+	s.mu.Lock()
+	st = s.virtual["zimmer/small"].Action
+	s.mu.Unlock()
+	if st.Open {
+		t.Fatalf("short home must close the mode: %+v", st)
+	}
+	if !strings.Contains(pagePath(out), "/ui/virtual/pages/small/eins/") {
+		t.Fatalf("the answer after the selection must be the page: %q", pagePath(out))
 	}
 }
 

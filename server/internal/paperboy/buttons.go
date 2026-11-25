@@ -41,19 +41,20 @@ func held(ms int) bool {
 	return time.Duration(ms)*time.Millisecond >= buttonHoldLong
 }
 
-// shortHome reports whether a wake carried a home press that was not held.
-// Only a short home opens the widget action mode (ADR 0162).
-func shortHome(buttons []string, holds []int) bool {
+// homePress reports a home press and whether it was held.
+func homePress(buttons []string, holds []int) (pressed, long bool) {
 	for i, b := range buttons {
-		if b == buttonHome && !held(hold(holds, i)) {
-			return true
+		if b != buttonHome {
+			continue
 		}
+		pressed = true
+		long = long || held(hold(holds, i))
 	}
-	return false
+	return pressed, long
 }
 
 // pagePressed reports whether a wake carried next or previous. Either leaves
-// the widget action mode and pages (ADR 0162).
+// the touch action mode and pages (ADR 0162).
 func pagePressed(buttons []string) bool {
 	for _, b := range buttons {
 		if b == buttonNext || b == buttonPrevious {
@@ -61,4 +62,19 @@ func pagePressed(buttons []string) bool {
 		}
 	}
 	return false
+}
+
+// selectionStep is the direction the key selection moves: next is +1,
+// previous is -1. A wake with both takes the last press in order (ADR 0163).
+func selectionStep(buttons []string) int {
+	step := 0
+	for _, b := range buttons {
+		switch b {
+		case buttonNext:
+			step = 1
+		case buttonPrevious:
+			step = -1
+		}
+	}
+	return step
 }

@@ -170,15 +170,20 @@ func (x *syncSession) apply() {
 	x.power = cfg.power(d, st.ReportedPower)
 	x.floor = cfg.minRefresh(d, st.ReportedPower)
 	x.textDisplay = cfg.Profiles[d.Profile].text()
-	// A button pages, but home only syncs the served page (ADR 0161). A long
-	// next or previous jumps to the first page of the plan.
-	pageButtons := pageRoles(x.buttons, holds)
 	// Button input keeps the trigger decision and the alert quiet, even when
 	// home does not page (ADR 0158, 0161).
 	buttonInput := len(x.buttons) > 0
 	// The widget action mode belongs to the page the device shows (ADR 0162).
+	// A key-operated mode consumes next and previous as the selection, so only
+	// a closed mode pages (ADR 0163).
 	action := x.actionMode(st, holds, cfg)
 	x.action = action
+	// A button pages, but home only syncs the served page (ADR 0161). A long
+	// next or previous jumps to the first page of the plan.
+	var pageButtons []string
+	if !action.Open {
+		pageButtons = pageRoles(x.buttons, holds)
+	}
 	switch {
 	case x.critical: // the warning replaces all pages; buttons only show it again
 		// The cursor starts over when the pages return.
@@ -255,7 +260,9 @@ func (x *syncSession) render() {
 		x.served = s.hint(cfg, d.Profile, x.choice.title, x.choice.text)
 	}
 	if x.action.Open && !x.critical && !x.textDisplay {
-		x.served = s.overlayActions(cfg, d, x.served, &x.action, now)
+		// A digitiser keeps the plain tiles of ADR 0162. Only the key-operated
+		// view draws the selection (ADR 0163).
+		x.served = s.overlayActions(cfg, d, x.served, &x.action, now, !x.touch)
 	}
 	if x.actionFailed && !x.critical && !x.textDisplay {
 		x.served = s.actionFailure(cfg, d, x.served, x.actionMessage)

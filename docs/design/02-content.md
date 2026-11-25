@@ -80,10 +80,11 @@ The page carries no arguments, titles or confirmations; the plugin owns them.
   action: mode
 ```
 
-A short `home` opens the action mode on a device with `touch: true`, an
-`actions` setting other than `deny` and a page with an actionable cell. Paperboy frames every actionable cell and
+A short `home` opens the action mode when `actions` is not `deny` and the page
+has an actionable cell (ADR 0163). Paperboy frames every actionable cell and
 replaces it with the plugin's options: one tile per value of the action's one
-required choice argument. A disabled option is hatched. A cell that cannot hold its tiles says `Cell too small`.
+required choice argument. A disabled option is hatched. A cell that cannot
+hold its tiles says `Cell too small`.
 
 The server resolves the options without an argument on the page. The
 widget's arguments fill the action arguments they name (`index`). The
@@ -97,8 +98,17 @@ the plain page again. A tap outside, a stale `shown` hash or
 20 seconds without input close the mode and serve the plain page. The server
 asks for a one-shot wake of reason `action` at the deadline.
 
-`next` and `previous` page and leave the mode. A long `home` does nothing. The
-keys cannot run an action in this version.
+A device without a digitiser operates the mode with the keys. The first
+runnable option is selected and drawn inverted; a disabled option is skipped.
+`next` and `previous` move the selection in reading order, wrap and skip
+disabled options. A short `home` runs the selected option. A long `home`
+closes the mode. Every move restarts the 20 seconds. Without a runnable option
+the mode shows the reason tiles and a short `home` only closes it.
+
+A device with a digitiser keeps the touch view: the tiles have no selection.
+A tap runs the option under the finger. `next` or `previous` closes the mode.
+A second short `home` asks the plugin again. `next` and `previous` page only
+while the mode is closed.
 
 ## Text pages
 
@@ -218,4 +228,4 @@ On a text page the built-in plugin provides four values. `title` is the page tit
 
 ## Decisions
 
-[ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md) (plans, refresh windows, triggers) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0161](../adr/0161-home-syncs-and-the-menu-goes.md) (home and the menu), [0162](../adr/0162-widget-actions-and-the-plugins-choices.md) (widget actions) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) · [0130](../adr/0130-what-a-plan-refresh-does.md) (what a refresh does), [0133](../adr/0133-the-page-cursor-holds-the-page.md) (the page cursor) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (a trigger alerts)
+[ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md) (plans, refresh windows, triggers) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0161](../adr/0161-home-syncs-and-the-menu-goes.md) (home and the menu), [0162](../adr/0162-widget-actions-and-the-plugins-choices.md) (widget actions), [0163](../adr/0163-the-action-mode-works-with-the-keys.md) (the key-operated action mode) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) · [0130](../adr/0130-what-a-plan-refresh-does.md) (what a refresh does), [0133](../adr/0133-the-page-cursor-holds-the-page.md) (the page cursor) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (a trigger alerts)

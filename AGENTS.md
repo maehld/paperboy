@@ -65,7 +65,7 @@ The structure is in `docs/design/`; these are the rules that a change must not b
 ## Essential rules for devices
 
 - **No upload endpoints and no data API:** pages are composed from plugin widgets and selected by plans.
-- **`home` syncs the served page** and opens the widget action mode on a touch device (ADR 0161, 0162). A long `next` or `previous` jumps to the first page of the plan.
+- **`home` syncs the served page** and opens the widget action mode (ADR 0161, 0162). A touch device runs an option with a tap; a device without a digitiser selects with `next`/`previous`, runs with a short `home` and closes with a long `home` (ADR 0163). A long `next` or `previous` jumps to the first page of the plan while the mode is closed.
 - **Device API (ADR 0042):** plain HTTP status codes; `401` makes the firmware drop its key and register again by MAC, so a lost `state/devices/` only costs the page cursor and the battery level. A device with a `Problem` answers 503, never 401 (ADR 0079). Image paths are relative; the device keeps the Paperboy URL it was configured with. Page and notice downloads carry the device key and only reach the device's own display type (ADR 0097).
 - **Firmware:** compiled for `sticky`, `e1001`, `e1003` and `lcd2004` with the pinned ESPHome. No secrets; the only update path is `ota: http_request` with Paperboy's offer (no native ESPHome OTA, no web UI upload; rescue over USB).
 - **A device sends readings, not sensors.** The sync carries `readings` as `{name, value}`; the catalog in `server/internal/reading` owns unit, precision and range. Paperboy discards an unknown name or an implausible value with a log line instead of failing the sync (ADR 0134).
@@ -76,7 +76,7 @@ Paperboy v2 (ADR 0049) replaced the data document (ADR 0024), the region model (
 
 Still in place from v1: the device API (ADR 0042) with text displays (ADR 0044, 0045), plans (ADR 0158), configuration reload (ADR 0047), device status and dashboard (ADR 0039, 0040), firmware distribution (ADR 0043) and the battery warning (ADR 0020). ADR 0041's firmware compiles for all four hardware types but is not yet flashed on every device; the rollback test with a deliberately broken image succeeded, so `firmware.update: auto` may be used on real devices. CalDAV against the real iCloud was tested on 2026-11-05 with the v1 provider; the plugin mode uses the same code but has not run against iCloud yet.
 
-Open: value lists (`for-each`); a SolarAI plugin (it talks to SolarAI over HTTP; SolarAI knows nothing about Paperboy); push delivery to text displays; and the key selection for widget actions on devices without a digitiser (issue #432).
+Open: value lists (`for-each`); a SolarAI plugin (it talks to SolarAI over HTTP; SolarAI knows nothing about Paperboy); push delivery to text displays.
 
 ## Startup and checks
 
