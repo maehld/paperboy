@@ -39,6 +39,7 @@
     readOnly: false,
     selected: -1,
     part: null, // {zone, i} of the selected header part; null selects a cell
+    headerTarget: null, // zone a plus button named for the next palette pick
     drag: null, // {kind, i, axis, grab, at, span, start, moved} while a box moves or resizes
     placing: null, // {plugin, widget} or {plugin, name, value: true} waiting for a cell
     filter: '', // text of the palette filter
@@ -265,7 +266,7 @@
   }
 
   // addHeaderPart appends a widget to a zone. A header that does not exist
-  // starts at the default height (ADR 0166).
+  // starts at the default height (ADR 0167).
   function addHeaderPart(plugin, widget, zone) {
     const t = state.template;
     if (!t || text() || !zone) return;
@@ -280,6 +281,7 @@
     state.part = { zone: zone, i: t.header[zone].length - 1 };
     state.selected = -1;
     state.placing = null;
+    state.headerTarget = null;
     setOpenPlugin(plugin);
     setStatus('');
     changed();
@@ -298,21 +300,51 @@
     if (!state.template || !state.template.header) return;
     state.template.header = null;
     state.part = null;
+    state.headerTarget = null;
     setStatus('header removed', '');
     changed();
     renderInspector();
     renderSettings();
   }
 
+  // targetHeaderZone arms one zone. The next palette pick adds the widget
+  // there, so an empty zone needs no drop target on the board (ADR 0167).
+  function targetHeaderZone(zone) {
+    if (!state.template || !state.template.header) return;
+    state.headerTarget = state.headerTarget === zone ? null : zone;
+    state.placing = null;
+    if (state.headerTarget) {
+      setCellsVisible(true);
+      setStatus('Pick a widget for the ' + zone + ' header zone');
+      const filter = el('palette-filter');
+      if (filter) filter.focus();
+    } else {
+      setStatus('');
+    }
+    renderBoard();
+    renderSettings();
+  }
+
   function movePart(zone, i, target) {
     const t = state.template;
     if (!t || !t.header || zone === target || !t.header[zone] || !t.header[target]) return;
+    movePartTo(zone, i, target, t.header[target].length);
+  }
+
+  // movePartTo inserts a part at another position, so a drag reorders a zone
+  // and moves a part between zones.
+  function movePartTo(zone, i, target, index) {
+    const t = state.template;
+    if (!t || !t.header || !t.header[zone] || !t.header[target]) return;
     const part = t.header[zone].splice(i, 1)[0];
     if (!part) return;
-    t.header[target].push(part);
-    state.part = { zone: target, i: t.header[target].length - 1 };
+    index = Math.max(0, Math.min(t.header[target].length, index));
+    t.header[target].splice(index, 0, part);
+    state.part = { zone: target, i: index };
+    state.headerTarget = null;
     changed();
     renderInspector();
+    renderSettings();
   }
 
   function removePart() {
@@ -321,6 +353,7 @@
     if (!p || !t || !t.header || !t.header[p.zone]) return;
     t.header[p.zone].splice(p.i, 1);
     state.part = null;
+    state.headerTarget = null;
     if (!headerParts(t.header).length) {
       t.header = null;
       setStatus('header removed', '');
@@ -664,6 +697,8 @@
     renderGridLock(off);
     if (!t) {
       for (const id of ['title', 'cols', 'rows', 'padding', 'rule', 'text-size', 'divider']) el(id).value = '';
+      if (el('header-zones')) el('header-zones').hidden = true;
+      if (el('header-hint')) el('header-hint').hidden = true;
       return;
     }
     if (state.gridLock && !state.gridRatio) state.gridRatio = t.grid.slice();
@@ -682,6 +717,15 @@
     el('header-height').value = hasHeader ? t.header.height : '';
     el('header-add').hidden = hasHeader;
     el('header-remove').hidden = !hasHeader;
+    if (el('header-hint')) el('header-hint').hidden = !hasHeader;
+    if (el('header-zones')) {
+      el('header-zones').hidden = !hasHeader;
+      for (const b of el('header-zones').querySelectorAll('[data-header-zone]')) {
+        const active = state.headerTarget === b.dataset.headerZone;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-pressed', active ? 'true' : 'false');
+      }
+    }
   }
 
   function clampCells(n) {
@@ -1196,6 +1240,10 @@
       showWidget(plugin, widget);
       return;
     }
+    if (state.headerTarget) {
+      addHeaderPart(plugin, widget, state.headerTarget);
+      return;
+    }
     const same = state.placing && state.placing.plugin === plugin && state.placing.widget === widget;
     state.placing = same ? null : { plugin: plugin, widget: widget };
     // Placing needs the boxes: a hidden overlay turns itself back on.
@@ -1333,8 +1381,10 @@
   }
 
   function selectCell(i) {
+    const hadTarget = !!state.headerTarget;
     state.selected = i;
     state.part = null;
+    state.headerTarget = null;
     const board = el('board');
     if (board) {
       for (const node of board.querySelectorAll('.cell')) {
@@ -1343,6 +1393,7 @@
     }
     renderInspector();
     followSelection(i);
+    if (hadTarget) renderSettings();
   }
 
   // paintCell moves a box on the board while the pointer drags it; the model
@@ -1433,22 +1484,72 @@
     else setSpan(d.i, d.span[0], d.span[1]);
   }
 
-  // headerZoneAtPoint maps a pointer to left, center or right inside the band.
+  // headerZoneAtPoint maps a pointer to the zone under it. The labelled zone
+  // elements on the board are the drop targets, so a drop is never a guess
+  // (ADR 0167).
   function headerZoneAtPoint(clientX, clientY) {
-    const band = document.getElementById('board-header');
-    if (!band) return null;
-    const r = band.getBoundingClientRect();
-    if (!r.width || !r.height || clientX < r.left || clientX >= r.right || clientY < r.top || clientY >= r.bottom) return null;
-    const f = (clientX - r.left) / r.width;
-    return f < 1 / 3 ? 'left' : f < 2 / 3 ? 'center' : 'right';
+    for (const zone of document.querySelectorAll('#board-header .header-zone')) {
+      const r = zone.getBoundingClientRect();
+      if (r.width && r.height && clientX >= r.left && clientX < r.right && clientY >= r.top && clientY < r.bottom) {
+        return zone.dataset.zone;
+      }
+    }
+    return null;
   }
 
-  // startPartDrag moves a header part to another zone. The pointer selects the
-  // part at once; the drop names the zone by thirds, like the palette drop.
+  function headerZoneEl(zone) {
+    return document.querySelector('#board-header .header-zone[data-zone="' + zone + '"]');
+  }
+
+  function clearPartDrop() {
+    const band = document.getElementById('board-header');
+    if (!band) return;
+    for (const node of band.querySelectorAll('.header-drop-marker')) node.remove();
+    for (const node of band.querySelectorAll('.drop-target')) node.classList.remove('drop-target');
+  }
+
+  // partDropTarget names the zone and the insertion index under the pointer and
+  // draws the marker there.
+  function partDropTarget(d, x, y) {
+    const zone = headerZoneAtPoint(x, y);
+    const zoneEl = zone && headerZoneEl(zone);
+    const band = document.getElementById('board-header');
+    if (!zoneEl || !band) {
+      clearPartDrop();
+      return null;
+    }
+    const parts = Array.from(zoneEl.querySelectorAll('.header-part')).filter((node) =>
+      !(zone === d.zone && Number(node.dataset.i) === d.i));
+    let index = parts.length;
+    for (let i = 0; i < parts.length; i++) {
+      const r = parts[i].getBoundingClientRect();
+      if (x < r.left + r.width / 2) {
+        index = i;
+        break;
+      }
+    }
+    clearPartDrop();
+    zoneEl.classList.add('drop-target');
+    const bandRect = band.getBoundingClientRect();
+    let at;
+    if (!parts.length) at = zoneEl.getBoundingClientRect().left;
+    else if (index < parts.length) at = parts[index].getBoundingClientRect().left;
+    else at = parts[parts.length - 1].getBoundingClientRect().right;
+    const marker = document.createElement('div');
+    marker.className = 'header-drop-marker';
+    marker.style.left = Math.max(0, Math.min(bandRect.width - 2, at - bandRect.left)) + 'px';
+    band.appendChild(marker);
+    return { zone: zone, index: index };
+  }
+
+  // startPartDrag selects a part and moves it to another zone or position. The
+  // drag keeps the element, so the marker can follow the pointer.
   function startPartDrag(e, zone, i) {
     if (e.button !== 0) return;
-    selectPart(zone, i);
-    state.drag = { kind: 'part', zone: zone, i: i, start: [e.clientX, e.clientY], last: [e.clientX, e.clientY], moved: false };
+    selectPartQuiet(zone, i);
+    state.drag = { kind: 'part', zone: zone, i: i, start: [e.clientX, e.clientY], last: [e.clientX, e.clientY], moved: false, target: null };
+    const node = e.currentTarget.closest('.header-part');
+    if (node) node.classList.add('dragging');
     window.addEventListener('pointermove', partDragMove);
     window.addEventListener('pointerup', partDragEnd);
     window.addEventListener('pointercancel', partDragEnd);
@@ -1461,17 +1562,23 @@
     d.last = [e.clientX, e.clientY];
     if (!d.moved && Math.abs(e.clientX - d.start[0]) + Math.abs(e.clientY - d.start[1]) < 3) return;
     d.moved = true;
+    d.target = partDropTarget(d, e.clientX, e.clientY);
   }
 
   function partDragEnd() {
     window.removeEventListener('pointermove', partDragMove);
     window.removeEventListener('pointerup', partDragEnd);
     window.removeEventListener('pointercancel', partDragEnd);
+    clearPartDrop();
+    const board = el('board');
+    if (board) {
+      for (const node of board.querySelectorAll('.header-part.dragging')) node.classList.remove('dragging');
+    }
     const d = state.drag;
     state.drag = null;
     if (!d || d.kind !== 'part' || !d.moved) return;
-    const target = headerZoneAtPoint(d.last[0], d.last[1]);
-    if (target) movePart(d.zone, d.i, target);
+    if (d.target) movePartTo(d.zone, d.i, d.target.zone, d.target.index);
+    else renderBoard();
   }
 
   // boardDragOver accepts a drag over the board and marks the drop position of
@@ -1671,40 +1778,57 @@
     return slot;
   }
 
-  // renderHeaderParts draws the band as one flex row; the weights are the
-  // server's widths (ADR 0166).
+  // renderHeaderParts draws one labelled zone per group. The zone widths are
+  // the sums of their part weights, so they match the server layout (ADR 0167).
   function renderHeaderParts(band, h) {
-    band.addEventListener('click', (e) => {
-      if (e.target.closest('.header-part')) return;
-      if (state.placing) {
-        const zone = headerZoneAtPoint(e.clientX, e.clientY);
-        if (zone) addHeaderPart(state.placing.plugin, state.placing.widget, zone);
-      } else {
-        select(-1);
-      }
-    });
     for (const zone of ['left', 'center', 'right']) {
-      (h[zone] || []).forEach((part, i) => {
+      const parts = h[zone] || [];
+      if (!parts.length) continue;
+      const zoneEl = document.createElement('div');
+      zoneEl.className = 'header-zone ' + zone + (state.headerTarget === zone ? ' target' : '');
+      zoneEl.dataset.zone = zone;
+      zoneEl.title = zone + ' header zone';
+      zoneEl.style.flexGrow = String(parts.reduce((n, p) => n + Math.max(1, p.weight || 1), 0));
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'header-zone-add';
+      add.textContent = '+';
+      add.title = 'Add a widget to the ' + zone + ' zone';
+      add.setAttribute('aria-label', 'Add a widget to the ' + zone + ' zone');
+      add.addEventListener('pointerdown', (e) => e.stopPropagation());
+      add.addEventListener('click', (e) => {
+        e.stopPropagation();
+        targetHeaderZone(zone);
+      });
+      zoneEl.appendChild(add);
+      const label = document.createElement('span');
+      label.className = 'header-zone-label';
+      label.textContent = zone;
+      zoneEl.appendChild(label);
+      parts.forEach((part, i) => {
         const box = document.createElement('div');
         const selected = state.part && state.part.zone === zone && state.part.i === i;
         box.className = 'header-part' + (selected ? ' selected' : '');
         box.dataset.zone = zone;
         box.dataset.i = String(i);
         box.style.flexGrow = String(part.weight || 1);
-        box.title = part.widget;
+        box.title = part.widget + ' in the ' + zone + ' zone, weight ' + (part.weight || 1);
         const name = document.createElement('span');
         name.className = 'w';
         name.textContent = part.widget;
-        const pos = document.createElement('span');
-        pos.className = 'pos';
-        pos.textContent = zone + ' · ' + (part.weight || 1);
-        box.append(name, pos);
+        box.appendChild(name);
         box.addEventListener('pointerdown', (e) => {
           e.stopPropagation();
           startPartDrag(e, zone, i);
         });
-        band.appendChild(box);
+        zoneEl.appendChild(box);
       });
+      zoneEl.addEventListener('click', (e) => {
+        if (e.target.closest('.header-part, .header-zone-add')) return;
+        if (state.placing) addHeaderPart(state.placing.plugin, state.placing.widget, zone);
+        else select(-1);
+      });
+      band.appendChild(zoneEl);
     }
   }
 
@@ -1739,22 +1863,46 @@
   }
 
   function select(i) {
+    const hadTarget = !!state.headerTarget;
     state.selected = i;
     state.part = null;
+    state.headerTarget = null;
     renderBoard();
     renderInspector();
     followSelection(i);
+    if (hadTarget) renderSettings();
   }
 
   // selectPart marks one header part; the board and the inspector follow.
   function selectPart(zone, i) {
     const h = state.template && state.template.header;
     if (!h || !h[zone] || !h[zone][i]) return;
+    const hadTarget = !!state.headerTarget;
     state.part = { zone: zone, i: i };
     state.selected = -1;
+    state.headerTarget = null;
     renderBoard();
     renderInspector();
     followPart(zone, i);
+    if (hadTarget) renderSettings();
+  }
+
+  // selectPartQuiet selects a part without rebuilding the board, so a drag
+  // that just started keeps its element.
+  function selectPartQuiet(zone, i) {
+    const hadTarget = !!state.headerTarget;
+    state.part = { zone: zone, i: i };
+    state.selected = -1;
+    state.headerTarget = null;
+    const board = el('board');
+    if (board) {
+      for (const node of board.querySelectorAll('.header-part')) {
+        node.classList.toggle('selected', node.dataset.zone === zone && Number(node.dataset.i) === i);
+      }
+    }
+    renderInspector();
+    followPart(zone, i);
+    if (hadTarget) renderSettings();
   }
 
   function followPart(zone, i) {
@@ -3509,6 +3657,9 @@
   });
   on('header-add', 'click', addHeader);
   on('header-remove', 'click', removeHeader);
+  for (const b of document.querySelectorAll('button[data-header-zone]')) {
+    b.addEventListener('click', () => targetHeaderZone(b.dataset.headerZone));
+  }
   on('header-height', 'change', () => {
     if (!state.template || !state.template.header) return;
     state.template.header.height = Math.max(1, Math.min(144, Math.round(num(el('header-height').value) || 24)));
@@ -3523,10 +3674,12 @@
   document.addEventListener('keydown', (e) => {
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
     if (e.key === 'Escape') {
-      if (state.placing) {
+      if (state.placing || state.headerTarget) {
         state.placing = null;
+        state.headerTarget = null;
         renderPalette();
         renderBoard();
+        renderSettings();
       } else if (state.part || state.selected >= 0) select(-1);
       return;
     }

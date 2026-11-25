@@ -172,7 +172,7 @@ ${palette}<span id="preview-where"></span><img id="preview-img" hidden><pre id="
 <button id="rename" type="button"></button><button id="delete" type="button"></button><button id="save" type="button"></button>
 <input id="title"><input id="cols" type="number"><input id="rows" type="number">
 <button id="grid-lock" type="button"></button>
-<div id="header-fields"><input id="header-height" type="number"><button id="header-add" type="button"></button><button id="header-remove" type="button"></button></div>
+<div id="header-fields"><input id="header-height" type="number"><div id="header-zones" hidden><button type="button" data-header-zone="left"></button><button type="button" data-header-zone="center"></button><button type="button" data-header-zone="right"></button></div><p id="header-hint" hidden></p><button id="header-add" type="button"></button><button id="header-remove" type="button"></button></div>
 <input id="padding"><input id="rule"><input id="text-size"><input id="divider">
 <select id="notices"><option value="">default</option><option value="none">none</option></select>
 ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" checked>
@@ -273,19 +273,44 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
     check(!!band && band.querySelectorAll(".header-part").length === 1, "the board does not show the added header band");
     check(window.document.getElementById("header-height").value === "24", "the header band does not start at 24 pt");
     check(window.document.getElementById("inspector").textContent.includes("Header part"), "the inspector does not edit the header part");
-    if (band) {
-      band.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 40, right: 800, bottom: 40 });
-      const demoHead = section(window, "demo").querySelector(".plugin-head");
-      if (demoHead) demoHead.click();
+    check(!window.document.getElementById("header-zones").hidden, "the header zones are hidden");
+    check(!window.document.getElementById("header-hint").hidden, "the header drag hint is hidden");
+    const demoHead = section(window, "demo").querySelector(".plugin-head");
+    if (demoHead) demoHead.click();
+    const rightAdd = window.document.querySelector('button[data-header-zone="right"]');
+    check(!!rightAdd, "the right zone has no plus button");
+    if (rightAdd) {
+      rightAdd.click();
+      check(rightAdd.classList.contains("active"), "the plus button does not name its zone");
       entry(window, "clock").click();
-      const liveBand = window.document.getElementById("board-header");
-      if (liveBand) {
-        liveBand.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 40, right: 800, bottom: 40 });
-        liveBand.dispatchEvent(new window.MouseEvent("click", { bubbles: true, clientX: 700, clientY: 10 }));
-      }
       await sleep(10);
-      const afterBand = window.document.getElementById("board-header");
-      check(!!afterBand && afterBand.querySelectorAll(".header-part").length === 2, "a click on the header band adds no part");
+      const zones = window.document.querySelectorAll("#board-header .header-zone");
+      check(zones.length === 2, "the board does not show the left and right zones");
+      check(zones.length === 2 && zones[1].classList.contains("right") && zones[1].textContent.includes("demo/clock"), "the plus button did not add the part to the right zone");
+      check(zones.length === 2 && zones[1].querySelector(".header-zone-label").textContent === "right", "the right zone has no label");
+      check(window.document.querySelectorAll("#board-header .header-part").length === 2, "the band has no second part");
+      check(window.document.querySelectorAll("#board-header .header-zone-add").length === 2, "a zone lacks its plus button");
+      // A drag moves a part from the right zone to the first position of the
+      // left zone. jsdom has no layout, so the rectangles are stubs.
+      const head = window.document.getElementById("board-header");
+      const leftZone = head.querySelector(".header-zone.left");
+      const rightZone = head.querySelector(".header-zone.right");
+      const leftPart = leftZone && leftZone.querySelector(".header-part");
+      const rightPart = rightZone && rightZone.querySelector(".header-part");
+      if (head && leftZone && rightZone && leftPart && rightPart) {
+        const box = (left, width) => () => ({ left, top: 0, width, height: 40, right: left + width, bottom: 40 });
+        head.getBoundingClientRect = box(0, 800);
+        leftZone.getBoundingClientRect = box(0, 600);
+        rightZone.getBoundingClientRect = box(600, 200);
+        leftPart.getBoundingClientRect = box(0, 600);
+        rightPart.getBoundingClientRect = box(600, 200);
+        rightPart.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 700, clientY: 10 }));
+        window.dispatchEvent(new window.MouseEvent("pointermove", { bubbles: true, clientX: 10, clientY: 10 }));
+        window.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true, clientX: 10, clientY: 10 }));
+        await sleep(10);
+        const moved = window.document.querySelectorAll("#board-header .header-zone.left .header-part");
+        check(moved.length === 2 && Array.from(moved).some((part) => part.textContent.includes("demo/clock")), "a drag does not move the part into the left zone");
+      }
     }
     for (const failure of failures) problems.push(failure);
     editorDom.window.close();
