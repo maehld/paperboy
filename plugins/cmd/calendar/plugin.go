@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -126,14 +127,15 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				Sizes:    []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 3, Rows: 7}, {Columns: 6, Rows: 4}},
 				MinWidth: 160, MinHeight: 80,
 				Args: map[string]plugin.Arg{
-					"lines":     {Type: "int", Description: "number of text lines on image displays; default: as many as the page's text size allows (text displays use the cell height)"},
-					"location":  {Type: "bool", Default: false, Description: "append the location to the title"},
-					"headings":  {Type: "bool", Default: true, Description: "day headings"},
-					"days":      {Type: "int", Description: "days to show starting today, 1 to the configured days (clamped); default: the configured days"},
-					"empty":     {Type: "bool", Description: "show days without events with \"No events\"; default true when days is set"},
-					"age":       {Type: "bool", Default: false, Description: "append the age of birthdays from the configured birthday calendars"},
-					"more":      {Type: "bool", Default: true, Description: "show \"+N more\" for events that did not fit"},
-					"calendars": calendars,
+					"lines":      {Type: "int", Description: "number of text lines on image displays; default: as many as the page's text size allows (text displays use the cell height)"},
+					"location":   {Type: "bool", Default: false, Description: "append the location to the title"},
+					"headings":   {Type: "bool", Default: true, Description: "day headings"},
+					"days":       {Type: "int", Description: "days to show starting today, 1 to the configured days (clamped); default: the configured days"},
+					"empty":      {Type: "bool", Description: "show days without events with \"No events\"; default true when days is set"},
+					"past_today": {Type: "bool", Default: false, Description: "show the events of today that have ended, struck through"},
+					"age":        {Type: "bool", Default: false, Description: "append the age of birthdays from the configured birthday calendars"},
+					"more":       {Type: "bool", Default: true, Description: "show \"+N more\" for events that did not fit"},
+					"calendars":  calendars,
 				},
 			},
 			{
@@ -291,6 +293,9 @@ func (p *calendarPlugin) agendaValue(w plugin.WidgetRequest) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A text page cannot strike a line, so the value never shows the events of
+	// today that already ended.
+	opts.pastToday = false
 	lines, _ := p.agendaLines(100, opts)
 	if len(lines) == 0 {
 		return []string{p.emptyText(opts)}, nil
@@ -404,6 +409,7 @@ func (p *calendarPlugin) text(de, en string) string {
 type agendaLine struct {
 	heading  bool
 	event    bool
+	past     bool // an event of today that already ended
 	when     string
 	text     string // title, or the heading or the "no events" text
 	location string // appended to the title when the cell asks for it
@@ -541,8 +547,22 @@ func (p *calendarPlugin) agenda(req *plugin.Request, w plugin.WidgetRequest, img
 		if last && inline != "" {
 			render.TextAt(img, inline, textX+render.Measure(text, size, false)+gap, y, size, false, color.Black, render.Left)
 		}
+		if l.past {
+			strikeLine(img, area.Min.X, textX+render.Measure(text, size, false)+2, y, size)
+		}
 	}
 	return nil
+}
+
+// strikeLine marks a past event: a line through the lower-case letters from x0
+// to x1 at the baseline. The thickness follows the text size, so the mark looks
+// the same on a panel with a high and a low ppi.
+func strikeLine(img *image.Paletted, x0, x1, baseline int, size float64) {
+	if x1 <= x0 || size < render.MinSize {
+		return
+	}
+	y := baseline - int(math.Round(size*0.28))
+	render.HLine(img, x0, y, x1, max(1, int(math.Round(size/16))))
 }
 
 // agendaLayout fits the agenda into a cell of lines lines: it returns the lines
@@ -613,6 +633,7 @@ type agendaOpts struct {
 	birthdays          bool // only events of the configured birthday calendars
 	days               int  // days from today, 1 to the configured days
 	empty              bool // show days without events
+	pastToday          bool // keep the events of today that ended
 	events             []event
 }
 
@@ -621,12 +642,13 @@ func (p *calendarPlugin) agendaArgs(a plugin.Values, headings bool) agendaOpts {
 	limit := max(p.opts.days, 1)
 	_, set := a["days"]
 	return agendaOpts{
-		headings: a.Bool("headings", headings),
-		location: a.Bool("location", false),
-		age:      a.Bool("age", false),
-		more:     a.Bool("more", true),
-		days:     min(max(a.Int("days", limit), 1), limit),
-		empty:    a.Bool("empty", set),
+		headings:  a.Bool("headings", headings),
+		location:  a.Bool("location", false),
+		age:       a.Bool("age", false),
+		more:      a.Bool("more", true),
+		days:      min(max(a.Int("days", limit), 1), limit),
+		empty:     a.Bool("empty", set),
+		pastToday: a.Bool("past_today", false),
 	}
 }
 
@@ -735,6 +757,7 @@ func (p *calendarPlugin) agendaList(maxLines int, o agendaOpts) ([]agendaLine, i
 		parsedEvent
 		day   time.Time
 		empty bool
+		past  bool
 	}
 	var upcoming []dated
 	horizon := today.AddDate(0, 0, o.days)
@@ -749,14 +772,17 @@ func (p *calendarPlugin) agendaList(maxLines int, o agendaOpts) ([]agendaLine, i
 		if !e.start.Before(horizon) {
 			continue
 		}
-		if !e.end.After(now) && !(e.end.Equal(e.start) && !e.start.Before(now)) {
+		ended := !e.end.After(now) && !(e.end.Equal(e.start) && !e.start.Before(now))
+		// A past event stays only when the cell asks for it and the event
+		// ended today; an ended event of an earlier day is not part of today.
+		if ended && (!o.pastToday || !e.end.After(today)) {
 			continue
 		}
 		day := midnight(e.start.In(p.loc))
 		if day.Before(today) {
 			day = today
 		}
-		upcoming = append(upcoming, dated{parsedEvent: e, day: day})
+		upcoming = append(upcoming, dated{parsedEvent: e, day: day, past: ended})
 	}
 	if o.empty {
 		busy := map[time.Time]bool{}
@@ -783,7 +809,6 @@ func (p *calendarPlugin) agendaList(maxLines int, o agendaOpts) ([]agendaLine, i
 		return a.start.Before(b.start)
 	})
 	var all []agendaLine
-	var eventIdx []int
 	var lastDay time.Time
 	for _, d := range upcoming {
 		if headings && !d.day.Equal(lastDay) {
@@ -798,7 +823,7 @@ func (p *calendarPlugin) agendaList(maxLines int, o agendaOpts) ([]agendaLine, i
 			all = append(all, line)
 			continue
 		}
-		line := agendaLine{event: true, when: p.when(d.parsedEvent, d.day, today, headings), text: strings.TrimSpace(d.title)}
+		line := agendaLine{event: true, past: d.past, when: p.when(d.parsedEvent, d.day, today, headings), text: strings.TrimSpace(d.title)}
 		if o.birthdays && headings {
 			// The day heading already names the date; a birthday is all-day.
 			line.when = ""
@@ -811,23 +836,55 @@ func (p *calendarPlugin) agendaList(maxLines int, o agendaOpts) ([]agendaLine, i
 				line.age = age
 			}
 		}
-		eventIdx = append(eventIdx, len(all))
 		all = append(all, line)
 	}
-	if len(all) <= maxLines {
-		return all, 0, len(eventIdx)
+	eventCount := 0
+	for _, l := range all {
+		if l.event {
+			eventCount++
+		}
 	}
-	keep := maxLines
-	for keep > 0 && all[keep-1].heading {
-		keep--
+	// The oldest past lines give way first when they would push an event that
+	// has not ended out of the cell; they count in "+N more" like the others.
+	// A cell that holds only past events keeps them.
+	for len(all) > maxLines && pastPushesOut(all, maxLines) {
+		drop := -1
+		for i := range all {
+			if all[i].past {
+				drop = i
+				break
+			}
+		}
+		if drop < 0 {
+			break
+		}
+		all = append(all[:drop], all[drop+1:]...)
+	}
+	keep := len(all)
+	if keep > maxLines {
+		keep = maxLines
+		for keep > 0 && all[keep-1].heading {
+			keep--
+		}
 	}
 	shown := 0
-	for _, idx := range eventIdx {
-		if idx < keep {
+	for _, l := range all[:keep] {
+		if l.event {
 			shown++
 		}
 	}
-	return all[:keep], len(eventIdx) - shown, shown
+	return all[:keep], eventCount - shown, shown
+}
+
+// pastPushesOut reports whether the lines beyond maxLines hold an event that
+// has not ended, so an earlier past line still takes its room.
+func pastPushesOut(all []agendaLine, maxLines int) bool {
+	for _, l := range all[maxLines:] {
+		if l.event && !l.past {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *calendarPlugin) when(e parsedEvent, day, today time.Time, headings bool) string {

@@ -3,11 +3,13 @@ package main
 import (
 	"errors"
 	"image"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 )
@@ -417,5 +419,107 @@ func TestValues(t *testing.T) {
 	}
 	if _, err := p.Values(&plugin.Request{Values: []string{"nope"}}); !errors.Is(err, plugin.ErrUnknownValue) {
 		t.Errorf("unknown value: %v", err)
+	}
+}
+
+// The past_today argument keeps the events of today that already ended and
+// marks them. An ended event of an earlier day stays out, and the text value
+// leaves the past out because it cannot strike a line.
+func TestAgendaPastToday(t *testing.T) {
+	p := agendaPluginAt(t, time.Date(2026, 11, 3, 13, 0, 0, 0, berlin), ics(
+		vevent("UID:y", "DTSTART;TZID=Europe/Berlin:20261102T090000", "DTEND;TZID=Europe/Berlin:20261102T100000", "SUMMARY:Gestern"),
+		vevent("UID:a", "DTSTART;TZID=Europe/Berlin:20261103T090000", "DTEND;TZID=Europe/Berlin:20261103T100000", "SUMMARY:Zahnarzt"),
+		vevent("UID:b", "DTSTART;TZID=Europe/Berlin:20261103T140000", "DTEND;TZID=Europe/Berlin:20261103T150000", "SUMMARY:Abholen"),
+	))
+	lines, hidden := p.agendaLines(5, p.agendaArgs(map[string]any{"days": 1}, true))
+	if hidden != 0 || len(lines) != 2 || lines[1].past {
+		t.Fatalf("past_today off = %+v, hidden %d", lines, hidden)
+	}
+	lines, hidden = p.agendaLines(5, p.agendaArgs(map[string]any{"days": 1, "past_today": true}, true))
+	if hidden != 0 || len(lines) != 3 {
+		t.Fatalf("past_today on = %+v, hidden %d", lines, hidden)
+	}
+	if !lines[1].past || lines[1].text != "Zahnarzt" || lines[2].past {
+		t.Errorf("past_today on = %+v", lines)
+	}
+	// A day with only ended events is not empty.
+	only := agendaPluginAt(t, time.Date(2026, 11, 3, 13, 0, 0, 0, berlin), ics(
+		vevent("UID:a", "DTSTART;TZID=Europe/Berlin:20261103T090000", "DTEND;TZID=Europe/Berlin:20261103T100000", "SUMMARY:Zahnarzt"),
+	))
+	lines, _ = only.agendaLines(5, only.agendaArgs(map[string]any{"days": 1, "empty": true, "past_today": true}, true))
+	if len(lines) != 2 || !lines[1].past {
+		t.Errorf("only past = %+v", lines)
+	}
+	// A text page cannot strike, so the value leaves the past out even when the
+	// argument is passed.
+	got := agendaText(t, p, map[string]any{"days": 1, "past_today": true}, 5)
+	if want := []string{"Heute:", "14:00 Abholen"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("value = %q, want %q", got, want)
+	}
+}
+
+// A full cell drops the oldest past line before it drops an event that has not
+// ended, and counts the dropped line in "+N more". A cell that holds only past
+// events keeps them.
+func TestAgendaPastGivesWay(t *testing.T) {
+	p := agendaPluginAt(t, time.Date(2026, 11, 3, 13, 0, 0, 0, berlin), ics(
+		vevent("UID:a", "DTSTART;TZID=Europe/Berlin:20261103T090000", "DTEND;TZID=Europe/Berlin:20261103T100000", "SUMMARY:Zahnarzt"),
+		vevent("UID:b", "DTSTART;TZID=Europe/Berlin:20261103T140000", "DTEND;TZID=Europe/Berlin:20261103T150000", "SUMMARY:Abholen"),
+	))
+	lines, hidden := p.agendaLines(1, p.agendaArgs(map[string]any{"days": 1, "past_today": true}, false))
+	if len(lines) != 1 || !lines[0].event || lines[0].past || lines[0].text != "Abholen" || hidden != 1 {
+		t.Errorf("one line = %+v, hidden %d", lines, hidden)
+	}
+	only := agendaPluginAt(t, time.Date(2026, 11, 3, 13, 0, 0, 0, berlin), ics(
+		vevent("UID:a", "DTSTART;TZID=Europe/Berlin:20261103T090000", "DTEND;TZID=Europe/Berlin:20261103T100000", "SUMMARY:Zahnarzt"),
+	))
+	lines, hidden = only.agendaLines(1, only.agendaArgs(map[string]any{"days": 1, "past_today": true}, false))
+	if len(lines) != 1 || !lines[0].event || !lines[0].past || hidden != 0 {
+		t.Errorf("only past = %+v, hidden %d", lines, hidden)
+	}
+}
+
+// A past line is struck through in the gap between the time column and the
+// title, while an upcoming line stays plain.
+func TestAgendaPastStrike(t *testing.T) {
+	p := agendaPluginAt(t, time.Date(2026, 11, 3, 13, 0, 0, 0, berlin), ics(
+		vevent("UID:a", "DTSTART;TZID=Europe/Berlin:20261103T090000", "DTEND;TZID=Europe/Berlin:20261103T100000", "SUMMARY:Zahnarzt"),
+		vevent("UID:b", "DTSTART;TZID=Europe/Berlin:20261103T140000", "DTEND;TZID=Europe/Berlin:20261103T150000", "SUMMARY:Abholen"),
+	))
+	w := plugin.WidgetRequest{Widget: "agenda", Width: 400, Height: 150,
+		Args:  map[string]any{"days": 1, "lines": 3, "past_today": true},
+		Style: plugin.Style{Padding: 4, Rule: 1, TextPx: 16}}
+	img := render.NewCanvas(400, 150, 4)
+	if err := p.agenda(&plugin.Request{Now: p.now}, w, img); err != nil {
+		t.Fatal(err)
+	}
+	area := img.Rect.Inset(w.Style.Padding)
+	lineH := area.Dy() / 3
+	size := max(min(design.NewScale(w.Style.TextPx, area.Dy()).Detail, 0.6*float64(lineH)), render.MinSize)
+	baseline := func(i int) int { return area.Min.Y + i*lineH + lineH/2 + int(size*0.36) }
+	whenW := min(render.Measure("09:00", size, false), area.Dx()/2)
+	x := area.Min.X + whenW + int(size*0.6)/2
+	y := baseline(1) - int(math.Round(size*0.28))
+	if c := img.At(x, y); c != render.Black {
+		t.Errorf("strike at (%d,%d) = %v, want black", x, y, c)
+	}
+	y = baseline(2) - int(math.Round(size*0.28))
+	if c := img.At(x, y); c != render.White {
+		t.Errorf("upcoming line at (%d,%d) = %v, want white", x, y, c)
+	}
+}
+
+// Only the agenda widget declares past_today; the values of a text page do not.
+func TestPastTodayArgumentDeclared(t *testing.T) {
+	p := &calendarPlugin{}
+	for _, w := range p.Describe().Widgets {
+		if _, ok := w.Args["past_today"]; ok != (w.Widget == "agenda") {
+			t.Errorf("%s: past_today declared %v", w.Widget, ok)
+		}
+	}
+	for _, v := range p.Describe().Values {
+		if _, ok := v.Args["past_today"]; ok {
+			t.Errorf("value %s declares past_today", v.Name)
+		}
 	}
 }
