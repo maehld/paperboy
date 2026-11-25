@@ -65,6 +65,7 @@ var widgetArgs = map[string]map[string]string{
 	"dexcom/graph":        {"mark": "both"},
 	"fuel/history":        {"span": "24h", "mark": "both"},
 	"paperboy/header":     {"title": "Übersicht"},
+	"paperboy/title":      {"title": "Übersicht"},
 	"weather/hours":       {"mark": "both"},
 }
 

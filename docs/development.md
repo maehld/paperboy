@@ -28,7 +28,7 @@ server/cmd/paperboy/             Startup, options and example configuration
 server/internal/paperboy/        YAML configuration, device API, plans, battery warning, dashboard
 server/internal/page/            Pages: grid parsing and composition from widgets
 server/internal/widget/          Plugin processes, widget cache and background refresh
-server/internal/builtin/         Built-in plugin "paperboy": header, text, clock
+server/internal/builtin/         Built-in plugin "paperboy": header, title, text, clock
 server/internal/plan/            Display plans: time rules that select pages per device (ADR 0025)
 server/internal/download/        Release downloads and the verification against SHA256SUMS
 server/internal/semver/          Version grammar for plugin and firmware names (ADR 0089)

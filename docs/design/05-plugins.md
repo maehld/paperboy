@@ -112,7 +112,7 @@ Every plugin has its own version in `plugins/cmd/<plugin>/VERSION`, embedded in 
 
 ## The built-in plugin
 
-`server/internal/builtin` provides the plugin `paperboy`: `header`, `text`, `clock`, `logo`, `battery`, `device-status` and `reading` for image displays ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md), [0115](../adr/0115-device-status-in-a-widget.md), [0163](../adr/0163-the-readings-in-the-device-status-and-a-reading-widget.md)). It draws from `sdk/render` and `sdk/design` and needs no data source, so it is always available and never cached. Its values `title`, `time`, `now`, `date`, `long`, `block`, `temperature` and `humidity` give a text page data without another plugin ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). It is the only plugin that receives `server_status`; a page that shows its own device is cached per device.
+`server/internal/builtin` provides the plugin `paperboy`: `header`, `title`, `text`, `clock`, `logo`, `battery`, `device-status` and `reading` for image displays ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md), [0115](../adr/0115-device-status-in-a-widget.md), [0163](../adr/0163-the-readings-in-the-device-status-and-a-reading-widget.md)). It draws from `sdk/render` and `sdk/design` and needs no data source, so it is always available and never cached. Its values `title`, `time`, `now`, `date`, `long`, `block`, `temperature` and `humidity` give a text page data without another plugin ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). It is the only plugin that receives `server_status`; a page that shows its own device is cached per device.
 
 ## The shipped plugins
 
