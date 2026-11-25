@@ -63,9 +63,9 @@ only the area below the band.
 
 The title and its `page_indicator` sit on the left. The right group is
 right-aligned and holds the room `temperature`, the `humidity`, the `clock`
-and the `battery`, in that order from left to right. Two spaces separate the
+and the `battery`, in that order from left to right. A pipe separates the
 temperature, the humidity and the clock. The page indicator follows the title
-after two spaces. Each is a switch:
+after one space. Each is a switch:
 `page_indicator`, `temperature`, `humidity` and `battery` are booleans;
 `clock` is `time`, `date`, `datetime` or `none` (default `time`). A reading
 appears when the device measures it. The title, the readings and the clock use

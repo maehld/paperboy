@@ -28,8 +28,8 @@ editor to a few choices.
 2. **The band is fixed chrome.** The left group is the page title and its page
    indicator. The right group is right-aligned and holds the temperature, the
    humidity, the clock and the battery, in that order from left to right. A
-   two spaces separate the temperature, the humidity and the clock. The
-   page indicator follows the title after two spaces.
+   pipe separates the temperature, the humidity and the clock. The
+   page indicator follows the title after one space.
 3. **Each part is a switch.** `page_indicator`, `temperature`, `humidity` and
    `battery` are booleans; `clock` is `time`, `date`, `datetime` or `none`,
    default `time`. The title is always on.
