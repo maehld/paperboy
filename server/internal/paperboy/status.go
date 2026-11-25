@@ -133,12 +133,23 @@ func statusOfDevice(cfg *Config, d *Device, st deviceState, now time.Time) plugi
 	return sd
 }
 
+// pageWidgets returns the widgets of a page in cell order, then its header
+// parts. A header part reads the same device arguments as a cell (ADR 0166).
+func pageWidgets(t *page.Template) []page.Cell {
+	out := make([]page.Cell, 0, len(t.Cells)+len(t.HeaderParts()))
+	out = append(out, t.Cells...)
+	for _, p := range t.HeaderParts() {
+		out = append(out, page.Cell{Widget: p.Widget, Args: p.Args})
+	}
+	return out
+}
+
 // selectedDeviceIDs collects the ids a page asks for: the devices argument of
-// device-status cells and the device argument of battery and reading cells.
+// device-status widgets and the device argument of battery and reading widgets.
 func selectedDeviceIDs(t *page.Template) []string {
 	var out []string
 	seen := map[string]bool{}
-	for _, c := range t.Cells {
+	for _, c := range pageWidgets(t) {
 		var ids []string
 		switch c.Widget {
 		case builtin.Name + "/device-status":
@@ -168,7 +179,7 @@ func selectedDeviceIDsFor(pluginName, widget string, args map[string]any) []stri
 // Such a page is cached per device, not per display type, so two devices that
 // share it cannot overwrite each other's status (ADR 0115).
 func deviceScoped(t *page.Template) bool {
-	for _, c := range t.Cells {
+	for _, c := range pageWidgets(t) {
 		switch c.Widget {
 		case builtin.Name + "/device-status":
 			named := false

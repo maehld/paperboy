@@ -57,6 +57,12 @@ func (Plugin) Describe() plugin.Description {
 					"align":          {Type: "string", Default: "left", Description: "left, center or right", Enum: []any{"left", "center", "right"}},
 					"battery":        {Type: "bool", Default: false, Description: "battery charge of this device at the right"},
 				}},
+			{Widget: "title", Title: "Page title", Kinds: image, Sizes: []plugin.Span{{Columns: 3, Rows: 1}, {Columns: 4, Rows: 1}, {Columns: 6, Rows: 1}},
+				Args: map[string]plugin.Arg{
+					"title":          {Type: "string", Description: "title; default the page title"},
+					"page_indicator": {Type: "bool", Default: true, Description: "page number when the plan has several pages"},
+					"align":          {Type: "string", Default: "left", Description: "left, center or right", Enum: []any{"left", "center", "right"}},
+				}},
 			{Widget: "battery", Title: "Battery", Kinds: image, Sizes: []plugin.Span{{Columns: 1, Rows: 1}, {Columns: 2, Rows: 1}, {Columns: 3, Rows: 1}, {Columns: 2, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"device": {Type: "string", Description: "device id; default the device that shows the page"},
@@ -88,7 +94,8 @@ func (Plugin) Describe() plugin.Description {
 				}},
 			{Widget: "clock", Title: "Clock", Kinds: image, Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 3, Rows: 2}, {Columns: 6, Rows: 2}},
 				Args: map[string]plugin.Arg{
-					"format": {Type: "string", Default: "time", Description: "time, date or datetime", Enum: []any{"time", "date", "datetime"}},
+					"format": {Type: "string", Default: "time", Description: "time, date, datetime or auto: the longest date form that fits plus the time", Enum: []any{"time", "date", "datetime", "auto"}},
+					"align":  {Type: "string", Default: "center", Description: "left, center or right", Enum: []any{"left", "center", "right"}},
 				}},
 			{Widget: "logo", Title: "Paperboy logo", Kinds: []string{plugin.KindImage}, Sizes: []plugin.Span{{Columns: 2, Rows: 1}, {Columns: 3, Rows: 2}, {Columns: 4, Rows: 3}, {Columns: 6, Rows: 3}},
 				Args: map[string]plugin.Arg{
@@ -148,6 +155,8 @@ func (p Plugin) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.P
 	case "header":
 		p.header(req, w, img)
 		return nil
+	case "title":
+		return p.title(req, w, img)
 	case "text":
 		return p.text(w, img)
 	case "clock":
@@ -231,6 +240,32 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 		design.DrawBattery(img, batteryIcon, batteryGauge(batteryStatus), 0)
 	}
 	render.HLine(img, b.Min.X, b.Max.Y-rule, b.Max.X, rule)
+}
+
+// title draws the page title and its page indicator as a header part. The
+// header band places it; the height comes from the band, not from a grid cell.
+func (Plugin) title(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
+	a := w.Arg()
+	b := img.Rect.Inset(w.Style.Padding)
+	if b.Empty() {
+		return plugin.TooSmall(w)
+	}
+	title := a.String("title", req.Page.Title)
+	if a.Bool("page_indicator", true) && req.Page.Count > 1 {
+		title += fmt.Sprintf(" – %d/%d", req.Page.Number, req.Page.Count)
+	}
+	size := min(float64(b.Dy())*0.7, req.TextPx(w)*1.4)
+	al := align(a.String("align", "left"), render.Left)
+	x := b.Min.X
+	switch al {
+	case render.Center:
+		x = b.Min.X + b.Dx()/2
+	case render.Right:
+		x = b.Max.X
+	}
+	render.Text(img, title, x, b.Min.Y+b.Dy()/2+int(size*0.36), render.Style{Size: size, Bold: true, Shrink: true},
+		b.Dx(), color.Black, al)
+	return nil
 }
 
 // textLines splits the text argument into lines. A literal \n and a real line
@@ -332,13 +367,32 @@ func clockText(req *plugin.Request, format string) string {
 }
 
 func (Plugin) clock(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
-	s := clockText(req, w.Arg().String("format", "time"))
+	a := w.Arg()
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Empty() {
 		return plugin.TooSmall(w)
 	}
 	size := float64(b.Dy()) * 0.7
-	render.Text(img, s, b.Min.X+b.Dx()/2, b.Min.Y+b.Dy()/2+int(size*0.36), render.Style{Size: size, Bold: true, Shrink: true},
-		b.Dx(), color.Black, render.Center)
+	s := clockText(req, a.String("format", "time"))
+	if a.String("format", "time") == "auto" {
+		// The header uses the longest date form that fits and keeps the time
+		// when even the shortest date does not fit.
+		s = headerStatus(req, plugin.Values{"date": true, "clock": true}, func(candidate string) bool {
+			return render.Measure(candidate, size, false) <= b.Dx()
+		})
+	}
+	if s == "" {
+		return nil
+	}
+	al := align(a.String("align", "center"), render.Center)
+	x := b.Min.X + b.Dx()/2
+	switch al {
+	case render.Left:
+		x = b.Min.X
+	case render.Right:
+		x = b.Max.X
+	}
+	render.Text(img, s, x, b.Min.Y+b.Dy()/2+int(size*0.36), render.Style{Size: size, Bold: true, Shrink: true},
+		b.Dx(), color.Black, al)
 	return nil
 }

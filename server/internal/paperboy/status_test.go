@@ -178,6 +178,17 @@ func TestSelectedDeviceIDsAndScope(t *testing.T) {
 	if !deviceScoped(ownReading) {
 		t.Error("a reading of the page's own device is device-scoped")
 	}
+	// Header parts read the same device arguments as cells (ADR 0166).
+	header := &page.Template{Header: &page.Header{
+		Left:  []page.HeaderPart{{Widget: "paperboy/reading"}},
+		Right: []page.HeaderPart{{Widget: "paperboy/battery", Args: map[string]any{"device": "a"}}},
+	}}
+	if !deviceScoped(header) {
+		t.Error("a reading in the header is device-scoped")
+	}
+	if got := selectedDeviceIDs(header); len(got) != 1 || got[0] != "a" {
+		t.Errorf("header selected ids: %v", got)
+	}
 	status := &plugin.ServerStatus{CurrentDeviceStatus: &plugin.DeviceStatus{ID: "kueche"}}
 	if got := statusKey("small", "status", tmpl, status); got != "small/status/kueche" {
 		t.Errorf("device-scoped cache key: %q", got)

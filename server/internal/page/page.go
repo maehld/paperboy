@@ -41,6 +41,9 @@ type Template struct {
 	Grid     [2]int            `yaml:"grid" json:"grid"`                 // columns, rows; image pages only
 	Style    Style             `yaml:"style" json:"style"`               // look passed to every widget
 	Notices  string            `yaml:"notices" json:"notices,omitempty"` // show (default) or none: stale widgets
+	// Header is the band above the page grid: three zones of widget parts.
+	// The grid divides only the area below it (ADR 0166).
+	Header *Header `yaml:"header" json:"header,omitempty"`
 	// Overflow is the default of a text page: strip, wrap or scroll. A cell
 	// may override it (ADR 0118).
 	Overflow string `yaml:"overflow" json:"overflow,omitempty"`
@@ -99,6 +102,52 @@ type Cell struct {
 	// Scroll only exists to reject the old image key with a hint.
 	Scroll bool `yaml:"scroll,omitempty" json:"-"`
 }
+
+// Header is the band above the page grid: three zones of widget parts
+// (ADR 0166). Its height is in points like the page style. The grid divides
+// only the area below the band.
+type Header struct {
+	Height float64      `yaml:"height" json:"height,omitempty"`
+	Left   []HeaderPart `yaml:"left" json:"left,omitempty"`
+	Center []HeaderPart `yaml:"center" json:"center,omitempty"`
+	Right  []HeaderPart `yaml:"right" json:"right,omitempty"`
+}
+
+// HeaderPart is one widget of a header zone. Weight divides the band width
+// among all parts; the zones only decide their order.
+type HeaderPart struct {
+	Widget string         `yaml:"widget" json:"widget"`
+	Args   map[string]any `yaml:"args,omitempty" json:"args,omitempty"`
+	Weight int            `yaml:"weight,omitempty" json:"weight,omitempty"`
+}
+
+// DefaultHeaderPt is the height of a header band without a height key.
+const DefaultHeaderPt = 24.0
+
+// maxHeaderPt keeps a header from taking a whole display before Fits sees the
+// real panel.
+const maxHeaderPt = 144.0
+
+// Parts returns the parts in drawing order: left, center, right.
+func (h *Header) Parts() []HeaderPart {
+	if h == nil {
+		return nil
+	}
+	out := make([]HeaderPart, 0, len(h.Left)+len(h.Center)+len(h.Right))
+	out = append(out, h.Left...)
+	out = append(out, h.Center...)
+	out = append(out, h.Right...)
+	return out
+}
+
+// HeaderParts returns the parts of the page's header in drawing order.
+func (t *Template) HeaderParts() []HeaderPart { return t.Header.Parts() }
+
+// Plugin and widget name of the header part.
+func (p HeaderPart) Plugin() string { pn, _, _ := strings.Cut(p.Widget, "/"); return pn }
+
+// Name is the widget name without the plugin.
+func (p HeaderPart) Name() string { _, w, _ := strings.Cut(p.Widget, "/"); return w }
 
 // Plugin and widget name of the cell.
 func (c Cell) Plugin() string { p, _, _ := strings.Cut(c.Widget, "/"); return p }
@@ -435,9 +484,55 @@ func (t *Template) validate() error {
 		return fmt.Errorf("style: %w", err)
 	}
 	if t.Kind == KindText {
+		if t.Header != nil {
+			return fmt.Errorf("header is for image pages (kind: image)")
+		}
 		return t.validateText()
 	}
+	if err := t.validateHeader(); err != nil {
+		return err
+	}
 	return t.validateGrid()
+}
+
+// validateHeader checks the band outside the grid (ADR 0166).
+func (t *Template) validateHeader() error {
+	h := t.Header
+	if h == nil {
+		return nil
+	}
+	if h.Height == 0 {
+		h.Height = DefaultHeaderPt
+	}
+	if h.Height < 1 || h.Height > maxHeaderPt {
+		return fmt.Errorf("header height %g: expected points between 1 and %g", h.Height, maxHeaderPt)
+	}
+	zones := []struct {
+		name  string
+		parts []HeaderPart
+	}{{"left", h.Left}, {"center", h.Center}, {"right", h.Right}}
+	total := 0
+	for _, zone := range zones {
+		for i := range zone.parts {
+			p := &zone.parts[i]
+			where := fmt.Sprintf("header %s part %d (%s)", zone.name, i+1, p.Widget)
+			if p.Weight == 0 {
+				p.Weight = 1
+			}
+			if p.Weight < 1 || p.Weight > 6 {
+				return fmt.Errorf("%s: weight %d: expected 1 to 6", where, p.Weight)
+			}
+			plugin, widget, ok := strings.Cut(p.Widget, "/")
+			if !ok || !ValidName(plugin) || !ValidName(widget) {
+				return fmt.Errorf("%s: widget %q: expected plugin/widget with a-z, 0-9 and -", where, p.Widget)
+			}
+			total++
+		}
+	}
+	if total == 0 {
+		return fmt.Errorf("header: at least one part is required")
+	}
+	return nil
 }
 
 // validateGrid checks the layout of an image page: a grid of widget cells.
@@ -586,6 +681,10 @@ func (t *Template) Fits(d Display) error {
 		return fmt.Errorf("page is for image displays (kind: %s)", t.Kind)
 	case !d.Text && t.Kind == KindText:
 		return fmt.Errorf("page is for text displays (kind: text)")
+	case !d.Text:
+		if h := t.headerHeight(d); h >= d.Height {
+			return fmt.Errorf("header of %d px leaves no room on a %d px display", h, d.Height)
+		}
 	case d.Text:
 		if len(t.Cells) > d.Width*d.Height {
 			return fmt.Errorf("%d cells do not fit the text display", len(t.Cells))

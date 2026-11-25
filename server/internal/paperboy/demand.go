@@ -83,6 +83,11 @@ func (s *Server) pluginDemand() map[string]time.Time {
 					needed[plugin] = true
 				}
 			}
+			for _, part := range t.HeaderParts() {
+				if plugin := part.Plugin(); plugin != "" && plugin != builtin.Name {
+					needed[plugin] = true
+				}
+			}
 		}
 		// A trigger decides on every sync, so its values must answer even
 		// while the device shows another page.
