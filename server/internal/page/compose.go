@@ -190,6 +190,10 @@ func (t *Template) headerParts(d Display) []HeaderPart {
 	return d.Header.Parts
 }
 
+// BandHeight is the header band's height in pixels. The display type editor
+// previews exactly this strip (ADR 0168).
+func (t *Template) BandHeight(d Display) int { return t.headerHeight(d) }
+
 // rulePx is the page's rule in pixels. The header band uses it for the line
 // under its parts.
 func (t *Template) rulePx(d Display) int {

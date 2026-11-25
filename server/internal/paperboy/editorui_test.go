@@ -684,7 +684,7 @@ func TestEditorPage(t *testing.T) {
 		// The preview type is the served one; the file is not a link there.
 		`data-serves="small"`,
 		`"rename":{"url":"/api/pages/solar/rename"}`,
-		`<script src="/ui/editor.js"></script>`, `id="board"`, `id="palette"`, `id="palette-filter"`, `id="inspector"`,
+		`<script src="/ui/editor.js"></script>`, `<script src="/ui/args.js"></script>`, `id="board"`, `id="palette"`, `id="palette-filter"`, `id="inspector"`,
 		`id="show-cells" checked`, `id="render-hint"`, `id="preview-error"`, `id="grid-lock"`,
 		`id="show-header"`, `id="header-note"`,
 		// The panels list the files of the page and the file of every display
@@ -824,6 +824,43 @@ func TestEditorGridFromDisplayType(t *testing.T) {
 	rec = preview(t, s, "/api/widget/paperboy/clock?display=wide")
 	if img, err := png.Decode(bytes.NewReader(rec.Body.Bytes())); err != nil || img.Bounds().Dx() != 400 || img.Bounds().Dy() != 240 {
 		t.Fatalf("default cell: %v %v", img.Bounds(), err)
+	}
+}
+
+// TestDisplayHeaderPreview renders the band of a display type as a draft, so
+// the display type editor shows the parts before a save (ADR 0168).
+func TestDisplayHeaderPreview(t *testing.T) {
+	s := editorServer(t)
+	body := `{"header":{"height":2,"parts":[{"widget":"paperboy/text","args":{"text":"x"},"fill":true}]}}`
+	rec := request(t, s, http.MethodPost, "/api/displays/small/header-preview", body, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("band preview: %d %s", rec.Code, rec.Body)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "image/png" {
+		t.Fatalf("content type: %q", ct)
+	}
+	img, err := png.Decode(bytes.NewReader(rec.Body.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 2 pt at 125 ppi are 3 px; the strip is the panel width.
+	if img.Bounds().Dx() != 40 || img.Bounds().Dy() != 3 {
+		t.Fatalf("band is %v, want 40x3", img.Bounds())
+	}
+	// A band that leaves no room, a type without a band and a missing header
+	// are refused with the answer the editor shows.
+	for _, tc := range []struct {
+		name, path, body string
+		code             int
+	}{
+		{"too tall", "/api/displays/small/header-preview", `{"header":{"height":24,"parts":[{"widget":"paperboy/text","fill":true}]}}`, http.StatusUnprocessableEntity},
+		{"text type", "/api/displays/lcd/header-preview", body, http.StatusBadRequest},
+		{"unknown type", "/api/displays/nope/header-preview", body, http.StatusNotFound},
+		{"no parts", "/api/displays/small/header-preview", `{"header":{"height":2}}`, http.StatusBadRequest},
+	} {
+		if rec := request(t, s, http.MethodPost, tc.path, tc.body, nil); rec.Code != tc.code {
+			t.Fatalf("%s: %d, want %d (%s)", tc.name, rec.Code, tc.code, rec.Body)
+		}
 	}
 }
 

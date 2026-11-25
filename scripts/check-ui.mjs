@@ -131,6 +131,7 @@ try {
 // its widgets wrongly still renders and only fails on the click (issue #391).
 {
   const script = await readFile(join(root, "server/internal/paperboy/ui/editor.js"), "utf8");
+  const argsScript = await readFile(join(root, "server/internal/paperboy/ui/args.js"), "utf8");
   const plugins = {
     plugins: [{
       name: "demo",
@@ -199,6 +200,7 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
       }
       return { ...answer, json: async () => ({}) };
     };
+    window.eval(argsScript);
     window.eval(script);
     await sleep(30);
     return { editorDom, window, failures };
@@ -337,11 +339,106 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
     editorDom.window.close();
   }
 
+// display-editor.js edits the header band of a display type: a real widget
+// select, the argument fields of the chosen widget and a server-rendered
+// preview (ADR 0168).
+{
+  const script = await readFile(join(root, "server/internal/paperboy/ui/display-editor.js"), "utf8");
+  const argsScript = await readFile(join(root, "server/internal/paperboy/ui/args.js"), "utf8");
+  const plugins = {
+    plugins: [{
+      name: "paperboy",
+      description: {
+        title: "Paperboy",
+        widgets: [
+          {
+            widget: "title", title: "Page title",
+            args: {
+              align: { type: "string", default: "left", enum: ["left", "center", "right"], enum_labels: { left: "Left", right: "Right" } },
+              page_indicator: { type: "bool", default: true },
+            },
+          },
+          { widget: "battery", title: "Battery", args: { align: { type: "string", default: "center", enum: ["left", "center", "right"] } } },
+        ],
+      },
+    }],
+  };
+  const display = {
+    kind: "image", size: [800, 480], ppi: 125, gray_levels: 4,
+    header: { height: 24, parts: [{ widget: "paperboy/title", args: {}, fill: true }] },
+  };
+  const body = `<span id="status"></span><span id="where"></span>
+<select id="kind"></select><input id="width"><input id="height"><select id="gray"></select><input id="ppi">
+<input id="charset"><input id="min_refresh"><select id="power"></select><select id="rotation"></select>
+<input id="grid-cols"><input id="grid-rows"><button id="use-grid" type="button"></button>
+<p id="ppi-note"></p><p id="size-note"></p><p id="grid-note"></p><p id="panel-hint"></p>
+<label id="width-label">width <input readonly></label><label id="height-label">height <input readonly></label>
+<input id="panel-diagonal"><input id="panel-width"><input id="panel-height">
+<button id="use-diagonal" type="button"></button><button id="use-width" type="button"></button><button id="use-height" type="button"></button>
+<input id="header-height"><div id="header-preview"><img id="header-preview-img" hidden><p id="header-preview-note"></p></div>
+<div id="header-parts"></div>
+<button id="header-enable" type="button"></button><button id="header-add" type="button"></button><button id="header-remove" type="button"></button>
+<p id="header-hint"></p><pre id="yaml"></pre>
+<button id="save" type="button"></button><button id="delete" type="button"></button><button id="rename" type="button"></button><button id="reload" type="button"></button>
+<script id="display-data" type="application/json">${JSON.stringify({ name: "e1001", new: false })}</script>`;
+  const dom = new JSDOM(`<!doctype html><html><body>${body}</body></html>`,
+    { url: "http://localhost/ui/display-types/e1001", runScripts: "outside-only", pretendToBeVisual: true });
+  const { window } = dom;
+  const failures = [];
+  window.addEventListener("error", (event) => failures.push(event.error || event.message));
+  window.addEventListener("unhandledrejection", (event) => failures.push(event.reason));
+  window.URL.createObjectURL = () => "blob:band";
+  window.URL.revokeObjectURL = () => {};
+  let previews = 0;
+  window.fetch = async (target) => {
+    const path = String(target);
+    const answer = { ok: true, status: 200, json: async () => ({}), text: async () => "", blob: async () => ({}) };
+    if (path.startsWith("/api/plugins")) return { ...answer, json: async () => plugins };
+    if (path.includes("/header-preview")) {
+      previews++;
+      return answer;
+    }
+    if (path.startsWith("/api/displays/")) return { ...answer, json: async () => ({ hash: "h", yaml: "", display }) };
+    return answer;
+  };
+  window.eval(argsScript);
+  window.eval(script);
+  await sleep(80);
+
+  const parts = window.document.querySelectorAll("#header-parts .header-part");
+  check(parts.length === 1, "the display editor does not list the header part");
+  const pick = parts[0] && parts[0].querySelector("select");
+  check(pick && pick.selectedOptions[0] && pick.selectedOptions[0].textContent === "Page title",
+    "the header part does not select the widget by its title");
+  check(pick && pick.querySelector("optgroup") && pick.querySelector("optgroup").label === "Paperboy",
+    "the widget select is not grouped by plugin");
+  if (parts[0]) parts[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  const args = window.document.querySelector(".header-part-args");
+  check(!!args && !!args.querySelector(".arg"), "the header part does not show argument fields");
+  const align = args && Array.from(args.querySelectorAll(".arg"))
+    .find((arg) => arg.querySelector(".name").textContent === "align");
+  const select = align && align.querySelector("select");
+  check(!!select && select.value === "" && select.options.length === 4, "an enum argument is not a select with its values");
+  const indicator = args && Array.from(args.querySelectorAll(".arg"))
+    .find((arg) => arg.querySelector(".name").textContent === "page_indicator");
+  check(!!indicator && indicator.querySelector("input").type === "checkbox", "a bool argument is not a checkbox");
+  select.value = "right";
+  select.dispatchEvent(new window.Event("change"));
+  await sleep(400);
+  const img = window.document.getElementById("header-preview-img");
+  check(!img.hidden && img.src === "blob:band", "the header band has no preview image");
+  check(previews > 0, "the display editor never asks for a band preview");
+  check(!window.document.getElementById("header-hint").textContent.includes("JSON"), "the header hint still mentions JSON");
+  for (const failure of failures) problems.push(failure);
+  if (problems.length === 0) console.log("display-editor.js selected a widget, edited its arguments and drew the band preview");
+  dom.window.close();
+}
+
   if (problems.length) {
     for (const problem of problems) console.error(problem);
     process.exitCode = 1;
   } else {
-    console.log("editor.js picked, pinned and placed a palette widget");
+    console.log("editor.js and display-editor.js picked, pinned and edited a widget");
   }
 }
 

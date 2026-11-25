@@ -19,7 +19,11 @@
     readOnly: false,
     dirty: false,
     rename: start.rename || null,
-    widgets: [], // image widgets for the header input list
+    widgets: [], // image widgets for the header selects
+    selectedPart: -1, // expanded header part, -1 for none
+    previewTimer: 0,
+    previewSeq: 0,
+    previewURL: '', // object URL of the band preview
   };
 
   function empty(kind) {
@@ -45,6 +49,7 @@
     state.dirty = true;
     setStatus('unsaved changes', '');
     updateWhere();
+    schedulePreview();
   }
 
   // ---- form ----
@@ -330,62 +335,154 @@
 
   // ---- header band ----
   //
-  // The band belongs to the display type (ADR 0168). This editor is a plain
-  // list: widget, width or fill, and the arguments as JSON. The page editor
-  // shows the result but does not edit it.
+  // The band belongs to the display type (ADR 0168). One row per part: the
+  // widget in a select, its width or fill, and the arguments as the fields the
+  // plugin declares. The preview is the top strip of the saved panel.
+
+  function headerOut(h) {
+    return {
+      height: h.height,
+      parts: h.parts.map((p) => {
+        const part = { widget: p.widget, args: p.args || {} };
+        if (p.fill) part.fill = true;
+        else part.width = p.width;
+        return part;
+      }),
+    };
+  }
 
   function renderHeader() {
     const d = state.display;
     const h = d.header;
+    if (!h || state.selectedPart >= h.parts.length) state.selectedPart = -1;
     el('header-height').value = h ? h.height : '';
     el('header-height').disabled = state.readOnly || !h;
     el('header-enable').hidden = !!h;
     el('header-add').hidden = !h;
     el('header-remove').hidden = !h;
+    el('header-enable').disabled = state.readOnly;
+    el('header-add').disabled = state.readOnly;
+    el('header-remove').disabled = state.readOnly;
     el('header-hint').textContent = h
-      ? 'A part has fill: true or a fixed width in points. The order is the visual order.'
-      : 'This display type has no header band.';
+      ? 'A part has fill, or a fixed width in points. The order is the visual order. Click a part to edit its arguments. The preview uses the saved size, ppi and gray levels.'
+      : 'This display type has no header band. A page can still hide the band with header: false.';
     const box = el('header-parts');
     box.innerHTML = '';
-    if (!h) return;
+    if (!h) {
+      schedulePreview();
+      return;
+    }
     if (!h.parts.length) {
       const p = document.createElement('p');
       p.className = 'empty';
       p.textContent = 'No parts. A header needs at least one.';
       box.appendChild(p);
     }
-    h.parts.forEach((part, i) => box.appendChild(headerRow(part, i)));
+    h.parts.forEach((part, i) => box.appendChild(headerPart(part, i)));
+    schedulePreview();
   }
 
-  function headerRow(part, i) {
-    const row = document.createElement('div');
-    row.className = 'header-row';
-
-    const widget = document.createElement('input');
-    widget.type = 'text';
-    widget.value = part.widget;
-    widget.placeholder = 'paperboy/battery';
-    widget.setAttribute('list', 'header-widgets');
-    widget.setAttribute('aria-label', 'widget');
-    widget.addEventListener('input', () => {
-      part.widget = widget.value.trim();
-      changed();
+  function headerPart(part, i) {
+    const box = document.createElement('div');
+    box.className = 'header-part' + (state.selectedPart === i ? ' selected' : '');
+    box.addEventListener('click', (e) => {
+      if (e.target.closest('input, select, button, textarea, label')) return;
+      state.selectedPart = state.selectedPart === i ? -1 : i;
+      renderHeader();
     });
 
+    const line = document.createElement('div');
+    line.className = 'header-part-line';
+    line.append(widgetSelect(part), widthInput(part), fillToggle(part), partActions(i));
+    box.appendChild(line);
+
+    if (state.selectedPart === i) {
+      const args = document.createElement('div');
+      args.className = 'header-part-args';
+      const info = widgetInfo(part.widget);
+      if (!info) {
+        const p = document.createElement('p');
+        p.className = 'empty';
+        p.textContent = part.widget
+          ? 'This widget is not installed; the file keeps its name.'
+          : 'Choose a widget.';
+        args.appendChild(p);
+      } else if (!Object.keys(info.args || {}).length) {
+        const p = document.createElement('p');
+        p.className = 'empty';
+        p.textContent = 'This widget has no arguments.';
+        args.appendChild(p);
+      } else {
+        window.pbArgs.render(args, part, info.args, {
+          change: () => changed(),
+        });
+      }
+      box.appendChild(args);
+    }
+    return box;
+  }
+
+  // widgetSelect groups the image widgets by plugin, so the list reads like
+  // the palette of the page editor (ADR 0152).
+  function widgetSelect(part) {
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', 'widget');
+    const groups = new Map();
+    for (const w of state.widgets) {
+      let group = groups.get(w.plugin);
+      if (!group) {
+        group = document.createElement('optgroup');
+        group.label = w.pluginTitle;
+        groups.set(w.plugin, group);
+        select.appendChild(group);
+      }
+      const option = document.createElement('option');
+      option.value = w.key;
+      option.textContent = w.title;
+      group.appendChild(option);
+    }
+    if (part.widget && !state.widgets.some((w) => w.key === part.widget)) {
+      const option = document.createElement('option');
+      option.value = part.widget;
+      option.textContent = part.widget + ' (not installed)';
+      select.appendChild(option);
+    }
+    select.value = part.widget;
+    select.disabled = state.readOnly;
+    select.addEventListener('change', () => {
+      part.widget = select.value;
+      // Another widget means another argument set; a stale value would be
+      // invisible in the fields.
+      part.args = {};
+      changed();
+      renderHeader();
+    });
+    return select;
+  }
+
+  function widgetInfo(key) {
+    return state.widgets.find((w) => w.key === key) || null;
+  }
+
+  function widthInput(part) {
     const width = document.createElement('input');
     width.type = 'number';
     width.min = '0.1';
     width.step = '0.1';
     width.value = part.fill ? '' : part.width;
     width.disabled = !!part.fill || state.readOnly;
+    width.title = 'width in points';
     width.setAttribute('aria-label', 'width in points');
     width.addEventListener('input', () => {
       part.width = Math.max(0.1, Number(width.value) || 0.1);
       changed();
     });
+    return width;
+  }
 
-    const fillLabel = document.createElement('label');
-    fillLabel.className = 'fill';
+  function fillToggle(part) {
+    const label = document.createElement('label');
+    label.className = 'fill';
     const fill = document.createElement('input');
     fill.type = 'checkbox';
     fill.checked = !!part.fill;
@@ -397,27 +494,24 @@
       changed();
       renderHeader();
     });
-    fillLabel.append(fill, document.createTextNode('fill'));
+    label.append(fill, document.createTextNode('fill'));
+    return label;
+  }
 
-    const args = document.createElement('input');
-    args.type = 'text';
-    args.value = JSON.stringify(part.args || {});
-    args.placeholder = '{}';
-    args.setAttribute('aria-label', 'arguments as JSON');
-    args.addEventListener('change', () => {
-      try {
-        const parsed = JSON.parse(args.value || '{}');
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('expected an object');
-        part.args = parsed;
-        setStatus('');
-        changed();
-      } catch (e) {
-        setStatus('arguments: ' + e.message, 'error');
-      }
-    });
-
+  function partActions(i) {
     const actions = document.createElement('span');
     actions.className = 'actions';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.textContent = 'args';
+    toggle.title = 'Show the arguments of this part';
+    toggle.className = state.selectedPart === i ? 'active' : '';
+    toggle.setAttribute('aria-expanded', state.selectedPart === i ? 'true' : 'false');
+    toggle.addEventListener('click', () => {
+      state.selectedPart = state.selectedPart === i ? -1 : i;
+      renderHeader();
+    });
+    actions.appendChild(toggle);
     for (const [label, title, move] of [['↑', 'Move up', -1], ['↓', 'Move down', 1]]) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -428,6 +522,7 @@
         const parts = state.display.header.parts;
         const [x] = parts.splice(i, 1);
         parts.splice(i + move, 0, x);
+        state.selectedPart = i + move;
         changed();
         renderHeader();
       });
@@ -441,13 +536,70 @@
     remove.disabled = state.readOnly;
     remove.addEventListener('click', () => {
       state.display.header.parts.splice(i, 1);
+      state.selectedPart = -1;
       changed();
       renderHeader();
     });
     actions.appendChild(remove);
+    return actions;
+  }
 
-    row.append(widget, width, fillLabel, args, actions);
-    return row;
+  // schedulePreview debounces the render while the operator types; the fetch
+  // renders the draft on the server, so the preview matches the device path.
+  function schedulePreview() {
+    clearTimeout(state.previewTimer);
+    state.previewTimer = setTimeout(renderPreview, 300);
+  }
+
+  async function renderPreview() {
+    const img = el('header-preview-img');
+    const note = el('header-preview-note');
+    if (!img || !note) return;
+    const h = state.display.header;
+    const show = (text) => {
+      img.hidden = true;
+      note.hidden = false;
+      note.textContent = text;
+    };
+    if (state.isNew) {
+      show('Save the display type once to see its band.');
+      return;
+    }
+    if (!h || !h.parts.length) {
+      show('No header band.');
+      return;
+    }
+    const seq = ++state.previewSeq;
+    let res;
+    try {
+      res = await fetch('/api/displays/' + encodeURIComponent(state.name) + '/header-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ header: headerOut(h) }),
+      });
+    } catch (e) {
+      if (seq === state.previewSeq) show('preview failed: ' + e);
+      return;
+    }
+    if (seq !== state.previewSeq) return;
+    if (!res.ok) {
+      const body = await res.text();
+      let message = body.trim();
+      try {
+        message = JSON.parse(body).error || message;
+      } catch (e) {
+        // the text is the message
+      }
+      show(message || 'preview failed (' + res.status + ')');
+      return;
+    }
+    const blob = await res.blob();
+    if (seq !== state.previewSeq) return;
+    if (state.previewURL) URL.revokeObjectURL(state.previewURL);
+    state.previewURL = URL.createObjectURL(blob);
+    img.src = state.previewURL;
+    img.hidden = false;
+    note.hidden = true;
   }
 
   function onHeader() {
@@ -460,23 +612,27 @@
     el('header-enable').addEventListener('click', () => {
       if (state.readOnly) return;
       state.display.header = { height: 24, parts: [{ widget: 'paperboy/title', args: {}, fill: true, width: 0 }] };
+      state.selectedPart = 0;
       changed();
       renderHeader();
     });
     el('header-remove').addEventListener('click', () => {
       if (state.readOnly) return;
       state.display.header = null;
+      state.selectedPart = -1;
       changed();
       renderHeader();
     });
     el('header-add').addEventListener('click', () => {
       if (state.readOnly || !state.display.header) return;
       state.display.header.parts.push({ widget: 'paperboy/text', args: { text: 'Text' }, fill: false, width: 40 });
+      state.selectedPart = state.display.header.parts.length - 1;
       changed();
       renderHeader();
     });
   }
 
+  // loadWidgets fills the widget selects from the plugin descriptions.
   async function loadWidgets() {
     try {
       const res = await fetch('/api/plugins', { cache: 'no-store' });
@@ -484,20 +640,21 @@
       const doc = await res.json();
       state.widgets = [];
       for (const p of doc.plugins || []) {
-        for (const w of (p.description && p.description.widgets) || []) {
+        const description = p.description || {};
+        for (const w of description.widgets || []) {
           if (w.kinds && w.kinds.length && !w.kinds.includes('image')) continue;
-          state.widgets.push(p.name + '/' + w.widget);
+          state.widgets.push({
+            key: p.name + '/' + w.widget,
+            title: w.title || w.widget,
+            plugin: p.name,
+            pluginTitle: description.title || p.name,
+            args: w.args || {},
+          });
         }
       }
-      const list = el('header-widgets');
-      list.replaceChildren();
-      for (const name of state.widgets) {
-        const o = document.createElement('option');
-        o.value = name;
-        list.appendChild(o);
-      }
+      renderHeader();
     } catch (e) {
-      // the input still accepts a name by hand
+      // the select keeps the stored widget and the editor still saves it
     }
   }
 

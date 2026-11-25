@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/draw"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -1181,6 +1182,71 @@ func (s *Server) deleteFile(w http.ResponseWriter, cfg *Config, kind, label, pat
 		return
 	}
 	writeJSON(w, http.StatusOK, deletedAnswer{Deleted: relativePath(cfg, path)})
+}
+
+// handleDisplayHeaderPreview renders the header band of a display type as a
+// draft, so the display type editor shows what its parts draw before a save
+// (ADR 0168). The band is the top strip of the panel; the page title stands in
+// for the type's pages.
+func (s *Server) handleDisplayHeaderPreview(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	cfg := s.config()
+	name := r.PathValue("name")
+	profile, ok := cfg.Profiles[name]
+	if !ok {
+		writeAPIError(w, http.StatusNotFound, "unknown display type %q", name)
+		return
+	}
+	var body struct {
+		Header *page.Header `json:"header"`
+	}
+	if err := decodeBody(w, r, &body); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	if body.Header == nil || len(body.Header.Parts) == 0 {
+		writeAPIError(w, http.StatusBadRequest, "header needs at least one part")
+		return
+	}
+	if err := body.Header.Validate(); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "header: %v", err)
+		return
+	}
+	if profile.text() {
+		writeAPIError(w, http.StatusBadRequest, "a text display type has no header band")
+		return
+	}
+	img, err := s.renderBand(cfg, name, body.Header, s.now())
+	if err != nil {
+		writeAPIError(w, http.StatusUnprocessableEntity, "%v", err)
+		return
+	}
+	writePNG(w, encodePNG(img))
+}
+
+// renderBand composes the band strip of a display type with a draft header. It
+// renders the whole page first, because a widget sizes its text on the panel
+// height, and keeps the top strip. A panicking widget becomes an error like on
+// the device path.
+func (s *Server) renderBand(cfg *Config, display string, header *page.Header, now time.Time) (img *image.Paletted, err error) {
+	defer func() {
+		if v := recover(); v != nil {
+			slog.Error("header preview panicked", "display", display, "panic", v, "stack", string(debug.Stack()))
+			img, err = nil, fmt.Errorf("header preview panicked: %v", v)
+		}
+	}()
+	d := s.display(cfg, cfg.Profiles[display])
+	d.Header = header
+	tmpl := &page.Template{Title: display}
+	status := s.statusSnapshot(cfg, display, "", selectedDeviceIDs(tmpl, d.Header), now)
+	ctx := page.Context{Now: now, Page: 1, Pages: 1, Widgets: s.widgetSource(), Values: s.valueSource(), ServerStatus: status}
+	full, err := tmpl.RenderImage(d, ctx)
+	if err != nil {
+		return nil, err
+	}
+	band := image.NewPaletted(image.Rect(0, 0, d.Width, tmpl.BandHeight(d)), full.Palette)
+	draw.Draw(band, band.Bounds(), full, image.Point{}, draw.Src)
+	return band, nil
 }
 
 // handleDraftPreview renders a page that is not saved yet, so an editor can

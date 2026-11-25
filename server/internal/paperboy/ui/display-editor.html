@@ -28,12 +28,25 @@ input, select { font: inherit; padding: .15rem .3rem; min-width: 0; width: 100%;
 pre.file { margin: 0; padding: .5rem .6rem; background: var(--pb-surface-sunken); border: 1px solid var(--pb-hairline); border-radius: 6px; font: .8rem/1.35 ui-monospace, Consolas, monospace; overflow-x: auto; white-space: pre; }
 .header-editor { margin-top: .8rem; border-top: 1px solid var(--pb-surface-hover); padding-top: .6rem; }
 .header-editor h4 { margin: 0 0 .4rem; font-size: .8rem; font-weight: 600; color: var(--pb-ink-muted); }
-.header-row { display: grid; grid-template-columns: minmax(8rem, 1fr) 4.5rem 3.5rem minmax(6rem, 1fr) auto; gap: .3rem; align-items: center; margin-bottom: .3rem; font-size: .78rem; }
-.header-row .fill { display: flex; align-items: center; gap: .2rem; color: var(--pb-ink-muted); }
-.header-row .fill input { width: auto; }
-.header-row .actions { display: flex; gap: .15rem; }
-.header-row .actions button { padding: .05rem .3rem; font-size: .72rem; }
-.header-row input[type=text] { font-size: .78rem; }
+.header-preview { margin: .2rem 0 .6rem; }
+.header-preview img { display: block; width: 100%; height: auto; border: 1px solid var(--pb-hairline); background: var(--pb-surface); image-rendering: pixelated; }
+.header-preview .empty { margin: 0; color: var(--pb-ink-faint); font-size: .8rem; }
+.header-part { border: 1px solid var(--pb-hairline); border-radius: 6px; margin-bottom: .4rem; background: var(--pb-surface-sunken); cursor: pointer; }
+.header-part.selected { border-color: var(--pb-accent); box-shadow: inset 0 0 0 1px var(--pb-accent); }
+.header-part-line { display: grid; grid-template-columns: minmax(9rem, 1fr) 4.5rem 3.5rem auto; gap: .3rem; align-items: center; padding: .3rem; font-size: .78rem; }
+.header-part-line select, .header-part-line input[type=number] { font-size: .78rem; }
+.header-part-line .fill { display: flex; align-items: center; gap: .2rem; color: var(--pb-ink-muted); }
+.header-part-line .fill input { width: auto; }
+.header-part-line .actions { display: flex; gap: .15rem; }
+.header-part-line .actions button { padding: .05rem .3rem; font-size: .72rem; }
+.header-part-line .actions button.active { border-color: var(--pb-accent); color: var(--pb-accent); box-shadow: inset 0 0 0 1px var(--pb-accent); }
+.header-part-args { padding: .1rem .45rem .45rem; border-top: 1px solid var(--pb-hairline); }
+.header-part-args .arg:first-of-type { margin-top: .35rem; }
+.header-part-args h4 { margin: .35rem 0 .3rem; }
+.header-part-args .empty { margin: .35rem 0 0; color: var(--pb-ink-faint); font-size: .78rem; }
+.header-part-args input[type=text] { font-size: .8rem; }
+.header-editor .buttons { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .4rem; }
+.header-editor .buttons button { font-size: .8rem; }
 #header-parts .empty { margin: 0 0 .3rem; color: var(--pb-ink-faint); font-size: .8rem; }
 #pages a, #devices a { display: block; font-size: .88rem; padding: .1rem 0; }
 #pages .empty, #devices .empty { color: var(--pb-ink-faint); font-size: .85rem; margin: 0; }
@@ -92,11 +105,16 @@ pre.file { margin: 0; padding: .5rem .6rem; background: var(--pb-surface-sunken)
       <div class="header-editor image-only">
         <h4>Header band</h4>
         <label class="field"><span>height (pt)</span><input id="header-height" type="number" min="1" max="144"></label>
+        <div class="header-preview" id="header-preview">
+          <img id="header-preview-img" alt="Header band preview" hidden>
+          <p class="empty" id="header-preview-note">No header band.</p>
+        </div>
         <div id="header-parts"></div>
-        <button type="button" id="header-enable">Add header</button>
-        <button type="button" id="header-add" hidden>+ Add part</button>
-        <button type="button" id="header-remove" hidden>Remove header</button>
-        <datalist id="header-widgets"></datalist>
+        <div class="buttons">
+          <button type="button" id="header-enable">Add header</button>
+          <button type="button" id="header-add" hidden>+ Add part</button>
+          <button type="button" id="header-remove" class="danger" hidden>Remove header</button>
+        </div>
         <p class="hint" id="header-hint"></p>
       </div>
     </section>
@@ -122,6 +140,7 @@ pre.file { margin: 0; padding: .5rem .6rem; background: var(--pb-surface-sunken)
 </div>
 <script id="display-data" type="application/json">{{.Data}}</script>
 <script src="/ui/dialog.js"></script>
+<script src="/ui/args.js"></script>
 <script src="/ui/display-editor.js"></script>
 {{end}}
 {{template "chrome-end"}}</body>

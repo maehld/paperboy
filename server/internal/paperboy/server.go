@@ -220,6 +220,7 @@ func (s *Server) uiRoutes() []route {
 		{"GET /ui/tokens.css", s.handleUITokens},
 		{"GET /ui/theme.js", s.handleUIThemeJS},
 		{"GET /ui/dialog.js", s.handleUIDialogJS},
+		{"GET /ui/args.js", s.handleUIArgsJS},
 		{"GET /ui/titlebar.js", s.handleUITitlebarJS},
 		{"GET /ui/zoom.js", s.handleUIZoomJS},
 		{"GET /ui/command.js", s.handleUICommandJS},
@@ -268,6 +269,7 @@ func (s *Server) uiRoutes() []route {
 		{"DELETE /api/displays/{name}", s.handleDeleteDisplay},
 		{"POST /api/displays/{name}/rename", s.handleRenameDisplay},
 		{"POST /api/preview/{display}", s.handleDraftPreview},
+		{"POST /api/displays/{name}/header-preview", s.handleDisplayHeaderPreview},
 	}
 }
 

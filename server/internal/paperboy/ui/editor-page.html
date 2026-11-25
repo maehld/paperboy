@@ -153,21 +153,6 @@ ul.variant-types a.active { font-weight: 700; color: var(--pb-ink); }
 .preview.single img { width: auto; max-width: 100%; }
 .lcd { margin: 0; padding: .5rem .6rem; background: var(--pb-lcd-cell); color: var(--pb-lcd-pixel); font: .95rem/1.25 "DotGothic16", ui-monospace, Consolas, monospace; white-space: pre; overflow-x: auto; border-radius: 4px; }
 .inspector .empty { margin: 0; color: var(--pb-ink-faint); font-size: .85rem; }
-.inspector .arg { margin-bottom: .35rem; }
-.inspector .arg .name { font-size: .78rem; color: var(--pb-ink-muted); display: block; }
-.inspector .arg .desc { font-size: .72rem; color: var(--pb-ink-faint); display: block; }
-.inspector .arg .checks { margin-top: .25rem; }
-.inspector .arg .checks-bar { display: flex; align-items: center; gap: .4rem; margin-bottom: .3rem; font-size: .74rem; color: var(--pb-ink-muted); }
-.inspector .arg .checks-count { font-variant-numeric: tabular-nums; }
-.inspector .arg .checks-actions { display: flex; gap: .25rem; margin-left: auto; }
-.inspector .arg .checks-actions button { font: inherit; font-size: .74rem; padding: .05rem .45rem; border: 1px solid var(--pb-hairline-strong); border-radius: 999px; background: var(--pb-surface-sunken); color: var(--pb-accent); cursor: pointer; }
-.inspector .arg .checks-actions button:hover { background: var(--pb-accent-bg); border-color: var(--pb-hairline-strong); }
-.inspector .arg .checks-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .15rem .35rem; }
-.inspector .arg .check { display: flex; align-items: center; gap: .35rem; min-width: 0; padding: .18rem .3rem; border: 1px solid transparent; border-radius: 4px; font-size: .78rem; line-height: 1.25; color: var(--pb-ink); cursor: pointer; }
-.inspector .arg .check:hover { background: var(--pb-surface-sunken); }
-.inspector .arg .check:has(input:checked) { background: var(--pb-accent-bg); border-color: var(--pb-hairline-strong); color: var(--pb-accent); }
-.inspector .arg .check input { flex: none; margin: 0; }
-.inspector .arg .check span { min-width: 0; overflow-wrap: anywhere; }
 .inspector .row-buttons { display: flex; gap: .5rem; margin-top: .6rem; }
 .inspector .muted { margin: 0 0 .4rem; }
 /* The row editor of a text page (ADR 0111). */
@@ -345,6 +330,7 @@ dialog .dialog-actions { display: flex; gap: .5rem; justify-content: flex-end; m
 </dialog>{{end}}
 <script id="editor-data" type="application/json">{{.Data}}</script>
 <script src="/ui/dialog.js"></script>
+<script src="/ui/args.js"></script>
 <script src="/ui/editor.js"></script>
 {{end}}
 {{template "chrome-end"}}</body>
