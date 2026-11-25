@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 	"github.com/maehld/paperboy/server/internal/reading"
@@ -227,7 +228,7 @@ func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Pal
 		render.Text(img, status, statusRight, baseline, render.Style{Size: statusSize, Shrink: true}, b.Dx()/2, color.Black, render.Right)
 	}
 	if !batteryIcon.Empty() {
-		drawBattery(img, batteryIcon, batteryStatus)
+		design.DrawBattery(img, batteryIcon, batteryGauge(batteryStatus), 0)
 	}
 	render.HLine(img, b.Min.X, b.Max.Y-rule, b.Max.X, rule)
 }

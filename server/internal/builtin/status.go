@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 	"github.com/maehld/paperboy/server/internal/format"
@@ -236,7 +237,7 @@ func (Plugin) battery(req *plugin.Request, w plugin.WidgetRequest, img *image.Pa
 		return plugin.TooSmall(w)
 	}
 	if !bl.icon.Empty() {
-		drawBattery(img, bl.icon, status)
+		design.DrawBattery(img, bl.icon, batteryGauge(status), 0)
 	}
 	if bl.text != "" {
 		render.Text(img, bl.text, bl.x, bl.baseline, render.Style{Size: bl.size, Shrink: true},
@@ -431,151 +432,15 @@ func (Plugin) deviceStatus(req *plugin.Request, w plugin.WidgetRequest, img *ima
 	return nil
 }
 
-// batteryFrame returns the body of the gauge, the thickness of its outline and
-// the width of its terminal. The warning level thickens the outline, so the
-// level is visible without a number (ADR 0121).
-func batteryFrame(r image.Rectangle, status *plugin.BatteryStatus) (body image.Rectangle, line, nub int) {
-	line = max(1, r.Dy()/24)
-	if status != nil {
-		switch status.Level {
-		case "warn":
-			line++
-		case "critical":
-			line += 2
-		}
-	}
-	line = min(line, max(1, r.Dy()/6))
-	nub = max(2, r.Dx()/8)
-	return image.Rect(r.Min.X, r.Min.Y, r.Max.X-nub, r.Max.Y), line, nub
-}
-
-// batteryPercent is the charge in percent, false when the device reports none.
-func batteryPercent(status *plugin.BatteryStatus) (float64, bool) {
+// batteryValue translates the device status into the shared gauge data.
+func batteryGauge(status *plugin.BatteryStatus) design.Battery {
+	b := design.Battery{}
 	if status == nil || status.Percent == nil {
-		return 0, false
+		b.Missing = true
+		return b
 	}
-	return max(0, min(100, *status.Percent)), true
-}
-
-// drawBattery draws the gauge of the battery widget and of the page header: an
-// outline with a terminal, the charge in four or five segments, a bolt while
-// charging and a slash for a missing reading (ADR 0121).
-func drawBattery(img *image.Paletted, r image.Rectangle, status *plugin.BatteryStatus) {
-	if r.Dx() < 4 || r.Dy() < 3 {
-		return
-	}
-	body, line, _ := batteryFrame(r, status)
-	render.HLine(img, body.Min.X, body.Min.Y, body.Max.X, line)
-	render.HLine(img, body.Min.X, body.Max.Y-line, body.Max.X, line)
-	render.VLine(img, body.Min.X, body.Min.Y, body.Max.Y, line)
-	render.VLine(img, body.Max.X-line, body.Min.Y, body.Max.Y, line)
-	nubH := r.Dy() / 2
-	render.FillSolid(img, image.Rect(body.Max.X, r.Min.Y+(r.Dy()-nubH)/2, r.Max.X, r.Min.Y+(r.Dy()+nubH)/2))
-	inner := body.Inset(line + 1)
-	if inner.Empty() {
-		return
-	}
-	percent, ok := batteryPercent(status)
-	if ok {
-		fillBattery(img, inner, line, percent)
-	}
-	switch {
-	case !ok:
-		// A missing reading keeps the outline and adds a slash, so it does not
-		// look like an empty battery.
-		drawBatterySlash(img, inner, line)
-	case status.Charging:
-		drawBatteryBolt(img, inner)
-	}
-}
-
-// fillBattery draws the charge in five segments, each filled or empty. A step
-// is wider than one pixel, so 84 % and 100 % differ at a glance.
-func fillBattery(img *image.Paletted, inner image.Rectangle, line int, percent float64) {
-	segs := 5
-	if inner.Dx() < 20 {
-		segs = 4
-	}
-	if inner.Dx() < 8 {
-		segs = 1
-	}
-	gap := max(1, line)
-	if inner.Dx() < segs*3 {
-		gap = 0
-	}
-	filled := int(float64(segs)*percent/100 + 0.5)
-	if filled == 0 && percent > 0 {
-		filled = 1
-	}
-	segW := (inner.Dx() - (segs-1)*gap) / segs
-	if segW < 1 {
-		segs, filled, segW, gap = 1, 1, inner.Dx(), 0
-	}
-	for i := 0; i < filled; i++ {
-		x0 := inner.Min.X + i*(segW+gap)
-		x1 := x0 + segW
-		if i == segs-1 {
-			x1 = inner.Max.X
-		}
-		render.FillSolid(img, image.Rect(x0, inner.Min.Y, x1, inner.Max.Y))
-	}
-}
-
-// drawBatterySlash marks a gauge without a reading: one diagonal line inside
-// the outline.
-func drawBatterySlash(img *image.Paletted, inner image.Rectangle, line int) {
-	m := max(1, inner.Dx()/8)
-	render.Segment(img, inner.Min.X+m, inner.Max.Y-m-1, inner.Max.X-m-1, inner.Min.Y+m, line, false)
-}
-
-// boltShape is the charging mark as a polygon in a unit box: the usual
-// lightning shape, drawn over the fill instead of a band cut out of it.
-var boltShape = [6][2]float64{
-	{0.54, 0.03}, {0.12, 0.58}, {0.42, 0.58}, {0.36, 0.97}, {0.84, 0.42}, {0.54, 0.42},
-}
-
-// drawBatteryBolt knocks the charging mark out of the charge, white on the fill
-// and black on the empty part, so the mark stays visible on both.
-func drawBatteryBolt(img *image.Paletted, inner image.Rectangle) {
-	bw := inner.Dx() * 6 / 10
-	bh := inner.Dy()
-	if bw < 3 || bh < 4 {
-		return
-	}
-	x0 := inner.Min.X + (inner.Dx()-bw)/2
-	pts := make([]image.Point, len(boltShape))
-	for i, p := range boltShape {
-		pts[i] = image.Point{X: x0 + int(p[0]*float64(bw)), Y: inner.Min.Y + int(p[1]*float64(bh))}
-	}
-	for y := inner.Min.Y; y < inner.Max.Y; y++ {
-		yc := float64(y) + 0.5
-		var xs []float64
-		for i, p := range pts {
-			q := pts[(i+1)%len(pts)]
-			if p.Y == q.Y || yc < float64(min(p.Y, q.Y)) || yc >= float64(max(p.Y, q.Y)) {
-				continue
-			}
-			xs = append(xs, float64(p.X)+(yc-float64(p.Y))/float64(q.Y-p.Y)*float64(q.X-p.X))
-		}
-		sort.Float64s(xs)
-		for i := 0; i+1 < len(xs); i += 2 {
-			x1, x2 := int(xs[i]+0.5), int(xs[i+1]+0.5)
-			if x2 < x1+1 {
-				x2 = x1 + 1
-			}
-			invertRect(img, image.Rect(max(x1, inner.Min.X), y, min(x2, inner.Max.X), y+1))
-		}
-	}
-}
-
-// invertRect swaps the pixels of r between black and white.
-func invertRect(img *image.Paletted, r image.Rectangle) {
-	r = r.Intersect(img.Rect)
-	last := uint8(len(img.Palette) - 1)
-	for y := r.Min.Y; y < r.Max.Y; y++ {
-		for x := r.Min.X; x < r.Max.X; x++ {
-			i := img.PixOffset(x, y)
-			img.Pix[i] = last - img.Pix[i]
-		}
-	}
+	b.Fraction = max(0, min(100, *status.Percent)) / 100
+	b.Charging = status.Charging
+	b.Level = status.Level
+	return b
 }

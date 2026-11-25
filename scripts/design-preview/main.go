@@ -128,15 +128,19 @@ func drawHero(img *image.Paletted, r image.Rectangle, s design.Scale) {
 }
 
 func drawMisc(img *image.Paletted, r image.Rectangle, s design.Scale) {
-	render.TextAt(img, "Meter, arrows, notice", r.Min.X, r.Min.Y+int(s.Body*0.95), s.Body, true, render.Black, render.Left)
-	design.DrawMeter(img, image.Rect(r.Min.X, r.Min.Y+50, r.Min.X+340, r.Min.Y+82), design.Meter{Fraction: 0.64}, 2)
-	design.DrawMeter(img, image.Rect(r.Min.X, r.Min.Y+92, r.Min.X+340, r.Min.Y+124), design.Meter{Missing: true}, 2)
+	render.TextAt(img, "Meter, battery, arrows, notice", r.Min.X, r.Min.Y+int(s.Body*0.95), s.Body, true, render.Black, render.Left)
+	design.DrawBattery(img, image.Rect(r.Min.X, r.Min.Y+50, r.Min.X+250, r.Min.Y+114),
+		design.Battery{Fraction: 0.84}, 0)
+	design.DrawBattery(img, image.Rect(r.Min.X+270, r.Min.Y+50, r.Min.X+520, r.Min.Y+114),
+		design.Battery{Fraction: 0.84, Charging: true}, 0)
+	design.DrawMeter(img, image.Rect(r.Min.X, r.Min.Y+128, r.Min.X+250, r.Min.Y+156), design.Meter{Fraction: 0.64}, 2)
+	design.DrawMeter(img, image.Rect(r.Min.X+270, r.Min.Y+128, r.Min.X+520, r.Min.Y+156), design.Meter{Missing: true}, 2)
 	for i, dir := range []int{-1, 0, 1} {
-		design.Arrow(img, r.Min.X+380+i*36, r.Min.Y+66, 26, dir, 1)
-		design.Arrow(img, r.Min.X+380+i*36, r.Min.Y+108, 26, dir, 2)
+		design.Arrow(img, r.Min.X+i*30, r.Min.Y+166, 24, dir, 1)
+		design.Arrow(img, r.Min.X+100+i*30, r.Min.Y+166, 24, dir, 2)
 	}
-	render.TextAt(img, "Secondary ink stays readable on one bit.", r.Min.X, r.Min.Y+158, s.Detail, false, design.Muted(img), render.Left)
-	design.Notice(img, image.Rect(r.Min.X, r.Min.Y+180, r.Max.X, r.Max.Y), "No data yet", s)
+	render.TextAt(img, "Secondary ink stays readable on one bit.", r.Min.X, r.Min.Y+206, s.Detail, false, design.Muted(img), render.Left)
+	design.Notice(img, image.Rect(r.Min.X, r.Min.Y+220, r.Max.X, r.Max.Y), "No data yet", s)
 }
 
 func drawPriceTrend(img *image.Paletted, r image.Rectangle, s design.Scale) {

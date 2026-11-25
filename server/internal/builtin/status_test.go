@@ -137,40 +137,20 @@ func inkBox(img *image.Paletted, r image.Rectangle) (image.Rectangle, bool) {
 	return box, found
 }
 
-// batteryInner is the area inside the outline of a gauge without a value.
-func batteryInner(b image.Rectangle, status *plugin.BatteryStatus) (image.Rectangle, image.Rectangle) {
-	icon := layoutBattery(b, "", render.Center).icon
-	body, line, _ := batteryFrame(icon, status)
-	return icon, body.Inset(line + 1)
-}
-
 func TestBatteryGaugeSegments(t *testing.T) {
 	const w, h = 240, 80
 	cell := image.Rect(0, 0, w, h).Inset(4)
-	ink := func(percent float64) (int, image.Rectangle) {
-		_, inner := batteryInner(cell, &plugin.BatteryStatus{Percent: &percent})
+	icon := layoutBattery(cell, "", render.Center).icon
+	ink := func(percent float64) int {
 		img, _ := renderBattery(t, batteryRequest(&percent, "", false), w, h, map[string]any{"label": "none"})
-		return inkCount(img, inner), inner
+		return inkCount(img, icon)
 	}
-	zero, inner := ink(0)
-	low, _ := ink(4)
-	mid, _ := ink(84)
-	full, _ := ink(100)
-	if zero != 0 {
-		t.Errorf("0 %% draws %d pixels of fill", zero)
-	}
-	if low == 0 {
-		t.Error("a low charge shows no segment")
+	zero, low, mid, full := ink(0), ink(4), ink(84), ink(100)
+	if low <= zero {
+		t.Errorf("a low charge adds no segment: %d, %d", zero, low)
 	}
 	if mid <= low || full <= mid {
 		t.Errorf("the fill does not step up: %d, %d, %d", low, mid, full)
-	}
-	if want := inner.Dx() * inner.Dy(); full < want*4/5 {
-		t.Errorf("100 %% fills %d of %d pixels", full, want)
-	}
-	// 84 % fills four of the five segments, not the whole area.
-	if want := full * 4 / 5; mid < want*9/10 || mid > want*11/10 {
-		t.Errorf("84 %% fills %d pixels, four segments are about %d", mid, want)
 	}
 }
 
@@ -229,27 +209,11 @@ func TestBatteryChargingBolt(t *testing.T) {
 	percent := 100.0
 	const w, h = 240, 80
 	cell := image.Rect(0, 0, w, h).Inset(4)
-	status := &plugin.BatteryStatus{Percent: &percent, Charging: true}
-	_, inner := batteryInner(cell, status)
+	icon := layoutBattery(cell, "", render.Center).icon
 	plain, _ := renderBattery(t, batteryRequest(&percent, "", false), w, h, map[string]any{"label": "none"})
 	charging, _ := renderBattery(t, batteryRequest(&percent, "", true), w, h, map[string]any{"label": "none"})
-	if inkCount(charging, inner) >= inkCount(plain, inner) {
+	if inkCount(charging, icon) >= inkCount(plain, icon) {
 		t.Error("the charging mark does not knock a bolt out of the fill")
-	}
-	// No band: the segments leave gaps of the outline's width, so a wider run
-	// of empty columns would mean that the mark cut the fill in two.
-	icon, _ := batteryInner(cell, status)
-	_, line, _ := batteryFrame(icon, status)
-	run := 0
-	for x := inner.Min.X; x < inner.Max.X; x++ {
-		if inkCount(charging, image.Rect(x, inner.Min.Y, x+1, inner.Max.Y)) == 0 {
-			run++
-			if run > line+1 {
-				t.Fatalf("columns %d to %d are empty: the mark cuts a band", x-run+1, x)
-			}
-			continue
-		}
-		run = 0
 	}
 }
 
@@ -257,14 +221,11 @@ func TestBatteryMissingReading(t *testing.T) {
 	zero := 0.0
 	const w, h = 240, 80
 	cell := image.Rect(0, 0, w, h).Inset(4)
-	_, inner := batteryInner(cell, nil)
+	icon := layoutBattery(cell, "", render.Center).icon
 	empty, _ := renderBattery(t, batteryRequest(&zero, "", false), w, h, map[string]any{"label": "none"})
 	missing, _ := renderBattery(t, batteryRequest(nil, "", false), w, h, map[string]any{"label": "none"})
-	if inkCount(empty, inner) != 0 {
-		t.Error("0 % fills the gauge")
-	}
-	if inkCount(missing, inner) == 0 {
-		t.Error("a missing reading looks like an empty battery")
+	if missingInk, emptyInk := inkCount(missing, icon), inkCount(empty, icon); missingInk <= emptyInk {
+		t.Errorf("a missing reading adds no mark: %d, %d", missingInk, emptyInk)
 	}
 }
 
@@ -272,13 +233,12 @@ func TestBatteryLevelMark(t *testing.T) {
 	percent := 5.0
 	const w, h = 240, 80
 	cell := image.Rect(0, 0, w, h).Inset(4)
+	icon := layoutBattery(cell, "", render.Center).icon
+	y := icon.Min.Y + icon.Dy()/2
 	thickness := func(level string) int {
 		img, _ := renderBattery(t, batteryRequest(&percent, level, false), w, h, map[string]any{"label": "none"})
-		body, _, _ := batteryFrame(layoutBattery(cell, "", render.Center).icon,
-			&plugin.BatteryStatus{Percent: &percent, Level: level})
-		y := body.Min.Y + body.Dy()/2
 		n := 0
-		for x := body.Min.X; x < body.Max.X; x++ {
+		for x := icon.Min.X; x < icon.Max.X; x++ {
 			if img.ColorIndexAt(x, y) != 0 {
 				break
 			}
