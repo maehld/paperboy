@@ -45,6 +45,8 @@ func fakePlugin(mode string) {
 		version = 0
 	case "oldversion":
 		version = plugin.MinVersion - 1
+	case "oldactions":
+		version = plugin.Version - 1
 	case "newer":
 		version = plugin.Version + 1
 	}
@@ -113,7 +115,46 @@ func fakePlugin(mode string) {
 					d.Values[0] = plugin.ValueSpec{Name: "a", Type: plugin.ValueNumber, Unit: "W"}
 				}
 			}
+			if mode == "actions" || mode == "oldactions" {
+				d.Actions = []plugin.ActionSpec{{Name: "mode", Title: "Charge mode", Args: map[string]plugin.Arg{
+					"index": {Type: "int", Required: true},
+					"mode":  {Type: "string", Required: true, Enum: []any{"off", "now"}},
+				}}}
+			}
 			enc.Encode(plugin.Message{ID: req.ID, Version: version, Description: &d})
+			continue
+		}
+		if req.Action == plugin.ActionOptionList {
+			if mode != "actions" {
+				enc.Encode(plugin.Message{ID: req.ID, Version: version,
+					Error: fmt.Sprintf("unknown action %q", req.Action)})
+				continue
+			}
+			msg := plugin.Message{ID: req.ID, Version: version}
+			for range req.Actions {
+				msg.Options = append(msg.Options, plugin.ActionOptions{Title: "Charge mode", Options: []plugin.ActionOption{
+					{Args: map[string]any{"mode": "now"}, Title: "Now", Active: true},
+					{Args: map[string]any{"mode": "off"}, Title: "Off", Disabled: "already off"},
+				}})
+			}
+			enc.Encode(msg)
+			continue
+		}
+		if req.Action == plugin.ActionList && (mode == "actions" || mode == "oldactions") {
+			msg := plugin.Message{ID: req.ID, Version: version}
+			for _, call := range req.Actions {
+				state := plugin.ActionState{Title: call.Arg().String("mode", "mode")}
+				if state.Title == "now" {
+					state.Disabled = "already active"
+				}
+				msg.Actions = append(msg.Actions, state)
+			}
+			enc.Encode(msg)
+			continue
+		}
+		if req.Action == plugin.ActionInvoke && (mode == "actions" || mode == "oldactions") {
+			enc.Encode(plugin.Message{ID: req.ID, Version: version,
+				Result: &plugin.ActionOutcome{OK: true, Changed: true}})
 			continue
 		}
 		appendFile(os.Getenv("FAKE_COUNT"))
@@ -331,6 +372,41 @@ func TestHostKeepsDeclarationsWithoutAChange(t *testing.T) {
 	ask()
 	if n := runs(count); n != 1 {
 		t.Fatalf("describe asked %d times, want 1", n)
+	}
+}
+
+// TestHostActionOptions checks the request that carries the complete options
+// of an action and the protocol it needs (ADR 0165).
+func TestHostActionOptions(t *testing.T) {
+	f := newFake(t)
+	h := newHost(t, f.spec("actions"))
+	if _, err := h.Describe(context.Background(), "fake"); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.Protocol("fake"); got != plugin.Version {
+		t.Fatalf("protocol = %d, want %d", got, plugin.Version)
+	}
+	sets, err := h.ActionOptions(context.Background(), "fake", plugin.Request{
+		Actions: []plugin.ActionCall{{Action: "mode", Args: map[string]any{"index": 0}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sets) != 1 || len(sets[0].Options) != 2 ||
+		!sets[0].Options[0].Active || sets[0].Options[1].Disabled != "already off" {
+		t.Fatalf("option sets: %+v", sets)
+	}
+}
+
+// TestHostProtocolOfAnOlderPlugin pins the fallback: a protocol 9 plugin
+// reports its version, so the server keeps the actions path (ADR 0165).
+func TestHostProtocolOfAnOlderPlugin(t *testing.T) {
+	f := newFake(t)
+	h := newHost(t, f.spec("oldactions"))
+	if _, err := h.Describe(context.Background(), "fake"); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.Protocol("fake"); got != plugin.Version-1 {
+		t.Fatalf("protocol = %d, want %d", got, plugin.Version-1)
 	}
 }
 

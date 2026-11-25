@@ -41,19 +41,19 @@ cells:
 
 ### Actions
 
-An image cell may name one action of its plugin with `action` and give the action its own `args` ([ADR 0164](adr/0164-a-widget-action-carries-its-own-arguments.md)). The plugin decides the choices; the page names the action and its arguments separately from the widget's args. The scalar `action: mode` stays a shorthand for an action without arguments.
+An image cell may name one action of its plugin with `action` and give the action its own `args` ([ADR 0164](adr/0164-a-widget-action-carries-its-own-arguments.md)). The plugin decides the choices and marks the current one ([ADR 0165](adr/0165-a-plugin-describes-its-action-options.md)). The page names the action and its arguments separately from the widget's args. The scalar `action: mode` stays a shorthand for an action without arguments.
 
 ```yaml
 - { at: [3, 5], span: [3, 3], widget: evcc/loadpoint, args: { index: 0 }, action: { name: mode, args: { index: 0 } } }
 ```
 
-A required enum left empty is the choice: the device offers its values as tiles. A set value fixes the call, and the action becomes one tile. An optional argument with a default may stay absent; the plugin applies the default. The plugin labels the tiles in the configured language. A missing required argument keeps the cell with the reason.
+A required enum left empty is the choice: the device offers its values as tiles. A set value fixes the call, and the action becomes one tile. An optional argument with a default may stay absent; the plugin applies the default. The plugin labels the tiles in the configured language and marks the current one. A missing required argument keeps the cell with the reason.
 
-On a device whose actions are not denied and a page with an action, a short `home` shows the options in the cell: one tile per choice. A tap runs the chosen option, and the page returns with the new state. A failed call shows a black banner *Action failed: …* (*Aktion fehlgeschlagen: …*) until the next sync.
+On a device whose actions are not denied and a page with an action, a short `home` shows the options in the cell: one tile per choice. A plugin from protocol 10 marks the current choice active; an older plugin reports it as unavailable. A disabled choice is hatched. A tap runs a runnable option, and the page returns with the new state; a tap on the active or a disabled option does nothing. A failed call shows a black banner *Action failed: …* (*Aktion fehlgeschlagen: …*) until the next sync.
 
-Without a digitiser the keys operate the view ([ADR 0163](adr/0163-the-action-mode-works-with-the-keys.md)). The first runnable choice is selected and drawn inverted. `next` and `previous` move the selection with wrap; a short `home` runs it and a long `home` closes the view. On a touch device a tap outside, 20 seconds without input or `next`/`previous` closes the view. A device with `actions: deny` never shows it.
+Without a digitiser the keys operate the view ([ADR 0163](adr/0163-the-action-mode-works-with-the-keys.md)). The first runnable choice is selected and drawn inverted; the active choice is skipped. `next` and `previous` move the selection with wrap; a short `home` runs it and a long `home` closes the view. On a touch device the active choice is drawn inverted. A tap outside, 20 seconds without input or `next`/`previous` closes the view. A device with `actions: deny` never shows it.
 
-The plugin's current choice is hatched when the plugin reports it as unavailable. A cell that is too small for the tiles says *Cell too small* (*Feld zu klein*); enlarge it in the page editor.
+A cell that is too small for the tiles says *Cell too small* (*Feld zu klein*); enlarge it in the page editor.
 
 ### Text pages
 

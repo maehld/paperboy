@@ -98,7 +98,7 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 
 ## Actions
 
-The plugin offers two actions ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md), [0164](../adr/0164-a-widget-action-carries-its-own-arguments.md)). A car widget binds one with `action: charging` or `action: climate`; leave `state` empty, so the device offers `start` and `stop` in its cell and a tap runs one. Both target a state instead of toggling, so a retried request is safe, and both ask for confirmation before they run; Paperboy ignores it in this version.
+The plugin offers two actions ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md), [0164](../adr/0164-a-widget-action-carries-its-own-arguments.md), [0165](../adr/0165-a-plugin-describes-its-action-options.md)). A car widget binds one with `action: charging` or `action: climate`; leave `state` empty, so the device offers `start` and `stop` in its cell and a tap runs one. Both target a state instead of toggling, so a retried request is safe, and both ask for confirmation before they run; Paperboy ignores it in this version.
 
 | Action | Args | Endpoint |
 |---|---|---|
@@ -107,7 +107,7 @@ The plugin offers two actions ([ADR 0057](../adr/0057-plugin-actions-from-the-pl
 
 `temperature` is the target in °C, 16 to 30 in 0.5 steps; without it the car's current target is used, rounded to 0.5 °C. Air conditioning does not need a security PIN — only auxiliary heating does, and that command is not part of the plugin.
 
-An action is disabled when there is no data yet, when the vehicle does not list the command in `operations`, or when the target state already holds: `start` charging needs a connected cable and no running charge, `stop` charging needs a running one; `start` air conditioning needs it to be off, `stop` needs it to run. A `202` answer counts as success, other errors (`403`, `422`, `429`) become a short message. After a successful command the plugin reloads the state at once and reports `changed`; each command counts against the same 20 requests per hour as a read.
+`action_options` returns `start` and `stop`. The target state that already holds is `active` and does not run. The other option is disabled when the vehicle does not list the command in `operations` or cannot run it. `start` charging needs a connected cable and no running charge; `stop` charging needs a running one. `start` air conditioning needs it to be off; `stop` needs it to run. No data disables the whole action. A `202` answer counts as success. Other errors (`403`, `422`, `429`) become a short message. After a successful command the plugin reloads the state at once and reports `changed`. Each command counts against the same 20 requests per hour as a read.
 
 ## Differences from the MyŠkoda app
 

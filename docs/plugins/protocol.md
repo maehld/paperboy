@@ -4,13 +4,14 @@ Paperboy and its plugins talk over standard input and standard output, one
 JSON object per line ([ADR 0049](../adr/0049-plugin-widgets.md)). This document is the reference for the wire
 format; the Go types live in [`sdk/plugin`](../../sdk/plugin/plugin.go).
 
-- Current version: **9** ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md) added version 3, [ADR 0057](../adr/0057-plugin-actions-from-the-plan.md) added
+- Current version: **10** ([ADR 0050](../adr/0050-physical-scaling-by-display-ppi.md) added version 3, [ADR 0057](../adr/0057-plugin-actions-from-the-plan.md) added
   actions, [ADR 0081](../adr/0081-plugin-state-over-the-protocol.md) added plugin state and blobs and made 5 the minimum,
   [ADR 0111](../adr/0111-text-pages-from-plugin-values.md) added values,
   [ADR 0125](../adr/0125-remove-the-text-widget-path.md) removed the text action,
   [ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md) added the schedule event,
-  [ADR 0127](../adr/0127-plan-conditions-are-values.md) added the `enum` value type and removed conditions).
-  From version 5 on the protocol grew additively until version 8 removed the text action. Version 9 adds an inbound event and the `enum` value type, and removes the conditions of version 6; it has not shipped yet. Paperboy keeps the floor at 5: a plugin below 8 that still has text widgets is accepted, because nothing asks it for text.
+  [ADR 0127](../adr/0127-plan-conditions-are-values.md) added the `enum` value type and removed conditions,
+  [ADR 0165](../adr/0165-a-plugin-describes-its-action-options.md) added the action options).
+  From version 5 on the protocol grew additively. Version 8 removed the text action. Version 9 adds an inbound event and the `enum` value type, and removes the conditions of version 6. Version 10 adds the `action_options` request with the `active` flag. Paperboy keeps the floor at 5: a plugin below 8 that still has text widgets is accepted, because nothing asks it for text.
   `server_status` is additive and keeps version 6
   ([ADR 0115](../adr/0115-device-status-in-a-widget.md)).
 - Paperboy starts a plugin on first use and keeps it running.
@@ -54,7 +55,8 @@ stateDiagram-v2
 - **Loading** sends `state` with the stored state and blobs. A plugin gets its
   data back before the first widget request ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md)).
 - **Ready** answers the requests of a page: `describe`, `render`, `values`,
-  `actions` or `action`. One request per plugin runs at a time.
+  `actions`, `action_options` or `action`. One request per plugin runs at a
+  time.
 - **Failed** means the process exited, a request timed out or the answer was
   invalid. Paperboy kills a hanging process after `timeout` (default 30 s).
   The last results stay as stale in the widget cache. The host asks a failed
@@ -76,16 +78,16 @@ Every request carries:
 | Field | Meaning |
 |---|---|
 | `id` | Request identifier; the answer repeats it |
-| `version` | Protocol version, currently `9` |
-| `action` | `configure`, `state`, `describe`, `render`, `values`, `actions` or `action` |
+| `version` | Protocol version, currently `10` |
+| `action` | `configure`, `state`, `describe`, `render`, `values`, `actions`, `action_options` or `action` |
 | `language` | `"de"` or `"en"` |
 | `timezone` | IANA name such as `Europe/Berlin` |
 | `now` | Time of the request, RFC 3339 |
 | `page` | `title`, `number` (1-based), `count`, display `width`/`height`, and `ppi` for image displays |
 | `widgets` | For `render`: the widgets to draw |
 | `values` | For `values`: the declared value keys the page needs |
-| `actions` | For `actions` and `action`: the concrete actions |
-| `device` | For `actions`, `action` and `values`: `id`, `name`, `hardware`; absent for a preview |
+| `actions` | For `actions`, `action_options` and `action`: the concrete actions |
+| `device` | For `actions`, `action_options`, `action` and `values`: `id`, `name`, `hardware`; absent for a preview |
 | `server_status` | For `render`, built-in plugin only: `current_device_status` and `selected_devices_status` (ADR 0115) |
 | `levels` | For `render`: gray levels of the display, 1–256; the canvas falls back to 2, 4 or 16 tones |
 | `config` | For `configure`: the plugin's section of `paperboy.yaml` |
@@ -309,6 +311,39 @@ request's order.
 - The number of states must match the number of calls. A mismatch or an error
   answer disables all actions of that plugin until the next successful answer.
 
+### `action_options`
+
+Describes the complete options of the concrete actions, one option set per
+call, in the request's order ([ADR 0165](../adr/0165-a-plugin-describes-its-action-options.md)).
+The action view of a widget uses it.
+
+```json
+{"id":"6","version":10,"action":"action_options","language":"de","timezone":"Europe/Berlin","now":"2026-11-25T12:00:00+01:00","device":{"id":"kueche","hardware":"e1001"},"actions":[{"action":"mode","args":{"index":0}}]}
+```
+
+```json
+{"id":"6","options":[{"title":"Lademodus","options":[{"args":{"index":0,"mode":"pv"},"title":"PV","active":true},{"args":{"index":0,"mode":"now"},"title":"Jetzt","disabled":"Kein Kabel verbunden"}]}]}
+```
+
+- `args` of an option is the complete call for the following `action` request.
+  The plugin honors every argument the call already fixes and returns only the
+  options that remain.
+- `title` labels an option and follows the request's `language`. An empty title
+  falls back to the action's title.
+- `active` marks the current option. Paperboy draws it as the current tile and
+  does not run it. At most one option is active; a second one is a plugin fault
+  and Paperboy logs it.
+- `disabled` is the reason an option cannot run now. Paperboy hatches the tile.
+  An active option and a disabled option never run a call.
+- A `disabled` reason at the set level, with no options, keeps the cell visible
+  with the reason. An empty option list without a reason is a plugin fault.
+- The plugin flattens multiple dimensions into one list. Paperboy does not group
+  or combine options.
+- The request needs protocol 10. Paperboy asks it only of a plugin that reports
+  version 10 or newer; an older plugin keeps the `actions` path of
+  [ADR 0162](../adr/0162-widget-actions-and-the-plugins-choices.md).
+- The number of option sets must match the number of calls.
+
 ### `action`
 
 Runs exactly one concrete action. Paperboy sends one `actions` entry.
@@ -332,8 +367,8 @@ Runs exactly one concrete action. Paperboy sends one `actions` entry.
 ## Answers and events
 
 An answer carries `id`, its `version` and optionally `error`, plus the payload
-for its request: `widgets`, `values`, `actions`, `result`, `description`
-or `max_age`.
+for its request: `widgets`, `values`, `actions`, `options`, `result`,
+`description` or `max_age`.
 `Handle` fills `version` with the protocol version the plugin was built
 against, in every answer and in the `changed` event. Paperboy calls
 `Message.CheckVersion` on every answer and refuses the plugin when the version
@@ -465,6 +500,7 @@ Optional interfaces:
 | `Starter` | `Start(ctx, notify)` for background work; `notify` sends `changed` |
 | `Ager` | `MaxAge(req) time.Duration` for widget and action caching |
 | `Actioner` | `Actions(req) ([]ActionState, error)` and `Invoke(req, call) (ActionOutcome, error)` |
+| `ActionOptioner` | `ActionOptions(req) ([]ActionOptions, error)` for the complete options of an action (protocol 10, [ADR 0165](../adr/0165-a-plugin-describes-its-action-options.md)) |
 | `Stater` | `LoadState(state, blobs)` when the `state` request arrives and `State() json.RawMessage`: the object to store, nil when unchanged |
 | `Blober` | `Blobs() map[string][]byte`: changed blobs, nil when none; clear the marks |
 
@@ -509,11 +545,14 @@ with `State` and `Blobs`, so a held lock deadlocks the plugin.
 | 7 | Values: `describe.values` with `args` and `progression`, the `values` request with `value_args` and `answer.values` ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md), [0120](../adr/0120-arguments-for-values.md), [0122](../adr/0122-hide-and-progress-a-unit.md)) |
 | 8 | The text action is removed: `text`, `Texter`, `answer.widgets[].lines`, `widgets[].scroll` and the `text` widget kind ([ADR 0125](../adr/0125-remove-the-text-widget-path.md)) |
 | 9 | The inbound `schedule` event and `sdk/plugin.Demand` ([ADR 0126](../adr/0126-a-schedule-event-for-plugin-demand.md)); the `enum` value type with `ValueSpec.enum` and `Value.enum`, and the removal of conditions ([ADR 0127](../adr/0127-plan-conditions-are-values.md)) |
+| 10 | The `action_options` request with `answer.options`, and `ActionOptioner` with `ActionOptions`, `ActionOptions` and `ActionOption`; `active` and `disabled` per option ([ADR 0165](../adr/0165-a-plugin-describes-its-action-options.md)) |
 
 A plugin is used as a whole or not at all ([ADR 0058](../adr/0058-plugin-protocol-version-check.md)). The check is a floor,
 not equality: Paperboy requires at least version 5 and accepts newer ones.
 Version 8 removed the text action; version 9 adds the schedule event and the
-`enum` value type and removes conditions. A plugin below 8 that still has text
-widgets is accepted, because nothing asks it for text; a plugin below 9 never
-receives a schedule and cannot declare an enum value. That version is the only
-thing a plugin has to announce; there is no separate capability list.
+`enum` value type and removes conditions; version 10 adds the action options. A
+plugin below 8 that still has text widgets is accepted, because nothing asks it
+for text; a plugin below 9 never receives a schedule and cannot declare an enum
+value; a plugin below 10 keeps the `actions` fallback for its options. That
+version is the only thing a plugin has to announce; there is no separate
+capability list.

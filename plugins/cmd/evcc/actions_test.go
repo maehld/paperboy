@@ -163,6 +163,73 @@ func TestActionStatesUnreachable(t *testing.T) {
 	}
 }
 
+func TestActionOptions(t *testing.T) {
+	f := &fakeEvcc{modes: []string{"pv", "off"}}
+	e, req := newActionPlugin(t, f, "de")
+	req.Actions = []plugin.ActionCall{{Action: "mode", Args: map[string]any{"index": 0}}}
+	sets, err := e.ActionOptions(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sets) != 1 || sets[0].Disabled != "" || sets[0].Title != "Lademodus" {
+		t.Fatalf("option set: %+v", sets)
+	}
+	if len(sets[0].Options) != 4 {
+		t.Fatalf("all modes: %+v", sets[0].Options)
+	}
+	want := []string{"aus", "Min+PV", "nur PV", "jetzt laden"}
+	for i, title := range want {
+		if sets[0].Options[i].Title != title {
+			t.Errorf("option %d title = %q, want %q", i, sets[0].Options[i].Title, title)
+		}
+		if sets[0].Options[i].Args["index"] != 0 || sets[0].Options[i].Args["mode"] == nil {
+			t.Errorf("option %d complete args: %+v", i, sets[0].Options[i].Args)
+		}
+	}
+	if !sets[0].Options[2].Active || sets[0].Options[0].Active {
+		t.Fatalf("the current mode must be active: %+v", sets[0].Options)
+	}
+
+	// A fixed mode keeps one option.
+	req.Actions = []plugin.ActionCall{{Action: "mode", Args: map[string]any{"index": 1, "mode": "now"}}}
+	sets, err = e.ActionOptions(req)
+	if err != nil || len(sets) != 1 || len(sets[0].Options) != 1 || sets[0].Options[0].Active {
+		t.Fatalf("fixed mode: %+v %v", sets, err)
+	}
+	if sets[0].Options[0].Args["mode"] != "now" || sets[0].Options[0].Title != "jetzt laden" {
+		t.Fatalf("fixed option: %+v", sets[0].Options[0])
+	}
+}
+
+func TestActionOptionsUnavailable(t *testing.T) {
+	f := &fakeEvcc{modes: []string{"pv", "off"}}
+	e, req := newActionPlugin(t, f, "en")
+	req.Actions = []plugin.ActionCall{
+		{Action: "mode", Args: map[string]any{"index": 5}},
+		{Action: "mode", Args: map[string]any{"index": 0, "mode": "fast"}},
+		{Action: "other"},
+	}
+	sets, err := e.ActionOptions(req)
+	if err != nil || len(sets) != 3 {
+		t.Fatalf("option sets: %+v %v", sets, err)
+	}
+	if !strings.Contains(sets[0].Disabled, "loadpoint 5") || len(sets[0].Options) != 0 {
+		t.Fatalf("unknown loadpoint: %+v", sets[0])
+	}
+	if !strings.Contains(sets[1].Disabled, "fast") || len(sets[1].Options) != 0 {
+		t.Fatalf("invalid mode: %+v", sets[1])
+	}
+	if !strings.Contains(sets[2].Disabled, "unknown action") {
+		t.Fatalf("unknown action: %+v", sets[2])
+	}
+
+	noData, err := (&evcc{}).ActionOptions(&plugin.Request{Language: "en",
+		Actions: []plugin.ActionCall{{Action: "mode", Args: map[string]any{"index": 0}}}})
+	if err != nil || len(noData) != 1 || !strings.Contains(noData[0].Disabled, "no data") {
+		t.Fatalf("no data: %+v %v", noData, err)
+	}
+}
+
 func TestInvokeMode(t *testing.T) {
 	f := &fakeEvcc{modes: []string{"pv", "off"}}
 	e, req := newActionPlugin(t, f, "de")

@@ -13,8 +13,8 @@ import (
 )
 
 // actionArgs is the schema of the "mode" action. Describe publishes it and
-// Invoke checks against it, so a plan and the run agree on the arguments. The
-// index is optional: without it the action targets the first loadpoint.
+// Invoke checks against it, so the page and the run agree on the arguments.
+// The index is optional: without it the action targets the first loadpoint.
 var actionArgs = map[string]plugin.Arg{
 	"index": {Type: "int", Default: 0, Description: "loadpoint, counted from 0"},
 	"mode":  {Type: "string", Required: true, Description: "evcc charge mode", Enum: []any{"off", "minpv", "pv", "now"}},
@@ -121,6 +121,71 @@ func actionState(req *plugin.Request, call plugin.ActionCall, data *state, loadE
 			actionModeLabel(mode, req.Lang()))
 	}
 	return st
+}
+
+// ActionOptions describes the charge modes of one loadpoint (ADR 0165). The
+// current mode is active; the other modes can run. A call that already fixes
+// the mode keeps one option.
+func (e *evcc) ActionOptions(req *plugin.Request) ([]plugin.ActionOptions, error) {
+	data, loadErr := e.snapshot()
+	out := make([]plugin.ActionOptions, 0, len(req.Actions))
+	for _, call := range req.Actions {
+		out = append(out, evccActionOptions(req, call, data, loadErr))
+	}
+	return out, nil
+}
+
+func evccActionOptions(req *plugin.Request, call plugin.ActionCall, data *state, loadErr error) plugin.ActionOptions {
+	var out plugin.ActionOptions
+	if call.Action != "mode" {
+		out.Disabled = fmt.Sprintf("unknown action %q", call.Action)
+		return out
+	}
+	args := call.Arg()
+	fixedMode := args.String("mode", "")
+	// An empty mode means the action offers every mode, so it is not checked
+	// against the enum. Unknown keys and a fixed invalid mode stay errors.
+	checked := plugin.Values{}
+	for name, value := range args {
+		if name == "mode" && fixedMode == "" {
+			continue
+		}
+		checked[name] = value
+	}
+	schema := map[string]plugin.Arg{"index": actionArgs["index"]}
+	if fixedMode != "" {
+		schema["mode"] = actionArgs["mode"]
+	}
+	if err := checked.Check(schema); err != nil {
+		out.Disabled = err.Error()
+		return out
+	}
+	index := args.Int("index", 0)
+	switch {
+	case loadErr != nil:
+		out.Disabled = req.T("evcc nicht erreichbar", "evcc unreachable") + ": " + loadErr.Error()
+	case data == nil:
+		out.Disabled = req.T("evcc liefert noch keine Daten", "evcc has no data yet")
+	case index < 0 || index >= len(data.Loadpoints):
+		out.Disabled = fmt.Sprintf(req.T("Ladepunkt %d: evcc hat %d", "loadpoint %d: evcc has %d"),
+			index, len(data.Loadpoints))
+	}
+	if out.Disabled != "" {
+		return out
+	}
+	out.Title = req.T("Lademodus", "Charge mode")
+	modes := []string{"off", "minpv", "pv", "now"}
+	if fixedMode != "" {
+		modes = []string{fixedMode}
+	}
+	for _, mode := range modes {
+		out.Options = append(out.Options, plugin.ActionOption{
+			Args:   map[string]any{"index": index, "mode": mode},
+			Title:  actionModeLabel(mode, req.Lang()),
+			Active: data.Loadpoints[index].Mode == mode,
+		})
+	}
+	return out
 }
 
 // Invoke switches one charge mode through evcc's REST API (ADR 0057). Actions
