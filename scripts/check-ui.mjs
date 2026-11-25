@@ -172,7 +172,7 @@ ${palette}<span id="preview-where"></span><img id="preview-img" hidden><pre id="
 <button id="rename" type="button"></button><button id="delete" type="button"></button><button id="save" type="button"></button>
 <input id="title"><input id="cols" type="number"><input id="rows" type="number">
 <button id="grid-lock" type="button"></button>
-<div id="header-fields"><input id="header-height" type="number"><button id="header-add" type="button"></button><button id="header-remove" type="button"></button></div>
+<label class="field"><span>Header</span><span><input id="show-header" type="checkbox"> show</span></label><p id="header-note"></p>
 <input id="padding"><input id="rule"><input id="text-size"><input id="divider">
 <select id="notices"><option value="">default</option><option value="none">none</option></select>
 ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" checked>
@@ -257,7 +257,8 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
 
   // The page editor marks the picked entry and places it on the clicked cell.
   {
-    const { editorDom, window, failures } = await open("http://localhost/ui/pages/demo?display=e1001", editor, { ...start, new: true });
+    const withHeader = { height: 24, parts: [{ widget: "paperboy/title", fill: true }] };
+    const { editorDom, window, failures } = await open("http://localhost/ui/pages/demo?display=e1001", editor, { ...start, new: true, header: withHeader });
     check(window.document.getElementById("board-note").textContent.includes("px on e1001"), "the board note does not name the cell size");
     entry(window, "clock").click();
     check(entry(window, "clock").classList.contains("active"), "a click in the page editor does not mark the entry");
@@ -265,28 +266,10 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
     check(!!slot, "the board offers no free cell while a widget waits");
     if (slot) slot.click();
     check(Array.from(window.document.querySelectorAll("#board .cell")).some((cell) => cell.textContent.includes("demo/clock")), "the board does not show the placed widget");
-    // A header band starts with the built-in title; a palette click on the
-    // band adds a part to the zone under the pointer (ADR 0166).
-    window.document.getElementById("header-add").click();
-    await sleep(10);
-    const band = window.document.getElementById("board-header");
-    check(!!band && band.querySelectorAll(".header-part").length === 1, "the board does not show the added header band");
-    check(window.document.getElementById("header-height").value === "24", "the header band does not start at 24 pt");
-    check(window.document.getElementById("inspector").textContent.includes("Header part"), "the inspector does not edit the header part");
-    if (band) {
-      band.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 40, right: 800, bottom: 40 });
-      const demoHead = section(window, "demo").querySelector(".plugin-head");
-      if (demoHead) demoHead.click();
-      entry(window, "clock").click();
-      const liveBand = window.document.getElementById("board-header");
-      if (liveBand) {
-        liveBand.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 40, right: 800, bottom: 40 });
-        liveBand.dispatchEvent(new window.MouseEvent("click", { bubbles: true, clientX: 700, clientY: 10 }));
-      }
-      await sleep(10);
-      const afterBand = window.document.getElementById("board-header");
-      check(!!afterBand && afterBand.querySelectorAll(".header-part").length === 2, "a click on the header band adds no part");
-    }
+    check(!window.document.getElementById("board-header"), "the page editor draws the header as a cell overlay");
+    check(window.document.getElementById("header-note").textContent.includes("display type e1001"), "the header note does not name the display type");
+    check(window.document.getElementById("show-header").checked, "the show-header switch ignores the page");
+    check(window.document.getElementById("board-grid").style.top !== "", "the grid ignores the header height");
     for (const failure of failures) problems.push(failure);
     editorDom.window.close();
   }

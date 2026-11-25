@@ -54,25 +54,25 @@ The readings come from the device that renders the page, so two displays of the 
 
 ## Header band
 
-A page may put its header outside the grid
-([ADR 0167](../adr/0167-a-header-band-outside-the-page-grid.md)). The band has
-three zones and takes normal widgets:
+A display type may put the header outside the grid
+([ADR 0167](../adr/0167-a-header-band-outside-the-page-grid.md),
+[0168](../adr/0168-a-header-band-per-display-type.md)). The band is one
+ordered row of normal widgets:
 
 ```yaml
 header:
   height: 24
-  left:
-    - { widget: paperboy/title, weight: 3 }
-  center:
-    - { widget: paperboy/clock, args: { format: auto }, weight: 2 }
-  right:
-    - { widget: paperboy/reading, args: { name: temperature, label: false }, weight: 1 }
-    - { widget: paperboy/battery, weight: 1 }
+  parts:
+    - { widget: paperboy/title, fill: true }
+    - { widget: paperboy/clock, args: { format: auto }, width: 50 }
+    - { widget: paperboy/reading, args: { name: temperature, label: false }, width: 38 }
+    - { widget: paperboy/battery, width: 30 }
 ```
 
-The `weight` divides the width; without it the part has weight 1. The grid
-below the band starts at `cells` row 0. The editor shows the band above the
-grid and accepts drops in its three zones. A text page has no header band.
+The order of `parts` is the visual order. `fill: true` takes the width that
+the fixed parts leave; `width` is in points. The header has no cells. The grid
+below the band starts at `cells` row 0. A page hides the band with
+`header: false`; a text display type has no header band.
 
 ## Widgets
 

@@ -205,36 +205,62 @@ const headerPage = `
 title: Header
 kind: image
 grid: [2, 2]
-header:
-  left: [{widget: paperboy/title, weight: 3}]
-  center: [{widget: paperboy/clock, args: {format: auto}, weight: 2}]
-  right: [{widget: paperboy/reading, weight: 1}]
 cells:
   - { at: [0, 0], span: [1, 1], widget: paperboy/text, args: {text: a} }
   - { at: [1, 1], span: [1, 1], widget: paperboy/text, args: {text: b} }
 `
 
-func TestParseHeader(t *testing.T) {
+func testHeader() *Header {
+	return &Header{Height: 24, Parts: []HeaderPart{
+		{Widget: "paperboy/title", Fill: true},
+		{Widget: "paperboy/clock", Args: map[string]any{"format": "auto"}, Width: 200},
+		{Widget: "paperboy/reading", Width: 100},
+	}}
+}
+
+func TestPageHeaderSwitch(t *testing.T) {
 	tmpl, err := Parse(strings.NewReader(headerPage))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tmpl.Header == nil || tmpl.Header.Height != DefaultHeaderPt || tmpl.Header.Left[0].Weight != 3 ||
-		tmpl.Header.Center[0].Args["format"] != "auto" || tmpl.Header.Right[0].Weight != 1 {
-		t.Fatalf("header: %+v", tmpl.Header)
+	if !tmpl.ShowHeader() {
+		t.Error("a page without the key must show the display type's header")
 	}
-	if parts := tmpl.HeaderParts(); len(parts) != 3 || parts[0].Plugin() != "paperboy" || parts[1].Name() != "clock" {
-		t.Fatalf("parts: %+v", parts)
+	hidden, err := Parse(strings.NewReader(headerPage + "header: false\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hidden.ShowHeader() {
+		t.Error("header: false must hide the band")
 	}
 	for name, bad := range map[string]string{
-		"text page":  "kind: text\nheader: {left: [{widget: a/b}]}\ncells: [{text: x}]\n",
-		"no parts":   "kind: image\ngrid: [1, 1]\nheader: {height: 20}\ncells: [{widget: a/b}]\n",
-		"weight":     "kind: image\ngrid: [1, 1]\nheader: {left: [{widget: a/b, weight: 7}]}\ncells: [{widget: a/b}]\n",
-		"height":     "kind: image\ngrid: [1, 1]\nheader: {height: 0.5, left: [{widget: a/b}]}\ncells: [{widget: a/b}]\n",
-		"bad widget": "kind: image\ngrid: [1, 1]\nheader: {left: [{widget: nope}]}\ncells: [{widget: a/b}]\n",
-		"unknown":    "kind: image\ngrid: [1, 1]\nheader: {left: [{widget: a/b, colour: red}]}\ncells: [{widget: a/b}]\n",
+		"object":    headerPage + "header: {parts: [{widget: a/b}]}\n",
+		"text page": "kind: text\nheader: false\ncells: [{text: x}]\n",
 	} {
 		if _, err := Parse(strings.NewReader(bad)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestHeaderValidate(t *testing.T) {
+	h := testHeader()
+	if err := h.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if h.Height != DefaultHeaderPt || len(h.Parts) != 3 {
+		t.Fatalf("header: %+v", h)
+	}
+	for name, bad := range map[string]*Header{
+		"no parts":     {},
+		"height":       {Height: 0.5, Parts: []HeaderPart{{Widget: "a/b", Fill: true}}},
+		"weight":       {Parts: []HeaderPart{{Widget: "a/b", Weight: 1}}},
+		"both":         {Parts: []HeaderPart{{Widget: "a/b", Fill: true, Width: 10}}},
+		"no width":     {Parts: []HeaderPart{{Widget: "a/b"}}},
+		"bad widget":   {Parts: []HeaderPart{{Widget: "nope", Fill: true}}},
+		"old zone key": {Left: []HeaderPart{{Widget: "a/b", Fill: true}}},
+	} {
+		if err := bad.Validate(); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
@@ -254,7 +280,8 @@ func TestRenderImageHeaderBand(t *testing.T) {
 		}
 		return out
 	}
-	img, err := tmpl.RenderImage(Display{Width: 600, Height: 300, Levels: 4, PPI: 72}, Context{Widgets: src})
+	d := Display{Width: 600, Height: 300, Levels: 4, PPI: 72, Header: testHeader()}
+	img, err := tmpl.RenderImage(d, Context{Widgets: src})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +289,8 @@ func TestRenderImageHeaderBand(t *testing.T) {
 	if len(w) != 5 {
 		t.Fatalf("widgets: %+v", w)
 	}
-	// The band takes 24 pt at 72 ppi; the rule leaves 23 px for its parts.
+	// The fixed parts need 300 px; the fill part gets the other 300 px. The
+	// band takes 24 pt at 72 ppi; the rule leaves 23 px for its parts.
 	if w[0].Widget != "title" || w[0].Width != 300 || w[0].Height != 23 ||
 		w[1].Widget != "clock" || w[1].Width != 200 || w[2].Widget != "reading" || w[2].Width != 100 {
 		t.Fatalf("header requests: %+v", w[:3])
@@ -271,13 +299,30 @@ func TestRenderImageHeaderBand(t *testing.T) {
 	if w[3].Width != 300 || w[3].Height != 138 || w[4].Width != 300 || w[4].Height != 138 {
 		t.Fatalf("cell requests: %+v", w[3:])
 	}
-	rects := tmpl.Rects(Display{Width: 600, Height: 300, PPI: 72})
+	rects := tmpl.Rects(d)
 	if rects[0] != image.Rect(0, 24, 300, 162) || rects[1] != image.Rect(300, 162, 600, 300) {
 		t.Fatalf("rects: %v", rects)
 	}
 	// The line under the band is black; the first cell starts below it.
 	if gray(img, 10, 23) != 0 || gray(img, 10, 24) != 0 {
 		t.Errorf("header rule or first cell wrong: %d %d", gray(img, 10, 23), gray(img, 10, 24))
+	}
+	// The page can hide the band of its display type.
+	hidden, err := Parse(strings.NewReader(headerPage + "header: false\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = Batch{}
+	if _, err := hidden.RenderImage(d, Context{Widgets: src}); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Widgets) != 2 || got.Widgets[0].Width != 300 || got.Widgets[0].Height != 150 {
+		t.Fatalf("hidden header requests: %+v", got.Widgets)
+	}
+	// Too many fixed pixels do not fit.
+	d.Header = &Header{Parts: []HeaderPart{{Widget: "a/b", Width: 700}, {Widget: "a/c", Fill: true}}}
+	if err := tmpl.Fits(d); err == nil {
+		t.Error("a header wider than the display fits")
 	}
 }
 

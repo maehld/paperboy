@@ -64,8 +64,8 @@ func encode(t *Template, variant bool) ([]byte, error) {
 		return marshalNode(root)
 	}
 	add(root, "grid", intSeq(c.Grid[0], c.Grid[1]))
-	if c.Header != nil {
-		add(root, "header", headerNode(*c.Header))
+	if c.Header != nil && !bool(*c.Header) {
+		add(root, "header", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "false"})
 	}
 	cells := newSeq(false)
 	for _, cell := range c.Cells {
@@ -122,32 +122,24 @@ func textCellNode(c Cell) *yaml.Node {
 	return n
 }
 
-// headerNode writes the band above the grid (ADR 0166). The default height is
-// left out, and so is a weight of 1.
-func headerNode(h Header) *yaml.Node {
+// HeaderNode writes the band of a display type (ADR 0168). The default height
+// is left out.
+func HeaderNode(h Header) *yaml.Node {
 	n := newMap()
-	if h.Height != 0 && h.Height != DefaultHeaderPt {
+	if h.Height != 0 {
 		add(n, "height", num(h.Height))
 	}
-	zones := []struct {
-		name  string
-		parts []HeaderPart
-	}{{"left", h.Left}, {"center", h.Center}, {"right", h.Right}}
-	for _, zone := range zones {
-		if len(zone.parts) == 0 {
-			continue
-		}
-		parts := newSeq(false)
-		for _, part := range zone.parts {
-			parts.Content = append(parts.Content, headerPartNode(part))
-		}
-		add(n, zone.name, parts)
+	parts := newSeq(false)
+	for _, part := range h.Parts {
+		parts.Content = append(parts.Content, headerPartNode(part))
 	}
+	add(n, "parts", parts)
 	return n
 }
 
 // headerPartNode is one part in flow style, e.g.
-// { widget: paperboy/title, weight: 2 }.
+// { widget: paperboy/battery, width: 30 } or
+// { widget: paperboy/title, fill: true }.
 func headerPartNode(p HeaderPart) *yaml.Node {
 	n := newMap()
 	n.Style = yaml.FlowStyle
@@ -155,8 +147,10 @@ func headerPartNode(p HeaderPart) *yaml.Node {
 	if len(p.Args) > 0 {
 		add(n, "args", valueNode(p.Args))
 	}
-	if p.Weight != 0 && p.Weight != 1 {
-		add(n, "weight", num(float64(p.Weight)))
+	if p.Fill {
+		add(n, "fill", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"})
+	} else {
+		add(n, "width", num(p.Width))
 	}
 	return n
 }

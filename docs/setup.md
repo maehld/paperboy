@@ -95,6 +95,13 @@ min_refresh: 60s   # never report a shorter interval
 power: auto        # auto (default), battery or mains (ADR 0051)
 rotation: 0        # optional: page → panel, 0, 90, 180 or 270 (ADR 0102)
 grid: [10, 6]      # optional: grid a new page starts with, default 6 × 8 (ADR 0128)
+header:             # optional: band above every page of this type (ADR 0168)
+  height: 24        # points
+  parts:
+    - { widget: paperboy/title, fill: true }
+    - { widget: paperboy/reading, args: { name: temperature }, width: 38 }
+    - { widget: paperboy/battery, width: 30 }
+    - { widget: paperboy/clock, args: { format: auto }, width: 50 }
 ```
 
 - A display type with `kind: text` is a text display ([ADR 0044](adr/0044-text-displays-on-the-device-api.md)). `size: [columns, rows]` is in characters and at most 80 × 24. `charset: utf8|ascii|hd44780` defaults to `utf8`. Paperboy rejects `gray_levels` and `ppi` for a text display.
@@ -102,6 +109,7 @@ grid: [10, 6]      # optional: grid a new page starts with, default 6 × 8 (ADR 
 - `size` is the page Paperboy composes, not necessarily the panel's native orientation. A portrait page on the STICKY or the E1001 is a display type with `size: [480, 800]` at the same `ppi`, plus `rotation: 90` or `270` ([ADR 0102](adr/0102-rotate-pages-onto-the-panel.md)). The rotation is the default for devices of the type; a device overrides it for its mounting. Text displays have no rotation.
 - `rotation` turns the composed page clockwise before the firmware paints it: `0` keeps the orientation the firmware was built for, `90` and `270` suit a portrait page on a landscape panel, `180` turns a landscape page upside down. The value belongs to the physical mounting, so a device may override it in its own file.
 - `grid` is the grid a new image page of this type starts with, `[columns, rows]` from 1 to 80, default `6 × 8`. It belongs to the page, not to the panel: a page file keeps its own grid, so this default only decides where the editor starts. The editor suggests the coarsest grid whose cells are square, for example `8 × 6` for a 4:3 page and `10 × 6` for 5:3 ([ADR 0128](adr/0128-a-default-grid-per-display-type.md)). A text display rejects it.
+- `header` is the band above every page of an image display type ([ADR 0168](adr/0168-a-header-band-per-display-type.md)). `height` is in points, 24 by default. `parts` is one ordered list from left to right. A part has `widget`, `args` and either `fill: true` or a fixed `width` in points. The fill part takes the width that the fixed parts leave. A page hides the band with `header: false`. The page title stays page-specific because `paperboy/title` reads it.
 - Create, edit and rename display types at `/ui/display-types` ([ADR 0071](adr/0071-display-types-in-files-of-their-own.md), [0079](adr/0079-rename-config-items.md)). The files stay the source of truth, so Paperboy picks up a hand edit on the next request. A rename moves `displays/<name>.yaml` and nothing else. The pages and devices that keep the old name stay editable. A device whose display type is missing answers with 503 until its file is fixed. A variant of a display type that is gone stays listed with its error. Delete works in the editor ([ADR 0073](adr/0073-edit-creates-and-deletes.md)). The confirmation names the pages and devices that keep pointing at the missing type, and a copy stays under `state/editor/`.
 - Paperboy needs at least one display type. Without one it rejects the configuration (see [Configuration](#configuration)). Several devices can share a display type. No device has to use a type. A page whose `variants` map names a type that is not configured is listed as usual: the entry is unused, and the editor shows it ([ADR 0110](adr/0110-pages-serve-their-kind-and-name-variants.md)).
 

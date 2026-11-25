@@ -2,3 +2,10 @@ kind: image
 size: [1872, 1404]
 ppi: 227
 gray_levels: 16
+header:
+  height: 24
+  parts:
+    - { widget: paperboy/title, fill: true }
+    - { widget: paperboy/reading, args: { name: temperature, label: false, age: false }, width: 38 }
+    - { widget: paperboy/battery, width: 30 }
+    - { widget: paperboy/clock, args: { format: auto, align: right }, width: 50 }

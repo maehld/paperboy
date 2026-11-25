@@ -26,6 +26,15 @@ input, select { font: inherit; padding: .15rem .3rem; min-width: 0; width: 100%;
 .grid-field span:first-child { color: var(--pb-ink-muted); }
 .grid-field button { font-size: .78rem; padding: .1rem .45rem; }
 pre.file { margin: 0; padding: .5rem .6rem; background: var(--pb-surface-sunken); border: 1px solid var(--pb-hairline); border-radius: 6px; font: .8rem/1.35 ui-monospace, Consolas, monospace; overflow-x: auto; white-space: pre; }
+.header-editor { margin-top: .8rem; border-top: 1px solid var(--pb-surface-hover); padding-top: .6rem; }
+.header-editor h4 { margin: 0 0 .4rem; font-size: .8rem; font-weight: 600; color: var(--pb-ink-muted); }
+.header-row { display: grid; grid-template-columns: minmax(8rem, 1fr) 4.5rem 3.5rem minmax(6rem, 1fr) auto; gap: .3rem; align-items: center; margin-bottom: .3rem; font-size: .78rem; }
+.header-row .fill { display: flex; align-items: center; gap: .2rem; color: var(--pb-ink-muted); }
+.header-row .fill input { width: auto; }
+.header-row .actions { display: flex; gap: .15rem; }
+.header-row .actions button { padding: .05rem .3rem; font-size: .72rem; }
+.header-row input[type=text] { font-size: .78rem; }
+#header-parts .empty { margin: 0 0 .3rem; color: var(--pb-ink-faint); font-size: .8rem; }
 #pages a, #devices a { display: block; font-size: .88rem; padding: .1rem 0; }
 #pages .empty, #devices .empty { color: var(--pb-ink-faint); font-size: .85rem; margin: 0; }
 </style>
@@ -80,6 +89,16 @@ pre.file { margin: 0; padding: .5rem .6rem; background: var(--pb-surface-sunken)
         <button type="button" id="use-grid" hidden>use</button>
       </div>
       <p class="hint image-only" id="grid-note"></p>
+      <div class="header-editor image-only">
+        <h4>Header band</h4>
+        <label class="field"><span>height (pt)</span><input id="header-height" type="number" min="1" max="144"></label>
+        <div id="header-parts"></div>
+        <button type="button" id="header-enable">Add header</button>
+        <button type="button" id="header-add" hidden>+ Add part</button>
+        <button type="button" id="header-remove" hidden>Remove header</button>
+        <datalist id="header-widgets"></datalist>
+        <p class="hint" id="header-hint"></p>
+      </div>
     </section>
   </div>
   <div class="col">

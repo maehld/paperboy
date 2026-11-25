@@ -686,7 +686,7 @@ func TestEditorPage(t *testing.T) {
 		`"rename":{"url":"/api/pages/solar/rename"}`,
 		`<script src="/ui/editor.js"></script>`, `id="board"`, `id="palette"`, `id="palette-filter"`, `id="inspector"`,
 		`id="show-cells" checked`, `id="render-hint"`, `id="preview-error"`, `id="grid-lock"`,
-		`id="header-height"`, `id="header-add"`, `id="header-remove"`,
+		`id="show-header"`, `id="header-note"`,
 		// The panels list the files of the page and the file of every display
 		// type; one dialog creates a layout (ADR 0110).
 		`<h3>Variants</h3>`, `pages/solar.hochkant.yaml is missing`,
@@ -698,7 +698,9 @@ func TestEditorPage(t *testing.T) {
 	}
 	// The page editor has no display type switch and no coverage table with an
 	// action per row (ADR 0110).
-	for _, unwanted := range []string{"id=\"display-switch\"", "Display type:", `id="file-toggle"`, `id="specialize"`, "Save as ", "data-variant="} {
+	// The header band belongs to the display type; the page editor only shows
+	// whether the page shows it (ADR 0168).
+	for _, unwanted := range []string{"id=\"display-switch\"", "Display type:", `id="file-toggle"`, `id="specialize"`, "Save as ", "data-variant=", `id="header-height"`, `id="header-add"`, `id="header-remove"`, `id="header-save"`, `id="header-add-part"`} {
 		if strings.Contains(body, unwanted) {
 			t.Fatalf("the page editor still carries %q:\n%s", unwanted, body)
 		}

@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
 )
 
 // TestEncodeExamplesRoundTrip reads every example page, writes it back and
@@ -72,29 +74,50 @@ func TestEncodeKeepsCellLayout(t *testing.T) {
 }
 
 // TestEncodeHeaderKeepsTheBand checks the readable order and the defaults of
-// the header band (ADR 0166).
+// a display type's header band (ADR 0168).
 func TestEncodeHeaderKeepsTheBand(t *testing.T) {
-	tmpl, err := Parse(strings.NewReader(headerPage))
-	if err != nil {
+	h := testHeader()
+	if err := h.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	data, err := Encode(tmpl)
+	data, err := yaml.Marshal(HeaderNode(*h))
 	if err != nil {
 		t.Fatal(err)
 	}
 	out := string(data)
 	for _, want := range []string{
-		"grid: [2, 2]\nheader:\n",
-		"left:\n    - {widget: paperboy/title, weight: 3}\n",
-		"center:\n    - {widget: paperboy/clock, args: {format: auto}, weight: 2}\n",
-		"right:\n    - {widget: paperboy/reading}\n",
+		"height: 24\n",
+		"parts:\n",
+		"- {widget: paperboy/title, fill: true}\n",
+		"- {widget: paperboy/clock, args: {format: auto}, width: 200}\n",
+		"- {widget: paperboy/reading, width: 100}\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "height: 24") {
-		t.Fatalf("default header height written:\n%s", out)
+}
+
+// TestEncodePageHeaderSwitch writes header: false only when the page hides
+// the display type's band.
+func TestEncodePageHeaderSwitch(t *testing.T) {
+	show := ShowHeader(false)
+	tmpl := &Template{Kind: KindImage, Grid: [2]int{1, 1}, Header: &show,
+		Cells: []Cell{{At: [2]int{0, 0}, Span: [2]int{1, 1}, Widget: "a/b"}}}
+	data, err := Encode(tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "header: false\n") {
+		t.Fatalf("hidden header missing:\n%s", data)
+	}
+	tmpl.Header = nil
+	data, err = Encode(tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "header:") {
+		t.Fatalf("shown header written:\n%s", data)
 	}
 }
 

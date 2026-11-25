@@ -37,6 +37,7 @@ type displayFile struct {
 	Rotation   int            `yaml:"rotation" json:"rotation,omitempty"`           // page → panel, ADR 0102
 	Scroll     *displayScroll `yaml:"scroll,omitempty" json:"scroll,omitempty"`     // text displays, ADR 0118
 	Grid       *[2]int        `yaml:"grid,omitempty" json:"grid,omitempty"`         // default grid of a new page, ADR 0128
+	Header     *page.Header   `yaml:"header,omitempty" json:"header,omitempty"`     // band of every page, ADR 0168
 	WidthMM    *int           `yaml:"width_mm,omitempty" json:"width_mm,omitempty"` // removed by ADR 0050, rejected with a hint
 }
 
@@ -86,6 +87,14 @@ func (f displayFile) check(name string) error {
 				name, f.Grid[0], f.Grid[1], maxGrid)
 		}
 	}
+	if f.Header != nil {
+		if f.Kind == kindText {
+			return fmt.Errorf("display type %s: header only applies to kind image", name)
+		}
+		if err := f.Header.Validate(); err != nil {
+			return fmt.Errorf("display type %s: %w", name, err)
+		}
+	}
 	return nil
 }
 
@@ -115,6 +124,7 @@ func (f displayFile) profile() Profile {
 		ScrollStep: step,
 	}
 	p.Grid = f.Grid
+	p.Header = f.Header
 	return p
 }
 
@@ -214,6 +224,9 @@ func encodeDisplayFile(f *displayFile) ([]byte, error) {
 		grid := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Style: yaml.FlowStyle,
 			Content: []*yaml.Node{intScalar(f.Grid[0]), intScalar(f.Grid[1])}}
 		set("grid", grid)
+	}
+	if f.Header != nil {
+		set("header", page.HeaderNode(*f.Header))
 	}
 	return marshalFile(root)
 }

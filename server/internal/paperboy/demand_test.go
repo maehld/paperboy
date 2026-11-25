@@ -3,6 +3,8 @@ package paperboy
 import (
 	"testing"
 	"time"
+
+	"github.com/maehld/paperboy/server/internal/page"
 )
 
 // demandFixture writes a plan with one page that uses weather and the built-in
@@ -46,17 +48,18 @@ func TestPluginDemand(t *testing.T) {
 }
 
 // TestPluginDemandHeaderPart checks that a plugin of a header part is warm
-// like a plugin of a cell (ADR 0166).
+// like a plugin of a cell (ADR 0168).
 func TestPluginDemandHeaderPart(t *testing.T) {
 	s, now := testServer(t)
 	cfg := s.config()
 	cfg.Devices[0].Plan = "plan"
+	profile := cfg.Devices[0].Profile
+	p := cfg.Profiles[profile]
+	p.Header = &page.Header{Height: 1, Parts: []page.HeaderPart{{Widget: "weather/current", Fill: true}}}
+	cfg.Profiles[profile] = p
 	writePlan(t, s, "plan", "pages: [seite]\n")
 	writePage(t, s, "seite", "", `kind: image
 grid: [1, 1]
-header:
-  height: 1
-  left: [{widget: weather/current}]
 cells:
   - { at: [0, 0], widget: paperboy/text, args: {text: x} }
 `)

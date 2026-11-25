@@ -1,6 +1,7 @@
 # xkcd comic with title and alt text.
 title: Comic
 kind: image
+header: false
 grid: [6, 8]
 style: { padding: 4.5 }
 cells:

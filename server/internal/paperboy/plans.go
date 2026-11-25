@@ -84,7 +84,7 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	if err != nil {
 		return nil, err
 	}
-	status := s.statusSnapshot(cfg, profile, self, selectedDeviceIDs(tmpl), now)
+	status := s.statusSnapshot(cfg, profile, self, selectedDeviceIDs(tmpl, p.Header), now)
 	img, err := tmpl.RenderImage(s.display(cfg, p), page.Context{Now: now, Page: pos.index + 1, Pages: pos.count,
 		Banners: banners, Widgets: s.widgetSource(), ServerStatus: status})
 	if err != nil {
@@ -96,7 +96,7 @@ func (s *Server) renderPage(cfg *Config, profile, name string, now time.Time, po
 	// Short intervals compose the same page again and again (ADR 0051): when
 	// the pixels match the last render, its PNG and hash are reused instead of
 	// encoding again, so the device sees an unchanged hash and does not redraw.
-	key := statusKey(profile, name, tmpl, status)
+	key := statusKey(profile, name, tmpl, p.Header, status)
 	s.mu.Lock()
 	prev := s.rendered[key]
 	s.mu.Unlock()
@@ -117,7 +117,7 @@ func pluginDevice(d *Device) *plugin.DeviceInfo {
 // display describes a display type for the page package.
 func (s *Server) display(cfg *Config, p Profile) page.Display {
 	return page.Display{Width: p.Width, Height: p.Height, Levels: p.Levels, Text: p.text(), Charset: p.Charset, PPI: p.PPI,
-		Language: cfg.Language, Timezone: cfg.Timezone}
+		Language: cfg.Language, Timezone: cfg.Timezone, Header: p.Header}
 }
 
 // hashText is the content hash of a text page. The full text of scrolling
@@ -176,7 +176,7 @@ func (s *Server) renderText(cfg *Config, profile, name string, now time.Time, po
 	if err != nil {
 		return page.Text{}, err
 	}
-	status := s.statusSnapshot(cfg, profile, self, selectedDeviceIDs(tmpl), now)
+	status := s.statusSnapshot(cfg, profile, self, selectedDeviceIDs(tmpl, nil), now)
 	return tmpl.RenderText(s.display(cfg, p), page.Context{Now: now, Page: pos.index + 1, Pages: pos.count,
 		Values: s.valueSource(), Device: device, ServerStatus: status})
 }

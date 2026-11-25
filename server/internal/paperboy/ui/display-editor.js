@@ -19,12 +19,13 @@
     readOnly: false,
     dirty: false,
     rename: start.rename || null,
+    widgets: [], // image widgets for the header input list
   };
 
   function empty(kind) {
     return kind === 'text'
-      ? { kind: 'text', size: [20, 4], gray_levels: 0, ppi: 0, charset: 'utf8', min_refresh: '', power: '', rotation: 0, grid: [0, 0] }
-      : { kind: 'image', size: [800, 480], gray_levels: 4, ppi: 125, charset: '', min_refresh: '', power: '', rotation: 0, grid: [0, 0] };
+      ? { kind: 'text', size: [20, 4], gray_levels: 0, ppi: 0, charset: 'utf8', min_refresh: '', power: '', rotation: 0, grid: [0, 0], header: null }
+      : { kind: 'image', size: [800, 480], gray_levels: 4, ppi: 125, charset: '', min_refresh: '', power: '', rotation: 0, grid: [0, 0], header: null };
   }
 
   // ---- status ----
@@ -113,6 +114,7 @@
     el('rotation').value = String(d.rotation || 0);
     el('grid-cols').value = d.grid && d.grid[0] ? d.grid[0] : '';
     el('grid-rows').value = d.grid && d.grid[1] ? d.grid[1] : '';
+    renderHeader();
     el('yaml').textContent = state.yaml || '(no file yet)';
     el('delete').hidden = state.isNew;
     el('rename').hidden = state.isNew || !state.rename;
@@ -134,6 +136,7 @@
       : 'The page in pixels, as Paperboy composes it; rotation maps it onto the panel.';
     updatePPI();
     updateGrid();
+    renderHeader();
   }
 
   // updatePPI names the physical size behind the pixel density, because ppi
@@ -288,6 +291,7 @@
       if (d.ppi) out.ppi = Number(d.ppi);
       if (d.rotation) out.rotation = Number(d.rotation);
       if (d.grid && d.grid[0] > 0 && d.grid[1] > 0) out.grid = [Number(d.grid[0]), Number(d.grid[1])];
+      if (d.header && d.header.parts && d.header.parts.length) out.header = d.header;
     }
     if (d.min_refresh) out.min_refresh = d.min_refresh;
     if (d.power) out.power = d.power;
@@ -307,7 +311,194 @@
     d.rotation = Number(d.rotation) || 0;
     d.grid = Array.isArray(d.grid) && d.grid.length === 2 && d.grid[0] > 0 && d.grid[1] > 0
       ? [Number(d.grid[0]) || 0, Number(d.grid[1]) || 0] : [0, 0];
+    d.header = d.header && typeof d.header === 'object'
+      ? {
+        height: Math.max(1, Math.min(144, Math.round(Number(d.header.height)) || 24)),
+        parts: (Array.isArray(d.header.parts) ? d.header.parts : []).map((p) => {
+          const fill = !!(p && p.fill);
+          return {
+            widget: p && p.widget ? String(p.widget) : '',
+            args: p && p.args && typeof p.args === 'object' ? p.args : {},
+            fill: fill,
+            width: fill ? 0 : Math.max(0.1, Number(p && p.width) || 30),
+          };
+        }),
+      }
+      : null;
     return d;
+  }
+
+  // ---- header band ----
+  //
+  // The band belongs to the display type (ADR 0168). This editor is a plain
+  // list: widget, width or fill, and the arguments as JSON. The page editor
+  // shows the result but does not edit it.
+
+  function renderHeader() {
+    const d = state.display;
+    const h = d.header;
+    el('header-height').value = h ? h.height : '';
+    el('header-height').disabled = state.readOnly || !h;
+    el('header-enable').hidden = !!h;
+    el('header-add').hidden = !h;
+    el('header-remove').hidden = !h;
+    el('header-hint').textContent = h
+      ? 'A part has fill: true or a fixed width in points. The order is the visual order.'
+      : 'This display type has no header band.';
+    const box = el('header-parts');
+    box.innerHTML = '';
+    if (!h) return;
+    if (!h.parts.length) {
+      const p = document.createElement('p');
+      p.className = 'empty';
+      p.textContent = 'No parts. A header needs at least one.';
+      box.appendChild(p);
+    }
+    h.parts.forEach((part, i) => box.appendChild(headerRow(part, i)));
+  }
+
+  function headerRow(part, i) {
+    const row = document.createElement('div');
+    row.className = 'header-row';
+
+    const widget = document.createElement('input');
+    widget.type = 'text';
+    widget.value = part.widget;
+    widget.placeholder = 'paperboy/battery';
+    widget.setAttribute('list', 'header-widgets');
+    widget.setAttribute('aria-label', 'widget');
+    widget.addEventListener('input', () => {
+      part.widget = widget.value.trim();
+      changed();
+    });
+
+    const width = document.createElement('input');
+    width.type = 'number';
+    width.min = '0.1';
+    width.step = '0.1';
+    width.value = part.fill ? '' : part.width;
+    width.disabled = !!part.fill || state.readOnly;
+    width.setAttribute('aria-label', 'width in points');
+    width.addEventListener('input', () => {
+      part.width = Math.max(0.1, Number(width.value) || 0.1);
+      changed();
+    });
+
+    const fillLabel = document.createElement('label');
+    fillLabel.className = 'fill';
+    const fill = document.createElement('input');
+    fill.type = 'checkbox';
+    fill.checked = !!part.fill;
+    fill.disabled = state.readOnly;
+    fill.addEventListener('change', () => {
+      part.fill = fill.checked;
+      if (part.fill) part.width = 0;
+      else if (!(part.width > 0)) part.width = 30;
+      changed();
+      renderHeader();
+    });
+    fillLabel.append(fill, document.createTextNode('fill'));
+
+    const args = document.createElement('input');
+    args.type = 'text';
+    args.value = JSON.stringify(part.args || {});
+    args.placeholder = '{}';
+    args.setAttribute('aria-label', 'arguments as JSON');
+    args.addEventListener('change', () => {
+      try {
+        const parsed = JSON.parse(args.value || '{}');
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('expected an object');
+        part.args = parsed;
+        setStatus('');
+        changed();
+      } catch (e) {
+        setStatus('arguments: ' + e.message, 'error');
+      }
+    });
+
+    const actions = document.createElement('span');
+    actions.className = 'actions';
+    for (const [label, title, move] of [['↑', 'Move up', -1], ['↓', 'Move down', 1]]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.title = title;
+      b.disabled = state.readOnly || (move < 0 && i === 0) || (move > 0 && i === state.display.header.parts.length - 1);
+      b.addEventListener('click', () => {
+        const parts = state.display.header.parts;
+        const [x] = parts.splice(i, 1);
+        parts.splice(i + move, 0, x);
+        changed();
+        renderHeader();
+      });
+      actions.appendChild(b);
+    }
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.title = 'Delete part';
+    remove.className = 'danger';
+    remove.disabled = state.readOnly;
+    remove.addEventListener('click', () => {
+      state.display.header.parts.splice(i, 1);
+      changed();
+      renderHeader();
+    });
+    actions.appendChild(remove);
+
+    row.append(widget, width, fillLabel, args, actions);
+    return row;
+  }
+
+  function onHeader() {
+    el('header-height').addEventListener('change', () => {
+      if (state.readOnly || !state.display.header) return;
+      state.display.header.height = Math.max(1, Math.min(144, Math.round(Number(el('header-height').value) || 24)));
+      el('header-height').value = state.display.header.height;
+      changed();
+    });
+    el('header-enable').addEventListener('click', () => {
+      if (state.readOnly) return;
+      state.display.header = { height: 24, parts: [{ widget: 'paperboy/title', args: {}, fill: true, width: 0 }] };
+      changed();
+      renderHeader();
+    });
+    el('header-remove').addEventListener('click', () => {
+      if (state.readOnly) return;
+      state.display.header = null;
+      changed();
+      renderHeader();
+    });
+    el('header-add').addEventListener('click', () => {
+      if (state.readOnly || !state.display.header) return;
+      state.display.header.parts.push({ widget: 'paperboy/text', args: { text: 'Text' }, fill: false, width: 40 });
+      changed();
+      renderHeader();
+    });
+  }
+
+  async function loadWidgets() {
+    try {
+      const res = await fetch('/api/plugins', { cache: 'no-store' });
+      if (!res.ok) return;
+      const doc = await res.json();
+      state.widgets = [];
+      for (const p of doc.plugins || []) {
+        for (const w of (p.description && p.description.widgets) || []) {
+          if (w.kinds && w.kinds.length && !w.kinds.includes('image')) continue;
+          state.widgets.push(p.name + '/' + w.widget);
+        }
+      }
+      const list = el('header-widgets');
+      list.replaceChildren();
+      for (const name of state.widgets) {
+        const o = document.createElement('option');
+        o.value = name;
+        list.appendChild(o);
+      }
+    } catch (e) {
+      // the input still accepts a name by hand
+    }
   }
 
   // ---- load and save ----
@@ -608,6 +799,7 @@
   onPPI();
   onPanel();
   onGrid();
+  onHeader();
   window.addEventListener('beforeunload', (e) => {
     if (!state.dirty) return;
     e.preventDefault();
@@ -615,5 +807,6 @@
   });
 
   buildSelects();
+  loadWidgets();
   load();
 })();

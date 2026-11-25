@@ -14,6 +14,7 @@ import (
 
 	"github.com/maehld/paperboy/server/internal/duration"
 	"github.com/maehld/paperboy/server/internal/ident"
+	"github.com/maehld/paperboy/server/internal/page"
 	"github.com/maehld/paperboy/server/internal/widget"
 )
 
@@ -45,6 +46,9 @@ type Profile struct {
 	// six by eight unless the display type names another one. A page owns its
 	// own grid, so this only decides where the editor starts. Nil for text.
 	Grid *[2]int `json:"grid,omitempty"`
+	// Header is the band every page of this type shows (ADR 0168); a page may
+	// hide it with header: false. Nil means no band.
+	Header *page.Header `json:"header,omitempty"`
 }
 
 // validRotation reports whether n is one of the quarter turns a device and a

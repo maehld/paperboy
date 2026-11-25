@@ -371,6 +371,14 @@ func validateProfile(name string, p *Profile) error {
 	if p.Rotation != 0 && p.text() {
 		return fmt.Errorf("display type %s: rotation does not apply to text displays", name)
 	}
+	if p.Header != nil {
+		if p.text() {
+			return fmt.Errorf("display type %s: header only applies to image displays", name)
+		}
+		if err := p.Header.Validate(); err != nil {
+			return fmt.Errorf("display type %s: %w", name, err)
+		}
+	}
 	if p.Width < 1 || p.Height < 1 || p.Width > 4096 || p.Height > 4096 {
 		return fmt.Errorf("display type %s: invalid size", name)
 	}

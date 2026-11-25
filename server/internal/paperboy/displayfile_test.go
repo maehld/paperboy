@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maehld/paperboy/server/internal/page"
 )
 
 // writeDisplayFile writes displays/<name>.yaml into an instance directory
@@ -35,6 +37,11 @@ min_refresh: 1m
 power: mains
 rotation: 90
 grid: [10, 6]
+header:
+  height: 24
+  parts:
+    - {widget: paperboy/title, fill: true}
+    - {widget: paperboy/battery, width: 30}
 `
 	f, err := parseDisplayFile([]byte(src))
 	if err != nil {
@@ -45,7 +52,8 @@ grid: [10, 6]
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(data), "min_refresh: 1m\n") || !strings.Contains(string(data), "size: [800, 480]\n") ||
-		!strings.Contains(string(data), "rotation: 90\n") || !strings.Contains(string(data), "grid: [10, 6]\n") {
+		!strings.Contains(string(data), "rotation: 90\n") || !strings.Contains(string(data), "grid: [10, 6]\n") ||
+		!strings.Contains(string(data), "paperboy/title, fill: true") || !strings.Contains(string(data), "paperboy/battery, width: 30") {
 		t.Fatalf("layout:\n%s", data)
 	}
 	again, err := parseDisplayFile(data)
@@ -112,6 +120,15 @@ func TestDisplayFileValidation(t *testing.T) {
 	if sp.Levels != 16 {
 		t.Fatalf("16-level display type: %+v", sp)
 	}
+	withHeader := displayFile{Kind: kindImage, Size: [2]int{800, 480}, PPI: 125,
+		Header: &page.Header{Parts: []page.HeaderPart{{Widget: "paperboy/title", Fill: true}}}}
+	if err := withHeader.check("e1001"); err != nil {
+		t.Fatalf("header: %v", err)
+	}
+	hp := withHeader.profile()
+	if err := validateProfile("e1001", &hp); err != nil || hp.Header == nil || hp.Header.Height != page.DefaultHeaderPt {
+		t.Fatalf("header profile: %+v %v", hp.Header, err)
+	}
 
 	for _, tc := range []struct {
 		name string
@@ -135,6 +152,8 @@ func TestDisplayFileValidation(t *testing.T) {
 		{"power", displayFile{Size: [2]int{800, 480}, PPI: 125, Power: "solar"}, "expected auto, battery or mains"},
 		{"rotation", displayFile{Size: [2]int{480, 800}, PPI: 125, Rotation: 45}, "rotation must be 0, 90, 180 or 270"},
 		{"rotation on text", displayFile{Kind: kindText, Size: [2]int{20, 4}, Rotation: 90}, "rotation does not apply to text displays"},
+		{"header on text", displayFile{Kind: kindText, Size: [2]int{20, 4},
+			Header: &page.Header{Parts: []page.HeaderPart{{Widget: "paperboy/title", Fill: true}}}}, "header only applies"},
 	} {
 		name := "e1001"
 		if tc.name == "name" {
