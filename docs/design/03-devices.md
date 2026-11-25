@@ -170,7 +170,7 @@ The sensor sits next to the panel and the battery, so it reads slightly warm. Th
 
 ## Device status in widgets
 
-`paperboy/battery`, `paperboy/device-status`, `paperboy/reading` and the header's `battery` switch read `server_status` from the plugin request ([ADR 0115](../adr/0115-device-status-in-a-widget.md)). Paperboy fills it from the device the page is rendered for.
+`paperboy/battery`, `paperboy/device-status`, `paperboy/reading`, the header band's parts and the old header's `battery` switch read `server_status` from the plugin request ([ADR 0115](../adr/0115-device-status-in-a-widget.md), [0167](../adr/0167-a-header-band-outside-the-page-grid.md)). Paperboy fills it from the device the page is rendered for.
 
 A preview without a device gets a sample device ([ADR 0123](../adr/0123-a-sample-device-in-previews.md)). Its id is `preview`; its status is `ok` and its display type the previewed one. It shows 78 %, 4.05 V, not charging, a runtime of about 12 days, 21.5 °C and 45 %. It reads no state file and writes no render cache, so every preview shows the same row.
 

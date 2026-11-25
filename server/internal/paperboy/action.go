@@ -237,7 +237,7 @@ func legacyActionOptions(spec plugin.ActionSpec, given map[string]any) (args []m
 // older plugin keeps the one-call-per-enum fallback.
 func (s *Server) resolveWidgetActions(ctx context.Context, cfg *Config, d *Device, tmpl *page.Template, now time.Time) []actionOption {
 	prof := cfg.Profiles[d.Profile]
-	rects := tmpl.Rects(prof.Width, prof.Height)
+	rects := tmpl.Rects(s.display(cfg, prof))
 	desc := map[string]*plugin.Description{}
 	descErr := map[string]string{}
 	var jobs []actionJob

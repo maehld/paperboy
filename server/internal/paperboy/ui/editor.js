@@ -21,6 +21,7 @@
     kind: start.kind, // image or text: the kind of the open file
     width: start.width, // characters of a text display, pixels of an image display
     height: start.height,
+    ppi: start.ppi || 0, // points of the header band to pixels
     reference: start.reference, // grid plugins declare their sizes on
     grid: start.grid, // grid a new page starts with
     file: start.file || '', // label of the open file; empty: the page file
@@ -37,6 +38,7 @@
     template: null,
     readOnly: false,
     selected: -1,
+    part: null, // {zone, i} of the selected header part; null selects a cell
     drag: null, // {kind, i, axis, grab, at, span, start, moved} while a box moves or resizes
     placing: null, // {plugin, widget} or {plugin, name, value: true} waiting for a cell
     filter: '', // text of the palette filter
@@ -116,7 +118,8 @@
   }
 
   function updateSave() {
-    const content = rowsPage() ? textCellsValid() : !!state.template && (!state.widgetsPage || state.template.cells.length > 0);
+    const content = rowsPage() ? textCellsValid()
+      : !!state.template && headerValid(state.template.header) && (!state.widgetsPage || state.template.cells.length > 0);
     const hasCell = !!state.template && !state.readOnly && content;
     // The page editor saves, the widgets page copies the cell: one button each.
     const save = el('save');
@@ -199,6 +202,7 @@
     t.grid = Array.isArray(t.grid) && t.grid.length === 2 ? [t.grid[0], t.grid[1]] : state.grid.slice();
     t.style = t.style || {};
     t.variants = t.variants || {};
+    t.header = normalizeHeader(t.header);
     t.cells = (t.cells || []).map((c) => ({
       at: [c.at[0], c.at[1]],
       span: Array.isArray(c.span) && c.span.length === 2 ? [c.span[0], c.span[1]] : [1, 1],
@@ -208,6 +212,123 @@
       action: normalizeAction(c.action),
     }));
     return t;
+  }
+
+  // normalizeHeader keeps the band in the shape serialize and the server
+  // expect: a height in points and three lists of widget parts (ADR 0166).
+  function normalizeHeader(h) {
+    if (!h || typeof h !== 'object') return null;
+    const out = { height: Math.max(1, Math.min(144, Math.round(Number(h.height)) || 24)) };
+    for (const zone of ['left', 'center', 'right']) {
+      out[zone] = (Array.isArray(h[zone]) ? h[zone] : []).map((p) => ({
+        widget: p && p.widget ? String(p.widget) : '',
+        args: p && p.args && typeof p.args === 'object' ? p.args : {},
+        weight: Math.max(1, Math.min(6, Math.round(Number(p && p.weight)) || 1)),
+      }));
+    }
+    return out;
+  }
+
+  function headerParts(h) {
+    if (!h) return [];
+    return [].concat(h.left || [], h.center || [], h.right || []);
+  }
+
+  // headerOut is the JSON form of the band, with no empty zone and no default
+  // weight, so the server writes a short file (ADR 0166).
+  function headerOut(h) {
+    const out = { height: h.height };
+    for (const zone of ['left', 'center', 'right']) {
+      if (!h[zone] || !h[zone].length) continue;
+      out[zone] = h[zone].map((p) => {
+        const part = { widget: p.widget, args: p.args || {} };
+        if (p.weight && p.weight !== 1) part.weight = p.weight;
+        return part;
+      });
+    }
+    return out;
+  }
+
+  // headerPixels is the band height on the preview: points converted with the
+  // display's ppi, never taller than the page itself (ADR 0166).
+  function headerPixels() {
+    const h = state.template && state.template.header;
+    if (!h) return 0;
+    const ppi = state.ppi > 0 ? state.ppi : 72;
+    return Math.max(1, Math.min(state.height - 1, Math.round(h.height * ppi / 72)));
+  }
+
+  function headerValid(h) {
+    if (!h) return true;
+    const parts = headerParts(h);
+    return parts.length > 0 && parts.every((p) => p.widget && p.widget.indexOf('/') > 0);
+  }
+
+  // addHeaderPart appends a widget to a zone. A header that does not exist
+  // starts at the default height (ADR 0166).
+  function addHeaderPart(plugin, widget, zone) {
+    const t = state.template;
+    if (!t || text() || !zone) return;
+    if (plugin === 'paperboy' && widget === 'header') {
+      setStatus('the header band uses paperboy/title, not paperboy/header', 'error');
+      return;
+    }
+    if (!t.header) t.header = { height: 24, left: [], center: [], right: [] };
+    const info = widgetInfo(plugin, widget);
+    const first = info && info.sizes && info.sizes.length ? info.sizes[0].columns : 1;
+    t.header[zone].push({ widget: plugin + '/' + widget, args: {}, weight: Math.max(1, Math.min(6, first || 1)) });
+    state.part = { zone: zone, i: t.header[zone].length - 1 };
+    state.selected = -1;
+    state.placing = null;
+    setOpenPlugin(plugin);
+    setStatus('');
+    changed();
+    renderPalette();
+    renderInspector();
+    renderSettings();
+  }
+
+  function addHeader() {
+    const t = state.template;
+    if (!t || text() || t.header) return;
+    addHeaderPart('paperboy', 'title', 'left');
+  }
+
+  function removeHeader() {
+    if (!state.template || !state.template.header) return;
+    state.template.header = null;
+    state.part = null;
+    setStatus('header removed', '');
+    changed();
+    renderInspector();
+    renderSettings();
+  }
+
+  function movePart(zone, i, target) {
+    const t = state.template;
+    if (!t || !t.header || zone === target || !t.header[zone] || !t.header[target]) return;
+    const part = t.header[zone].splice(i, 1)[0];
+    if (!part) return;
+    t.header[target].push(part);
+    state.part = { zone: target, i: t.header[target].length - 1 };
+    changed();
+    renderInspector();
+  }
+
+  function removePart() {
+    const p = state.part;
+    const t = state.template;
+    if (!p || !t || !t.header || !t.header[p.zone]) return;
+    t.header[p.zone].splice(p.i, 1);
+    state.part = null;
+    if (!headerParts(t.header).length) {
+      t.header = null;
+      setStatus('header removed', '');
+    }
+    changed();
+    renderPalette();
+    renderInspector();
+    renderSettings();
   }
 
   // normalizeAction keeps the scalar shorthand and the block in one shape:
@@ -282,6 +403,7 @@
     }
     if (t.notices === 'none') out.notices = 'none';
     if (rowsPage()) return out;
+    if (t.header) out.header = headerOut(t.header);
     out.cells = t.cells.map((c) => {
       const cell = { at: [c.at[0], c.at[1]], span: [c.span[0], c.span[1]], widget: c.widget, args: c.args || {} };
       const style = styleOut(c.style || {});
@@ -495,7 +617,7 @@
     const marker = document.createElement('div');
     marker.className = 'drop-marker' + (invalid ? ' invalid' : '');
     marker.style.gridArea = (row + 1) + ' / ' + (col + 1) + ' / span ' + height + ' / span ' + width;
-    board.appendChild(marker);
+    boardGrid().appendChild(marker);
   }
 
   function clearDropMarker() {
@@ -508,10 +630,10 @@
   // cellAtPointer maps the pointer to a slot only while it is over the board;
   // a drop outside the board cancels.
   function cellAtPointer(e) {
-    const board = el('board');
+    const grid = boardGrid();
     const t = state.template;
-    if (!board || !t) return null;
-    const r = board.getBoundingClientRect();
+    if (!grid || !t) return null;
+    const r = grid.getBoundingClientRect();
     if (!r.width || !r.height) return null;
     if (e.clientX < r.left || e.clientX >= r.right || e.clientY < r.top || e.clientY >= r.bottom) return null;
     return cellAt(e);
@@ -529,8 +651,10 @@
     if (state.widgetsPage) return;
     const t = state.template;
     const off = !t || state.readOnly;
-    for (const id of ['title', 'padding', 'rule', 'text-size', 'divider', 'notices']) el(id).disabled = off;
+    for (const id of ['title', 'padding', 'rule', 'text-size', 'divider', 'notices', 'header-height']) el(id).disabled = off;
     if (el('overflow')) el('overflow').disabled = off;
+    if (el('header-add')) el('header-add').disabled = off;
+    if (el('header-remove')) el('header-remove').disabled = off;
     el('title').disabled = off;
     // A variant inherits the title and cannot change it (ADR 0110).
     el('title').readOnly = state.file !== '';
@@ -553,6 +677,11 @@
     el('divider').value = s.divider || '';
     el('notices').value = t.notices === 'none' ? 'none' : 'show';
     if (el('overflow')) el('overflow').value = t.overflow || 'strip';
+    const hasHeader = !text() && !!t.header;
+    el('header-height').disabled = off || !hasHeader;
+    el('header-height').value = hasHeader ? t.header.height : '';
+    el('header-add').hidden = hasHeader;
+    el('header-remove').hidden = !hasHeader;
   }
 
   function clampCells(n) {
@@ -582,7 +711,7 @@
     const rows = Number(el('rows').value) || t.grid[1];
     if (!(cols > 0 && rows > 0)) return '';
     const w = state.width / cols;
-    const h = state.height / rows;
+    const h = Math.max(1, state.height - headerPixels()) / rows;
     const dev = Math.round(Math.abs(w / h - 1) * 100);
     const shape = dev <= 1 ? ', square' : ', ' + dev + ' % ' + (w > h ? 'wider than tall' : 'taller than wide');
     return cols + ' × ' + rows + ' cells, ' + Math.round(w) + ' × ' + Math.round(h) + ' px on ' + state.display + shape;
@@ -1174,9 +1303,15 @@
     changed();
   }
 
+  // boardGrid is the element the page grid lives in: the grid below the header
+  // band on an image page, the board itself on a text page (ADR 0166).
+  function boardGrid() {
+    return document.getElementById('board-grid') || el('board');
+  }
+
   // cellAt maps a pointer to the board cell under it, clamped to the grid.
   function cellAt(e) {
-    const board = el('board');
+    const board = boardGrid();
     const t = state.template;
     if (!board || !t) return null;
     const r = board.getBoundingClientRect();
@@ -1199,6 +1334,7 @@
 
   function selectCell(i) {
     state.selected = i;
+    state.part = null;
     const board = el('board');
     if (board) {
       for (const node of board.querySelectorAll('.cell')) {
@@ -1297,22 +1433,70 @@
     else setSpan(d.i, d.span[0], d.span[1]);
   }
 
+  // headerZoneAtPoint maps a pointer to left, center or right inside the band.
+  function headerZoneAtPoint(clientX, clientY) {
+    const band = document.getElementById('board-header');
+    if (!band) return null;
+    const r = band.getBoundingClientRect();
+    if (!r.width || !r.height || clientX < r.left || clientX >= r.right || clientY < r.top || clientY >= r.bottom) return null;
+    const f = (clientX - r.left) / r.width;
+    return f < 1 / 3 ? 'left' : f < 2 / 3 ? 'center' : 'right';
+  }
+
+  // startPartDrag moves a header part to another zone. The pointer selects the
+  // part at once; the drop names the zone by thirds, like the palette drop.
+  function startPartDrag(e, zone, i) {
+    if (e.button !== 0) return;
+    selectPart(zone, i);
+    state.drag = { kind: 'part', zone: zone, i: i, start: [e.clientX, e.clientY], last: [e.clientX, e.clientY], moved: false };
+    window.addEventListener('pointermove', partDragMove);
+    window.addEventListener('pointerup', partDragEnd);
+    window.addEventListener('pointercancel', partDragEnd);
+    e.preventDefault();
+  }
+
+  function partDragMove(e) {
+    const d = state.drag;
+    if (!d || d.kind !== 'part') return;
+    d.last = [e.clientX, e.clientY];
+    if (!d.moved && Math.abs(e.clientX - d.start[0]) + Math.abs(e.clientY - d.start[1]) < 3) return;
+    d.moved = true;
+  }
+
+  function partDragEnd() {
+    window.removeEventListener('pointermove', partDragMove);
+    window.removeEventListener('pointerup', partDragEnd);
+    window.removeEventListener('pointercancel', partDragEnd);
+    const d = state.drag;
+    state.drag = null;
+    if (!d || d.kind !== 'part' || !d.moved) return;
+    const target = headerZoneAtPoint(d.last[0], d.last[1]);
+    if (target) movePart(d.zone, d.i, target);
+  }
+
   // boardDragOver accepts a drag over the board and marks the drop position of
   // a text page.
   function boardDragOver(e) {
     e.preventDefault();
   }
 
-  // boardDrop places a widget that was dragged out of the palette.
+  // boardDrop places a widget that was dragged out of the palette, either in a
+  // header zone or on a cell below the band (ADR 0166).
   function boardDrop(e) {
     e.preventDefault();
     const t = state.template;
     if (!t) return;
-    const pos = cellAt(e);
-    if (!pos) return;
     const id = e.dataTransfer.getData('text/plain');
     const [plugin, widget] = id.split('/');
-    if (plugin && widget) place(plugin, widget, pos.x, pos.y);
+    if (!plugin || !widget) return;
+    const zone = headerZoneAtPoint(e.clientX, e.clientY);
+    if (zone) {
+      addHeaderPart(plugin, widget, zone);
+      return;
+    }
+    const pos = cellAt(e);
+    if (!pos) return;
+    place(plugin, widget, pos.x, pos.y);
   }
 
   // ---- board ----
@@ -1349,34 +1533,22 @@
     const board = el('board');
     board.innerHTML = '';
     board.className = boardClasses();
+    board.style.gridTemplateColumns = '';
+    board.style.gridTemplateRows = '';
     const t = state.template;
     if (!t) {
       el('board-note').textContent = 'The file cannot be edited until it reads as a page again.';
       return;
     }
-    const cols = rowsPage() ? state.width : t.grid[0];
-    const rows = rowsPage() ? state.height : t.grid[1];
-    board.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
-    board.style.gridTemplateRows = 'repeat(' + rows + ', 1fr)';
     board.style.aspectRatio = state.width + ' / ' + state.height;
-    for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < cols; x++) {
-        const slot = document.createElement('div');
-        slot.className = 'slot';
-        slot.dataset.x = String(x);
-        slot.dataset.y = String(y);
-        slot.style.gridArea = (y + 1) + ' / ' + (x + 1);
-        slot.addEventListener('click', () => {
-          if (rowsPage()) {
-            if (state.placing) placeTextAt(x, y, state.placing.plugin, state.placing.name, state.placing.literal);
-            else select(-1);
-          } else if (state.placing) place(state.placing.plugin, state.placing.widget, x, y);
-          else select(-1);
-        });
-        board.appendChild(slot);
-      }
-    }
     if (rowsPage()) {
+      const cols = state.width;
+      const rows = state.height;
+      board.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+      board.style.gridTemplateRows = 'repeat(' + rows + ', 1fr)';
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) board.appendChild(boardSlot(t, x, y));
+      }
       t.cells.forEach((c, i) => {
         const box = document.createElement('div');
         box.className = 'cell text' + (i === state.selected ? ' selected' : '');
@@ -1415,9 +1587,28 @@
       applyBoardPreview();
       return;
     }
+
+    // An image page has its grid below the optional header band (ADR 0166).
+    const headerHeight = headerPixels();
+    const grid = document.createElement('div');
+    grid.id = 'board-grid';
+    grid.style.top = (headerHeight / state.height * 100) + '%';
+    grid.style.gridTemplateColumns = 'repeat(' + t.grid[0] + ', 1fr)';
+    grid.style.gridTemplateRows = 'repeat(' + t.grid[1] + ', 1fr)';
+    board.appendChild(grid);
+    if (t.header) {
+      const band = document.createElement('div');
+      band.id = 'board-header';
+      band.style.height = (headerHeight / state.height * 100) + '%';
+      board.appendChild(band);
+      renderHeaderParts(band, t.header);
+    }
+    for (let y = 0; y < t.grid[1]; y++) {
+      for (let x = 0; x < t.grid[0]; x++) grid.appendChild(boardSlot(t, x, y));
+    }
     t.cells.forEach((c, i) => {
       const cell = document.createElement('div');
-      cell.className = 'cell' + (i === state.selected ? ' selected' : '');
+      cell.className = 'cell' + (i === state.selected && !state.part ? ' selected' : '');
       cell.dataset.i = String(i);
       cell.style.gridArea = (c.at[1] + 1) + ' / ' + (c.at[0] + 1) + ' / span ' + c.span[1] + ' / span ' + c.span[0];
       const name = document.createElement('span');
@@ -1448,17 +1639,73 @@
         });
         cell.appendChild(handle);
       }
-      board.appendChild(cell);
+      grid.appendChild(cell);
     });
     let note = '';
     if (state.placing) {
-      note = 'Click a free cell to place ' + state.placing.plugin + '/' + state.placing.widget + '.';
+      note = 'Click a free cell to place ' + state.placing.plugin + '/' + state.placing.widget + (t.header ? ', or click the header' : '') + '.';
     } else {
       const size = cellSizeText(t);
       if (size) note = size + '.';
+      if (t.header) note = 'header ' + t.header.height + ' pt · ' + note;
     }
     el('board-note').textContent = note;
     applyBoardPreview();
+  }
+
+  // boardSlot is one grid square; a click places the pending widget or clears
+  // the selection.
+  function boardSlot(t, x, y) {
+    const slot = document.createElement('div');
+    slot.className = 'slot';
+    slot.dataset.x = String(x);
+    slot.dataset.y = String(y);
+    slot.style.gridArea = (y + 1) + ' / ' + (x + 1);
+    slot.addEventListener('click', () => {
+      if (rowsPage()) {
+        if (state.placing) placeTextAt(x, y, state.placing.plugin, state.placing.name, state.placing.literal);
+        else select(-1);
+      } else if (state.placing) place(state.placing.plugin, state.placing.widget, x, y);
+      else select(-1);
+    });
+    return slot;
+  }
+
+  // renderHeaderParts draws the band as one flex row; the weights are the
+  // server's widths (ADR 0166).
+  function renderHeaderParts(band, h) {
+    band.addEventListener('click', (e) => {
+      if (e.target.closest('.header-part')) return;
+      if (state.placing) {
+        const zone = headerZoneAtPoint(e.clientX, e.clientY);
+        if (zone) addHeaderPart(state.placing.plugin, state.placing.widget, zone);
+      } else {
+        select(-1);
+      }
+    });
+    for (const zone of ['left', 'center', 'right']) {
+      (h[zone] || []).forEach((part, i) => {
+        const box = document.createElement('div');
+        const selected = state.part && state.part.zone === zone && state.part.i === i;
+        box.className = 'header-part' + (selected ? ' selected' : '');
+        box.dataset.zone = zone;
+        box.dataset.i = String(i);
+        box.style.flexGrow = String(part.weight || 1);
+        box.title = part.widget;
+        const name = document.createElement('span');
+        name.className = 'w';
+        name.textContent = part.widget;
+        const pos = document.createElement('span');
+        pos.className = 'pos';
+        pos.textContent = zone + ' · ' + (part.weight || 1);
+        box.append(name, pos);
+        box.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          startPartDrag(e, zone, i);
+        });
+        band.appendChild(box);
+      });
+    }
   }
 
   // applyBoardPreview paints the latest preview into the board it fetched for:
@@ -1493,9 +1740,31 @@
 
   function select(i) {
     state.selected = i;
+    state.part = null;
     renderBoard();
     renderInspector();
     followSelection(i);
+  }
+
+  // selectPart marks one header part; the board and the inspector follow.
+  function selectPart(zone, i) {
+    const h = state.template && state.template.header;
+    if (!h || !h[zone] || !h[zone][i]) return;
+    state.part = { zone: zone, i: i };
+    state.selected = -1;
+    renderBoard();
+    renderInspector();
+    followPart(zone, i);
+  }
+
+  function followPart(zone, i) {
+    const h = state.template && state.template.header;
+    const part = h && h[zone] && h[zone][i];
+    if (!part) return;
+    const plugin = part.widget.split('/')[0];
+    if (!plugin || plugin === state.openPlugin || !knownPlugin(plugin)) return;
+    setOpenPlugin(plugin);
+    renderPalette();
   }
 
   // ---- inspector ----
@@ -1559,15 +1828,67 @@
     changed('inspector');
   }
 
+  // renderHeaderInspector edits one part: its zone, its weight and the
+  // arguments of its widget. A header part has no span, style or action.
+  function renderHeaderInspector(box) {
+    const t = state.template;
+    const p = state.part;
+    const part = t && t.header && p && t.header[p.zone] ? t.header[p.zone][p.i] : null;
+    if (!part) {
+      state.part = null;
+      renderInspector();
+      return;
+    }
+    const where = document.createElement('p');
+    where.className = 'muted';
+    where.textContent = part.widget + ' in ' + p.zone;
+    box.appendChild(where);
+
+    const zones = document.createElement('select');
+    for (const zone of ['left', 'center', 'right']) {
+      const option = document.createElement('option');
+      option.value = zone;
+      option.textContent = zone;
+      zones.appendChild(option);
+    }
+    zones.value = p.zone;
+    zones.addEventListener('change', () => movePart(p.zone, p.i, zones.value));
+    box.appendChild(field('Zone', zones));
+
+    const weight = numberInput(part.weight || 1, 1, 1);
+    weight.max = '6';
+    weight.addEventListener('change', () => {
+      part.weight = Math.max(1, Math.min(6, Math.round(num(weight.value) || 1)));
+      weight.value = part.weight;
+      changed('inspector');
+    });
+    box.appendChild(field('Weight', weight));
+
+    const info = widgetInfo(part.widget.split('/')[0], part.widget.split('/')[1]);
+    renderArgFields(box, part, (info && info.args) || {});
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'danger';
+    remove.textContent = 'Delete part';
+    remove.addEventListener('click', removePart);
+    box.appendChild(remove);
+    updateSave();
+  }
+
   function renderInspector() {
     const box = el('inspector');
     box.innerHTML = '';
     const head = document.createElement('h3');
-    head.textContent = state.widgetsPage ? 'Widget' : 'Cell';
+    head.textContent = state.part ? 'Header part' : state.widgetsPage ? 'Widget' : 'Cell';
     box.appendChild(head);
     if (rowsPage()) {
       renderTextInspector(box);
       updateSave();
+      return;
+    }
+    if (state.part) {
+      renderHeaderInspector(box);
       return;
     }
     const t = state.template;
@@ -2270,6 +2591,7 @@
     if (!state.template || state.selected < 0) return;
     state.template.cells.splice(state.selected, 1);
     state.selected = -1;
+    state.part = null;
     changed();
     renderInspector();
   }
@@ -3185,6 +3507,14 @@
     else delete state.template.notices;
     changed();
   });
+  on('header-add', 'click', addHeader);
+  on('header-remove', 'click', removeHeader);
+  on('header-height', 'change', () => {
+    if (!state.template || !state.template.header) return;
+    state.template.header.height = Math.max(1, Math.min(144, Math.round(num(el('header-height').value) || 24)));
+    el('header-height').value = state.template.header.height;
+    changed();
+  });
   on('overflow', 'change', () => {
     if (!state.template || !rowsPage()) return;
     state.template.overflow = el('overflow').value || 'strip';
@@ -3197,12 +3527,17 @@
         state.placing = null;
         renderPalette();
         renderBoard();
-      } else if (state.selected >= 0) select(-1);
+      } else if (state.part || state.selected >= 0) select(-1);
       return;
     }
-    if (!typing && (e.key === 'Delete' || e.key === 'Backspace') && state.selected >= 0) {
-      e.preventDefault();
-      removeCell();
+    if (!typing && (e.key === 'Delete' || e.key === 'Backspace')) {
+      if (state.part) {
+        e.preventDefault();
+        removePart();
+      } else if (state.selected >= 0) {
+        e.preventDefault();
+        removeCell();
+      }
     }
   });
   window.addEventListener('beforeunload', (e) => {

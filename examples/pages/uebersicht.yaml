@@ -1,14 +1,19 @@
 # Overview for image displays of any size: the page file serves every display
-# type of its kind, and variants names the exceptions (ADR 0110). The grid has
-# 6 columns and 8 rows.
+# type of its kind, and variants names the exceptions (ADR 0110). The header
+# band sits above the grid, so the grid keeps a coarse unit (ADR 0166).
 title: Übersicht
 kind: image
 variants: {lcd2004: lcd2004}
-grid: [6, 8]
+grid: [6, 7]
+header:
+  height: 24
+  left:
+    - { widget: paperboy/title, weight: 3 }
+  right:
+    - { widget: paperboy/clock, args: { format: auto }, weight: 2 }
 style: { padding: 4.5, divider: 0.6 }
 cells:
-  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
-  - { at: [0, 1], span: [3, 3], widget: weather/current }
-  - { at: [3, 1], span: [3, 3], widget: evcc/site, args: { columns: 2 } }
-  - { at: [0, 4], span: [3, 4], widget: calendar/agenda, args: { lines: 7 } }
-  - { at: [3, 4], span: [3, 4], widget: weather/days, args: { days: 3 } }
+  - { at: [0, 0], span: [3, 3], widget: weather/current }
+  - { at: [3, 0], span: [3, 3], widget: evcc/site, args: { columns: 2 } }
+  - { at: [0, 3], span: [3, 4], widget: calendar/agenda, args: { lines: 7 } }
+  - { at: [3, 3], span: [3, 4], widget: weather/days, args: { days: 3 } }

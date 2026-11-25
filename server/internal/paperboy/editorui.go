@@ -216,6 +216,7 @@ type editorState struct {
 	Kind        string              `json:"kind"`    // image or text: the kind of the open file
 	Width       int                 `json:"width"`   // characters of a text display, pixels of an image display
 	Height      int                 `json:"height"`
+	PPI         float64             `json:"ppi"`  // points of a header band to pixels
 	New         bool                `json:"new"`  // there is no file yet
 	Grid        [2]int              `json:"grid"` // grid a new page starts with
 	Reference   [2]int              `json:"reference"`
@@ -1115,7 +1116,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	}
 	v.Data = editorStateData(editorState{
 		Name: name, Display: display, File: label, Kind: kind,
-		Width: p.Width, Height: p.Height, New: missing, Reference: defaultGrid,
+		Width: p.Width, Height: p.Height, PPI: p.PPI, New: missing, Reference: defaultGrid,
 		Grid:       pageGrid(kind, p, *openOrBlank(open, name, label)),
 		PageHash:   pageHash,
 		PageExists: pageExists,
@@ -1218,7 +1219,7 @@ func widgetsStateData(display string, p Profile, widget string, span, grid [2]in
 		g = grid // a page's grid, so the preview matches its cell
 	}
 	state := editorState{Display: display, WidgetsPage: true, Widget: widget, Args: args,
-		Reference: defaultGrid, Width: p.Width, Height: p.Height,
+		Reference: defaultGrid, Width: p.Width, Height: p.Height, PPI: p.PPI,
 		Kind: page.KindImage, Grid: g}
 	if span[0] > 0 && span[1] > 0 {
 		state.Span = &span

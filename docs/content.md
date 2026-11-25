@@ -4,36 +4,44 @@
 
 ## Pages
 
-A page is a grid of cells, and every cell shows one widget ([ADR 0049](adr/0049-plugin-widgets.md)). The page file `pages/<page>.yaml` carries the layout and serves every display type of its kind. Its `variants` map names the exceptions ([ADR 0110](adr/0110-pages-serve-their-kind-and-name-variants.md)): `sticky: hochkant` means that `pages/<page>.hochkant.yaml` serves the sticky display type. The variant file carries the layout without the title and without `variants`.
+A page is a grid of cells, and every cell shows one widget ([ADR 0049](adr/0049-plugin-widgets.md)). An image page may add a header band above its grid, so the header is not tied to the grid rows ([ADR 0167](adr/0167-a-header-band-outside-the-page-grid.md)). The page file `pages/<page>.yaml` carries the layout and serves every display type of its kind. Its `variants` map names the exceptions ([ADR 0110](adr/0110-pages-serve-their-kind-and-name-variants.md)): `sticky: hochkant` means that `pages/<page>.hochkant.yaml` serves the sticky display type. The variant file carries the layout without the title and without `variants`.
 
 ```yaml
 title: Übersicht
 kind: image
-grid: [6, 8]                 # columns, rows
+grid: [6, 7]                 # columns, rows below the header band
+header:
+  height: 24                 # points
+  left: [{ widget: paperboy/title, weight: 3 }]
+  right: [{ widget: paperboy/clock, args: { format: auto }, weight: 2 }]
 variants: { sticky: hochkant }
 style: { padding: 4.5, rule: 0.6, text_size: 16, divider: 0.6 }   # points
 notices: show                # show (default) or none
 cells:
-  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
-  - { at: [0, 1], span: [3, 3], widget: weather/current, args: { clothing: true } }
-  - { at: [3, 1], span: [3, 3], widget: evcc/site }
-  - { at: [0, 4], span: [3, 4], widget: calendar/agenda, args: { lines: 7 }, style: { padding: 2 } }
-  - { at: [3, 4], span: [3, 4], widget: weather/days, args: { days: 3 } }
+  - { at: [0, 0], span: [3, 3], widget: weather/current, args: { clothing: true } }
+  - { at: [3, 0], span: [3, 3], widget: evcc/site }
+  - { at: [0, 3], span: [3, 4], widget: calendar/agenda, args: { lines: 7 }, style: { padding: 2 } }
+  - { at: [3, 3], span: [3, 4], widget: weather/days, args: { days: 3 } }
 ```
 
 ```yaml
 # pages/uebersicht.hochkant.yaml: the same screen on the portrait panel
 kind: image
-grid: [6, 8]
+grid: [6, 7]
+header:
+  height: 24
+  left: [{ widget: paperboy/title, weight: 3 }]
+  right: [{ widget: paperboy/clock, args: { format: auto }, weight: 2 }]
 cells:
-  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
+  - { at: [0, 0], span: [3, 3], widget: weather/current }
 ```
 
 - `widget` is `<plugin>/<widget>`. Paperboy passes `args` to the widget unchanged. `at` is the top-left cell (column, row, from 0), and `span` is the size in cells (default `[1, 1]`). `action` names one action of the widget's plugin (see [Actions](#actions)). Cells must stay inside the grid and must not overlap. Empty cells stay white.
 - `grid` is `[columns, rows]`, 1 to 80 each. A plugin offers its sizes in halves and quarters of a 6 × 8 reference grid, and the editor maps them onto the page's grid. The display type names the grid a new page starts with, for example `8 × 6` on a 4:3 panel and `10 × 6` on 5:3 ([ADR 0128](adr/0128-a-default-grid-per-display-type.md)). A page keeps its own grid, so a change to the display type never rewrites a page.
-- On an image display the grid divides the pixels. Paperboy asks every plugin for its widgets in exactly the pixel size of the cell and the gray levels of the panel. It quantizes the PNG to the palette (nearest gray, no dithering) and pastes it 1:1, so Paperboy never scales a widget. The PNG has 1, 2 or 4 bits (2, 4 or 16 gray levels), depending on the display type. A plugin that answers with another size gets a notice in its cell.
+- `header` is the band above the grid ([ADR 0167](adr/0167-a-header-band-outside-the-page-grid.md)). `height` is in points and 24 by default. `left`, `center` and `right` are lists of widget parts. A part has `widget`, `args` and an optional `weight` of 1 to 6; the weight divides the band width. `paperboy/title` draws the page title, `paperboy/clock` with `format: auto` draws the date and time, and `paperboy/reading` draws a room value. The old `paperboy/header` widget stays available for a cell. A text page has no header band.
+- On an image display the grid divides the pixels below the header band. Paperboy asks every plugin for its widgets in exactly the pixel size of the cell and the gray levels of the panel. It quantizes the PNG to the palette (nearest gray, no dithering) and pastes it 1:1, so Paperboy never scales a widget. The PNG has 1, 2 or 4 bits (2, 4 or 16 gray levels), depending on the display type. A plugin that answers with another size gets a notice in its cell.
 - `style` is in points (1 pt = 1/72 inch, [ADR 0050](adr/0050-physical-scaling-by-display-ppi.md)). Paperboy passes it to every widget and converts it to pixels with the `ppi` of the display type. `padding` is the inner margin (default 4.5 pt ≈ 1.6 mm). `rule` is the separator width (default 0.6 pt ≈ 0.2 mm, never thinner than 1 px). `text_size` is the base text height (4–144 pt, default 16 pt, at most 0.12 of the display height), so widgets of different plugins match. `divider` (points, at least 1 px, default 0 = none) draws lines between the cells; Paperboy draws them, not the widgets. The `style` of a cell overrides the page style.
-- The **built-in plugin** `paperboy` needs no configuration and provides `paperboy/header`, `paperboy/text`, `paperboy/clock`, `paperboy/logo`, `paperboy/battery`, `paperboy/device-status` and `paperboy/reading` (see [docs/plugins/paperboy.md](plugins/paperboy.md)).
+- The **built-in plugin** `paperboy` needs no configuration and provides `paperboy/header`, `paperboy/title`, `paperboy/text`, `paperboy/clock`, `paperboy/logo`, `paperboy/battery`, `paperboy/device-status` and `paperboy/reading` (see [docs/plugins/paperboy.md](plugins/paperboy.md)).
 - `kind: image` or `kind: text` is required and says which displays a file is for. A plan may serve image and text displays alike. When a device pages through the pages of a plan, Paperboy skips pages that do not fit its display type. A page does not fit when no file serves the type or when it has the other kind. It also does not fit when a text box leaves the character grid of the display. Paperboy logs each skip once per display type and page. When no page of the plan fits, the device gets a notice (*No matching page*). Paperboy does not skip a broken page; it shows its error as a notice.
 - **Stale widgets**: when a plugin fails, Paperboy keeps showing its last widgets and marks the page. An image display gets a bar (*Outdated: calendar/agenda*, German *Veraltet: …*), a text display gets `!` in the last column of the first line. `notices: none` turns both off. A widget that never rendered becomes a hatched notice inside its cell with the reason. A plugin that cannot draw in its cell at all answers `cell too small: <width>x<height>` instead of leaving the cell empty, so a cell that is too small for its widget shows that notice.
 - Preview without a device: `GET /api/preview/<display type>/<page>` (PNG, or `text/plain` for text displays; an optional `?at=YYYY-MM-DDTHH:MM` renders the page as at that time in the configured timezone). `GET /api/profiles` lists the display types.

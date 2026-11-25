@@ -83,7 +83,7 @@ func drawActionView(img *image.Paletted, tmpl *page.Template, p Profile, t texts
 		active   bool
 		option   int // index into a.Options; -1 for the small-cell notice
 	}
-	rects := tmpl.Rects(p.Width, p.Height)
+	rects := tmpl.Rects(page.Display{Width: p.Width, Height: p.Height, PPI: p.PPI})
 	byCell := map[int][]int{}
 	for i := range a.Options {
 		byCell[a.Options[i].Cell] = append(byCell[a.Options[i].Cell], i)

@@ -29,4 +29,4 @@ Paperboy ships the plugins below. One zip per platform (`paperboy-plugins-linux-
 - [`rss`](rss.md) – RSS and Atom feeds as a list or as a single headline.
 - [`github`](github.md) – open issues, open pull requests, failed workflow runs and the commit history of GitHub repositories.
 - [`prusalink`](prusalink.md) – the state, progress and temperatures of a Prusa 3D printer from its local PrusaLink API.
-- [`paperboy`](paperboy.md) – built in, no zip needed: header, text, clock, the Paperboy logo, the battery and the device status.
+- [`paperboy`](paperboy.md) – built in, no zip needed: header, title, text, clock, the Paperboy logo, the battery and the device status.

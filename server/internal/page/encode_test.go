@@ -71,6 +71,33 @@ func TestEncodeKeepsCellLayout(t *testing.T) {
 	}
 }
 
+// TestEncodeHeaderKeepsTheBand checks the readable order and the defaults of
+// the header band (ADR 0166).
+func TestEncodeHeaderKeepsTheBand(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader(headerPage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := Encode(tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(data)
+	for _, want := range []string{
+		"grid: [2, 2]\nheader:\n",
+		"left:\n    - {widget: paperboy/title, weight: 3}\n",
+		"center:\n    - {widget: paperboy/clock, args: {format: auto}, weight: 2}\n",
+		"right:\n    - {widget: paperboy/reading}\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "height: 24") {
+		t.Fatalf("default header height written:\n%s", out)
+	}
+}
+
 const previewYAML = `
 title: Preview
 kind: image

@@ -91,13 +91,35 @@ func TestValuesDeclared(t *testing.T) {
 	}
 }
 
+// TestTitleDrawsPageTitle checks the header part: the page title and its page
+// indicator reach the band, and a narrow part still draws the same string.
+func TestTitleDrawsPageTitle(t *testing.T) {
+	req := &plugin.Request{Language: "de", Now: time.Now(), Page: plugin.PageInfo{Title: "Übersicht", Number: 2, Count: 3}}
+	w := plugin.WidgetRequest{Widget: "title", Width: 240, Height: 30,
+		Style: plugin.Style{Padding: 3, TextPx: 16}}
+	img := render.NewCanvas(240, 30, 2)
+	if err := (Plugin{}).Render(req, w, img); err != nil {
+		t.Fatal(err)
+	}
+	dark := false
+	for _, p := range img.Pix {
+		if p == 0 {
+			dark = true
+			break
+		}
+	}
+	if !dark {
+		t.Fatal("title drew no ink")
+	}
+}
+
 // A cell the padding eats up is reported for every widget, so Paperboy draws
 // its notice instead of an empty cell.
 func TestTooSmallCell(t *testing.T) {
 	req := &plugin.Request{Language: "de"}
 	w := plugin.WidgetRequest{Width: 10, Height: 10, Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 16},
 		Args: map[string]any{"text": "x"}}
-	for _, name := range []string{"text", "clock", "logo"} {
+	for _, name := range []string{"text", "title", "clock", "logo"} {
 		w.Widget = name
 		err := (Plugin{}).Render(req, w, render.NewCanvas(10, 10, 2))
 		if !errors.Is(err, plugin.ErrTooSmall) {

@@ -146,10 +146,10 @@ func text(language, de, en string) string {
 	return de
 }
 
-// Rects returns the pixel rectangle of every cell on a display of w × h
-// pixels, in cell order. It is the geometry the action mode taps against
-// (ADR 0162).
-func (t *Template) Rects(w, h int) []image.Rectangle { return t.cellRects(w, h) }
+// Rects returns the pixel rectangle of every cell on a display, in cell order.
+// It is the geometry the action mode taps against (ADR 0162); the header band
+// moves every cell down (ADR 0166).
+func (t *Template) Rects(d Display) []image.Rectangle { return t.cellRects(d) }
 
 // Actionable reports how many cells name an action. A text page has none.
 func (t *Template) Actionable() int {
@@ -165,13 +165,69 @@ func (t *Template) Actionable() int {
 	return n
 }
 
-// cellRects divides the display into the pixel rectangles of the cells.
-func (t *Template) cellRects(w, h int) []image.Rectangle {
+// headerHeight returns the height of the header band in pixels. A display
+// without ppi, as in a test, uses 72.
+func (t *Template) headerHeight(d Display) int {
+	if t.Header == nil {
+		return 0
+	}
+	ppi := d.PPI
+	if ppi <= 0 {
+		ppi = 72
+	}
+	return max(int(math.Round(t.Header.Height*ppi/72)), 1)
+}
+
+// rulePx is the page's rule in pixels. The header band uses it for the line
+// under its parts.
+func (t *Template) rulePx(d Display) int {
+	rule := t.Style.Rule
+	if rule == 0 {
+		rule = DefaultRulePt
+	}
+	return d.pxAtLeast1(rule)
+}
+
+// headerRects divides the band width by the parts' weights, in drawing order.
+// The zones only decide that order, so left, center and right stay one row.
+func (t *Template) headerRects(d Display) []image.Rectangle {
+	parts := t.HeaderParts()
+	if len(parts) == 0 {
+		return nil
+	}
+	total := 0
+	for _, p := range parts {
+		total += max(p.Weight, 1)
+	}
+	h := t.headerHeight(d) - t.rulePx(d)
+	if h < 1 {
+		h = t.headerHeight(d)
+	}
+	out := make([]image.Rectangle, len(parts))
+	prev, cum := 0, 0
+	for i, p := range parts {
+		cum += max(p.Weight, 1)
+		next := int(math.Round(float64(d.Width) * float64(cum) / float64(total)))
+		next = min(max(next, prev), d.Width)
+		out[i] = image.Rect(prev, 0, next, h)
+		prev = next
+	}
+	return out
+}
+
+// cellRects divides the area below the header band into the pixel rectangles
+// of the cells.
+func (t *Template) cellRects(d Display) []image.Rectangle {
+	top := t.headerHeight(d)
+	h := d.Height - top
+	if h < 1 {
+		top, h = 0, d.Height
+	}
 	cols, rows := t.Grid[0], t.Grid[1]
 	out := make([]image.Rectangle, len(t.Cells))
 	for i, c := range t.Cells {
-		out[i] = image.Rect(w*c.At[0]/cols, h*c.At[1]/rows,
-			w*(c.At[0]+c.Span[0])/cols, h*(c.At[1]+c.Span[1])/rows)
+		out[i] = image.Rect(d.Width*c.At[0]/cols, top+h*c.At[1]/rows,
+			d.Width*(c.At[0]+c.Span[0])/cols, top+h*(c.At[1]+c.Span[1])/rows)
 	}
 	return out
 }
@@ -213,8 +269,15 @@ func (t *Template) RenderImage(d Display, c Context) (*image.Paletted, error) {
 	if err := t.Fits(d); err != nil {
 		return nil, err
 	}
-	rects := t.cellRects(d.Width, d.Height)
+	rects := t.cellRects(d)
+	headerParts := t.HeaderParts()
+	headerRects := t.headerRects(d)
 	batch := Batch{Levels: d.levels(), Page: t.pageInfo(d, c), ServerStatus: c.ServerStatus}
+	for i, part := range headerParts {
+		batch.Widgets = append(batch.Widgets, WidgetRequest{Plugin: part.Plugin(), Widget: part.Name(), Args: part.Args,
+			Width: headerRects[i].Dx(), Height: headerRects[i].Dy(),
+			Style: t.pluginStyle(Cell{Widget: part.Widget, Args: part.Args}, d)})
+	}
 	for i, cell := range t.Cells {
 		batch.Widgets = append(batch.Widgets, WidgetRequest{Plugin: cell.Plugin(), Widget: cell.Name(), Args: cell.Args,
 			Width: rects[i].Dx(), Height: rects[i].Dy(), Style: t.pluginStyle(cell, d)})
@@ -226,26 +289,35 @@ func (t *Template) RenderImage(d Display, c Context) (*image.Paletted, error) {
 	language := d.language()
 	img := render.NewCanvas(d.Width, d.Height, d.levels())
 	var stale []string
-	for i, cell := range t.Cells {
-		r, area := results[i], rects[i]
+	drawResult := func(r Result, area image.Rectangle, label string) {
 		switch {
 		case r.Image == nil:
 			msg := text(language, "kein Ergebnis", "no result")
 			if r.Err != nil {
 				msg = r.Err.Error()
 			}
-			cellNotice(img, area, cell.Widget, msg)
-			continue
+			cellNotice(img, area, label, msg)
+			return
 		case r.Image.Bounds().Dx() != area.Dx() || r.Image.Bounds().Dy() != area.Dy():
 			b := r.Image.Bounds()
-			cellNotice(img, area, cell.Widget, fmt.Sprintf(text(language, "falsche Größe %dx%d statt %dx%d",
+			cellNotice(img, area, label, fmt.Sprintf(text(language, "falsche Größe %dx%d statt %dx%d",
 				"wrong size %dx%d instead of %dx%d"), b.Dx(), b.Dy(), area.Dx(), area.Dy()))
-			continue
+			return
 		}
 		draw.Draw(img, area, render.Quantize(r.Image, d.levels()), image.Point{}, draw.Src)
 		if r.Stale {
-			stale = append(stale, cell.Widget)
+			stale = append(stale, label)
 		}
+	}
+	for i, part := range headerParts {
+		drawResult(results[i], headerRects[i], part.Widget)
+	}
+	if h, rule := t.headerHeight(d), t.rulePx(d); rule > 0 && h > rule {
+		render.HLine(img, 0, h-rule, d.Width, rule)
+	}
+	offset := len(headerParts)
+	for i, cell := range t.Cells {
+		drawResult(results[offset+i], rects[i], cell.Widget)
 	}
 	t.dividers(img, rects, d)
 	var banners []string

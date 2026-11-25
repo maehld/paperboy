@@ -201,6 +201,86 @@ func TestRenderImageComposesCells(t *testing.T) {
 	}
 }
 
+const headerPage = `
+title: Header
+kind: image
+grid: [2, 2]
+header:
+  left: [{widget: paperboy/title, weight: 3}]
+  center: [{widget: paperboy/clock, args: {format: auto}, weight: 2}]
+  right: [{widget: paperboy/reading, weight: 1}]
+cells:
+  - { at: [0, 0], span: [1, 1], widget: paperboy/text, args: {text: a} }
+  - { at: [1, 1], span: [1, 1], widget: paperboy/text, args: {text: b} }
+`
+
+func TestParseHeader(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader(headerPage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmpl.Header == nil || tmpl.Header.Height != DefaultHeaderPt || tmpl.Header.Left[0].Weight != 3 ||
+		tmpl.Header.Center[0].Args["format"] != "auto" || tmpl.Header.Right[0].Weight != 1 {
+		t.Fatalf("header: %+v", tmpl.Header)
+	}
+	if parts := tmpl.HeaderParts(); len(parts) != 3 || parts[0].Plugin() != "paperboy" || parts[1].Name() != "clock" {
+		t.Fatalf("parts: %+v", parts)
+	}
+	for name, bad := range map[string]string{
+		"text page":  "kind: text\nheader: {left: [{widget: a/b}]}\ncells: [{text: x}]\n",
+		"no parts":   "kind: image\ngrid: [1, 1]\nheader: {height: 20}\ncells: [{widget: a/b}]\n",
+		"weight":     "kind: image\ngrid: [1, 1]\nheader: {left: [{widget: a/b, weight: 7}]}\ncells: [{widget: a/b}]\n",
+		"height":     "kind: image\ngrid: [1, 1]\nheader: {height: 0.5, left: [{widget: a/b}]}\ncells: [{widget: a/b}]\n",
+		"bad widget": "kind: image\ngrid: [1, 1]\nheader: {left: [{widget: nope}]}\ncells: [{widget: a/b}]\n",
+		"unknown":    "kind: image\ngrid: [1, 1]\nheader: {left: [{widget: a/b, colour: red}]}\ncells: [{widget: a/b}]\n",
+	} {
+		if _, err := Parse(strings.NewReader(bad)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestRenderImageHeaderBand(t *testing.T) {
+	tmpl, err := Parse(strings.NewReader(headerPage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Batch
+	src := func(b Batch) []Result {
+		got = b
+		out := make([]Result, len(b.Widgets))
+		for i, w := range b.Widgets {
+			out[i] = Result{Image: image.NewGray(image.Rect(0, 0, w.Width, w.Height))}
+		}
+		return out
+	}
+	img, err := tmpl.RenderImage(Display{Width: 600, Height: 300, Levels: 4, PPI: 72}, Context{Widgets: src})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := got.Widgets
+	if len(w) != 5 {
+		t.Fatalf("widgets: %+v", w)
+	}
+	// The band takes 24 pt at 72 ppi; the rule leaves 23 px for its parts.
+	if w[0].Widget != "title" || w[0].Width != 300 || w[0].Height != 23 ||
+		w[1].Widget != "clock" || w[1].Width != 200 || w[2].Widget != "reading" || w[2].Width != 100 {
+		t.Fatalf("header requests: %+v", w[:3])
+	}
+	// The grid divides the 276 px below the band.
+	if w[3].Width != 300 || w[3].Height != 138 || w[4].Width != 300 || w[4].Height != 138 {
+		t.Fatalf("cell requests: %+v", w[3:])
+	}
+	rects := tmpl.Rects(Display{Width: 600, Height: 300, PPI: 72})
+	if rects[0] != image.Rect(0, 24, 300, 162) || rects[1] != image.Rect(300, 162, 600, 300) {
+		t.Fatalf("rects: %v", rects)
+	}
+	// The line under the band is black; the first cell starts below it.
+	if gray(img, 10, 23) != 0 || gray(img, 10, 24) != 0 {
+		t.Errorf("header rule or first cell wrong: %d %d", gray(img, 10, 23), gray(img, 10, 24))
+	}
+}
+
 func TestRenderImageWithoutSource(t *testing.T) {
 	tmpl, _ := Parse(strings.NewReader(gridPage))
 	if _, err := tmpl.RenderImage(Display{Width: 400, Height: 200}, Context{}); err != nil {
@@ -812,7 +892,7 @@ func TestCellAction(t *testing.T) {
 	if err != nil || again.Cells[0].Action == nil || again.Cells[0].Action.Name != "mode" {
 		t.Fatalf("round trip: %v %+v", err, again)
 	}
-	if rects := tp.Rects(200, 100); len(rects) != 1 || rects[0] != image.Rect(0, 0, 200, 100) {
+	if rects := tp.Rects(Display{Width: 200, Height: 100, PPI: 72}); len(rects) != 1 || rects[0] != image.Rect(0, 0, 200, 100) {
 		t.Fatalf("rects: %v", rects)
 	}
 

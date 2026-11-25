@@ -678,7 +678,7 @@ func TestEditorPage(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		`"name":"solar","display":"small","file":"","kind":"image","width":40,"height":20,"new":false,"grid":[2,2],"reference":[6,8],"page_hash":`,
+		`"name":"solar","display":"small","file":"","kind":"image","width":40,"height":20,"ppi":125,"new":false,"grid":[2,2],"reference":[6,8],"page_hash":`,
 		`"page_exists":true`,
 		`"displays":[{"name":"lcd","kind":"text","width":20,"height":4,"scroll_step":300},{"name":"small","kind":"image","width":40,"height":20,"grid":[6,8]}]`,
 		// The preview type is the served one; the file is not a link there.
@@ -686,6 +686,7 @@ func TestEditorPage(t *testing.T) {
 		`"rename":{"url":"/api/pages/solar/rename"}`,
 		`<script src="/ui/editor.js"></script>`, `id="board"`, `id="palette"`, `id="palette-filter"`, `id="inspector"`,
 		`id="show-cells" checked`, `id="render-hint"`, `id="preview-error"`, `id="grid-lock"`,
+		`id="header-height"`, `id="header-add"`, `id="header-remove"`,
 		// The panels list the files of the page and the file of every display
 		// type; one dialog creates a layout (ADR 0110).
 		`<h3>Variants</h3>`, `pages/solar.hochkant.yaml is missing`,
@@ -711,7 +712,7 @@ func TestEditorPage(t *testing.T) {
 	// A new page starts with the kind and the character grid of the display
 	// type, and its state names the page file the first save writes.
 	body = request(t, s, http.MethodGet, "/ui/pages/neu?display=lcd&new=1", nil, nil).Body.String()
-	if !strings.Contains(body, `"name":"neu","display":"lcd","file":"","kind":"text","width":20,"height":4,"new":true,"grid":[20,4]`) {
+	if !strings.Contains(body, `"name":"neu","display":"lcd","file":"","kind":"text","width":20,"height":4,"ppi":0,"new":true,"grid":[20,4]`) {
 		t.Fatalf("new text page:\n%s", body)
 	}
 
@@ -792,7 +793,7 @@ func TestEditorGridFromDisplayType(t *testing.T) {
 	// A new image page starts at the type's grid; the reference grid stays
 	// 6 × 8, because plugins declare their sizes on it.
 	body := request(t, s, http.MethodGet, "/ui/pages/neu?kind=image&display=wide&new=1", nil, nil).Body.String()
-	for _, want := range []string{`"kind":"image","width":800,"height":480,"new":true`, `"grid":[10,6]`, `"reference":[6,8]`} {
+	for _, want := range []string{`"kind":"image","width":800,"height":480,"ppi":125,"new":true`, `"grid":[10,6]`, `"reference":[6,8]`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("new page on the wide type lacks %q:\n%s", want, body)
 		}
@@ -834,7 +835,7 @@ func TestEditorNewPageCreatesFromType(t *testing.T) {
 	// A new text page next to a variant of another kind starts with the
 	// character grid of the chosen text display type.
 	body := request(t, s, http.MethodGet, "/ui/pages/wetter?kind=text&display=lcd&new=1", nil, nil).Body.String()
-	if !strings.Contains(body, `"file":"","kind":"text","width":20,"height":4,"new":true,"grid":[20,4]`) {
+	if !strings.Contains(body, `"file":"","kind":"text","width":20,"height":4,"ppi":0,"new":true,"grid":[20,4]`) {
 		t.Fatalf("new text page next to a variant:\n%s", body)
 	}
 	// Without a chosen grid it takes the first configured text type.
@@ -845,7 +846,7 @@ func TestEditorNewPageCreatesFromType(t *testing.T) {
 	// A new image page is its own file as well, whatever display type a stale
 	// link names.
 	body = request(t, s, http.MethodGet, "/ui/pages/wetter?kind=image&display=lcd&new=1", nil, nil).Body.String()
-	if !strings.Contains(body, `"file":"","kind":"image","width":40,"height":20,"new":true`) {
+	if !strings.Contains(body, `"file":"","kind":"image","width":40,"height":20,"ppi":125,"new":true`) {
 		t.Fatalf("new image page next to a variant:\n%s", body)
 	}
 	// An unknown kind is refused.

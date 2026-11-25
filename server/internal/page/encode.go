@@ -64,6 +64,9 @@ func encode(t *Template, variant bool) ([]byte, error) {
 		return marshalNode(root)
 	}
 	add(root, "grid", intSeq(c.Grid[0], c.Grid[1]))
+	if c.Header != nil {
+		add(root, "header", headerNode(*c.Header))
+	}
 	cells := newSeq(false)
 	for _, cell := range c.Cells {
 		cells.Content = append(cells.Content, cellNode(cell))
@@ -115,6 +118,45 @@ func textCellNode(c Cell) *yaml.Node {
 	}
 	if c.Overflow != "" {
 		add(n, "overflow", str(c.Overflow))
+	}
+	return n
+}
+
+// headerNode writes the band above the grid (ADR 0166). The default height is
+// left out, and so is a weight of 1.
+func headerNode(h Header) *yaml.Node {
+	n := newMap()
+	if h.Height != 0 && h.Height != DefaultHeaderPt {
+		add(n, "height", num(h.Height))
+	}
+	zones := []struct {
+		name  string
+		parts []HeaderPart
+	}{{"left", h.Left}, {"center", h.Center}, {"right", h.Right}}
+	for _, zone := range zones {
+		if len(zone.parts) == 0 {
+			continue
+		}
+		parts := newSeq(false)
+		for _, part := range zone.parts {
+			parts.Content = append(parts.Content, headerPartNode(part))
+		}
+		add(n, zone.name, parts)
+	}
+	return n
+}
+
+// headerPartNode is one part in flow style, e.g.
+// { widget: paperboy/title, weight: 2 }.
+func headerPartNode(p HeaderPart) *yaml.Node {
+	n := newMap()
+	n.Style = yaml.FlowStyle
+	add(n, "widget", str(p.Widget))
+	if len(p.Args) > 0 {
+		add(n, "args", valueNode(p.Args))
+	}
+	if p.Weight != 0 && p.Weight != 1 {
+		add(n, "weight", num(float64(p.Weight)))
 	}
 	return n
 }
