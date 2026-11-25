@@ -110,7 +110,7 @@ While `paperboy.yaml` is unusable (a degraded start), register, sync and text po
 | `log` | Lines that Paperboy writes one by one; a repeated entry carries `time` and `id` and is written once |
 | `power` | `battery` or `mains`, if the device can tell |
 
-Events are applied in order before the page is chosen. `previous` and `next` page while the action mode is closed. A short `home` keeps the page or opens the action mode. A long `next` or `previous` jumps to the first page (ADR 0161, 0162). A touch runs an option while the action mode shows its screen; Paperboy logs every other touch. It drops an event `id` that is not newer than `last_event_id` in the state file, so a repeated request cannot move the cursor twice ([ADR 0064](../adr/0064-device-protocol-v4.md)).
+Events are applied in order before the page is chosen. `previous` and `next` page while the action mode is closed. A short `home` keeps the page or opens the action mode. A long `next` or `previous` jumps to the first page (ADR 0161, 0162). A touch runs a runnable option while the action mode shows its screen. An active or disabled option runs nothing; Paperboy logs every other touch. It drops an event `id` that is not newer than `last_event_id` in the state file, so a repeated request cannot move the cursor twice ([ADR 0064](../adr/0064-device-protocol-v4.md)).
 
 A device without a digitiser operates the action mode with the keys (ADR 0163). `previous` and `next` move the selection and wrap. A short `home` runs the selected option; without a runnable option it closes the mode. A long `home` closes the mode. A touch device keeps the tap path, where those keys close the mode and page.
 

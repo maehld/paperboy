@@ -80,6 +80,7 @@ func drawActionView(img *image.Paletted, tmpl *page.Template, p Profile, t texts
 		rect     image.Rectangle
 		label    string
 		disabled bool
+		active   bool
 		option   int // index into a.Options; -1 for the small-cell notice
 	}
 	rects := tmpl.Rects(p.Width, p.Height)
@@ -131,26 +132,29 @@ func drawActionView(img *image.Paletted, tmpl *page.Template, p Profile, t texts
 				inner.Min.X+(c+1)*inner.Dx()/cols-2, inner.Min.Y+(r+1)*inner.Dy()/rows-2)
 			a.Options[i].Rect = rectOf(rect)
 			tiles = append(tiles, tile{rect: rect, label: a.Options[i].Title,
-				disabled: a.Options[i].Disabled != "", option: i})
+				disabled: a.Options[i].Disabled != "", active: a.Options[i].Active, option: i})
 		}
 	}
 	// The cell that cannot hold its options disabled them above; choose after
 	// that pass, so the selection never points at such a tile.
 	a.choose()
 	for _, t := range tiles {
-		drawTile(img, t.rect, t.label, t.disabled, selection && t.option == a.Selected)
+		selected := selection && t.option == a.Selected
+		// A touch device shows its current option; a key device shows its
+		// selection instead, so only one tile is inverted (ADR 0163, 0165).
+		drawTile(img, t.rect, t.label, t.disabled, selected, !selection && t.active)
 	}
 }
 
 // drawTile paints one option as a button: a frame, a wrapped label and a
-// hatch with a grey label when the plugin cannot run it. The selected tile is
-// inverted: a black tile with a white label (ADR 0163).
-func drawTile(img *image.Paletted, r image.Rectangle, label string, disabled, selected bool) {
+// hatch with a grey label when the plugin cannot run it. The selected or
+// active tile is inverted: a black tile with a white label (ADR 0163, 0165).
+func drawTile(img *image.Paletted, r image.Rectangle, label string, disabled, selected, active bool) {
 	if r.Empty() {
 		return
 	}
 	switch {
-	case selected:
+	case selected || active:
 		render.FillColor(img, r, render.Black)
 	case disabled:
 		render.Fill(img, r, "hatch")
@@ -169,10 +173,10 @@ func drawTile(img *image.Paletted, r image.Rectangle, label string, disabled, se
 	top := inner.Min.Y + (inner.Dy()-len(lines)*lineH)/2 + int(size)
 	cx := inner.Min.X + inner.Dx()/2
 	ink := render.Black
-	switch {
-	case selected:
+	if selected || active {
 		ink = render.White
-	case disabled:
+	}
+	if disabled && !selected && !active {
 		ink = render.DarkGray
 		if len(lines) > 0 {
 			widest := 0

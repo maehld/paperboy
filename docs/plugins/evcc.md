@@ -122,14 +122,14 @@ cells:
 
 ## Actions
 
-The plugin offers one action, `mode`, which sets an evcc charge mode ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md), [0164](../adr/0164-a-widget-action-carries-its-own-arguments.md)). A loadpoint widget binds it with an action block; a short home shows the four modes in its cell and a tap runs one. The action carries its own `index`, because it never inherits the widget's args; without `index` it targets the first loadpoint. A mode change affects the car, so the action asks for a confirmation; Paperboy ignores it in this version.
+The plugin offers one action, `mode`, which sets an evcc charge mode ([ADR 0057](../adr/0057-plugin-actions-from-the-plan.md), [0164](../adr/0164-a-widget-action-carries-its-own-arguments.md), [0165](../adr/0165-a-plugin-describes-its-action-options.md)). A loadpoint widget binds it with an action block; a short home shows the four modes in its cell and a tap runs one. The action carries its own `index`, because it never inherits the widget's args; without `index` it targets the first loadpoint. A mode change affects the car, so the action asks for a confirmation; Paperboy ignores it in this version.
 
 | Argument | Description |
 |---|---|
 | `index` | Optional. Index into `loadpoints` of `/api/state`; default 0, the first loadpoint. |
 | `mode` | Required. One of `off`, `minpv`, `pv`, `now`. Leave it empty to let the device offer the four modes. |
 
-The plugin labels the fixed tile and the choices with the short mode label, e.g. "jetzt laden". The action is unavailable while evcc has no data yet, the loadpoint index does not exist or evcc already runs that mode. When evcc is down the cell stays visible with the reason; nothing else breaks.
+The plugin answers `action_options` with one option per mode. Each title is the short mode label, e.g. "jetzt laden". The mode that evcc runs now is `active` and does not run; the other modes can run. A call that already fixes `mode` keeps one option. The action is unavailable while evcc has no data yet or the loadpoint index does not exist. When evcc is down the cell stays visible with the reason; nothing else breaks.
 
 ```yaml
 - at: [3, 5]

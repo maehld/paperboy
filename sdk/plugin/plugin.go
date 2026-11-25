@@ -18,6 +18,8 @@
 //     pixel size and number of gray levels, returned as PNG.
 //   - "actions": report the current state of concrete actions, one answer per
 //     requested action (ADR 0057).
+//   - "action_options": report the complete options of concrete actions, one
+//     list per requested action (ADR 0165).
 //   - "action": run exactly one concrete action and report the outcome.
 //   - "values": the declared values a text page lays out (ADR 0111).
 //
@@ -92,7 +94,7 @@ import (
 // change, because only the built-in plugin receives it (ADR 0115, 0163).
 // Plugins report the version in every answer (Message.Version); Paperboy
 // refuses a plugin that speaks less than MinVersion (ADR 0081).
-const Version = 9
+const Version = 10
 
 // MinVersion is the oldest protocol Paperboy accepts. Version 5 is the cut
 // that introduced state and blobs; from here on the protocol grows additively,
@@ -107,6 +109,8 @@ const (
 	ActionRender    = "render"
 	ActionList      = "actions" // states of concrete actions
 	ActionInvoke    = "action"  // run one concrete action
+	// ActionOptionList asks for the options of concrete actions (ADR 0165).
+	ActionOptionList = "action_options"
 	// ActionValues asks for declared values a text page lays out (ADR 0111).
 	ActionValues = "values"
 )
@@ -130,8 +134,8 @@ type Request struct {
 	Levels   int             `json:"levels,omitempty"` // render: gray levels of the display; the canvas falls back to 2, 4 or 16
 	Page     PageInfo        `json:"page"`
 	Widgets  []WidgetRequest `json:"widgets,omitempty"`
-	// Actions are the concrete actions of an actions or action request, in
-	// the plan's order. Device is set for both requests.
+	// Actions are the concrete actions of an actions, action_options or action
+	// request, in the request's order. Device is set for all three requests.
 	Actions []ActionCall `json:"actions,omitempty"`
 	Device  *DeviceInfo  `json:"device,omitempty"`
 	// ServerStatus is Paperboy's own view of the devices: the device the
@@ -269,11 +273,14 @@ type Message struct {
 	// Version is the protocol version the plugin speaks. Handle fills it; a
 	// plugin written by hand must set it, and a missing version counts as one
 	// from before the field existed (ADR 0058).
-	Version int            `json:"version,omitempty"`
-	Error   string         `json:"error,omitempty"` // the request failed as a whole
-	Widgets []Result       `json:"widgets,omitempty"`
-	Actions []ActionState  `json:"actions,omitempty"` // answers to an actions request, in request order
-	Result  *ActionOutcome `json:"result,omitempty"`  // answer to an action request
+	Version int           `json:"version,omitempty"`
+	Error   string        `json:"error,omitempty"` // the request failed as a whole
+	Widgets []Result      `json:"widgets,omitempty"`
+	Actions []ActionState `json:"actions,omitempty"` // answers to an actions request, in request order
+	// Options are the answers to an action_options request, in request order
+	// (ADR 0165).
+	Options []ActionOptions `json:"options,omitempty"`
+	Result  *ActionOutcome  `json:"result,omitempty"` // answer to an action request
 	// Values is the answer to a values request, keyed by the requested name
 	// (ADR 0111). A missing name is an error for that cell.
 	Values      map[string]Value `json:"values,omitempty"`
@@ -480,6 +487,32 @@ type Confirm struct {
 	Text     string `json:"text,omitempty"` // optional; Paperboy has a generic text
 }
 
+// ActionOptions is the answer for one ActionCall of an action_options request,
+// in the request's order (ADR 0165). The plugin returns the complete list of
+// options for that action.
+type ActionOptions struct {
+	// Title labels the action; an empty title falls back to the spec.
+	Title string `json:"title,omitempty"`
+	// Disabled is the reason the whole action cannot run now. It keeps the
+	// cell visible with the reason instead of an option list.
+	Disabled string `json:"disabled,omitempty"`
+	// Options are the choices in display order. Each one carries the complete
+	// arguments of its action call.
+	Options []ActionOption `json:"options,omitempty"`
+}
+
+// ActionOption is one choice of an action. Paperboy draws it as a tile and
+// runs its Args with an action request.
+type ActionOption struct {
+	Args  map[string]any `json:"args,omitempty"` // the complete call of this option
+	Title string         `json:"title,omitempty"`
+	// Active marks the current state. Paperboy draws it as the selected tile
+	// and does not run it.
+	Active bool `json:"active,omitempty"`
+	// Disabled is the reason this option cannot run now; empty means it can.
+	Disabled string `json:"disabled,omitempty"`
+}
+
 // ActionState is the answer for one ActionCall, in the request's order.
 type ActionState struct {
 	Title string `json:"title,omitempty"` // current title, overrides the spec
@@ -586,6 +619,15 @@ type Valuer interface {
 type Actioner interface {
 	Actions(req *Request) ([]ActionState, error)
 	Invoke(req *Request, call ActionCall) (ActionOutcome, error)
+}
+
+// ActionOptioner is implemented by plugins that describe the options of an
+// action (ADR 0165). ActionOptions answers every call in req.Actions, in the
+// same order. The plugin honors the arguments already set in a call and
+// returns the complete args of every option. A plugin that does not implement
+// it still answers an actions request for a host below protocol 10.
+type ActionOptioner interface {
+	ActionOptions(req *Request) ([]ActionOptions, error)
 }
 
 // Preparer is implemented by plugins that set up shared state once per
@@ -746,6 +788,8 @@ func Handle(h Handler, req *Request) (m Message) {
 		}
 	case ActionList, ActionInvoke:
 		handleActions(h, req, &m)
+	case ActionOptionList:
+		handleActionOptions(h, req, &m)
 	case ActionValues:
 		handleValues(h, req, &m)
 	default:
@@ -813,6 +857,32 @@ func handleWidgets(h Handler, req *Request) ([]Result, error) {
 		}
 	}
 	return out, nil
+}
+
+// handleActionOptions answers an action_options request. Answers are
+// positional: the plugin returns one option set per call, in the same order.
+func handleActionOptions(h Handler, req *Request, m *Message) {
+	o, ok := h.(ActionOptioner)
+	if !ok {
+		m.Error = "this plugin does not describe action options"
+		return
+	}
+	for _, c := range req.Actions {
+		if c.Action == "" {
+			m.Error = "action_options: action missing"
+			return
+		}
+	}
+	sets, err := o.ActionOptions(req)
+	if err != nil {
+		m.Error = err.Error()
+		return
+	}
+	if len(sets) != len(req.Actions) {
+		m.Error = fmt.Sprintf("action_options: got %d option sets for %d actions", len(sets), len(req.Actions))
+		return
+	}
+	m.Options = sets
 }
 
 // handleActions answers an actions or action request. Answers are positional:

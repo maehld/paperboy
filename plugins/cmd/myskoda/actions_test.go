@@ -56,6 +56,69 @@ func TestActionStates(t *testing.T) {
 	}
 }
 
+func TestActionOptions(t *testing.T) {
+	m := &myskoda{lang: "de"}
+	m.data = fixture(t, "enyaq.json")
+	req := &plugin.Request{Language: "de", Actions: []plugin.ActionCall{
+		{Action: "charging"},
+		{Action: "climate"},
+		{Action: "charging", Args: map[string]any{"state": "stop"}},
+		{Action: "unknown"},
+	}}
+	sets, err := m.ActionOptions(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sets) != 4 {
+		t.Fatalf("got %d option sets for %d actions", len(sets), len(req.Actions))
+	}
+	charging := sets[0]
+	if charging.Title != "Laden" || charging.Disabled != "" || len(charging.Options) != 2 {
+		t.Fatalf("charging: %+v", charging)
+	}
+	if !charging.Options[0].Active || charging.Options[0].Title != "Laden starten" ||
+		charging.Options[0].Disabled != "" {
+		t.Fatalf("start must be active: %+v", charging.Options[0])
+	}
+	if charging.Options[1].Active || charging.Options[1].Title != "Laden stoppen" ||
+		charging.Options[1].Disabled != "" {
+		t.Fatalf("stop must be runnable: %+v", charging.Options[1])
+	}
+	climate := sets[1]
+	if climate.Title != "Klima" || len(climate.Options) != 2 ||
+		!climate.Options[0].Active || climate.Options[1].Active {
+		t.Fatalf("climate: %+v", climate)
+	}
+	fixed := sets[2]
+	if fixed.Disabled != "" || len(fixed.Options) != 1 || fixed.Options[0].Title != "Laden stoppen" ||
+		fixed.Options[0].Args["state"] != "stop" {
+		t.Fatalf("fixed state: %+v", fixed)
+	}
+	if !strings.Contains(sets[3].Disabled, "unknown action") {
+		t.Fatalf("unknown action: %+v", sets[3])
+	}
+}
+
+func TestActionOptionsWithoutDataAndUnsupported(t *testing.T) {
+	m := &myskoda{lang: "en"}
+	sets, err := m.ActionOptions(&plugin.Request{Language: "en",
+		Actions: []plugin.ActionCall{{Action: "charging"}}})
+	if err != nil || len(sets) != 1 || !strings.Contains(sets[0].Disabled, "still loading") {
+		t.Fatalf("no data: %+v %v", sets, err)
+	}
+
+	m.data = fixture(t, "enyaq.json")
+	m.data.Operations = []operation{{Name: "startCharging"}}
+	sets, err = m.ActionOptions(&plugin.Request{Language: "en",
+		Actions: []plugin.ActionCall{{Action: "charging"}}})
+	if err != nil || len(sets) != 1 || len(sets[0].Options) != 2 {
+		t.Fatalf("unsupported: %+v %v", sets, err)
+	}
+	if !strings.Contains(sets[0].Options[1].Disabled, "does not support") {
+		t.Fatalf("stop must be disabled: %+v", sets[0].Options[1])
+	}
+}
+
 func TestActionStatesWithoutData(t *testing.T) {
 	m := &myskoda{lang: "en"}
 	states, err := m.Actions(&plugin.Request{Language: "en",

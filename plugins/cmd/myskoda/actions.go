@@ -15,7 +15,7 @@ import (
 )
 
 // chargingActionArgs is the schema of the "charging" action. Describe publishes
-// it and Invoke checks against it, so a plan and the run agree on the arguments.
+// it and Invoke checks against it, so an editor and the run agree on the arguments.
 var chargingActionArgs = map[string]plugin.Arg{
 	"state": {Type: "string", Required: true, Description: "start or stop charging", Enum: []any{"start", "stop"}},
 }
@@ -184,6 +184,132 @@ func checkTemperature(t float64) string {
 		return fmt.Sprintf("temperature: %.1f is outside 16 to 30 °C", t)
 	}
 	return ""
+}
+
+// ActionOptions describes the start and stop choices of a charging or
+// air-conditioning action (ADR 0165). The target state that already holds is
+// active; the other option carries the reason it cannot run.
+func (m *myskoda) ActionOptions(req *plugin.Request) ([]plugin.ActionOptions, error) {
+	data, loadErr := m.lastState()
+	out := make([]plugin.ActionOptions, 0, len(req.Actions))
+	for _, call := range req.Actions {
+		out = append(out, m.actionOptions(req, call, data, loadErr))
+	}
+	return out, nil
+}
+
+func (m *myskoda) actionOptions(req *plugin.Request, call plugin.ActionCall, data *vehicle, loadErr error) plugin.ActionOptions {
+	var out plugin.ActionOptions
+	var schema map[string]plugin.Arg
+	switch call.Action {
+	case "charging":
+		schema = chargingActionArgs
+	case "climate":
+		schema = climateActionArgs
+	case "":
+		out.Disabled = "action missing"
+		return out
+	default:
+		out.Disabled = fmt.Sprintf("unknown action %q", call.Action)
+		return out
+	}
+	args := call.Arg()
+	fixedState := args.String("state", "")
+	// A call without a state offers both states, so state is not required.
+	checked := plugin.Values{}
+	for name, value := range args {
+		if name == "state" && fixedState == "" {
+			continue
+		}
+		checked[name] = value
+	}
+	optionSchema := map[string]plugin.Arg{}
+	for name, arg := range schema {
+		if name == "state" && fixedState == "" {
+			continue
+		}
+		optionSchema[name] = arg
+	}
+	if err := checked.Check(optionSchema); err != nil {
+		out.Disabled = err.Error()
+		return out
+	}
+	if call.Action == "climate" {
+		if _, set := args["temperature"]; set {
+			if msg := checkTemperature(args.Float("temperature", defaultTemperature)); msg != "" {
+				out.Disabled = msg
+				return out
+			}
+		}
+	}
+	switch {
+	case data == nil && loadErr != nil:
+		out.Disabled = loadErr.Error()
+	case data == nil:
+		out.Disabled = req.T("Fahrzeugdaten werden noch geladen", "vehicle data is still loading")
+	}
+	if out.Disabled != "" {
+		return out
+	}
+	out.Title = actionGroupTitle(req, call.Action)
+	states := []string{"start", "stop"}
+	if fixedState != "" {
+		states = []string{fixedState}
+	}
+	for _, state := range states {
+		optionArgs := make(map[string]any, len(args)+1)
+		for name, value := range args {
+			optionArgs[name] = value
+		}
+		optionArgs["state"] = state
+		active := stateActive(call.Action, data, state)
+		option := plugin.ActionOption{Args: optionArgs, Title: actionTitle(req, call.Action, state), Active: active}
+		switch {
+		case !data.hasOperation(operationName(call.Action, state)):
+			option.Disabled = req.T("Das Fahrzeug unterstützt diesen Befehl nicht",
+				"the vehicle does not support this operation")
+		case active:
+			// The current state needs no command.
+		case call.Action == "charging":
+			option.Disabled = chargingDisabled(req, data, state)
+		case call.Action == "climate":
+			option.Disabled = climateDisabled(req, data, state)
+		}
+		out.Options = append(out.Options, option)
+	}
+	return out
+}
+
+// actionGroupTitle names an action above its options.
+func actionGroupTitle(req *plugin.Request, action string) string {
+	switch action {
+	case "charging":
+		return req.T("Laden", "Charging")
+	case "climate":
+		return req.T("Klima", "Air conditioning")
+	}
+	return action
+}
+
+// stateActive reports whether the target state of an option already holds.
+func stateActive(action string, v *vehicle, state string) bool {
+	switch action {
+	case "charging":
+		current := v.chargeStateValue()
+		if current == "" {
+			return false
+		}
+		if state == "start" {
+			return current == "CHARGING"
+		}
+		return current != "CHARGING"
+	case "climate":
+		if state == "start" {
+			return v.climateActive()
+		}
+		return !v.climateActive()
+	}
+	return false
 }
 
 // Invoke runs one charging or air-conditioning command (ADR 0057). Actions set

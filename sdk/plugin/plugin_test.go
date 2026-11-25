@@ -178,6 +178,25 @@ func (actionHandler) Actions(req *Request) ([]ActionState, error) {
 	return out, nil
 }
 
+func (actionHandler) ActionOptions(req *Request) ([]ActionOptions, error) {
+	out := make([]ActionOptions, len(req.Actions))
+	for i, c := range req.Actions {
+		out[i].Title = c.Action
+		switch c.Action {
+		case "mode":
+			out[i].Options = []ActionOption{
+				{Args: map[string]any{"mode": "now"}, Title: "Now", Active: true},
+				{Args: map[string]any{"mode": "off"}, Title: "Off", Disabled: "already off"},
+			}
+		case "refresh":
+			out[i].Options = []ActionOption{{Title: "Refresh"}}
+		default:
+			out[i].Disabled = fmt.Sprintf("unknown action %q", c.Action)
+		}
+	}
+	return out, nil
+}
+
 func (actionHandler) Invoke(_ *Request, call ActionCall) (ActionOutcome, error) {
 	switch call.Action {
 	case "fail":
@@ -240,8 +259,51 @@ func (actionFewerStates) Actions(*Request) ([]ActionState, error) {
 	return []ActionState{{Title: "a"}}, nil
 }
 
+func TestActionOptions(t *testing.T) {
+	h := &actionHandler{}
+	m := Handle(h, &Request{Action: ActionOptionList, Device: &DeviceInfo{ID: "kueche"},
+		Actions: []ActionCall{{Action: "mode", Args: map[string]any{"index": 0}}, {Action: "refresh"}}})
+	if m.Error != "" || len(m.Options) != 2 {
+		t.Fatalf("action options: %+v", m)
+	}
+	mode := m.Options[0]
+	if mode.Title != "mode" || len(mode.Options) != 2 ||
+		mode.Options[0].Title != "Now" || !mode.Options[0].Active || mode.Options[0].Disabled != "" ||
+		mode.Options[1].Title != "Off" || mode.Options[1].Active || mode.Options[1].Disabled != "already off" {
+		t.Fatalf("mode options: %+v", mode)
+	}
+	if m.Options[1].Title != "refresh" || len(m.Options[1].Options) != 1 || m.Options[1].Options[0].Title != "Refresh" {
+		t.Fatalf("trigger options: %+v", m.Options[1])
+	}
+	m = Handle(h, &Request{Action: ActionOptionList,
+		Actions: []ActionCall{{Action: "missing"}}})
+	if m.Error != "" || len(m.Options) != 1 || !strings.Contains(m.Options[0].Disabled, "unknown action") {
+		t.Fatalf("unknown action: %+v", m)
+	}
+	if m = Handle(&testHandler{}, &Request{Action: ActionOptionList}); m.Error == "" {
+		t.Fatal("a plugin without action options must be rejected")
+	}
+	if m = Handle(h, &Request{Action: ActionOptionList, Actions: []ActionCall{{}}}); m.Error == "" {
+		t.Fatal("an option request must name its actions")
+	}
+}
+
+func TestActionOptionCount(t *testing.T) {
+	m := Handle(&actionOptionsFewer{}, &Request{Action: ActionOptionList,
+		Actions: []ActionCall{{Action: "mode"}, {Action: "refresh"}}})
+	if m.Error == "" || len(m.Options) != 0 {
+		t.Fatalf("option count mismatch: %+v", m)
+	}
+}
+
+type actionOptionsFewer struct{ actionHandler }
+
+func (actionOptionsFewer) ActionOptions(*Request) ([]ActionOptions, error) {
+	return []ActionOptions{{Title: "mode"}}, nil
+}
+
 func TestVersion(t *testing.T) {
-	if Version != 9 {
+	if Version != 10 {
 		t.Fatalf("protocol version = %d", Version)
 	}
 }

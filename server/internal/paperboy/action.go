@@ -29,6 +29,7 @@ type actionOption struct {
 	Action   string         `json:"action"`
 	Args     map[string]any `json:"args,omitempty"`
 	Title    string         `json:"title,omitempty"`
+	Active   bool           `json:"active,omitempty"`
 	Disabled string         `json:"disabled,omitempty"`
 	Cell     int            `json:"cell"`
 	// Rect is the tile in page pixels: x0, y0, x1, y1. The drawing sets it.
@@ -49,23 +50,29 @@ type actionState struct {
 // close drops all action state.
 func (a *actionState) close() { *a = actionState{} }
 
+// runnable reports whether a tap or the selection may run the option. The
+// active option is the current state and a disabled option cannot run
+// (ADR 0165).
+func (o actionOption) runnable() bool { return !o.Active && o.Disabled == "" }
+
 // choose selects the first runnable option in reading order. A selected option
 // that is still runnable stays, so a repaint keeps the selection (ADR 0163).
 func (a *actionState) choose() {
-	if a.Selected >= 0 && a.Selected < len(a.Options) && a.Options[a.Selected].Disabled == "" {
+	if a.Selected >= 0 && a.Selected < len(a.Options) && a.Options[a.Selected].runnable() {
 		return
 	}
 	a.Selected = -1
 	for i := range a.Options {
-		if a.Options[i].Disabled == "" {
+		if a.Options[i].runnable() {
 			a.Selected = i
 			return
 		}
 	}
 }
 
-// moveSelection moves the selection by step options and wraps. Disabled
-// options are skipped, so one press can pass several of them (ADR 0163).
+// moveSelection moves the selection by step options and wraps. Disabled and
+// active options are skipped, so one press can pass several of them (ADR 0163,
+// 0165).
 func (a *actionState) moveSelection(step int) {
 	a.choose()
 	if a.Selected < 0 {
@@ -74,7 +81,7 @@ func (a *actionState) moveSelection(step int) {
 	n := len(a.Options)
 	for i := 1; i <= n; i++ {
 		idx := ((a.Selected+step*i)%n + n) % n
-		if a.Options[idx].Disabled == "" {
+		if a.Options[idx].runnable() {
 			a.Selected = idx
 			return
 		}
@@ -83,7 +90,7 @@ func (a *actionState) moveSelection(step int) {
 
 // chosen returns the selected option when it can run.
 func (a actionState) chosen() *actionOption {
-	if a.Selected < 0 || a.Selected >= len(a.Options) || a.Options[a.Selected].Disabled != "" {
+	if a.Selected < 0 || a.Selected >= len(a.Options) || !a.Options[a.Selected].runnable() {
 		return nil
 	}
 	return &a.Options[a.Selected]
@@ -108,9 +115,12 @@ type actionJob struct {
 	action   string
 	spec     plugin.ActionSpec
 	args     []map[string]any // one concrete call per option
-	labels   []string         // the enum label of each option; empty for a trigger
+	labels   []string         // the enum label of each fallback option
 	rect     [4]int
 	disabled string
+	// modern is true when the plugin speaks protocol 10 or newer and answers
+	// action_options (ADR 0165).
+	modern bool
 }
 
 // actionSpec finds one action in a plugin's catalog.
@@ -168,9 +178,63 @@ func emptyArg(v any) bool {
 	return false
 }
 
+// actionBlockCheck rejects a missing required argument that is not the choice.
+// A required enum may stay empty, because the plugin offers its values
+// (ADR 0164, 0165).
+func actionBlockCheck(spec plugin.ActionSpec, given map[string]any) string {
+	for name, arg := range spec.Args {
+		if !arg.Required {
+			continue
+		}
+		if len(arg.Enum) > 0 && arg.Type != "list" {
+			continue
+		}
+		if value, set := given[name]; !set || emptyArg(value) {
+			return fmt.Sprintf("required argument %q is missing", name)
+		}
+	}
+	return ""
+}
+
+// actionFixedArgs copies the arguments the action block sets and the action
+// declares. An empty value stays a choice for the plugin (ADR 0164, 0165).
+func actionFixedArgs(spec plugin.ActionSpec, given map[string]any) map[string]any {
+	fixed := map[string]any{}
+	for name := range spec.Args {
+		if v, ok := given[name]; ok && !emptyArg(v) {
+			fixed[name] = v
+		}
+	}
+	return fixed
+}
+
+// legacyActionOptions builds the one-call-per-enum tiles of protocol 9. It is
+// the fallback for a plugin below version 10 (ADR 0162, 0165).
+func legacyActionOptions(spec plugin.ActionSpec, given map[string]any) (args []map[string]any, labels []string, reason string) {
+	fixed, choice, choices, reason := actionArgs(spec, given)
+	if reason != "" {
+		return nil, nil, reason
+	}
+	if choice != "" && len(choices) == 0 {
+		return nil, nil, "the action offers no choices"
+	}
+	if choice == "" {
+		return []map[string]any{fixed}, []string{""}, ""
+	}
+	for _, value := range choices {
+		callArgs := cloneArgs(fixed)
+		callArgs[choice] = value
+		args = append(args, callArgs)
+		labels = append(labels, enumLabel(spec.Args[choice], value))
+	}
+	return args, labels, ""
+}
+
 // resolveWidgetActions builds the tiles of every actionable cell. A plugin
 // that is down or does not know the action keeps its cell visible with the
-// reason, so a broken plugin never costs the device its page (ADR 0162).
+// reason, so a broken plugin never costs the device its page (ADR 0162). A
+// plugin from protocol 10 answers its complete option list (ADR 0165); an
+// older plugin keeps the one-call-per-enum fallback.
 func (s *Server) resolveWidgetActions(ctx context.Context, cfg *Config, d *Device, tmpl *page.Template, now time.Time) []actionOption {
 	prof := cfg.Profiles[d.Profile]
 	rects := tmpl.Rects(prof.Width, prof.Height)
@@ -207,44 +271,46 @@ func (s *Server) resolveWidgetActions(ctx context.Context, cfg *Config, d *Devic
 			jobs = append(jobs, job)
 			continue
 		}
-		fixed, choice, choices, reason := actionArgs(spec, cell.Action.Args)
-		if reason != "" {
-			job.spec, job.disabled = spec, reason
-			jobs = append(jobs, job)
-			continue
-		}
 		job.spec = spec
-		if choice != "" && len(choices) == 0 {
-			job.disabled = "the action offers no choices"
+		job.modern = s.widgets.Protocol(name) >= plugin.Version
+		if job.modern {
+			if reason := actionBlockCheck(spec, cell.Action.Args); reason != "" {
+				job.disabled = reason
+				jobs = append(jobs, job)
+				continue
+			}
+			job.args = []map[string]any{actionFixedArgs(spec, cell.Action.Args)}
 			jobs = append(jobs, job)
 			continue
 		}
-		if choice == "" {
-			job.args = []map[string]any{fixed}
-			job.labels = []string{""}
-		} else {
-			for _, value := range choices {
-				args := cloneArgs(fixed)
-				args[choice] = value
-				job.args = append(job.args, args)
-				job.labels = append(job.labels, enumLabel(spec.Args[choice], value))
-			}
+		args, labels, reason := legacyActionOptions(spec, cell.Action.Args)
+		if reason != "" {
+			job.disabled = reason
+			jobs = append(jobs, job)
+			continue
 		}
+		job.args, job.labels = args, labels
 		jobs = append(jobs, job)
 	}
 
-	// One actions request per plugin for all its calls.
+	// One request per plugin for all its calls, in either protocol.
 	byPlugin := map[string][]int{}
 	for i, j := range jobs {
 		if j.disabled == "" && len(j.args) > 0 {
 			byPlugin[j.plugin] = append(byPlugin[j.plugin], i)
 		}
 	}
+	sets := map[int]plugin.ActionOptions{}
 	states := map[int][]plugin.ActionState{}
 	for name, indexes := range byPlugin {
+		modern := jobs[indexes[0]].modern
 		var calls []plugin.ActionCall
 		for _, i := range indexes {
 			j := &jobs[i]
+			if modern {
+				calls = append(calls, plugin.ActionCall{Action: j.action, Args: j.args[0]})
+				continue
+			}
 			for _, args := range j.args {
 				calls = append(calls, plugin.ActionCall{Action: j.action, Args: args})
 			}
@@ -252,6 +318,20 @@ func (s *Server) resolveWidgetActions(ctx context.Context, cfg *Config, d *Devic
 		req := plugin.Request{Version: plugin.Version, Language: cfg.Language, Timezone: cfg.timezoneName(),
 			Now: now, Page: plugin.PageInfo{Width: prof.Width, Height: prof.Height, PPI: prof.PPI},
 			Device: &plugin.DeviceInfo{ID: d.ID, Hardware: s.hardwareOf(d)}, Actions: calls}
+		if modern {
+			got, err := s.widgets.ActionOptions(ctx, name, req)
+			if err != nil {
+				reason := shortError(err)
+				for _, i := range indexes {
+					jobs[i].disabled, jobs[i].args = reason, nil
+				}
+				continue
+			}
+			for n, i := range indexes {
+				sets[i] = got[n]
+			}
+			continue
+		}
 		got, err := s.widgets.Actions(ctx, name, req)
 		if err != nil {
 			reason := shortError(err)
@@ -280,6 +360,46 @@ func (s *Server) resolveWidgetActions(ctx context.Context, cfg *Config, d *Devic
 			}
 			out = append(out, actionOption{Plugin: job.plugin, Action: job.action, Title: title,
 				Disabled: job.disabled, Cell: job.cell, Rect: job.rect})
+			continue
+		}
+		if job.modern {
+			set := sets[i]
+			title := set.Title
+			if title == "" {
+				title = job.spec.Title
+			}
+			if title == "" {
+				title = job.action
+			}
+			if set.Disabled != "" || len(set.Options) == 0 {
+				reason := set.Disabled
+				if reason == "" {
+					reason = "the action offers no options"
+					slog.Warn("action options are empty without a reason",
+						"plugin", job.plugin, "action", job.action, "cell", job.cell)
+				}
+				out = append(out, actionOption{Plugin: job.plugin, Action: job.action, Title: title,
+					Disabled: reason, Cell: job.cell, Rect: job.rect})
+				continue
+			}
+			active := false
+			for _, o := range set.Options {
+				a := o.Active
+				if a && active {
+					slog.Warn("action options mark more than one option active",
+						"plugin", job.plugin, "action", job.action, "cell", job.cell)
+					a = false
+				}
+				if a {
+					active = true
+				}
+				optionTitle := o.Title
+				if optionTitle == "" {
+					optionTitle = title
+				}
+				out = append(out, actionOption{Plugin: job.plugin, Action: job.action, Args: o.Args,
+					Title: optionTitle, Active: a, Disabled: o.Disabled, Cell: job.cell, Rect: job.rect})
+			}
 			continue
 		}
 		got := states[i]
@@ -418,8 +538,8 @@ func (x *syncSession) actionMode(st *deviceState, holds []int, cfg *Config) acti
 			action.close()
 			break
 		}
-		if opt.Disabled != "" {
-			continue // a disabled tile neither runs nor closes
+		if !opt.runnable() {
+			continue // an active or disabled tile neither runs nor closes
 		}
 		chosen := *opt
 		x.invoke = &chosen

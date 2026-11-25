@@ -807,6 +807,64 @@ func (h *Host) Actions(ctx context.Context, name string, req plugin.Request) ([]
 	return msg.Actions, nil
 }
 
+// ActionOptions asks a plugin for the complete options of concrete actions
+// (ADR 0165). The answer has one set per call, in the same order. Like action
+// states, option sets are not cached: they depend on a device and a moment.
+func (h *Host) ActionOptions(ctx context.Context, name string, req plugin.Request) ([]plugin.ActionOptions, error) {
+	req.Action = plugin.ActionOptionList
+	if handler, ok := h.Builtin[name]; ok {
+		h.builtMu.Lock()
+		defer h.builtMu.Unlock()
+		msg := plugin.Handle(handler, &req)
+		if msg.Error != "" {
+			return nil, errors.New(msg.Error)
+		}
+		if len(msg.Options) != len(req.Actions) {
+			return nil, fmt.Errorf("%d option sets for %d actions", len(msg.Options), len(req.Actions))
+		}
+		return msg.Options, nil
+	}
+	spec, err := h.spec(name)
+	if err != nil {
+		return nil, err
+	}
+	defer h.slot(name)()
+	req.Version = plugin.Version
+	if req.Now.IsZero() {
+		req.Now = h.now()
+	}
+	msg, err := h.call(ctx, spec, req)
+	if err != nil {
+		h.fail(name, err)
+		return nil, err
+	}
+	if len(msg.Options) != len(req.Actions) {
+		err := fmt.Errorf("%d option sets for %d actions", len(msg.Options), len(req.Actions))
+		h.fail(name, err)
+		return nil, err
+	}
+	h.recover(name)
+	return msg.Options, nil
+}
+
+// Protocol reports the protocol version the named plugin last reported. A
+// built-in plugin speaks the version of this package. Zero means the plugin
+// has not answered yet, so a caller asks Describe first.
+func (h *Host) Protocol(name string) int {
+	if _, ok := h.Builtin[name]; ok {
+		return plugin.Version
+	}
+	h.mu.Lock()
+	p := h.procs[name]
+	h.mu.Unlock()
+	if p == nil {
+		return 0
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.proto
+}
+
 // Invoke runs one concrete action (ADR 0057). The plugin decides whether it
 // needs a confirmation; the caller has asked before calling this.
 func (h *Host) Invoke(ctx context.Context, name string, req plugin.Request) (plugin.ActionOutcome, error) {

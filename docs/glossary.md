@@ -35,6 +35,7 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **action** | Something a plugin can do on request; a widget cell names one action with its own arguments, and the plugin names its choices | command, task, operation |
 | **action mode** | The device state a short `home` opens on a page with an action; a tap or the keys run one option on the action view | overlay, menu |
 | **action view** | The screen of the action mode: a frame around every actionable cell and one tile per choice | action screen, overlay |
+| **action option** | One choice of an action: its complete call, title, `active` flag and `disabled` reason; Paperboy draws it as a tile | action choice, action tile |
 | **notice page** | A full-screen page that tells the device why it got no page | hint, error page, message page |
 | **stale** | A widget result that is older than its `max_age` and therefore carries the warning bar | expired, outdated |
 | **levels** | The number of gray levels a display type draws: 1, 4 or 16 | gray, grayscale, bpp |

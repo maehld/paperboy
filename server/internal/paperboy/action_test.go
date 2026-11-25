@@ -1,7 +1,9 @@
 package paperboy
 
 import (
+	"bytes"
 	"image"
+	"image/png"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -64,6 +66,31 @@ func (p *actionPlugin) Actions(req *plugin.Request) ([]plugin.ActionState, error
 		out[i].Title = mode
 		if mode == p.mode {
 			out[i].Disabled = "already active"
+		}
+	}
+	return out, nil
+}
+
+func (p *actionPlugin) ActionOptions(req *plugin.Request) ([]plugin.ActionOptions, error) {
+	out := make([]plugin.ActionOptions, len(req.Actions))
+	for i, call := range req.Actions {
+		p.calls = append(p.calls, call)
+		if call.Action == "boost" {
+			out[i].Title = "Boost"
+			out[i].Options = []plugin.ActionOption{{Title: "Boost"}}
+			continue
+		}
+		out[i].Title = "Charge mode"
+		modes := []string{"off", "pv", "now"}
+		if fixed := call.Arg().String("mode", ""); fixed != "" {
+			modes = []string{fixed}
+		}
+		for _, mode := range modes {
+			out[i].Options = append(out[i].Options, plugin.ActionOption{
+				Args:   map[string]any{"index": call.Arg().Int("index", 0), "mode": mode},
+				Title:  mode,
+				Active: mode == p.mode,
+			})
 		}
 	}
 	return out, nil
@@ -150,13 +177,11 @@ func TestActionModeRunsATap(t *testing.T) {
 	if !st.Open || st.Screen != imageOf(mode)["hash"].(string) || len(opts) != 3 {
 		t.Fatalf("action state: %+v", st)
 	}
-	if len(p.calls) != 3 {
-		t.Fatalf("the plugin must see one call per choice: %v", p.calls)
+	if len(p.calls) != 1 {
+		t.Fatalf("the plugin must see one option call per action: %v", p.calls)
 	}
-	for _, call := range p.calls {
-		if call.Arg().Int("index", -1) != 0 || call.Arg().String("mode", "") == "" {
-			t.Fatalf("the widget argument and the choice must reach the plugin: %+v", call)
-		}
+	if p.calls[0].Arg().Int("index", -1) != 0 || p.calls[0].Arg().String("mode", "") != "" {
+		t.Fatalf("the widget argument must reach the plugin without a guessed choice: %+v", p.calls[0])
 	}
 	var tap actionOption
 	for _, o := range opts {
@@ -219,6 +244,97 @@ func TestActionTapOutsideLeavesTheMode(t *testing.T) {
 	}
 	if open, _ := actionStateOf(t, s); open.Open {
 		t.Fatal("a tap outside must leave the mode")
+	}
+}
+
+// TestActionActiveOptionDoesNothing checks that the current option is shown
+// but neither runs nor closes the mode (ADR 0165).
+func TestActionActiveOptionDoesNothing(t *testing.T) {
+	s, dev, p := actionServer(t, actionPage, true)
+	displayPage(t, s, dev)
+	press(t, s, dev, buttonHome)
+	st, opts := actionStateOf(t, s)
+	var active *actionOption
+	for i := range opts {
+		if opts[i].Active {
+			active = &opts[i]
+		}
+	}
+	if active == nil || active.Title != "off" {
+		t.Fatalf("the current mode must be active: %+v", opts)
+	}
+	x, y := (active.Rect[0]+active.Rect[2])/2, (active.Rect[1]+active.Rect[3])/2
+	dev.req.Reason = "touch"
+	dev.req.Shown = st.Screen
+	dev.req.Events = []syncEvent{{ID: 1, Type: "touch", X: x, Y: y}}
+	displayPage(t, s, dev)
+	if len(p.runs) != 0 {
+		t.Fatalf("an active option ran %v", p.runs)
+	}
+	if st, _ := actionStateOf(t, s); !st.Open {
+		t.Fatal("an active option must keep the mode open")
+	}
+}
+
+// TestActionActiveTileIsInverted checks the selected look: the active tile is
+// black, the other tiles stay white (ADR 0165).
+func TestActionActiveTileIsInverted(t *testing.T) {
+	s, dev, _ := actionServer(t, actionPage, true)
+	displayPage(t, s, dev)
+	mode := press(t, s, dev, buttonHome)
+	_, opts := actionStateOf(t, s)
+	var active, other actionOption
+	for _, o := range opts {
+		switch {
+		case o.Active:
+			active = o
+		case other.Title == "":
+			other = o
+		}
+	}
+	if active.Title == "" || other.Title == "" {
+		t.Fatalf("need one active and one other option: %+v", opts)
+	}
+	rec := fetchImage(t, s, pagePath(mode))
+	img, err := png.Decode(bytes.NewReader(rec.Body.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dark := func(r [4]int) bool {
+		rr, _, _, _ := img.At(r[0]+3, r[1]+3).RGBA()
+		return rr < 0x4000
+	}
+	if !dark(active.Rect) {
+		t.Fatal("the active tile must be inverted")
+	}
+	if dark(other.Rect) {
+		t.Fatal("a normal tile must stay white")
+	}
+}
+
+// TestLegacyActionOptions checks the protocol 9 fallback: the one remaining
+// required enum argument becomes the choice and the fixed arguments stay.
+func TestLegacyActionOptions(t *testing.T) {
+	spec := plugin.ActionSpec{Name: "mode", Args: map[string]plugin.Arg{
+		"index": {Type: "int", Required: true},
+		"mode":  {Type: "string", Required: true, Enum: []any{"off", "now"}, EnumLabels: map[string]string{"off": "Off", "now": "Now"}},
+	}}
+	args, labels, reason := legacyActionOptions(spec, map[string]any{"index": 0})
+	if reason != "" || len(args) != 2 || labels[0] != "Off" || labels[1] != "Now" {
+		t.Fatalf("choice: %v %v %q", args, labels, reason)
+	}
+	for _, call := range args {
+		if call["index"] != 0 || call["mode"] == nil {
+			t.Fatalf("fixed argument and choice: %+v", call)
+		}
+	}
+	args, labels, reason = legacyActionOptions(spec, map[string]any{"index": 0, "mode": "now"})
+	if reason != "" || len(args) != 1 || labels[0] != "" || args[0]["mode"] != "now" {
+		t.Fatalf("fixed choice: %v %v %q", args, labels, reason)
+	}
+	spec.Args["other"] = plugin.Arg{Type: "string", Required: true, Enum: []any{"a"}}
+	if _, _, reason = legacyActionOptions(spec, map[string]any{"index": 0}); !strings.Contains(reason, "more than one") {
+		t.Fatalf("two choices: %q", reason)
 	}
 }
 
@@ -480,12 +596,19 @@ cells:
 	s, dev, p := actionServer(t, page, true)
 	displayPage(t, s, dev)
 	press(t, s, dev, buttonHome)
-	if len(p.calls) != 3 {
-		t.Fatalf("the empty enum must become three choices: %+v", p.calls)
+	if len(p.calls) != 1 {
+		t.Fatalf("the plugin must see one base call: %+v", p.calls)
 	}
-	for _, call := range p.calls {
-		if call.Arg().Int("index", -1) != 1 || call.Arg().String("mode", "") == "" {
-			t.Fatalf("the action must use its own args: %+v", call)
+	if p.calls[0].Arg().Int("index", -1) != 1 || p.calls[0].Arg().String("mode", "") != "" {
+		t.Fatalf("the action must use its own args without a guessed choice: %+v", p.calls[0])
+	}
+	_, opts := actionStateOf(t, s)
+	if len(opts) != 3 {
+		t.Fatalf("the empty enum must become three choices: %+v", opts)
+	}
+	for _, opt := range opts {
+		if opt.Args["index"] != 1 || opt.Args["mode"] == nil {
+			t.Fatalf("the option must carry the action's args: %+v", opt)
 		}
 	}
 }
