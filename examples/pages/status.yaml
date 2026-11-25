@@ -1,20 +1,11 @@
 # The battery, the room and the status of this device and of others (ADR 0109).
-# The header band shows the title, the room the device measures, its battery
-# and the clock (ADR 0166). The two status cells show this device and a fixed
+# The display type's header band shows the title, the room, its battery and the
+# clock (ADR 0168). The two status cells show this device and a fixed
 # list from the device files. The two gauges show the square form of the
 # battery widget (ADR 0121). The last row shows the room as large values.
 title: Status
 kind: image
 grid: [6, 7]
-header:
-  height: 24
-  left:
-    - { widget: paperboy/title, weight: 3 }
-  center:
-    - { widget: paperboy/reading, args: { name: temperature, label: false, age: false }, weight: 1 }
-  right:
-    - { widget: paperboy/battery, weight: 1 }
-    - { widget: paperboy/clock, args: { format: time, align: right }, weight: 1 }
 style: { padding: 4.5, divider: 0.6 }
 cells:
   - { at: [0, 0], span: [6, 2], widget: paperboy/device-status }

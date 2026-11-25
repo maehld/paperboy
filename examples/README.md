@@ -8,13 +8,14 @@ grid, the spans and the arguments. A text page's value cells read the same
 `args` as the widget, so a page picks its stop, loadpoint, calendar window or
 date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
 
-- `uebersicht.yaml` - a header band with the page title and the date, weather,
-  energy flow from evcc, agenda and a three-day forecast.
-- `status.yaml` - a header band with the page title, the room temperature, the
-  battery of this device and the clock, the status of this device and of two
-  devices from the device files, and two batteries as large gauges with the
-  clock beside them. Image displays only: a text page shows plugin values
-  (ADR 0111).
+- `uebersicht.yaml` - weather, energy flow from evcc, agenda and a three-day
+  forecast. The display type adds the header band with the page title and the
+  date (ADR 0168).
+- `status.yaml` - the status of this device and of two devices from the device
+  files, and two batteries as large gauges with the clock beside them. The
+  display type adds the header band with the page title, the room temperature,
+  the battery of this device and the clock. Image displays only: a text page
+  shows plugin values (ADR 0111).
 - `kalender.yaml` - agenda next to a month grid.
 - `woche.yaml` - the next seven days as calendar columns.
 - `wetter.yaml` - current weather, five days and today's temperature curve.
@@ -49,8 +50,10 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
   file, the progress and the temperatures on 20×4.
 - `unterwegs.yaml` - current weather and the next departures, for leaving the
   house.
-- `pokemon.yaml` - a full-screen Pokédex card.
-- `comic.yaml` - a full-screen xkcd comic with title and alt text.
+- `pokemon.yaml` - a full-screen Pokédex card; it hides the display type's
+  header.
+- `comic.yaml` - a full-screen xkcd comic with title and alt text; it hides the
+  display type's header.
 - `countdown.yaml` - countdowns to Christmas and New Year (yearly, one with a
   progress bar) and two fixed dates, the last with a time and a bar;
   `countdown.lcd2004.yaml` shows the countdown values with their dates on 20×4.
@@ -69,6 +72,10 @@ every widget in the size of its cell. Its `variants` map names the exceptions
 `uebersicht.yaml` names `lcd2004: lcd2004`, so `uebersicht.lcd2004.yaml` serves
 the text display. A text page carries boxes of values or literal text, and every
 box must fit the character grid of the display.
+
+The image display types under `displays/` carry a header band with the page
+title, the room temperature, the battery and the clock (ADR 0168). A page
+without it writes `header: false`. The text display type has no header band.
 
 The plugin names in the pages are the keys under `plugins` in `paperboy.yaml`;
 `server/cmd/paperboy/paperboy.example.yaml` declares all of them.

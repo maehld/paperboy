@@ -346,6 +346,18 @@ func (s *Server) handleUIDialogJS(w http.ResponseWriter, r *http.Request) {
 	w.Write(uiDialogJS)
 }
 
+// uiArgsJS draws the argument fields of a widget from the plugin schema; the
+// page editor and the display type editor share it (ADR 0168).
+//
+//go:embed ui/args.js
+var uiArgsJS []byte
+
+func (s *Server) handleUIArgsJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(uiArgsJS)
+}
+
 // dashboardDevice is one card of the overview. It carries display-ready texts
 // so the template holds no formatting logic.
 type dashboardDevice struct {

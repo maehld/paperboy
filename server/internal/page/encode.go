@@ -64,8 +64,8 @@ func encode(t *Template, variant bool) ([]byte, error) {
 		return marshalNode(root)
 	}
 	add(root, "grid", intSeq(c.Grid[0], c.Grid[1]))
-	if c.Header != nil {
-		add(root, "header", headerNode(*c.Header))
+	if c.Header != nil && !bool(*c.Header) {
+		add(root, "header", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "false"})
 	}
 	cells := newSeq(false)
 	for _, cell := range c.Cells {
@@ -122,47 +122,35 @@ func textCellNode(c Cell) *yaml.Node {
 	return n
 }
 
-// headerNode writes the band above the grid (ADR 0166). The default height is
-// left out, and so is a weight of 1.
-func headerNode(h Header) *yaml.Node {
+// HeaderNode writes the fixed band of a display type: its height and every
+// switch, so the file shows the whole band (ADR 0168).
+func HeaderNode(h Header) *yaml.Node {
 	n := newMap()
-	if h.Height != 0 && h.Height != DefaultHeaderPt {
-		add(n, "height", num(h.Height))
+	height := h.Height
+	if height == 0 {
+		height = DefaultHeaderPt
 	}
-	zones := []struct {
-		name  string
-		parts []HeaderPart
-	}{{"left", h.Left}, {"center", h.Center}, {"right", h.Right}}
-	for _, zone := range zones {
-		if len(zone.parts) == 0 {
-			continue
-		}
-		parts := newSeq(false)
-		for _, part := range zone.parts {
-			parts.Content = append(parts.Content, headerPartNode(part))
-		}
-		add(n, zone.name, parts)
+	clock := h.Clock
+	if clock == "" {
+		clock = "time"
 	}
-	return n
-}
-
-// headerPartNode is one part in flow style, e.g.
-// { widget: paperboy/title, weight: 2 }.
-func headerPartNode(p HeaderPart) *yaml.Node {
-	n := newMap()
-	n.Style = yaml.FlowStyle
-	add(n, "widget", str(p.Widget))
-	if len(p.Args) > 0 {
-		add(n, "args", valueNode(p.Args))
+	boolNode := func(v bool) *yaml.Node {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: strconv.FormatBool(v)}
 	}
-	if p.Weight != 0 && p.Weight != 1 {
-		add(n, "weight", num(float64(p.Weight)))
+	add(n, "height", num(height))
+	// true is the default and stays out of the file.
+	if !h.ShowsPageIndicator() {
+		add(n, "page_indicator", boolNode(false))
 	}
+	add(n, "temperature", boolNode(h.Temperature))
+	add(n, "humidity", boolNode(h.Humidity))
+	add(n, "clock", str(clock))
+	add(n, "battery", boolNode(h.Battery))
 	return n
 }
 
 // cellNode is one cell in flow style, e.g.
-// { at: [0, 0], span: [6, 1], widget: paperboy/header }.
+// { at: [0, 0], span: [3, 1], widget: text/comic }.
 func cellNode(c Cell) *yaml.Node {
 	n := newMap()
 	n.Style = yaml.FlowStyle

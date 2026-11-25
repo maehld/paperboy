@@ -210,16 +210,19 @@ type uiOption struct {
 // editorState is what the script starts from, so it does not have to guess the
 // kind, the size or the grid of a page that does not exist yet.
 type editorState struct {
-	Name        string              `json:"name"`
-	Display     string              `json:"display"` // preview type
-	File        string              `json:"file"`    // label of the open file; empty: the page file
-	Kind        string              `json:"kind"`    // image or text: the kind of the open file
-	Width       int                 `json:"width"`   // characters of a text display, pixels of an image display
-	Height      int                 `json:"height"`
-	PPI         float64             `json:"ppi"`  // points of a header band to pixels
-	New         bool                `json:"new"`  // there is no file yet
-	Grid        [2]int              `json:"grid"` // grid a new page starts with
-	Reference   [2]int              `json:"reference"`
+	Name      string  `json:"name"`
+	Display   string  `json:"display"` // preview type
+	File      string  `json:"file"`    // label of the open file; empty: the page file
+	Kind      string  `json:"kind"`    // image or text: the kind of the open file
+	Width     int     `json:"width"`   // characters of a text display, pixels of an image display
+	Height    int     `json:"height"`
+	PPI       float64 `json:"ppi"`  // points of a header band to pixels
+	New       bool    `json:"new"`  // there is no file yet
+	Grid      [2]int  `json:"grid"` // grid a new page starts with
+	Reference [2]int  `json:"reference"`
+	// Header is the band of the preview display type; the page editor draws
+	// the grid below it (ADR 0168).
+	Header      *page.Header        `json:"header,omitempty"`
 	PageHash    string              `json:"page_hash,omitempty"`  // hash of the page file, for a new variant
 	PageExists  bool                `json:"page_exists"`          // the page file exists
 	PageTitle   string              `json:"page_title,omitempty"` // the title of the page file, shown read-only on a variant
@@ -1118,6 +1121,7 @@ func (s *Server) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 		Name: name, Display: display, File: label, Kind: kind,
 		Width: p.Width, Height: p.Height, PPI: p.PPI, New: missing, Reference: defaultGrid,
 		Grid:       pageGrid(kind, p, *openOrBlank(open, name, label)),
+		Header:     p.Header,
 		PageHash:   pageHash,
 		PageExists: pageExists,
 		PageTitle:  v.PageTitle,

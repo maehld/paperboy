@@ -2,7 +2,7 @@
 
 # Content
 
-A page is a grid of cells on an image display and a character grid of boxes on a text display. An image page may reserve a header band above its grid (ADR 0167). Every cell shows one widget from one plugin, and every text cell shows one value a plugin declares. A plan decides which page a device gets and when.
+A page is a grid of cells on an image display and a character grid of boxes on a text display. An image page carries the header band of its display type above its grid (ADR 0168). Every cell shows one widget from one plugin, and every text cell shows one value a plugin declares. A plan decides which page a device gets and when.
 
 ## Pages
 
@@ -12,12 +12,6 @@ A page is one or more files under `pages/` ([ADR 0110](../adr/0110-pages-serve-t
 title: Morning
 kind: image
 grid: [6, 8]
-header:
-  height: 24
-  left:
-    - { widget: paperboy/title, weight: 3 }
-  right:
-    - { widget: paperboy/clock, args: { format: auto }, weight: 2 }
 variants:
   sticky: hochkant
   lcd2004: lcd
@@ -41,7 +35,7 @@ A variant file carries `kind`, `grid`, `style`, `notices` and `cells`. It inheri
 | `title` | Name on the dashboard, in the plan preview and for `paperboy/title`. The page file only. |
 | `kind` | `image` or `text`: required, the kind of the display types the file serves |
 | `grid` | Columns and rows of an image page, 1 to 80 each. The display type suggests one, 6 × 8 by default ([ADR 0128](../adr/0128-a-default-grid-per-display-type.md)). |
-| `header` | The band above the grid: `height` in points, default 24, and `left`, `center` and `right` lists of widget parts ([ADR 0167](../adr/0167-a-header-band-outside-the-page-grid.md)) |
+| `header` | `false` hides the display type's header band; an absent key shows it ([ADR 0168](../adr/0168-a-header-band-per-display-type.md)) |
 | `variants` | Display type to file label. The page file only. |
 | `style.padding` | Space around the grid in points, default 4.5 |
 | `style.rule` | Gap between cells in points, default 0.6 and at least one pixel |
@@ -60,20 +54,33 @@ The page's own grid divides the pixels below the header band. It is independent 
 
 ## Header band
 
-An image page may reserve a header band above its grid
-([ADR 0167](../adr/0167-a-header-band-outside-the-page-grid.md)). `header.height`
-is in points, 24 by default. `ppi` converts it to pixels. The grid divides only
-the area below the band.
+Every image display type carries a header band above every page
+([ADR 0167](../adr/0167-a-header-band-outside-the-page-grid.md),
+[0168](../adr/0168-a-header-band-per-display-type.md)). The band lives in
+`displays/<name>.yaml` and is fixed chrome, not a widget row. `header.height`
+is in points, 24 by default. `ppi` converts it to pixels. The grid divides
+only the area below the band.
 
-`left`, `center` and `right` are lists of widget parts. The zones decide the
-order; a part has `widget`, `args` and an optional `weight` of 1 to 6. The
-weight divides the band width; the default is 1. A part is a normal widget.
-`paperboy/title` draws the page title, `paperboy/clock` with `format: auto`
-draws the date and the time, and `paperboy/reading` draws a room value. The old
-`paperboy/header` still works in a cell. It is not a header part.
+The title and its `page_indicator` sit on the left. The right group is
+right-aligned and holds the room `temperature`, the `humidity`, the `clock`
+and the `battery`, in that order from left to right. Two spaces separate the
+temperature, the humidity and the clock. The page indicator follows the title
+after two spaces. Each is a switch:
+`page_indicator`, `temperature`, `humidity` and `battery` are booleans;
+`clock` is `time`, `date`, `datetime` or `none` (default `time`). A reading
+appears when the device measures it. The title, the readings and the clock use
+one text size; only the title is bold. The battery gauge is a little smaller
+and shows no percentage.
 
-A part that fails shows a notice inside its zone, like a cell. The band carries
-the page's rule as a line at its bottom. A text page has no header band.
+The band is one internal widget of the built-in plugin. It draws the text at
+one size, the title bold, and the battery gauge a little smaller. The old
+`parts`, `left`, `center`, `right` and `weight` keys answer a hint for the
+switches. The old `paperboy/header` and `paperboy/title` widgets are gone.
+
+A page writes `header: false` to hide the band; without the key it shows the
+band of its display type. A page carries no header settings. The page title
+stays page-specific because the band reads it. A text display type has no
+header band.
 
 ## Image pages
 
@@ -88,7 +95,7 @@ For each cell, in this order:
 3. The image is pasted one to one. There is no scaling at this point: a widget that returns the wrong size gets a hatched notice with the reason.
 4. A result that is older than its `max_age` adds the bar `Veraltet: …` at the bottom of the cell.
 
-Header parts follow the same steps in their zones. A stale part adds its name to the page bar.
+The band is one widget result and follows the same steps in the band rectangle. A stale band adds its name to the page bar.
 
 The built-in plugin draws text, lines and fills, so a page that is only text needs no image file. A page that shows its own device is cached per device; a page that only names other devices stays shared (ADR 0115).
 
@@ -257,12 +264,10 @@ The pages of a plan are static, so every page and the values of every trigger ar
 
 ## Built-in widgets
 
-The built-in plugin `paperboy` needs no data and is never cached ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md)):
+The built-in plugin `paperboy` needs no data and is never cached ([ADR 0049](../adr/0049-plugin-widgets.md), [0095](../adr/0095-the-logo-on-pages-and-devices.md)). The header band is internal chrome, not a widget a page places (ADR 0168):
 
 | Widget | Draws |
 |---|---|
-| `header` | The old single-cell header: title or page title, page indicator, clock, date, subtitle, alignment; the date takes the longest of four forms that fits half the cell, or the free text columns, and is dropped when none fits; `battery: true` adds the gauge of this device at the right, as high as a capital letter of the date, without a number (a text display shows the percentage instead) |
-| `title` | The page title and page indicator, as a header part |
 | `battery` | The battery of one device as a gauge with percentage or voltage; without `device` it shows the device that renders the page; `2x2` puts the value below the gauge, the horizontal spans beside it ([ADR 0121](../adr/0121-segmented-battery-gauge.md)) |
 | `device-status` | One row per device with battery, estimated runtime and the time since the last contact; `devices` selects ids, otherwise it shows the device that renders the page; the stalest row comes first |
 | `reading` | One measured value of a device, `temperature` or `humidity`, with its unit and an optional label; without `device` it shows the device that renders the page; the caption names the age once the value is older than an hour ([ADR 0134](../adr/0134-readings-from-the-device.md), [0163](../adr/0163-the-readings-in-the-device-status-and-a-reading-widget.md)) |
@@ -274,4 +279,4 @@ On a text page the built-in plugin provides six values. `title` is the page titl
 
 ## Decisions
 
-[ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md) (plans, refresh windows, triggers) · [0167](../adr/0167-a-header-band-outside-the-page-grid.md) (the header band) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0161](../adr/0161-home-syncs-and-the-menu-goes.md) (home and the menu), [0162](../adr/0162-widget-actions-and-the-plugins-choices.md) (widget actions), [0163](../adr/0163-the-action-mode-works-with-the-keys.md) (the key-operated action mode), [0164](../adr/0164-a-widget-action-carries-its-own-arguments.md) (action arguments), [0165](../adr/0165-a-plugin-describes-its-action-options.md) (action options) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) · [0130](../adr/0130-what-a-plan-refresh-does.md) (what a refresh does), [0133](../adr/0133-the-page-cursor-holds-the-page.md) (the page cursor) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (a trigger alerts)
+[ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md) (plans, refresh windows, triggers) · [0167](../adr/0167-a-header-band-outside-the-page-grid.md) (the header band), [0168](../adr/0168-a-header-band-per-display-type.md) (the band in the display type) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0161](../adr/0161-home-syncs-and-the-menu-goes.md) (home and the menu), [0162](../adr/0162-widget-actions-and-the-plugins-choices.md) (widget actions), [0163](../adr/0163-the-action-mode-works-with-the-keys.md) (the key-operated action mode), [0164](../adr/0164-a-widget-action-carries-its-own-arguments.md) (action arguments), [0165](../adr/0165-a-plugin-describes-its-action-options.md) (action options) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) · [0130](../adr/0130-what-a-plan-refresh-does.md) (what a refresh does), [0133](../adr/0133-the-page-cursor-holds-the-page.md) (the page cursor) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (a trigger alerts)

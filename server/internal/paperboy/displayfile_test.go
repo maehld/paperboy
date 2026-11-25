@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maehld/paperboy/server/internal/page"
 )
 
 // writeDisplayFile writes displays/<name>.yaml into an instance directory
@@ -35,6 +37,11 @@ min_refresh: 1m
 power: mains
 rotation: 90
 grid: [10, 6]
+header:
+  height: 24
+  temperature: true
+  clock: date
+  battery: true
 `
 	f, err := parseDisplayFile([]byte(src))
 	if err != nil {
@@ -45,7 +52,9 @@ grid: [10, 6]
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(data), "min_refresh: 1m\n") || !strings.Contains(string(data), "size: [800, 480]\n") ||
-		!strings.Contains(string(data), "rotation: 90\n") || !strings.Contains(string(data), "grid: [10, 6]\n") {
+		!strings.Contains(string(data), "rotation: 90\n") || !strings.Contains(string(data), "grid: [10, 6]\n") ||
+		!strings.Contains(string(data), "temperature: true\n") || !strings.Contains(string(data), "clock: date\n") ||
+		!strings.Contains(string(data), "battery: true\n") {
 		t.Fatalf("layout:\n%s", data)
 	}
 	again, err := parseDisplayFile(data)
@@ -74,6 +83,30 @@ grid: [10, 6]
 }
 
 // TestDisplayFileValidation covers the checks the loader and the API share.
+// TestDisplayHeaderAlways checks that every image display type carries a
+// header band, even without the key in its file (ADR 0168).
+func TestDisplayHeaderAlways(t *testing.T) {
+	f := displayFile{Kind: kindImage, Size: [2]int{800, 480}, PPI: 125}
+	if err := f.check("e1001"); err != nil {
+		t.Fatal(err)
+	}
+	if f.Header == nil || f.Header.Height != page.DefaultHeaderPt || f.Header.Clock != "time" {
+		t.Fatalf("image without a header: %+v", f.Header)
+	}
+	data, err := encodeDisplayFile(&f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "header:\n") || !strings.Contains(string(data), "clock: time\n") {
+		t.Fatalf("written display type lacks its band:\n%s", data)
+	}
+	// A text display type has no band, and an absent key stays absent.
+	text := displayFile{Kind: kindText, Size: [2]int{20, 4}}
+	if err := text.check("lcd"); err != nil || text.Header != nil {
+		t.Fatalf("text display: %+v %v", text.Header, err)
+	}
+}
+
 func TestDisplayFileValidation(t *testing.T) {
 	image := displayFile{Kind: kindImage, Size: [2]int{800, 480}, PPI: 125}
 	if err := image.check("e1001"); err != nil {
@@ -112,6 +145,15 @@ func TestDisplayFileValidation(t *testing.T) {
 	if sp.Levels != 16 {
 		t.Fatalf("16-level display type: %+v", sp)
 	}
+	withHeader := displayFile{Kind: kindImage, Size: [2]int{800, 480}, PPI: 125,
+		Header: &page.Header{Temperature: true, Battery: true}}
+	if err := withHeader.check("e1001"); err != nil {
+		t.Fatalf("header: %v", err)
+	}
+	hp := withHeader.profile()
+	if err := validateProfile("e1001", &hp); err != nil || hp.Header == nil || hp.Header.Height != page.DefaultHeaderPt {
+		t.Fatalf("header profile: %+v %v", hp.Header, err)
+	}
 
 	for _, tc := range []struct {
 		name string
@@ -135,6 +177,8 @@ func TestDisplayFileValidation(t *testing.T) {
 		{"power", displayFile{Size: [2]int{800, 480}, PPI: 125, Power: "solar"}, "expected auto, battery or mains"},
 		{"rotation", displayFile{Size: [2]int{480, 800}, PPI: 125, Rotation: 45}, "rotation must be 0, 90, 180 or 270"},
 		{"rotation on text", displayFile{Kind: kindText, Size: [2]int{20, 4}, Rotation: 90}, "rotation does not apply to text displays"},
+		{"header on text", displayFile{Kind: kindText, Size: [2]int{20, 4},
+			Header: &page.Header{Temperature: true}}, "header only applies"},
 	} {
 		name := "e1001"
 		if tc.name == "name" {
@@ -154,7 +198,8 @@ func TestDisplayFileValidation(t *testing.T) {
 	}
 
 	widthMM := 163
-	if err := (displayFile{Size: [2]int{800, 480}, PPI: 125, WidthMM: &widthMM}).check("e1001"); err == nil ||
+	widthMMFile := displayFile{Size: [2]int{800, 480}, PPI: 125, WidthMM: &widthMM}
+	if err := widthMMFile.check("e1001"); err == nil ||
 		!strings.Contains(err.Error(), "width_mm was replaced by ppi") {
 		t.Fatalf("width_mm: %v", err)
 	}

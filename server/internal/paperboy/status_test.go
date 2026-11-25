@@ -154,11 +154,11 @@ func TestSelectedDeviceIDsAndScope(t *testing.T) {
 		{Widget: "paperboy/battery", Args: map[string]any{"device": "c"}},
 		{Widget: "paperboy/reading", Args: map[string]any{"device": "d"}},
 	}}
-	got := selectedDeviceIDs(tmpl)
+	got := selectedDeviceIDs(tmpl, nil)
 	if len(got) != 4 || got[0] != "a" || got[1] != "b" || got[2] != "c" || got[3] != "d" {
 		t.Fatalf("selected ids: %v", got)
 	}
-	if !deviceScoped(tmpl) {
+	if !deviceScoped(tmpl, nil) {
 		t.Error("the self-only device-status cell makes the page device-scoped")
 	}
 
@@ -167,33 +167,36 @@ func TestSelectedDeviceIDsAndScope(t *testing.T) {
 		{Widget: "paperboy/battery", Args: map[string]any{"device": "a"}},
 		{Widget: "paperboy/reading", Args: map[string]any{"device": "a"}},
 	}}
-	if deviceScoped(selected) {
+	if deviceScoped(selected, nil) {
 		t.Error("a page that names its devices is not device-scoped")
 	}
 	empty := &page.Template{Cells: []page.Cell{{Widget: "paperboy/battery", Args: map[string]any{"device": ""}}}}
-	if !deviceScoped(empty) {
+	if !deviceScoped(empty, nil) {
 		t.Error("an empty device means the current device")
 	}
 	ownReading := &page.Template{Cells: []page.Cell{{Widget: "paperboy/reading"}}}
-	if !deviceScoped(ownReading) {
+	if !deviceScoped(ownReading, nil) {
 		t.Error("a reading of the page's own device is device-scoped")
 	}
-	// Header parts read the same device arguments as cells (ADR 0166).
-	header := &page.Template{Header: &page.Header{
-		Left:  []page.HeaderPart{{Widget: "paperboy/reading"}},
-		Right: []page.HeaderPart{{Widget: "paperboy/battery", Args: map[string]any{"device": "a"}}},
-	}}
-	if !deviceScoped(header) {
+	// The fixed header parts read the same status as cells (ADR 0168).
+	header := &page.Header{Temperature: true, Battery: true}
+	headerOnly := &page.Template{}
+	if !deviceScoped(headerOnly, header) {
 		t.Error("a reading in the header is device-scoped")
 	}
-	if got := selectedDeviceIDs(header); len(got) != 1 || got[0] != "a" {
+	if got := selectedDeviceIDs(headerOnly, header); len(got) != 0 {
 		t.Errorf("header selected ids: %v", got)
 	}
+	hide := page.ShowHeader(false)
+	hidden := &page.Template{Header: &hide}
+	if got := selectedDeviceIDs(hidden, header); len(got) != 0 {
+		t.Errorf("a hidden header still asks for devices: %v", got)
+	}
 	status := &plugin.ServerStatus{CurrentDeviceStatus: &plugin.DeviceStatus{ID: "kueche"}}
-	if got := statusKey("small", "status", tmpl, status); got != "small/status/kueche" {
+	if got := statusKey("small", "status", tmpl, nil, status); got != "small/status/kueche" {
 		t.Errorf("device-scoped cache key: %q", got)
 	}
-	if got := statusKey("small", "status", selected, status); got != "small/status" {
+	if got := statusKey("small", "status", selected, nil, status); got != "small/status" {
 		t.Errorf("shared cache key: %q", got)
 	}
 }

@@ -26,6 +26,15 @@ input, select { font: inherit; padding: .15rem .3rem; min-width: 0; width: 100%;
 .grid-field span:first-child { color: var(--pb-ink-muted); }
 .grid-field button { font-size: .78rem; padding: .1rem .45rem; }
 pre.file { margin: 0; padding: .5rem .6rem; background: var(--pb-surface-sunken); border: 1px solid var(--pb-hairline); border-radius: 6px; font: .8rem/1.35 ui-monospace, Consolas, monospace; overflow-x: auto; white-space: pre; }
+.header-editor { margin-top: .8rem; border-top: 1px solid var(--pb-surface-hover); padding-top: .6rem; }
+.header-editor h4 { margin: 0 0 .4rem; font-size: .8rem; font-weight: 600; color: var(--pb-ink-muted); }
+.header-preview { margin: .2rem 0 .6rem; }
+.header-preview img { display: block; width: 100%; height: auto; border: 1px solid var(--pb-hairline); background: var(--pb-surface); image-rendering: pixelated; }
+.header-preview .empty { margin: 0; color: var(--pb-ink-faint); font-size: .8rem; }
+.header-options { display: flex; flex-direction: column; gap: .15rem; }
+.header-options .check { display: flex; align-items: center; gap: .35rem; font-size: .85rem; margin-bottom: .2rem; }
+.header-options .check input { width: auto; }
+.header-options .field { margin-bottom: .2rem; }
 #pages a, #devices a { display: block; font-size: .88rem; padding: .1rem 0; }
 #pages .empty, #devices .empty { color: var(--pb-ink-faint); font-size: .85rem; margin: 0; }
 </style>
@@ -80,6 +89,27 @@ pre.file { margin: 0; padding: .5rem .6rem; background: var(--pb-surface-sunken)
         <button type="button" id="use-grid" hidden>use</button>
       </div>
       <p class="hint image-only" id="grid-note"></p>
+      <div class="header-editor image-only">
+        <h4>Header band</h4>
+        <label class="field"><span>height (pt)</span><input id="header-height" type="number" min="1" max="144"></label>
+        <div class="header-preview" id="header-preview">
+          <img id="header-preview-img" alt="Header band preview" hidden>
+          <p class="empty" id="header-preview-note">No header band.</p>
+        </div>
+        <div class="header-options">
+          <label class="check"><input id="header-page-indicator" type="checkbox"> Page indicator</label>
+          <label class="check"><input id="header-temperature" type="checkbox"> Temperature</label>
+          <label class="check"><input id="header-humidity" type="checkbox"> Humidity</label>
+          <label class="field"><span>Clock</span><select id="header-clock">
+            <option value="none">none</option>
+            <option value="time">time</option>
+            <option value="date">date</option>
+            <option value="datetime">date and time</option>
+          </select></label>
+          <label class="check"><input id="header-battery" type="checkbox"> Battery</label>
+        </div>
+        <p class="hint" id="header-hint"></p>
+      </div>
     </section>
   </div>
   <div class="col">

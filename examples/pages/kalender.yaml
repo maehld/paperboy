@@ -3,6 +3,5 @@ kind: image
 grid: [6, 8]
 style: { padding: 4.5, divider: 0.6 }
 cells:
-  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
-  - { at: [0, 1], span: [3, 7], widget: calendar/agenda, args: { lines: 12, location: true } }
-  - { at: [3, 1], span: [3, 7], widget: calendar/month }
+  - { at: [0, 0], span: [3, 8], widget: calendar/agenda, args: { lines: 12, location: true } }
+  - { at: [3, 0], span: [3, 8], widget: calendar/month }

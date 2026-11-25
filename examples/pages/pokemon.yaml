@@ -2,6 +2,7 @@
 # a page its own random Pokémon (a page per device shows a different one).
 title: Pokémon
 kind: image
+header: false
 grid: [6, 8]
 style: { padding: 4.5 }
 cells:

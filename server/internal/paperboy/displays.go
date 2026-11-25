@@ -37,6 +37,7 @@ type displayFile struct {
 	Rotation   int            `yaml:"rotation" json:"rotation,omitempty"`           // page → panel, ADR 0102
 	Scroll     *displayScroll `yaml:"scroll,omitempty" json:"scroll,omitempty"`     // text displays, ADR 0118
 	Grid       *[2]int        `yaml:"grid,omitempty" json:"grid,omitempty"`         // default grid of a new page, ADR 0128
+	Header     *page.Header   `yaml:"header,omitempty" json:"header,omitempty"`     // band of every page, ADR 0168
 	WidthMM    *int           `yaml:"width_mm,omitempty" json:"width_mm,omitempty"` // removed by ADR 0050, rejected with a hint
 }
 
@@ -59,7 +60,7 @@ func parseDisplayFile(data []byte) (displayFile, error) {
 }
 
 // check rejects what only the file can carry, before it becomes a Profile.
-func (f displayFile) check(name string) error {
+func (f *displayFile) check(name string) error {
 	if f.WidthMM != nil {
 		return fmt.Errorf("display type %s: width_mm was replaced by ppi (ADR 0050): replace it with ppi = pixels × 25.4 / mm of the same side", name)
 	}
@@ -85,6 +86,19 @@ func (f displayFile) check(name string) error {
 			return fmt.Errorf("display type %s: grid [%d, %d]: expected [columns, rows] between 1 and %d",
 				name, f.Grid[0], f.Grid[1], maxGrid)
 		}
+	}
+	if f.Kind == kindText {
+		if f.Header != nil {
+			return fmt.Errorf("display type %s: header only applies to kind image", name)
+		}
+		return nil
+	}
+	// Every image display type has a band; an absent key gets the default.
+	if f.Header == nil {
+		f.Header = &page.Header{}
+	}
+	if err := f.Header.Validate(); err != nil {
+		return fmt.Errorf("display type %s: %w", name, err)
 	}
 	return nil
 }
@@ -115,6 +129,12 @@ func (f displayFile) profile() Profile {
 		ScrollStep: step,
 	}
 	p.Grid = f.Grid
+	if f.Kind != kindText {
+		if f.Header == nil {
+			f.Header = &page.Header{}
+		}
+		p.Header = f.Header
+	}
 	return p
 }
 
@@ -215,6 +235,13 @@ func encodeDisplayFile(f *displayFile) ([]byte, error) {
 			Content: []*yaml.Node{intScalar(f.Grid[0]), intScalar(f.Grid[1])}}
 		set("grid", grid)
 	}
+	if kind != kindText {
+		header := f.Header
+		if header == nil {
+			header = &page.Header{}
+		}
+		set("header", page.HeaderNode(*header))
+	}
 	return marshalFile(root)
 }
 
@@ -223,7 +250,12 @@ func intScalar(v int) *yaml.Node {
 }
 
 func floatScalar(v float64) *yaml.Node {
-	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!float", Value: strconv.FormatFloat(v, 'f', -1, 64)}
+	// Integral numbers read back as ints into a float field; that keeps
+	// `ppi: 125` readable instead of `ppi: !!float 125`.
+	if v == float64(int64(v)) {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.FormatInt(int64(v), 10)}
+	}
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!float", Value: strconv.FormatFloat(v, 'g', -1, 64)}
 }
 
 // editorDisplayFile is one display type file in the overview of the editor.

@@ -3,3 +3,8 @@ kind: image
 size: [800, 480]
 gray_levels: 4
 ppi: 236          # 800 px / 86 mm
+header:
+  height: 24
+  temperature: true
+  clock: time
+  battery: true

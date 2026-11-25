@@ -28,6 +28,9 @@ type Display struct {
 	PPI      float64 // pixels per inch of an image display (ADR 0050)
 	Language string  // "de" or "en"; empty means "de"
 	Timezone *time.Location
+	// Header is the display type's header band; nil means no band. The page
+	// may hide it with header: false (ADR 0168).
+	Header *Header
 }
 
 // Default page style in points (ADR 0050).
@@ -168,15 +171,28 @@ func (t *Template) Actionable() int {
 // headerHeight returns the height of the header band in pixels. A display
 // without ppi, as in a test, uses 72.
 func (t *Template) headerHeight(d Display) int {
-	if t.Header == nil {
+	if !t.ShowHeader() || d.Header == nil {
 		return 0
 	}
 	ppi := d.PPI
 	if ppi <= 0 {
 		ppi = 72
 	}
-	return max(int(math.Round(t.Header.Height*ppi/72)), 1)
+	return max(int(math.Round(d.Header.Height*ppi/72)), 1)
 }
+
+// headerParts returns the header parts the page draws, or nil when the page
+// hides the band.
+func (t *Template) headerParts(d Display) []HeaderPart {
+	if !t.ShowHeader() || d.Header == nil {
+		return nil
+	}
+	return d.Header.Widgets()
+}
+
+// BandHeight is the header band's height in pixels. The display type editor
+// previews exactly this strip (ADR 0168).
+func (t *Template) BandHeight(d Display) int { return t.headerHeight(d) }
 
 // rulePx is the page's rule in pixels. The header band uses it for the line
 // under its parts.
@@ -188,29 +204,51 @@ func (t *Template) rulePx(d Display) int {
 	return d.pxAtLeast1(rule)
 }
 
-// headerRects divides the band width by the parts' weights, in drawing order.
-// The zones only decide that order, so left, center and right stay one row.
+// headerRects gives every fixed part its width and shares the remaining width
+// among the fill parts, in drawing order. The title fills, so the fixed parts
+// sit at the right edge (ADR 0168).
 func (t *Template) headerRects(d Display) []image.Rectangle {
-	parts := t.HeaderParts()
+	parts := t.headerParts(d)
 	if len(parts) == 0 {
 		return nil
 	}
-	total := 0
+	ppi := d.PPI
+	if ppi <= 0 {
+		ppi = 72
+	}
+	fixed := 0
+	fills := 0
 	for _, p := range parts {
-		total += max(p.Weight, 1)
+		if p.Fill {
+			fills++
+			continue
+		}
+		fixed += max(int(math.Round(p.Width*ppi/72)), 1)
+	}
+	remaining := max(d.Width-fixed, 0)
+	fillWidth, extra := 0, 0
+	if fills > 0 {
+		fillWidth, extra = remaining/fills, remaining%fills
 	}
 	h := t.headerHeight(d) - t.rulePx(d)
 	if h < 1 {
 		h = t.headerHeight(d)
 	}
 	out := make([]image.Rectangle, len(parts))
-	prev, cum := 0, 0
+	x, fillIndex := 0, 0
 	for i, p := range parts {
-		cum += max(p.Weight, 1)
-		next := int(math.Round(float64(d.Width) * float64(cum) / float64(total)))
-		next = min(max(next, prev), d.Width)
-		out[i] = image.Rect(prev, 0, next, h)
-		prev = next
+		w := 0
+		if p.Fill {
+			w = fillWidth
+			if fillIndex < extra {
+				w++
+			}
+			fillIndex++
+		} else {
+			w = max(int(math.Round(p.Width*ppi/72)), 1)
+		}
+		out[i] = image.Rect(x, 0, x+w, h)
+		x += w
 	}
 	return out
 }
@@ -270,7 +308,7 @@ func (t *Template) RenderImage(d Display, c Context) (*image.Paletted, error) {
 		return nil, err
 	}
 	rects := t.cellRects(d)
-	headerParts := t.HeaderParts()
+	headerParts := t.headerParts(d)
 	headerRects := t.headerRects(d)
 	batch := Batch{Levels: d.levels(), Page: t.pageInfo(d, c), ServerStatus: c.ServerStatus}
 	for i, part := range headerParts {

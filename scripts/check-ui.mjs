@@ -131,6 +131,7 @@ try {
 // its widgets wrongly still renders and only fails on the click (issue #391).
 {
   const script = await readFile(join(root, "server/internal/paperboy/ui/editor.js"), "utf8");
+  const argsScript = await readFile(join(root, "server/internal/paperboy/ui/args.js"), "utf8");
   const plugins = {
     plugins: [{
       name: "demo",
@@ -172,7 +173,7 @@ ${palette}<span id="preview-where"></span><img id="preview-img" hidden><pre id="
 <button id="rename" type="button"></button><button id="delete" type="button"></button><button id="save" type="button"></button>
 <input id="title"><input id="cols" type="number"><input id="rows" type="number">
 <button id="grid-lock" type="button"></button>
-<div id="header-fields"><input id="header-height" type="number"><button id="header-add" type="button"></button><button id="header-remove" type="button"></button></div>
+<label class="field"><span>Header</span><span><input id="show-header" type="checkbox"> show</span></label><p id="header-note"></p>
 <input id="padding"><input id="rule"><input id="text-size"><input id="divider">
 <select id="notices"><option value="">default</option><option value="none">none</option></select>
 ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" checked>
@@ -199,6 +200,7 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
       }
       return { ...answer, json: async () => ({}) };
     };
+    window.eval(argsScript);
     window.eval(script);
     await sleep(30);
     return { editorDom, window, failures };
@@ -257,7 +259,8 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
 
   // The page editor marks the picked entry and places it on the clicked cell.
   {
-    const { editorDom, window, failures } = await open("http://localhost/ui/pages/demo?display=e1001", editor, { ...start, new: true });
+    const withHeader = { height: 24, parts: [{ widget: "paperboy/title", fill: true }] };
+    const { editorDom, window, failures } = await open("http://localhost/ui/pages/demo?display=e1001", editor, { ...start, new: true, header: withHeader });
     check(window.document.getElementById("board-note").textContent.includes("px on e1001"), "the board note does not name the cell size");
     entry(window, "clock").click();
     check(entry(window, "clock").classList.contains("active"), "a click in the page editor does not mark the entry");
@@ -265,28 +268,10 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
     check(!!slot, "the board offers no free cell while a widget waits");
     if (slot) slot.click();
     check(Array.from(window.document.querySelectorAll("#board .cell")).some((cell) => cell.textContent.includes("demo/clock")), "the board does not show the placed widget");
-    // A header band starts with the built-in title; a palette click on the
-    // band adds a part to the zone under the pointer (ADR 0166).
-    window.document.getElementById("header-add").click();
-    await sleep(10);
-    const band = window.document.getElementById("board-header");
-    check(!!band && band.querySelectorAll(".header-part").length === 1, "the board does not show the added header band");
-    check(window.document.getElementById("header-height").value === "24", "the header band does not start at 24 pt");
-    check(window.document.getElementById("inspector").textContent.includes("Header part"), "the inspector does not edit the header part");
-    if (band) {
-      band.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 40, right: 800, bottom: 40 });
-      const demoHead = section(window, "demo").querySelector(".plugin-head");
-      if (demoHead) demoHead.click();
-      entry(window, "clock").click();
-      const liveBand = window.document.getElementById("board-header");
-      if (liveBand) {
-        liveBand.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 40, right: 800, bottom: 40 });
-        liveBand.dispatchEvent(new window.MouseEvent("click", { bubbles: true, clientX: 700, clientY: 10 }));
-      }
-      await sleep(10);
-      const afterBand = window.document.getElementById("board-header");
-      check(!!afterBand && afterBand.querySelectorAll(".header-part").length === 2, "a click on the header band adds no part");
-    }
+    check(!window.document.getElementById("board-header"), "the page editor draws the header as a cell overlay");
+    check(window.document.getElementById("header-note").textContent.includes("display type e1001"), "the header note does not name the display type");
+    check(window.document.getElementById("show-header").checked, "the show-header switch ignores the page");
+    check(window.document.getElementById("board-grid").style.top !== "", "the grid ignores the header height");
     for (const failure of failures) problems.push(failure);
     editorDom.window.close();
   }
@@ -354,11 +339,72 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
     editorDom.window.close();
   }
 
+// display-editor.js edits the fixed header band of a display type: title on
+// the left, readings in the middle, clock and battery on the right, with a
+// server-rendered preview (ADR 0168).
+{
+  const script = await readFile(join(root, "server/internal/paperboy/ui/display-editor.js"), "utf8");
+  const display = {
+    kind: "image", size: [800, 480], ppi: 125, gray_levels: 4,
+    header: { height: 24, temperature: true, humidity: false, clock: "time", battery: false },
+  };
+  const body = `<span id="status"></span><span id="where"></span>
+<select id="kind"></select><input id="width"><input id="height"><select id="gray"></select><input id="ppi">
+<input id="charset"><input id="min_refresh"><select id="power"></select><select id="rotation"></select>
+<input id="grid-cols"><input id="grid-rows"><button id="use-grid" type="button"></button>
+<p id="ppi-note"></p><p id="size-note"></p><p id="grid-note"></p><p id="panel-hint"></p>
+<label id="width-label">width <input readonly></label><label id="height-label">height <input readonly></label>
+<input id="panel-diagonal"><input id="panel-width"><input id="panel-height">
+<button id="use-diagonal" type="button"></button><button id="use-width" type="button"></button><button id="use-height" type="button"></button>
+<input id="header-height">
+<div id="header-preview"><img id="header-preview-img" hidden><p id="header-preview-note"></p></div>
+<input id="header-page-indicator" type="checkbox"><input id="header-temperature" type="checkbox"><input id="header-humidity" type="checkbox">
+<select id="header-clock"><option value="none"></option><option value="time"></option><option value="date"></option><option value="datetime"></option></select>
+<input id="header-battery" type="checkbox">
+<p id="header-hint"></p><pre id="yaml"></pre>
+<button id="save" type="button"></button><button id="delete" type="button"></button><button id="rename" type="button"></button><button id="reload" type="button"></button>
+<script id="display-data" type="application/json">${JSON.stringify({ name: "e1001", new: false })}</script>`;
+  const dom = new JSDOM(`<!doctype html><html><body>${body}</body></html>`,
+    { url: "http://localhost/ui/display-types/e1001", runScripts: "outside-only", pretendToBeVisual: true });
+  const { window } = dom;
+  const failures = [];
+  window.addEventListener("error", (event) => failures.push(event.error || event.message));
+  window.addEventListener("unhandledrejection", (event) => failures.push(event.reason));
+  window.URL.createObjectURL = () => "blob:band";
+  window.URL.revokeObjectURL = () => {};
+  let previews = 0;
+  window.fetch = async (target) => {
+    const path = String(target);
+    const answer = { ok: true, status: 200, json: async () => ({}), text: async () => "", blob: async () => ({}) };
+    if (path.includes("/header-preview")) {
+      previews++;
+      return answer;
+    }
+    if (path.startsWith("/api/displays/")) return { ...answer, json: async () => ({ hash: "h", yaml: "", display }) };
+    return answer;
+  };
+  window.eval(script);
+  await sleep(400);
+
+  check(window.document.getElementById("header-page-indicator").checked, "the editor does not show the page indicator switch");
+  check(window.document.getElementById("header-temperature").checked, "the editor does not show the temperature switch");
+  check(!window.document.getElementById("header-humidity").checked, "the editor invents a humidity switch value");
+  check(window.document.getElementById("header-clock").value === "time", "the editor does not show the clock choice");
+  check(!window.document.getElementById("header-battery").checked, "the editor invents a battery switch value");
+  check(window.document.getElementById("header-hint").textContent.includes("saved size"), "the header hint does not name the preview basis");
+  const img = window.document.getElementById("header-preview-img");
+  check(!img.hidden && img.src === "blob:band", "the header band has no preview image");
+  check(previews > 0, "the display editor never asks for a band preview");
+  for (const failure of failures) problems.push(failure);
+  if (problems.length === 0) console.log("display-editor.js switched the header parts and drew the band preview");
+  dom.window.close();
+}
+
   if (problems.length) {
     for (const problem of problems) console.error(problem);
     process.exitCode = 1;
   } else {
-    console.log("editor.js picked, pinned and placed a palette widget");
+    console.log("editor.js and display-editor.js picked, pinned and edited a widget");
   }
 }
 

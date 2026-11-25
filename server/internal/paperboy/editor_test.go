@@ -73,7 +73,7 @@ grid: [2, 2]
 variants:
   small: hochkant
 cells:
-  - { at: [0, 0], span: [2, 1], widget: paperboy/header }
+  - { at: [0, 0], span: [2, 1], widget: paperboy/text, args: {text: x} }
   - { at: [0, 1], span: [2, 1], widget: paperboy/text, args: { text: "4,2 kW" } }
 `
 

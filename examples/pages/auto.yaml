@@ -6,10 +6,9 @@ variants: {lcd2004: lcd2004}
 grid: [6, 8]
 style: { padding: 4.5, divider: 0.6 }
 cells:
-  - { at: [0, 0], span: [6, 1], widget: paperboy/header }
-  - { at: [0, 1], span: [2, 3], widget: myskoda/battery }
-  - { at: [2, 1], span: [2, 3], widget: myskoda/charging }
-  - { at: [4, 1], span: [2, 3], widget: myskoda/climate }
-  - { at: [0, 4], span: [3, 4], widget: myskoda/card }
-  - { at: [3, 4], span: [3, 2], widget: myskoda/profiles }
-  - { at: [3, 6], span: [3, 2], widget: myskoda/location }
+  - { at: [0, 0], span: [2, 3], widget: myskoda/battery }
+  - { at: [2, 0], span: [2, 3], widget: myskoda/charging }
+  - { at: [4, 0], span: [2, 3], widget: myskoda/climate }
+  - { at: [0, 3], span: [3, 5], widget: myskoda/card }
+  - { at: [3, 3], span: [3, 2], widget: myskoda/profiles }
+  - { at: [3, 5], span: [3, 3], widget: myskoda/location }

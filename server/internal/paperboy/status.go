@@ -133,12 +133,19 @@ func statusOfDevice(cfg *Config, d *Device, st deviceState, now time.Time) plugi
 	return sd
 }
 
-// pageWidgets returns the widgets of a page in cell order, then its header
-// parts. A header part reads the same device arguments as a cell (ADR 0166).
-func pageWidgets(t *page.Template) []page.Cell {
-	out := make([]page.Cell, 0, len(t.Cells)+len(t.HeaderParts()))
+// pageWidgets returns the widgets of a page in cell order, then its display
+// type's header parts. A header part reads the same device arguments as a cell
+// (ADR 0168).
+// pageWidgets lists the widgets a page reads status for: its cells and the
+// fixed parts of the display type's header band.
+func pageWidgets(t *page.Template, header *page.Header) []page.Cell {
+	var parts []page.HeaderPart
+	if t.ShowHeader() {
+		parts = header.Widgets()
+	}
+	out := make([]page.Cell, 0, len(t.Cells)+len(parts))
 	out = append(out, t.Cells...)
-	for _, p := range t.HeaderParts() {
+	for _, p := range parts {
 		out = append(out, page.Cell{Widget: p.Widget, Args: p.Args})
 	}
 	return out
@@ -146,10 +153,10 @@ func pageWidgets(t *page.Template) []page.Cell {
 
 // selectedDeviceIDs collects the ids a page asks for: the devices argument of
 // device-status widgets and the device argument of battery and reading widgets.
-func selectedDeviceIDs(t *page.Template) []string {
+func selectedDeviceIDs(t *page.Template, header *page.Header) []string {
 	var out []string
 	seen := map[string]bool{}
-	for _, c := range pageWidgets(t) {
+	for _, c := range pageWidgets(t, header) {
 		var ids []string
 		switch c.Widget {
 		case builtin.Name + "/device-status":
@@ -172,14 +179,14 @@ func selectedDeviceIDs(t *page.Template) []string {
 // selectedDeviceIDsFor is selectedDeviceIDs for one widget preview.
 func selectedDeviceIDsFor(pluginName, widget string, args map[string]any) []string {
 	t := &page.Template{Cells: []page.Cell{{Widget: pluginName + "/" + widget, Args: args}}}
-	return selectedDeviceIDs(t)
+	return selectedDeviceIDs(t, nil)
 }
 
 // deviceScoped reports whether a page draws the device it is rendered for.
 // Such a page is cached per device, not per display type, so two devices that
 // share it cannot overwrite each other's status (ADR 0115).
-func deviceScoped(t *page.Template) bool {
-	for _, c := range pageWidgets(t) {
+func deviceScoped(t *page.Template, header *page.Header) bool {
+	for _, c := range pageWidgets(t, header) {
 		switch c.Widget {
 		case builtin.Name + "/device-status":
 			named := false
@@ -199,8 +206,9 @@ func deviceScoped(t *page.Template) bool {
 			if id, ok := c.Args["device"].(string); !ok || id == "" {
 				return true
 			}
-		case builtin.Name + "/header":
-			if plugin.Values(c.Args).Bool("battery", false) {
+		case builtin.Name + "/band":
+			vals := plugin.Values(c.Args)
+			if vals.Bool("temperature", false) || vals.Bool("humidity", false) || vals.Bool("battery", false) {
 				return true
 			}
 		}
@@ -210,9 +218,9 @@ func deviceScoped(t *page.Template) bool {
 
 // statusKey is the render cache key of a page: the page alone, or the page
 // with the device when the page shows that device (ADR 0115).
-func statusKey(profile, name string, t *page.Template, status *plugin.ServerStatus) string {
+func statusKey(profile, name string, t *page.Template, header *page.Header, status *plugin.ServerStatus) string {
 	key := profile + "/" + name
-	if status != nil && status.CurrentDeviceStatus != nil && t != nil && deviceScoped(t) {
+	if status != nil && status.CurrentDeviceStatus != nil && t != nil && deviceScoped(t, header) {
 		key += "/" + status.CurrentDeviceStatus.ID
 	}
 	return key

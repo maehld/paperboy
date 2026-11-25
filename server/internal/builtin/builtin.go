@@ -1,7 +1,7 @@
 // Package builtin is Paperboy's own plugin "paperboy" (ADR 0049). It runs in
-// the Paperboy process and offers the widgets that need no data source: a
-// page header, free text, a clock, the Paperboy logo and the device status of
-// ADR 0115.
+// the Paperboy process and offers the widgets that need no data source: free
+// text, a clock, the Paperboy logo, readings, the device status of ADR 0115
+// and the fixed header band of ADR 0168.
 package builtin
 
 import (
@@ -12,12 +12,13 @@ import (
 	"time"
 
 	"github.com/maehld/paperboy/sdk/design"
+	"github.com/maehld/paperboy/sdk/format"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
 	"github.com/maehld/paperboy/server/internal/reading"
 )
 
-// Name is the plugin name pages use, e.g. paperboy/header.
+// Name is the plugin name pages use, e.g. paperboy/text.
 const Name = "paperboy"
 
 // Plugin implements plugin.Handler and plugin.Valuer.
@@ -47,22 +48,6 @@ func (Plugin) Describe() plugin.Description {
 			{Name: reading.Humidity, Title: "Room humidity", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
 		},
 		Widgets: []plugin.WidgetInfo{
-			{Widget: "header", Title: "Page header", Kinds: image, Sizes: []plugin.Span{{Columns: 6, Rows: 1}, {Columns: 4, Rows: 1}},
-				Args: map[string]plugin.Arg{
-					"title":          {Type: "string", Description: "title; default the page title"},
-					"subtitle":       {Type: "string"},
-					"clock":          {Type: "bool", Default: true, Description: "current time on the right"},
-					"date":           {Type: "bool", Default: false, Description: "weekday and date on the right, long or short depending on the space"},
-					"page_indicator": {Type: "bool", Default: true, Description: "page number when the plan rule has several pages"},
-					"align":          {Type: "string", Default: "left", Description: "left, center or right", Enum: []any{"left", "center", "right"}},
-					"battery":        {Type: "bool", Default: false, Description: "battery charge of this device at the right"},
-				}},
-			{Widget: "title", Title: "Page title", Kinds: image, Sizes: []plugin.Span{{Columns: 3, Rows: 1}, {Columns: 4, Rows: 1}, {Columns: 6, Rows: 1}},
-				Args: map[string]plugin.Arg{
-					"title":          {Type: "string", Description: "title; default the page title"},
-					"page_indicator": {Type: "bool", Default: true, Description: "page number when the plan has several pages"},
-					"align":          {Type: "string", Default: "left", Description: "left, center or right", Enum: []any{"left", "center", "right"}},
-				}},
 			{Widget: "battery", Title: "Battery", Kinds: image, Sizes: []plugin.Span{{Columns: 1, Rows: 1}, {Columns: 2, Rows: 1}, {Columns: 3, Rows: 1}, {Columns: 2, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"device": {Type: "string", Description: "device id; default the device that shows the page"},
@@ -152,11 +137,8 @@ func align(s string, def render.Align) render.Align {
 
 func (p Plugin) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	switch w.Widget {
-	case "header":
-		p.header(req, w, img)
-		return nil
-	case "title":
-		return p.title(req, w, img)
+	case "band":
+		return p.band(req, w, img)
 	case "text":
 		return p.text(w, img)
 	case "clock":
@@ -173,99 +155,117 @@ func (p Plugin) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.P
 	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 }
 
-func (Plugin) header(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) {
+// band draws the fixed header band of a display type: the page title and its
+// page indicator on the left, then temperature, humidity, clock and battery
+// right-aligned (ADR 0168). All text uses one size; the title is bold and the
+// battery gauge is a little smaller.
+func (Plugin) band(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	a := w.Arg()
-	pad := w.Style.Padding
-	rule := max(w.Style.Rule, 1)
 	b := img.Rect
-	h := b.Dy()
-	title := a.String("title", req.Page.Title)
-	if a.Bool("page_indicator", true) && req.Page.Count > 1 {
-		title += fmt.Sprintf(" – %d/%d", req.Page.Number, req.Page.Count)
-	}
-	base := req.TextPx(w)
-	titleSize := min(float64(h)*0.5, base*1.4)
-	statusSize := min(float64(h)*0.45, base*1.1)
-	status := headerStatus(req, a, func(s string) bool {
-		return render.Measure(s, statusSize, false) <= b.Dx()/2-2*pad
-	})
-	right := b.Max.X - pad
-	bottom := b.Max.Y - rule - pad
-	baseline := bottom
-	sub := a.String("subtitle", "")
-	if sub != "" {
-		baseline = b.Min.Y + pad + (bottom-b.Min.Y-pad)*45/100
-	}
-	// The battery gauge sits at the far right. It carries the level alone, so
-	// the date and clock move left by the gauge and the gap only (ADR 0121).
-	// Its bottom sits on the text baseline, so gauge and text read as one line.
-	var batteryStatus *plugin.BatteryStatus
-	var batteryIcon image.Rectangle
-	if a.Bool("battery", false) {
-		if dev := statusDevice(req, ""); dev != nil && dev.Battery != nil {
-			// The gauge is as high as a capital letter of the date, so it
-			// reads with the text on every display.
-			iconH := min(float64(h)*0.35, capHeight(statusSize))
-			iconW := int(iconH * 2)
-			gap := max(2, pad/2)
-			if iconW >= 4 && iconH >= 3 && b.Max.X-pad-iconW-gap > b.Min.X+pad {
-				batteryStatus = dev.Battery
-				iy := baseline - int(iconH)
-				batteryIcon = image.Rect(b.Max.X-pad-iconW, iy, b.Max.X-pad, iy+int(iconH))
-				right -= iconW + gap
-			}
-		}
-	}
-	statusRight := right
-	if status != "" {
-		right -= render.Measure(status, statusSize, false) + 2*pad
-	}
-	left := b.Min.X + pad
-	al := align(a.String("align", "left"), render.Left)
-	x := left
-	switch al {
-	case render.Center:
-		x = left + (right-left)/2
-	case render.Right:
-		x = right
-	}
-	render.Text(img, title, x, baseline, render.Style{Size: titleSize, Bold: true, Shrink: true}, right-left, color.Black, al)
-	if sub != "" {
-		render.Text(img, sub, x, bottom, render.Style{Size: min(float64(h)*0.22, base*0.7), Shrink: true}, right-left, color.Black, al)
-	}
-	if status != "" {
-		render.Text(img, status, statusRight, baseline, render.Style{Size: statusSize, Shrink: true}, b.Dx()/2, color.Black, render.Right)
-	}
-	if !batteryIcon.Empty() {
-		design.DrawBattery(img, batteryIcon, batteryGauge(batteryStatus), 0)
-	}
-	render.HLine(img, b.Min.X, b.Max.Y-rule, b.Max.X, rule)
-}
-
-// title draws the page title and its page indicator as a header part. The
-// header band places it; the height comes from the band, not from a grid cell.
-func (Plugin) title(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
-	a := w.Arg()
-	b := img.Rect.Inset(w.Style.Padding)
-	if b.Empty() {
+	pad := w.Style.Padding
+	if b.Dy()-2*pad < 4 || b.Dx()-2*pad < 4 {
 		return plugin.TooSmall(w)
 	}
-	title := a.String("title", req.Page.Title)
+	title := req.Page.Title
 	if a.Bool("page_indicator", true) && req.Page.Count > 1 {
-		title += fmt.Sprintf(" – %d/%d", req.Page.Number, req.Page.Count)
+		title += fmt.Sprintf("  %d/%d", req.Page.Number, req.Page.Count)
 	}
-	size := min(float64(b.Dy())*0.7, req.TextPx(w)*1.4)
-	al := align(a.String("align", "left"), render.Left)
-	x := b.Min.X
-	switch al {
-	case render.Center:
-		x = b.Min.X + b.Dx()/2
-	case render.Right:
-		x = b.Max.X
+	// The right group, from left to right. Two spaces separate the items.
+	var leftToRight []string
+	if a.Bool("temperature", false) {
+		leftToRight = append(leftToRight, bandReading(req, reading.Temperature))
 	}
-	render.Text(img, title, x, b.Min.Y+b.Dy()/2+int(size*0.36), render.Style{Size: size, Bold: true, Shrink: true},
-		b.Dx(), color.Black, al)
+	if a.Bool("humidity", false) {
+		leftToRight = append(leftToRight, bandReading(req, reading.Humidity))
+	}
+	if clock := a.String("clock", "time"); clock != "none" {
+		if s := clockText(req, clock); s != "" {
+			leftToRight = append(leftToRight, s)
+		}
+	}
+	items := leftToRight
+	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
+		items[i], items[j] = items[j], items[i]
+	}
+	var battery *plugin.BatteryStatus
+	if a.Bool("battery", false) {
+		if dev := statusDevice(req, ""); dev != nil {
+			battery = dev.Battery
+		}
+	}
+	left := b.Min.X + pad
+	right := b.Max.X - pad
+	available := right - left
+	size := float64(b.Dy()) * 0.5
+	// All text shares one size. A crowded band steps the size down, so the
+	// title and the right group stay equal and readable.
+	for {
+		gap := max(2, render.Measure("  ", size, false))
+		parts := len(items)
+		if battery != nil {
+			parts++
+		}
+		total := render.Measure(title, size, true) + parts*gap
+		for _, s := range items {
+			total += render.Measure(s, size, false)
+		}
+		if battery != nil {
+			total += int(capHeight(size)) * 2
+		}
+		if parts == 0 || total <= available || size <= render.MinSize {
+			break
+		}
+		size--
+	}
+	gap := max(2, render.Measure("  ", size, false))
+	baseline := b.Min.Y + b.Dy()/2 + int(size*0.36)
+	if battery != nil {
+		iconH := min(capHeight(size), float64(b.Dy()-2*pad))
+		iconW := int(iconH * 2)
+		if iconW >= 4 && int(iconH) >= 3 && right-iconW-gap > left {
+			r := image.Rect(right-iconW, baseline-int(iconH), right, baseline)
+			design.DrawBattery(img, r, batteryGauge(battery), 0)
+			right -= iconW + gap
+		}
+	}
+	for _, s := range items {
+		bandText(img, s, size, baseline, &right, gap, left)
+	}
+	render.Text(img, title, left, baseline, render.Style{Size: size, Bold: true, Shrink: true},
+		max(right-left, 1), color.Black, render.Left)
 	return nil
+}
+
+// bandText draws one right-aligned item of the band and moves the right edge
+// left for the next item.
+func bandText(img *image.Paletted, s string, size float64, baseline int, right *int, gap, minX int) {
+	if s == "" {
+		return
+	}
+	w := render.Measure(s, size, false)
+	if w < 1 || *right-w < minX {
+		return
+	}
+	render.Text(img, s, *right, baseline, render.Style{Size: size, Shrink: true}, w+2, color.Black, render.Right)
+	*right -= w + gap
+}
+
+// bandReading is one reading of the device as a single band text, e.g.
+// "21,5 °C". A missing reading says so in the page language.
+func bandReading(req *plugin.Request, name string) string {
+	spec, ok := reading.Lookup(name)
+	if !ok {
+		return ""
+	}
+	r, ok := deviceReading(statusDevice(req, ""), name)
+	if !ok {
+		return req.T("keine Messung", "no reading")
+	}
+	text := format.Number(r.Value, spec.Precision, req.Lang())
+	if spec.Unit != "" {
+		text += " " + spec.Unit
+	}
+	return text
 }
 
 // textLines splits the text argument into lines. A literal \n and a real line

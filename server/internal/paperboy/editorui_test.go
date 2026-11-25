@@ -365,7 +365,7 @@ func TestEditorVariantActions(t *testing.T) {
 	s := editorServer(t)
 	writePage(t, s, "solar", "", pageWithVariant)
 	writePage(t, s, "solar", "hochkant", variantPage)
-	writePage(t, s, "ziel", "", "title: Ziel\nkind: image\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 2], widget: paperboy/header }\n")
+	writePage(t, s, "ziel", "", "title: Ziel\nkind: image\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 2], widget: paperboy/text, args: {text: x} }\n")
 
 	body := request(t, s, http.MethodGet, "/ui/pages/solar?display=small&file=hochkant", nil, nil).Body.String()
 	for _, want := range []string{
@@ -411,7 +411,7 @@ func TestEditorVariantActions(t *testing.T) {
 
 	// Without another page file the Reassign button waits for one.
 	only := editorServer(t)
-	writePage(t, only, "clock", "", "title: Clock\nkind: image\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 2], widget: paperboy/header }\n")
+	writePage(t, only, "clock", "", "title: Clock\nkind: image\ngrid: [2, 2]\ncells:\n  - { at: [0, 0], span: [2, 2], widget: paperboy/text, args: {text: x} }\n")
 	writePage(t, only, "clock", "klein", variantPage)
 	body = request(t, only, http.MethodGet, "/ui/pages/clock?display=small&file=klein", nil, nil).Body.String()
 	for _, want := range []string{
@@ -454,7 +454,7 @@ grid: [2, 2]
 variants:
   small: quer
 cells:
-  - { at: [0, 0], span: [2, 2], widget: paperboy/header }
+  - { at: [0, 0], span: [2, 2], widget: paperboy/text, args: {text: x} }
 `)
 	body = request(t, s, http.MethodGet, "/ui/pages/clock?display=small", nil, nil).Body.String()
 	for _, want := range []string{
@@ -487,7 +487,7 @@ title: Solar
 kind: image
 grid: [2, 2]
 cells:
-  - { at: [0, 0], span: [2, 2], widget: paperboy/header }
+  - { at: [0, 0], span: [2, 2], widget: paperboy/text, args: {text: x} }
 `)
 	body := request(t, s, http.MethodGet, "/ui/pages/solar", nil, nil).Body.String()
 	if !strings.Contains(body, `"display":"bild"`) {
@@ -684,9 +684,9 @@ func TestEditorPage(t *testing.T) {
 		// The preview type is the served one; the file is not a link there.
 		`data-serves="small"`,
 		`"rename":{"url":"/api/pages/solar/rename"}`,
-		`<script src="/ui/editor.js"></script>`, `id="board"`, `id="palette"`, `id="palette-filter"`, `id="inspector"`,
+		`<script src="/ui/editor.js"></script>`, `<script src="/ui/args.js"></script>`, `id="board"`, `id="palette"`, `id="palette-filter"`, `id="inspector"`,
 		`id="show-cells" checked`, `id="render-hint"`, `id="preview-error"`, `id="grid-lock"`,
-		`id="header-height"`, `id="header-add"`, `id="header-remove"`,
+		`id="show-header"`, `id="header-note"`,
 		// The panels list the files of the page and the file of every display
 		// type; one dialog creates a layout (ADR 0110).
 		`<h3>Variants</h3>`, `pages/solar.hochkant.yaml is missing`,
@@ -698,7 +698,9 @@ func TestEditorPage(t *testing.T) {
 	}
 	// The page editor has no display type switch and no coverage table with an
 	// action per row (ADR 0110).
-	for _, unwanted := range []string{"id=\"display-switch\"", "Display type:", `id="file-toggle"`, `id="specialize"`, "Save as ", "data-variant="} {
+	// The header band belongs to the display type; the page editor only shows
+	// whether the page shows it (ADR 0168).
+	for _, unwanted := range []string{"id=\"display-switch\"", "Display type:", `id="file-toggle"`, `id="specialize"`, "Save as ", "data-variant=", `id="header-height"`, `id="header-add"`, `id="header-remove"`, `id="header-save"`, `id="header-add-part"`} {
 		if strings.Contains(body, unwanted) {
 			t.Fatalf("the page editor still carries %q:\n%s", unwanted, body)
 		}
@@ -756,7 +758,7 @@ variants:
   small: hochkant
   wide: hochkant
 cells:
-  - { at: [0, 0], span: [2, 1], widget: paperboy/header }
+  - { at: [0, 0], span: [2, 1], widget: paperboy/text, args: {text: x} }
 `)
 	writePage(t, s, "solar", "hochkant", variantPage)
 
@@ -822,6 +824,45 @@ func TestEditorGridFromDisplayType(t *testing.T) {
 	rec = preview(t, s, "/api/widget/paperboy/clock?display=wide")
 	if img, err := png.Decode(bytes.NewReader(rec.Body.Bytes())); err != nil || img.Bounds().Dx() != 400 || img.Bounds().Dy() != 240 {
 		t.Fatalf("default cell: %v %v", img.Bounds(), err)
+	}
+}
+
+// TestDisplayHeaderPreview renders the band of a display type as a draft, so
+// the display type editor shows the parts before a save (ADR 0168).
+func TestDisplayHeaderPreview(t *testing.T) {
+	s := editorServer(t)
+	body := `{"header":{"height":2,"temperature":true,"clock":"time","battery":true}}`
+	rec := request(t, s, http.MethodPost, "/api/displays/small/header-preview", body, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("band preview: %d %s", rec.Code, rec.Body)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "image/png" {
+		t.Fatalf("content type: %q", ct)
+	}
+	img, err := png.Decode(bytes.NewReader(rec.Body.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 2 pt at 125 ppi are 3 px; the strip is the panel width.
+	if img.Bounds().Dx() != 40 || img.Bounds().Dy() != 3 {
+		t.Fatalf("band is %v, want 40x3", img.Bounds())
+	}
+	// A band that leaves no room, a type without a band, a missing header and
+	// the old free part list are refused with the answer the editor shows.
+	for _, tc := range []struct {
+		name, path, body string
+		code             int
+	}{
+		{"too tall", "/api/displays/small/header-preview", `{"header":{"height":24}}`, http.StatusUnprocessableEntity},
+		{"text type", "/api/displays/lcd/header-preview", body, http.StatusBadRequest},
+		{"unknown type", "/api/displays/nope/header-preview", body, http.StatusNotFound},
+		{"no header", "/api/displays/small/header-preview", `{}`, http.StatusBadRequest},
+		{"old parts", "/api/displays/small/header-preview", `{"header":{"height":2,"parts":[{"widget":"paperboy/title","fill":true}]}}`, http.StatusBadRequest},
+		{"bad clock", "/api/displays/small/header-preview", `{"header":{"height":2,"clock":"hourly"}}`, http.StatusBadRequest},
+	} {
+		if rec := request(t, s, http.MethodPost, tc.path, tc.body, nil); rec.Code != tc.code {
+			t.Fatalf("%s: %d, want %d (%s)", tc.name, rec.Code, tc.code, rec.Body)
+		}
 	}
 }
 

@@ -190,3 +190,21 @@ td.name .missing { color: var(--pb-error); }
   table.cards td:not([data-label]) { display: block; }
   table.cards tr.detail td::before { content: none; }
 }
+
+/* The argument fields of a cell or a header part. The page editor and the
+   display type editor share args.js, so the controls look the same (ADR 0168). */
+.arg { margin-bottom: .35rem; }
+.arg .name { font-size: .78rem; color: var(--pb-ink-muted); display: block; }
+.arg .desc { font-size: .72rem; color: var(--pb-ink-faint); display: block; }
+.arg .checks { margin-top: .25rem; }
+.arg .checks-bar { display: flex; align-items: center; gap: .4rem; margin-bottom: .3rem; font-size: .74rem; color: var(--pb-ink-muted); }
+.arg .checks-count { font-variant-numeric: tabular-nums; }
+.arg .checks-actions { display: flex; gap: .25rem; margin-left: auto; }
+.arg .checks-actions button { font: inherit; font-size: .74rem; padding: .05rem .45rem; border: 1px solid var(--pb-hairline-strong); border-radius: 999px; background: var(--pb-surface-sunken); color: var(--pb-accent); cursor: pointer; }
+.arg .checks-actions button:hover { background: var(--pb-accent-bg); border-color: var(--pb-hairline-strong); }
+.arg .checks-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .15rem .35rem; }
+.arg .check { display: flex; align-items: center; gap: .35rem; min-width: 0; padding: .18rem .3rem; border: 1px solid transparent; border-radius: 4px; font-size: .78rem; line-height: 1.25; color: var(--pb-ink); cursor: pointer; }
+.arg .check:hover { background: var(--pb-surface-sunken); }
+.arg .check:has(input:checked) { background: var(--pb-accent-bg); border-color: var(--pb-hairline-strong); color: var(--pb-accent); }
+.arg .check input { flex: none; margin: 0; }
+.arg .check span { min-width: 0; overflow-wrap: anywhere; }

@@ -18,7 +18,7 @@ triggers:
 grid: [2, 1]
 cells:
   - { at: [0, 0], span: [1, 1], widget: weather/current }
-  - { at: [1, 0], span: [1, 1], widget: paperboy/header }
+  - { at: [1, 0], span: [1, 1], widget: paperboy/text, args: {text: x} }
 `)
 }
 
@@ -42,28 +42,6 @@ func TestPluginDemand(t *testing.T) {
 	}
 	if _, ok := demand["paperboy"]; ok {
 		t.Error("the built-in plugin must add no demand")
-	}
-}
-
-// TestPluginDemandHeaderPart checks that a plugin of a header part is warm
-// like a plugin of a cell (ADR 0166).
-func TestPluginDemandHeaderPart(t *testing.T) {
-	s, now := testServer(t)
-	cfg := s.config()
-	cfg.Devices[0].Plan = "plan"
-	writePlan(t, s, "plan", "pages: [seite]\n")
-	writePage(t, s, "seite", "", `kind: image
-grid: [1, 1]
-header:
-  height: 1
-  left: [{widget: weather/current}]
-cells:
-  - { at: [0, 0], widget: paperboy/text, args: {text: x} }
-`)
-	s.state[cfg.Devices[0].stateKey()] = &deviceState{LastSeen: *now, LastRefresh: 1800}
-	demand := s.pluginDemand()
-	if at, ok := demand["weather"]; !ok || !at.Equal(now.Add(30*time.Minute)) {
-		t.Fatalf("header part demand = %v, %v", at, ok)
 	}
 }
 

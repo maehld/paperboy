@@ -19,12 +19,15 @@
     readOnly: false,
     dirty: false,
     rename: start.rename || null,
+    previewTimer: 0,
+    previewSeq: 0,
+    previewURL: '', // object URL of the band preview
   };
 
   function empty(kind) {
     return kind === 'text'
-      ? { kind: 'text', size: [20, 4], gray_levels: 0, ppi: 0, charset: 'utf8', min_refresh: '', power: '', rotation: 0, grid: [0, 0] }
-      : { kind: 'image', size: [800, 480], gray_levels: 4, ppi: 125, charset: '', min_refresh: '', power: '', rotation: 0, grid: [0, 0] };
+      ? { kind: 'text', size: [20, 4], gray_levels: 0, ppi: 0, charset: 'utf8', min_refresh: '', power: '', rotation: 0, grid: [0, 0], header: null }
+      : { kind: 'image', size: [800, 480], gray_levels: 4, ppi: 125, charset: '', min_refresh: '', power: '', rotation: 0, grid: [0, 0], header: null };
   }
 
   // ---- status ----
@@ -44,6 +47,7 @@
     state.dirty = true;
     setStatus('unsaved changes', '');
     updateWhere();
+    schedulePreview();
   }
 
   // ---- form ----
@@ -113,6 +117,7 @@
     el('rotation').value = String(d.rotation || 0);
     el('grid-cols').value = d.grid && d.grid[0] ? d.grid[0] : '';
     el('grid-rows').value = d.grid && d.grid[1] ? d.grid[1] : '';
+    renderHeader();
     el('yaml').textContent = state.yaml || '(no file yet)';
     el('delete').hidden = state.isNew;
     el('rename').hidden = state.isNew || !state.rename;
@@ -134,6 +139,7 @@
       : 'The page in pixels, as Paperboy composes it; rotation maps it onto the panel.';
     updatePPI();
     updateGrid();
+    renderHeader();
   }
 
   // updatePPI names the physical size behind the pixel density, because ppi
@@ -288,6 +294,7 @@
       if (d.ppi) out.ppi = Number(d.ppi);
       if (d.rotation) out.rotation = Number(d.rotation);
       if (d.grid && d.grid[0] > 0 && d.grid[1] > 0) out.grid = [Number(d.grid[0]), Number(d.grid[1])];
+      out.header = headerOut(d.header || { height: 24, clock: 'time' });
     }
     if (d.min_refresh) out.min_refresh = d.min_refresh;
     if (d.power) out.power = d.power;
@@ -307,7 +314,136 @@
     d.rotation = Number(d.rotation) || 0;
     d.grid = Array.isArray(d.grid) && d.grid.length === 2 && d.grid[0] > 0 && d.grid[1] > 0
       ? [Number(d.grid[0]) || 0, Number(d.grid[1]) || 0] : [0, 0];
+    const h = d.header && typeof d.header === 'object' ? d.header : {};
+    d.header = d.kind === 'text' ? null : {
+      height: Math.max(1, Math.min(144, Math.round(Number(h.height)) || 24)),
+      page_indicator: h.page_indicator !== false,
+      temperature: !!h.temperature,
+      humidity: !!h.humidity,
+      clock: ['time', 'date', 'datetime', 'none'].includes(h.clock) ? h.clock : 'time',
+      battery: !!h.battery,
+    };
     return d;
+  }
+
+  // ---- header band ----
+  //
+  // Every image display type has a band (ADR 0168). The title and its page
+  // indicator sit on the left; temperature, humidity, clock and battery follow
+  // right-aligned. The editor only switches the parts on and off.
+
+  function headerOut(h) {
+    return {
+      height: h.height,
+      page_indicator: h.page_indicator !== false,
+      temperature: !!h.temperature,
+      humidity: !!h.humidity,
+      clock: h.clock || 'time',
+      battery: !!h.battery,
+    };
+  }
+
+  function renderHeader() {
+    const h = state.display.header;
+    const text = state.display.kind === 'text';
+    const off = state.readOnly || text || !h;
+    el('header-height').value = h ? h.height : '';
+    for (const id of ['header-height', 'header-page-indicator', 'header-temperature', 'header-humidity', 'header-clock', 'header-battery']) {
+      el(id).disabled = off;
+    }
+    el('header-page-indicator').checked = !!h && h.page_indicator !== false;
+    el('header-temperature').checked = !!(h && h.temperature);
+    el('header-humidity').checked = !!(h && h.humidity);
+    el('header-battery').checked = !!(h && h.battery);
+    el('header-clock').value = h ? (h.clock || 'time') : 'time';
+    el('header-hint').textContent = text
+      ? ''
+      : 'A page hides the band with header: false. The preview uses the saved size, ppi and gray levels.';
+    schedulePreview();
+  }
+
+  function onHeader() {
+    el('header-height').addEventListener('change', () => {
+      if (state.readOnly || !state.display.header) return;
+      state.display.header.height = Math.max(1, Math.min(144, Math.round(Number(el('header-height').value) || 24)));
+      el('header-height').value = state.display.header.height;
+      changed();
+    });
+    for (const [id, key] of [
+      ['header-page-indicator', 'page_indicator'],
+      ['header-temperature', 'temperature'],
+      ['header-humidity', 'humidity'],
+      ['header-battery', 'battery'],
+    ]) {
+      el(id).addEventListener('change', () => {
+        if (state.readOnly || !state.display.header) return;
+        state.display.header[key] = el(id).checked;
+        changed();
+      });
+    }
+    el('header-clock').addEventListener('change', () => {
+      if (state.readOnly || !state.display.header) return;
+      state.display.header.clock = el('header-clock').value || 'time';
+      changed();
+    });
+  }
+
+  // schedulePreview debounces the render while the operator types; the fetch
+  // renders the draft on the server, so the preview matches the device path.
+  function schedulePreview() {
+    clearTimeout(state.previewTimer);
+    state.previewTimer = setTimeout(renderPreview, 300);
+  }
+
+  async function renderPreview() {
+    const img = el('header-preview-img');
+    const note = el('header-preview-note');
+    if (!img || !note) return;
+    const h = state.display.header;
+    const show = (text) => {
+      img.hidden = true;
+      note.hidden = false;
+      note.textContent = text;
+    };
+    if (state.display.kind === 'text' || !h) {
+      show('No header band.');
+      return;
+    }
+    if (state.isNew) {
+      show('Save the display type once to see its band.');
+      return;
+    }
+    const seq = ++state.previewSeq;
+    let res;
+    try {
+      res = await fetch('/api/displays/' + encodeURIComponent(state.name) + '/header-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ header: headerOut(h) }),
+      });
+    } catch (e) {
+      if (seq === state.previewSeq) show('preview failed: ' + e);
+      return;
+    }
+    if (seq !== state.previewSeq) return;
+    if (!res.ok) {
+      const body = await res.text();
+      let message = body.trim();
+      try {
+        message = JSON.parse(body).error || message;
+      } catch (e) {
+        // the text is the message
+      }
+      show(message || 'preview failed (' + res.status + ')');
+      return;
+    }
+    const blob = await res.blob();
+    if (seq !== state.previewSeq) return;
+    if (state.previewURL) URL.revokeObjectURL(state.previewURL);
+    state.previewURL = URL.createObjectURL(blob);
+    img.src = state.previewURL;
+    img.hidden = false;
+    note.hidden = true;
   }
 
   // ---- load and save ----
@@ -608,6 +744,7 @@
   onPPI();
   onPanel();
   onGrid();
+  onHeader();
   window.addEventListener('beforeunload', (e) => {
     if (!state.dirty) return;
     e.preventDefault();

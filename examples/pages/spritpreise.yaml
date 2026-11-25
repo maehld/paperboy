@@ -6,7 +6,6 @@ variants: {lcd2004: lcd2004}
 grid: [6, 8]
 style: { padding: 4.5, divider: 0.6 }
 cells:
-  - { at: [0, 0], span: [6, 1], widget: paperboy/header, args: { clock: true } }
-  - { at: [0, 1], span: [6, 2], widget: fuel/cheapest, args: { fuel: diesel } }
-  - { at: [0, 3], span: [6, 3], widget: fuel/prices, args: { fuel: diesel, stations: 5 } }
-  - { at: [0, 6], span: [6, 2], widget: fuel/history, args: { fuel: diesel, span: 24h } }
+  - { at: [0, 0], span: [6, 2], widget: fuel/cheapest, args: { fuel: diesel } }
+  - { at: [0, 2], span: [6, 3], widget: fuel/prices, args: { fuel: diesel, stations: 5 } }
+  - { at: [0, 5], span: [6, 3], widget: fuel/history, args: { fuel: diesel, span: 24h } }

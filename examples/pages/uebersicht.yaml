@@ -1,16 +1,11 @@
 # Overview for image displays of any size: the page file serves every display
-# type of its kind, and variants names the exceptions (ADR 0110). The header
-# band sits above the grid, so the grid keeps a coarse unit (ADR 0166).
+# type of its kind, and variants names the exceptions (ADR 0110). The display
+# type's header band sits above the grid, so the grid keeps a coarse unit
+# (ADR 0168).
 title: Übersicht
 kind: image
 variants: {lcd2004: lcd2004}
 grid: [6, 7]
-header:
-  height: 24
-  left:
-    - { widget: paperboy/title, weight: 3 }
-  right:
-    - { widget: paperboy/clock, args: { format: auto }, weight: 2 }
 style: { padding: 4.5, divider: 0.6 }
 cells:
   - { at: [0, 0], span: [3, 3], widget: weather/current }

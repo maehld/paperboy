@@ -252,40 +252,40 @@ func TestBatteryLevelMark(t *testing.T) {
 	}
 }
 
-func TestHeaderBatteryIconOnly(t *testing.T) {
+func TestBandBatteryIconOnly(t *testing.T) {
 	req := &plugin.Request{Language: "de", Now: testStatusTime, Page: plugin.PageInfo{Title: ""}, ServerStatus: testStatus()}
-	w := plugin.WidgetRequest{Widget: "header", Width: 400, Height: 60, Style: plugin.Style{Rule: 1, TextPx: 16},
-		Args: map[string]any{"title": "", "clock": false, "battery": true}}
+	w := plugin.WidgetRequest{Widget: "band", Width: 400, Height: 60, Style: plugin.Style{Rule: 1, TextPx: 16},
+		Args: map[string]any{"page_indicator": false, "clock": "none", "battery": true}}
 	img := render.NewCanvas(w.Width, w.Height, 2)
 	if err := (Plugin{}).Render(req, w, img); err != nil {
 		t.Fatal(err)
 	}
-	// The rule of the header is the only other ink.
-	box, ok := inkBox(img, image.Rect(0, 0, w.Width, w.Height-1))
+	// The band draws only the gauge; the rule comes from the page.
+	box, ok := inkBox(img, image.Rect(0, 0, w.Width, w.Height))
 	if !ok {
 		t.Fatal("nothing drawn")
 	}
 	if box.Max.X != w.Width {
 		t.Errorf("the gauge does not reach the right edge: %v", box)
 	}
-	if box.Max.Y != w.Height-1 {
-		t.Errorf("the gauge does not sit on the text baseline: %v", box)
+	if want := w.Height/2 + int(float64(w.Height)*0.5*0.36); box.Max.Y != want {
+		t.Errorf("the gauge does not sit on the text baseline: %v, want bottom %d", box, want)
 	}
 	if box.Dx() > 2*box.Dy()+2 {
 		t.Errorf("the header draws a value beside the gauge: ink %v", box)
 	}
 }
 
-// TestHeaderBatteryMatchesTheText keeps the gauge at the height of a capital
-// letter when the header cell is tall, as on the E1003.
-func TestHeaderBatteryMatchesTheText(t *testing.T) {
+// TestBandBatteryMatchesTheText keeps the gauge at the height of a capital
+// letter when the band is tall, as on the E1003.
+func TestBandBatteryMatchesTheText(t *testing.T) {
 	// The E1003's header: one row of 1404 / 8 px at 227 ppi.
 	style := plugin.Style{Padding: 14, Rule: 2, TextPx: 16 * 227.0 / 72}
 	req := &plugin.Request{Language: "de", Now: testStatusTime,
 		Page:         plugin.PageInfo{Title: "", Width: 1872, Height: 1404, PPI: 227},
 		ServerStatus: testStatus()}
-	w := plugin.WidgetRequest{Widget: "header", Width: 1872, Height: 1404 / 8, Style: style,
-		Args: map[string]any{"title": "", "clock": false, "battery": true}}
+	w := plugin.WidgetRequest{Widget: "band", Width: 1872, Height: 1404 / 8, Style: style,
+		Args: map[string]any{"page_indicator": false, "clock": "none", "battery": true}}
 	img := render.NewCanvas(w.Width, w.Height, 4)
 	if err := (Plugin{}).Render(req, w, img); err != nil {
 		t.Fatal(err)
@@ -294,8 +294,8 @@ func TestHeaderBatteryMatchesTheText(t *testing.T) {
 	if !ok {
 		t.Fatal("nothing drawn")
 	}
-	statusSize := min(float64(w.Height)*0.45, style.TextPx*1.1)
-	capH := int(render.Face(statusSize, false).Metrics().CapHeight.Round())
+	textSize := float64(w.Height) * 0.5
+	capH := int(render.Face(textSize, false).Metrics().CapHeight.Round())
 	if box.Dy() > capH+1 {
 		t.Errorf("the gauge is %d px high, a capital letter is %d", box.Dy(), capH)
 	}

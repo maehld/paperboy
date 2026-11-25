@@ -2,3 +2,8 @@ kind: image
 size: [1872, 1404]
 ppi: 227
 gray_levels: 16
+header:
+  height: 24
+  temperature: true
+  clock: time
+  battery: true

@@ -5,5 +5,10 @@ kind: image
 size: [800, 480]
 gray_levels: 4
 ppi: 125          # pixels per inch: 800 px / 163 mm active width
+header:
+  height: 24
+  temperature: true
+  clock: time
+  battery: true
 min_refresh: 60s
 # power: auto      # auto (default: what the firmware reports, else battery), battery or mains (ADR 0051)

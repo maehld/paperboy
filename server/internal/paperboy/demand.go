@@ -67,6 +67,13 @@ func (s *Server) pluginDemand() map[string]time.Time {
 		// The pages of a plan are static, so every page is warm, hidden or
 		// not, and a trigger page never arrives cold (ADR 0158).
 		needed := map[string]bool{}
+		if header := cfg.Profiles[d.Profile].Header; header != nil {
+			for _, part := range header.Parts {
+				if plugin := part.Plugin(); plugin != "" && plugin != builtin.Name {
+					needed[plugin] = true
+				}
+			}
+		}
 		for _, pg := range p.Pages {
 			if s.fits(cfg, d.Profile, pg.Name) != nil {
 				continue
@@ -83,11 +90,7 @@ func (s *Server) pluginDemand() map[string]time.Time {
 					needed[plugin] = true
 				}
 			}
-			for _, part := range t.HeaderParts() {
-				if plugin := part.Plugin(); plugin != "" && plugin != builtin.Name {
-					needed[plugin] = true
-				}
-			}
+
 		}
 		// A trigger decides on every sync, so its values must answer even
 		// while the device shows another page.
