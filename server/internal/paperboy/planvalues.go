@@ -12,9 +12,9 @@ import (
 
 // planValues asks the plugins for the values a plan's triggers name (ADR 0127).
 // It runs outside the state lock, because a plugin request is I/O. The answers
-// become the plan.Values that select the trigger. A failing plugin, an unknown
-// value and an empty answer are omitted, so missing data never shows a trigger
-// page; the plan continues with its next trigger.
+// become the plan.Values that select the trigger. A failing plugin, a stale
+// answer, an unknown value and an empty answer are omitted, so missing data
+// never shows a trigger page; the plan continues with its next trigger.
 func (s *Server) planValues(ctx context.Context, cfg *Config, planName, profile string, d *Device) plan.Values {
 	if planName == "" {
 		return nil
@@ -74,8 +74,12 @@ func (s *Server) evaluatePlanValues(ctx context.Context, cfg *Config, p *plan.Pl
 			break
 		}
 		r := results[i]
-		if r.Err != nil {
-			slog.Debug("plan value unavailable", "plugin", req.Plugin, "value", req.Name, "error", r.Err)
+		if r.Err != nil || r.Stale {
+			// A failing plugin serves its last result as stale from the cache.
+			// A condition must treat that like a missing answer, or the page
+			// of its trigger never ends (issue #458, ADR 0103).
+			slog.Debug("plan value unavailable", "plugin", req.Plugin, "value", req.Name,
+				"error", r.Err, "stale", r.Stale)
 			continue
 		}
 		if r.Value == nil || r.Value.Type() != plugin.ValueEnum || r.Value.Enum == nil || r.Spec.Type != plugin.ValueEnum {
