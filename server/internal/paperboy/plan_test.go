@@ -759,6 +759,30 @@ triggers:
 	}
 }
 
+// TestPlanWeekdayTriggerWakesAtMidnight caps the sleep at the day change, so a
+// weekday page leaves on time even when the interval has no midnight slot
+// (issue #460).
+func TestPlanWeekdayTriggerWakesAtMidnight(t *testing.T) {
+	s, now := planServer(t, `
+pages: [eins, {page: alarm, hidden: true}]
+refresh: {default: 10h}
+triggers:
+  - when: [{ value: weekday, is: [wed] }]
+    page: alarm
+`)
+	*now = time.Date(2026, time.October, 21, 20, 0, 0, 0, time.UTC) // Wednesday
+	dev := planDevice(t, s)
+	out := displayPage(t, s, dev)
+	if got := pagePath(out); !strings.Contains(got, "/alarm/") {
+		t.Fatalf("trigger page: %q", got)
+	}
+	// The weekday ends at midnight, four hours after this sync. The 10h grid
+	// would not reach it.
+	if got := out["refresh_s"].(float64); got != 4*60*60 {
+		t.Fatalf("wake at midnight: %v", got)
+	}
+}
+
 // TestHomeSyncsTheServedPage checks that home only syncs the page and never
 // pages, opens a menu or schedules a wake (ADR 0161).
 func TestHomeSyncsTheServedPage(t *testing.T) {
