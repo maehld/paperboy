@@ -118,8 +118,8 @@ lists. [`myskoda`](../plugins/myskoda.md) and [`prusalink`](../plugins/prusalink
 use the scale, the meter and the secondary ink.
 [`calendar`](../plugins/calendar.md) uses the scale in the agenda and the week
 view; the month grid stays custom. [`dexcom`](../plugins/dexcom.md) uses the
-scale for its reading, graph and value rows; the trend arrows and the target
-band stay custom.
+scale for its reading, graph and value rows; the trend arrows, the target band
+and the state signs stay custom.
 
 The Pokédex card and xkcd keep their own drawing where the components do not
 fit.

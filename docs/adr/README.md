@@ -201,6 +201,7 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0169](0169-the-glucose-chart-covers-24-hours.md) | The glucose chart covers 24 hours | Accepted, implemented; amends the day window of [ADR-0099](0099-glucose-readings-from-the-dexcom-share-service.md) |
 | [0160](0160-a-trend-chart-reads-in-a-short-cell.md) | A trend chart reads in a short cell | Accepted, implemented; caps the title and axis of the trend of [ADR-0151](0151-a-shared-design-language-for-plugin-widgets.md) by the cell height and amends the mark labels of [ADR-0156](0156-mark-the-extrema-in-a-trend-chart.md) |
 | [0166](0166-a-shared-battery-gauge.md) | A shared battery gauge | Accepted, implemented; adds `DrawBattery` to [ADR-0151](0151-a-shared-design-language-for-plugin-widgets.md) and uses it for the gauge of [ADR-0121](0121-segmented-battery-gauge.md) and the evcc flow |
+| [0170](0170-a-sign-language-for-glucose-states.md) | A sign language for glucose states | Accepted, implemented; adds the `sign` widget to [ADR-0099](0099-glucose-readings-from-the-dexcom-share-service.md) and keeps the drawing in the plugin |
 
 ## Delivery and releases
 

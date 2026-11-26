@@ -1,0 +1,11 @@
+# A child's glucose page: one large sign that needs no reading, with the
+# reading and the numbers of 24 hours beside it for an adult. Requires the
+# dexcom plugin (docs/plugins/dexcom.md).
+title: Glukose
+kind: image
+grid: [6, 8]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [4, 8], widget: dexcom/sign }
+  - { at: [4, 0], span: [2, 3], widget: dexcom/glucose }
+  - { at: [4, 3], span: [2, 5], widget: dexcom/values, args: { values: [now, trend, age, delta] } }

@@ -11,9 +11,13 @@ numbers of 24 hours:
 
 ![The glucose page](../images/plugins/dexcom/page-glukose.png)
 
-| `glucose` | `graph` | `values` |
-|---|---|---|
-| ![glucose](../images/plugins/dexcom/glucose.png) | ![graph](../images/plugins/dexcom/graph.png) | ![values](../images/plugins/dexcom/values.png) |
+| `glucose` | `graph` | `values` | `sign` |
+|---|---|---|---|
+| ![glucose](../images/plugins/dexcom/glucose.png) | ![graph](../images/plugins/dexcom/graph.png) | ![values](../images/plugins/dexcom/values.png) | ![sign](../images/plugins/dexcom/sign.png) |
+
+The example page `glukose-kind` puts the sign in a large cell for a child:
+
+![The child's glucose page](../images/plugins/dexcom/page-glukose-kind.png)
 
 The `glukose` text page on a 20 × 4 display:
 
@@ -88,6 +92,30 @@ Single values as rows, like the `values` widget of the evcc plugin. The list arg
 | `band` | The configured target band |
 
 Without `values` all entries are shown; `columns` sets one or two columns. Rows that do not fit the cell are left out, so the order of the list is the order of importance. The widget is for image displays; the values below carry the same data to a text page.
+
+## Widget `sign`
+
+The widget is for image displays. It draws one large sign for the state of the newest reading. A child who cannot read sees the state without a number or a word.
+
+| State | Sign | Meaning |
+|---|---|---|
+| in band | check | everything is fine |
+| high | up arrow | too high, tell an adult |
+| low | down arrow and a candy | too low, eat sugar |
+| urgent low | stop sign and a candy | get an adult, eat sugar |
+| older than 15 minutes or no reading | question mark | unknown |
+
+A candy appears only with a low. Fast carbs are the one action a child can take. A high shows no action, because the correction belongs to an adult.
+
+The question mark replaces the last sign when the reading is stale or gone. The child never sees a check for data that is gone. The question mark uses the muted ink.
+
+The signs use no text and no face. They are a check, arrows, a stop sign and a question mark. Children know these shapes from traffic and kindergarten, and the shapes stay sharp on a one-bit panel.
+
+The arrow names the level, not the trend. The `glucose` widget shows the trend with a thin arrow.
+
+The sign fills its cell. A low puts the candy beside the sign in a wide cell and below it in a narrow cell. The widget needs a cell of at least 60 × 60 px.
+
+The mapping is fixed and has no argument, so every page shows the same sign for the same state. The example page `glukose-kind` puts the sign in a large cell next to the detailed widgets for an adult. The drawing stays in the plugin ([ADR 0170](../adr/0170-a-sign-language-for-glucose-states.md)).
 
 ## Values
 

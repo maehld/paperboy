@@ -176,6 +176,12 @@ func (d *dexcom) Describe() plugin.Description {
 						Description: "how many columns of rows, 1 to 2"},
 				},
 			},
+			{
+				Widget: "sign", Title: "Glucose sign", Kinds: image,
+				Sizes:    []plugin.Span{{Columns: 2, Rows: 2}, {Columns: 2, Rows: 3}, {Columns: 3, Rows: 3}},
+				MinWidth: 60, MinHeight: 60,
+				Args: map[string]plugin.Arg{},
+			},
 		},
 	}
 }

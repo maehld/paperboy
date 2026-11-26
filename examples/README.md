@@ -39,7 +39,8 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
   stop and the departures with clock times on 20×4.
 - `glukose.yaml` - the glucose reading next to the day with the numbers of the
   day below; `glukose.lcd2004.yaml` puts the reading, the trend, the change,
-  the age and the labelled state on 20×4.
+  the age and the labelled state on 20×4. `glukose-kind.yaml` puts the large
+  `sign` for a child next to the reading and the numbers for an adult.
 - `nachrichten.yaml` - two RSS feeds: headlines with summaries and a mixed
   list of all sources.
 - `github.yaml` - the state of one repository: counts and the newest commit,

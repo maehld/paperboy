@@ -30,6 +30,8 @@ func (d *dexcom) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.
 		return d.graphWidget(req, w, img)
 	case "values":
 		return d.valuesWidget(req, w, img)
+	case "sign":
+		return d.signWidget(req, w, img)
 	}
 	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 }

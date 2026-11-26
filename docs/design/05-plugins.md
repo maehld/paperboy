@@ -124,7 +124,7 @@ Every plugin has its own version in `plugins/cmd/<plugin>/VERSION`, embedded in 
 | [`evcc`](../plugins/evcc.md) | evcc `/api/state` and its energy history | `site`, `flow` and `balance` (with `period`), `loadpoint`, `forecast`, `history`, `chart`, `values`, action `mode` |
 | [`departures`](../plugins/departures.md) | EFA rapidJSON | `departures` |
 | [`myskoda`](../plugins/myskoda.md) | MyŠkoda Public API | `battery`, `charging`, `profiles`, `location`, `climate`, `card`, `car`, actions `charging` and `climate` |
-| [`dexcom`](../plugins/dexcom.md) | Dexcom Share | `glucose`, `graph`, `values`, value `state` with the keys `normal`, `low`, `high`, `urgent` |
+| [`dexcom`](../plugins/dexcom.md) | Dexcom Share | `glucose`, `graph`, `values`, `sign`, value `state` with the keys `normal`, `low`, `high`, `urgent` |
 | [`rss`](../plugins/rss.md) | RSS 2.0, RSS 1.0 and Atom | `feed`, `headline` |
 | [`github`](../plugins/github.md) | GitHub REST API | `repo`, `issues`, `pulls`, `runs`, `commits`, values `open-issues`, `open-pulls`, `failed-runs`, `last-commit`, `last-run`, `state` |
 | [`prusalink`](../plugins/prusalink.md) | PrusaLink API of a Prusa printer | `printer`, `progress`, `temperatures`, values `state`, `progress`, `time-remaining`, `time-printing`, `nozzle`, `bed`, `job` |

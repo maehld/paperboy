@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -291,7 +292,7 @@ func TestWidgets(t *testing.T) {
 	}
 	for _, levels := range []int{2, 4, 16} {
 		for _, size := range sizes {
-			for _, widget := range []string{"glucose", "graph", "values"} {
+			for _, widget := range []string{"glucose", "graph", "values", "sign"} {
 				img := render.NewCanvas(size.Dx(), size.Dy(), levels)
 				w := plugin.WidgetRequest{Widget: widget, Width: size.Dx(), Height: size.Dy(), Style: style()}
 				if err := d.Render(req, w, img); err != nil {
@@ -352,6 +353,75 @@ func TestAlarmStates(t *testing.T) {
 	img := render.NewCanvas(400, 240, 4)
 	if err := d.Render(req, plugin.WidgetRequest{Widget: "glucose", Width: 400, Height: 240, Style: style()}, img); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The sign widget draws one sign per state: a check in band, an arrow outside,
+// a sweet with every low, and a question mark without a current reading. A
+// stale reading never keeps its old sign.
+func TestSignStates(t *testing.T) {
+	now := time.Date(2026, 11, 13, 20, 0, 0, 0, time.UTC)
+	d, _, req := newTestDexcom(t, now)
+	d.mu.Lock()
+	d.unit = unitMGDL
+	d.set = map[string]float64{}
+	d.mu.Unlock()
+
+	draw := func(rs []reading) *image.Paletted {
+		t.Helper()
+		d.mu.Lock()
+		d.readings = rs
+		d.mu.Unlock()
+		img := render.NewCanvas(200, 200, 4)
+		w := plugin.WidgetRequest{Widget: "sign", Width: 200, Height: 200, Style: style()}
+		if err := d.Render(req, w, img); err != nil {
+			t.Fatalf("sign with %d readings: %v", len(rs), err)
+		}
+		return img
+	}
+
+	normal := draw([]reading{{at: now.Add(-2 * time.Minute), value: 120}})
+	high := draw([]reading{{at: now.Add(-2 * time.Minute), value: 300}})
+	low := draw([]reading{{at: now.Add(-2 * time.Minute), value: 60}})
+	urgent := draw([]reading{{at: now.Add(-2 * time.Minute), value: 48}})
+	stale := draw([]reading{{at: now.Add(-staleAfter - time.Minute), value: 120}})
+	none := draw(nil)
+
+	// The candy sits in the lower corners, outside the check and the arrow.
+	leftSweet := image.Rect(44, 154, 62, 190)
+	rightSweet := image.Rect(132, 152, 158, 190)
+	for name, img := range map[string]*image.Paletted{"low": low, "urgent": urgent} {
+		if !hasInk(img, leftSweet) || !hasInk(img, rightSweet) {
+			t.Errorf("%s: the sweet is missing", name)
+		}
+	}
+	for name, img := range map[string]*image.Paletted{"normal": normal, "high": high} {
+		if hasInk(img, leftSweet) || hasInk(img, rightSweet) {
+			t.Errorf("%s: a sweet below a sign that is not low", name)
+		}
+	}
+	// A stale reading and no reading look alike: a question mark, not a sign.
+	if !bytes.Equal(stale.Pix, none.Pix) {
+		t.Error("a stale reading does not look like no reading")
+	}
+	if bytes.Equal(stale.Pix, normal.Pix) {
+		t.Error("a stale reading still looks like a current reading")
+	}
+	// Every state draws at one bit too.
+	for _, levels := range []int{2, 4} {
+		for _, v := range []float64{120, 60, 48} {
+			img := render.NewCanvas(120, 120, levels)
+			d.mu.Lock()
+			d.readings = []reading{{at: now.Add(-2 * time.Minute), value: v}}
+			d.mu.Unlock()
+			w := plugin.WidgetRequest{Widget: "sign", Width: 120, Height: 120, Style: style()}
+			if err := d.Render(req, w, img); err != nil {
+				t.Fatalf("sign at %d levels, value %g: %v", levels, v, err)
+			}
+			if !hasInk(img, img.Rect) {
+				t.Errorf("sign at %d levels, value %g: no ink", levels, v)
+			}
+		}
 	}
 }
 
@@ -735,7 +805,7 @@ func TestProtocol(t *testing.T) {
 
 	send(plugin.Request{ID: "1", Action: plugin.ActionDescribe, Language: "de", Now: now})
 	m := next()
-	if m.Description == nil || len(m.Description.Widgets) != 3 || m.Description.Version == "" {
+	if m.Description == nil || len(m.Description.Widgets) != 4 || m.Description.Version == "" {
 		t.Fatalf("description = %+v", m.Description)
 	}
 
