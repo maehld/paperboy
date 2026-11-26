@@ -97,7 +97,7 @@ func (a actionState) chosen() *actionOption {
 }
 
 // hit returns the option at a page point. A disabled tile is returned too, so
-// the caller can leave the mode open.
+// the caller can leave the mode open; an active tile closes it.
 func (a actionState) hit(x, y int) *actionOption {
 	for i := range a.Options {
 		r := a.Options[i].Rect
@@ -474,9 +474,9 @@ func (x *syncSession) runWidgetAction() {
 
 // actionMode folds the input of one wake into the action mode (ADR 0162,
 // 0163). It runs under the state lock: a short home opens the mode, a tap on
-// the served action view runs one option, and a tap elsewhere leaves the mode.
-// A device with a digitiser keeps that path. A device without one selects with
-// next and previous and runs the selection with a short home.
+// a runnable option runs it, and a tap elsewhere or on the active option leaves
+// the mode. A device with a digitiser keeps that path. A device without one
+// selects with next and previous and runs the selection with a short home.
 func (x *syncSession) actionMode(st *deviceState, holds []int, cfg *Config) actionState {
 	action := st.Action
 	x.touch = cfg.touch(x.d, st.TouchReported)
@@ -538,8 +538,13 @@ func (x *syncSession) actionMode(st *deviceState, holds []int, cfg *Config) acti
 			action.close()
 			break
 		}
-		if !opt.runnable() {
-			continue // an active or disabled tile neither runs nor closes
+		if opt.Active {
+			// The active tile is the current state: a tap says "leave it".
+			action.close()
+			break
+		}
+		if opt.Disabled != "" {
+			continue // a disabled tile neither runs nor closes
 		}
 		chosen := *opt
 		x.invoke = &chosen

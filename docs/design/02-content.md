@@ -130,9 +130,10 @@ replaces it with the plugin's options. A plugin from protocol 10 answers the
 complete list with the current option `active` (ADR 0165). An older plugin
 keeps one tile per enum value of its one required choice argument. It marks
 the current value through its `disabled` reason (ADR 0162). An active option
-runs nothing; on a touch device it is drawn inverted. On a device without a
-digitiser the selection is drawn inverted instead (ADR 0163). A disabled
-option is hatched. A cell that cannot hold its tiles says `Cell too small`.
+runs nothing: a tap on it closes the mode (ADR 0171). On a touch device it is
+drawn inverted. On a device without a digitiser the selection is drawn inverted
+instead (ADR 0163). A disabled option is hatched. A cell that cannot hold its
+tiles says `Cell too small`.
 
 The server resolves the options from the action block and the plugin's
 `describe` and `action_options` answers. A plugin from protocol 10 fills the
@@ -140,9 +141,10 @@ arguments the action block leaves empty and titles its options in the request's
 language. An older plugin uses the `actions` path. A plugin that is down keeps
 its cell with the reason.
 
-A tap on a tile runs that call in the sync. The device gets the normal page
-with the new state and the mode closes. A tap on an active or disabled tile
-runs nothing and keeps the mode open. A failed call shows a black banner
+A tap on a runnable tile runs that call in the sync. The device gets the normal
+page with the new state and the mode closes. A tap on the active tile closes
+the mode and runs nothing. A tap on a disabled tile runs nothing and keeps the
+mode open. A failed call shows a black banner
 `Action failed: <reason>` (`Aktion fehlgeschlagen: …`); the next sync serves
 the plain page again. A tap outside, a stale `shown` hash or
 20 seconds without input close the mode and serve the plain page. The server
@@ -157,7 +159,8 @@ runnable option the mode shows the reason tiles and a short `home` only closes
 it.
 
 A device with a digitiser keeps the touch view: the tiles have no selection.
-A tap runs the option under the finger. `next` or `previous` closes the mode.
+A tap runs the option under the finger or closes the mode on the active tile.
+`next` or `previous` closes the mode.
 A second short `home` asks the plugin again. `next` and `previous` page only
 while the mode is closed.
 
@@ -279,4 +282,4 @@ On a text page the built-in plugin provides six values. `title` is the page titl
 
 ## Decisions
 
-[ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md) (plans, refresh windows, triggers) · [0167](../adr/0167-a-header-band-outside-the-page-grid.md) (the header band), [0168](../adr/0168-a-header-band-per-display-type.md) (the band in the display type) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0161](../adr/0161-home-syncs-and-the-menu-goes.md) (home and the menu), [0162](../adr/0162-widget-actions-and-the-plugins-choices.md) (widget actions), [0163](../adr/0163-the-action-mode-works-with-the-keys.md) (the key-operated action mode), [0164](../adr/0164-a-widget-action-carries-its-own-arguments.md) (action arguments), [0165](../adr/0165-a-plugin-describes-its-action-options.md) (action options) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) · [0130](../adr/0130-what-a-plan-refresh-does.md) (what a refresh does), [0133](../adr/0133-the-page-cursor-holds-the-page.md) (the page cursor) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (a trigger alerts)
+[ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md) (plans, refresh windows, triggers) · [0167](../adr/0167-a-header-band-outside-the-page-grid.md) (the header band), [0168](../adr/0168-a-header-band-per-display-type.md) (the band in the display type) · [0033](../adr/0033-global-language-and-timezone.md) (timezone) · [0044](../adr/0044-text-displays-on-the-device-api.md), [0045](../adr/0045-text-poll-interval-from-the-plan.md) (text displays) · [0049](../adr/0049-plugin-widgets.md) (widgets on a grid) · [0050](../adr/0050-physical-scaling-by-display-ppi.md) (points and ppi) · [0055](../adr/0055-allowed-arg-values-and-gallery-form.md) (argument values) · [0161](../adr/0161-home-syncs-and-the-menu-goes.md) (home and the menu), [0162](../adr/0162-widget-actions-and-the-plugins-choices.md) (widget actions), [0163](../adr/0163-the-action-mode-works-with-the-keys.md) (the key-operated action mode), [0164](../adr/0164-a-widget-action-carries-its-own-arguments.md) (action arguments), [0165](../adr/0165-a-plugin-describes-its-action-options.md) (action options), [0171](../adr/0171-a-tap-on-the-active-option-closes-the-action-mode.md) (the active tile closes the mode) · [0092](../adr/0092-scrolling-text-lines.md) (scrolling lines) · [0095](../adr/0095-the-logo-on-pages-and-devices.md) (logo) · [0127](../adr/0127-plan-conditions-are-values.md) (conditions are values) · [0110](../adr/0110-pages-serve-their-kind-and-name-variants.md) (page file and variants) · [0111](../adr/0111-text-pages-from-plugin-values.md) (text pages from values) · [0120](../adr/0120-arguments-for-values.md) (arguments for values) · [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) · [0130](../adr/0130-what-a-plan-refresh-does.md) (what a refresh does), [0133](../adr/0133-the-page-cursor-holds-the-page.md) (the page cursor) · [0131](../adr/0131-a-plan-rule-alerts-the-device.md) (a trigger alerts)
