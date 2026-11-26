@@ -14,7 +14,7 @@ variants: { sticky: hochkant }
 style: { padding: 4.5, rule: 0.6, text_size: 16, divider: 0.6 }   # points
 notices: show                # show (default) or none
 cells:
-  - { at: [0, 0], span: [3, 3], widget: weather/current, args: { clothing: true } }
+  - { at: [0, 0], span: [3, 3], widget: weather/current }
   - { at: [3, 0], span: [3, 3], widget: evcc/site }
   - { at: [0, 3], span: [3, 4], widget: calendar/agenda, args: { lines: 7 }, style: { padding: 2 } }
   - { at: [3, 3], span: [3, 4], widget: weather/days, args: { days: 3 } }
