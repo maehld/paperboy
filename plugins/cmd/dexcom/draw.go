@@ -125,7 +125,7 @@ func absDuration(d time.Duration) time.Duration {
 	return d
 }
 
-// stats covers the readings of the last day.
+// stats covers the readings of the last 24 hours.
 type stats struct {
 	min, max, avg, inBand float64
 	count                 int

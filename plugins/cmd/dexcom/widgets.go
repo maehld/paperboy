@@ -145,9 +145,35 @@ func (d *dexcom) signed(req *plugin.Request, l limits, v float64) string {
 
 // ---- graph ----
 
-// graphWidget draws the readings of the day or of the last hour. The area the
-// curve spends outside the band is filled, so the chart shows how far and how
-// long a reading was off, not just where the limits are.
+// graphWindow is the span a graph period covers. The default rolls with the
+// clock, so the chart still has data just after midnight (ADR 0169).
+func graphWindow(req *plugin.Request, rs []reading, period string) (start, end time.Time, title string) {
+	end = req.Now
+	start = end.Add(-24 * time.Hour)
+	title = req.T("24 Stunden", "24 hours")
+	if period == "hour" {
+		if last, ok := current(rs, req.Now); ok {
+			end = last.at
+		}
+		start = end.Add(-time.Hour)
+		title = req.T("Letzte Stunde", "Last hour")
+	}
+	return start, end, title
+}
+
+// firstHour is the first full hour at or after t in loc.
+func firstHour(t time.Time, loc *time.Location) time.Time {
+	t = t.In(loc)
+	hour := time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, loc)
+	if hour.Before(t) {
+		hour = hour.Add(time.Hour)
+	}
+	return hour
+}
+
+// graphWidget draws the readings of the last 24 hours or of the last hour. The
+// area the curve spends outside the band is filled, so the chart shows how far
+// and how long a reading was off, not just where the limits are.
 func (d *dexcom) graphWidget(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	l, err := d.limits()
 	if err != nil {
@@ -163,19 +189,7 @@ func (d *dexcom) graphWidget(req *plugin.Request, w plugin.WidgetRequest, img *i
 	}
 	period := w.Arg().String("period", "day")
 	header := w.Arg().Bool("header", true)
-	now := req.Now
-	end := now
-	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, req.Location())
-	title := req.T("Heute", "Today")
-	step := 4
-	if period == "hour" {
-		if last, ok := current(rs, now); ok {
-			end = last.at
-		}
-		start = end.Add(-time.Hour)
-		title = req.T("Letzte Stunde", "Last hour")
-		step = 0
-	}
+	start, end, title := graphWindow(req, rs, period)
 	span := end.Sub(start)
 	if span <= 0 {
 		return nil
@@ -264,14 +278,18 @@ func (d *dexcom) graphWidget(req *plugin.Request, w plugin.WidgetRequest, img *i
 
 	// hour marks
 	if period == "day" {
-		for hour := 0; hour <= 24; hour += step {
-			t := start.Add(time.Duration(hour) * time.Hour)
-			if t.After(end) {
-				break
+		// The window rolls with the clock, so the marks sit on the clock and
+		// not at offsets from midnight.
+		for t := firstHour(start, req.Location()); t.Before(end); t = t.Add(time.Hour) {
+			if t.Hour()%6 != 0 {
+				continue
 			}
 			x := xAt(t)
 			fill(img, image.Rect(x, plot.Max.Y+2, x+1, plot.Max.Y+6), mid)
-			render.TextAt(img, fmt.Sprintf("%02d", hour), x, plot.Max.Y+int(labelSize)+4, labelSize, false, mid, render.Center)
+			label := t.Format("15")
+			half := render.Measure(label, labelSize, false) / 2
+			labelX := min(max(x, plot.Min.X+half), plot.Max.X-half)
+			render.TextAt(img, label, labelX, plot.Max.Y+int(labelSize)+4, labelSize, false, mid, render.Center)
 		}
 	} else {
 		// the five-minute points, so the resolution of the sensor shows
@@ -530,7 +548,7 @@ func trendDirection(trend string) (int, bool) {
 }
 
 // Values answers the declared values of a text page from the readings of the
-// day (ADR 0111). A value without data becomes a dash.
+// last 24 hours (ADR 0111). A value without data becomes a dash.
 func (d *dexcom) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 	l, err := d.limits()
 	if err != nil {
