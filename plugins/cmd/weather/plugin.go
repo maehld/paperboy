@@ -129,6 +129,8 @@ func (w *weather) Describe() plugin.Description {
 		Widgets: []plugin.WidgetInfo{
 			{Widget: "current", Title: "Current weather", Kinds: image, MinWidth: 160, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 3}}},
+			{Widget: "clothing", Title: "Clothing advice", Kinds: image, MinWidth: 160, MinHeight: 80,
+				Sizes: []plugin.Span{{Columns: 3, Rows: 3}, {Columns: 6, Rows: 2}}},
 			{Widget: "days", Title: "Daily forecast", Kinds: image, MinWidth: 200, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 2}},
 				Args:  forecastArgs},
@@ -248,6 +250,8 @@ func (w *weather) Render(req *plugin.Request, wr plugin.WidgetRequest, img *imag
 	switch wr.Widget {
 	case "current":
 		return w.current(wr, img)
+	case "clothing":
+		return w.clothing(wr, img)
 	case "days":
 		return w.days(wr, img)
 	case "hours":

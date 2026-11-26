@@ -70,8 +70,12 @@ func testPayload(t *testing.T) map[string]any {
 			"weather_code":                  []int{3, 61, 0, 2, 80},
 			"temperature_2m_max":            []float64{15.24, 14, 18, 19.3, 16},
 			"temperature_2m_min":            []float64{8.06, 7, 9, 10, 8},
+			"apparent_temperature_max":      []float64{14.4, 13, 17, 18.3, 15},
+			"apparent_temperature_min":      []float64{6.1, 5, 7, 8, 6},
 			"precipitation_probability_max": []*float64{ptr(40.0), ptr(80.0), ptr(0.0), ptr(10.0), ptr(60.0)},
 			"precipitation_sum":             []float64{3.42, 8, 0, 1.2, 2.1},
+			"wind_gusts_10m_max":            []float64{28, 46, 12, 20, 55},
+			"snowfall_sum":                  []float64{0, 0, 0, 0, 2.4},
 			"sunrise":                       sunrise,
 			"sunset":                        sunset,
 		},
@@ -136,6 +140,10 @@ func TestFetchAndBranch(t *testing.T) {
 	}
 	if b.Today.Precip != 3.42 {
 		t.Fatalf("today precipitation = %v", b.Today.Precip)
+	}
+	if b.Today.ApparentMin != 6.1 || b.Today.ApparentMax != 14.4 ||
+		b.Today.Gusts != 4 || b.Today.Snow != 0 {
+		t.Fatalf("today apparent, gusts and snow = %+v", b.Today)
 	}
 	if len(b.Days) != 5 || b.Days[0].Date != "2026-10-22" || b.Days[0].Label != "Do" ||
 		b.Days[1].Label != "Fr" || b.Days[0].Max != 15.2 || b.Days[1].Text != "Leichter Regen" {
@@ -370,7 +378,7 @@ func TestRenderWidgets(t *testing.T) {
 		p := &weather{cur: &b, req: req, loc: req.Location(), lang: "de"}
 		style := plugin.Style{Padding: 8, Rule: 1, TextPx: 16 * float64(ppi) / 72}
 		for _, levels := range []int{2, 4, 16} {
-			for _, name := range []string{"current", "days", "hours"} {
+			for _, name := range []string{"current", "clothing", "days", "hours"} {
 				img := render.NewCanvas(w, h, levels)
 				wr := plugin.WidgetRequest{Widget: name, Width: w, Height: h, Style: style}
 				if err := p.Render(req, wr, img); err != nil {

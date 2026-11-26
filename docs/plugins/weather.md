@@ -4,14 +4,14 @@ Weather from [Open-Meteo](https://open-meteo.com/), no API key needed.
 
 ## Screenshots
 
-The example page `wetter` shows the current weather, the next five days and
-today's temperature curve:
+The example page `wetter` shows the current weather, the clothing advice, the
+next five days and today's temperature curve:
 
 ![The weather page](../images/plugins/weather/page-wetter.png)
 
-| `current` | `days` | `hours` |
-|---|---|---|
-| ![current](../images/plugins/weather/current.png) | ![days](../images/plugins/weather/days.png) | ![hours](../images/plugins/weather/hours.png) |
+| `current` | `clothing` | `days` | `hours` |
+|---|---|---|---|
+| ![current](../images/plugins/weather/current.png) | ![clothing](../images/plugins/weather/clothing.png) | ![days](../images/plugins/weather/days.png) | ![hours](../images/plugins/weather/hours.png) |
 
 ## Configuration
 
@@ -28,12 +28,45 @@ today's temperature curve:
 All widgets are for image displays.
 
 - `current`: pictogram, temperature, condition, apparent temperature, wind force, today's range and the next precipitation of the day, e.g. `Rain from 14:00, about 2 h`, `Rain until 15:00` or `No rain today`.
+- `clothing`: the outfit for the day as a headline and a row of pictograms, with the felt range and the extras. It follows the [clothing rules](#clothing-rules).
 - `days`: pictogram and range per day. Args: `days: 1..5`.
 - `hours`: today's temperature as a line with the precipitation probability as bars. The fill names the type: rain shaded, snow hatched, a mixed hour solid. The heading names the fill patterns, the dashed line marks now. Args: `mark` (`none`, `min`, `max`, `both`) labels the lowest and the highest temperature; default `none`. `legend: false` drops the three fill entries, so a short cell keeps the room for the plot.
 
 An event is a contiguous run of hours with at least 0.1 mm. Open-Meteo gives precipitation as water equivalent, so snow counts too. An hour with rain and snow is mixed. The plugin decides about the event at render time, so an old forecast still says when a running event ends.
 
 The pictograms come from [OpenMoji](https://openmoji.org) (CC BY-SA 4.0, see `plugins/cmd/weather/icons/README.md`).
+
+## Clothing rules
+
+The advice uses the apparent temperature, because it already includes wind and
+humidity. The top and the trousers follow the daily maximum, the outer layer
+and the accessories follow the daily minimum. The bands are fixed and the
+widget has no arguments ([ADR 0173](../adr/0173-clothing-advice-from-the-apparent-temperature.md)).
+
+| Felt maximum | Top | Trousers |
+|---|---|---|
+| 25 °C or more | T-shirt | shorts at 24 °C or more |
+| 18–24 °C | long-sleeve shirt | long |
+| 10–17 °C | pullover | long |
+| below 10 °C | pullover and thermal layer | long |
+
+| Felt minimum | Outer layer | Accessories |
+|---|---|---|
+| 16 °C or more | none | |
+| 9–15 °C | light jacket | |
+| 1–8 °C | jacket | scarf below 8 °C |
+| below 1 °C | winter coat | hat below 5 °C, gloves below 0 °C |
+
+Rain at 50 % probability or 1 mm today replaces a light outer layer with a
+rain jacket. Over a winter coat the widget names the rain jacket as an extra
+layer. Snow adds waterproof shoes. Gusts at 6 Bft add windproof clothing and
+at 8 Bft no umbrella. A clear day at 28 °C or more adds sun protection.
+
+The row shows up to six pictograms in the order you dress: top, trousers,
+jacket, scarf, hat and gloves. Only what the day needs appears. A cell at
+least three times as wide as high puts the row beside the text, every other
+cell below it. The headline names the outermost garment, or the top when no
+jacket is needed.
 
 ## Values
 

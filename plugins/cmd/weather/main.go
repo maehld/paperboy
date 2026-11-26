@@ -1,9 +1,10 @@
 // Command weather is a Paperboy plugin (ADR 0049) with Open-Meteo data. It
 // fetches the forecast in the background, keeps it in memory and draws the
 // widgets "current" (pictogram, temperature, condition, next
-// precipitation), "days" (daily forecast) and "hours" (today's
-// temperature curve with the precipitation type). "current" and "days" have
-// text variants for character displays.
+// precipitation), "clothing" (layers from the apparent temperature),
+// "days" (daily forecast) and "hours" (today's temperature curve with the
+// precipitation type). "current" and "days" have text variants for character
+// displays.
 //
 //	plugins:
 //	  weather:
@@ -72,14 +73,18 @@ type openMeteo struct {
 		Code       []int      `json:"weather_code"`
 	} `json:"hourly"`
 	Daily struct {
-		Time       []int64    `json:"time"`
-		Code       []int      `json:"weather_code"`
-		Max        []float64  `json:"temperature_2m_max"`
-		Min        []float64  `json:"temperature_2m_min"`
-		PrecipProb []*float64 `json:"precipitation_probability_max"`
-		PrecipSum  []float64  `json:"precipitation_sum"`
-		Sunrise    []int64    `json:"sunrise"`
-		Sunset     []int64    `json:"sunset"`
+		Time        []int64    `json:"time"`
+		Code        []int      `json:"weather_code"`
+		Max         []float64  `json:"temperature_2m_max"`
+		Min         []float64  `json:"temperature_2m_min"`
+		ApparentMax []float64  `json:"apparent_temperature_max"`
+		ApparentMin []float64  `json:"apparent_temperature_min"`
+		PrecipProb  []*float64 `json:"precipitation_probability_max"`
+		PrecipSum   []float64  `json:"precipitation_sum"`
+		Gusts       []float64  `json:"wind_gusts_10m_max"`
+		Snow        []float64  `json:"snowfall_sum"`
+		Sunrise     []int64    `json:"sunrise"`
+		Sunset      []int64    `json:"sunset"`
 	} `json:"daily"`
 	UTCOffsetSeconds int `json:"utc_offset_seconds"`
 }
@@ -95,7 +100,7 @@ func fetch(ctx context.Context, client *http.Client, base string, lat, lon float
 	q.Set("longitude", strconv.FormatFloat(lon, 'f', -1, 64))
 	q.Set("current", "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,is_day")
 	q.Set("hourly", "temperature_2m,precipitation,precipitation_probability,rain,showers,snowfall,weather_code")
-	q.Set("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,sunrise,sunset")
+	q.Set("daily", "weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_probability_max,precipitation_sum,wind_gusts_10m_max,snowfall_sum,sunrise,sunset")
 	q.Set("timezone", "auto")
 	q.Set("timeformat", "unixtime")
 	q.Set("forecast_days", strconv.Itoa(forecastDays))
@@ -156,14 +161,18 @@ type current struct {
 }
 
 type today struct {
-	Min        float64  `json:"min"`
-	Max        float64  `json:"max"`
-	PrecipProb *float64 `json:"precip_prob,omitempty"`
-	Precip     float64  `json:"precip"`
-	Sunrise    string   `json:"sunrise"`
-	Sunset     string   `json:"sunset"`
-	Code       int      `json:"code"`
-	Text       string   `json:"text"`
+	Min         float64  `json:"min"`
+	Max         float64  `json:"max"`
+	ApparentMin float64  `json:"apparent_min"`
+	ApparentMax float64  `json:"apparent_max"`
+	PrecipProb  *float64 `json:"precip_prob,omitempty"`
+	Precip      float64  `json:"precip"`
+	Gusts       int      `json:"gusts"` // Beaufort
+	Snow        float64  `json:"snow"`
+	Sunrise     string   `json:"sunrise"`
+	Sunset      string   `json:"sunset"`
+	Code        int      `json:"code"`
+	Text        string   `json:"text"`
 }
 
 type day struct {
@@ -229,14 +238,18 @@ func branchOf(f *openMeteo, language string) (branch, error) {
 	b.Current.PrecipProb = at(f.Hourly.PrecipProb, hour)
 
 	b.Today = today{
-		Min:        round1(f.Daily.Min[0]),
-		Max:        round1(f.Daily.Max[0]),
-		PrecipProb: at(f.Daily.PrecipProb, 0),
-		Precip:     round2(atF(f.Daily.PrecipSum, 0)),
-		Sunrise:    stamp(atInt(f.Daily.Sunrise, 0)),
-		Sunset:     stamp(atInt(f.Daily.Sunset, 0)),
-		Code:       atInt(f.Daily.Code, 0),
-		Text:       conditionText(atInt(f.Daily.Code, 0), language),
+		Min:         round1(f.Daily.Min[0]),
+		Max:         round1(f.Daily.Max[0]),
+		ApparentMin: round1(atF(f.Daily.ApparentMin, 0)),
+		ApparentMax: round1(atF(f.Daily.ApparentMax, 0)),
+		PrecipProb:  at(f.Daily.PrecipProb, 0),
+		Precip:      round2(atF(f.Daily.PrecipSum, 0)),
+		Gusts:       beaufort(atF(f.Daily.Gusts, 0)),
+		Snow:        round1(atF(f.Daily.Snow, 0)),
+		Sunrise:     stamp(atInt(f.Daily.Sunrise, 0)),
+		Sunset:      stamp(atInt(f.Daily.Sunset, 0)),
+		Code:        atInt(f.Daily.Code, 0),
+		Text:        conditionText(atInt(f.Daily.Code, 0), language),
 	}
 
 	for i, t := range f.Daily.Time {

@@ -3,6 +3,7 @@ kind: image
 grid: [6, 8]
 style: { padding: 4.5, divider: 0.6 }
 cells:
-  - { at: [0, 0], span: [6, 3], widget: weather/current }
+  - { at: [0, 0], span: [3, 3], widget: weather/current }
+  - { at: [3, 0], span: [3, 3], widget: weather/clothing }
   - { at: [0, 3], span: [6, 2], widget: weather/days }
   - { at: [0, 5], span: [6, 3], widget: weather/hours }

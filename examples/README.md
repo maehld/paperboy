@@ -18,7 +18,8 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
   shows plugin values (ADR 0111).
 - `kalender.yaml` - agenda next to a month grid.
 - `woche.yaml` - the next seven days as calendar columns.
-- `wetter.yaml` - current weather, five days and today's temperature curve.
+- `wetter.yaml` - current weather, clothing advice, five days and today's
+  temperature curve.
 - `spritpreise.yaml` - the cheapest station, the nearest stations and the price
   history of the day from Tankerkönig; `spritpreise.lcd2004.yaml` shows two
   prices, the cheapest station, the time of the fetch and a list on 20×4.
@@ -48,8 +49,8 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
 - `drucker.yaml` - a Prusa printer from PrusaLink: the progress as a ring, the
   temperatures and the state card; `drucker.lcd2004.yaml` shows the state, the
   file, the progress and the temperatures on 20×4.
-- `unterwegs.yaml` - current weather and the next departures, for leaving the
-  house.
+- `unterwegs.yaml` - current weather, clothing advice and the next departures,
+  for leaving the house.
 - `pokemon.yaml` - a full-screen Pokédex card; it hides the display type's
   header.
 - `comic.yaml` - a full-screen xkcd comic with title and alt text; it hides the

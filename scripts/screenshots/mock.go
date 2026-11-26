@@ -133,14 +133,18 @@ func (m *mock) weather(w http.ResponseWriter) {
 	}
 
 	type daily struct {
-		Time       []int64   `json:"time"`
-		Code       []int     `json:"weather_code"`
-		Max        []float64 `json:"temperature_2m_max"`
-		Min        []float64 `json:"temperature_2m_min"`
-		PrecipProb []float64 `json:"precipitation_probability_max"`
-		PrecipSum  []float64 `json:"precipitation_sum"`
-		Sunrise    []int64   `json:"sunrise"`
-		Sunset     []int64   `json:"sunset"`
+		Time        []int64   `json:"time"`
+		Code        []int     `json:"weather_code"`
+		Max         []float64 `json:"temperature_2m_max"`
+		Min         []float64 `json:"temperature_2m_min"`
+		ApparentMax []float64 `json:"apparent_temperature_max"`
+		ApparentMin []float64 `json:"apparent_temperature_min"`
+		PrecipProb  []float64 `json:"precipitation_probability_max"`
+		PrecipSum   []float64 `json:"precipitation_sum"`
+		Gusts       []float64 `json:"wind_gusts_10m_max"`
+		Snow        []float64 `json:"snowfall_sum"`
+		Sunrise     []int64   `json:"sunrise"`
+		Sunset      []int64   `json:"sunset"`
 	}
 	var d daily
 	codes := []int{61, 3, 2, 0, 71}
@@ -150,8 +154,12 @@ func (m *mock) weather(w http.ResponseWriter) {
 		d.Code = append(d.Code, codes[i])
 		d.Max = append(d.Max, 16+float64(i%2))
 		d.Min = append(d.Min, 7+float64(i%3))
+		d.ApparentMax = append(d.ApparentMax, 15+float64(i%2))
+		d.ApparentMin = append(d.ApparentMin, 6+float64(i%3))
 		d.PrecipProb = append(d.PrecipProb, 70-float64(i)*10)
 		d.PrecipSum = append(d.PrecipSum, 4.2-float64(i)*0.7)
+		d.Gusts = append(d.Gusts, 28+float64(i)*4)
+		d.Snow = append(d.Snow, 0)
 		d.Sunrise = append(d.Sunrise, day.Add(7*time.Hour+25*time.Minute).Unix())
 		d.Sunset = append(d.Sunset, day.Add(17*time.Hour+2*time.Minute).Unix())
 	}
