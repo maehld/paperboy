@@ -40,6 +40,14 @@ type deviceEditorView struct {
 	New        bool
 	Error      string
 	Data       template.JS
+	Log        []deviceLogRow // the device's recent log, newest first (ADR 0171)
+}
+
+// deviceLogRow is one line of the device editor's recent log.
+type deviceLogRow struct {
+	When    string
+	Level   string
+	Message string
 }
 
 // deviceEditorState is what the script needs beyond the device file: the display
@@ -98,6 +106,7 @@ func (s *Server) handleDeviceEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	if !missing {
 		st.Rename = &renameAction{URL: "/api/devices/" + url.PathEscape(id) + "/rename"}
+		v.Log = s.deviceLogRows(cfg, id)
 	}
 	plans, err := planFiles(cfg.Plans, cfg.Timezone)
 	if err != nil {
@@ -117,6 +126,48 @@ func (s *Server) handleDeviceEditor(w http.ResponseWriter, r *http.Request) {
 	}
 	v.Data = template.JS(data)
 	renderDeviceEditor(w, v, http.StatusOK)
+}
+
+// deviceLogRows renders the stored log of one device, newest first, for the
+// device editor. The device clock supplies the time; a line the device reported
+// before its first sync falls back to the moment Paperboy received it
+// (ADR 0171).
+func (s *Server) deviceLogRows(cfg *Config, id string) []deviceLogRow {
+	var dev *Device
+	for i := range cfg.Devices {
+		if cfg.Devices[i].ID == id {
+			dev = &cfg.Devices[i]
+			break
+		}
+	}
+	if dev == nil {
+		return nil
+	}
+	s.mu.Lock()
+	var lines []deviceLogLine
+	if st := s.state[dev.stateKey()]; st != nil {
+		lines = append(lines, st.Log...)
+	}
+	s.mu.Unlock()
+	loc := cfg.Timezone
+	if loc == nil {
+		loc = time.UTC
+	}
+	rows := make([]deviceLogRow, 0, len(lines))
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := lines[i]
+		at := line.At
+		if line.Time > 0 {
+			at = time.Unix(line.Time, 0)
+		}
+		level := line.Level
+		if level == "" {
+			level = "info"
+		}
+		rows = append(rows, deviceLogRow{When: at.In(loc).Format("2006-01-02 15:04:05"), Level: level,
+			Message: line.Message})
+	}
+	return rows
 }
 
 func renderDeviceEditor(w http.ResponseWriter, v deviceEditorView, status int) {

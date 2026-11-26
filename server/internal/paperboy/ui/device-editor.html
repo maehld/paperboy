@@ -18,6 +18,12 @@ input, select { font: inherit; padding: .15rem .3rem; min-width: 0; width: 100%;
 .battery label { display: flex; flex-direction: column; gap: .15rem; font-size: .8rem; color: var(--pb-ink-muted); }
 pre.file { margin: 0; padding: .5rem .6rem; background: var(--pb-surface-sunken); border: 1px solid var(--pb-hairline); border-radius: 6px; font: .8rem/1.35 ui-monospace, Consolas, monospace; overflow-x: auto; white-space: pre; }
 #links a { display: block; font-size: .88rem; padding: .1rem 0; }
+.log { list-style: none; margin: 0; padding: 0; max-height: 18rem; overflow: auto; font: .78rem/1.4 ui-monospace, Consolas, monospace; }
+.log li { padding: .2rem 0; border-top: 1px solid var(--pb-hairline); word-break: break-word; }
+.log time { color: var(--pb-ink-muted); }
+.log .level { text-transform: uppercase; font-size: .7rem; letter-spacing: .04em; }
+.log .warn .level { color: var(--pb-warn); }
+.log .error .level { color: var(--pb-error); }
 </style>
 </head>
 <body>
@@ -63,6 +69,17 @@ pre.file { margin: 0; padding: .5rem .6rem; background: var(--pb-surface-sunken)
       <h3>Links</h3>
       <div id="links"></div>
       <p class="hint">The preview shows the plan the device uses, page by page (ADR 0054).</p>
+    </section>
+    <section class="panel">
+      <h3>Recent log</h3>
+      {{if .Log}}
+      <ul class="log">
+        {{range .Log}}<li class="{{.Level}}"><time>{{.When}}</time> <span class="level">{{.Level}}</span><br>{{.Message}}</li>{{end}}
+      </ul>
+      <p class="hint">The newest lines the device sent with its syncs (ADR 0171).</p>
+      {{else}}
+      <p class="hint">No log lines yet. The device sends them with its next sync.</p>
+      {{end}}
     </section>
     <section class="panel">
       <h3>File</h3>

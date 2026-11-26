@@ -5,7 +5,7 @@
 
 substitutions:
   hardware: sticky
-  fw_version: "2.15.0"
+  fw_version: "2.16.0"
   # Buzzer of the Sticky: a passive piezo on LEDC PWM (ADR 0131).
   buzzer_pin: GPIO48
   # The mounting this image is built for; a device adds its quarter turn to it

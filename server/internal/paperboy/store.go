@@ -94,6 +94,10 @@ type deviceState struct {
 	FirmwareOfferedTime time.Time `json:"firmware_offered_time,omitzero"`
 	FirmwarePending     bool      `json:"firmware_pending,omitempty"`
 	FirmwareFailures    int       `json:"firmware_failures,omitempty"`
+
+	// Log is the recent log of the device, newest last, bounded by
+	// deviceLogLimit (ADR 0171).
+	Log []deviceLogLine `json:"log,omitempty"`
 }
 
 // deviceReading is the last value a device reported for one reading of the

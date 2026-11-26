@@ -12,7 +12,7 @@ substitutions:
   # 2.9.0 draws the arrows and the checkmark from CGRAM (ADR 0155).
   # 2.7.0 adds the beep and blink scripts of the sync answer (ADR 0131).
   # 2.6.0 combined the scroll engine with the update screen of 2.5.0.
-  fw_version: "2.9.0"
+  fw_version: "2.10.0"
   # Characters per row; the display lambda prints each row in this width.
   text_columns: "20"
   # Optional default for the Paperboy URL entered in the web UI.

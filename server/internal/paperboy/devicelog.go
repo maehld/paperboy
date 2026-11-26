@@ -20,6 +20,49 @@ type deviceLogEntry struct {
 	Source  string `json:"source"` // firmware component or file
 }
 
+// deviceLogLine is one firmware log line kept in the device state (ADR 0171).
+// Time comes from the device clock and stays 0 while the clock is unset; At is
+// when Paperboy received the line, so the editor can always show a time.
+type deviceLogLine struct {
+	Time    int64     `json:"time,omitempty"`
+	At      time.Time `json:"at"`
+	Level   string    `json:"level,omitempty"`
+	Message string    `json:"message"`
+	Source  string    `json:"source,omitempty"`
+	ID      int       `json:"id,omitempty"`
+}
+
+// deviceLogLimit bounds the lines kept per device. The firmware sends the
+// newest lines first, and an old entry must not grow the state file without
+// end (ADR 0171).
+const deviceLogLimit = 100
+
+// addDeviceLog appends the lines of one sync and keeps the newest
+// deviceLogLimit. A repeated delivery is dropped when the line carries an ID or
+// a time; entries without both cannot be told apart, like in the journal.
+func (st *deviceState) addDeviceLog(entries []deviceLogEntry, now time.Time) {
+	for _, e := range entries {
+		if (e.ID > 0 || e.Time > 0) && st.hasDeviceLog(e) {
+			continue
+		}
+		st.Log = append(st.Log, deviceLogLine{Time: e.Time, At: now, Level: e.Level, Message: e.Message,
+			Source: e.Source, ID: e.ID})
+	}
+	if len(st.Log) > deviceLogLimit {
+		st.Log = append([]deviceLogLine(nil), st.Log[len(st.Log)-deviceLogLimit:]...)
+	}
+}
+
+// hasDeviceLog reports whether the state already holds this entry.
+func (st *deviceState) hasDeviceLog(e deviceLogEntry) bool {
+	for _, line := range st.Log {
+		if line.ID == e.ID && line.Time == e.Time && line.Message == e.Message {
+			return true
+		}
+	}
+	return false
+}
+
 // key identifies an entry across repeated deliveries. Entries without a time
 // and an ID cannot be told apart and are always logged.
 func (e deviceLogEntry) key(device string) (string, bool) {
