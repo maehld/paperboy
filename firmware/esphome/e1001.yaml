@@ -17,7 +17,7 @@
 
 substitutions:
   hardware: e1001
-  fw_version: "2.16.0"
+  fw_version: "2.16.1"
   # Buzzer of the reTerminal E series on LEDC PWM (ADR 0131).
   buzzer_pin: GPIO45
   # The mounting this image is built for; a device adds its quarter turn to it
@@ -291,9 +291,22 @@ script:
   # discharge curve of a single-cell LiPo.
   - id: read_battery
     then:
-      - component.update: battery_voltage
       - lambda: |-
-          float v = id(battery_voltage).state;
+          // Average a few ADC conversions: one sample carries the ADC noise,
+          // and the Wi-Fi TX bursts sag the cell. Tesserae averages eight
+          // samples, Seeed's SenseCraft HMI ten.
+          float sum = 0;
+          int samples = 0;
+          for (int i = 0; i < 8; i++) {
+            if (i > 0) esphome::delay(5);
+            id(battery_voltage).update();
+            const float sample = id(battery_voltage).state;
+            if (std::isfinite(sample) && sample > 0) {
+              sum += sample;
+              samples++;
+            }
+          }
+          float v = samples > 0 ? sum / samples : NAN;
           pb_bat_volts = std::isfinite(v) && v > 0 ? v : NAN;
           // Seeed's discharge curve for the E10xx (its ESPHome example),
           // linearly interpolated and clamped to 0..100. The ADC measures under
