@@ -1,6 +1,7 @@
 package design
 
 import (
+	"bytes"
 	"image"
 	"math"
 	"testing"
@@ -151,13 +152,70 @@ func TestDrawBatteryMissingReading(t *testing.T) {
 func TestDrawBatteryChargingBolt(t *testing.T) {
 	const w, h = 240, 80
 	r := image.Rect(4, 4, w-4, h-4)
-	f, _ := frameBattery(r, Battery{Fraction: 1}, 0)
-	plain := render.NewCanvas(w, h, 2)
-	DrawBattery(plain, r, Battery{Fraction: 1}, 0)
-	charging := render.NewCanvas(w, h, 2)
-	DrawBattery(charging, r, Battery{Fraction: 1, Charging: true}, 0)
-	if batteryInk(charging, f.inner) >= batteryInk(plain, f.inner) {
-		t.Error("the charging mark does not knock a bolt out of the fill")
+	over := max(1, r.Dy()*12/100)
+	f, ok := frameBattery(r, Battery{Fraction: 0.62, Charging: true}, 0)
+	if !ok {
+		t.Fatal("no frame")
+	}
+	f.body = image.Rect(f.body.Min.X, r.Min.Y+over, f.body.Max.X, r.Max.Y-over)
+	f.inner = f.body.Inset(f.line + f.gap)
+	img := render.NewCanvas(w, h, 2)
+	if !DrawBattery(img, r, Battery{Fraction: 0.62, Charging: true}, 0) {
+		t.Fatal("the gauge did not draw")
+	}
+
+	// The body is empty while the bolt speaks for the state.
+	left := image.Rect(f.inner.Min.X, f.inner.Min.Y+f.inner.Dy()/4,
+		f.inner.Min.X+f.inner.Dx()/5, f.inner.Max.Y-f.inner.Dy()/4)
+	if n := batteryInk(img, left); n != 0 {
+		t.Errorf("the charging body keeps %d pixels of fill", n)
+	}
+
+	// The bolt stands over the body.
+	bw := r.Dx() * 36 / 100
+	box := image.Rect(r.Min.X+(r.Dx()-bw)/2, r.Min.Y, r.Min.X+(r.Dx()+bw)/2, r.Max.Y)
+	if n := batteryInk(img, image.Rect(box.Min.X, r.Min.Y, box.Max.X, r.Min.Y+over)); n == 0 {
+		t.Error("the bolt does not stand over the body")
+	}
+
+	// The wall opens around the intersections and stays away from them.
+	y := f.body.Min.Y + f.line/2
+	x0, x1, good := boltSpan(box, y)
+	if !good {
+		t.Fatal("no bolt at the top wall")
+	}
+	gap := max(2, r.Dy()/16)
+	if img.ColorIndexAt(x0-gap+1, y) != 1 || img.ColorIndexAt(x1+gap-1, y) != 1 {
+		t.Error("the top wall does not open beside the bolt")
+	}
+	if img.ColorIndexAt(f.body.Min.X+f.body.Dx()/4, y) != 0 {
+		t.Error("the top wall is missing away from the bolt")
+	}
+}
+
+func TestDrawBatteryFullChargeEndsTheBolt(t *testing.T) {
+	const w, h = 240, 80
+	r := image.Rect(4, 4, w-4, h-4)
+	idle := render.NewCanvas(w, h, 2)
+	DrawBattery(idle, r, Battery{Fraction: 1}, 0)
+	full := render.NewCanvas(w, h, 2)
+	DrawBattery(full, r, Battery{Fraction: 1, Charging: true}, 0)
+	if !bytes.Equal(full.Pix, idle.Pix) {
+		t.Error("a full charging gauge differs from the idle gauge")
+	}
+
+	over := max(1, r.Dy()*12/100)
+	bw := r.Dx() * 36 / 100
+	box := image.Rect(r.Min.X+(r.Dx()-bw)/2, r.Min.Y, r.Min.X+(r.Dx()+bw)/2, r.Max.Y)
+	near := render.NewCanvas(w, h, 2)
+	DrawBattery(near, r, Battery{Fraction: 0.994, Charging: true}, 0)
+	if n := batteryInk(near, image.Rect(box.Min.X, r.Min.Y, box.Max.X, r.Min.Y+over)); n == 0 {
+		t.Error("99.4 % charging shows no bolt")
+	}
+	edge := render.NewCanvas(w, h, 2)
+	DrawBattery(edge, r, Battery{Fraction: fullCharge, Charging: true}, 0)
+	if !bytes.Equal(edge.Pix, idle.Pix) {
+		t.Error("99.5 % charging keeps the bolt")
 	}
 }
 

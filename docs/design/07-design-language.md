@@ -69,7 +69,7 @@ at least two pixels. The page's `padding` and `rule` still come from
 | `DrawTrend` | Line, area, step and bar series over time; axis, ticks, "now" mark, labelled extrema, title, current value and legend |
 | `Sparkline` | A trend without axes, for a tile or a hero |
 | `DrawMeter` | An outlined fraction bar; a missing reading gets a slash |
-| `DrawBattery` | A battery gauge with a cap, a segmented charge, a bolt while charging, a slash for a missing reading and a thicker outline for `warn` and `critical` |
+| `DrawBattery` | A battery gauge with a cap, a segmented charge, a bolt over an empty body while charging, a slash for a missing reading and a thicker outline for `warn` and `critical` |
 | `Arrow` | A trend arrow for up, flat or down; strength 2 draws a pair |
 | `Muted` | Secondary ink: dark gray on four or more levels, black on one bit |
 | `Notice` | A centered empty state |
@@ -85,6 +85,12 @@ after the fill, and a small gap separates the two. On a short gauge the fill is
 drawn over the inner edge, so it sits on the wall without a white pixel. The
 cap is flat on the left and sits on the body
 ([ADR 0166](../adr/0166-a-shared-battery-gauge.md)).
+
+While the charge is below 100 %, the body is empty and a black bolt stands over
+it. A 1 px white gap follows the bolt. The top and bottom wall stay open a few
+pixels around the intersections, so the bolt passes through them. At 100 % the
+segments return, also while the charger still reports charging
+([ADR 0173](../adr/0173-a-charging-mark-over-an-empty-battery.md)).
 
 `DrawTrend` supports series with their own `Range`. One chart can therefore
 show temperature on the value axis and precipitation probability as bars from
@@ -160,4 +166,5 @@ with `Tiny`) · [0049](../adr/0049-plugin-widgets.md) (plugin widgets) ·
 [0162](../adr/0162-widget-actions-and-the-plugins-choices.md) (the action view), [0163](../adr/0163-the-action-mode-works-with-the-keys.md) (the selection), [0165](../adr/0165-a-plugin-describes-its-action-options.md) (the active option) ·
 [0107](../adr/0107-plugin-builds-reach-installations.md) (plugin versions) ·
 [0121](../adr/0121-segmented-battery-gauge.md) (the battery gauge) ·
-[0166](../adr/0166-a-shared-battery-gauge.md) (the shared battery gauge).
+[0166](../adr/0166-a-shared-battery-gauge.md) (the shared battery gauge) ·
+[0173](../adr/0173-a-charging-mark-over-an-empty-battery.md) (the charging mark).

@@ -271,7 +271,7 @@ The built-in plugin `paperboy` needs no data and is never cached ([ADR 0049](../
 
 | Widget | Draws |
 |---|---|
-| `battery` | The battery of one device as a gauge with percentage or voltage; without `device` it shows the device that renders the page; `2x2` puts the value below the gauge, the horizontal spans beside it ([ADR 0121](../adr/0121-segmented-battery-gauge.md)) |
+| `battery` | The battery of one device as a gauge with percentage or voltage; without `device` it shows the device that renders the page; `2x2` puts the value below the gauge, the horizontal spans beside it ([ADR 0121](../adr/0121-segmented-battery-gauge.md)). While the device charges below 100 %, the body is empty and a bolt stands over it; at 100 % the full gauge returns ([ADR 0173](../adr/0173-a-charging-mark-over-an-empty-battery.md)) |
 | `device-status` | One row per device with battery, estimated runtime and the time since the last contact; `devices` selects ids, otherwise it shows the device that renders the page; the stalest row comes first |
 | `reading` | One measured value of a device, `temperature` or `humidity`, with its unit and an optional label; without `device` it shows the device that renders the page; the caption names the age once the value is older than an hour ([ADR 0134](../adr/0134-readings-from-the-device.md), [0163](../adr/0163-the-readings-in-the-device-status-and-a-reading-widget.md)) |
 | `text` | Free text, on text displays an overlong line untrimmed when the cell scrolls |

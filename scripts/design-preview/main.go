@@ -129,9 +129,11 @@ func drawHero(img *image.Paletted, r image.Rectangle, s design.Scale) {
 
 func drawMisc(img *image.Paletted, r image.Rectangle, s design.Scale) {
 	render.TextAt(img, "Meter, battery, arrows, notice", r.Min.X, r.Min.Y+int(s.Body*0.95), s.Body, true, render.Black, render.Left)
-	design.DrawBattery(img, image.Rect(r.Min.X, r.Min.Y+50, r.Min.X+250, r.Min.Y+114),
+	// The gauge keeps its 2:1 shape; a wider rect would stretch it.
+	bw := 128
+	design.DrawBattery(img, image.Rect(r.Min.X+(250-bw)/2, r.Min.Y+50, r.Min.X+(250+bw)/2, r.Min.Y+114),
 		design.Battery{Fraction: 0.84}, 0)
-	design.DrawBattery(img, image.Rect(r.Min.X+270, r.Min.Y+50, r.Min.X+520, r.Min.Y+114),
+	design.DrawBattery(img, image.Rect(r.Min.X+270+(250-bw)/2, r.Min.Y+50, r.Min.X+270+(250+bw)/2, r.Min.Y+114),
 		design.Battery{Fraction: 0.84, Charging: true}, 0)
 	design.DrawMeter(img, image.Rect(r.Min.X, r.Min.Y+128, r.Min.X+250, r.Min.Y+156), design.Meter{Fraction: 0.64}, 2)
 	design.DrawMeter(img, image.Rect(r.Min.X+270, r.Min.Y+128, r.Min.X+520, r.Min.Y+156), design.Meter{Missing: true}, 2)

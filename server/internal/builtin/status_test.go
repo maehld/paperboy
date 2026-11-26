@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"bytes"
 	"image"
 	"slices"
 	"testing"
@@ -206,14 +207,35 @@ func TestBatteryKeepsValue(t *testing.T) {
 }
 
 func TestBatteryChargingBolt(t *testing.T) {
-	percent := 100.0
+	percent := 62.0
 	const w, h = 240, 80
 	cell := image.Rect(0, 0, w, h).Inset(4)
 	icon := layoutBattery(cell, "", render.Center).icon
 	plain, _ := renderBattery(t, batteryRequest(&percent, "", false), w, h, map[string]any{"label": "none"})
 	charging, _ := renderBattery(t, batteryRequest(&percent, "", true), w, h, map[string]any{"label": "none"})
-	if inkCount(charging, icon) >= inkCount(plain, icon) {
-		t.Error("the charging mark does not knock a bolt out of the fill")
+	if inkCount(charging, icon) == inkCount(plain, icon) {
+		t.Error("the charging state does not change the gauge")
+	}
+
+	// The body is empty where the segments would be.
+	left := image.Rect(icon.Min.X+icon.Dx()/8, icon.Min.Y+icon.Dy()/4,
+		icon.Min.X+icon.Dx()/3, icon.Max.Y-icon.Dy()/4)
+	if inkCount(charging, left) != 0 {
+		t.Error("the charging body keeps a fill")
+	}
+
+	// The bolt stands over the body, which makes room for it.
+	if inkCount(charging, image.Rect(icon.Min.X+icon.Dx()/2-6, icon.Min.Y,
+		icon.Min.X+icon.Dx()/2+6, icon.Min.Y+icon.Dy()*12/100)) == 0 {
+		t.Error("the bolt does not stand over the body")
+	}
+
+	// A charge of 100 % ends the mark.
+	full := 100.0
+	plainFull, _ := renderBattery(t, batteryRequest(&full, "", false), w, h, map[string]any{"label": "none"})
+	chargingFull, _ := renderBattery(t, batteryRequest(&full, "", true), w, h, map[string]any{"label": "none"})
+	if !bytes.Equal(plainFull.Pix, chargingFull.Pix) {
+		t.Error("100 % charging differs from the idle gauge")
 	}
 }
 
