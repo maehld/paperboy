@@ -8,7 +8,7 @@ installation, nothing installation-specific is compiled in.
 | File | Content |
 |---|---|
 | `common.yaml` | Shared cycle and device API (register, sync, download, beep and blink, sleep), included as a package |
-| `paperboy.h` | C++ helpers: sync body with the readings, event and log queue, RTC state, the SHT4x read, gray-level mapping, dithering (mono fallback), text rows, the scroll engine and HD44780 character mapping |
+| `paperboy.h` | C++ helpers: sync body with the readings, event queue and log ring, RTC state, the SHT4x read, gray-level mapping, dithering (mono fallback), text rows, the scroll engine and HD44780 character mapping |
 | `sticky.yaml` | reTerminal Sticky: pins, gray4 panel, touch, BQ27220 fuel gauge, SHT40, buzzer, beep and blink scripts |
 | `e1001.yaml` | reTerminal E1001: pins, four-level UC8179 panel via `uc8179_gray4`, ADC battery, SHT4x on GPIO19/20, buzzer, green LED, beep and blink scripts |
 | `e1003.yaml` | reTerminal E1003: pins, 16-level IT8951 panel, GT911 touch, ADC battery, SHT4x, deep-sleep pin holds, buzzer, green LED, beep and blink scripts |
@@ -43,6 +43,8 @@ and `paint` (panel done), each with the milliseconds since boot and the delta
 to the line before. A button press wakes the chip from deep sleep, so these
 numbers start at the press and show where a page change spends its time;
 `unchanged` replaces `image`/`paint` when the hash still matches the panel.
+The same lines go into the log ring and reach Paperboy with the next sync
+([ADR 0171](../../docs/adr/0171-a-ring-buffer-of-device-log-lines.md)).
 
 Measured on the Sticky (firmware 2.1.0, 2026-11-08): boot 228 ms, Wi-Fi 4.0 s,
 sync 0.2 s, image 2.6 s, paint 2.1 s — about 4.9 s per page change. Wi-Fi and

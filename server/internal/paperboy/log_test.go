@@ -2,6 +2,7 @@ package paperboy
 
 import (
 	"bytes"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -163,6 +164,57 @@ func TestDeviceLogFromSync(t *testing.T) {
 	}
 	if lines := logLines(out, "wifi weak"); len(lines) != 2 {
 		t.Fatalf("anonymous entries are logged each time: %q", lines)
+	}
+}
+
+// TestDeviceLogKeepsTheNewest checks the bound of the stored log and that a
+// repeated delivery does not grow it (ADR 0171).
+func TestDeviceLogKeepsTheNewest(t *testing.T) {
+	st := &deviceState{}
+	now := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+	for i := 0; i < deviceLogLimit+5; i++ {
+		st.addDeviceLog([]deviceLogEntry{{ID: i + 1, Time: int64(i + 1), Level: "info",
+			Message: fmt.Sprintf("line %d", i)}}, now)
+	}
+	if len(st.Log) != deviceLogLimit {
+		t.Fatalf("the log must hold %d lines, got %d", deviceLogLimit, len(st.Log))
+	}
+	if st.Log[0].Message != "line 5" || st.Log[len(st.Log)-1].Message != "line 104" {
+		t.Fatalf("the log must hold the newest lines: %q ... %q", st.Log[0].Message, st.Log[len(st.Log)-1].Message)
+	}
+	// A retried sync sends the same entry again.
+	st.addDeviceLog([]deviceLogEntry{{ID: 105, Time: 105, Level: "info", Message: "line 104"}}, now)
+	if len(st.Log) != deviceLogLimit {
+		t.Fatalf("a repeated delivery must not add a line: %d", len(st.Log))
+	}
+	// An entry without ID and time cannot be told apart, like in the journal.
+	st.addDeviceLog([]deviceLogEntry{{Level: "warn", Message: "anonymous"}}, now)
+	if len(st.Log) != deviceLogLimit || st.Log[len(st.Log)-1].Message != "anonymous" {
+		t.Fatalf("an anonymous entry must be appended: %d %q", len(st.Log), st.Log[len(st.Log)-1].Message)
+	}
+}
+
+// TestDeviceLogStoredFromSync checks that the lines of a sync reach the state
+// that the device editor renders (ADR 0171).
+func TestDeviceLogStoredFromSync(t *testing.T) {
+	s, now := planServer(t, testPlan)
+	dev := planDevice(t, s)
+	dev.req.Log = []deviceLogEntry{
+		{Time: now.Unix(), ID: 7, Level: "info", Message: "timing boot: 412 ms (+0)", Source: "firmware"},
+		{Time: now.Unix(), ID: 8, Level: "warn", Message: "image download failed", Source: "firmware"},
+	}
+	displayPage(t, s, dev)
+	st := s.state[s.config().Devices[0].stateKey()]
+	if st == nil || len(st.Log) != 2 {
+		t.Fatalf("the sync must store both lines: %+v", st)
+	}
+	if st.Log[0].ID != 7 || st.Log[0].Level != "info" || st.Log[1].Message != "image download failed" {
+		t.Fatalf("stored lines: %+v", st.Log)
+	}
+	// The same sync repeated after a lost answer stores nothing twice.
+	displayPage(t, s, dev)
+	if len(st.Log) != 2 {
+		t.Fatalf("a repeated sync must not duplicate the lines: %+v", st.Log)
 	}
 }
 

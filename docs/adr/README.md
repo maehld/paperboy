@@ -205,6 +205,7 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0160](0160-a-trend-chart-reads-in-a-short-cell.md) | A trend chart reads in a short cell | Accepted, implemented; caps the title and axis of the trend of [ADR-0151](0151-a-shared-design-language-for-plugin-widgets.md) by the cell height and amends the mark labels of [ADR-0156](0156-mark-the-extrema-in-a-trend-chart.md) |
 | [0166](0166-a-shared-battery-gauge.md) | A shared battery gauge | Accepted, implemented; adds `DrawBattery` to [ADR-0151](0151-a-shared-design-language-for-plugin-widgets.md) and uses it for the gauge of [ADR-0121](0121-segmented-battery-gauge.md) and the evcc flow |
 | [0170](0170-a-long-page-key-jumps-to-the-end-of-the-list.md) | A long page key jumps to the end of the list | Accepted, implemented; amends point 3 of [ADR-0161](0161-home-syncs-and-the-menu-goes.md) so that a long `next` goes to the last page of the extended list |
+| [0171](0171-a-ring-buffer-of-device-log-lines.md) | A ring buffer of device log lines | Accepted, implemented; keeps 24 lines in RTC memory, sends the unconfirmed ones with the sync and stores the newest 100 per device for the device editor (issue #475) |
 
 ## Delivery and releases
 

@@ -17,7 +17,7 @@
 
 substitutions:
   hardware: e1001
-  fw_version: "2.16.1"
+  fw_version: "2.17.0"
   # Buzzer of the reTerminal E series on LEDC PWM (ADR 0131).
   buzzer_pin: GPIO45
   # The mounting this image is built for; a device adds its quarter turn to it

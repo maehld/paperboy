@@ -108,7 +108,7 @@ While `paperboy.yaml` is unusable (a degraded start), register, sync and text po
 | `battery` | `volts` (required), `percent`, `mah`, `ma` (positive while charging) and `charging` |
 | `readings` | Measured values of this wake as `{name, value}`; the name comes from Paperboy's reading catalog ([ADR 0134](../adr/0134-readings-from-the-device.md)) |
 | `rssi` | Signal strength |
-| `log` | Lines that Paperboy writes one by one; a repeated entry carries `time` and `id` and is written once |
+| `log` | Lines from the device's log ring (24 lines in RTC, [ADR 0171](../adr/0171-a-ring-buffer-of-device-log-lines.md)); each entry carries `id`, `time` and `level`, Paperboy writes it to the journal once and keeps the newest 100 in the state for the device editor |
 | `power` | `battery` or `mains`, if the device can tell |
 
 Events are applied in order before the page is chosen. `previous` and `next` page while the action mode is closed. A short `home` keeps the page or opens the action mode. A long `previous` jumps to the first page of the extended list and a long `next` to its last page (ADR 0161, 0170). A touch runs a runnable option while the action mode shows its screen. A tap on the active option closes the mode; a disabled option runs nothing. Paperboy logs every other touch. It drops an event `id` that is not newer than `last_event_id` in the state file, so a repeated request cannot move the cursor twice ([ADR 0064](../adr/0064-device-protocol-v4.md)).
@@ -196,7 +196,7 @@ The firmware lives in `firmware/esphome/` and is built on ESPHome ([ADR 0041](..
 | File | Content |
 |---|---|
 | `common.yaml` | Register, sync, download, listen, beep and blink, deep sleep |
-| `paperboy.h` | Sync body with the readings, event queue, wake helpers, rotation, QOI paint, the lockup of the setup screens, text rows and the scroll engine |
+| `paperboy.h` | Sync body with the readings, event queue, log ring, wake helpers, rotation, QOI paint, the lockup of the setup screens, text rows and the scroll engine |
 | `sticky.yaml`, `e1001.yaml`, `e1003.yaml` | Hardware, buttons, panel driver, buzzer, LED, battery, charger and the room sensor |
 | `text-common.yaml`, `lcd2004.yaml` | Text displays, text poll and the marquee script |
 | `build.ps1` | Build with a pinned ESPHome (2026.10.1); `-Instance` publishes `firmware/<hardware>-v<version>.bin` |
@@ -205,7 +205,7 @@ A sync answer with `beep` or `blink` runs the script of that method after the pa
 
 A manual alert uses this path on the next sync, also without a plan. One sync consumes it, and the request expires after one hour. The battery warning drops it, because that page carries no alert ([ADR 0142](../adr/0142-a-manual-alert-waits-for-the-next-sync.md)).
 
-A cycle runs one at a time; a second trigger is dropped, so it cannot move the page cursor behind a running download. The firmware connects to the saved BSSID and channel without a scan. It decodes QOI itself into the panel buffer, because ESPHome's decoders spend 2.2–2.6 seconds on 384k pixels. Input during sync or paint is queued for one follow-up sync with a 150 ms settle, so a burst of presses becomes one sync. Failures are noted in RTC memory and reported in the next sync's `log`.
+A cycle runs one at a time; a second trigger is dropped, so it cannot move the page cursor behind a running download. The firmware connects to the saved BSSID and channel without a scan. It decodes QOI itself into the panel buffer, because ESPHome's decoders spend 2.2–2.6 seconds on 384k pixels. Input during sync or paint is queued for one follow-up sync with a 150 ms settle, so a burst of presses becomes one sync. Failures and the cycle timings go into an RTC ring and reach Paperboy with the next sync's `log` ([ADR 0171](../adr/0171-a-ring-buffer-of-device-log-lines.md)).
 
 A display in setup repeats its register every 15 seconds for 15 minutes. A claim or a pairing then reaches it without a reset. After that it shows `Retrying in 5 minutes` and asks on a five-minute wake. An unchanged setup text does not repaint, and a new reason (unknown MAC to pairing) starts the fast window again. The text display retries once a minute instead.
 

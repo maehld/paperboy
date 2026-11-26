@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestDeviceEditorOverview lists the device files with their display type, MAC
@@ -69,6 +70,31 @@ func TestDeviceEditorPage(t *testing.T) {
 		if rec := request(t, s, http.MethodGet, path, nil, nil); rec.Code != http.StatusBadRequest {
 			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
 		}
+	}
+}
+
+// TestDeviceEditorRecentLog shows the stored log lines, newest first (ADR 0171).
+func TestDeviceEditorRecentLog(t *testing.T) {
+	s := editorServer(t)
+	writeDeviceFile(t, s.config().Dir, "test", "display_type: small\nmac: \"aa:bb:cc:dd:ee:01\"\n")
+	s.config().Timezone = time.UTC
+	key := s.config().Devices[0].stateKey()
+	s.state[key] = &deviceState{Log: []deviceLogLine{
+		{ID: 1, At: time.Date(2026, 11, 26, 20, 0, 0, 0, time.UTC), Level: "info", Message: "timing boot: 412 ms"},
+		{ID: 2, Time: time.Date(2026, 11, 26, 21, 14, 5, 0, time.UTC).Unix(), Level: "warn", Message: "image download failed"},
+	}}
+	body := request(t, s, http.MethodGet, "/ui/devices/test", nil, nil).Body.String()
+	for _, want := range []string{
+		"<h3>Recent log</h3>", "image download failed", "timing boot: 412 ms",
+		"2026-11-26 21:14:05", "2026-11-26 20:00:00", `class="warn"`, `class="info"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the editor lacks %q:\n%s", want, body)
+		}
+	}
+	// The newest line comes first.
+	if strings.Index(body, "image download failed") > strings.Index(body, "timing boot") {
+		t.Fatalf("the log must show the newest line first:\n%s", body)
 	}
 }
 

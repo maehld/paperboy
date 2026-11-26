@@ -15,13 +15,13 @@
 #include <esp_heap_caps.h>
 #include <esp_sntp.h>
 #include <esp_system.h>
+#include <ctime>
 #include <sys/time.h>
 
 // Kept in RTC memory: survives deep sleep, cleared on power-on, and costs no
 // flash writes per wake (unlike globals with restore_value).
 RTC_DATA_ATTR static char pb_shown_hash[32];  // hash of the image on the panel
 RTC_DATA_ATTR static int pb_refresh_s;         // last refresh_s from Paperboy
-RTC_DATA_ATTR static char pb_note[120];        // one warning for the next sync, e.g. a failed download
 
 // Setup screen (ADR 0109): the reason, whether the fast window is over, and
 // the text on the panel. RTC memory keeps the five-minute retries from
@@ -29,6 +29,29 @@ RTC_DATA_ATTR static char pb_note[120];        // one warning for the next sync,
 RTC_DATA_ATTR static char pb_setup_reason[16];
 RTC_DATA_ATTR static bool pb_setup_slow;
 RTC_DATA_ATTR static char pb_setup_shown[200];
+
+// The log ring keeps the newest lines across deep sleep and failed syncs, so a
+// device in the field reports what happened without a cable (ADR 0171). Lines
+// carry an ID and the device time; the server drops a repeated delivery and
+// keeps the newest lines in the state.
+constexpr size_t PB_LOG_LINES = 24;
+constexpr size_t PB_LOG_MESSAGE = 80;
+
+enum PbLogLevel : uint8_t { PB_LOG_INFO, PB_LOG_WARN, PB_LOG_ERROR };
+
+struct PbLogLine {
+  uint32_t id;
+  uint32_t time;  // Unix seconds; 0 while the clock is unset
+  uint8_t level;  // PbLogLevel
+  char message[PB_LOG_MESSAGE];
+};
+
+RTC_DATA_ATTR static PbLogLine pb_log_lines[PB_LOG_LINES];
+RTC_DATA_ATTR static uint8_t pb_log_head;    // next line to write
+RTC_DATA_ATTR static uint8_t pb_log_count;   // lines in the ring, at most PB_LOG_LINES
+RTC_DATA_ATTR static uint32_t pb_log_seq;    // last assigned line ID
+RTC_DATA_ATTR static uint32_t pb_log_sent;   // highest line ID the last request carried
+RTC_DATA_ATTR static uint32_t pb_log_queued; // highest line ID the request being built carries
 
 // Event queue and identities (ADR 0064). They live in RTC memory so that a
 // failed sync keeps its events and resends them with the same IDs.
@@ -44,7 +67,7 @@ RTC_DATA_ATTR static uint32_t pb_next_s;         // seconds until that one-shot 
 // is declared last, so all older variables keep their offsets; bump it whenever
 // this block changes.
 RTC_DATA_ATTR static uint32_t pb_rtc_magic;
-constexpr uint32_t PB_RTC_MAGIC = 0x50423033;  // "PB03"
+constexpr uint32_t PB_RTC_MAGIC = 0x50423034;  // "PB04"
 
 // Zeroes the RTC state once per layout. Safe to call on every boot.
 inline void pb_init_rtc() {
@@ -64,7 +87,11 @@ inline void pb_init_rtc() {
   pb_event_queue[0] = 0;
   pb_next_reason[0] = 0;
   pb_next_s = 0;
-  pb_note[0] = 0;
+  pb_log_head = 0;
+  pb_log_count = 0;
+  pb_log_seq = 0;
+  pb_log_sent = 0;
+  pb_log_queued = 0;
   pb_setup_reason[0] = 0;
   pb_setup_slow = false;
   pb_setup_shown[0] = 0;
@@ -114,6 +141,10 @@ inline void pb_stop_sntp_if_clocked() {
   }
 }
 
+// pb_log is defined below; the timing lines go into the same ring as the
+// warnings, so they reach Paperboy without a cable (ADR 0171).
+inline void pb_log(const std::string &level, const std::string &message);
+
 // Cycle timing. millis() counts from the last boot, and a button press wakes
 // the chip from deep sleep, so the numbers start at the press. Every line
 // carries the milliseconds since boot and the delta to the line before, which
@@ -122,8 +153,9 @@ static uint32_t pb_time_last = 0;
 
 inline void pb_time(const char *step) {
   uint32_t now = esphome::millis();
-  ESP_LOGI("paperboy", "timing %s: %lu ms (+%lu)", step, (unsigned long) now,
-           (unsigned long) (pb_time_last == 0 ? 0 : now - pb_time_last));
+  uint32_t delta = pb_time_last == 0 ? 0 : now - pb_time_last;
+  ESP_LOGI("paperboy", "timing %s: %lu ms (+%lu)", step, (unsigned long) now, (unsigned long) delta);
+  pb_log("info", esphome::str_sprintf("timing %s: %lu ms (+%lu)", step, (unsigned long) now, (unsigned long) delta));
   pb_time_last = now;
 }
 
@@ -173,10 +205,8 @@ inline void pb_add_reading(const std::string &name, float value) {
   pb_readings.emplace_back(name, value);
 }
 
-// Events since the last sync are kept in RTC memory; log entries for the next
-// sync stay in RAM and are resent with the events.
-static std::vector<std::string> pb_logs;
-
+// Events since the last sync are kept in RTC memory; the log ring above keeps
+// the lines the server has not confirmed yet.
 inline std::string pb_json_string(const std::string &s) {
   std::string out = "\"";
   for (char c : s) {
@@ -201,11 +231,8 @@ inline std::string pb_json_string(const std::string &s) {
   return out + "\"";
 }
 
-// Remembers a warning across deep sleep, so the next sync can report it.
-inline void pb_note_for_next_wake(const std::string &message) {
-  std::strncpy(pb_note, message.c_str(), sizeof(pb_note) - 1);
-  pb_note[sizeof(pb_note) - 1] = 0;
-}
+// Remembers a warning in the log ring, so the next sync reports it (ADR 0171).
+inline void pb_note_for_next_wake(const std::string &message) { pb_log("warn", message); }
 
 inline bool pb_queue_event(const std::string &json) {
   size_t len = std::strlen(pb_event_queue);
@@ -317,10 +344,39 @@ inline void pb_touch(int x, int y, int width, int height) {
 
 inline void pb_touch_release() { pb_touch_down = false; }
 
+inline const char *pb_log_level_name(uint8_t level) {
+  switch (level) {
+    case PB_LOG_WARN:
+      return "warn";
+    case PB_LOG_ERROR:
+      return "error";
+    default:
+      return "info";
+  }
+}
+
+// pb_log stores one line in the RTC ring; a full ring overwrites its oldest
+// line. The first ID after a power-on comes from the clock or a random number,
+// so the server can tell a new line from a repeated delivery (ADR 0171).
 inline void pb_log(const std::string &level, const std::string &message) {
-  if (pb_logs.size() < 16) {
-    pb_logs.push_back("{\"level\":" + pb_json_string(level) + ",\"message\":" + pb_json_string(message) +
-                      ",\"source\":\"firmware\"}");
+  uint8_t lvl = PB_LOG_INFO;
+  if (level == "warn" || level == "warning")
+    lvl = PB_LOG_WARN;
+  else if (level == "error")
+    lvl = PB_LOG_ERROR;
+  if (pb_log_seq == 0) {
+    pb_log_seq = pb_clock_valid() ? (uint32_t) ::time(nullptr) : (esp_random() & 0x3fffffff) + 1;
+  }
+  pb_log_seq++;
+  PbLogLine &line = pb_log_lines[pb_log_head];
+  line.id = pb_log_seq;
+  line.time = pb_clock_valid() ? (uint32_t) ::time(nullptr) : 0;
+  line.level = lvl;
+  std::strncpy(line.message, message.c_str(), sizeof(line.message) - 1);
+  line.message[sizeof(line.message) - 1] = 0;
+  pb_log_head = (pb_log_head + 1) % PB_LOG_LINES;
+  if (pb_log_count < PB_LOG_LINES) {
+    pb_log_count++;
   }
 }
 
@@ -368,15 +424,12 @@ template<typename Bus> inline bool pb_read_sht4x(Bus *bus, float &temperature, f
   return true;
 }
 
-// pb_sync_body builds the sync body from the queued events; the queue is only
-// dropped by pb_sync_done after Paperboy accepted it (ADR 0064), so a failed
-// request resends the same events with the same IDs.
+// pb_sync_body builds the sync body from the queued events and the log ring;
+// both are only dropped by pb_sync_done after Paperboy accepted the request
+// (ADR 0064, 0171), so a failed request resends the same entries with the same
+// IDs.
 inline std::string pb_sync_body(const std::string &firmware, const std::string &hardware, const std::string &reason,
                                 int rssi) {
-  if (pb_note[0]) {
-    pb_log("warn", pb_note);
-    pb_note[0] = 0;
-  }
   std::string b = "{\"firmware\":" + pb_json_string(firmware) + ",\"hardware\":" + pb_json_string(hardware) +
                   ",\"reason\":" + pb_json_string(reason) + ",\"shown\":" + pb_json_string(pb_shown_hash);
   b += ",\"events\":[";
@@ -407,8 +460,22 @@ inline std::string pb_sync_body(const std::string &firmware, const std::string &
   if (!pb_power.empty())
     b += ",\"power\":" + pb_json_string(pb_power);
   b += ",\"log\":[";
-  for (size_t i = 0; i < pb_logs.size(); i++) {
-    b += (i ? "," : "") + pb_logs[i];
+  // The ring holds the newest lines; the body carries what Paperboy has not
+  // confirmed yet, in the order they were written. pb_log_queued keeps the
+  // highest ID, so a line written while the request is in flight survives.
+  pb_log_queued = pb_log_seq;
+  const size_t first = (pb_log_head + PB_LOG_LINES - pb_log_count) % PB_LOG_LINES;
+  bool firstLine = true;
+  for (size_t i = 0; i < pb_log_count; i++) {
+    const PbLogLine &line = pb_log_lines[(first + i) % PB_LOG_LINES];
+    if (line.id <= pb_log_sent) {
+      continue;
+    }
+    b += firstLine ? "" : ",";
+    firstLine = false;
+    b += std::string("{\"id\":") + std::to_string(line.id) + ",\"time\":" + std::to_string(line.time) +
+         ",\"level\":" + pb_json_string(pb_log_level_name(line.level)) +
+         ",\"message\":" + pb_json_string(line.message) + ",\"source\":\"firmware\"}";
   }
   b += "]}";
   return b;
@@ -453,10 +520,11 @@ inline void pb_events_drop_sent() {
 }
 
 // pb_sync_done drops what Paperboy confirmed: the events of that request and
-// the logs. Anything queued after the body was built stays in the queue.
+// the log lines it carried. Anything queued after the body was built stays
+// (ADR 0064, 0171).
 inline void pb_sync_done() {
   pb_events_drop_sent();
-  pb_logs.clear();
+  pb_log_sent = pb_log_queued;
 }
 
 // The next wake is a one-shot with its own reason and delay (ADR 0064).

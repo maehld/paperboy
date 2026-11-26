@@ -216,6 +216,9 @@ func (x *syncSession) apply() {
 	x.logged = *st
 	x.powerChanged = x.prevPower != x.logged.ReportedPower || x.prevCharger != chargerState(x.logged)
 	if !opt.virtual {
+		// The lines of this sync join the device's recent log before the
+		// snapshot, so the state file carries them (ADR 0171).
+		st.addDeviceLog(req.Log, now)
 		x.stateData = s.stateSnapshotLocked(st)
 	}
 }
