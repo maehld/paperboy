@@ -2,6 +2,7 @@ package paperboy
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -26,16 +27,21 @@ const (
 	emptyVolts = 3.0
 	// The minDrop values are the drop that counts as a discharge rather than as
 	// gauge resolution or noise. Capacities and percentages are coulomb counts
-	// and move early; the voltage only leaves its band of about 0.02 V after a
-	// long while.
-	minDropMAH     = 2
-	minDropPercent = 1
-	minDropVolts   = 0.05
+	// and move early. The voltage is noisier, so a fit of at least four samples
+	// also has to clear voltageSigma standard errors; a shorter series keeps
+	// the old, coarser threshold.
+	minDropMAH      = 2
+	minDropPercent  = 1
+	minDropVolts    = 0.01
+	minDropVoltsFew = 0.05
+	voltageSamples  = 4
+	voltageSigma    = 3
 	// settledAfter is the data a full estimate needs: a day covers the daily
 	// rhythm of the display, so anything shorter is marked as an early one.
 	settledAfter = 24 * time.Hour
-	// maxRuntime hides a projection beyond it: at such a rate the series says
-	// more about the gauge than about the cell.
+	// maxRuntime is the longest precise projection. Beyond it the card says
+	// "over a year": the series still shows a discharge, but a linear
+	// projection says more about the curve than about the cell.
 	maxRuntime = 365 * 24 * time.Hour
 	// maxWait hides an expected estimate beyond it: two days of collecting is
 	// no promise worth naming.
@@ -73,10 +79,11 @@ func addSample(samples []batterySample, b *syncBattery, now time.Time) []battery
 // projection, the data behind it and, while there is none, how long until the
 // series can give one.
 type batteryEstimate struct {
-	Samples int           // readings of the series the estimate follows
-	Runtime time.Duration // how long the battery lasts; 0 while there is no estimate
-	Span    time.Duration // the time the samples cover
-	Wait    time.Duration // until the drop is measurable; 0 when unknown
+	Samples  int           // readings of the series the estimate follows
+	Runtime  time.Duration // how long the battery lasts; 0 while there is no estimate
+	Span     time.Duration // the time the samples cover
+	Wait     time.Duration // until the drop is measurable; 0 when unknown
+	OverYear bool          // a measurable discharge, but a projection beyond maxRuntime
 }
 
 // sampleSeries is one scale the samples can be followed on and its trend.
@@ -86,54 +93,84 @@ type sampleSeries struct {
 	drop    float64 // value lost per hour, negative while rising
 	left    float64 // value left above empty
 	enough  float64 // drop that counts as a discharge on this scale
+	noise   float64 // standard error of the fitted drop over the span, 0 when unused
+}
+
+// measurable reports whether the fitted drop leaves the resolution of the scale
+// and, for a voltage fit, its noise.
+func (s sampleSeries) measurable() bool {
+	drop := s.drop * s.span.Hours()
+	if s.drop <= 0 || drop < s.enough {
+		return false
+	}
+	return s.noise <= 0 || drop >= voltageSigma*s.noise
 }
 
 // estimateBattery projects how long the battery lasts at the rate the samples
-// show. It answers no estimate until the drop leaves the noise of the scale,
-// while the series rises and beyond a year, where the projection would say
-// nothing.
+// show. It follows the first scale that shows a measurable discharge; a flat
+// percentage therefore does not hide a discharge that the voltage still shows.
+// It answers no estimate while every series is flat or rising, and it marks a
+// projection beyond maxRuntime as over a year.
 func estimateBattery(st deviceState) batteryEstimate {
-	series, ok := runtimeSeries(st.BatteryHistory)
-	if !ok {
+	series := runtimeSeries(st.BatteryHistory)
+	if len(series) == 0 {
 		e := batteryEstimate{Samples: len(st.BatteryHistory)}
 		if n := len(st.BatteryHistory); n > 1 {
 			e.Span = st.BatteryHistory[n-1].Time.Sub(st.BatteryHistory[0].Time)
 		}
 		return e
 	}
-	e := batteryEstimate{Samples: series.samples, Span: series.span}
-	if series.drop <= 0 {
+	for _, s := range series {
+		if !s.measurable() {
+			continue
+		}
+		e := batteryEstimate{Samples: s.samples, Span: s.span}
+		if s.left <= 0 {
+			return e
+		}
+		estimate := time.Duration(s.left / s.drop * float64(time.Hour))
+		if estimate <= maxRuntime {
+			e.Runtime = estimate
+		} else {
+			e.OverYear = true
+		}
 		return e
 	}
-	if drop := series.drop * series.span.Hours(); drop < series.enough {
-		e.Wait = waitForDrop(series.enough-drop, series.drop)
-		return e
+	// No scale shows a measurable discharge yet: name the one that will show
+	// it first, so the tooltip can say when to expect an estimate.
+	best := series[0]
+	var wait time.Duration
+	for _, s := range series {
+		if s.drop <= 0 || s.drop*s.span.Hours() >= s.enough {
+			continue
+		}
+		if w := waitForDrop(s.enough-s.drop*s.span.Hours(), s.drop); w > 0 && (wait == 0 || w < wait) {
+			best, wait = s, w
+		}
 	}
-	if series.left <= 0 {
-		return e
-	}
-	if estimate := time.Duration(series.left / series.drop * float64(time.Hour)); estimate <= maxRuntime {
-		e.Runtime = estimate
-	}
-	return e
+	return batteryEstimate{Samples: best.samples, Span: best.span, Wait: wait}
 }
 
-// runtimeSeries picks the scale the estimate follows: the fuel gauge's
-// remaining capacity first, then its percentage, then the voltage. Capacities
-// and percentages are the same coulomb count, just finer and coarser, and they
-// resolve a discharge long before the voltage leaves its measurement band.
-func runtimeSeries(samples []batterySample) (sampleSeries, bool) {
+// runtimeSeries builds the scales the estimate can follow, in the order it
+// prefers them: the fuel gauge's remaining capacity, its percentage, then the
+// voltage. A capacity and a percentage are the same coulomb count, just finer
+// and coarser. The voltage is the only scale of hardware without a fuel gauge;
+// its percentage is a quantised image of the same voltage.
+func runtimeSeries(samples []batterySample) []sampleSeries {
+	series := make([]sampleSeries, 0, 3)
 	if s, ok := trend(samples, func(s batterySample) (float64, bool) {
 		return floatOr(s.MAH)
 	}); ok {
 		s.enough = minDropMAH
-		return s, true
+		s.noise = 0
+		series = append(series, s)
 	}
 	if s, ok := trend(samples, func(s batterySample) (float64, bool) {
 		return floatOr(s.Percent)
 	}); ok {
 		s.enough = minDropPercent
-		return s, true
+		s.noise = 0
+		series = append(series, s)
 	}
 	if s, ok := trend(samples, func(s batterySample) (float64, bool) {
 		if s.Volts == "" {
@@ -141,11 +178,14 @@ func runtimeSeries(samples []batterySample) (sampleSeries, bool) {
 		}
 		return parseVoltage(s.Volts)
 	}); ok {
-		s.enough = minDropVolts
 		s.left -= emptyVolts
-		return s, true
+		s.enough = minDropVolts
+		if s.samples < voltageSamples {
+			s.enough, s.noise = minDropVoltsFew, 0
+		}
+		series = append(series, s)
 	}
-	return sampleSeries{}, false
+	return series
 }
 
 // trend fits a straight line through the values that pick answers and reports
@@ -185,11 +225,26 @@ func trend(samples []batterySample, pick func(batterySample) (float64, bool)) (s
 		return sampleSeries{}, false
 	}
 	last := len(times) - 1
+	span := times[last]
+	drop := -covariance / variance
+	// The standard error of the whole fitted drop: the residual spread of the
+	// samples divided over the time they cover. A slow discharge in a noisy
+	// voltage series is only real when the drop clears this band.
+	var noise float64
+	if n := len(times); n > 2 {
+		var residual float64
+		for i := range times {
+			predicted := meanValue - drop*(times[i]-meanTime)
+			residual += (values[i] - predicted) * (values[i] - predicted)
+		}
+		noise = math.Sqrt(residual/float64(n-2)/variance) * span
+	}
 	return sampleSeries{
 		samples: len(times),
-		span:    time.Duration(times[last] * float64(time.Hour)),
-		drop:    -covariance / variance,
+		span:    time.Duration(span * float64(time.Hour)),
+		drop:    drop,
 		left:    values[last],
+		noise:   noise,
 	}, true
 }
 

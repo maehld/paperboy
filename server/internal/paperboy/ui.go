@@ -865,6 +865,13 @@ func runtimeCard(power string, st deviceState) (value, note, hint string) {
 			note = "early estimate"
 		}
 		return value, note, dataSpanText(e.Span) + " of data"
+	case e.OverYear:
+		if e.Span >= settledAfter {
+			note = "estimated"
+		} else {
+			note = "early estimate"
+		}
+		return "over a year", note, dataSpanText(e.Span) + " of data"
 	case e.Wait > 0:
 		return "still collecting", "", dataSpanText(e.Span) + " of data · estimate in " + runtimeText(e.Wait)
 	}

@@ -1,6 +1,7 @@
 package paperboy
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -39,6 +40,25 @@ func voltage(step time.Duration, values ...string) []batterySample {
 	samples := make([]batterySample, 0, len(values))
 	for i, value := range values {
 		samples = append(samples, batterySample{Time: runtimeStart.Add(time.Duration(i) * step), Volts: value})
+	}
+	return samples
+}
+
+// flatPercent builds hourly samples whose percentage stays at 90-91 while the
+// voltage falls by drop volts in total: the E1001 on the top of its curve.
+func flatPercent(hours int, drop float64) []batterySample {
+	samples := make([]batterySample, 0, hours+1)
+	for i := 0; i <= hours; i++ {
+		percent := 91.0
+		if i%48 == 0 {
+			percent = 90
+		}
+		volts := 3.99 - drop*float64(i)/float64(hours)
+		samples = append(samples, batterySample{
+			Time:    runtimeStart.Add(time.Duration(i) * time.Hour),
+			Percent: &percent,
+			Volts:   strconv.FormatFloat(volts, 'f', 3, 64),
+		})
 	}
 	return samples
 }
@@ -117,6 +137,51 @@ func TestBatteryEstimateWait(t *testing.T) {
 		if got := estimateBattery(deviceState{BatteryHistory: c.samples}).Wait; got != c.want {
 			t.Errorf("%s: %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+// TestBatteryEstimateFallsBackToVoltage checks that a flat percentage does not
+// hide the discharge the voltage still shows, the E1001 on the top of its
+// curve, and that a projection beyond a year is named instead of hidden.
+func TestBatteryEstimateFallsBackToVoltage(t *testing.T) {
+	got := estimateBattery(deviceState{BatteryHistory: flatPercent(167, 0.04)})
+	if got.Runtime <= 0 || got.OverYear {
+		t.Fatalf("a flat percentage must fall back to the voltage: %+v", got)
+	}
+	got = estimateBattery(deviceState{BatteryHistory: flatPercent(167, 0.014)})
+	if !got.OverYear || got.Runtime != 0 {
+		t.Fatalf("a slow voltage discharge must say over a year: %+v", got)
+	}
+}
+
+// TestBatteryEstimateVoltageNoise checks that a small trend under a wide
+// sample noise is not a discharge.
+func TestBatteryEstimateVoltageNoise(t *testing.T) {
+	samples := make([]batterySample, 0, 168)
+	for i := 0; i <= 167; i++ {
+		volts := 3.99 - 0.02*float64(i)/167
+		if i%2 == 1 {
+			volts += 0.05
+		}
+		samples = append(samples, batterySample{
+			Time:  runtimeStart.Add(time.Duration(i) * time.Hour),
+			Volts: strconv.FormatFloat(volts, 'f', 3, 64),
+		})
+	}
+	got := estimateBattery(deviceState{BatteryHistory: samples})
+	if got.Runtime != 0 || got.OverYear {
+		t.Fatalf("noise must not become a discharge: %+v", got)
+	}
+}
+
+// TestBatteryEstimateShortVoltageSeries checks that a series shorter than four
+// samples keeps the coarser voltage threshold.
+func TestBatteryEstimateShortVoltageSeries(t *testing.T) {
+	if got := estimateBattery(deviceState{BatteryHistory: voltage(time.Hour, "3.99", "3.97")}); got.Runtime != 0 {
+		t.Fatalf("two close samples are noise: %+v", got)
+	}
+	if got := estimateBattery(deviceState{BatteryHistory: voltage(time.Hour, "3.99", "3.93")}); got.Runtime == 0 {
+		t.Fatalf("two samples with a clear drop: %+v", got)
 	}
 }
 
@@ -246,6 +311,13 @@ func TestRuntimeCard(t *testing.T) {
 	st.BatteryHistory = history(hour, 60, 59.98)
 	if value, note, hint := with(st); value != "still collecting" || note != "" || hint != "1 h of data · no discharge yet" {
 		t.Fatalf("collecting: %q %q %q", value, note, hint)
+	}
+
+	// A measurable discharge that projects beyond a year says so.
+	st = battery
+	st.BatteryHistory = flatPercent(167, 0.014)
+	if value, note, hint := with(st); value != "over a year" || note != "estimated" || hint != "7 d of data" {
+		t.Fatalf("over a year: %q %q %q", value, note, hint)
 	}
 
 	// A device on mains and hardware without a battery reading get no row.

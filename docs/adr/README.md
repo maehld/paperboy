@@ -110,6 +110,7 @@ Registration, sync, state and what a device receives. See [`03-devices.md`](../d
 | [0137](0137-bound-unclaimed-device-registration.md) | Bound unclaimed device registration | Accepted, implemented; caps the unclaimed state of [ADR-0080](0080-device-state-per-mac.md) |
 | [0142](0142-a-manual-alert-waits-for-the-next-sync.md) | A manual alert waits for the next sync | Accepted, implemented; adds `pending_alert` to the device state and the `Signal` button on the dashboard, and reuses the `beep`/`blink` answer of [ADR-0131](0131-a-plan-rule-alerts-the-device.md) through the `alert_methods` of [ADR-0132](0132-alert-methods-per-device.md) without a firmware change |
 | [0163](0163-the-readings-in-the-device-status-and-a-reading-widget.md) | The readings in the device status and a reading widget | Accepted, implemented; adds `readings` to `server_status` without a protocol version, the widget `paperboy/reading` and the values `paperboy/temperature` and `paperboy/humidity` of [ADR-0134](0134-readings-from-the-device.md), drawn with [ADR-0151](0151-a-shared-design-language-for-plugin-widgets.md) |
+| [0170](0170-a-battery-runtime-follows-the-measurable-series.md) | A battery runtime follows the measurable series | Accepted, implemented; the estimate of issue #207 and #236 follows the first scale with a measurable discharge, judges the voltage against its fit's noise, shows `over a year` beyond `maxRuntime`, and averages the E1001's ADC samples |
 
 ## Displays, panels and firmware
 
