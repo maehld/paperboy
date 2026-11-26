@@ -28,10 +28,11 @@ cells:
 // actionPlugin offers one mode action with three enum choices and records
 // what the server asks and runs.
 type actionPlugin struct {
-	mode  string
-	fail  bool
-	calls []plugin.ActionCall
-	runs  []string
+	mode    string
+	blocked string
+	fail    bool
+	calls   []plugin.ActionCall
+	runs    []string
 }
 
 func (p *actionPlugin) Describe() plugin.Description {
@@ -86,11 +87,15 @@ func (p *actionPlugin) ActionOptions(req *plugin.Request) ([]plugin.ActionOption
 			modes = []string{fixed}
 		}
 		for _, mode := range modes {
-			out[i].Options = append(out[i].Options, plugin.ActionOption{
+			opt := plugin.ActionOption{
 				Args:   map[string]any{"index": call.Arg().Int("index", 0), "mode": mode},
 				Title:  mode,
 				Active: mode == p.mode,
-			})
+			}
+			if mode == p.blocked {
+				opt.Disabled = "blocked"
+			}
+			out[i].Options = append(out[i].Options, opt)
 		}
 	}
 	return out, nil
@@ -247,11 +252,11 @@ func TestActionTapOutsideLeavesTheMode(t *testing.T) {
 	}
 }
 
-// TestActionActiveOptionDoesNothing checks that the current option is shown
-// but neither runs nor closes the mode (ADR 0165).
-func TestActionActiveOptionDoesNothing(t *testing.T) {
+// TestActionActiveOptionClosesTheMode checks that a tap on the current option
+// leaves the mode without running it (ADR 0171).
+func TestActionActiveOptionClosesTheMode(t *testing.T) {
 	s, dev, p := actionServer(t, actionPage, true)
-	displayPage(t, s, dev)
+	base := displayPage(t, s, dev)
 	press(t, s, dev, buttonHome)
 	st, opts := actionStateOf(t, s)
 	var active *actionOption
@@ -267,12 +272,41 @@ func TestActionActiveOptionDoesNothing(t *testing.T) {
 	dev.req.Reason = "touch"
 	dev.req.Shown = st.Screen
 	dev.req.Events = []syncEvent{{ID: 1, Type: "touch", X: x, Y: y}}
-	displayPage(t, s, dev)
+	out := displayPage(t, s, dev)
 	if len(p.runs) != 0 {
 		t.Fatalf("an active option ran %v", p.runs)
 	}
+	if st, _ := actionStateOf(t, s); st.Open {
+		t.Fatal("an active option must close the mode")
+	}
+	if pagePath(out) != pagePath(base) {
+		t.Fatalf("the active tile must serve the plain page: %q vs %q", pagePath(out), pagePath(base))
+	}
+}
+
+// TestActionDisabledOptionKeepsTheModeOpen checks that a hatched tile runs
+// nothing and leaves the mode open (ADR 0171).
+func TestActionDisabledOptionKeepsTheModeOpen(t *testing.T) {
+	s, dev, p := actionServer(t, actionPage, true)
+	p.blocked = "now"
+	displayPage(t, s, dev)
+	press(t, s, dev, buttonHome)
+	st, opts := actionStateOf(t, s)
+	i := optionIndex(opts, "now")
+	if i < 0 || opts[i].Disabled == "" || opts[i].Active {
+		t.Fatalf("need one disabled option: %+v", opts)
+	}
+	tap := opts[i]
+	x, y := (tap.Rect[0]+tap.Rect[2])/2, (tap.Rect[1]+tap.Rect[3])/2
+	dev.req.Reason = "touch"
+	dev.req.Shown = st.Screen
+	dev.req.Events = []syncEvent{{ID: 1, Type: "touch", X: x, Y: y}}
+	displayPage(t, s, dev)
+	if len(p.runs) != 0 {
+		t.Fatalf("a disabled option ran %v", p.runs)
+	}
 	if st, _ := actionStateOf(t, s); !st.Open {
-		t.Fatal("an active option must keep the mode open")
+		t.Fatal("a disabled option must keep the mode open")
 	}
 }
 

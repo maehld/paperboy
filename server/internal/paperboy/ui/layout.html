@@ -35,7 +35,7 @@
   <nav class="rail" aria-label="Sections">
     {{range .Nav}}{{if .Head}}<span class="rail-head">{{.Label}}</span>{{else}}<a href="{{.URL}}"{{if .Active}} class="active" aria-current="page"{{end}}>{{.Label}}</a>{{end}}{{end}}
     <div class="rail-foot">
-      <button class="rail-search" id="cmd-open" type="button" aria-label="Search pages, plans, devices and widgets"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg> Search <kbd aria-hidden="true">⌘K</kbd></button>
+      <button class="rail-search" id="cmd-open" type="button" aria-label="Search pages, plans, devices and widgets"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg> Search <kbd aria-hidden="true"></kbd></button>
       <div class="rail-meta"><span class="build" title="Go {{.GoVersion}}">{{.Version}}</span><button class="theme" id="theme-toggle" type="button" title="Switch the theme" aria-label="Switch the theme"><span class="theme-label">Dark</span></button></div>
     </div>
   </nav>
