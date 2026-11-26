@@ -236,7 +236,11 @@ func TestPlanPaging(t *testing.T) {
 	if !strings.Contains(pagePath(out), "/zwei/") || out["listen_s"].(float64) != listenAfterInput.Seconds() {
 		t.Fatalf("next must page and keep the input window: %v", out)
 	}
-	// A long previous goes back to the first page.
+	// A long next jumps to the last visible page and a long previous back to
+	// the first (ADR 0170).
+	if got := pagePath(pressHeld(t, s, dev, 800, buttonNext)); !strings.Contains(got, "/vier/") {
+		t.Fatalf("long next: %q", got)
+	}
 	if got := pagePath(pressHeld(t, s, dev, 800, buttonPrevious)); !strings.Contains(got, "/eins/") {
 		t.Fatalf("long previous: %q", got)
 	}
@@ -250,6 +254,24 @@ func TestPlanPaging(t *testing.T) {
 	}
 	if st := s.state["AABBCCDDEE01"]; st.Trigger != "" || st.PageName != "zwei" {
 		t.Fatalf("state: %+v", st)
+	}
+}
+
+// TestLongPageKeysReachTheTriggerPage checks that the extended list ends with
+// the page of the active trigger (ADR 0158, 0170).
+func TestLongPageKeysReachTheTriggerPage(t *testing.T) {
+	s, _ := planServer(t, testPlan)
+	withTriggerValue(t, s, "low")
+	dev := planDevice(t, s)
+	if got := pagePath(displayPage(t, s, dev)); !strings.Contains(got, "/alarm/") {
+		t.Fatalf("trigger page: %q", got)
+	}
+	// The trigger page is the last page of the extended list.
+	if got := pagePath(pressHeld(t, s, dev, 800, buttonPrevious)); !strings.Contains(got, "/eins/") {
+		t.Fatalf("long previous must start at the first page: %q", got)
+	}
+	if got := pagePath(pressHeld(t, s, dev, 800, buttonNext)); !strings.Contains(got, "/alarm/") {
+		t.Fatalf("long next must end on the trigger page: %q", got)
 	}
 }
 
@@ -841,8 +863,9 @@ func TestPageRoles(t *testing.T) {
 		{"long home never pages", []string{buttonHome}, []int{800}, nil},
 		{"next pages", []string{buttonNext}, []int{0}, []string{buttonNext}},
 		{"previous pages", []string{buttonPrevious}, []int{0}, []string{buttonPrevious}},
-		{"long next jumps to the first page", []string{buttonNext}, []int{800}, []string{buttonHome}},
-		{"long previous jumps to the first page", []string{buttonPrevious}, []int{800}, []string{buttonHome}},
+		{"long next jumps to the last page", []string{buttonNext}, []int{800}, []string{roleLast}},
+		{"long previous jumps to the first page", []string{buttonPrevious}, []int{800}, []string{roleFirst}},
+		{"a hold below the threshold pages", []string{buttonNext}, []int{600}, []string{buttonNext}},
 		{"next and home", []string{buttonNext, buttonHome}, []int{0, 0}, []string{buttonNext}},
 	}
 	for _, c := range cases {

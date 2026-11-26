@@ -491,6 +491,27 @@ func TestActionKeysMoveTheSelection(t *testing.T) {
 	}
 }
 
+// TestActionLongPageKeysMoveTheSelection checks that a held next or previous
+// moves the selection while the key-operated mode is open, instead of jumping
+// to the first or last page (ADR 0163, 0170).
+func TestActionLongPageKeysMoveTheSelection(t *testing.T) {
+	s, dev, _ := actionServer(t, actionPage, false)
+	displayPage(t, s, dev)
+	press(t, s, dev, buttonHome)
+	_, opts := actionStateOf(t, s)
+	hold := int(buttonHoldLong/time.Millisecond) + 200
+	pressHeld(t, s, dev, hold, buttonNext)
+	st, _ := actionStateOf(t, s)
+	if !st.Open || st.Selected != optionIndex(opts, "now") || st.Page != "eins" {
+		t.Fatalf("a held next must select the next option and keep the page: %+v", st)
+	}
+	pressHeld(t, s, dev, hold, buttonPrevious)
+	st, _ = actionStateOf(t, s)
+	if !st.Open || st.Selected != optionIndex(opts, "pv") {
+		t.Fatalf("a held previous must step back: %+v", st)
+	}
+}
+
 // TestActionKeysFailureShowsABanner checks that a failed key selection shows
 // the banner of ADR 0162 and closes the mode.
 func TestActionKeysFailureShowsABanner(t *testing.T) {

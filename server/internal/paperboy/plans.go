@@ -534,8 +534,8 @@ func (s *Server) announceSkippedLocked(d *Device, r planResolution) {
 // input, which keeps the page and the trigger decision so that a trigger
 // waits for the next sync (ADR 0161). timed marks a timed refresh, which is
 // when a trigger with alert: refresh alerts again (ADR 0131). Button input
-// keeps the trigger decision; next and previous page the extended list
-// (ADR 0158).
+// keeps the trigger decision; next and previous page the extended list, a long
+// press jumps to its first or last page (ADR 0158, 0170).
 func (s *Server) choosePlanPage(res planResolution, cfg *Config, d *Device, st *deviceState, now time.Time, firstContact, timed bool, buttons []string, buttonInput, paused, quiet bool) planChoice {
 	p, err := res.plan, res.err
 	if p == nil {
@@ -598,8 +598,10 @@ func (s *Server) choosePlanPage(res planResolution, cfg *Config, d *Device, st *
 					st.PageName = nextPage(pages, st.PageName)
 				case buttonPrevious:
 					st.PageName = prevPage(pages, st.PageName)
-				case buttonHome:
+				case roleFirst:
 					st.PageName = pages[0]
+				case roleLast:
+					st.PageName = pages[len(pages)-1]
 				}
 			}
 		case buttonInput:
