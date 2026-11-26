@@ -56,7 +56,7 @@ The content model: what a page is, what draws in it and when it is shown. See [`
 | [0049](0049-plugin-widgets.md) | Paperboy v2 – pages composed from plugin widgets | Accepted, implemented |
 | [0050](0050-physical-scaling-by-display-ppi.md) | Scale widget layout by display PPI | Accepted, implemented |
 | [0057](0057-plugin-actions-from-the-plan.md) | Plugin actions from the plan and the action menu | Superseded by [ADR-0161](0161-home-syncs-and-the-menu-goes.md) |
-| [0067](0067-buttons-and-the-menu.md) | Buttons – home opens the menu, long presses page | Superseded by [ADR-0161](0161-home-syncs-and-the-menu-goes.md) |
+| [0067](0067-buttons-and-the-menu.md) | Buttons – home opens the menu, long presses page | Superseded by [ADR-0161](0161-home-syncs-and-the-menu-goes.md); its hold window is widened by [ADR-0172](0172-the-firmware-measures-a-press-for-five-seconds.md) |
 | [0078](0078-the-menu-stays-open-while-it-is-used.md) | The menu stays open while it is used | Superseded by [ADR-0161](0161-home-syncs-and-the-menu-goes.md) |
 | [0082](0082-menu-tap-controls-in-a-strip.md) | The menu's tap controls are their own strip | Superseded by [ADR-0161](0161-home-syncs-and-the-menu-goes.md) |
 | [0092](0092-scrolling-text-lines.md) | Scrolling lines on text displays | Accepted, implemented |
@@ -111,6 +111,7 @@ Registration, sync, state and what a device receives. See [`03-devices.md`](../d
 | [0142](0142-a-manual-alert-waits-for-the-next-sync.md) | A manual alert waits for the next sync | Accepted, implemented; adds `pending_alert` to the device state and the `Signal` button on the dashboard, and reuses the `beep`/`blink` answer of [ADR-0131](0131-a-plan-rule-alerts-the-device.md) through the `alert_methods` of [ADR-0132](0132-alert-methods-per-device.md) without a firmware change |
 | [0163](0163-the-readings-in-the-device-status-and-a-reading-widget.md) | The readings in the device status and a reading widget | Accepted, implemented; adds `readings` to `server_status` without a protocol version, the widget `paperboy/reading` and the values `paperboy/temperature` and `paperboy/humidity` of [ADR-0134](0134-readings-from-the-device.md), drawn with [ADR-0151](0151-a-shared-design-language-for-plugin-widgets.md) |
 | [0170](0170-a-battery-runtime-follows-the-measurable-series.md) | A battery runtime follows the measurable series | Accepted, implemented; the estimate of issue #207 and #236 follows the first scale with a measurable discharge, judges the voltage against its fit's noise, shows `over a year` beyond `maxRuntime`, and averages the E1001's ADC samples |
+| [0171](0172-the-firmware-measures-a-press-for-five-seconds.md) | The firmware measures a press for five seconds | Accepted, implemented; widens the hold window of [ADR-0067](0067-buttons-and-the-menu.md) so that `hold_ms` carries the real duration up to 5 s and the server threshold can move without a firmware release |
 
 ## Displays, panels and firmware
 

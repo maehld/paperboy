@@ -1,6 +1,6 @@
 # 0067: Buttons – home opens the menu, long presses page
 
-- Status: Accepted, implemented
+- Status: Accepted, implemented; the firmware hold window of §4 is widened by [ADR 0172](0172-the-firmware-measures-a-press-for-five-seconds.md)
 - Date: 2026-11-08
 - Builds on: ADR 0042 (device API), ADR 0057 (action menu), ADR 0064 (device protocol v4)
 - Answers: issue #88
