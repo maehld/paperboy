@@ -218,12 +218,12 @@ Paperboy's offers update it.
 
 ## Building and flashing
 
-ESPHome is pinned to **2026.10.1** and runs through `uvx`, outside Paperboy.
+ESPHome is pinned to **2026.11.1** and runs through `uvx`, outside Paperboy.
 
 ```powershell
 cd firmware/esphome
 .\build.ps1 -Hardware sticky                      # or e1001/e1003; image in .esphome/build/<hardware>/build/
-uvx esphome==2026.10.1 run sticky.yaml            # first flash over USB-C
+uvx esphome==2026.11.1 run sticky.yaml            # first flash over USB-C
 .\build.ps1 -Hardware sticky -Instance <dir>      # publish to <dir>/firmware/sticky-v<version>.bin (ADR 0043, 0060)
 ```
 

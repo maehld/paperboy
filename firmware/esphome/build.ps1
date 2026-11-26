@@ -9,7 +9,7 @@ param(
     [switch]$NoCompile
 )
 $ErrorActionPreference = "Stop"
-$esphome = "esphome==2026.10.1"
+$esphome = "esphome==2026.11.1"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $config = Join-Path $here "$Hardware.yaml"
 $yaml = [System.IO.File]::ReadAllText($config)

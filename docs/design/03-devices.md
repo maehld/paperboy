@@ -199,7 +199,7 @@ The firmware lives in `firmware/esphome/` and is built on ESPHome ([ADR 0041](..
 | `paperboy.h` | Sync body with the readings, event queue, log ring, wake helpers, rotation, QOI paint, the lockup of the setup screens, text rows and the scroll engine |
 | `sticky.yaml`, `e1001.yaml`, `e1003.yaml` | Hardware, buttons, panel driver, buzzer, LED, battery, charger and the room sensor |
 | `text-common.yaml`, `lcd2004.yaml` | Text displays, text poll and the marquee script |
-| `build.ps1` | Build with a pinned ESPHome (2026.10.1); `-Instance` publishes `firmware/<hardware>-v<version>.bin` |
+| `build.ps1` | Build with a pinned ESPHome (2026.11.1); `-Instance` publishes `firmware/<hardware>-v<version>.bin` |
 
 A sync answer with `beep` or `blink` runs the script of that method after the paint, also when the page did not change ([ADR 0131](../adr/0131-a-plan-rule-alerts-the-device.md)). The device file's `alert_methods` selects the two flags; without the key the device stays silent ([ADR 0132](../adr/0132-alert-methods-per-device.md)). The Sticky beeps; the E1001 and E1003 beep and blink the green LED; the LCD2004 blinks its backlight. The beep is three tones of 90 ms with 70 ms gaps. The cycle waits for the scripts, so deep sleep does not cut the signal off. The buzzer pins are GPIO48 on the Sticky and GPIO45 on the E1001 and E1003; the green LED is on GPIO6 and GPIO16.
 
