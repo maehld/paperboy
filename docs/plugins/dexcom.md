@@ -7,7 +7,7 @@ Share has to be switched on in the app (Connections → Share). Nothing reaches 
 ## Screenshots
 
 The example page `glukose` shows the current reading, the 24-hour graph and the
-numbers of the last 24 hours:
+numbers of 24 hours:
 
 ![The glucose page](../images/plugins/dexcom/page-glukose.png)
 
@@ -64,9 +64,9 @@ The arrow beside the value is the trend the sensor reports with every reading: t
 
 ## Widget `graph`
 
-The readings of the last 24 hours (`period: day`, the default) or of the last hour (`period: hour`). The 24-hour window rolls with the clock, so the chart still shows data just after midnight ([ADR 0169](../adr/0169-the-glucose-chart-covers-the-last-24-hours.md)). The band is two labelled lines, and the area the curve spends outside the band is filled, so a spike above `high` or a dip below `low` shows how far it went and how long it lasted. The hour variant marks the five-minute points.
+The readings of 24 hours (`period: day`, the default) or of the last hour (`period: hour`). The 24-hour window rolls with the clock, so the chart still shows data just after midnight ([ADR 0169](../adr/0169-the-glucose-chart-covers-24-hours.md)). The band is two labelled lines, and the area the curve spends outside the band is filled, so a spike above `high` or a dip below `low` shows how far it went and how long it lasted. The hour variant marks the five-minute points.
 
-`header: false` drops the title (`Letzte 24 Stunden`/`Letzte Stunde`) and the unit, so the chart itself gets the room. The title and the scale labels follow the base text of the page but never take more than a share of the cell, so the chart still draws in a short cell such as a Sticky's `span: [6,3]` (800 × 180 px).
+`header: false` drops the title (`24 Stunden`/`Letzte Stunde`) and the unit, so the chart itself gets the room. The title and the scale labels follow the base text of the page but never take more than a share of the cell, so the chart still draws in a short cell such as a Sticky's `span: [6,3]` (800 × 180 px).
 
 `mark` (`none`, `min`, `max`, `both`) labels the lowest and the highest reading of the shown window; default `none`. The label is the reading in the configured unit, so a window that peaks at 210 says `210`.
 
@@ -79,12 +79,12 @@ Single values as rows, like the `values` widget of the evcc plugin. The list arg
 | Key | Shows |
 |---|---|
 | `now` | The newest reading with its unit |
-| `avg`, `in-band` | Average and share inside the band over the last 24 hours |
-| `min`, `max` | The lowest and highest reading of the last 24 hours |
+| `avg`, `in-band` | Average and share inside the band over 24 hours |
+| `min`, `max` | The lowest and highest reading of 24 hours |
 | `delta` | The change over the last 15 minutes |
 | `trend` | The trend: the same arrow the `glucose` widget draws |
 | `age` | How old the newest reading is |
-| `count` | How many readings the last 24 hours have |
+| `count` | How many readings in 24 hours |
 | `band` | The configured target band |
 
 Without `values` all entries are shown; `columns` sets one or two columns. Rows that do not fit the cell are left out, so the order of the list is the order of importance. The widget is for image displays; the values below carry the same data to a text page.
@@ -100,10 +100,10 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 | `trend` | direction | | | 1 up, 0 flat, -1 down, doubled for the double arrows |
 | `delta` | number | mg/dL or mmol/L | 0 or 1 | change over the last 15 minutes |
 | `age` | duration | | | age of the newest reading |
-| `avg` | number | mg/dL or mmol/L | 0 or 1 | average of the last 24 hours |
-| `min`, `max` | number | mg/dL or mmol/L | 0 or 1 | lowest and highest of the last 24 hours |
-| `in-band` | number | % | 0 | share of the last 24 hours inside the band |
-| `count` | number | | 0 | readings of the last 24 hours |
+| `avg` | number | mg/dL or mmol/L | 0 or 1 | average of 24 hours |
+| `min`, `max` | number | mg/dL or mmol/L | 0 or 1 | lowest and highest of 24 hours |
+| `in-band` | number | % | 0 | share of 24 hours inside the band |
+| `count` | number | | 0 | readings of 24 hours |
 | `band` | text | | | the target band, e.g. `80–280 mg/dL` |
 
 The unit and the precision follow the configuration or the unit the account reports.
@@ -137,7 +137,7 @@ cells:
 
 The service keeps 24 hours. The first read takes the whole 24 hours; after that the plugin asks for the readings it missed since the last poll (`maxCount` = the missed five-minute values plus one for context, at most 288) and merges them into the stored series, dropping duplicates and anything older than 24 hours. A poll therefore moves a handful of values instead of a whole window.
 
-The plugin state ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md), [what a plugin keeps](../design/05-plugins.md#what-a-plugin-keeps)) holds the account ID, the session, the time of the last read and the readings of the last 24 hours, so a restart costs neither a login nor a read, and the first page after a restart has data. A session the service forgot or timed out (`SessionIdNotFound`, `SessionNotValid`) costs one new login; the session is not renewed on every request.
+The plugin state ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md), [what a plugin keeps](../design/05-plugins.md#what-a-plugin-keeps)) holds the account ID, the session, the time of the last read and the readings of 24 hours, so a restart costs neither a login nor a read, and the first page after a restart has data. A session the service forgot or timed out (`SessionIdNotFound`, `SessionNotValid`) costs one new login; the session is not renewed on every request.
 
 There is no week or month view: the service does not answer more than 24 hours, and the plugin does not keep its own history. Nightscout or Juggluco would be the source for that.
 

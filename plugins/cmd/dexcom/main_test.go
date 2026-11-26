@@ -410,9 +410,9 @@ func TestGraphWindowRolls(t *testing.T) {
 
 	start, end, title := graphWindow(req, rs, "day")
 	if !end.Equal(now) || end.Sub(start) != 24*time.Hour {
-		t.Errorf("day window is %v to %v, want the last 24 hours", start, end)
+		t.Errorf("day window is %v to %v, want 24 hours", start, end)
 	}
-	if title != "Letzte 24 Stunden" {
+	if title != "24 Stunden" {
 		t.Errorf("day title = %q", title)
 	}
 

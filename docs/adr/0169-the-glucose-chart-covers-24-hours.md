@@ -1,4 +1,4 @@
-# 0169: The glucose chart covers the last 24 hours
+# 0169: The glucose chart covers 24 hours
 
 - Status: Accepted, implemented
 - Date: 2026-11-26
@@ -19,18 +19,18 @@ the chart even though it is five minutes old.
 
 ## Decision
 
-1. **The default window rolls.** `period: day` covers the last 24 hours up to
-   the current time, not the calendar day. The key stays the same, so existing
+1. **The default window rolls.** `period: day` covers 24 hours up to the
+   current time, not the calendar day. The key stays the same, so existing
    pages need no change.
-2. **The title says what it shows.** The chart title is `Letzte 24 Stunden` /
-   `Last 24 hours`, and the editor labels the `day` choice the same way.
+2. **The title says what it shows.** The chart title is `24 Stunden` /
+   `24 hours`, and the editor labels the `day` choice the same way.
 3. **The hour marks follow the clock.** The marks sit at 00, 06, 12 and 18 of
    the window, because a rolling window crosses midnight and offsets from its
    start would no longer name clock hours.
 4. **The hour variant stays.** `period: hour` keeps its last hour from the
    newest reading, `Letzte Stunde` / `Last hour`, and its five-minute points.
 5. **The values follow the same words.** The value titles and the plugin
-   documentation say `last 24 hours` instead of `the day`. Their behavior does
+   documentation say `24 hours` instead of `the day`. Their behavior does
    not change: they already used the stored 24 hours.
 
 ## Consequences

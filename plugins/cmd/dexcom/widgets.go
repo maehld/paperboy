@@ -150,7 +150,7 @@ func (d *dexcom) signed(req *plugin.Request, l limits, v float64) string {
 func graphWindow(req *plugin.Request, rs []reading, period string) (start, end time.Time, title string) {
 	end = req.Now
 	start = end.Add(-24 * time.Hour)
-	title = req.T("Letzte 24 Stunden", "Last 24 hours")
+	title = req.T("24 Stunden", "24 hours")
 	if period == "hour" {
 		if last, ok := current(rs, req.Now); ok {
 			end = last.at
