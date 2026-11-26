@@ -32,7 +32,7 @@ permissions:
 
 env:
   # Keep in step with firmware/esphome/build.ps1.
-  ESPHOME_VERSION: "2026.10.1"
+  ESPHOME_VERSION: "2026.11.1"
 
 jobs:
   changes:
@@ -107,7 +107,7 @@ jobs:
           path: ~/.platformio
           key: platformio-esphome-${{ env.ESPHOME_VERSION }}
 
-      # ESPHome 2026.10.1 keeps the ESP-IDF framework, its toolchains and the
+      # ESPHome 2026.11.1 keeps the ESP-IDF framework, its toolchains and the
       # Python environments under ~/.cache/esphome/idf; downloading them from
       # GitHub is the most fragile step of the whole CI (issue 66). The key is
       # the ESPHome pin, which fixes the ESP-IDF version (ADR 0056); without
