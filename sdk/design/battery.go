@@ -2,6 +2,7 @@ package design
 
 import (
 	"image"
+	"image/color"
 	"math"
 	"sort"
 
@@ -9,26 +10,47 @@ import (
 )
 
 // Battery is a segmented battery gauge: an outline with a terminal, the charge
-// in four or five segments, a bolt while charging and a slash for a missing
-// reading. Level thickens the outline without a number, so a low battery reads
-// at a glance.
+// in four or five segments and a slash for a missing reading. Level thickens
+// the outline without a number, so a low battery reads at a glance. While
+// charging below 100 % the body is empty and a bolt stands over it; at 100 %
+// the full gauge returns.
 type Battery struct {
 	Fraction float64 // charge from 0 to 1
 	Missing  bool    // no reading: draw the slash instead of a fill
-	Charging bool    // draw the bolt over the fill
+	Charging bool    // draw the bolt over the empty body below 100 %
 	Level    string  // "", "warn" or "critical": thickens the outline
 }
+
+// fullCharge is the fraction that shows the full gauge. The displayed value
+// rounds to 100 % from 99.5 %, so the bolt goes when the page says 100 %.
+const fullCharge = 0.995
 
 // DrawBattery draws the gauge into r. A stroke of zero follows the height of r.
 // It returns false when r has no room for a gauge.
 //
 // The fill never paints over the outer line. On a tall gauge the outline is
 // drawn after the fill and a small gap separates the two. On a small gauge the
-// fill is drawn over the inner edge, so it sits on the wall.
+// fill is drawn over the inner edge, so it sits on the wall. While charging
+// below 100 %, the body is empty and a bolt stands over it.
 func DrawBattery(dst *image.Paletted, r image.Rectangle, b Battery, stroke int) bool {
+	charging := b.Charging && !b.Missing && b.Fraction < fullCharge
 	f, ok := frameBattery(r, b, stroke)
 	if !ok {
 		return false
+	}
+	if charging {
+		// The body makes room for the bolt that stands over it. The frame
+		// keeps the line, the radius and the cap of the full gauge.
+		over := max(1, r.Dy()*12/100)
+		f.body = image.Rect(f.body.Min.X, r.Min.Y+over, f.body.Max.X, r.Max.Y-over)
+		f.inner = f.body.Inset(f.line + f.gap)
+		if f.inner.Empty() {
+			return false
+		}
+		outlineRounded(dst, f.body, f.rad, f.line)
+		drawBatteryCap(dst, f.body, r)
+		drawChargingBolt(dst, r, f)
+		return true
 	}
 	// On a small gauge the fill sits on the wall. Draw the outline first and
 	// the fill over its inner edge, so no white pixel remains between the two.
@@ -44,11 +66,8 @@ func DrawBattery(dst *image.Paletted, r image.Rectangle, b Battery, stroke int) 
 			clipCorners(dst, f.inner, math.Max(f.rad-float64(f.line+f.gap), 1))
 		}
 	}
-	switch {
-	case b.Missing:
+	if b.Missing {
 		drawBatterySlash(dst, f.inner, f.line)
-	case b.Charging:
-		drawBatteryBolt(dst, f.inner)
 	}
 	if !small {
 		outlineRounded(dst, f.body, f.rad, f.line)
@@ -225,54 +244,73 @@ func drawBatterySlash(dst *image.Paletted, inner image.Rectangle, line int) {
 	render.Segment(dst, inner.Min.X+m, inner.Max.Y-m-1, inner.Max.X-m-1, inner.Min.Y+m, line, false)
 }
 
-// boltShape is the charging mark as a polygon in a unit box: the usual
-// lightning shape, drawn over the fill instead of a band cut out of it.
+// boltShape is the charging mark as a polygon in a unit box.
 var boltShape = [6][2]float64{
 	{0.54, 0.03}, {0.12, 0.58}, {0.42, 0.58}, {0.36, 0.97}, {0.84, 0.42}, {0.54, 0.42},
 }
 
-// drawBatteryBolt knocks the charging mark out of the charge, white on the fill
-// and black on the empty part, so the mark stays visible on both.
-func drawBatteryBolt(dst *image.Paletted, inner image.Rectangle) {
-	bw := inner.Dx() * 6 / 10
-	bh := inner.Dy()
-	if bw < 3 || bh < 4 {
+// drawChargingBolt draws the mark over the empty body. The top and bottom wall
+// stay open around the intersections, so the bolt passes through the wall. A
+// white gap follows the bolt shape, so the mark never touches the wall.
+func drawChargingBolt(dst *image.Paletted, r image.Rectangle, f batteryFrame) {
+	bw := r.Dx() * 36 / 100
+	if bw < 3 || r.Dy() < 4 {
 		return
 	}
-	x0 := inner.Min.X + (inner.Dx()-bw)/2
+	box := image.Rect(r.Min.X+(r.Dx()-bw)/2, r.Min.Y, r.Min.X+(r.Dx()+bw)/2, r.Max.Y)
+	gap := max(2, r.Dy()/16)
+	for _, edge := range []int{f.body.Min.Y, f.body.Max.Y - f.line} {
+		x0, x1, ok := boltSpan(box, edge+f.line/2)
+		if !ok {
+			continue
+		}
+		render.FillColor(dst, image.Rect(x0-gap, edge-1, x1+gap, edge+f.line+1), render.White)
+	}
+	fillBolt(dst, box.Inset(-1).Intersect(r), render.White)
+	fillBolt(dst, box, render.Black)
+}
+
+// boltSpan returns the left and right edge of the bolt shape at y.
+func boltSpan(box image.Rectangle, y int) (int, int, bool) {
+	xs := boltCrossings(box, y)
+	if len(xs) < 2 {
+		return 0, 0, false
+	}
+	return int(xs[0] + 0.5), int(xs[len(xs)-1] + 0.5), true
+}
+
+// boltCrossings returns the sorted x positions where y cuts the bolt.
+func boltCrossings(box image.Rectangle, y int) []float64 {
 	pts := make([]image.Point, len(boltShape))
 	for i, p := range boltShape {
-		pts[i] = image.Point{X: x0 + int(p[0]*float64(bw)), Y: inner.Min.Y + int(p[1]*float64(bh))}
+		pts[i] = image.Point{X: box.Min.X + int(p[0]*float64(box.Dx())), Y: box.Min.Y + int(p[1]*float64(box.Dy()))}
 	}
-	for y := inner.Min.Y; y < inner.Max.Y; y++ {
-		yc := float64(y) + 0.5
-		var xs []float64
-		for i, p := range pts {
-			q := pts[(i+1)%len(pts)]
-			if p.Y == q.Y || yc < float64(min(p.Y, q.Y)) || yc >= float64(max(p.Y, q.Y)) {
-				continue
-			}
-			xs = append(xs, float64(p.X)+(yc-float64(p.Y))/float64(q.Y-p.Y)*float64(q.X-p.X))
+	yc := float64(y) + 0.5
+	var xs []float64
+	for i, p := range pts {
+		q := pts[(i+1)%len(pts)]
+		if p.Y == q.Y || yc < float64(min(p.Y, q.Y)) || yc >= float64(max(p.Y, q.Y)) {
+			continue
 		}
-		sort.Float64s(xs)
+		xs = append(xs, float64(p.X)+(yc-float64(p.Y))/float64(q.Y-p.Y)*float64(q.X-p.X))
+	}
+	sort.Float64s(xs)
+	return xs
+}
+
+// fillBolt fills the bolt shape scaled into box.
+func fillBolt(dst *image.Paletted, box image.Rectangle, c color.Color) {
+	if box.Dx() < 2 || box.Dy() < 3 {
+		return
+	}
+	for y := box.Min.Y; y < box.Max.Y; y++ {
+		xs := boltCrossings(box, y)
 		for i := 0; i+1 < len(xs); i += 2 {
 			x1, x2 := int(xs[i]+0.5), int(xs[i+1]+0.5)
 			if x2 < x1+1 {
 				x2 = x1 + 1
 			}
-			invertRect(dst, image.Rect(max(x1, inner.Min.X), y, min(x2, inner.Max.X), y+1))
-		}
-	}
-}
-
-// invertRect swaps the pixels of r between black and white.
-func invertRect(dst *image.Paletted, r image.Rectangle) {
-	r = r.Intersect(dst.Rect)
-	last := uint8(len(dst.Palette) - 1)
-	for y := r.Min.Y; y < r.Max.Y; y++ {
-		for x := r.Min.X; x < r.Max.X; x++ {
-			i := dst.PixOffset(x, y)
-			dst.Pix[i] = last - dst.Pix[i]
+			render.FillColor(dst, image.Rect(x1, y, x2, y+1), c)
 		}
 	}
 }
