@@ -27,7 +27,7 @@ body { margin: 0; font: var(--pb-text-md)/1.4 var(--pb-font-body); background: v
    its actions. The rail names the sections, keeps its place while the page
    scrolls and carries the search hint, the build and the theme at its foot. */
 .topbar { display: flex; align-items: center; gap: .9rem; padding: .55rem 1.25rem; min-height: var(--pb-topbar); border-bottom: 1px solid var(--pb-hairline); background: var(--pb-surface); }
-.heading { display: flex; align-items: baseline; gap: .8rem; min-width: 0; }
+.heading { display: flex; align-items: center; gap: .8rem; min-width: 0; }
 .brand { display: flex; align-items: center; flex: none; }
 .brand img { display: block; height: 1.7rem; width: auto; }
 /* The lockup is black ink. A dark page inverts it, so the mark stays visible. */
@@ -35,7 +35,7 @@ body { margin: 0; font: var(--pb-text-md)/1.4 var(--pb-font-body); background: v
   :root:not([data-theme="light"]) .brand img { filter: invert(1); }
 }
 :root[data-theme="dark"] .brand img { filter: invert(1); }
-.titleline { display: flex; align-items: baseline; gap: .4rem; min-width: 0; padding-left: .8rem; border-left: 1px solid var(--pb-hairline); font-size: var(--pb-text-xs); color: var(--pb-ink-muted); }
+.titleline { display: flex; align-items: center; gap: .4rem; min-width: 0; padding-left: .8rem; border-left: 1px solid var(--pb-hairline); font-size: var(--pb-text-xs); color: var(--pb-ink-muted); }
 .titleline a { color: var(--pb-ink-muted); text-decoration: none; }
 .titleline a:hover { color: var(--pb-accent); }
 .titleline .sep { color: var(--pb-ink-faint); }
