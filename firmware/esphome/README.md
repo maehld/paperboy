@@ -96,8 +96,9 @@ until Paperboy confirms the sync ([ADR 0064](../../docs/adr/0064-device-protocol
 once. The queue is appended to while a request is in flight, and only the
 events that request carried are dropped from the answer — a press made during
 the sync is not swallowed (issue #136). A press is queued when the button is
-released or after 700 ms while it is held, with the measured `hold_ms`; what
-counts as a long press is decided by Paperboy ([ADR 0067](../../docs/adr/0067-buttons-and-the-menu.md)). The Sticky sends taps,
+released or after five seconds while it is held, with the measured `hold_ms`
+([ADR 0172](../../docs/adr/0172-the-firmware-measures-a-press-for-five-seconds.md)).
+Paperboy decides what counts as a long press ([ADR 0067](../../docs/adr/0067-buttons-and-the-menu.md)). The Sticky sends taps,
 not the continuous touch stream: `pb_touch` takes the first report of a contact
 and drops the rest until `on_release`, so one tap is one event and a deliberate
 second tap is not swallowed; Paperboy maps the tap onto the device menu

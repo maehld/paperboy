@@ -400,9 +400,11 @@ script:
 
   # Called by the buttons with their role (next, previous, home), the GPIO they
   # read and their press time. The event carries the measured press duration;
-  # the server decides what counts as a long press (ADR 0067), so a press is
-  # queued when the button is released or after the hold timeout and a sync
-  # starts at once unless one is already running.
+  # the server decides what counts as a long press (ADR 0067). The five-second
+  # window is wider than the server threshold, so the threshold can move
+  # without a firmware update (ADR 0171). A press is queued when the button is
+  # released or after the timeout, and a sync starts at once unless one is
+  # already running.
   - id: button_pressed
     mode: queued
     parameters:
@@ -417,7 +419,7 @@ script:
             - wait_until:
                 condition:
                   lambda: "return gpio_get_level((gpio_num_t) gpio) != 0;"
-                timeout: 700ms
+                timeout: 5s
             - lambda: |-
                 uint32_t ms = esphome::millis() - (uint32_t) start;
                 if (ms > 60000) ms = 60000;

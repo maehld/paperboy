@@ -103,7 +103,7 @@ While `paperboy.yaml` is unusable (a degraded start), register, sync and text po
 | Field | Content |
 |---|---|
 | `reason` | `timer`, `button`, `touch`, `powercycle`, `menu`, `result` or `action` |
-| `events` | Button roles `next`, `previous` and `home`, in order, each with a monotonic `id`; `hold_ms` for long presses |
+| `events` | Button roles `next`, `previous` and `home`, in order, each with a monotonic `id`; `hold_ms` is the measured press duration in milliseconds, capped at five seconds ([ADR 0172](../adr/0172-the-firmware-measures-a-press-for-five-seconds.md)) |
 | `shown` | Hash of the page the device displays, which guards the confirmation screen |
 | `battery` | `volts` (required), `percent`, `mah`, `ma` (positive while charging) and `charging` |
 | `readings` | Measured values of this wake as `{name, value}`; the name comes from Paperboy's reading catalog ([ADR 0134](../adr/0134-readings-from-the-device.md)) |
