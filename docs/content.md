@@ -110,7 +110,7 @@ triggers:
 ```
 
 - `pages` is the rotation, in order. A hidden page is not in it; only a trigger shows it. At least one page stays visible.
-- `on_refresh` decides what a timed refresh shows: `cycle` moves to the next page, `first` shows the first page, `current` keeps the page (the default). Buttons page the visible pages plus the page of the active trigger; a long press returns to the first page. A page that leaves the list is resolved by this mode ([ADR 0130](adr/0130-what-a-plan-refresh-does.md), [ADR 0133](adr/0133-the-page-cursor-holds-the-page.md)).
+- `on_refresh` decides what a timed refresh shows: `cycle` moves to the next page, `first` shows the first page, `current` keeps the page (the default). Buttons page the visible pages plus the page of the active trigger; a long `previous` goes to the first page and a long `next` to the last ([ADR 0170](adr/0170-a-long-page-key-jumps-to-the-end-of-the-list.md)). A page that leaves the list is resolved by this mode ([ADR 0130](adr/0130-what-a-plan-refresh-does.md), [ADR 0133](adr/0133-the-page-cursor-holds-the-page.md)).
 - `refresh` is the interval outside its windows; `default` falls back to the device interval. `from` is inclusive and `to` exclusive; a later `to` than `from` crosses midnight. Windows must not overlap. Paperboy caps the interval at the next edge, so the device changes its cadence on time.
 - Times and days use the global `timezone` of the configuration ([ADR 0033](adr/0033-global-language-and-timezone.md)). A plan has no timezone of its own.
 - A plan needs at least one page, and each page name appears once. A hidden page is still a page of the plan.

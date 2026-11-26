@@ -7,17 +7,26 @@ import "time"
 // to the server.
 const buttonHoldLong = 700 * time.Millisecond
 
+// roleFirst and roleLast are the page roles of a long press. They never reach
+// the wire, which knows only the button roles of ADR 0042.
+const (
+	roleFirst = "first"
+	roleLast  = "last"
+)
+
 // pageRoles translates the buttons of a wake into the roles that page. A home
-// press only syncs, so it never appears here. A long next or previous jumps to
-// the first page of the plan, whatever the device's actions setting is
-// (ADR 0161).
+// press only syncs, so it never appears here. A long previous jumps to the
+// first page of the list and a long next to the last, whatever the device's
+// actions setting is (ADR 0161, 0170).
 func pageRoles(buttons []string, holds []int) []string {
 	out := make([]string, 0, len(buttons))
 	for i, b := range buttons {
 		if held(hold(holds, i)) {
 			switch b {
-			case buttonNext, buttonPrevious:
-				out = append(out, buttonHome)
+			case buttonPrevious:
+				out = append(out, roleFirst)
+			case buttonNext:
+				out = append(out, roleLast)
 			}
 			continue
 		}
