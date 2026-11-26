@@ -168,9 +168,10 @@ func (Plugin) band(req *plugin.Request, w plugin.WidgetRequest, img *image.Palet
 	}
 	title := req.Page.Title
 	if a.Bool("page_indicator", true) && req.Page.Count > 1 {
-		title += fmt.Sprintf("  %d/%d", req.Page.Number, req.Page.Count)
+		title += fmt.Sprintf(" %d/%d", req.Page.Number, req.Page.Count)
 	}
-	// The right group, from left to right. Two spaces separate the items.
+	// The right group, from left to right. A pipe separates the readings and
+	// the clock; it belongs between two shown values, not after the last one.
 	var leftToRight []string
 	if a.Bool("temperature", false) {
 		leftToRight = append(leftToRight, bandReading(req, reading.Temperature))
@@ -183,7 +184,13 @@ func (Plugin) band(req *plugin.Request, w plugin.WidgetRequest, img *image.Palet
 			leftToRight = append(leftToRight, s)
 		}
 	}
-	items := leftToRight
+	var items []string
+	for i, s := range leftToRight {
+		if i > 0 {
+			items = append(items, "|")
+		}
+		items = append(items, s)
+	}
 	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
 		items[i], items[j] = items[j], items[i]
 	}
@@ -200,7 +207,7 @@ func (Plugin) band(req *plugin.Request, w plugin.WidgetRequest, img *image.Palet
 	// All text shares one size. A crowded band steps the size down, so the
 	// title and the right group stay equal and readable.
 	for {
-		gap := max(2, render.Measure("  ", size, false))
+		gap := max(2, int(size*0.5))
 		parts := len(items)
 		if battery != nil {
 			parts++
@@ -217,7 +224,7 @@ func (Plugin) band(req *plugin.Request, w plugin.WidgetRequest, img *image.Palet
 		}
 		size--
 	}
-	gap := max(2, render.Measure("  ", size, false))
+	gap := max(2, int(size*0.5))
 	baseline := b.Min.Y + b.Dy()/2 + int(size*0.36)
 	if battery != nil {
 		iconH := min(capHeight(size), float64(b.Dy()-2*pad))
