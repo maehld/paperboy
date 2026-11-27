@@ -155,7 +155,7 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				Sizes:    []plugin.Span{{Columns: 3, Rows: 7}, {Columns: 6, Rows: 7}},
 				MinWidth: 210, MinHeight: 160,
 				Args: map[string]plugin.Arg{
-					"titles":    {Type: "bool", Default: true, Description: "event titles in the day cells when they fit; otherwise up to four blocks, one per event"},
+					"titles":    {Type: "bool", Default: true, Description: "event titles in the day cells when they fit; otherwise up to four blocks in a row, one per event"},
 					"more":      {Type: "bool", Default: true, Description: "show \"+N\" for events that did not fit; false fills the day cells with titles"},
 					"calendars": calendars,
 				},
@@ -951,27 +951,27 @@ func monthTitles(titles []string, room int, more bool) (shown []string, hidden i
 	return titles[:room-1], len(titles) - (room - 1)
 }
 
-// monthBlocks returns one block per event at the bottom left of a day cell,
-// stacked upward, at most four. The stack height shows the number of events.
+// monthBlocks returns one block per event at the bottom left of a day cell, in
+// a row, at most four.
 func monthBlocks(cell image.Rectangle, count, w, h, gap int) []image.Rectangle {
 	n := min(count, 4)
 	if n <= 0 {
 		return nil
 	}
-	w = min(w, cell.Dx()-6)
-	bottom := cell.Max.Y - 3
+	w = max(min(w, (cell.Dx()-6-(n-1)*gap)/n), 2)
+	y := cell.Max.Y - 3 - h
 	x := cell.Min.X + 3
 	out := make([]image.Rectangle, 0, n)
-	for i := range n {
-		top := bottom - (i+1)*h - i*gap
-		out = append(out, image.Rect(x, top, x+w, top+h))
+	for range n {
+		out = append(out, image.Rect(x, y, x+w, y+h))
+		x += w + gap
 	}
 	return out
 }
 
 // month draws the current month as a grid from Monday to Sunday. Today is
 // inverted; days with events show their titles when the cell is tall enough,
-// otherwise one block per event at the bottom left, stacked upward.
+// otherwise one block per event at the bottom left, side by side.
 func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	pad := w.Style.Padding
 	area := img.Rect.Inset(pad)
@@ -1058,19 +1058,19 @@ func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img 
 			}
 			continue
 		}
-		// Without room for titles: one block per event, stacked upward. The
-		// stack height shows how many events the day has.
+		// Without room for titles: one block per event, side by side at the
+		// bottom. The number of blocks shows how many events the day has.
 		avail := cell.Max.Y - 3 - top
-		if avail < 3 {
+		if avail < 2 {
 			continue
 		}
-		blocks := min(min(len(evs), 4), avail/3)
+		blocks := min(len(evs), 4)
 		bw := min(max(cell.Dx()/4, 10), 20)
-		bh := min(max(cell.Dy()/10, 3), 8)
+		bh := min(min(max(cell.Dy()/10, 3), 8), avail)
 		gap := max(bh/3, 2)
-		if blocks*bh+(blocks-1)*gap > avail {
+		if blocks*bw+(blocks-1)*gap > cell.Dx()-6 {
 			gap = 1
-			bh = max((avail-(blocks-1))/blocks, 2)
+			bw = max((cell.Dx()-6-(blocks-1))/blocks, 2)
 		}
 		for _, block := range monthBlocks(cell, blocks, bw, bh, gap) {
 			render.FillSolid(img, block)

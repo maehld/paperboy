@@ -31,15 +31,15 @@ func TestMonthTitles(t *testing.T) {
 
 func TestMonthBlocks(t *testing.T) {
 	cell := image.Rect(10, 20, 50, 80)
-	blocks := monthBlocks(cell, 3, 20, 4, 2)
+	blocks := monthBlocks(cell, 3, 8, 4, 2)
 	if len(blocks) != 3 {
 		t.Fatalf("three events = %v", blocks)
 	}
-	// The lowest block sits at the bottom; the others stack above it.
+	// One row at the bottom, left to right.
 	want := []image.Rectangle{
-		image.Rect(13, 73, 33, 77),
-		image.Rect(13, 67, 33, 71),
-		image.Rect(13, 61, 33, 65),
+		image.Rect(13, 73, 21, 77),
+		image.Rect(23, 73, 31, 77),
+		image.Rect(33, 73, 41, 77),
 	}
 	if !reflect.DeepEqual(blocks, want) {
 		t.Errorf("blocks = %v, want %v", blocks, want)
@@ -55,11 +55,11 @@ func TestMonthBlocks(t *testing.T) {
 		t.Errorf("six events = %v", blocks)
 	}
 	for _, b := range blocks {
-		if b.Dx() != 34 || !b.In(cell) {
+		if b.Dx() != 7 || !b.In(cell) {
 			t.Errorf("block %v does not fit", b)
 		}
 	}
-	if got := monthBlocks(cell, 0, 20, 4, 2); len(got) != 0 {
+	if got := monthBlocks(cell, 0, 8, 4, 2); len(got) != 0 {
 		t.Errorf("no events = %v", got)
 	}
 }
