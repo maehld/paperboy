@@ -445,6 +445,43 @@ ${palette}<span id="render-hint"></span><input id="show-cells" type="checkbox" c
   }
 }
 
+// command.js names the shortcut of the platform in the Search link at the foot
+// of the rail (ADR 0152). A hardcoded key in the template told every Windows
+// operator to press Cmd, so the check runs both platforms.
+{
+  const script = await readFile(join(root, "server/internal/paperboy/ui/command.js"), "utf8");
+  const body = `<button class="rail-search" id="cmd-open" type="button"><span>Search</span><kbd></kbd></button>`;
+
+  const label = async (platform) => {
+    const dom = new JSDOM(`<!doctype html><html><body>${body}</body></html>`, { url: "http://localhost/ui", runScripts: "outside-only" });
+    const { window } = dom;
+    Object.defineProperty(window.navigator, "userAgentData", { value: { platform } });
+    window.eval(script);
+    const trigger = window.document.getElementById("cmd-open");
+    const answer = { key: trigger.querySelector("kbd").textContent, title: trigger.title };
+    dom.window.close();
+    return answer;
+  };
+
+  const problems = [];
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const windows = await label("Windows");
+  check(windows.key === "Ctrl+K", "Windows shows " + JSON.stringify(windows.key));
+  check(windows.title === "Search (Ctrl+K)", "Windows titles the button " + JSON.stringify(windows.title));
+  const mac = await label("macOS");
+  check(mac.key === "⌘K", "macOS shows " + JSON.stringify(mac.key));
+
+  if (problems.length) {
+    for (const problem of problems) console.error(problem);
+    process.exitCode = 1;
+  } else {
+    console.log("command.js named Ctrl+K on Windows and ⌘K on macOS");
+  }
+}
+
 // zoom.js opens the dashboard preview in the dialog outside the polled region
 // (issue #398). jsdom has no modal dialog, so the check shims showModal/close.
 {

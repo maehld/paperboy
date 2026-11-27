@@ -40,6 +40,9 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
 - `glukose.yaml` - the glucose reading next to the day with the numbers of the
   day below; `glukose.lcd2004.yaml` puts the reading, the trend, the change,
   the age and the labelled state on 20×4.
+- `glukose-profil.yaml` - the ambulatory glucose profile over 14 days beside
+  the tight range, CV, GMI and the readings of the day. It needs several days
+  of stored readings.
 - `nachrichten.yaml` - two RSS feeds: headlines with summaries and a mixed
   list of all sources.
 - `github.yaml` - the state of one repository: counts and the newest commit,

@@ -28,6 +28,10 @@ func (d *dexcom) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.
 		return d.glucoseWidget(req, w, img)
 	case "graph":
 		return d.graphWidget(req, w, img)
+	case "agp":
+		return d.agpWidget(req, w, img)
+	case "ranges":
+		return d.rangesWidget(req, w, img)
 	case "values":
 		return d.valuesWidget(req, w, img)
 	}
@@ -343,6 +347,9 @@ var valueEntries = []valueEntry{
 	{"now", "Aktuell", "Current"},
 	{"avg", "Ø 24h", "Avg 24h"},
 	{"in-band", "Im Band", "In band"},
+	{"tight", "Im engen Band", "In tight range"},
+	{"cv", "CV", "CV"},
+	{"gmi", "GMI", "GMI"},
 	{"min", "Tief 24h", "Low 24h"},
 	{"max", "Hoch 24h", "High 24h"},
 	{"delta", "Änderung", "Change"},
@@ -404,6 +411,18 @@ func (d *dexcom) entryText(req *plugin.Request, l limits, rs []reading, key stri
 	case "in-band":
 		if s.count > 0 {
 			return fmt.Sprintf("%.0f %%", s.inBand)
+		}
+	case "tight":
+		if s.count > 0 {
+			return fmt.Sprintf("%.0f %%", s.tight)
+		}
+	case "cv":
+		if s.count > 1 {
+			return fmt.Sprintf("%.0f %%", s.cv)
+		}
+	case "gmi":
+		if s.count > 0 {
+			return fmt.Sprintf("%.1f %%", s.gmi)
 		}
 	case "min":
 		if s.count > 0 {
@@ -486,7 +505,8 @@ func (d *dexcom) valuesWidget(req *plugin.Request, w plugin.WidgetRequest, img *
 		x := b.Min.X + int(float64(col)*cellW)
 		rowY := b.Min.Y + int(float64(row)*rowH)
 		baseline := rowY + int(rowH*0.72)
-		width := int(cellW) - 2
+		// The gap keeps a value apart from the label of the next column.
+		width := int(cellW) - gap
 		if v.key == "trend" && d.trendGlyph(req, img, day, x, width, baseline, rowH) {
 			render.Text(img, d.entryLabel(req, v), x, baseline, label, width, ink, render.Left)
 			continue
@@ -494,7 +514,7 @@ func (d *dexcom) valuesWidget(req *plugin.Request, w plugin.WidgetRequest, img *
 		text := d.entryText(req, l, day, v.key)
 		valueW := render.Measure(text, value.Size, true)
 		render.Text(img, d.entryLabel(req, v), x, baseline, label, width-valueW-gap, ink, render.Left)
-		render.Text(img, text, x+int(cellW)-1, baseline, value, valueW, ink, render.Right)
+		render.Text(img, text, x+int(cellW)-gap, baseline, value, valueW, ink, render.Right)
 		if row > 0 && col == 0 {
 			hline(img, b.Min.X, b.Max.X, rowY, rule, light)
 		}
@@ -632,6 +652,24 @@ func (d *dexcom) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 				continue
 			}
 			out[name] = plugin.NumberValue(s.inBand)
+		case "tight":
+			if s.count == 0 {
+				out[name] = dash
+				continue
+			}
+			out[name] = plugin.NumberValue(s.tight)
+		case "cv":
+			if s.count < 2 {
+				out[name] = dash
+				continue
+			}
+			out[name] = plugin.NumberValue(s.cv)
+		case "gmi":
+			if s.count == 0 {
+				out[name] = dash
+				continue
+			}
+			out[name] = plugin.NumberValue(s.gmi)
 		case "count":
 			out[name] = plugin.NumberValue(float64(s.count))
 		case "band":

@@ -1,8 +1,9 @@
 # Tour through all shipped plugins. The device turns to the next page with
 # every refresh; the schedule keeps it fast during the day and quiet at night.
 # The triggers bring a page to the front while a condition holds. A missing
-# value never matches, so the tour continues. `glukose` is hidden: it is not in
-# the rotation and only the trigger shows it.
+# value never matches, so the tour continues. `glukose` and `glukose-profil`
+# are hidden: they are not in the rotation, and a trigger or the operator shows
+# them. Both count as demand, so the plugin keeps polling for the profile.
 pages:
   - uebersicht
   - status
@@ -26,6 +27,7 @@ pages:
   - geburtstage
   - drucker
   - { page: glukose, hidden: true }
+  - { page: glukose-profil, hidden: true }
 
 on_refresh: cycle
 refresh:

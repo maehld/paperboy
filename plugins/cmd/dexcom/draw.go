@@ -4,37 +4,52 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/maehld/paperboy/sdk/format"
 	"github.com/maehld/paperboy/sdk/plugin"
 )
 
-// limits are the four numbers the app uses: the urgent low, the target band
-// and the scale of the chart.
+// limits are the numbers the app uses: the urgent low, the target range, the
+// tight range inside it and the scale of the chart.
 type limits struct {
-	unit                        string
-	urgent, low, high, min, max float64
-	decimals                    int
+	unit                                             string
+	urgent, low, high, veryHigh, tightLow, tightHigh float64
+	min, max                                         float64
+	decimals                                         int
 }
 
-// defaults are the values of the Dexcom app, per unit.
+// defaults are the consensus ranges, per unit: time in range (TIR) covers 70
+// to 180 mg/dL or 3.9 to 10.0 mmol/L, time in tight range (TITR) 70 to 140
+// mg/dL or 3.9 to 7.8 mmol/L.
 func defaults(unit string) limits {
 	if unit == unitMMOL {
-		return limits{unit: unitMMOL, urgent: 3.1, low: 4.4, high: 15.5, min: 2.2, max: 16.7, decimals: 1}
+		return limits{unit: unitMMOL, urgent: 3.1, low: 3.9, high: 10.0, veryHigh: 13.9,
+			tightLow: 3.9, tightHigh: 7.8, min: 2.2, max: 16.7, decimals: 1}
 	}
-	return limits{unit: unitMGDL, urgent: 55, low: 80, high: 280, min: 40, max: 300}
+	return limits{unit: unitMGDL, urgent: 55, low: 70, high: 180, veryHigh: 250,
+		tightLow: 70, tightHigh: 140, min: 40, max: 300}
 }
 
-// check verifies the order of the numbers.
+// check verifies the order of the numbers: the tight range lies inside the
+// target range.
 func (l limits) check() error {
 	switch {
 	case l.min >= l.low:
 		return fmt.Errorf("thresholds: min %g is not below low %g", l.min, l.low)
-	case l.low >= l.high:
-		return fmt.Errorf("thresholds: low %g is not below high %g", l.low, l.high)
+	case l.low > l.tightLow:
+		return fmt.Errorf("thresholds: tight_low %g is below low %g", l.tightLow, l.low)
+	case l.tightLow >= l.tightHigh:
+		return fmt.Errorf("thresholds: tight_low %g is not below tight_high %g", l.tightLow, l.tightHigh)
+	case l.tightHigh > l.high:
+		return fmt.Errorf("thresholds: tight_high %g is above high %g", l.tightHigh, l.high)
 	case l.high > l.max:
 		return fmt.Errorf("thresholds: high %g is above max %g", l.high, l.max)
+	case l.veryHigh != 0 && l.veryHigh <= l.high:
+		return fmt.Errorf("thresholds: very_high %g is not above high %g", l.veryHigh, l.high)
+	case l.veryHigh > l.max:
+		return fmt.Errorf("thresholds: very_high %g is above max %g", l.veryHigh, l.max)
 	case l.urgent != 0 && l.urgent >= l.low:
 		return fmt.Errorf("thresholds: urgent %g is not below low %g", l.urgent, l.low)
 	}
@@ -56,22 +71,47 @@ func (d *dexcom) limits() (limits, error) {
 	if unit == "" {
 		unit = detectUnit(newest)
 	}
-	l := defaults(unit)
-	for k, v := range set {
-		switch k {
-		case "urgent":
-			l.urgent = v
-		case "low":
-			l.low = v
-		case "high":
-			l.high = v
-		case "min":
-			l.min = v
-		case "max":
-			l.max = v
-		}
-	}
+	l := apply(defaults(unit), set)
 	return l, l.check()
+}
+
+// apply merges the configured thresholds over the defaults. A tight range the
+// configuration does not name follows the target range: its lower edge stays
+// the lower edge of the range, and its upper edge stays inside it.
+func apply(l limits, set map[string]float64) limits {
+	if v, ok := set["urgent"]; ok {
+		l.urgent = v
+	}
+	if v, ok := set["low"]; ok {
+		l.low = v
+	}
+	if v, ok := set["high"]; ok {
+		l.high = v
+	}
+	if v, ok := set["very_high"]; ok {
+		l.veryHigh = v
+	} else if l.veryHigh <= l.high {
+		// Without a threshold above the target range the report merges the
+		// high and the very high readings.
+		l.veryHigh = 0
+	}
+	if v, ok := set["tight_low"]; ok {
+		l.tightLow = v
+	} else {
+		l.tightLow = l.low
+	}
+	if v, ok := set["tight_high"]; ok {
+		l.tightHigh = v
+	} else if l.tightHigh > l.high {
+		l.tightHigh = l.high
+	}
+	if v, ok := set["min"]; ok {
+		l.min = v
+	}
+	if v, ok := set["max"]; ok {
+		l.max = v
+	}
+	return l
 }
 
 // detectUnit tells the units apart by magnitude: a reading in mmol/L stays
@@ -125,10 +165,10 @@ func absDuration(d time.Duration) time.Duration {
 	return d
 }
 
-// stats covers the readings of the last 24 hours.
+// stats covers the stored readings.
 type stats struct {
-	min, max, avg, inBand float64
-	count                 int
+	min, max, avg, inBand, tight, cv, gmi float64
+	count                                 int
 }
 
 func summarize(rs []reading, l limits) stats {
@@ -136,10 +176,11 @@ func summarize(rs []reading, l limits) stats {
 	if len(rs) == 0 {
 		return s
 	}
-	sum, in := 0.0, 0
+	sum, sumSq, in, tight := 0.0, 0.0, 0, 0
 	s.min, s.max = rs[0].value, rs[0].value
 	for _, r := range rs {
 		sum += r.value
+		sumSq += r.value * r.value
 		if r.value < s.min {
 			s.min = r.value
 		}
@@ -149,10 +190,24 @@ func summarize(rs []reading, l limits) stats {
 		if r.value >= l.low && r.value <= l.high {
 			in++
 		}
+		if r.value >= l.tightLow && r.value <= l.tightHigh {
+			tight++
+		}
 	}
 	s.count = len(rs)
 	s.avg = sum / float64(len(rs))
 	s.inBand = float64(in) / float64(len(rs)) * 100
+	s.tight = float64(tight) / float64(len(rs)) * 100
+	variance := max(sumSq/float64(len(rs))-s.avg*s.avg, 0)
+	if s.avg > 0 {
+		s.cv = math.Sqrt(variance) / s.avg * 100
+	}
+	// The glucose management indicator follows the mean in mg/dL.
+	mean := s.avg
+	if l.unit == unitMMOL {
+		mean *= 18.0182
+	}
+	s.gmi = 3.31 + 0.02392*mean
 	return s
 }
 
