@@ -135,11 +135,11 @@ cells:
 
 ## Data and state
 
-The service keeps 24 hours. The first read takes the whole 24 hours; after that the plugin asks for the readings it missed since the last poll (`maxCount` = the missed five-minute values plus one for context, at most 288) and merges them into the stored series, dropping duplicates and anything older than 24 hours. A poll therefore moves a handful of values instead of a whole window.
+The service keeps 24 hours. The first read takes the whole 24 hours; after that the plugin asks for the readings it missed since the last poll (`maxCount` = the missed five-minute values plus one for context, at most 288) and merges them into the stored series. It drops duplicates and anything older than 35 days. A poll therefore moves a handful of values instead of a whole window.
 
-The plugin state ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md), [what a plugin keeps](../design/05-plugins.md#what-a-plugin-keeps)) holds the account ID, the session, the time of the last read and the readings of 24 hours, so a restart costs neither a login nor a read, and the first page after a restart has data. A session the service forgot or timed out (`SessionIdNotFound`, `SessionNotValid`) costs one new login; the session is not renewed on every request.
+The plugin keeps 35 days of readings ([ADR 0175](../adr/0175-keep-five-weeks-of-glucose-readings.md)). The state ([ADR 0081](../adr/0081-plugin-state-over-the-protocol.md), [what a plugin keeps](../design/05-plugins.md#what-a-plugin-keeps)) holds the account ID, the session, the time of the last read, the readings of 24 hours and a compact history of the older readings. The history stores the minute and the value of each reading per UTC hour; the value is in tenths of the account unit. The state stays below 256 KiB; 35 days take about 128 KiB. A restart costs neither a login nor a read, and the first page after a restart has data. A session the service forgot or timed out (`SessionIdNotFound`, `SessionNotValid`) costs one new login; the session is not renewed on every request.
 
-There is no week or month view: the service does not answer more than 24 hours, and the plugin does not keep its own history. Nightscout or Juggluco would be the source for that.
+The history starts with the first run. A gap longer than 24 hours is lost because the service does not backfill. The values are stored, not precomputed shares, so a changed target band applies to the whole history. The shipped widgets still show 24 hours. The stored days are the base for a glucose profile that folds several days onto one 24-hour grid.
 
 ## Privacy
 
