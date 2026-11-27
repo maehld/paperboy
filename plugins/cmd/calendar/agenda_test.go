@@ -377,9 +377,6 @@ func TestTooSmallCell(t *testing.T) {
 func TestMoreArgumentDeclared(t *testing.T) {
 	p := &calendarPlugin{}
 	for _, w := range p.Describe().Widgets {
-		if w.Widget == "month" {
-			continue
-		}
 		arg, ok := w.Args["more"]
 		if !ok || arg.Type != "bool" || arg.Default != true {
 			t.Errorf("%s: more = %+v, declared %v", w.Widget, arg, ok)

@@ -132,17 +132,23 @@ func (p *calendarPlugin) shortDate(day time.Time) string {
 
 // weekTimedFit counts the timed events of one column that fit into avail
 // lines: costOf tells how many lines an event needs. It keeps a line free for
-// the "+N more" summary when more is set and events remain, and returns the
-// lines the shown events use.
+// the "+N more" summary when more is set and events remain, but never trades
+// every event for the count. It returns the lines the shown events use.
 func weekTimedFit(count, hidden, avail int, costOf func(int) int, more bool) (shown, used int) {
+	// Fill the column with events first.
 	for i := range count {
 		cost := costOf(i)
-		left := count - i - 1
-		if used+cost > avail || (more && left+hidden > 0 && used+cost+1 > avail) {
+		if used+cost > avail {
 			break
 		}
 		used += cost
 		shown++
+	}
+	// The summary needs a line of its own. Give it the line of the last event
+	// when another event stays.
+	if more && count-shown+hidden > 0 && used >= avail && shown > 1 {
+		used -= costOf(shown - 1)
+		shown--
 	}
 	return shown, used
 }
@@ -244,7 +250,7 @@ func (p *calendarPlugin) week(req *plugin.Request, w plugin.WidgetRequest, img *
 				render.TextAt(img, render.Ellipsize(title, size, false, textW), colX+pad, base+lineH, size, false, color.Black, render.Left)
 			}
 		}
-		if rest := len(timed[i]) - shown + hidden[i]; more && rest > 0 {
+		if rest := len(timed[i]) - shown + hidden[i]; more && rest > 0 && used < avail {
 			base := top + (used+1)*lineH - int(size*0.25)
 			render.Text(img, p.moreText(rest), colX+pad, base, render.Style{Size: size, Bold: true, Shrink: true}, textW, color.Black, render.Left)
 		}

@@ -155,7 +155,8 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				Sizes:    []plugin.Span{{Columns: 3, Rows: 7}, {Columns: 6, Rows: 7}},
 				MinWidth: 210, MinHeight: 160,
 				Args: map[string]plugin.Arg{
-					"titles":    {Type: "bool", Default: true, Description: "event titles in the day cells when they fit"},
+					"titles":    {Type: "bool", Default: true, Description: "event titles in the day cells when they fit; otherwise up to four blocks in a row, one per event"},
+					"more":      {Type: "bool", Default: true, Description: "show \"+N\" for events that did not fit; false fills the day cells with titles"},
 					"calendars": calendars,
 				},
 			},
@@ -461,6 +462,12 @@ func (p *calendarPlugin) parsed(events []event) []parsedEvent {
 		out = append(out, parsedEvent{start: s, end: en, first: first, allDay: e.AllDay, title: e.Title, location: e.Location, calendar: e.Calendar, birthday: e.Birthday})
 	}
 	return out
+}
+
+// ended reports whether the event has ended before now. A zero-length event
+// that starts now has not ended yet.
+func ended(e parsedEvent, now time.Time) bool {
+	return !e.end.After(now) && !(e.end.Equal(e.start) && !e.start.Before(now))
 }
 
 // birthday reports whether an event is a birthday: either the CardDAV contacts
@@ -772,7 +779,7 @@ func (p *calendarPlugin) agendaList(maxLines int, o agendaOpts) ([]agendaLine, i
 		if !e.start.Before(horizon) {
 			continue
 		}
-		ended := !e.end.After(now) && !(e.end.Equal(e.start) && !e.start.Before(now))
+		ended := ended(e, now)
 		// A past event stays only when the cell asks for it and the event
 		// ended today; an ended event of an earlier day is not part of today.
 		if ended && (!o.pastToday || !e.end.After(today)) {
@@ -933,9 +940,50 @@ var monthNames = map[string][12]string{
 	"en": {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"},
 }
 
+// monthEvent is one event of a day cell: its title and whether it has ended.
+type monthEvent struct {
+	title string
+	past  bool
+}
+
+// monthTitles splits the events of one day cell into the lines that fit and the
+// number behind them. The counter needs a line of its own and never takes the
+// only line that shows a title: an entry is worth more than the count. Without
+// the count every line carries a title.
+func monthTitles(events []monthEvent, room int, more bool) (shown []monthEvent, hidden int) {
+	if room <= 0 {
+		return nil, 0
+	}
+	if len(events) <= room {
+		return events, 0
+	}
+	if !more || room == 1 {
+		return events[:room], 0
+	}
+	return events[:room-1], len(events) - (room - 1)
+}
+
+// monthBlocks returns one block per event at the bottom left of a day cell, in
+// a row, at most four.
+func monthBlocks(cell image.Rectangle, count, w, h, gap int) []image.Rectangle {
+	n := min(count, 4)
+	if n <= 0 {
+		return nil
+	}
+	w = max(min(w, (cell.Dx()-6-(n-1)*gap)/n), 2)
+	y := cell.Max.Y - 3 - h
+	x := cell.Min.X + 3
+	out := make([]image.Rectangle, 0, n)
+	for range n {
+		out = append(out, image.Rect(x, y, x+w, y+h))
+		x += w + gap
+	}
+	return out
+}
+
 // month draws the current month as a grid from Monday to Sunday. Today is
 // inverted; days with events show their titles when the cell is tall enough,
-// otherwise a bar under the day number.
+// otherwise one block per event at the bottom left, side by side.
 func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	pad := w.Style.Padding
 	area := img.Rect.Inset(pad)
@@ -1011,25 +1059,41 @@ func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img 
 		top := numBase + 3
 		room := (cell.Max.Y - 2 - top) / int(lineSize*1.15)
 		if w.Arg().Bool("titles", true) && room >= 1 && cellW >= 50 {
-			shown := evs
-			if len(evs) > room {
-				shown = evs[:max(room-1, 0)]
-			}
+			shown, hidden := monthTitles(evs, room, w.Arg().Bool("more", true))
 			for j, t := range shown {
 				base := top + (j+1)*int(lineSize*1.15) - 2
-				render.TextAt(img, render.Ellipsize(t, lineSize, false, cell.Dx()-6), cell.Min.X+3, base, lineSize, false, color.Black, render.Left)
+				render.TextAt(img, render.Ellipsize(t.title, lineSize, false, cell.Dx()-6), cell.Min.X+3, base, lineSize, false, color.Black, render.Left)
 			}
-			if len(shown) < len(evs) {
+			if hidden > 0 {
 				base := top + (len(shown)+1)*int(lineSize*1.15) - 2
-				render.TextAt(img, fmt.Sprintf("+%d", len(evs)-len(shown)), cell.Min.X+3, base, lineSize, true, color.Black, render.Left)
+				render.TextAt(img, fmt.Sprintf("+%d", hidden), cell.Min.X+3, base, lineSize, true, color.Black, render.Left)
 			}
 			continue
 		}
-		// Too small for titles: one bar per event, at most four.
-		bw := max((cell.Dx()-8)/4, 3)
-		for j := range min(len(evs), 4) {
-			x := cell.Min.X + 4 + j*bw
-			render.FillSolid(img, image.Rect(x, cell.Max.Y-7, x+bw-2, cell.Max.Y-3))
+		// Without room for titles: one block per event, side by side at the
+		// bottom. The number of blocks shows how many events the day has.
+		avail := cell.Max.Y - 3 - top
+		if avail < 2 {
+			continue
+		}
+		blocks := min(len(evs), 4)
+		bw := min(max(cell.Dx()/4, 10), 20)
+		bh := min(min(max(cell.Dy()/7, 4), 12), avail)
+		gap := max(bh/3, 2)
+		if blocks*bw+(blocks-1)*gap > cell.Dx()-6 {
+			gap = 1
+			bw = max((cell.Dx()-6-(blocks-1))/blocks, 2)
+		}
+		for j, block := range monthBlocks(cell, blocks, bw, bh, gap) {
+			if j < len(evs) && evs[j].past {
+				if levels > 2 {
+					render.FillColor(img, block, render.DarkGray)
+				} else {
+					render.Fill(img, block, "shade")
+				}
+				continue
+			}
+			render.FillSolid(img, block)
 		}
 	}
 	for c := 0; c <= cols; c++ {
@@ -1041,10 +1105,10 @@ func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img 
 	return nil
 }
 
-// eventsByDay lists the event titles of every day of the grid, all-day
-// events first.
-func (p *calendarPlugin) eventsByDay(events []event, start time.Time, days int) [][]string {
-	out := make([][]string, days)
+// eventsByDay lists the events of every day of the grid, all-day events first,
+// each with the mark whether it has ended.
+func (p *calendarPlugin) eventsByDay(events []event, start time.Time, days int) [][]monthEvent {
+	out := make([][]monthEvent, days)
 	evs := p.parsed(events)
 	sort.SliceStable(evs, func(i, j int) bool {
 		if evs[i].allDay != evs[j].allDay {
@@ -1052,12 +1116,13 @@ func (p *calendarPlugin) eventsByDay(events []event, start time.Time, days int) 
 		}
 		return evs[i].start.Before(evs[j].start)
 	})
+	now := p.now.In(p.loc)
 	for i := range days {
 		dayStart := start.AddDate(0, 0, i)
 		dayEnd := dayStart.AddDate(0, 0, 1)
 		for _, e := range evs {
 			if e.start.Before(dayEnd) && (e.end.After(dayStart) || (e.end.Equal(e.start) && !e.start.Before(dayStart))) {
-				out[i] = append(out[i], e.title)
+				out[i] = append(out[i], monthEvent{title: e.title, past: ended(e, now)})
 			}
 		}
 	}
