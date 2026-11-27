@@ -54,7 +54,7 @@ var pageShots = map[string][]string{
 	"myskoda":    {"auto", "auto.lcd2004"},
 	"countdown":  {"countdown", "countdown.lcd2004"},
 	"rss":        {"nachrichten"},
-	"dexcom":     {"glukose", "glukose.lcd2004"},
+	"dexcom":     {"glukose", "glukose-profil", "glukose-kinder", "glukose.lcd2004"},
 	"fuel":       {"spritpreise"},
 	"paperboy":   {"status", "hinweise"},
 	"prusalink":  {"drucker", "drucker.lcd2004"},
@@ -71,6 +71,7 @@ var widgetAltShots = map[string]string{
 var widgetArgs = map[string]map[string]string{
 	"countdown/countdown": {"label": "Weihnachten", "date": "12-24", "since": "01-01"},
 	"dexcom/graph":        {"mark": "both"},
+	"dexcom/glucose":      {"sign": "outline"},
 	"fuel/history":        {"span": "24h", "mark": "both"},
 	"paperboy/header":     {"title": "Übersicht"},
 	"paperboy/title":      {"title": "Übersicht"},

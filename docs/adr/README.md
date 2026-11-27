@@ -209,6 +209,7 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0171](0171-a-ring-buffer-of-device-log-lines.md) | A ring buffer of device log lines | Accepted, implemented; keeps 24 lines in RTC memory, sends the unconfirmed ones with the sync and stores the newest 100 per device for the device editor (issue #475) |
 | [0173](0173-a-charging-mark-over-an-empty-battery.md) | A charging mark over an empty battery | Accepted, implemented; supersedes point 4 of [ADR-0121](0121-segmented-battery-gauge.md) and amends point 6 of [ADR-0166](0166-a-shared-battery-gauge.md) |
 | [0174](0174-the-glucose-profile-and-the-tight-range.md) | The glucose profile and the tight range | Accepted, implemented; adds the `agp` widget and moves the target range to the consensus, builds on [ADR-0099](0099-glucose-readings-from-the-dexcom-share-service.md) |
+| [0176](0176-child-friendly-signs.md) | Child-friendly smileys in the dexcom plugin | Accepted, implemented; adds the happy, sad and surprised O-mouth faces and the `sign` style `outline` or `solid`; a stale reading loses the alarm box |
 
 ## Delivery and releases
 

@@ -1,9 +1,10 @@
 # Tour through all shipped plugins. The device turns to the next page with
 # every refresh; the schedule keeps it fast during the day and quiet at night.
 # The triggers bring a page to the front while a condition holds. A missing
-# value never matches, so the tour continues. `glukose` and `glukose-profil`
-# are hidden: they are not in the rotation, and a trigger or the operator shows
-# them. Both count as demand, so the plugin keeps polling for the profile.
+# value never matches, so the tour continues. `glukose-kinder` is the page with
+# the smiley in the rotation. `glukose` and `glukose-profil` are hidden: they are
+# not in the rotation, and a trigger or the operator shows them. Both count as
+# demand, so the plugin keeps polling for the profile.
 pages:
   - uebersicht
   - status
@@ -11,6 +12,7 @@ pages:
   - energie-woche
   - ertrag
   - werte
+  - glukose-kinder
   - unterwegs
   - woche
   - kalender

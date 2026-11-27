@@ -43,6 +43,8 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
 - `glukose-profil.yaml` - the ambulatory glucose profile over 14 days beside
   the tight range, CV, GMI and the readings of the day. It needs several days
   of stored readings.
+- `glukose-kinder.yaml` - a glucose page for a child: the dexcom smiley shows the
+  state beside the reading, the numbers of the day follow.
 - `nachrichten.yaml` - two RSS feeds: headlines with summaries and a mixed
   list of all sources.
 - `github.yaml` - the state of one repository: counts and the newest commit,

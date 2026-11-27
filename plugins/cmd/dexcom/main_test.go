@@ -491,6 +491,63 @@ func TestValuesTrendArrow(t *testing.T) {
 	}
 }
 
+// The sign has to draw at every gray level and at the smallest glucose cell,
+// and it takes the left side without hiding the value.
+func TestSigns(t *testing.T) {
+	now := time.Date(2026, 11, 13, 20, 0, 0, 0, time.UTC)
+	d, _, req := newTestDexcom(t, now)
+	if err := d.update(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	sizes := []image.Rectangle{
+		{Max: image.Pt(400, 240)},
+		{Max: image.Pt(267, 180)},
+		{Max: image.Pt(130, 90)},
+	}
+	for _, sign := range []string{"outline", "solid"} {
+		for _, levels := range []int{2, 4, 16} {
+			for _, size := range sizes {
+				img := render.NewCanvas(size.Dx(), size.Dy(), levels)
+				w := plugin.WidgetRequest{Widget: "glucose", Width: size.Dx(), Height: size.Dy(), Style: style(),
+					Args: map[string]any{"sign": sign}}
+				if err := d.Render(req, w, img); err != nil {
+					t.Fatalf("glucose with the %s smiley at %v and %d levels: %v", sign, size, levels, err)
+				}
+			}
+		}
+	}
+
+	img := render.NewCanvas(400, 240, 4)
+	w := plugin.WidgetRequest{Widget: "glucose", Width: 400, Height: 240, Style: style(),
+		Args: map[string]any{"sign": "outline"}}
+	if err := d.Render(req, w, img); err != nil {
+		t.Fatal(err)
+	}
+	if !hasInk(img, image.Rect(60, 0, 170, 200)) {
+		t.Error("the sign is missing left of the reading")
+	}
+	if !hasInk(img, image.Rect(180, 0, 400, 200)) {
+		t.Error("the reading is missing beside the sign")
+	}
+
+}
+
+// A stale reading shows the crescent in gray and loses the alarm box, also
+// when the last value was out of the band.
+func TestStaleSign(t *testing.T) {
+	now := time.Date(2026, 11, 13, 20, 0, 0, 0, time.UTC)
+	d, _, req := newTestDexcom(t, now)
+	d.mu.Lock()
+	d.readings = []reading{{at: now.Add(-staleAfter - time.Minute), value: 48, trend: "DoubleDown"}}
+	d.mu.Unlock()
+	img := render.NewCanvas(400, 240, 4)
+	w := plugin.WidgetRequest{Widget: "glucose", Width: 400, Height: 240, Style: style(),
+		Args: map[string]any{"sign": "outline"}}
+	if err := d.Render(req, w, img); err != nil {
+		t.Fatalf("glucose with a stale reading: %v", err)
+	}
+}
+
 // hasInk reports whether the area holds a pixel that is not white.
 func hasInk(img *image.Paletted, area image.Rectangle) bool {
 	for y := area.Min.Y; y < area.Max.Y; y++ {

@@ -97,6 +97,17 @@ var markArg = plugin.Arg{
 	Description: "mark the lowest and the highest reading",
 }
 
+// signArg selects the child-friendly smiley of the reading.
+var signArg = plugin.Arg{
+	Type: "string", Default: "none", Enum: []any{"none", "outline", "solid"},
+	EnumLabels: map[string]string{
+		"none":    "None",
+		"outline": "Outline",
+		"solid":   "Solid",
+	},
+	Description: "show the child-friendly smiley, as an outline or filled",
+}
+
 // dexcom holds the configuration and what the service answered last.
 type dexcom struct {
 	plugin.Demand
@@ -162,7 +173,7 @@ func (d *dexcom) Describe() plugin.Description {
 				Widget: "glucose", Title: "Glucose reading", Kinds: image,
 				Sizes:    []plugin.Span{{Columns: 2, Rows: 2}, {Columns: 3, Rows: 2}},
 				MinWidth: 120, MinHeight: 80,
-				Args: map[string]plugin.Arg{},
+				Args: map[string]plugin.Arg{"sign": signArg},
 			},
 			{
 				Widget: "graph", Title: "Glucose history", Kinds: []string{plugin.KindImage},
