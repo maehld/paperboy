@@ -155,7 +155,7 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				Sizes:    []plugin.Span{{Columns: 3, Rows: 7}, {Columns: 6, Rows: 7}},
 				MinWidth: 210, MinHeight: 160,
 				Args: map[string]plugin.Arg{
-					"titles":    {Type: "bool", Default: true, Description: "event titles in the day cells when they fit"},
+					"titles":    {Type: "bool", Default: true, Description: "event titles in the day cells when they fit; otherwise up to four blocks, one per event"},
 					"more":      {Type: "bool", Default: true, Description: "show \"+N\" for events that did not fit; false fills the day cells with titles"},
 					"calendars": calendars,
 				},
@@ -951,9 +951,27 @@ func monthTitles(titles []string, room int, more bool) (shown []string, hidden i
 	return titles[:room-1], len(titles) - (room - 1)
 }
 
+// monthBlocks returns one block per event at the bottom left of a day cell,
+// stacked upward, at most four. The stack height shows the number of events.
+func monthBlocks(cell image.Rectangle, count, w, h, gap int) []image.Rectangle {
+	n := min(count, 4)
+	if n <= 0 {
+		return nil
+	}
+	w = min(w, cell.Dx()-6)
+	bottom := cell.Max.Y - 3
+	x := cell.Min.X + 3
+	out := make([]image.Rectangle, 0, n)
+	for i := range n {
+		top := bottom - (i+1)*h - i*gap
+		out = append(out, image.Rect(x, top, x+w, top+h))
+	}
+	return out
+}
+
 // month draws the current month as a grid from Monday to Sunday. Today is
 // inverted; days with events show their titles when the cell is tall enough,
-// otherwise a bar under the day number.
+// otherwise one block per event at the bottom left, stacked upward.
 func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
 	pad := w.Style.Padding
 	area := img.Rect.Inset(pad)
@@ -1040,11 +1058,25 @@ func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img 
 			}
 			continue
 		}
-		// Too small for titles: one bar per event, at most four.
-		bw := max((cell.Dx()-8)/4, 3)
-		for j := range min(len(evs), 4) {
-			x := cell.Min.X + 4 + j*bw
-			render.FillSolid(img, image.Rect(x, cell.Max.Y-7, x+bw-2, cell.Max.Y-3))
+		// Without room for titles: one block per event, stacked upward. The
+		// stack height shows how many events the day has.
+		avail := cell.Max.Y - 3 - top
+		if avail < 3 {
+			continue
+		}
+		blocks := min(min(len(evs), 4), avail/3)
+		bw := min(max(cell.Dx()/4, 10), 20)
+		bh := min(max(cell.Dy()/10, 3), 8)
+		gap := max(bh/3, 2)
+		if blocks*bh+(blocks-1)*gap > avail {
+			gap = 1
+			bh = max((avail-(blocks-1))/blocks, 2)
+		}
+		for _, block := range monthBlocks(cell, blocks, bw, bh, gap) {
+			render.FillSolid(img, block)
+		}
+		for _, block := range monthBlocks(cell, len(evs), bw, bh, gap) {
+			render.FillSolid(img, block)
 		}
 	}
 	for c := 0; c <= cols; c++ {
