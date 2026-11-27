@@ -32,6 +32,13 @@ type healthSubsystem struct {
 	// The www entry.
 	Latency *int64 `json:"latency"`
 	Drops   *int64 `json:"drops"`
+	// The speedtest of the connection. xput_up and xput_down are the result
+	// of the last test in Mbit/s, not a live rate. speedtest_lastrun is its
+	// moment, 0 or missing when no test ever ran.
+	XputUp           *float64 `json:"xput_up"`
+	XputDown         *float64 `json:"xput_down"`
+	SpeedtestLastRun *int64   `json:"speedtest_lastrun"`
+	SpeedtestPing    *float64 `json:"speedtest_ping"`
 }
 
 // parseHealth decodes a health answer and returns the wan and the www entry.

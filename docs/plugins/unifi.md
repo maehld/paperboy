@@ -79,6 +79,8 @@ The plugin reads the `wan` and the `www` entries of the health answer. It ignore
 the rest, including `uptime_stats`: its keys are interface names, not the
 configured WANs, and a standby WAN reports 0 percent. `xput_up` and `xput_down`
 are speedtest results; the live throughput is `tx_bytes-r` and `rx_bytes-r`.
+The widget shows the last result in Mbit/s. A console without a speed test
+reports 0, and the plugin then shows no rate.
 
 A failed request keeps the last data. A failed private call is logged once and
 never discards the fresh devices and clients. The plugin only reads. It changes
@@ -123,13 +125,16 @@ A note names the failure in the request language: `Internet gestört` when
 notice.
 
 | Argument | Description |
-|---|---|
+|---|---|---|
+| `speed` | Show the result of the last speed test, default `true` |
 | `traffic` | Show the rate of the last fetch, default `false` |
 | `ip` | Show the public address of the connection, default `false` |
 
-A 6 × 1 cell puts the label and the value on the left and the provider on the
-right. The note replaces the provider there. The `traffic` and `ip` arguments
-apply to the stacked cells; the wide row drops them.
+The speed line sits below the provider: `↓ 250 Mbit/s  ↑ 50 Mbit/s`. It needs a
+speed test on the console. A 6 × 1 cell puts the label and the value on the left
+and the provider on the right. The note replaces the provider there. The
+`speed`, `traffic` and `ip` arguments apply to the stacked cells; the wide row
+drops them.
 
 ## Values
 
@@ -146,6 +151,8 @@ matches while there is no data:
 | `offline` | number | | devices that count as offline |
 | `worst` | text | | the status line. Empty when it has nothing to say: no offline device, no firmware update, and no WAN summary (`wan` off, no ISP name or no latency) |
 | `latency` | number | ms | internet latency from the health answer; `–` when `wan` is off or the answer has no latency |
+| `download` | number | Mbit/s | result of the last speed test; `–` when no test ran |
+| `upload` | number | Mbit/s | result of the last speed test; `–` when no test ran |
 
 A plan shows the network page while the state is degraded
 ([ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md)):

@@ -254,3 +254,22 @@ func TestRenderWANTooSmall(t *testing.T) {
 		t.Errorf("60x40: err = %v, want ErrTooSmall", err)
 	}
 }
+
+func TestRenderWANSpeed(t *testing.T) {
+	p := renderedPlugin()
+	w := wanWidget(400, 120)
+	plain := renderStatus(t, p, statusRequest("de"), w, 4)
+
+	last, down, up := int64(1795810000), 250.5, 50.2
+	p.snap.www.SpeedtestLastRun, p.snap.www.XputDown, p.snap.www.XputUp = &last, &down, &up
+	speed := renderStatus(t, p, statusRequest("de"), w, 4)
+	if bytes.Equal(plain, speed) {
+		t.Error("a speedtest result does not change the image")
+	}
+
+	w.Args = map[string]any{"speed": false}
+	without := renderStatus(t, p, statusRequest("de"), w, 4)
+	if !bytes.Equal(plain, without) {
+		t.Error("speed false draws the speed line")
+	}
+}

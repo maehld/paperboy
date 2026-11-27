@@ -771,8 +771,9 @@ func (m *mock) unifi(w http.ResponseWriter, r *http.Request) {
 					"tx_bytes-r": 4961, "rx_bytes-r": 4976,
 					"gw_name": "Feldberg 7a", "isp_name": "Deutsche Telekom AG", "asn": 3320},
 				map[string]any{"subsystem": "www", "status": "ok", "latency": 10,
-					"uptime": 237437, "drops": 1, "xput_up": 0.0, "xput_down": 0.0,
-					"speedtest_status": "Idle"},
+					"uptime": 237437, "drops": 1, "xput_up": 50.2, "xput_down": 250.5,
+					"speedtest_ping": 8.0, "speedtest_lastrun": 1795810000,
+					"speedtest_status": "Success"},
 			},
 		})
 	default:

@@ -378,7 +378,7 @@ func TestValues(t *testing.T) {
 	srv, _ := newControllerServer(t)
 	p := fetched(t, srv, "")
 	req := &plugin.Request{Version: plugin.Version, Language: "de",
-		Values: []string{"state", "clients", "devices", "offline", "worst", "latency"}}
+		Values: []string{"state", "clients", "devices", "offline", "worst", "latency", "download", "upload"}}
 	got, err := p.Values(req)
 	if err != nil {
 		t.Fatalf("values: %v", err)
@@ -400,6 +400,13 @@ func TestValues(t *testing.T) {
 	}
 	if v := got["latency"].Number; v == nil || *v != 10 {
 		t.Errorf("latency = %v, want 10", v)
+	}
+	// The fixture has no speedtest, so both rates answer a dash.
+	if v := got["download"].Text; v == nil || *v != "–" {
+		t.Errorf("download = %v, want a dash", got["download"])
+	}
+	if v := got["upload"].Text; v == nil || *v != "–" {
+		t.Errorf("upload = %v, want a dash", got["upload"])
 	}
 
 	// An offline device moves the state and the status line.

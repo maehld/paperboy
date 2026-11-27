@@ -118,6 +118,8 @@ func (u *unifi) Describe() plugin.Description {
 			{Name: "offline", Title: "Offline devices", Type: plugin.ValueNumber},
 			{Name: "worst", Title: "Most important fact", Type: plugin.ValueText},
 			{Name: "latency", Title: "Internet latency", Type: plugin.ValueNumber, Unit: "ms"},
+			{Name: "download", Title: "Download speed", Type: plugin.ValueNumber, Unit: "Mbit/s", Precision: 1},
+			{Name: "upload", Title: "Upload speed", Type: plugin.ValueNumber, Unit: "Mbit/s", Precision: 1},
 		},
 		Widgets: []plugin.WidgetInfo{
 			{
@@ -148,6 +150,10 @@ func (u *unifi) Describe() plugin.Description {
 					"ip": {
 						Type: "bool", Default: false,
 						Description: "show the public address of the connection",
+					},
+					"speed": {
+						Type: "bool", Default: true,
+						Description: "show the result of the last speed test",
 					},
 				},
 			},
@@ -339,6 +345,18 @@ func (u *unifi) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 				out[name] = dash
 			} else {
 				out[name] = plugin.NumberValue(float64(snap.offline()))
+			}
+		case "download":
+			if v := snap.speed(true); v == nil {
+				out[name] = dash
+			} else {
+				out[name] = plugin.NumberValue(*v)
+			}
+		case "upload":
+			if v := snap.speed(false); v == nil {
+				out[name] = dash
+			} else {
+				out[name] = plugin.NumberValue(*v)
 			}
 		case "worst":
 			if !snap.loaded {

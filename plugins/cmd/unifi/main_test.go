@@ -45,7 +45,7 @@ func TestDescribe(t *testing.T) {
 	for _, v := range d.Values {
 		names = append(names, v.Name)
 	}
-	want := []string{"state", "clients", "devices", "offline", "worst", "latency"}
+	want := []string{"state", "clients", "devices", "offline", "worst", "latency", "download", "upload"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("values = %v, want %v", names, want)
 	}
@@ -85,14 +85,14 @@ func TestDescribe(t *testing.T) {
 
 func TestValuesWithoutData(t *testing.T) {
 	p := newPlugin()
-	got, err := p.Values(&plugin.Request{Values: []string{"state", "clients", "devices", "offline", "worst", "latency"}})
+	got, err := p.Values(&plugin.Request{Values: []string{"state", "clients", "devices", "offline", "worst", "latency", "download", "upload"}})
 	if err != nil {
 		t.Fatalf("values: %v", err)
 	}
 	if v := got["state"].Enum; v != nil {
 		t.Errorf("state = %v, want an empty answer", v)
 	}
-	for _, name := range []string{"clients", "devices", "offline", "worst", "latency"} {
+	for _, name := range []string{"clients", "devices", "offline", "worst", "latency", "download", "upload"} {
 		if v := got[name].Text; v == nil || *v != "–" {
 			t.Errorf("%s = %v, want a dash", name, got[name])
 		}

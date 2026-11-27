@@ -128,6 +128,19 @@ func (sn snapshot) statusLine(wanEnabled bool, t func(de, en string) string) str
 	return ""
 }
 
+// speed answers the result of the last speed test in Mbit/s. It is nil when no
+// test ever ran, so the widget shows nothing instead of a zero. down picks the
+// download rate, otherwise the upload rate.
+func (sn snapshot) speed(down bool) *float64 {
+	if sn.www.SpeedtestLastRun == nil || *sn.www.SpeedtestLastRun == 0 {
+		return nil
+	}
+	if down {
+		return sn.www.XputDown
+	}
+	return sn.www.XputUp
+}
+
 // signature covers what the widgets and the values show of the snapshot, so a
 // refresh that changes nothing does not redraw the pages.
 func (sn snapshot) signature() string {

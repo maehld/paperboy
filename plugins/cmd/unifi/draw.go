@@ -176,6 +176,11 @@ func drawWAN(img *image.Paletted, b image.Rectangle, snap snapshot, wanEnabled b
 	}
 
 	var details []string
+	if w.Arg().Bool("speed", true) {
+		if down, up := snap.speed(true), snap.speed(false); down != nil && up != nil {
+			details = append(details, "↓ "+mbit(*down, req.Lang())+"  ↑ "+mbit(*up, req.Lang()))
+		}
+	}
 	if w.Arg().Bool("traffic", false) {
 		details = append(details, "↓ "+rate(snap.wan.RxBytesR, req.Lang())+"  ↑ "+rate(snap.wan.TxBytesR, req.Lang()))
 	}
@@ -198,6 +203,11 @@ func drawWAN(img *image.Paletted, b image.Rectangle, snap snapshot, wanEnabled b
 		return plugin.TooSmall(w)
 	}
 	return nil
+}
+
+// mbit writes a speedtest result in Mbit/s.
+func mbit(v float64, lang string) string {
+	return format.Number(v, 0, lang) + " Mbit/s"
 }
 
 // rate writes a byte rate per second in a unit a reader expects.

@@ -132,3 +132,23 @@ func TestOfflineCount(t *testing.T) {
 		t.Errorf("offline = %d, want 2", got)
 	}
 }
+
+func TestSpeedNeedsASpeedtest(t *testing.T) {
+	var sn snapshot
+	if sn.speed(true) != nil || sn.speed(false) != nil {
+		t.Fatal("a snapshot without a speedtest answers a rate")
+	}
+	last, down, up := int64(1795810000), 250.5, 50.2
+	sn.www.SpeedtestLastRun, sn.www.XputDown, sn.www.XputUp = &last, &down, &up
+	if v := sn.speed(true); v == nil || *v != down {
+		t.Fatalf("download = %v, want %v", v, down)
+	}
+	if v := sn.speed(false); v == nil || *v != up {
+		t.Fatalf("upload = %v, want %v", v, up)
+	}
+	zero := int64(0)
+	sn.www.SpeedtestLastRun = &zero
+	if sn.speed(true) != nil {
+		t.Fatal("a zero lastrun answers a rate")
+	}
+}
