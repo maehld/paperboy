@@ -575,8 +575,9 @@ func TestStateRoundTrip(t *testing.T) {
 }
 
 // The plugin has no state before Paperboy hands it back; an empty state there
-// would replace what was stored before the state request runs (ADR 0081).
-func TestNoStateBeforeLoad(t *testing.T) {
+// would replace what was stored before the state request runs (ADR 0081). Once
+// loaded, it answers only after a change.
+func TestStateIsSentOnlyWhenChanged(t *testing.T) {
 	d := &dexcom{}
 	if state := d.State(); len(state) != 0 {
 		t.Fatalf("state before LoadState: %q", state)
@@ -584,8 +585,16 @@ func TestNoStateBeforeLoad(t *testing.T) {
 	if err := d.LoadState(nil, nil); err != nil {
 		t.Fatal(err)
 	}
+	if state := d.State(); len(state) != 0 {
+		t.Fatalf("state after an unchanged LoadState: %q", state)
+	}
+	d.readings = []reading{{at: time.Now(), value: 120}}
+	d.dirty = true
 	if state := d.State(); len(state) == 0 {
-		t.Fatal("no state after LoadState")
+		t.Fatal("no state after a change")
+	}
+	if state := d.State(); len(state) != 0 {
+		t.Fatalf("the same state was sent twice: %q", state)
 	}
 }
 

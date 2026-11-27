@@ -5,7 +5,8 @@
 // read directly.
 //
 // The service keeps 24 hours of values, so the widgets cover the last 24 hours
-// and the last hour.
+// and the last hour. The plugin keeps 35 days in its state, so a chart can fold
+// several days onto one grid (ADR 0175).
 //
 //	plugins:
 //	  dexcom:
@@ -47,7 +48,8 @@ const (
 	// staleAfter is the age at which the reading no longer counts as current.
 	staleAfter = 15 * time.Minute
 	// stateVersion guards the stored state; a different version is ignored.
-	stateVersion = 1
+	// Version 2 adds the history of five weeks (ADR 0175).
+	stateVersion = 2
 
 	unitMGDL = "mg/dL"
 	unitMMOL = "mmol/L"
@@ -108,6 +110,7 @@ type dexcom struct {
 
 	// state
 	loaded   bool // LoadState has run; before that there is nothing to store
+	dirty    bool // the state changed since the last State answer
 	session  string
 	resolved string // account ID the service answered for account_name
 	fetched  time.Time
@@ -356,6 +359,7 @@ func (d *dexcom) update(ctx context.Context) error {
 				// The service does not accept the session; one new login.
 				d.mu.Lock()
 				d.session = ""
+				d.dirty = true
 				d.mu.Unlock()
 				continue
 			}
@@ -364,6 +368,9 @@ func (d *dexcom) update(ctx context.Context) error {
 		now := clock()
 		d.mu.Lock()
 		d.readings = merge(d.readings, fresh, now)
+		if len(fresh) > 0 {
+			d.dirty = true
+		}
 		d.fetched, d.loadErr = now, nil
 		d.mu.Unlock()
 		return nil
@@ -395,7 +402,7 @@ func (d *dexcom) window() (minutes, count int) {
 }
 
 // merge adds the fresh readings to the stored ones, drops duplicates and
-// everything older than a day.
+// everything before the retained window.
 func merge(old, fresh []reading, now time.Time) []reading {
 	seen := make(map[int64]bool, len(old)+len(fresh))
 	out := make([]reading, 0, len(old)+len(fresh))
@@ -412,7 +419,7 @@ func merge(old, fresh []reading, now time.Time) []reading {
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].at.Before(out[j].at) })
-	cut := now.Add(-24 * time.Hour)
+	cut := now.Add(-retention)
 	i := 0
 	for i < len(out) && out[i].at.Before(cut) {
 		i++
@@ -447,6 +454,7 @@ func (d *dexcom) sessionID() (string, error) {
 	}
 	d.mu.Lock()
 	d.session, d.resolved = got, accountID
+	d.dirty = true
 	d.mu.Unlock()
 	return got, nil
 }
@@ -469,14 +477,15 @@ type storedState struct {
 	Account   string          `json:"account,omitempty"`
 	AccountID string          `json:"account_id,omitempty"`
 	Session   string          `json:"session,omitempty"`
-	SessionAt time.Time       `json:"session_at,omitempty"`
 	FetchedAt time.Time       `json:"fetched_at,omitempty"`
 	Readings  []storedReading `json:"readings,omitempty"`
+	History   []histHour      `json:"history,omitempty"`
 }
 
-// LoadState takes over the session, the account ID and the last day of
-// readings, so a restart costs no request and the first page has data. A state
-// of another account or region is ignored.
+// LoadState takes over the session, the account ID, the readings of 24 hours
+// and the compact history, so a restart costs no request and the first page has
+// data. A state of another account or region is ignored. A version 1 state has
+// no history; its readings start one.
 func (d *dexcom) LoadState(state json.RawMessage, blobs map[string][]byte) error {
 	d.mu.Lock()
 	d.loaded = true
@@ -496,7 +505,7 @@ func (d *dexcom) LoadState(state json.RawMessage, blobs map[string][]byte) error
 		account = d.accountID
 	}
 	switch {
-	case s.Version != stateVersion:
+	case s.Version != 1 && s.Version != stateVersion:
 		fmt.Fprintf(os.Stderr, "dexcom: ignoring a stored state of version %d\n", s.Version)
 		return nil
 	case s.Region != d.region:
@@ -507,20 +516,31 @@ func (d *dexcom) LoadState(state json.RawMessage, blobs map[string][]byte) error
 		return nil
 	}
 	d.resolved, d.session, d.fetched = s.AccountID, s.Session, s.FetchedAt
-	d.readings = fromStored(s.Readings)
+	stored := fromStored(s.Readings)
+	if s.Version == 1 {
+		d.readings = stored
+		d.dirty = true
+		return nil
+	}
+	// The verbose readings of the last 24 hours win over the compact history:
+	// they carry the trend and the exact second of the newest value.
+	d.readings = merge(stored, fromHistory(s.History), clock())
 	return nil
 }
 
-// State returns the session, the account ID and the readings of the last day.
+// State returns the session, the account ID, the readings of 24 hours and the
+// compact history. A change writes the whole object; missing means unchanged
+// (ADR 0081).
 func (d *dexcom) State() json.RawMessage {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	// Before LoadState the plugin has no state of its own; an empty answer here
 	// would replace what Paperboy stored before the state request hands it back
 	// (ADR 0081).
-	if !d.loaded {
+	if !d.loaded || !d.dirty {
 		return nil
 	}
+	d.dirty = false
 	account := d.accountName
 	if account == "" {
 		account = d.accountID
@@ -533,9 +553,11 @@ func (d *dexcom) State() json.RawMessage {
 		Session:   d.session,
 		FetchedAt: d.fetched,
 		Readings:  toStored(d.readings),
+		History:   toHistory(d.readings),
 	}
 	out, err := json.Marshal(s)
 	if err != nil {
+		d.dirty = true
 		return nil
 	}
 	return out

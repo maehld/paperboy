@@ -453,6 +453,7 @@ func (d *dexcom) valuesWidget(req *plugin.Request, w plugin.WidgetRequest, img *
 		return loadErr
 	}
 	keys := d.valueKeysFor(w)
+	day := dayReadings(rs, req.Now)
 	b := img.Rect.Inset(w.Style.Padding)
 	if b.Empty() {
 		return plugin.TooSmall(w)
@@ -486,11 +487,11 @@ func (d *dexcom) valuesWidget(req *plugin.Request, w plugin.WidgetRequest, img *
 		rowY := b.Min.Y + int(float64(row)*rowH)
 		baseline := rowY + int(rowH*0.72)
 		width := int(cellW) - 2
-		if v.key == "trend" && d.trendGlyph(req, img, rs, x, width, baseline, rowH) {
+		if v.key == "trend" && d.trendGlyph(req, img, day, x, width, baseline, rowH) {
 			render.Text(img, d.entryLabel(req, v), x, baseline, label, width, ink, render.Left)
 			continue
 		}
-		text := d.entryText(req, l, rs, v.key)
+		text := d.entryText(req, l, day, v.key)
 		valueW := render.Measure(text, value.Size, true)
 		render.Text(img, d.entryLabel(req, v), x, baseline, label, width-valueW-gap, ink, render.Left)
 		render.Text(img, text, x+int(cellW)-1, baseline, value, valueW, ink, render.Right)
@@ -560,7 +561,7 @@ func (d *dexcom) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 	}
 	last, has := current(rs, req.Now)
 	prev, hasPrev := earlier(rs, 15)
-	s := summarize(rs, l)
+	s := summarize(dayReadings(rs, req.Now), l)
 	dash := plugin.TextValue("–")
 	out := make(map[string]plugin.Value, len(req.Values))
 	for _, name := range req.Values {
