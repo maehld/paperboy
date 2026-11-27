@@ -68,7 +68,7 @@ func (sn snapshot) stateKey(wanEnabled bool) string {
 	return stateOK
 }
 
-// WAN states of the connection alone (ADR 0177). The plugin reads them from
+// WAN states of the connection alone (ADR 0178). The plugin reads them from
 // the private health answer: the wan entry and the internet test.
 const (
 	wanOK      = "ok"
