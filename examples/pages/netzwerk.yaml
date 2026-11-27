@@ -1,0 +1,15 @@
+# The home network in the three shapes of the widget: 2x2 and 3x2 tiles with the
+# most important fact below, and the wide 6x1 row. One 2x2 tile hides the fact.
+# Requires the unifi plugin and its url and api_key (docs/plugins/unifi.md).
+title: Netzwerk
+kind: image
+variants: {lcd2004: lcd2004}
+grid: [6, 8]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [2, 2], widget: unifi/status, args: { focus: clients } }
+  - { at: [2, 0], span: [2, 2], widget: unifi/status, args: { focus: devices } }
+  - { at: [4, 0], span: [2, 2], widget: unifi/status, args: { focus: clients, detail: false } }
+  - { at: [0, 2], span: [3, 2], widget: unifi/status, args: { focus: clients } }
+  - { at: [3, 2], span: [3, 2], widget: unifi/status, args: { focus: devices } }
+  - { at: [0, 4], span: [6, 1], widget: unifi/status, args: { focus: devices } }

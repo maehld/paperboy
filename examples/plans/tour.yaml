@@ -2,9 +2,10 @@
 # every refresh; the schedule keeps it fast during the day and quiet at night.
 # The triggers bring a page to the front while a condition holds. A missing
 # value never matches, so the tour continues. `glukose-kinder` is the page with
-# the smiley in the rotation. `glukose` and `glukose-profil` are hidden: they are
-# not in the rotation, and a trigger or the operator shows them. Both count as
-# demand, so the plugin keeps polling for the profile.
+# the smiley in the rotation. `glukose`, `glukose-profil` and `netzwerk` are
+# hidden: they are not in the rotation, and a trigger or the operator shows
+# them. All count as demand, so the plugins keep polling for the profile and
+# the network state.
 pages:
   - uebersicht
   - status
@@ -30,6 +31,7 @@ pages:
   - drucker
   - { page: glukose, hidden: true }
   - { page: glukose-profil, hidden: true }
+  - { page: netzwerk, hidden: true }
 
 on_refresh: cycle
 refresh:
@@ -44,6 +46,9 @@ triggers:
   - when: { value: dexcom/state, is: [low, urgent, high] }
     page: glukose
     alert: refresh
+  - when: { value: unifi/state, is: [degraded] }
+    page: netzwerk
+    alert: once
   - when:
       - { value: weekday, is: [mon, tue, wed, thu, fri] }
       - { value: time, from: "06:00", to: "09:00" }

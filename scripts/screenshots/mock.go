@@ -59,6 +59,8 @@ func (m *mock) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.carddav(w, r)
 	case strings.HasPrefix(r.URL.Path, "/efa/"):
 		m.efa(w, r)
+	case strings.HasPrefix(r.URL.Path, "/proxy/network/"):
+		m.unifi(w, r)
 	case r.URL.Path == "/json/list.php":
 		m.fuel(w)
 	case r.URL.Path == "/General/AuthenticatePublisherAccount":
@@ -731,8 +733,54 @@ func (m *mock) efa(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ---- placeholder art ----
+// ---- UniFi ----
 
+// unifi answers the integration API and the private health endpoint of a
+// controller with a small home network.
+func (m *mock) unifi(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/proxy/network/integration/v1/sites":
+		writeJSON(w, map[string]any{
+			"offset": 0, "limit": 25, "count": 1, "totalCount": 1,
+			"data": []any{map[string]any{
+				"id":   "11111111-1111-1111-1111-111111111111",
+				"name": "Zuhause", "internalReference": "default",
+			}},
+		})
+	case strings.HasSuffix(r.URL.Path, "/devices"):
+		writeJSON(w, map[string]any{
+			"offset": 0, "limit": 25, "count": 2, "totalCount": 2,
+			"data": []any{
+				map[string]any{"id": "01", "name": "Keller-AP", "model": "U7PG2", "state": "ONLINE",
+					"firmwareVersion": "6.6.55", "firmwareUpdatable": false, "ipAddress": "192.168.1.55"},
+				map[string]any{"id": "02", "name": "OG-AP", "model": "U7PG2", "state": "ONLINE",
+					"firmwareVersion": "6.6.55", "firmwareUpdatable": true, "ipAddress": "192.168.1.56"},
+			},
+		})
+	case strings.HasSuffix(r.URL.Path, "/clients"):
+		writeJSON(w, map[string]any{
+			"offset": 0, "limit": 1, "count": 1, "totalCount": 74,
+			"data": []any{map[string]any{}},
+		})
+	case strings.HasSuffix(r.URL.Path, "/stat/health"):
+		writeJSON(w, map[string]any{
+			"meta": map[string]any{"rc": "ok"},
+			"data": []any{
+				map[string]any{"subsystem": "wan", "status": "ok", "wan_ip": "203.0.113.9",
+					"num_adopted": 1, "num_disconnected": 0, "num_sta": 74,
+					"tx_bytes-r": 4961, "rx_bytes-r": 4976,
+					"gw_name": "Feldberg 7a", "isp_name": "Deutsche Telekom AG", "asn": 3320},
+				map[string]any{"subsystem": "www", "status": "ok", "latency": 10,
+					"uptime": 237437, "drops": 1, "xput_up": 0.0, "xput_down": 0.0,
+					"speedtest_status": "Idle"},
+			},
+		})
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+// ---- placeholder art ----
 // placeholder draws the stand-in for the xkcd panel and the Pokémon sprite.
 // The repository ships no third-party art, so the pictures of those two
 // plugins show a drawn placeholder.

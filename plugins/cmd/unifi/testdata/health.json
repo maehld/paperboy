@@ -1,0 +1,37 @@
+{
+  "meta": {"rc": "ok"},
+  "data": [
+    {
+      "subsystem": "wan",
+      "status": "ok",
+      "wan_ip": "203.0.113.9",
+      "num_adopted": 1,
+      "num_disconnected": 0,
+      "num_sta": 74,
+      "tx_bytes-r": 4961,
+      "rx_bytes-r": 4976,
+      "gw_name": "Feldberg 7a",
+      "isp_name": "Deutsche Telekom AG",
+      "asn": 3320,
+      "gw_system-stats": {"cpu": "12.6", "mem": "71.8", "uptime": "237580"},
+      "uptime_stats": {
+        "WAN": {"availability": 100.0, "latency_average": 11},
+        "WAN3": {
+          "availability": 0.0,
+          "downtime": 237403,
+          "monitors": [{"id": "gre1-0", "availability": 0.0}]
+        }
+      }
+    },
+    {
+      "subsystem": "www",
+      "status": "ok",
+      "latency": 10,
+      "uptime": 237437,
+      "drops": 1,
+      "xput_up": 0.0,
+      "xput_down": 0.0,
+      "speedtest_status": "Idle"
+    }
+  ]
+}

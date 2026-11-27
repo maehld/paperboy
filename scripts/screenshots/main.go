@@ -31,6 +31,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
@@ -58,6 +59,7 @@ var pageShots = map[string][]string{
 	"fuel":       {"spritpreise"},
 	"paperboy":   {"status", "hinweise"},
 	"prusalink":  {"drucker", "drucker.lcd2004"},
+	"unifi":      {"netzwerk", "netzwerk.lcd2004"},
 }
 
 // widgetArgs overrides the arguments of a widget preview where the plugin
@@ -82,7 +84,7 @@ var widgetArgs = map[string]map[string]string{
 // VERSION file. The built-in plugin needs no program.
 var plugins = []string{
 	"calendar", "countdown", "departures", "dexcom", "evcc", "fuel",
-	"myskoda", "pokedex", "prusalink", "rss", "weather", "xkcd",
+	"myskoda", "pokedex", "prusalink", "rss", "unifi", "weather", "xkcd",
 }
 
 func main() {
@@ -134,7 +136,12 @@ func run(out, only, binDir string, keep, serve bool) error {
 	go upstream.Serve(ln)
 	defer upstream.Close()
 	m.base = "http://" + ln.Addr().String()
-	if err := writeConfig(instance, m.base); err != nil {
+	// The unifi plugin expects an https controller; a second listener serves
+	// the same mock over TLS. The plugin accepts its self-signed certificate
+	// through insecure: true.
+	tlsUpstream := httptest.NewTLSServer(mux)
+	defer tlsUpstream.Close()
+	if err := writeConfig(instance, m.base, tlsUpstream.URL); err != nil {
 		return err
 	}
 	if err := seedState(instance, m.base); err != nil {
@@ -249,8 +256,8 @@ func prepareInstance(root, instance, binDir string) error {
 }
 
 // writeConfig writes paperboy.yaml. Every plugin that reaches a remote service
-// points at the mock.
-func writeConfig(instance, base string) error {
+// points at the mock; unifi points at its TLS listener.
+func writeConfig(instance, base, tlsBase string) error {
 	config := fmt.Sprintf(`language: de
 timezone: Europe/Berlin
 plugins:
@@ -285,6 +292,8 @@ plugins:
     config: {api_key: demo, vin: TMBJB9NY5RF999999, base: %[1]q, refresh: 1h}
   prusalink:
     config: {url: %[1]q, api_key: demo, refresh: 1m}
+  unifi:
+    config: {url: %[8]q, api_key: demo, insecure: true, refresh: 1m}
   rss:
     config:
       feeds:
@@ -301,7 +310,7 @@ defaults:
   refresh: 5m
 `, base,
 		base+"/api/v2", base+"/efa", base+"/cal", base+"/card",
-		base+"/feeds/tagesschau.xml", base+"/feeds/heise.xml")
+		base+"/feeds/tagesschau.xml", base+"/feeds/heise.xml", tlsBase)
 	return os.WriteFile(filepath.Join(instance, "paperboy.yaml"), []byte(config), 0o644)
 }
 

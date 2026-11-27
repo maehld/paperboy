@@ -1,0 +1,17 @@
+{
+  "offset": 0,
+  "limit": 25,
+  "count": 1,
+  "totalCount": 1,
+  "data": [
+    {
+      "id": "01ab02cd-03ef-04ab-05cd-06ef07ab08cd",
+      "name": "Keller-AP",
+      "model": "U7PG2",
+      "state": "ONLINE",
+      "firmwareVersion": "6.6.55",
+      "firmwareUpdatable": false,
+      "ipAddress": "192.168.1.55"
+    }
+  ]
+}
