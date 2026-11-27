@@ -61,7 +61,7 @@ func TestDescribe(t *testing.T) {
 	if _, ok := any(newPlugin()).(plugin.Stater); ok {
 		t.Error("the plugin keeps state")
 	}
-	if len(d.Widgets) != 1 || d.Widgets[0].Widget != "status" {
+	if len(d.Widgets) != 2 || d.Widgets[0].Widget != "status" || d.Widgets[1].Widget != "wan" {
 		t.Fatalf("widgets = %+v", d.Widgets)
 	}
 	w := d.Widgets[0]

@@ -136,6 +136,21 @@ func (u *unifi) Describe() plugin.Description {
 					},
 				},
 			},
+			{
+				Widget: "wan", Title: "Internet status", Kinds: image,
+				Sizes:    []plugin.Span{{Columns: 2, Rows: 2}, {Columns: 3, Rows: 2}, {Columns: 6, Rows: 1}},
+				MinWidth: 120, MinHeight: 60,
+				Args: map[string]plugin.Arg{
+					"traffic": {
+						Type: "bool", Default: false,
+						Description: "show the upload and download rate of the last fetch",
+					},
+					"ip": {
+						Type: "bool", Default: false,
+						Description: "show the public address of the connection",
+					},
+				},
+			},
 		},
 	}
 }

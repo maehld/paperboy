@@ -11,11 +11,13 @@ works on the integration API and on the private endpoint.
 
 ## Screenshots
 
-The example page `netzwerk` shows the widget in 2 × 2, 3 × 2 and 6 × 1:
+The example page `netzwerk` shows both widgets in their shapes:
 
 ![The network page](../images/plugins/unifi/page-netzwerk.png)
 
 ![The status widget](../images/plugins/unifi/status.png)
+
+![The internet status widget](../images/plugins/unifi/wan.png)
 
 The `netzwerk` text page on a 20 × 4 display:
 
@@ -107,6 +109,27 @@ right. Without `detail` the status line is left out and the value gets the room.
 Counts are integers and follow the request language. The label and the status
 line follow it too: `Geräte`/`Devices`, `1 Firmware-Update`/`1 firmware update`.
 The WAN summary is the same in both languages. Without data the value is `–`.
+
+## Widget `wan`
+
+The widget is for image displays. It shows one status for the whole connection,
+never one row per WAN. The declared sizes are 2 × 2, 3 × 2 and 6 × 1, with a
+minimum of 120 × 60 px. The large value is the latency in milliseconds. The
+provider name sits below it. When the internet test fails the value is `–`.
+
+A note names the failure in the request language: `Internet gestört` when
+`www` is not ok, and `Anschluss gestört` when `wan` is not. The widget needs
+`wan: true`. Without it the plugin answers an error and Paperboy draws the
+notice.
+
+| Argument | Description |
+|---|---|
+| `traffic` | Show the rate of the last fetch, default `false` |
+| `ip` | Show the public address of the connection, default `false` |
+
+A 6 × 1 cell puts the label and the value on the left and the provider on the
+right. The note replaces the provider there. The `traffic` and `ip` arguments
+apply to the stacked cells; the wide row drops them.
 
 ## Values
 

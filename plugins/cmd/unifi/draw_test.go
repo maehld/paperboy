@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"image/png"
+	"strings"
 	"testing"
 
 	"github.com/maehld/paperboy/sdk/plugin"
@@ -172,5 +173,84 @@ func TestRenderUnknownWidget(t *testing.T) {
 	img := render.NewCanvas(w.Width, w.Height, 4)
 	if err := p.Render(statusRequest("de"), w, img); !errors.Is(err, plugin.ErrUnknownWidget) {
 		t.Errorf("unknown widget: err = %v, want ErrUnknownWidget", err)
+	}
+}
+
+func wanWidget(width, height int) plugin.WidgetRequest {
+	return plugin.WidgetRequest{
+		Widget: "wan", Width: width, Height: height,
+		Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 27.78},
+	}
+}
+
+func TestRenderWANKeepsRequestedSize(t *testing.T) {
+	for _, size := range [][2]int{{266, 120}, {400, 120}, {800, 60}} {
+		p := renderedPlugin()
+		w := wanWidget(size[0], size[1])
+		img := render.NewCanvas(w.Width, w.Height, 4)
+		if err := p.Render(statusRequest("de"), w, img); err != nil {
+			t.Errorf("%dx%d: %v", size[0], size[1], err)
+		}
+	}
+}
+
+func TestRenderWANDownDiffers(t *testing.T) {
+	p := renderedPlugin()
+	w := wanWidget(400, 120)
+	ok := renderStatus(t, p, statusRequest("de"), w, 4)
+
+	p.snap.www.Status = "error"
+	p.snap.www.Latency = nil
+	down := renderStatus(t, p, statusRequest("de"), w, 4)
+	if bytes.Equal(ok, down) {
+		t.Error("a down connection draws the healthy image")
+	}
+}
+
+func TestRenderWANTrafficAndIP(t *testing.T) {
+	p := renderedPlugin()
+	p.snap.wan.TxBytesR = 4961
+	p.snap.wan.RxBytesR = 1520000
+	p.snap.wan.WANIP = "203.0.113.9"
+	w := wanWidget(400, 120)
+	plain := renderStatus(t, p, statusRequest("de"), w, 4)
+
+	w.Args = map[string]any{"traffic": true}
+	traffic := renderStatus(t, p, statusRequest("de"), w, 4)
+	if bytes.Equal(plain, traffic) {
+		t.Error("traffic true draws the same image")
+	}
+
+	w.Args = map[string]any{"ip": true}
+	ip := renderStatus(t, p, statusRequest("de"), w, 4)
+	if bytes.Equal(plain, ip) {
+		t.Error("ip true draws the same image")
+	}
+}
+
+func TestRenderWANNeedsTheConfig(t *testing.T) {
+	p := renderedPlugin()
+	p.wanEnabled = false
+	w := wanWidget(400, 120)
+	img := render.NewCanvas(w.Width, w.Height, 4)
+	err := p.Render(statusRequest("de"), w, img)
+	if err == nil || !strings.Contains(err.Error(), "wan: true") {
+		t.Errorf("err = %v, want a hint about wan: true", err)
+	}
+}
+
+func TestRenderWANWithoutData(t *testing.T) {
+	p := newPlugin()
+	p.wanEnabled = true
+	w := wanWidget(400, 120)
+	renderStatus(t, p, statusRequest("de"), w, 4)
+}
+
+func TestRenderWANTooSmall(t *testing.T) {
+	p := renderedPlugin()
+	w := wanWidget(60, 40)
+	img := render.NewCanvas(w.Width, w.Height, 4)
+	if err := p.Render(statusRequest("de"), w, img); !errors.Is(err, plugin.ErrTooSmall) {
+		t.Errorf("60x40: err = %v, want ErrTooSmall", err)
 	}
 }

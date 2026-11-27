@@ -1,5 +1,6 @@
-# The home network in the three shapes of the widget: 2x2 and 3x2 tiles with the
-# most important fact below, and the wide 6x1 row. One 2x2 tile hides the fact.
+# The home network in the shapes of both widgets: the status tiles, the internet
+# status with and without traffic, and the two wide rows. One 2x2 tile hides the
+# status line.
 # Requires the unifi plugin and its url and api_key (docs/plugins/unifi.md).
 title: Netzwerk
 kind: image
@@ -12,4 +13,7 @@ cells:
   - { at: [4, 0], span: [2, 2], widget: unifi/status, args: { focus: clients, detail: false } }
   - { at: [0, 2], span: [3, 2], widget: unifi/status, args: { focus: clients } }
   - { at: [3, 2], span: [3, 2], widget: unifi/status, args: { focus: devices } }
-  - { at: [0, 4], span: [6, 1], widget: unifi/status, args: { focus: devices } }
+  - { at: [0, 4], span: [3, 2], widget: unifi/wan, args: { traffic: true } }
+  - { at: [3, 4], span: [3, 2], widget: unifi/wan, args: { ip: true } }
+  - { at: [0, 6], span: [6, 1], widget: unifi/status, args: { focus: devices } }
+  - { at: [0, 7], span: [6, 1], widget: unifi/wan }

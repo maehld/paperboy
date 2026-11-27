@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"image"
+	"strings"
 
 	"github.com/maehld/paperboy/sdk/design"
 	"github.com/maehld/paperboy/sdk/format"
@@ -23,10 +24,6 @@ const minNarrowHeight = 32
 // (6x1). The value is the count the focus names; the status line names the most
 // important fact.
 func (u *unifi) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.Paletted) error {
-	if w.Widget != "status" {
-		return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
-	}
-
 	u.mu.Lock()
 	snap, wan := u.snap, u.wanEnabled
 	u.mu.Unlock()
@@ -36,7 +33,21 @@ func (u *unifi) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.P
 		return plugin.TooSmall(w)
 	}
 	t := func(de, en string) string { return req.T(de, en) }
+	scale := design.NewScale(req.TextPx(w), b.Dy())
 
+	switch w.Widget {
+	case "status":
+		return drawStatus(img, b, snap, wan, w, req, t, scale)
+	case "wan":
+		return drawWAN(img, b, snap, wan, w, req, t, scale)
+	}
+	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
+}
+
+// drawStatus draws the counts of the network: one large value, the device
+// count as the second number and the status line below.
+func drawStatus(img *image.Paletted, b image.Rectangle, snap snapshot, wan bool,
+	w plugin.WidgetRequest, req *plugin.Request, t func(de, en string) string, scale design.Scale) error {
 	label, count := t("Clients", "Clients"), snap.clients
 	if w.Arg().String("focus", "clients") == "devices" {
 		label, count = t("Geräte", "Devices"), len(snap.devices)
@@ -50,7 +61,6 @@ func (u *unifi) Render(req *plugin.Request, w plugin.WidgetRequest, img *image.P
 		status = snap.statusLine(wan, t)
 	}
 
-	scale := design.NewScale(req.TextPx(w), b.Dy())
 	if b.Dx() > b.Dy()*6 {
 		return drawRow(img, b, label, value, status, scale, w)
 	}
@@ -67,6 +77,13 @@ func drawStacked(img *image.Paletted, b image.Rectangle, label, value, status st
 	}
 	if maxLabel := float64(b.Dy()) * 0.24; s.Detail > maxLabel {
 		s = s.Scaled(maxLabel / s.Detail)
+	}
+	// The provider name is the most optional part of the line. Drop it when
+	// the cell cannot hold it, so the latency stays readable.
+	if render.Measure(status, s.Detail, false) > b.Dx() {
+		if i := strings.LastIndex(status, " - "); i >= 0 {
+			status = status[i+3:]
+		}
 	}
 	tile := design.Tile{Label: label, Value: value, Detail: status}
 	if !design.Tiles(img, b, []design.Tile{tile}, s, design.TileOptions{
@@ -123,4 +140,74 @@ func drawRow(img *image.Paletted, b image.Rectangle, label, value, status string
 func capBaseline(top, h int, size float64) int {
 	const capShare = 0.72
 	return top + int((float64(h)+size*capShare)/2)
+}
+
+// drawWAN draws one status for the whole connection: the latency as the large
+// value, the provider below it, and a note when the connection is not healthy.
+// It never shows a single WAN: the private answer carries one summary for the
+// active connection (ADR 0176).
+func drawWAN(img *image.Paletted, b image.Rectangle, snap snapshot, wanEnabled bool,
+	w plugin.WidgetRequest, req *plugin.Request, t func(de, en string) string, s design.Scale) error {
+	if !wanEnabled {
+		return fmt.Errorf("the wan widget needs wan: true in the plugin config")
+	}
+	if b.Dx() < 80 || b.Dy() < 24 {
+		return plugin.TooSmall(w)
+	}
+	label := t("Internet", "Internet")
+	if !snap.loaded || (snap.wan.ISPName == "" && snap.www.Latency == nil) {
+		if !design.Notice(img, b, t("Kein WAN", "No WAN data"), s) {
+			return plugin.TooSmall(w)
+		}
+		return nil
+	}
+
+	value, unit := "–", ""
+	if snap.www.Status == "ok" && snap.www.Latency != nil {
+		value = format.Number(float64(*snap.www.Latency), 0, req.Lang())
+		unit = "ms"
+	}
+	note := ""
+	switch {
+	case snap.www.Status != "ok":
+		note = t("Internet gestört", "Internet is down")
+	case snap.wan.Status != "ok":
+		note = t("Anschluss gestört", "WAN is down")
+	}
+
+	var details []string
+	if w.Arg().Bool("traffic", false) {
+		details = append(details, "↓ "+rate(snap.wan.RxBytesR, req.Lang())+"  ↑ "+rate(snap.wan.TxBytesR, req.Lang()))
+	}
+	if w.Arg().Bool("ip", false) && snap.wan.WANIP != "" {
+		details = append(details, snap.wan.WANIP)
+	}
+
+	if b.Dx() > b.Dy()*6 {
+		status := snap.wan.ISPName
+		if note != "" {
+			status = note
+		}
+		return drawRow(img, b, label, strings.TrimSpace(value+" "+unit), status, s, w)
+	}
+	hero := design.Hero{
+		Label: label, Value: value, Unit: unit, Caption: snap.wan.ISPName,
+		Details: details, Note: note, Align: render.Center, Rule: max(w.Style.Rule, 1),
+	}
+	if !design.DrawHero(img, b, hero, s) {
+		return plugin.TooSmall(w)
+	}
+	return nil
+}
+
+// rate writes a byte rate per second in a unit a reader expects.
+func rate(v float64, lang string) string {
+	switch {
+	case v >= 1e6:
+		return format.Number(v/1e6, 1, lang) + " MB/s"
+	case v >= 1e3:
+		return format.Number(v/1e3, 0, lang) + " kB/s"
+	default:
+		return format.Number(v, 0, lang) + " B/s"
+	}
 }
