@@ -277,12 +277,15 @@ func TestWANOffSkipsPrivateCall(t *testing.T) {
 	if !snap.loaded || len(snap.devices) != 1 || snap.clients != 74 {
 		t.Errorf("documented half lost: %+v", snap)
 	}
-	got, err := p.Values(&plugin.Request{Values: []string{"state", "latency", "worst"}})
+	got, err := p.Values(&plugin.Request{Values: []string{"state", "wan-state", "latency", "worst"}})
 	if err != nil {
 		t.Fatalf("values: %v", err)
 	}
 	if v := got["state"].Enum; v == nil || *v != "ok" {
 		t.Errorf("state = %v, want ok", v)
+	}
+	if v := got["wan-state"].Enum; v != nil {
+		t.Errorf("wan-state = %v, want an empty answer with wan: false", v)
 	}
 	if v := got["latency"].Text; v == nil || *v != "–" {
 		t.Errorf("latency = %v, want a dash", v)
@@ -378,13 +381,16 @@ func TestValues(t *testing.T) {
 	srv, _ := newControllerServer(t)
 	p := fetched(t, srv, "")
 	req := &plugin.Request{Version: plugin.Version, Language: "de",
-		Values: []string{"state", "clients", "devices", "offline", "worst", "latency", "download", "upload"}}
+		Values: []string{"state", "wan-state", "clients", "devices", "offline", "worst", "latency", "download", "upload"}}
 	got, err := p.Values(req)
 	if err != nil {
 		t.Fatalf("values: %v", err)
 	}
 	if v := got["state"].Enum; v == nil || *v != "ok" {
 		t.Errorf("state = %v, want ok", v)
+	}
+	if v := got["wan-state"].Enum; v == nil || *v != "ok" {
+		t.Errorf("wan-state = %v, want ok", v)
 	}
 	if v := got["clients"].Number; v == nil || *v != 74 {
 		t.Errorf("clients = %v, want 74", v)

@@ -146,6 +146,7 @@ matches while there is no data:
 | Value | Type | Base unit | Meaning |
 |---|---|---|---|
 | `state` | enum | | `ok`, `attention` or `degraded`. Degraded: the WAN or internet status is not ok (both need `wan`), or a device is offline. Attention: a device has firmware work. Empty without data |
+| `wan-state` | enum | | `ok`, `warning` or `error` of the connection alone. Empty without `wan: true` or without data |
 | `clients` | number | | clients the controller knows |
 | `devices` | number | | devices the controller knows |
 | `offline` | number | | devices that count as offline |
@@ -153,6 +154,9 @@ matches while there is no data:
 | `latency` | number | ms | internet latency from the health answer; `–` when `wan` is off or the answer has no latency |
 | `download` | number | Mbit/s | result of the last speed test; `–` when no test ran |
 | `upload` | number | Mbit/s | result of the last speed test; `–` when no test ran |
+
+`state` folds the connection and the devices into one key. A plan that reacts to
+the connection alone reads `wan-state`.
 
 A plan shows the network page while the state is degraded
 ([ADR 0158](../adr/0158-plans-are-pages-refresh-windows-and-triggers.md)):

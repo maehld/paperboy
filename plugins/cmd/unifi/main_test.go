@@ -45,14 +45,14 @@ func TestDescribe(t *testing.T) {
 	for _, v := range d.Values {
 		names = append(names, v.Name)
 	}
-	want := []string{"state", "clients", "devices", "offline", "worst", "latency", "download", "upload"}
+	want := []string{"state", "wan-state", "clients", "devices", "offline", "worst", "latency", "download", "upload"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("values = %v, want %v", names, want)
 	}
 	if v := d.Values[0]; v.Type != plugin.ValueEnum || strings.Join(v.Enum, ",") != "ok,attention,degraded" {
 		t.Errorf("state spec = %+v", v)
 	}
-	if v := d.Values[5]; v.Name != "latency" || v.Unit != "ms" {
+	if v := d.Values[6]; v.Name != "latency" || v.Unit != "ms" {
 		t.Errorf("latency spec = %+v", v)
 	}
 	if len(d.Actions) != 0 || len(d.Blobs) != 0 {
@@ -85,7 +85,7 @@ func TestDescribe(t *testing.T) {
 
 func TestValuesWithoutData(t *testing.T) {
 	p := newPlugin()
-	got, err := p.Values(&plugin.Request{Values: []string{"state", "clients", "devices", "offline", "worst", "latency", "download", "upload"}})
+	got, err := p.Values(&plugin.Request{Values: []string{"state", "wan-state", "clients", "devices", "offline", "worst", "latency", "download", "upload"}})
 	if err != nil {
 		t.Fatalf("values: %v", err)
 	}

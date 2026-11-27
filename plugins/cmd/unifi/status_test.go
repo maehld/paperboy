@@ -152,3 +152,29 @@ func TestSpeedNeedsASpeedtest(t *testing.T) {
 		t.Fatal("a zero lastrun answers a rate")
 	}
 }
+
+func TestWANState(t *testing.T) {
+	sn := snapshot{loaded: true,
+		wan: healthSubsystem{Status: "ok"}, www: healthSubsystem{Status: "ok"}}
+	if got := sn.wanStateKey(true); got != wanOK {
+		t.Errorf("healthy = %q, want ok", got)
+	}
+	sn.www.Status = "warning"
+	if got := sn.wanStateKey(true); got != wanWarning {
+		t.Errorf("warning = %q", got)
+	}
+	sn.www.Status = "error"
+	if got := sn.wanStateKey(true); got != wanError {
+		t.Errorf("internet error = %q", got)
+	}
+	sn.www.Status, sn.wan.Status = "ok", "error"
+	if got := sn.wanStateKey(true); got != wanError {
+		t.Errorf("wan error = %q", got)
+	}
+	if got := sn.wanStateKey(false); got != "" {
+		t.Errorf("wan off = %q, want empty", got)
+	}
+	if got := (snapshot{}).wanStateKey(true); got != "" {
+		t.Errorf("no data = %q, want empty", got)
+	}
+}

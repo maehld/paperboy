@@ -68,6 +68,31 @@ func (sn snapshot) stateKey(wanEnabled bool) string {
 	return stateOK
 }
 
+// WAN states of the connection alone (ADR 0177). The plugin reads them from
+// the private health answer: the wan entry and the internet test.
+const (
+	wanOK      = "ok"
+	wanWarning = "warning"
+	wanError   = "error"
+)
+
+// wanStateKey derives the state of the connection: error when the controller
+// or the internet test reports an error, warning for every other non-ok
+// answer, ok when both are ok. It is empty without wan: true or without data,
+// so no plan condition matches (ADR 0127).
+func (sn snapshot) wanStateKey(wanEnabled bool) string {
+	if !wanEnabled || !sn.loaded || sn.wan.Status == "" {
+		return ""
+	}
+	if sn.wan.Status == wanError || sn.www.Status == wanError {
+		return wanError
+	}
+	if sn.wan.Status != wanOK || (sn.www.Status != "" && sn.www.Status != wanOK) {
+		return wanWarning
+	}
+	return wanOK
+}
+
 // offline counts the devices that count as down.
 func (sn snapshot) offline() int {
 	n := 0

@@ -113,6 +113,7 @@ func (u *unifi) Describe() plugin.Description {
 		Config:  configKeys,
 		Values: []plugin.ValueSpec{
 			{Name: "state", Title: "Network state", Type: plugin.ValueEnum, Enum: stateKeys},
+			{Name: "wan-state", Title: "Internet state", Type: plugin.ValueEnum, Enum: []string{wanOK, wanWarning, wanError}},
 			{Name: "clients", Title: "Clients", Type: plugin.ValueNumber},
 			{Name: "devices", Title: "Devices", Type: plugin.ValueNumber},
 			{Name: "offline", Title: "Offline devices", Type: plugin.ValueNumber},
@@ -324,6 +325,12 @@ func (u *unifi) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 		switch name {
 		case "state":
 			if key := snap.stateKey(wan); key != "" {
+				out[name] = plugin.EnumValue(key)
+			} else {
+				out[name] = plugin.Value{}
+			}
+		case "wan-state":
+			if key := snap.wanStateKey(wan); key != "" {
 				out[name] = plugin.EnumValue(key)
 			} else {
 				out[name] = plugin.Value{}
