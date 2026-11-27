@@ -73,10 +73,16 @@ var configKeys = map[string]plugin.Arg{
 	"unit": {Type: "string", Default: "auto", Enum: []any{"auto", "mg/dL", "mmol/L"},
 		Description: "unit of the thresholds and the widgets; auto takes what the account reports"},
 	"urgent": {Type: "float", Description: "urgent low threshold; 0 disables the state; default " + "55 mg/dL or 3.1 mmol/L"},
-	"low":    {Type: "float", Description: "low threshold, the lower edge of the target band; default 80 mg/dL or 4.4 mmol/L"},
-	"high":   {Type: "float", Description: "high threshold, the upper edge of the target band; default 280 mg/dL or 15.6 mmol/L"},
-	"min":    {Type: "float", Description: "bottom of the chart scale; default 40 mg/dL or 2.2 mmol/L"},
-	"max":    {Type: "float", Description: "top of the chart scale; default 300 mg/dL or 15.6 mmol/L"},
+	"low":    {Type: "float", Description: "lower edge of the target range, time in range; default 70 mg/dL or 3.9 mmol/L"},
+	"high":   {Type: "float", Description: "upper edge of the target range, time in range; default 180 mg/dL or 10.0 mmol/L"},
+	"tight_low": {Type: "float", Description: "lower edge of the tight range, time in tight range; " +
+		"default the lower edge of the target range"},
+	"tight_high": {Type: "float", Description: "upper edge of the tight range, time in tight range; " +
+		"default 140 mg/dL or 7.8 mmol/L, at most high"},
+	"very_high": {Type: "float", Description: "threshold of the very high range; 0 merges high and very high; " +
+		"default 250 mg/dL or 13.9 mmol/L"},
+	"min": {Type: "float", Description: "bottom of the chart scale; default 40 mg/dL or 2.2 mmol/L"},
+	"max": {Type: "float", Description: "top of the chart scale; default 300 mg/dL or 16.7 mmol/L"},
 }
 
 // markArg selects the extrema the graph labels.
@@ -144,9 +150,12 @@ func (d *dexcom) Describe() plugin.Description {
 			{Name: "avg", Title: "Average of 24 hours", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
 			{Name: "min", Title: "Lowest of 24 hours", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
 			{Name: "max", Title: "Highest of 24 hours", Type: plugin.ValueNumber, Unit: l.unit, Precision: l.decimals},
-			{Name: "in-band", Title: "Share in the target band", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+			{Name: "in-band", Title: "Share in the target range", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+			{Name: "tight", Title: "Share in the tight range", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+			{Name: "cv", Title: "Glucose variability (CV)", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
+			{Name: "gmi", Title: "Glucose management indicator", Type: plugin.ValueNumber, Unit: "%", Precision: 1},
 			{Name: "count", Title: "Readings of 24 hours", Type: plugin.ValueNumber},
-			{Name: "band", Title: "Target band", Type: plugin.ValueText},
+			{Name: "band", Title: "Target range", Type: plugin.ValueText},
 		},
 		Widgets: []plugin.WidgetInfo{
 			{
@@ -166,6 +175,25 @@ func (d *dexcom) Describe() plugin.Description {
 					"header": {Type: "bool", Default: true,
 						Description: "show the title and the unit above the chart"},
 					"mark": markArg,
+				},
+			},
+			{
+				Widget: "agp", Title: "Glucose profile (AGP)", Kinds: image,
+				Sizes:    []plugin.Span{{Columns: 3, Rows: 4}, {Columns: 6, Rows: 4}},
+				MinWidth: 300, MinHeight: 160,
+				Args: map[string]plugin.Arg{
+					"days": {Type: "int", Default: 14,
+						Description: "how many days the profile covers, 1 to 30"},
+				},
+			},
+			{
+				Widget: "ranges", Title: "Time in ranges", Kinds: image,
+				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 6, Rows: 1},
+					{Columns: 2, Rows: 5}},
+				MinWidth: 160, MinHeight: 60,
+				Args: map[string]plugin.Arg{
+					"days": {Type: "int", Default: 14,
+						Description: "how many days the ranges cover, 1 to 30"},
 				},
 			},
 			{
@@ -238,7 +266,7 @@ func (d *dexcom) Configure(cfg plugin.Values, req *plugin.Request) error {
 	}
 
 	set := map[string]float64{}
-	for _, key := range []string{"urgent", "low", "high", "min", "max"} {
+	for _, key := range []string{"urgent", "low", "high", "very_high", "tight_low", "tight_high", "min", "max"} {
 		if _, ok := cfg[key]; !ok {
 			continue
 		}
@@ -249,22 +277,7 @@ func (d *dexcom) Configure(cfg plugin.Values, req *plugin.Request) error {
 		set[key] = v
 	}
 	// The order holds in both units, so it can be checked here.
-	full := defaults(unitMGDL)
-	for k, v := range set {
-		switch k {
-		case "urgent":
-			full.urgent = v
-		case "low":
-			full.low = v
-		case "high":
-			full.high = v
-		case "min":
-			full.min = v
-		case "max":
-			full.max = v
-		}
-	}
-	if err := full.check(); err != nil {
+	if err := apply(defaults(unitMGDL), set).check(); err != nil {
 		return err
 	}
 

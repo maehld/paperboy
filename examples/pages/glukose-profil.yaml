@@ -1,0 +1,12 @@
+# The ambulatory glucose profile: the readings of the last days folded onto one
+# 24-hour grid, with the summary below it. Requires the dexcom plugin
+# (docs/plugins/dexcom.md) and several days of stored readings.
+title: Glukoseprofil
+kind: image
+grid: [6, 8]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [6, 4], widget: dexcom/agp }
+  - { at: [0, 4], span: [6, 1], widget: dexcom/ranges }
+  - { at: [0, 5], span: [6, 3], widget: dexcom/values,
+      args: { values: [tight, cv, gmi, avg, in-band, count], columns: 2 } }

@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -35,6 +36,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -60,6 +62,12 @@ var pageShots = map[string][]string{
 
 // widgetArgs overrides the arguments of a widget preview where the plugin
 // needs one to draw something useful.
+// widgetAltShots renders a widget in a second span, named
+// <widget>-<span>.png, where the other shape changes the layout.
+var widgetAltShots = map[string]string{
+	"dexcom/ranges": "2x5",
+}
+
 var widgetArgs = map[string]map[string]string{
 	"countdown/countdown": {"label": "Weihnachten", "date": "12-24", "since": "01-01"},
 	"dexcom/graph":        {"mark": "both"},
@@ -298,6 +306,8 @@ defaults:
 
 // seedState fills the fuel history, which grows one point per refresh. The
 // picture of the history widget shows a day of changes instead of one point.
+// It also fills the dexcom history, so the profile and the ranges cover two
+// weeks instead of the day the mock answers.
 func seedState(instance, base string) error {
 	dir := filepath.Join(instance, "state", "plugins", "fuel")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -323,6 +333,9 @@ func seedState(instance, base string) error {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "state.json"), data, 0o644); err != nil {
+		return err
+	}
+	if err := seedDexcom(instance); err != nil {
 		return err
 	}
 
@@ -362,6 +375,78 @@ func seedState(instance, base string) error {
 		}
 	}
 	return nil
+}
+
+// seedDexcom writes thirteen days of readings with a gap of four days, so the
+// profile covers ten of fourteen days. The last 24 hours come from the mock.
+func seedDexcom(instance string) error {
+	dir := filepath.Join(instance, "state", "plugins", "dexcom")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	type hour struct {
+		minutes, values []int
+	}
+	hours := map[int64]*hour{}
+	var keys []int64
+	add := func(at time.Time) {
+		h := at.Truncate(time.Hour).Unix()
+		entry := hours[h]
+		if entry == nil {
+			entry = &hour{}
+			hours[h] = entry
+			keys = append(keys, h)
+		}
+		entry.minutes = append(entry.minutes, at.Minute())
+		entry.values = append(entry.values, int(math.Round(demoGlucose(at)*10)))
+	}
+	// Days 13 to 1 back, without days 3 to 6: ten days with readings.
+	for day := 13; day >= 1; day-- {
+		if day >= 3 && day <= 6 {
+			continue
+		}
+		from := now.Add(-time.Duration(day+1) * 24 * time.Hour)
+		to := now.Add(-time.Duration(day) * 24 * time.Hour)
+		for at := from.Truncate(time.Hour); at.Before(to); at = at.Add(5 * time.Minute) {
+			if at.Before(from) {
+				continue
+			}
+			add(at)
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	history := make([]map[string]any, 0, len(keys))
+	for _, k := range keys {
+		history = append(history, map[string]any{
+			"h": k, "m": hours[k].minutes, "v": hours[k].values})
+	}
+	state := map[string]any{
+		"version": 2,
+		"region":  "eu",
+		"account": "demo@example.com",
+		"history": history,
+	}
+	data, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "state.json"), data, 0o644)
+}
+
+// demoGlucose draws a plausible day with three meals and a day-to-day
+// variation, in the unit of the mock account.
+func demoGlucose(at time.Time) float64 {
+	minute := float64(at.Hour()*60 + at.Minute())
+	day := float64(at.Unix()/86400) / 3
+	v := 125 + 28*math.Sin(2*math.Pi*(minute-300)/1440)
+	v += 55 * math.Exp(-math.Pow((minute-480)/45, 2))
+	v += 110 * math.Exp(-math.Pow((minute-780)/50, 2))
+	v += 60 * math.Exp(-math.Pow((minute-1140)/55, 2))
+	v -= 60 * math.Exp(-math.Pow((minute-180)/40, 2))
+	v += 18 * math.Sin(day)
+	v += 9 * math.Sin(float64(at.Unix())/2700)
+	return math.Max(45, math.Min(295, v))
 }
 
 // fuelKey is the fingerprint of the demo location and key, as the plugin
@@ -451,6 +536,22 @@ func render(out, root, base, only string) error {
 				return err
 			}
 			fmt.Println("widget", p.Name+"/"+w.Widget)
+			if alt, ok := widgetAltShots[p.Name+"/"+w.Widget]; ok {
+				q := url.Values{"display": {"e1001"}, "span": {alt}, "device": {"wohnzimmer"}}
+				for k, v := range widgetArgs[p.Name+"/"+w.Widget] {
+					q.Set("arg."+k, v)
+				}
+				u := fmt.Sprintf("%s/api/widget/%s/%s?%s", base, p.Name, w.Widget, q.Encode())
+				data, err := getBody(client, u)
+				if err != nil {
+					return fmt.Errorf("%s/%s %s: %w", p.Name, w.Widget, alt, err)
+				}
+				name := w.Widget + "-" + alt + ".png"
+				if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+					return err
+				}
+				fmt.Println("widget", p.Name+"/"+name)
+			}
 		}
 	}
 	return nil

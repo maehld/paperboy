@@ -202,12 +202,18 @@ func TestParseReadings(t *testing.T) {
 
 func TestLimits(t *testing.T) {
 	mg := defaults(unitMGDL)
-	if mg.urgent != 55 || mg.low != 80 || mg.high != 280 || mg.min != 40 || mg.max != 300 {
+	if mg.urgent != 55 || mg.low != 70 || mg.high != 180 || mg.min != 40 || mg.max != 300 {
 		t.Errorf("mg/dL defaults = %+v", mg)
 	}
+	if mg.tightLow != 70 || mg.tightHigh != 140 {
+		t.Errorf("mg/dL tight range = %+v", mg)
+	}
 	mmol := defaults(unitMMOL)
-	if mmol.urgent != 3.1 || mmol.low != 4.4 || mmol.decimals != 1 {
+	if mmol.urgent != 3.1 || mmol.low != 3.9 || mmol.high != 10 || mmol.decimals != 1 {
 		t.Errorf("mmol/L defaults = %+v", mmol)
+	}
+	if mmol.tightLow != 3.9 || mmol.tightHigh != 7.8 {
+		t.Errorf("mmol/L tight range = %+v", mmol)
 	}
 	if err := mg.check(); err != nil {
 		t.Errorf("mg default check: %v", err)
@@ -217,8 +223,32 @@ func TestLimits(t *testing.T) {
 	if err := bad.check(); err == nil {
 		t.Error("a band above its own high passed the check")
 	}
+	bad = mg
+	bad.tightHigh = 200
+	if err := bad.check(); err == nil {
+		t.Error("a tight range above the target range passed the check")
+	}
 	if detectUnit(112) != unitMGDL || detectUnit(5.9) != unitMMOL {
 		t.Error("unit detection")
+	}
+}
+
+// An unset tight range follows the target range, so a moved band keeps its
+// order.
+func TestTightRangeFollowsTarget(t *testing.T) {
+	l := apply(defaults(unitMGDL), map[string]float64{"low": 100})
+	if l.tightLow != 100 || l.tightHigh != 140 {
+		t.Errorf("tight range = %g..%g with low 100", l.tightLow, l.tightHigh)
+	}
+	if err := l.check(); err != nil {
+		t.Errorf("check: %v", err)
+	}
+	l = apply(defaults(unitMGDL), map[string]float64{"high": 120})
+	if l.tightHigh != 120 {
+		t.Errorf("tight high = %g with high 120", l.tightHigh)
+	}
+	if err := l.check(); err != nil {
+		t.Errorf("check: %v", err)
 	}
 }
 
@@ -291,7 +321,13 @@ func TestWidgets(t *testing.T) {
 	}
 	for _, levels := range []int{2, 4, 16} {
 		for _, size := range sizes {
-			for _, widget := range []string{"glucose", "graph", "values"} {
+			for _, widget := range []string{"glucose", "graph", "agp", "ranges", "values"} {
+				if widget == "agp" && (size.Dx() < 300 || size.Dy() < 160) {
+					continue
+				}
+				if widget == "ranges" && (size.Dx() < 180 || size.Dy() < 70) {
+					continue
+				}
 				img := render.NewCanvas(size.Dx(), size.Dy(), levels)
 				w := plugin.WidgetRequest{Widget: widget, Width: size.Dx(), Height: size.Dy(), Style: style()}
 				if err := d.Render(req, w, img); err != nil {
@@ -300,9 +336,14 @@ func TestWidgets(t *testing.T) {
 			}
 		}
 	}
+	img := render.NewCanvas(266, 120, 2)
+	w := plugin.WidgetRequest{Widget: "agp", Width: 266, Height: 120, Style: style()}
+	if err := d.Render(req, w, img); !errors.Is(err, plugin.ErrTooSmall) {
+		t.Fatalf("agp in a small cell: %v", err)
+	}
 
-	img := render.NewCanvas(400, 240, 4)
-	w := plugin.WidgetRequest{Widget: "graph", Width: 400, Height: 240, Style: style(),
+	img = render.NewCanvas(400, 240, 4)
+	w = plugin.WidgetRequest{Widget: "graph", Width: 400, Height: 240, Style: style(),
 		Args: map[string]any{"period": "hour"}}
 	if err := d.Render(req, w, img); err != nil {
 		t.Fatalf("hour graph: %v", err)
@@ -744,7 +785,7 @@ func TestProtocol(t *testing.T) {
 
 	send(plugin.Request{ID: "1", Action: plugin.ActionDescribe, Language: "de", Now: now})
 	m := next()
-	if m.Description == nil || len(m.Description.Widgets) != 3 || m.Description.Version == "" {
+	if m.Description == nil || len(m.Description.Widgets) != 5 || m.Description.Version == "" {
 		t.Fatalf("description = %+v", m.Description)
 	}
 

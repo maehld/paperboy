@@ -376,6 +376,22 @@ func (m *mock) dexcom(w http.ResponseWriter) {
 	for i := 288; i >= 0; i-- {
 		at := m.now.Add(-time.Duration(i) * 5 * time.Minute).Add(-2 * time.Minute)
 		v := 128 + 32*sin(float64(i)/26) + float64((i*7)%9-4)
+		// One peak and one dip a day, ramped over half an hour so the ranges
+		// between them and the target band get readings too.
+		if d := i - 166; d > -16 && d < 16 {
+			a := d
+			if a < 0 {
+				a = -a
+			}
+			v += 130 * (1 - float64(a)/16)
+		}
+		if d := i - 44; d > -16 && d < 16 {
+			a := d
+			if a < 0 {
+				a = -a
+			}
+			v -= 115 * (1 - float64(a)/16)
+		}
 		trend := "Flat"
 		switch {
 		case v < 70:
