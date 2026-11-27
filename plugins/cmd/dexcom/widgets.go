@@ -16,6 +16,10 @@ import (
 	"github.com/maehld/paperboy/sdk/render"
 )
 
+// signShare makes the smiley as high as the digits: the face fills 94 % of its
+// square and the capitals 72 % of the font size.
+const signShare = 0.72 / 0.94
+
 var (
 	ink   = color.Gray{0}
 	mid   = color.Gray{85}
@@ -92,32 +96,34 @@ func (d *dexcom) glucoseWidget(req *plugin.Request, w plugin.WidgetRequest, img 
 		signColor = mid
 	}
 
-	// The sign takes a column on the left of the reading. When the cell is too
-	// small, the sign drops and the value stays.
+	// The smiley follows the hero of the page, so it grows with the reading
+	// and the panel. Only a cell that is too small drops it.
+	scale := design.NewScale(req.TextPx(w), b.Dy())
+	hero := min(scale.Hero, float64(b.Dy())*0.46)
 	content := b
-	signSize := 0
+	signH, signW := 0, 0
 	if signStyle != "none" {
-		signSize = min(int(float64(b.Dy())*0.32), 72)
-		if signSize < minSign || b.Dx() < signSize*2 {
-			signSize = 0
+		signH = int(math.Round(hero * signShare))
+		signW = signH
+		if signH < minSign || b.Dx() < signW*2 {
+			signH, signW = 0, 0
 		} else {
-			content.Min.X += signSize + max(4, signSize/6)
+			content.Min.X += signW + max(4, signH/6)
 		}
 	}
 
 	if !ok {
-		if signSize > 0 {
-			y := b.Min.Y + (b.Dy()-signSize)/2
-			drawSign(img, image.Rect(b.Min.X, y, b.Min.X+signSize, y+signSize), state, solid, signColor)
+		if signH > 0 {
+			y := b.Min.Y + (b.Dy()-signH)/2
+			drawSign(img, image.Rect(b.Min.X, y, b.Min.X+signW, y+signH), state, solid, signColor)
 		}
 		textFit(img, req.T("keine Daten", "no data"), content.Min.X+content.Dx()/2, b.Min.Y+b.Dy()/2,
 			req.TextPx(w), false, mid, render.Center, content.Dx())
 		return nil
 	}
 
-	scale := design.NewScale(req.TextPx(w), b.Dy())
 	val := d.value(req, l, last.value)
-	size := min(scale.Hero, float64(b.Dy())*0.46)
+	size := hero
 	arrowSize := int(size * 0.6)
 	maxW := float64(content.Dx() - arrowSize - b.Dy()/8 - 2*pad)
 	for size > render.MinSize && float64(render.Measure(val, size, true)) > maxW {
@@ -128,21 +134,22 @@ func (d *dexcom) glucoseWidget(req *plugin.Request, w plugin.WidgetRequest, img 
 	total := tw + arrowSize + b.Dy()/16
 	x := content.Min.X + (content.Dx()-total)/2
 	signX := b.Min.X
-	if signSize > 0 {
+	if signH > 0 {
 		// Keep the sign next to the value and centre the pair including the
 		// box, so a wide cell does not leave a gap between them.
-		gap := max(4, signSize/6)
-		group := signSize + gap + total + 2*pad
+		gap := max(4, signH/6)
+		group := signW + gap + total + 2*pad
 		signX = b.Min.X + (b.Dx()-group)/2
-		x = signX + signSize + gap + pad
+		x = signX + signW + gap + pad
 	}
 	baseline := b.Min.Y + int(float64(b.Dy())*0.56)
 	if lvl == "urgent" {
 		baseline = b.Min.Y + int(float64(b.Dy())*0.50)
 	}
-	if signSize > 0 {
-		cy := baseline - int(size*0.30)
-		drawSign(img, image.Rect(signX, cy-signSize/2, signX+signSize, cy+signSize/2), state, solid, signColor)
+	if signH > 0 {
+		// Centre the face on the capitals of the number.
+		cy := baseline - int(math.Round(size*0.36))
+		drawSign(img, image.Rect(signX, cy-signH/2, signX+signW, cy+signH/2), state, solid, signColor)
 	}
 
 	fg := ink

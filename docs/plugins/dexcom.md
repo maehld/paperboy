@@ -116,9 +116,10 @@ The tight range uses the happy face like the target range. A very high reading
 uses the sad face like a high one. `ranges`, `agp` and `values.tight` carry the
 clinical detail.
 
-A stale or missing reading draws the value and the smiley in gray. The smiley is
-at least 24 px. When the cell is too small, it drops and the value always stays.
-High and low share the face; the word and the band show the direction.
+A stale or missing reading draws the value and the smiley in gray. The face is
+about as high as the capitals of the number and at least 24 px, so it grows with
+the value ([ADR 0177](../adr/0177-the-smiley-is-as-high-as-the-number.md)). When
+the cell is too small, the smiley drops and the value always stays. High and low share the face; the word and the band show the direction.
 
 The text page needs no smiley. Its labels can carry the CGRAM glyphs of
 [ADR 0155](../adr/0155-cgram-glyphs-on-hd44780-text-displays.md):
