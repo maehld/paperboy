@@ -7,25 +7,25 @@ import (
 )
 
 func TestMonthTitles(t *testing.T) {
-	titles := []string{"Standup", "Kino", "Sport"}
+	events := []monthEvent{{title: "Standup"}, {title: "Kino"}, {title: "Sport"}}
 	// One line: a title, never only the count.
-	if got, hidden := monthTitles(titles, 1, true); !reflect.DeepEqual(got, titles[:1]) || hidden != 0 {
-		t.Errorf("one line = %q, %d", got, hidden)
+	if got, hidden := monthTitles(events, 1, true); !reflect.DeepEqual(got, events[:1]) || hidden != 0 {
+		t.Errorf("one line = %v, %d", got, hidden)
 	}
 	// Two lines: one title and the count behind it.
-	if got, hidden := monthTitles(titles, 2, true); !reflect.DeepEqual(got, titles[:1]) || hidden != 2 {
-		t.Errorf("two lines = %q, %d", got, hidden)
+	if got, hidden := monthTitles(events, 2, true); !reflect.DeepEqual(got, events[:1]) || hidden != 2 {
+		t.Errorf("two lines = %v, %d", got, hidden)
 	}
 	// Without the count the free line carries another title.
-	if got, hidden := monthTitles(titles, 2, false); !reflect.DeepEqual(got, titles[:2]) || hidden != 0 {
-		t.Errorf("more off = %q, %d", got, hidden)
+	if got, hidden := monthTitles(events, 2, false); !reflect.DeepEqual(got, events[:2]) || hidden != 0 {
+		t.Errorf("more off = %v, %d", got, hidden)
 	}
 	// Everything fits: no count.
-	if got, hidden := monthTitles(titles[:2], 2, true); !reflect.DeepEqual(got, titles[:2]) || hidden != 0 {
-		t.Errorf("all fit = %q, %d", got, hidden)
+	if got, hidden := monthTitles(events[:2], 2, true); !reflect.DeepEqual(got, events[:2]) || hidden != 0 {
+		t.Errorf("all fit = %v, %d", got, hidden)
 	}
 	if got, hidden := monthTitles(nil, 2, true); len(got) != 0 || hidden != 0 {
-		t.Errorf("no titles = %q, %d", got, hidden)
+		t.Errorf("no titles = %v, %d", got, hidden)
 	}
 }
 
@@ -61,5 +61,26 @@ func TestMonthBlocks(t *testing.T) {
 	}
 	if got := monthBlocks(cell, 0, 8, 4, 2); len(got) != 0 {
 		t.Errorf("no events = %v", got)
+	}
+}
+
+// A month block is gray when its event has ended; an event that ends exactly
+// now has ended, a zero-length event at now has not.
+func TestMonthEventsMarkPast(t *testing.T) {
+	p := agendaPlugin(t, ics(
+		vevent("UID:a", "DTSTART;TZID=Europe/Berlin:20261103T070000", "DTEND;TZID=Europe/Berlin:20261103T080000", "SUMMARY:Früh"),
+		vevent("UID:b", "DTSTART;TZID=Europe/Berlin:20261103T150000", "DTEND;TZID=Europe/Berlin:20261103T160000", "SUMMARY:Spät"),
+		vevent("UID:c", "DTSTART;VALUE=DATE:20261102", "DTEND;VALUE=DATE:20261103", "SUMMARY:Gestern"),
+	))
+	byDay := p.eventsByDay(p.events, midnight(p.now.In(p.loc)).AddDate(0, 0, -1), 2)
+	if len(byDay[0]) != 1 || byDay[0][0].title != "Gestern" || !byDay[0][0].past {
+		t.Errorf("yesterday = %+v", byDay[0])
+	}
+	if len(byDay[1]) != 2 || byDay[1][0].title != "Früh" || !byDay[1][0].past || byDay[1][1].title != "Spät" || byDay[1][1].past {
+		t.Errorf("today = %+v", byDay[1])
+	}
+	now := p.now.In(p.loc)
+	if ended(parsedEvent{start: now, end: now}, now) {
+		t.Error("zero-length event at now counts as ended")
 	}
 }
