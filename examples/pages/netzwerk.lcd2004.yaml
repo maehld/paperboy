@@ -1,0 +1,9 @@
+# The network's values on a 20×4 display: the labelled state, the counts and
+# the most important fact. Requires the unifi plugin (docs/plugins/unifi.md).
+kind: text
+cells:
+  - { at: [0, 0], span: [20, 1], value: paperboy/title }
+  - { at: [0, 1], span: [20, 1], value: unifi/state, labels: { ok: Netzwerk ok, attention: Updates verfügbar, degraded: Netzwerk gestört } }
+  - { at: [0, 2], span: [9, 1], value: unifi/devices, label: Geräte }
+  - { at: [9, 2], span: [11, 1], value: unifi/clients, label: Clients, align: right }
+  - { at: [0, 3], span: [20, 1], value: unifi/worst, overflow: strip }

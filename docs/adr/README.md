@@ -211,6 +211,7 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0174](0174-the-glucose-profile-and-the-tight-range.md) | The glucose profile and the tight range | Accepted, implemented; adds the `agp` widget and moves the target range to the consensus, builds on [ADR-0099](0099-glucose-readings-from-the-dexcom-share-service.md) |
 | [0176](0176-child-friendly-signs.md) | Child-friendly smileys in the dexcom plugin | Accepted, implemented; adds the happy, sad and surprised O-mouth faces and the `sign` style `outline` or `solid`; a stale reading loses the alarm box |
 | [0177](0177-the-smiley-is-as-high-as-the-number.md) | The smiley is as high as the number | Accepted, implemented; sizes the face like the capitals of the reading (0.72/0.94 of the value), keeps the urgent O-mouth without a mark, and corrects the docs and the collage |
+| [0178](0178-use-the-private-unifi-controller-api.md) | Use the private UniFi controller API for the WAN summary | Accepted, implemented; keeps the documented integration API for sites, devices and clients, adds the optional private `stat/health` call for the WAN line, and ignores per-WAN `uptime_stats` |
 
 ## Delivery and releases
 

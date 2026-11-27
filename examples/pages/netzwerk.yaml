@@ -1,0 +1,19 @@
+# The home network in the shapes of both widgets: the status tiles, the internet
+# status with and without traffic, and the two wide rows. One 2x2 tile hides the
+# status line.
+# Requires the unifi plugin and its url and api_key (docs/plugins/unifi.md).
+title: Netzwerk
+kind: image
+variants: {lcd2004: lcd2004}
+grid: [6, 8]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [2, 2], widget: unifi/status, args: { focus: clients } }
+  - { at: [2, 0], span: [2, 2], widget: unifi/status, args: { focus: devices } }
+  - { at: [4, 0], span: [2, 2], widget: unifi/status, args: { focus: clients, detail: false } }
+  - { at: [0, 2], span: [3, 2], widget: unifi/status, args: { focus: clients } }
+  - { at: [3, 2], span: [3, 2], widget: unifi/status, args: { focus: devices } }
+  - { at: [0, 4], span: [3, 2], widget: unifi/wan, args: { traffic: true } }
+  - { at: [3, 4], span: [3, 2], widget: unifi/wan, args: { ip: true } }
+  - { at: [0, 6], span: [6, 1], widget: unifi/status, args: { focus: devices } }
+  - { at: [0, 7], span: [6, 1], widget: unifi/wan }

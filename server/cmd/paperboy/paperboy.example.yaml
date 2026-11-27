@@ -64,6 +64,13 @@ plugins:
     config:
       url: http://prusa-core-one.local   # the printer's PrusaLink address
       api_key: ${PRUSALINK_API_KEY}      # from the printer's network settings
+  unifi:
+    config:
+      url: https://192.168.1.1          # the controller's address
+      api_key: ${UNIFI_API_KEY}         # integration API key
+      # site: default                   # name or id; empty takes the first site
+      # insecure: true                  # accept the controller's own certificate
+      # wan: true                       # read the WAN summary; false skips the private call
   calendar:
     timeout: 1m
     config:

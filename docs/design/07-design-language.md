@@ -127,6 +127,8 @@ view; the month grid stays custom. [`dexcom`](../plugins/dexcom.md) uses the
 scale for its reading, graph and value rows. Its trend arrows, target band and
 child-friendly smileys stay custom
 ([ADR 0176](../adr/0176-child-friendly-signs.md)).
+[`unifi`](../plugins/unifi.md) uses `Tiles` for its network status and
+`DrawHero` for the wide 6 × 1 shape.
 
 The Pokédex card and xkcd keep their own drawing where the components do not
 fit.

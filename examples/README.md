@@ -2,7 +2,7 @@
 
 The pages under `pages/` are grids of widgets from the shipped plugins
 ([ADR 0049](../docs/adr/0049-plugin-widgets.md)): `weather`, `calendar`, `evcc`, `departures`, `pokedex`, `xkcd`,
-`myskoda`, `countdown`, `rss`, `github`, `dexcom`, `prusalink` and the built-in `paperboy` plugin. Copy the
+`myskoda`, `countdown`, `rss`, `github`, `dexcom`, `prusalink`, `unifi` and the built-in `paperboy` plugin. Copy the
 files you need into the `pages/` directory of your instance and adapt the
 grid, the spans and the arguments. A text page's value cells read the same
 `args` as the widget, so a page picks its stop, loadpoint, calendar window or
@@ -53,6 +53,9 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
 - `drucker.yaml` - a Prusa printer from PrusaLink: the progress as a ring, the
   temperatures and the state card; `drucker.lcd2004.yaml` shows the state, the
   file, the progress and the temperatures on 20×4.
+- `netzwerk.yaml` - the home network from unifi: the clients and the devices as
+  large values in 2x2, 3x2 and 6x1, with the most important fact below;
+  `netzwerk.lcd2004.yaml` shows the state, the counts and the fact on 20×4.
 - `unterwegs.yaml` - current weather and the next departures, for leaving the
   house.
 - `pokemon.yaml` - a full-screen Pokédex card; it hides the display type's
@@ -93,8 +96,9 @@ at it with `plan: standard`. Its commented trigger shows a glucose page while
 
 `plans/tour.yaml` rotates through every example page and so through all
 shipped plugins: it shows the glucose page while `dexcom/state` is out of its
-band, brings `unterwegs` to the front on weekday mornings, and refreshes every
-10 minutes during the day and every 30 minutes at night.
+band, the network page while `unifi/state` is degraded, brings `unterwegs` to
+the front on weekday mornings, and refreshes every 10 minutes during the day
+and every 30 minutes at night.
 
 `displays/e1001.yaml`, `displays/sticky.yaml`, `displays/e1003.yaml` and
 `displays/lcd2004.yaml` are four display types ([ADR 0071](../docs/adr/0071-display-types-in-files-of-their-own.md)): an 800 x 480 ePaper
