@@ -168,6 +168,10 @@ func TestWeekTimedFit(t *testing.T) {
 	if shown, used := weekTimedFit(3, 2, 4, twoLines, false); shown != 2 || used != 4 {
 		t.Errorf("bars, summary off: shown %d, used %d", shown, used)
 	}
+	// A column with one line shows an event instead of only the summary.
+	if shown, used := weekTimedFit(2, 0, 1, oneLine, true); shown != 1 || used != 1 {
+		t.Errorf("one line: shown %d, used %d", shown, used)
+	}
 }
 
 func TestWeekLines(t *testing.T) {

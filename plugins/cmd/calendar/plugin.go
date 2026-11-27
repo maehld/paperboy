@@ -933,6 +933,22 @@ var monthNames = map[string][12]string{
 	"en": {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"},
 }
 
+// monthTitles splits the titles of one day cell into the lines that fit and the
+// number behind them. The counter needs a line of its own and never takes the
+// only line that shows a title: an entry is worth more than the count.
+func monthTitles(titles []string, room int) (shown []string, more int) {
+	if room <= 0 {
+		return nil, 0
+	}
+	if len(titles) <= room {
+		return titles, 0
+	}
+	if room == 1 {
+		return titles[:1], 0
+	}
+	return titles[:room-1], len(titles) - (room - 1)
+}
+
 // month draws the current month as a grid from Monday to Sunday. Today is
 // inverted; days with events show their titles when the cell is tall enough,
 // otherwise a bar under the day number.
@@ -1011,17 +1027,14 @@ func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img 
 		top := numBase + 3
 		room := (cell.Max.Y - 2 - top) / int(lineSize*1.15)
 		if w.Arg().Bool("titles", true) && room >= 1 && cellW >= 50 {
-			shown := evs
-			if len(evs) > room {
-				shown = evs[:max(room-1, 0)]
-			}
+			shown, more := monthTitles(evs, room)
 			for j, t := range shown {
 				base := top + (j+1)*int(lineSize*1.15) - 2
 				render.TextAt(img, render.Ellipsize(t, lineSize, false, cell.Dx()-6), cell.Min.X+3, base, lineSize, false, color.Black, render.Left)
 			}
-			if len(shown) < len(evs) {
+			if more > 0 {
 				base := top + (len(shown)+1)*int(lineSize*1.15) - 2
-				render.TextAt(img, fmt.Sprintf("+%d", len(evs)-len(shown)), cell.Min.X+3, base, lineSize, true, color.Black, render.Left)
+				render.TextAt(img, fmt.Sprintf("+%d", more), cell.Min.X+3, base, lineSize, true, color.Black, render.Left)
 			}
 			continue
 		}
