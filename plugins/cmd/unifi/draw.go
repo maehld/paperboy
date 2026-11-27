@@ -195,8 +195,15 @@ func drawWAN(img *image.Paletted, b image.Rectangle, snap snapshot, wanEnabled b
 		}
 		return drawRow(img, b, label, strings.TrimSpace(value+" "+unit), status, s, w)
 	}
+	// The design drops details before the caption. Two detail lines are worth
+	// more than the provider name, so the provider gives way instead of losing
+	// the second line.
+	caption := snap.wan.ISPName
+	if len(details) > 1 {
+		caption = ""
+	}
 	hero := design.Hero{
-		Label: label, Value: value, Unit: unit, Caption: snap.wan.ISPName,
+		Label: label, Value: value, Unit: unit, Caption: caption,
 		Details: details, Note: note, Align: render.Center, Rule: max(w.Style.Rule, 1),
 	}
 	if !design.DrawHero(img, b, hero, s) {

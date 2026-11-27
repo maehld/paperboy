@@ -178,6 +178,18 @@ func (sn snapshot) signature() string {
 	if sn.www.Latency != nil {
 		fmt.Fprintf(&b, "%d", *sn.www.Latency)
 	}
+	// The speed test result is shown as the detail line and as the download
+	// and upload values, so a new result must redraw the page. The live byte
+	// rates stay out: they change on every fetch, and a page redraws with
+	// them anyway.
+	b.WriteByte('|')
+	if sn.www.XputDown != nil {
+		fmt.Fprintf(&b, "%.2f", *sn.www.XputDown)
+	}
+	b.WriteByte('/')
+	if sn.www.XputUp != nil {
+		fmt.Fprintf(&b, "%.2f", *sn.www.XputUp)
+	}
 	b.WriteByte('|')
 	for _, d := range sn.devices {
 		fmt.Fprintf(&b, "%s=%s=%t;", d.Name, d.State, d.FirmwareUpdatable)
