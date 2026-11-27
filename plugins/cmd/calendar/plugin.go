@@ -156,6 +156,7 @@ func (p *calendarPlugin) Describe() plugin.Description {
 				MinWidth: 210, MinHeight: 160,
 				Args: map[string]plugin.Arg{
 					"titles":    {Type: "bool", Default: true, Description: "event titles in the day cells when they fit"},
+					"more":      {Type: "bool", Default: true, Description: "show \"+N\" for events that did not fit; false fills the day cells with titles"},
 					"calendars": calendars,
 				},
 			},
@@ -935,16 +936,17 @@ var monthNames = map[string][12]string{
 
 // monthTitles splits the titles of one day cell into the lines that fit and the
 // number behind them. The counter needs a line of its own and never takes the
-// only line that shows a title: an entry is worth more than the count.
-func monthTitles(titles []string, room int) (shown []string, more int) {
+// only line that shows a title: an entry is worth more than the count. Without
+// the count every line carries a title.
+func monthTitles(titles []string, room int, more bool) (shown []string, hidden int) {
 	if room <= 0 {
 		return nil, 0
 	}
 	if len(titles) <= room {
 		return titles, 0
 	}
-	if room == 1 {
-		return titles[:1], 0
+	if !more || room == 1 {
+		return titles[:room], 0
 	}
 	return titles[:room-1], len(titles) - (room - 1)
 }
@@ -1027,14 +1029,14 @@ func (p *calendarPlugin) month(req *plugin.Request, w plugin.WidgetRequest, img 
 		top := numBase + 3
 		room := (cell.Max.Y - 2 - top) / int(lineSize*1.15)
 		if w.Arg().Bool("titles", true) && room >= 1 && cellW >= 50 {
-			shown, more := monthTitles(evs, room)
+			shown, hidden := monthTitles(evs, room, w.Arg().Bool("more", true))
 			for j, t := range shown {
 				base := top + (j+1)*int(lineSize*1.15) - 2
 				render.TextAt(img, render.Ellipsize(t, lineSize, false, cell.Dx()-6), cell.Min.X+3, base, lineSize, false, color.Black, render.Left)
 			}
-			if more > 0 {
+			if hidden > 0 {
 				base := top + (len(shown)+1)*int(lineSize*1.15) - 2
-				render.TextAt(img, fmt.Sprintf("+%d", more), cell.Min.X+3, base, lineSize, true, color.Black, render.Left)
+				render.TextAt(img, fmt.Sprintf("+%d", hidden), cell.Min.X+3, base, lineSize, true, color.Black, render.Left)
 			}
 			continue
 		}
