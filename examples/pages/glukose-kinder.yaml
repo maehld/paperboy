@@ -1,0 +1,10 @@
+# A glucose page for a child: the sign shows the state beside the reading,
+# the numbers of the day follow. Requires the dexcom plugin
+# (docs/plugins/dexcom.md).
+title: Glukose
+kind: image
+grid: [6, 8]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [6, 4], widget: dexcom/glucose, args: { sign: solid } }
+  - { at: [0, 4], span: [6, 4], widget: dexcom/values, args: { values: [in-band, avg, min, max, delta, count], columns: 1 } }

@@ -17,6 +17,7 @@ One term per thing. If a document needs a second word for the same thing, the wo
 | **reading** | One measured number a device reports in its sync, named by Paperboy's catalog, for example `temperature` | value, sensor, measurement |
 | **enum value** | A value that answers one declared key, e.g. `dexcom/state` with `normal`, `low`, `high` and `urgent` | state, choice |
 | **enum label** | The display text of one enum key on a text cell (`labels`); without it the key shows | key text, caption |
+| **sign** | The dexcom face that shows the glucose state: happy in the range, sad above or below, surprised with an O-mouth when urgent, gray when stale; drawn as an outline or filled | smiley |
 | **overflow** | A text box policy: `strip`, `wrap` or `scroll` | clip, fitting |
 | **page** | An image grid of widgets or a text grid of value and text boxes, with a size from its display type | screen, template, view |
 | **page file** | `pages/<page>.yaml`: the layout for its kind and the `variants` map. It serves every display type of its kind. | shared page, main page, base page |

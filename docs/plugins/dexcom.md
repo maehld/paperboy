@@ -19,13 +19,18 @@ numbers of 24 hours:
 |---|---|
 | ![ranges as a bar](../images/plugins/dexcom/ranges.png) | ![ranges as a column](../images/plugins/dexcom/ranges-2x5.png) |
 
+The example page `glukose-kinder` shows the reading with the smiley and
+the numbers of the day in one column:
+
+![The child page](../images/plugins/dexcom/page-glukose-kinder.png)
+
 The `glukose` text page on a 20 × 4 display:
 
 ```text
 Glukose             
-124 mg/dL          >
+124 mg/dL          →
 -7 mg/dL        2min
-Normal              
+✓ Normal            
 ```
 
 ## Configuration
@@ -64,9 +69,63 @@ plugins:
 
 The widget is for image displays. It shows the reading large, its trend as an arrow, how it moved over the last 15 minutes, its age, and a bar that shows the target band, the urgent threshold and where the value sits in the scale.
 
-Outside the band the value is drawn inverted (light on dark), below `urgent` it gets a ring and the word „Dringend!"/“Urgent!”. A reading older than 15 minutes is drawn gray instead of as a current value.
+Outside the range the value is drawn inverted (light on dark), below `urgent` it gets a ring and the word „Dringend!"/“Urgent!”. A reading older than 15 minutes is drawn gray, loses the inverted box and the urgent word, and its smiley is gray too.
 
 The arrow beside the value is the trend the sensor reports with every reading: the direction and the speed of the change. Dexcom derives it from the last readings and names seven states, from `DoubleUp` (rising faster than 3 mg/dL per minute) over `SingleUp`, `FortyFiveUp` and `Flat` (inside ±1 mg/dL per minute) down to `DoubleDown`. The plugin does not compute it itself; it draws the reported state at 0, ±45 or ±90 degrees and as two arrows for the `Double` states.
+
+The optional `sign` arg adds the smiley to the cell
+([ADR 0176](../adr/0176-child-friendly-signs.md)):
+
+| Value | Shows |
+|---|---|
+| `none` (default) | no smiley |
+| `outline` | the face as a line drawing |
+| `solid` | the face filled |
+
+```yaml
+- { at: [0, 0], span: [2, 3], widget: dexcom/glucose, args: { sign: outline } }
+```
+
+### Child-friendly smileys
+
+A child can see the page but cannot read the number. The smiley uses a face and
+word instead of colour, so it reads on 1-bit panels and with colour vision
+deficiency.
+
+| State | Face | Word |
+|---|---|---|
+| in the target range | a happy face | `Normal` |
+| high | a sad face | `Hoch`/`High` |
+| low | a sad face | `Niedrig`/`Low` |
+| urgent low | a surprised face with an O-mouth | `Dringend!`/`Urgent!` |
+| missing or stale | the happy face in gray | the age or `keine Daten`/`no data` |
+
+![The smileys in every state](../images/plugins/dexcom/signs.png)
+
+`sign` selects the style: `outline` draws the face as a line, `solid` fills it.
+The style is a choice for the page; the smiley does not change its weight with
+the value.
+
+The happy face means the reading is in the target range. A sad face means it is
+above or below it; the value, the band and the word show which. The urgent low
+has a surprised face with an O-mouth; the value box, the ring and the word carry
+the alarm. A missing or stale reading keeps the happy face in gray. There is no
+neutral face, no target and no octagon.
+
+The tight range uses the happy face like the target range. A very high reading
+uses the sad face like a high one. `ranges`, `agp` and `values.tight` carry the
+clinical detail.
+
+A stale or missing reading draws the value and the smiley in gray. The smiley is
+at least 24 px. When the cell is too small, it drops and the value always stays.
+High and low share the face; the word and the band show the direction.
+
+The text page needs no smiley. Its labels can carry the CGRAM glyphs of
+[ADR 0155](../adr/0155-cgram-glyphs-on-hd44780-text-displays.md):
+
+```yaml
+labels: { normal: "✓ Normal", high: "↑ Hoch", low: "↓ Niedrig", urgent: "! Dringend" }
+```
 
 ## Widget `graph`
 

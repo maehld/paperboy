@@ -55,32 +55,94 @@ func (d *dexcom) glucoseWidget(req *plugin.Request, w plugin.WidgetRequest, img 
 	if b.Dx() < 40 || b.Dy() < 30 {
 		return plugin.TooSmall(w)
 	}
+	signStyle := w.Arg().String("sign", "none")
+	switch signStyle {
+	case "none", "outline", "solid":
+	default:
+		return fmt.Errorf("sign: unknown %q", signStyle)
+	}
+	solid := signStyle == "solid"
 	last, ok := current(rs, req.Now)
-	if !ok {
-		textFit(img, req.T("keine Daten", "no data"), b.Min.X+b.Dx()/2, b.Min.Y+b.Dy()/2,
-			req.TextPx(w), false, mid, render.Center, b.Dx())
-		return nil
+	age := time.Duration(0)
+	stale := true
+	lvl := ""
+	if ok {
+		age = req.Now.Sub(last.at)
+		stale = age > staleAfter
+		lvl = level(last.value, l)
+	}
+	state := signState(lvl, ok, stale)
+	// A stale reading is no current value: it loses the alarm box and the
+	// urgent word, and the value stays gray (the age names the data).
+	if stale {
+		lvl = ""
+	}
+	// The box of a high, low or urgent value starts left of the number. The
+	// urgent style adds a ring outside that box, so the sign gap grows by the
+	// ring to keep the visible gap the same.
+	pad := 0
+	if lvl != "" {
+		pad = b.Dy() / 28
+		if lvl == "urgent" {
+			pad *= 2
+		}
+	}
+	signColor := color.Color(ink)
+	if stale {
+		signColor = mid
 	}
 
-	age := req.Now.Sub(last.at)
-	stale := age > staleAfter
-	lvl := level(last.value, l)
+	// The sign takes a column on the left of the reading. When the cell is too
+	// small, the sign drops and the value stays.
+	content := b
+	signSize := 0
+	if signStyle != "none" {
+		signSize = min(int(float64(b.Dy())*0.32), 72)
+		if signSize < minSign || b.Dx() < signSize*2 {
+			signSize = 0
+		} else {
+			content.Min.X += signSize + max(4, signSize/6)
+		}
+	}
+
+	if !ok {
+		if signSize > 0 {
+			y := b.Min.Y + (b.Dy()-signSize)/2
+			drawSign(img, image.Rect(b.Min.X, y, b.Min.X+signSize, y+signSize), state, solid, signColor)
+		}
+		textFit(img, req.T("keine Daten", "no data"), content.Min.X+content.Dx()/2, b.Min.Y+b.Dy()/2,
+			req.TextPx(w), false, mid, render.Center, content.Dx())
+		return nil
+	}
 
 	scale := design.NewScale(req.TextPx(w), b.Dy())
 	val := d.value(req, l, last.value)
 	size := min(scale.Hero, float64(b.Dy())*0.46)
 	arrowSize := int(size * 0.6)
-	maxW := float64(b.Dx() - arrowSize - b.Dy()/8)
+	maxW := float64(content.Dx() - arrowSize - b.Dy()/8 - 2*pad)
 	for size > render.MinSize && float64(render.Measure(val, size, true)) > maxW {
 		size *= 0.94
 	}
 	arrowSize = int(size * 0.6)
 	tw := render.Measure(val, size, true)
 	total := tw + arrowSize + b.Dy()/16
-	x := b.Min.X + (b.Dx()-total)/2
+	x := content.Min.X + (content.Dx()-total)/2
+	signX := b.Min.X
+	if signSize > 0 {
+		// Keep the sign next to the value and centre the pair including the
+		// box, so a wide cell does not leave a gap between them.
+		gap := max(4, signSize/6)
+		group := signSize + gap + total + 2*pad
+		signX = b.Min.X + (b.Dx()-group)/2
+		x = signX + signSize + gap + pad
+	}
 	baseline := b.Min.Y + int(float64(b.Dy())*0.56)
 	if lvl == "urgent" {
 		baseline = b.Min.Y + int(float64(b.Dy())*0.50)
+	}
+	if signSize > 0 {
+		cy := baseline - int(size*0.30)
+		drawSign(img, image.Rect(signX, cy-signSize/2, signX+signSize, cy+signSize/2), state, solid, signColor)
 	}
 
 	fg := ink
@@ -108,7 +170,7 @@ func (d *dexcom) glucoseWidget(req *plugin.Request, w plugin.WidgetRequest, img 
 	sub := baseline + int(float64(b.Dy())*0.22)
 	switch lvl {
 	case "urgent":
-		textFit(img, req.T("Dringend!", "Urgent!"), b.Min.X+b.Dx()/2, sub, small*1.2, true, ink, render.Center, b.Dx())
+		textFit(img, req.T("Dringend!", "Urgent!"), content.Min.X+content.Dx()/2, sub, small*1.2, true, ink, render.Center, content.Dx())
 	case "":
 		if prev, ok := earlier(rs, 15); ok {
 			delta := last.value - prev.value
@@ -129,7 +191,14 @@ func (d *dexcom) glucoseWidget(req *plugin.Request, w plugin.WidgetRequest, img 
 	if l.urgent != 0 {
 		fill(img, image.Rect(at(l.urgent), barY-barH/2-1, at(l.urgent)+1, barY+barH/2+2), mid)
 	}
-	fill(img, image.Rect(at(last.value)-1, barY-barH/2-3, at(last.value)+2, barY+barH/2+4), ink)
+	barInk := color.Color(ink)
+	marker := image.Rect(at(last.value)-1, barY-barH/2-3, at(last.value)+2, barY+barH/2+4)
+	if stale {
+		// A gray marker would vanish in the gray band, so it gets a white halo.
+		barInk = mid
+		fill(img, marker.Inset(-2), color.Gray{255})
+	}
+	fill(img, marker, barInk)
 	if b.Dy() >= 100 {
 		labels := float64(b.Dy()) * 0.06
 		render.TextAt(img, d.value(req, l, l.low), b.Min.X, barY-int(labels)-2, labels, false, mid, render.Left)
