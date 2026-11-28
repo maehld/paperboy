@@ -111,7 +111,8 @@ notice that names `-login`.
 
 **Feature names differ** between boilers, heat pumps, pellets systems and
 devices with solar thermal. A missing feature stays absent, and a widget leaves
-its line out instead of inventing a value. Temperatures are in °C.
+its line out instead of inventing a value. The widgets draw °C; a device that
+reports °F is converted.
 
 ## Widgets
 

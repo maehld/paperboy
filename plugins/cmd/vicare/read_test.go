@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 	"time"
 )
@@ -159,4 +160,21 @@ func mustTime(t *testing.T, s string) time.Time {
 		t.Fatal(err)
 	}
 	return parsed
+}
+
+func TestSnapshotConvertsFahrenheit(t *testing.T) {
+	data := `{"data":[
+	 {"feature":"heating.sensors.temperature.outside","deviceId":"0",
+	  "properties":{"value":{"type":"number","unit":"fahrenheit","value":39.2}}},
+	 {"feature":"heating.circuits.0.temperature.levels","deviceId":"0",
+	  "properties":{"min":{"type":"number","unit":"fahrenheit","value":68},"max":{"type":"number","unit":"fahrenheit","value":140}}}
+	]}`
+	s := snapshotFrom(featuresFrom(t, data), "0")
+	if s.Outside == nil || math.Abs(*s.Outside-4) > 0.01 {
+		t.Fatalf("outside = %v", s.Outside)
+	}
+	c := s.Circuits[0]
+	if c.TempMin == nil || math.Abs(*c.TempMin-20) > 0.01 || c.TempMax == nil || math.Abs(*c.TempMax-60) > 0.01 {
+		t.Fatalf("levels = %v %v", c.TempMin, c.TempMax)
+	}
 }

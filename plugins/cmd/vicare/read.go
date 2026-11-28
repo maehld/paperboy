@@ -136,6 +136,23 @@ func (f feature) num(name string) *float64 {
 	return nil
 }
 
+// celsius returns a temperature property in °C. The API reports °F for some
+// accounts; the widgets draw °C only, so the value is converted.
+func (f feature) celsius(name string) *float64 {
+	p, ok := f.Properties[name]
+	if !ok {
+		return nil
+	}
+	v, ok := p.number()
+	if !ok {
+		return nil
+	}
+	if strings.EqualFold(p.Unit, "fahrenheit") {
+		v = (v - 32) * 5 / 9
+	}
+	return &v
+}
+
 // text returns a text property of the feature.
 func (f feature) text(name string) string {
 	if p, ok := f.Properties[name]; ok {
@@ -192,7 +209,7 @@ func snapshotFrom(features []feature, deviceID string) *snapshot {
 	}
 	temp := func(name string) *float64 {
 		if f := get(name); f != nil {
-			return f.num("value")
+			return f.celsius("value")
 		}
 		return nil
 	}
@@ -293,13 +310,13 @@ func readCircuits(byName map[string]feature) []circuit {
 			c.Name = f.text("name")
 		}
 		if f, ok := byName[prefix+"sensors.temperature.room"]; ok {
-			c.Room = f.num("value")
+			c.Room = f.celsius("value")
 		}
 		if f, ok := byName[prefix+"sensors.temperature.supply"]; ok {
-			c.Supply = f.num("value")
+			c.Supply = f.celsius("value")
 		}
 		if f, ok := byName[prefix+"temperature"]; ok {
-			c.Target = f.num("value")
+			c.Target = f.celsius("value")
 		}
 		if f, ok := byName[prefix+"operating.programs.active"]; ok {
 			c.Program = f.text("value")
@@ -314,7 +331,7 @@ func readCircuits(byName map[string]feature) []circuit {
 			}
 		}
 		if f, ok := byName[prefix+"temperature.levels"]; ok {
-			c.TempMin, c.TempMax = f.num("min"), f.num("max")
+			c.TempMin, c.TempMax = f.celsius("min"), f.celsius("max")
 		}
 		out = append(out, c)
 	}
