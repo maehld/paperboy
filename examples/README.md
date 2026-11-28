@@ -2,7 +2,7 @@
 
 The pages under `pages/` are grids of widgets from the shipped plugins
 ([ADR 0049](../docs/adr/0049-plugin-widgets.md)): `weather`, `calendar`, `evcc`, `departures`, `pokedex`, `xkcd`,
-`myskoda`, `countdown`, `rss`, `github`, `dexcom`, `prusalink`, `unifi` and the built-in `paperboy` plugin. Copy the
+`myskoda`, `vicare`, `countdown`, `rss`, `github`, `dexcom`, `prusalink`, `unifi` and the built-in `paperboy` plugin. Copy the
 files you need into the `pages/` directory of your instance and adapt the
 grid, the spans and the arguments. A text page's value cells read the same
 `args` as the widget, so a page picks its stop, loadpoint, calendar window or
@@ -29,6 +29,9 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
 - `auto.yaml` - myskoda: battery, charging, climate, the vehicle image, charging
   plans and position; `auto.lcd2004.yaml` shows battery, charging and climate
   from the myskoda values on 20×4.
+- `heizung.yaml` - vicare: the heating circuit, the hot water, the compressor
+  and the heating curve; `heizung.lcd2004.yaml` shows outside, room, hot water,
+  flow, the burner and the program on 20×4.
 - `energie.yaml` - evcc energy flow with site values and the charging point.
 - `energie-woche.yaml` - evcc: the energy flow and the balance of this week in
   kWh, with the page header naming the period.

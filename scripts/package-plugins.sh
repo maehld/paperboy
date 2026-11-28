@@ -22,7 +22,7 @@ stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 
 mkdir -p "$stage/plugins" "$out"
-for app in calendar weather fuel evcc pokedex xkcd departures myskoda countdown rss dexcom github prusalink unifi; do
+for app in calendar weather fuel evcc pokedex xkcd departures myskoda vicare countdown rss dexcom github prusalink unifi; do
   version=$(tr -d '[:space:]' < "$root/plugins/cmd/$app/VERSION")
   if [ -z "$version" ]; then
     echo "no version in plugins/cmd/$app/VERSION" >&2
