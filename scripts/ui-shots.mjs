@@ -49,6 +49,7 @@ const pages = [
   { name: "maintenance", path: "/ui/system/maintenance" },
   { name: "stats", path: "/ui/system/stats" },
   { name: "styleguide", path: "/ui/system/styleguide" },
+  { name: "about", path: "/ui/system/about" },
 ];
 
 // Two viewports: a laptop screen and a phone. The phone picture shows whether a

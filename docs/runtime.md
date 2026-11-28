@@ -6,7 +6,7 @@
 
 Paperboy serves its operator pages on the same address as the device API. They need no token (see [Security](#security)). The overview, the stats page and the two release trains poll themselves and update in place, so a tick does not reload the document ([ADR 0106](adr/0106-self-updating-pages-with-htmx.md)); without JavaScript they stay readable but stop updating.
 
-A rail on the left names the sections: Devices, Pages, Plans, Plugins and System ([ADR 0152](adr/0152-a-design-system-and-a-rail-for-the-operator-ui.md)). `⌘K` or `Ctrl+K` opens a search over the sections and the objects of the instance and jumps to one. The *Styleguide* under System shows every token and component. The rail groups Overview, Pages and Plans above *Configuration* (Devices, Display types, Playground) and *System* (Plugins, Firmware, Maintenance, Stats, Styleguide). The top bar carries the logo, the breadcrumb that names the way back, the running build and the theme toggle. The theme follows the operating system; the toggle switches between light and dark and the browser remembers the choice.
+A rail on the left names the sections: Devices, Pages, Plans, Plugins and System ([ADR 0152](adr/0152-a-design-system-and-a-rail-for-the-operator-ui.md)). `⌘K` or `Ctrl+K` opens a search over the sections and the objects of the instance and jumps to one. The *Styleguide* under System shows every token and component. The rail groups Overview, Pages and Plans above *Configuration* (Devices, Display types, Playground) and *System* (Plugins, Firmware, Maintenance, Stats, Styleguide, About). The top bar carries the logo, the breadcrumb that names the way back, the running build and the theme toggle. The theme follows the operating system; the toggle switches between light and dark and the browser remembers the choice.
 
 ### Devices
 
@@ -27,6 +27,10 @@ The plugin table has one row per plugin — the built-in one included. It names 
 The widget cache follows: entries, images, bytes, stale entries, entries past their expiry, evictions and the age of the oldest entry, then one row per age range (under a minute, five minutes, an hour, a day, older) with entries, images and bytes. Below it Paperboy counts its own caches: rendered pages and notice pages with count, bytes and age, and the parsed page and plan files.
 
 *Timings* lists named operations with count, last, average, p50, p95 and maximum: the sync as a whole, the configuration snapshot, the wait for the state lock, the plan values, plan selection, the page render split into waiting for plugins and PNG encoding, writing the state file, every page render and the text poll. Percentiles come from the last 256 samples of an operation. *Syncs and polls* finally has one row per device: its syncs with last, average, p95 and maximum duration, and the text polls separately, because a text display asks every second and would otherwise dominate the numbers.
+
+### About
+
+`/ui/system/about` names what the installation runs: the build with its commit and Go toolchain, the MIT licence, every configured plugin with its version and its data source, and the third-party code of the interface. The link of a data source leads to its provider; the page of each plugin under `docs/plugins` names the terms. The page reads the configuration only and contacts no service.
 
 ### Plan preview
 

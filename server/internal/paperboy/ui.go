@@ -143,6 +143,7 @@ func navFor(section string) []navItem {
 		{Label: "Maintenance", URL: "/ui/system/maintenance"},
 		{Label: "Stats", URL: "/ui/system/stats"},
 		{Label: "Styleguide", URL: "/ui/system/styleguide"},
+		{Label: "About", URL: "/ui/system/about"},
 	}
 	for i := range items {
 		items[i].Active = items[i].Label == section
