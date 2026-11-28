@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"image"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -377,6 +378,11 @@ func TestIcons(t *testing.T) {
 			t.Fatalf("icon(%q) is missing", name)
 		}
 	}
+	for i := 0; i < moonGlyphs; i++ {
+		if icon(moonGlyphName(i)) == nil {
+			t.Fatalf("icon(%q) is missing", moonGlyphName(i))
+		}
+	}
 }
 
 // A widget draws on every palette the protocol knows; a 16-level display
@@ -399,7 +405,7 @@ func TestRenderWidgets(t *testing.T) {
 		p := &weather{cur: &b, req: req, loc: req.Location(), lang: "de"}
 		style := plugin.Style{Padding: 8, Rule: 1, TextPx: 16 * float64(ppi) / 72}
 		for _, levels := range []int{2, 4, 16} {
-			for _, name := range []string{"current", "days", "hours", "sun"} {
+			for _, name := range []string{"current", "days", "hours", "sun", "moon"} {
 				img := render.NewCanvas(w, h, levels)
 				wr := plugin.WidgetRequest{Widget: name, Width: w, Height: h, Style: style}
 				if err := p.Render(req, wr, img); err != nil {
@@ -473,7 +479,8 @@ func TestValues(t *testing.T) {
 	p := &weather{cur: &b, req: req, loc: req.Location(), lang: "de"}
 	names := []string{"temperature", "apparent", "humidity", "precipitation", "precipitation-probability",
 		"precipitation-today", "precipitation-next", "wind", "beaufort", "condition", "min-today",
-		"max-today", "sunrise", "sunset", "daylight", "updated", "forecast"}
+		"max-today", "sunrise", "sunset", "daylight", "moon-phase", "moon-illumination",
+		"updated", "forecast"}
 	values, err := p.Values(&plugin.Request{Values: names})
 	if err != nil {
 		t.Fatal(err)
@@ -500,6 +507,13 @@ func TestValues(t *testing.T) {
 	}
 	if v := values["daylight"]; v.Text == nil || *v.Text != "10 Std." {
 		t.Fatalf("daylight = %+v", v)
+	}
+	phase, illumination := moonPhase(req.Now)
+	if v := values["moon-phase"]; v.Text == nil || *v.Text != p.moonName(phase) {
+		t.Fatalf("moon-phase = %+v", v)
+	}
+	if v := values["moon-illumination"]; v.Number == nil || math.Abs(*v.Number-illumination*100) > 1e-9 {
+		t.Fatalf("moon-illumination = %+v", v)
 	}
 	if v := values["forecast"]; v.Text == nil {
 		t.Fatalf("forecast = %+v", v)
@@ -532,13 +546,72 @@ func TestDaylightText(t *testing.T) {
 	}
 }
 
+// The moon phase counts from the new moon of 2000-01-06 18:14 UTC, with the
+// eight named phases at their eighths and 28 glyphs around the cycle.
+func TestMoonPhase(t *testing.T) {
+	epoch := time.Unix(newMoonEpoch, 0)
+	half := time.Duration(synodicMonth * 24 * float64(time.Hour) / 2)
+	quarter := half / 2
+	tests := []struct {
+		at                       time.Time
+		phase, illumination, tol float64
+	}{
+		{epoch, 0, 0, 1e-9},
+		{epoch.Add(quarter), 0.25, 0.5, 1e-6},
+		{epoch.Add(half), 0.5, 1, 1e-6},
+		{epoch.Add(-quarter), 0.75, 0.5, 1e-6},
+	}
+	for _, tt := range tests {
+		phase, illumination := moonPhase(tt.at)
+		if math.Abs(phase-tt.phase) > tt.tol || math.Abs(illumination-tt.illumination) > tt.tol {
+			t.Fatalf("moonPhase(%v) = %g, %g; want %g, %g", tt.at, phase, illumination, tt.phase, tt.illumination)
+		}
+	}
+	if got := moonGlyphIndex(0); got != 0 {
+		t.Fatalf("moonGlyphIndex(0) = %d", got)
+	}
+	if got := moonGlyphIndex(0.5); got != 14 {
+		t.Fatalf("moonGlyphIndex(0.5) = %d", got)
+	}
+	if got := moonGlyphIndex(0.99); got != 0 {
+		t.Fatalf("moonGlyphIndex(0.99) = %d", got)
+	}
+}
+
+// The eight phase names follow the request language.
+func TestMoonName(t *testing.T) {
+	tests := []struct {
+		phase  float64
+		de, en string
+	}{
+		{0, "Neumond", "New moon"},
+		{0.125, "Zunehmende Sichel", "Waxing crescent"},
+		{0.25, "Erstes Viertel", "First quarter"},
+		{0.375, "Zunehmender Mond", "Waxing gibbous"},
+		{0.5, "Vollmond", "Full moon"},
+		{0.625, "Abnehmender Mond", "Waning gibbous"},
+		{0.75, "Letztes Viertel", "Last quarter"},
+		{0.875, "Abnehmende Sichel", "Waning crescent"},
+	}
+	for _, tt := range tests {
+		de := &weather{req: &plugin.Request{Language: "de"}}
+		en := &weather{req: &plugin.Request{Language: "en"}}
+		if got := de.moonName(tt.phase); got != tt.de {
+			t.Fatalf("moonName(%g, de) = %q, want %q", tt.phase, got, tt.de)
+		}
+		if got := en.moonName(tt.phase); got != tt.en {
+			t.Fatalf("moonName(%g, en) = %q, want %q", tt.phase, got, tt.en)
+		}
+	}
+}
+
 // A cell the padding eats up is reported, so Paperboy draws its notice instead
 // of an empty cell.
 func TestTooSmallCell(t *testing.T) {
 	req := &plugin.Request{}
 	w := plugin.WidgetRequest{Width: 10, Height: 10, Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 16}}
 	p := &weather{cur: &branch{}, req: req}
-	for _, name := range []string{"current", "days", "hours", "sun"} {
+	for _, name := range []string{"current", "days", "hours", "sun", "moon"} {
 		w.Widget = name
 		err := p.Render(req, w, render.NewCanvas(10, 10, 2))
 		if !errors.Is(err, plugin.ErrTooSmall) {

@@ -82,6 +82,11 @@ func loadIcons() {
 			iconMasks[name] = m
 		}
 	}
+	for i := 0; i < moonGlyphs; i++ {
+		if m := glyphMask(face, moonGlyphBase+rune(i)); m != nil {
+			iconMasks[moonGlyphName(i)] = m
+		}
+	}
 }
 
 // glyphMask draws one rune on a canvas with room around its ink and returns the
@@ -180,6 +185,8 @@ func (w *weather) Describe() plugin.Description {
 			{Name: "sunrise", Title: "Sunrise", Type: plugin.ValueTimestamp},
 			{Name: "sunset", Title: "Sunset", Type: plugin.ValueTimestamp},
 			{Name: "daylight", Title: "Daylight", Type: plugin.ValueText},
+			{Name: "moon-phase", Title: "Moon phase", Type: plugin.ValueText},
+			{Name: "moon-illumination", Title: "Moon illumination", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
 			{Name: "updated", Title: "Forecast time", Type: plugin.ValueTimestamp},
 			{Name: "forecast", Title: "Daily forecast", Type: plugin.ValueText, Args: forecastArgs},
 		},
@@ -194,6 +201,8 @@ func (w *weather) Describe() plugin.Description {
 				Args:  map[string]plugin.Arg{"mark": markArg, "legend": legendArg}},
 			{Widget: "sun", Title: "Sunrise and sunset", Kinds: image, MinWidth: 200, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 3, Rows: 2}}},
+			{Widget: "moon", Title: "Moon phase", Kinds: image, MinWidth: 160, MinHeight: 80,
+				Sizes: []plugin.Span{{Columns: 3, Rows: 2}, {Columns: 6, Rows: 2}}},
 		},
 	}
 }
@@ -313,6 +322,8 @@ func (w *weather) Render(req *plugin.Request, wr plugin.WidgetRequest, img *imag
 		return w.hours(wr, img)
 	case "sun":
 		return w.sun(wr, img)
+	case "moon":
+		return w.moon(wr, img)
 	}
 	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, wr.Widget)
 }
@@ -565,6 +576,12 @@ func (w *weather) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 			out[name] = v
 		case "daylight":
 			out[name] = plugin.TextValue(w.daylightText(w.daylight()))
+		case "moon-phase":
+			phase, _ := moonPhase(w.req.Now)
+			out[name] = plugin.TextValue(w.moonName(phase))
+		case "moon-illumination":
+			_, illumination := moonPhase(w.req.Now)
+			out[name] = plugin.NumberValue(illumination * 100)
 		case "updated":
 			v, err := at(w.cur.Updated)
 			if err != nil {
