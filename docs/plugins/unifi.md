@@ -130,9 +130,12 @@ notice.
 | `traffic` | Show the rate of the last fetch, default `false` |
 | `ip` | Show the public address of the connection, default `false` |
 
-The speed line sits below the provider: `↓ 250 Mbit/s  ↑ 50 Mbit/s`. It needs a
-speed test on the console. A 6 × 1 cell puts the label and the value on the left
-and the provider on the right. The note replaces the provider there. The
+The speed line shows the result of the last speed test: `↓ 250 Mbit/s
+↑ 50 Mbit/s`. It needs a speed test on the console. With `traffic` the widget
+adds the rate of the last fetch as a second line, and with `ip` the public
+address. Two detail lines replace the provider name: the provider is the least
+important line of the widget. A 6 × 1 cell puts the label and the value on the
+left and the provider on the right. The note replaces the provider there. The
 `speed`, `traffic` and `ip` arguments apply to the stacked cells; the wide row
 drops them.
 

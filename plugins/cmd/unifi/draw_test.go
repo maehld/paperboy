@@ -255,6 +255,28 @@ func TestRenderWANTooSmall(t *testing.T) {
 	}
 }
 
+func TestRenderWANTwoDetailsDropTheProvider(t *testing.T) {
+	p := renderedPlugin()
+	last, down, up := int64(1795810000), 250.5, 50.2
+	p.snap.www.SpeedtestLastRun, p.snap.www.XputDown, p.snap.www.XputUp = &last, &down, &up
+	w := wanWidget(400, 120)
+	w.Args = map[string]any{"traffic": true}
+	withName := renderStatus(t, p, statusRequest("de"), w, 4)
+	p.snap.wan.ISPName = ""
+	if withoutName := renderStatus(t, p, statusRequest("de"), w, 4); !bytes.Equal(withName, withoutName) {
+		t.Error("two detail lines still draw the provider name")
+	}
+
+	// One detail line keeps the provider.
+	p.snap.wan.ISPName = "Deutsche Telekom AG"
+	w.Args = nil
+	telekom := renderStatus(t, p, statusRequest("de"), w, 4)
+	p.snap.wan.ISPName = "Vodafone"
+	if vodafone := renderStatus(t, p, statusRequest("de"), w, 4); bytes.Equal(telekom, vodafone) {
+		t.Error("one detail line does not draw the provider name")
+	}
+}
+
 func TestRenderWANSpeed(t *testing.T) {
 	p := renderedPlugin()
 	w := wanWidget(400, 120)

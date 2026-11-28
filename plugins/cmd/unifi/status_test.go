@@ -120,6 +120,33 @@ func TestSignatureCoversISPName(t *testing.T) {
 	}
 }
 
+func TestSignatureCoversSpeedtest(t *testing.T) {
+	last, down, up := int64(1795810000), 250.5, 50.2
+	base := snapshot{
+		loaded: true, site: siteInfo{ID: "site"},
+		wan: healthSubsystem{Status: "ok", ISPName: "Telekom"},
+		www: healthSubsystem{Status: "ok", Latency: int64Ptr(10),
+			SpeedtestLastRun: &last, XputDown: &down, XputUp: &up},
+	}
+	faster, otherUp := down+1, up+1
+	for _, c := range []struct {
+		name string
+		www  healthSubsystem
+	}{
+		{"download", healthSubsystem{Status: "ok", Latency: int64Ptr(10),
+			SpeedtestLastRun: &last, XputDown: &faster, XputUp: &up}},
+		{"upload", healthSubsystem{Status: "ok", Latency: int64Ptr(10),
+			SpeedtestLastRun: &last, XputDown: &down, XputUp: &otherUp}},
+		{"absent", healthSubsystem{Status: "ok", Latency: int64Ptr(10)}},
+	} {
+		other := base
+		other.www = c.www
+		if base.signature() == other.signature() {
+			t.Errorf("the signature ignores the %s of the speed test", c.name)
+		}
+	}
+}
+
 func TestOfflineCount(t *testing.T) {
 	snap := snapshot{loaded: true, devices: []device{
 		online("A"),
