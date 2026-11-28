@@ -124,7 +124,7 @@ func (w *weather) daylightText(d time.Duration) string {
 	case m == 0:
 		return fmt.Sprintf("%d %s", h, w.t("Std.", "h"))
 	}
-	return fmt.Sprintf("%d %s %02d %s", h, w.t("Std.", "h"), m, w.t("Min.", "min"))
+	return fmt.Sprintf("%d %s %d %s", h, w.t("Std.", "h"), m, w.t("Min.", "min"))
 }
 
 // fillDot draws a filled circle of radius r around x, y.

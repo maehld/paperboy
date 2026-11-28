@@ -57,7 +57,10 @@ var moonNames = [8][2]string{
 	{"Abnehmende Sichel", "Waning crescent"},
 }
 
-// moonName names the phase in the request language.
+// moonName names the phase in the request language. The eight names are wider
+// than the 28 glyphs: the picture follows the nearest 28th of the cycle, the
+// name the nearest eighth. A thin crescent just before the new moon therefore
+// still reads "New moon", which is what the eighth stands for.
 func (w *weather) moonName(phase float64) string {
 	i := int(math.Floor(phase*8+0.5)) % 8
 	if w.req.Lang() == "de" {

@@ -32,7 +32,8 @@ var iconFont []byte
 const iconPx = 128
 
 // iconRunes maps the pictogram names of the widgets to their code points in the
-// Weather Icons font. The names and the points follow css/weather-icons.css.
+// Weather Icons font. The names and the points follow css/weather-icons.css in
+// https://github.com/erikflowers/weather-icons.
 var iconRunes = map[string]rune{
 	"day-sunny":               0xf00d,
 	"night-clear":             0xf02e,

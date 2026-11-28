@@ -45,7 +45,6 @@ and needs one embedded file instead of many PNGs.
    uses the day glyph.
 5. `sdk/render` and `sdk/design` do not change. A change there raises the
    version of every plugin ([ADR 0107](0107-plugin-builds-reach-installations.md)).
-   The weather plugin raises its own version to 1.3.0.
 
 ## Consequences
 
@@ -55,7 +54,6 @@ and needs one embedded file instead of many PNGs.
 - The plugin carries one 100 KiB font instead of five PNGs and imports
   `golang.org/x/image/font/opentype`, which `sdk/render` already brings into the
   module graph.
-- A new glyph needs a name and its code point from `weather-icons.css` in
-  `iconRunes`. The test fails when the font lacks a glyph the widgets can name.
-- The screenshots on the plugin page still show the old pictograms until
-  `scripts/screenshots.sh` runs again.
+- A new glyph needs a name and its code point from `css/weather-icons.css` in
+  the upstream repository. The test fails when the font lacks a glyph the
+  widgets can name.

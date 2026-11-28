@@ -535,6 +535,7 @@ func TestDaylightText(t *testing.T) {
 	}{
 		{"de", 10*time.Hour + 30*time.Minute, "10 Std. 30 Min."},
 		{"en", 10*time.Hour + 30*time.Minute, "10 h 30 min"},
+		{"de", 10*time.Hour + 5*time.Minute, "10 Std. 5 Min."},
 		{"de", 45 * time.Minute, "45 Min."},
 		{"en", 10 * time.Hour, "10 h"},
 	}
