@@ -10,7 +10,8 @@
 //	    command: [weather]
 //	    config: { lat: 52.52, lon: 13.40 }
 //
-// Open-Meteo needs no API key. The pictograms come from OpenMoji (icons/).
+// Open-Meteo needs no API key. The pictograms come from the embedded Weather
+// Icons font (icons/).
 package main
 
 import (
@@ -223,7 +224,7 @@ func branchOf(f *openMeteo, language string) (branch, error) {
 		Beaufort: beaufort(f.Current.Wind),
 		Code:     f.Current.Code,
 		IsDay:    f.Current.IsDay != 0,
-		Symbol:   symbol(f.Current.Code),
+		Symbol:   symbol(f.Current.Code, f.Current.IsDay != 0),
 		Text:     conditionText(f.Current.Code, language),
 	}
 	b.Current.PrecipProb = at(f.Hourly.PrecipProb, hour)
@@ -428,22 +429,37 @@ func beaufort(kmh float64) int {
 	return 12
 }
 
-// symbol names the pictogram of a WMO weather code: sun, cloud, rain, snow or
-// thunder, the file names in icons/.
-func symbol(code int) string {
-	switch {
-	case code == 0, code == 1:
-		return "sun"
-	case code == 2, code == 3, code == 45, code == 48:
-		return "cloud"
-	case code >= 51 && code <= 67, code >= 80 && code <= 82:
+// symbol names the pictogram of a WMO weather code, the names in iconRunes.
+// Only a clear or partly cloudy sky has a glyph of its own at night; every
+// precipitation glyph is neutral.
+func symbol(code int, isDay bool) string {
+	switch code {
+	case 0, 1:
+		if !isDay {
+			return "night-clear"
+		}
+		return "day-sunny"
+	case 2:
+		if !isDay {
+			return "night-alt-partly-cloudy"
+		}
+		return "day-cloudy"
+	case 3:
+		return "cloudy"
+	case 45, 48:
+		return "fog"
+	case 51, 53, 55:
+		return "sprinkle"
+	case 56, 57, 66, 67:
+		return "sleet"
+	case 61, 63, 65, 80, 81, 82:
 		return "rain"
-	case code >= 71 && code <= 77, code >= 85 && code <= 86:
+	case 71, 73, 75, 77, 85, 86:
 		return "snow"
-	case code >= 95:
-		return "thunder"
+	case 95, 96, 99:
+		return "thunderstorm"
 	}
-	return "cloud"
+	return "cloudy"
 }
 
 var weekdayNames = map[string][7]string{

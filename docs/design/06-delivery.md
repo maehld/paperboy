@@ -17,7 +17,7 @@ Several tags may point to the same commit. A second release of a train on the sa
 | Asset | Content |
 |---|---|
 | `paperboy-<os>-<arch>[.exe]` | The binary for Linux and Windows, amd64 and arm64 |
-| `paperboy-plugins-<os>-<arch>.zip` | `plugins/<plugin>-v<version>` for the platform, plus the OpenMoji licences of the weather and evcc icons |
+| `paperboy-plugins-<os>-<arch>.zip` | `plugins/<plugin>-v<version>` for the platform, plus the licence of the weather pictograms |
 | `paperboy-firmware.zip` | One flat bundle with the image of every hardware type, unpacks to `firmware/` ([ADR 0059](../adr/0059-firmware-bundle.md), [0060](../adr/0060-download-from-releases.md), [0063](../adr/0063-constant-firmware-bundle-name.md)) |
 | `SHA256SUMS` | The checksums that an instance verifies before it installs anything |
 

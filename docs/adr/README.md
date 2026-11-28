@@ -212,6 +212,8 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0176](0176-child-friendly-signs.md) | Child-friendly smileys in the dexcom plugin | Accepted, implemented; adds the happy, sad and surprised O-mouth faces and the `sign` style `outline` or `solid`; a stale reading loses the alarm box |
 | [0177](0177-the-smiley-is-as-high-as-the-number.md) | The smiley is as high as the number | Accepted, implemented; sizes the face like the capitals of the reading (0.72/0.94 of the value), keeps the urgent O-mouth without a mark, and corrects the docs and the collage |
 | [0178](0178-use-the-private-unifi-controller-api.md) | Use the private UniFi controller API for the WAN summary | Accepted, implemented; keeps the documented integration API for sites, devices and clients, adds the optional private `stat/health` call for the WAN line, and ignores per-WAN `uptime_stats` |
+| [0179](0179-pictograms-from-weather-icons.md) | Pictograms from Weather Icons | Accepted, implemented; replaces the OpenMoji PNGs of the weather plugin and adds day and night glyphs |
+| [0180](0180-the-moon-phase-is-computed-locally.md) | The moon phase is computed locally | Accepted, implemented; counts the synodic month from a known new moon, uses 28 phase glyphs and eight names, and shows no moonrise or moonset |
 
 ## Delivery and releases
 

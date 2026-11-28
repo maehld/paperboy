@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"embed"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
 	"image/color"
-	"image/png"
+	"image/draw"
 	"math"
 	"net/http"
 	"os"
@@ -20,34 +20,96 @@ import (
 	"github.com/maehld/paperboy/sdk/format"
 	"github.com/maehld/paperboy/sdk/plugin"
 	"github.com/maehld/paperboy/sdk/render"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/math/fixed"
 )
 
-//go:embed icons/*.png
-var iconFiles embed.FS
+//go:embed icons/weathericons.ttf
+var iconFont []byte
+
+// iconPx is the size the glyphs are drawn at before render.NewMask trims them.
+const iconPx = 128
+
+// iconRunes maps the pictogram names of the widgets to their code points in the
+// Weather Icons font. The names and the points follow css/weather-icons.css in
+// https://github.com/erikflowers/weather-icons.
+var iconRunes = map[string]rune{
+	"day-sunny":               0xf00d,
+	"night-clear":             0xf02e,
+	"day-cloudy":              0xf002,
+	"night-alt-partly-cloudy": 0xf081,
+	"cloudy":                  0xf013,
+	"fog":                     0xf014,
+	"sprinkle":                0xf01c,
+	"sleet":                   0xf0b5,
+	"rain":                    0xf019,
+	"snow":                    0xf01b,
+	"thunderstorm":            0xf01e,
+	"sunrise":                 0xf051,
+	"sunset":                  0xf052,
+}
 
 var (
 	iconOnce  sync.Once
 	iconMasks map[string]*render.Mask
 )
 
-// icon returns the mask of an embedded pictogram by name.
+// icon returns the mask of a glyph of the embedded Weather Icons font. Each
+// glyph is drawn once at a large size, so a display scales the stored shape to
+// its cell.
 func icon(name string) *render.Mask {
-	iconOnce.Do(func() {
-		iconMasks = map[string]*render.Mask{}
-		entries, _ := iconFiles.ReadDir("icons")
-		for _, e := range entries {
-			f, err := iconFiles.Open("icons/" + e.Name())
-			if err != nil {
-				continue
-			}
-			img, err := png.Decode(f)
-			f.Close()
-			if err == nil {
-				iconMasks[strings.TrimSuffix(e.Name(), ".png")] = render.NewMask(img)
-			}
-		}
-	})
+	iconOnce.Do(loadIcons)
 	return iconMasks[name]
+}
+
+// loadIcons parses the font once and caches the trimmed mask of every glyph the
+// widgets use.
+func loadIcons() {
+	iconMasks = map[string]*render.Mask{}
+	f, err := opentype.Parse(iconFont)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "weather: parse icons:", err)
+		return
+	}
+	face, err := opentype.NewFace(f, &opentype.FaceOptions{Size: iconPx, DPI: 72, Hinting: font.HintingFull})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "weather: open icons:", err)
+		return
+	}
+	defer face.Close()
+	for name, r := range iconRunes {
+		if m := glyphMask(face, r); m != nil {
+			iconMasks[name] = m
+		}
+	}
+	for i := 0; i < moonGlyphs; i++ {
+		if m := glyphMask(face, moonGlyphBase+rune(i)); m != nil {
+			iconMasks[moonGlyphName(i)] = m
+		}
+	}
+}
+
+// glyphMask draws one rune on a canvas with room around its ink and returns the
+// trimmed mask. A generous canvas makes the glyph size inside the face
+// irrelevant.
+func glyphMask(face font.Face, r rune) *render.Mask {
+	b, _ := font.BoundString(face, string(r))
+	const pad = 8
+	w, h := (b.Max.X-b.Min.X).Ceil()+2*pad, (b.Max.Y-b.Min.Y).Ceil()+2*pad
+	if w <= 2*pad || h <= 2*pad {
+		return nil
+	}
+	img := image.NewGray(image.Rect(0, 0, w, h))
+	draw.Draw(img, img.Bounds(), image.White, image.Point{}, draw.Src)
+	d := font.Drawer{
+		Dst:  img,
+		Src:  image.Black,
+		Face: face,
+		Dot:  fixed.Point26_6{X: fixed.I(pad) - b.Min.X, Y: fixed.I(pad) - b.Min.Y},
+	}
+	d.DrawString(string(r))
+	return render.NewMask(img)
 }
 
 var configKeys = map[string]plugin.Arg{
@@ -123,6 +185,9 @@ func (w *weather) Describe() plugin.Description {
 			{Name: "max-today", Title: "Highest today", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
 			{Name: "sunrise", Title: "Sunrise", Type: plugin.ValueTimestamp},
 			{Name: "sunset", Title: "Sunset", Type: plugin.ValueTimestamp},
+			{Name: "daylight", Title: "Daylight", Type: plugin.ValueText},
+			{Name: "moon-phase", Title: "Moon phase", Type: plugin.ValueText},
+			{Name: "moon-illumination", Title: "Moon illumination", Type: plugin.ValueNumber, Unit: "%", Precision: 0},
 			{Name: "updated", Title: "Forecast time", Type: plugin.ValueTimestamp},
 			{Name: "forecast", Title: "Daily forecast", Type: plugin.ValueText, Args: forecastArgs},
 		},
@@ -135,6 +200,10 @@ func (w *weather) Describe() plugin.Description {
 			{Widget: "hours", Title: "Temperature today", Kinds: image, MinWidth: 200, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}},
 				Args:  map[string]plugin.Arg{"mark": markArg, "legend": legendArg}},
+			{Widget: "sun", Title: "Sunrise and sunset", Kinds: image, MinWidth: 200, MinHeight: 80,
+				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 3, Rows: 2}}},
+			{Widget: "moon", Title: "Moon phase", Kinds: image, MinWidth: 160, MinHeight: 80,
+				Sizes: []plugin.Span{{Columns: 3, Rows: 2}, {Columns: 6, Rows: 2}}},
 		},
 	}
 }
@@ -252,6 +321,10 @@ func (w *weather) Render(req *plugin.Request, wr plugin.WidgetRequest, img *imag
 		return w.days(wr, img)
 	case "hours":
 		return w.hours(wr, img)
+	case "sun":
+		return w.sun(wr, img)
+	case "moon":
+		return w.moon(wr, img)
 	}
 	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, wr.Widget)
 }
@@ -348,7 +421,7 @@ func (w *weather) days(wr plugin.WidgetRequest, img *image.Paletted) error {
 		}
 		render.Text(img, label, cx, col.Min.Y+h*18/100, render.Style{Size: text, Bold: true, Shrink: true}, cw-4, color.Black, render.Center)
 		iconH := h * 45 / 100
-		icon(symbol(d.Code)).Draw(img, image.Rect(col.Min.X, col.Min.Y+h*24/100, col.Max.X, col.Min.Y+h*24/100+iconH), iconH*85/100, render.Center)
+		icon(symbol(d.Code, true)).Draw(img, image.Rect(col.Min.X, col.Min.Y+h*24/100, col.Max.X, col.Min.Y+h*24/100+iconH), iconH*85/100, render.Center)
 		render.Text(img, w.temp(d.Max)+" / "+w.temp(d.Min), cx, col.Max.Y-h*4/100, render.Style{Size: text, Shrink: true}, cw-4, color.Black, render.Center)
 		if i > 0 && wr.Style.Rule > 0 {
 			render.VLine(img, col.Min.X, col.Min.Y+h/10, col.Max.Y-h/10, wr.Style.Rule)
@@ -502,6 +575,14 @@ func (w *weather) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 				return nil, err
 			}
 			out[name] = v
+		case "daylight":
+			out[name] = plugin.TextValue(w.daylightText(w.daylight()))
+		case "moon-phase":
+			phase, _ := moonPhase(w.req.Now)
+			out[name] = plugin.TextValue(w.moonName(phase))
+		case "moon-illumination":
+			_, illumination := moonPhase(w.req.Now)
+			out[name] = plugin.NumberValue(illumination * 100)
 		case "updated":
 			v, err := at(w.cur.Updated)
 			if err != nil {

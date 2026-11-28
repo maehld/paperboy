@@ -119,7 +119,7 @@ Every plugin has its own version in `plugins/cmd/<plugin>/VERSION`, embedded in 
 | Plugin | Data source | Widgets |
 |---|---|---|
 | [`calendar`](../plugins/calendar.md) | CalDAV, CardDAV, iCalendar links and files | `agenda`, `birthdays`, `month`, `week` |
-| [`weather`](../plugins/weather.md) | Open-Meteo | `current`, `days`, `hours` |
+| [`weather`](../plugins/weather.md) | Open-Meteo | `current`, `days`, `hours`, `sun`, `moon` |
 | [`fuel`](../plugins/fuel.md) | Tankerkönig (MTS-K) | `prices`, `cheapest`, `history`, values `price`, `station`, `distance`, `open`, `list`, `updated` |
 | [`evcc`](../plugins/evcc.md) | evcc `/api/state` and its energy history | `site`, `flow` and `balance` (with `period`), `loadpoint`, `forecast`, `history`, `chart`, `values`, action `mode` |
 | [`departures`](../plugins/departures.md) | EFA rapidJSON | `departures` |

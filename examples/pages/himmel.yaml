@@ -1,0 +1,10 @@
+# The sun and the moon above today's temperature curve. The display type's
+# header band is the 6x1 header row (ADR 0168).
+title: Himmel
+kind: image
+grid: [6, 7]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [6, 2], widget: weather/sun }
+  - { at: [0, 2], span: [6, 2], widget: weather/moon }
+  - { at: [0, 4], span: [6, 3], widget: weather/hours }
