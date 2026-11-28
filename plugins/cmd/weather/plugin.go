@@ -45,6 +45,8 @@ var iconRunes = map[string]rune{
 	"rain":                    0xf019,
 	"snow":                    0xf01b,
 	"thunderstorm":            0xf01e,
+	"sunrise":                 0xf051,
+	"sunset":                  0xf052,
 }
 
 var (
@@ -177,6 +179,7 @@ func (w *weather) Describe() plugin.Description {
 			{Name: "max-today", Title: "Highest today", Type: plugin.ValueNumber, Unit: "°C", Precision: 1},
 			{Name: "sunrise", Title: "Sunrise", Type: plugin.ValueTimestamp},
 			{Name: "sunset", Title: "Sunset", Type: plugin.ValueTimestamp},
+			{Name: "daylight", Title: "Daylight", Type: plugin.ValueText},
 			{Name: "updated", Title: "Forecast time", Type: plugin.ValueTimestamp},
 			{Name: "forecast", Title: "Daily forecast", Type: plugin.ValueText, Args: forecastArgs},
 		},
@@ -189,6 +192,8 @@ func (w *weather) Describe() plugin.Description {
 			{Widget: "hours", Title: "Temperature today", Kinds: image, MinWidth: 200, MinHeight: 80,
 				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 6, Rows: 3}},
 				Args:  map[string]plugin.Arg{"mark": markArg, "legend": legendArg}},
+			{Widget: "sun", Title: "Sunrise and sunset", Kinds: image, MinWidth: 200, MinHeight: 80,
+				Sizes: []plugin.Span{{Columns: 6, Rows: 2}, {Columns: 3, Rows: 2}}},
 		},
 	}
 }
@@ -306,6 +311,8 @@ func (w *weather) Render(req *plugin.Request, wr plugin.WidgetRequest, img *imag
 		return w.days(wr, img)
 	case "hours":
 		return w.hours(wr, img)
+	case "sun":
+		return w.sun(wr, img)
 	}
 	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, wr.Widget)
 }
@@ -556,6 +563,8 @@ func (w *weather) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 				return nil, err
 			}
 			out[name] = v
+		case "daylight":
+			out[name] = plugin.TextValue(w.daylightText(w.daylight()))
 		case "updated":
 			v, err := at(w.cur.Updated)
 			if err != nil {

@@ -399,7 +399,7 @@ func TestRenderWidgets(t *testing.T) {
 		p := &weather{cur: &b, req: req, loc: req.Location(), lang: "de"}
 		style := plugin.Style{Padding: 8, Rule: 1, TextPx: 16 * float64(ppi) / 72}
 		for _, levels := range []int{2, 4, 16} {
-			for _, name := range []string{"current", "days", "hours"} {
+			for _, name := range []string{"current", "days", "hours", "sun"} {
 				img := render.NewCanvas(w, h, levels)
 				wr := plugin.WidgetRequest{Widget: name, Width: w, Height: h, Style: style}
 				if err := p.Render(req, wr, img); err != nil {
@@ -473,7 +473,7 @@ func TestValues(t *testing.T) {
 	p := &weather{cur: &b, req: req, loc: req.Location(), lang: "de"}
 	names := []string{"temperature", "apparent", "humidity", "precipitation", "precipitation-probability",
 		"precipitation-today", "precipitation-next", "wind", "beaufort", "condition", "min-today",
-		"max-today", "sunrise", "sunset", "updated", "forecast"}
+		"max-today", "sunrise", "sunset", "daylight", "updated", "forecast"}
 	values, err := p.Values(&plugin.Request{Values: names})
 	if err != nil {
 		t.Fatal(err)
@@ -498,6 +498,9 @@ func TestValues(t *testing.T) {
 	if v := values["sunrise"]; v.Timestamp == nil || *v.Timestamp != "2026-10-22T04:00:00Z" {
 		t.Fatalf("sunrise = %+v", v)
 	}
+	if v := values["daylight"]; v.Text == nil || *v.Text != "10 Std." {
+		t.Fatalf("daylight = %+v", v)
+	}
 	if v := values["forecast"]; v.Text == nil {
 		t.Fatalf("forecast = %+v", v)
 	} else if lines := strings.Split(*v.Text, "\n"); len(lines) != 5 ||
@@ -509,13 +512,33 @@ func TestValues(t *testing.T) {
 	}
 }
 
+// The daylight text follows the request language and keeps the minutes.
+func TestDaylightText(t *testing.T) {
+	tests := []struct {
+		lang string
+		d    time.Duration
+		want string
+	}{
+		{"de", 10*time.Hour + 30*time.Minute, "10 Std. 30 Min."},
+		{"en", 10*time.Hour + 30*time.Minute, "10 h 30 min"},
+		{"de", 45 * time.Minute, "45 Min."},
+		{"en", 10 * time.Hour, "10 h"},
+	}
+	for _, tt := range tests {
+		p := &weather{req: &plugin.Request{Language: tt.lang}}
+		if got := p.daylightText(tt.d); got != tt.want {
+			t.Fatalf("daylightText(%s, %v) = %q, want %q", tt.lang, tt.d, got, tt.want)
+		}
+	}
+}
+
 // A cell the padding eats up is reported, so Paperboy draws its notice instead
 // of an empty cell.
 func TestTooSmallCell(t *testing.T) {
 	req := &plugin.Request{}
 	w := plugin.WidgetRequest{Width: 10, Height: 10, Style: plugin.Style{Padding: 8, Rule: 1, TextPx: 16}}
 	p := &weather{cur: &branch{}, req: req}
-	for _, name := range []string{"current", "days", "hours"} {
+	for _, name := range []string{"current", "days", "hours", "sun"} {
 		w.Widget = name
 		err := p.Render(req, w, render.NewCanvas(10, 10, 2))
 		if !errors.Is(err, plugin.ErrTooSmall) {
