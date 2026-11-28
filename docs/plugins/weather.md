@@ -9,9 +9,14 @@ today's temperature curve:
 
 ![The weather page](../images/plugins/weather/page-wetter.png)
 
-| `current` | `days` | `hours` |
-|---|---|---|
-| ![current](../images/plugins/weather/current.png) | ![days](../images/plugins/weather/days.png) | ![hours](../images/plugins/weather/hours.png) |
+The example page `himmel` shows the sun, the moon and today's temperature
+curve:
+
+![The sky page](../images/plugins/weather/page-himmel.png)
+
+| `current` | `days` | `hours` | `sun` | `moon` |
+|---|---|---|---|---|
+| ![current](../images/plugins/weather/current.png) | ![days](../images/plugins/weather/days.png) | ![hours](../images/plugins/weather/hours.png) | ![sun](../images/plugins/weather/sun.png) | ![moon](../images/plugins/weather/moon.png) |
 
 ## Configuration
 
@@ -30,6 +35,8 @@ All widgets are for image displays.
 - `current`: pictogram, temperature, condition, apparent temperature, wind force, today's range and the next precipitation of the day, e.g. `Rain from 14:00, about 2 h`, `Rain until 15:00` or `No rain today`.
 - `days`: pictogram and range per day. Args: `days: 1..5`.
 - `hours`: today's temperature as a line with the precipitation probability as bars. The fill names the type: rain shaded, snow hatched, a mixed hour solid. The heading names the fill patterns, the dashed line marks now. Args: `mark` (`none`, `min`, `max`, `both`) labels the lowest and the highest temperature; default `none`. `legend: false` drops the three fill entries, so a short cell keeps the room for the plot.
+- `sun`: a half-ellipse arc from sunrise to sunset, the two glyphs and local times at its ends, and the day length above it. A dot marks now. Outside daylight the heading reads `Night`, `Polar night` or `Midnight sun`.
+- `moon`: one of 28 phase glyphs beside the localised phase name and the illuminated share. The phase counts the synodic month from the new moon of 6 January 2000, 18:14 UTC.
 
 An event is a contiguous run of hours with at least 0.1 mm. Open-Meteo gives precipitation as water equivalent, so snow counts too. An hour with rain and snow is mixed. The plugin decides about the event at render time, so an old forecast still says when a running event ends.
 
@@ -75,6 +82,9 @@ A text page reads these values ([ADR 0111](../adr/0111-text-pages-from-plugin-va
 | `max-today` | number | °C | 1 | highest today |
 | `sunrise` | timestamp | | | today |
 | `sunset` | timestamp | | | today |
+| `daylight` | text | | | today's daylight, e.g. `10 h 30 min` |
+| `moon-phase` | text | | | phase name in the global language |
+| `moon-illumination` | number | % | 0 | illuminated share |
 | `updated` | timestamp | | | time of the forecast |
 | `forecast` | text | | | one line per day: label, condition and range |
 

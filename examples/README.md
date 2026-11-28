@@ -19,6 +19,7 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
 - `kalender.yaml` - agenda next to a month grid.
 - `woche.yaml` - the next seven days as calendar columns.
 - `wetter.yaml` - current weather, five days and today's temperature curve.
+- `himmel.yaml` - the sun, the moon and today's temperature curve.
 - `spritpreise.yaml` - the cheapest station, the nearest stations and the price
   history of the day from Tankerkönig; `spritpreise.lcd2004.yaml` shows two
   prices, the cheapest station, the time of the fetch and a list on 20×4.

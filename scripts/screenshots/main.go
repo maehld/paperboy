@@ -46,7 +46,7 @@ import (
 // pageShots maps a plugin to the example pages its documentation shows. A page
 // that ends in .lcd2004 is a text page for the 20x4 display.
 var pageShots = map[string][]string{
-	"weather":    {"wetter"},
+	"weather":    {"wetter", "himmel"},
 	"evcc":       {"energie", "energie-woche", "ertrag"},
 	"calendar":   {"kalender", "woche", "geburtstage", "geburtstage.lcd2004"},
 	"departures": {"abfahrten", "abfahrten.lcd2004"},
