@@ -55,6 +55,8 @@ plugins:
     config:
       client_id: ${VICARE_CLIENT_ID}     # from the Viessmann developer portal
       refresh_token: ${VICARE_REFRESH_TOKEN}   # printed by the plugin's -login
+      # email: ${VICARE_EMAIL}                 # optional fallback when no token works
+      # password: ${VICARE_PASSWORD}
       refresh: 10m                        # default; at least 5m (about 1450 calls a day)
   rss:
     config:

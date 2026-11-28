@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -82,6 +83,19 @@ func (v *vicare) authorizeURL(challenge, state string) string {
 	return v.iam + "/idp/v3/authorize?" + q.Encode()
 }
 
+// oauthError is an error answer of the token endpoint.
+type oauthError struct {
+	code        string
+	description string
+}
+
+func (e *oauthError) Error() string {
+	if e.description != "" {
+		return "token endpoint: " + e.description
+	}
+	return "token endpoint: " + e.code
+}
+
 // tokenRequest posts to the token endpoint and returns the parsed answer.
 func (v *vicare) tokenRequest(ctx context.Context, form url.Values) (*tokenAnswer, error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
@@ -108,11 +122,7 @@ func (v *vicare) tokenRequest(ctx context.Context, form url.Values) (*tokenAnswe
 		return nil, fmt.Errorf("token endpoint: HTTP %d", resp.StatusCode)
 	}
 	if answer.Error != "" {
-		detail := answer.ErrorDescription
-		if detail == "" {
-			detail = answer.Error
-		}
-		return nil, fmt.Errorf("token endpoint: %s", detail)
+		return nil, &oauthError{code: answer.Error, description: answer.ErrorDescription}
 	}
 	if resp.StatusCode != http.StatusOK || answer.AccessToken == "" {
 		return nil, fmt.Errorf("token endpoint: HTTP %d", resp.StatusCode)
@@ -157,6 +167,9 @@ func (v *vicare) renew(ctx context.Context, refresh string) (*tokens, error) {
 
 // access returns a usable access token, renewing it when it is about to
 // expire. A renewed refresh token goes back to Paperboy with the next answer.
+//
+// Without a token, or when the API refuses it, the configured e-mail and
+// password seed a new token chain; after that the plugin uses tokens only.
 func (v *vicare) access(ctx context.Context) (string, error) {
 	v.mu.Lock()
 	t := v.tokens
@@ -168,18 +181,101 @@ func (v *vicare) access(ctx context.Context) (string, error) {
 	if t != nil && t.Refresh != "" {
 		refresh = t.Refresh
 	}
-	if refresh == "" {
-		return "", errors.New("no refresh token: run the plugin with -login")
+
+	var next *tokens
+	var err error
+	switch {
+	case refresh != "":
+		next, err = v.renew(ctx, refresh)
+		if err != nil && v.email != "" && v.password != "" && isInvalidGrant(err) {
+			fmt.Fprintln(os.Stderr, "vicare: the refresh token was refused; logging in with the configured password")
+			next, err = v.passwordLogin(ctx)
+			if err != nil {
+				err = fmt.Errorf("log in with the password: %w", err)
+			}
+		} else if err != nil {
+			err = fmt.Errorf("renew the access token: %w", err)
+		}
+	case v.email != "" && v.password != "":
+		fmt.Fprintln(os.Stderr, "vicare: no refresh token stored; logging in with the configured password")
+		next, err = v.passwordLogin(ctx)
+		if err != nil {
+			err = fmt.Errorf("log in with the password: %w", err)
+		}
+	default:
+		return "", errors.New("no refresh token: run the plugin with -login, or set email and password")
 	}
-	next, err := v.renew(ctx, refresh)
 	if err != nil {
-		return "", fmt.Errorf("renew the access token: %w", err)
+		return "", err
 	}
 	v.mu.Lock()
 	v.tokens = next
 	v.queueLocked()
 	v.mu.Unlock()
 	return next.Access, nil
+}
+
+// isInvalidGrant reports whether the token endpoint refused the token itself,
+// which a password login can replace.
+func isInvalidGrant(err error) bool {
+	var oe *oauthError
+	if !errors.As(err, &oe) {
+		return false
+	}
+	switch oe.code {
+	case "invalid_grant", "invalid_token", "expired_token":
+		return true
+	}
+	return false
+}
+
+// passwordLogin authorizes with the account's e-mail and password. The
+// endpoint answers the PKCE flow with a redirect that carries the code, so no
+// browser is needed. Viessmann may require a browser login (2FA), and the flow
+// is not part of the official OAuth2 grant set; -login stays the reliable way.
+func (v *vicare) passwordLogin(ctx context.Context) (*tokens, error) {
+	if v.email == "" || v.password == "" {
+		return nil, errors.New("email and password are not configured")
+	}
+	verifier, challenge, err := pkce()
+	if err != nil {
+		return nil, err
+	}
+	state, err := randomState()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, v.authorizeURL(challenge, state), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(v.email, v.password)
+
+	// The code is in the redirect, so the client must not follow it.
+	client := *v.client
+	client.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return nil, errors.New("the ViCare account refused the e-mail or password")
+	}
+	location := resp.Header.Get("Location")
+	if resp.StatusCode < 300 || resp.StatusCode >= 400 || location == "" {
+		return nil, fmt.Errorf("the identity server answered HTTP %d instead of a redirect: the account may need a browser login, run -login", resp.StatusCode)
+	}
+	code, err := codeFrom(location)
+	if err != nil {
+		return nil, err
+	}
+	return v.exchangeCode(ctx, code, verifier)
 }
 
 // invalidate drops the access token, so the next call renews it.

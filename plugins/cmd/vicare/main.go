@@ -19,7 +19,8 @@
 // run the program once with -login, and put the printed refresh token,
 // installation, gateway and device into paperboy.yaml. The plugin renews the
 // access token itself and keeps both tokens in its state, never in the
-// configuration.
+// configuration. An account's e-mail and password can seed the token chain
+// instead: they are used only when no token is stored or the API refuses it.
 //
 //	plugins:
 //	  vicare:
@@ -78,7 +79,9 @@ func main() {
 
 var configKeys = map[string]plugin.Arg{
 	"client_id":     {Type: "string", Required: true, Description: "client ID of the personal API client in the Viessmann developer portal"},
-	"refresh_token": {Type: "string", Required: true, Description: "refresh token printed by the plugin's -login"},
+	"refresh_token": {Type: "string", Description: "refresh token printed by the plugin's -login"},
+	"email":         {Type: "string", Description: "ViCare account e-mail, to seed the token chain when no token works"},
+	"password":      {Type: "string", Description: "ViCare account password for that fallback, preferably via ${VICARE_PASSWORD}"},
 	"installation":  {Type: "string", Description: "installation ID; discovered from the account when empty"},
 	"gateway":       {Type: "string", Description: "gateway serial; discovered when empty"},
 	"device":        {Type: "string", Description: "device ID on the gateway, default the heating device"},
@@ -122,6 +125,8 @@ type vicare struct {
 
 	clientID    string
 	seedRefresh string
+	email       string
+	password    string
 	refresh     time.Duration
 
 	readyOnce sync.Once
@@ -239,8 +244,15 @@ func (v *vicare) Configure(cfg plugin.Values, req *plugin.Request) error {
 		return errors.New("client_id is empty")
 	}
 	v.seedRefresh = strings.TrimSpace(cfg.String("refresh_token", ""))
-	if v.seedRefresh == "" {
-		return errors.New("refresh_token is empty: run the plugin with -login")
+	v.email = strings.TrimSpace(cfg.String("email", ""))
+	v.password = cfg.String("password", "")
+	switch {
+	case v.email != "" && v.password == "":
+		return errors.New("password is empty for the configured email")
+	case v.email == "" && v.password != "":
+		return errors.New("email is empty for the configured password")
+	case v.seedRefresh == "" && v.password == "":
+		return errors.New("refresh_token is empty: run the plugin with -login, or set email and password")
 	}
 	v.installation = strings.TrimSpace(cfg.String("installation", ""))
 	v.gateway = strings.TrimSpace(cfg.String("gateway", ""))
@@ -271,8 +283,10 @@ func (v *vicare) Configure(cfg plugin.Values, req *plugin.Request) error {
 // fingerprint identifies the configuration in the stored state without
 // keeping the seed token in it.
 func (v *vicare) fingerprint() string {
+	// The password stays out: a changed password does not invalidate the
+	// stored token chain, but another account does.
 	sum := sha256.Sum256([]byte(strings.Join([]string{
-		v.clientID, v.installation, v.gateway, v.device, v.seedRefresh,
+		v.clientID, v.email, v.installation, v.gateway, v.device, v.seedRefresh,
 	}, "\x00")))
 	return hex.EncodeToString(sum[:8])
 }

@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -362,5 +364,157 @@ func TestAuthorizeURLAndExchange(t *testing.T) {
 		form.Get("client_id") != "client" || form.Get("code_verifier") != verifier ||
 		form.Get("redirect_uri") != redirectURI {
 		t.Fatalf("form = %v", form)
+	}
+}
+
+// passwordServer answers the authorization endpoint the way the Viessmann
+// identity server does for the Basic auth flow: it redirects with the code.
+type passwordServer struct {
+	mu        sync.Mutex
+	basic     [][3]string
+	authorize []url.Values
+	forms     []url.Values
+	refuse    bool // refuse the refresh grant once
+}
+
+func (p *passwordServer) handler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/idp/v3/authorize":
+			user, pass, ok := r.BasicAuth()
+			p.mu.Lock()
+			p.basic = append(p.basic, [3]string{user, pass, fmt.Sprint(ok)})
+			p.authorize = append(p.authorize, r.URL.Query())
+			p.mu.Unlock()
+			loc := redirectURI + "?code=the-code&state=" + r.URL.Query().Get("state")
+			w.Header().Set("Location", loc)
+			w.WriteHeader(http.StatusFound)
+		case "/idp/v3/token":
+			r.ParseForm()
+			p.mu.Lock()
+			p.forms = append(p.forms, r.PostForm)
+			refuse := p.refuse
+			p.refuse = false
+			p.mu.Unlock()
+			if refuse && r.PostForm.Get("grant_type") == "refresh_token" {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{
+					"error": "invalid_grant", "error_description": "refresh token expired",
+				})
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "access", "refresh_token": "rotated", "expires_in": 3600,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}
+}
+
+func TestPasswordLogin(t *testing.T) {
+	ps := &passwordServer{}
+	srv := httptest.NewServer(ps.handler())
+	defer srv.Close()
+
+	v := &vicare{client: srv.Client(), iam: srv.URL, base: srv.URL, clientID: "client",
+		email: "me@example.com", password: "secret"}
+	tok, err := v.passwordLogin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Access != "access" || tok.Refresh != "rotated" {
+		t.Fatalf("tokens = %+v", tok)
+	}
+	if len(ps.basic) != 1 || ps.basic[0][0] != "me@example.com" || ps.basic[0][1] != "secret" || ps.basic[0][2] != "true" {
+		t.Fatalf("basic auth = %v", ps.basic)
+	}
+	query := ps.authorize[0]
+	if query.Get("code_challenge") == "" || query.Get("code_challenge_method") != "S256" ||
+		query.Get("redirect_uri") != redirectURI || query.Get("client_id") != "client" {
+		t.Fatalf("authorize query = %v", query)
+	}
+	form := ps.forms[0]
+	if form.Get("grant_type") != "authorization_code" || form.Get("code") != "the-code" ||
+		form.Get("code_verifier") == "" {
+		t.Fatalf("token form = %v", form)
+	}
+}
+
+func TestAccessSeedsFromThePassword(t *testing.T) {
+	ps := &passwordServer{}
+	srv := httptest.NewServer(ps.handler())
+	defer srv.Close()
+
+	v := &vicare{client: srv.Client(), iam: srv.URL, base: srv.URL, clientID: "client",
+		email: "me@example.com", password: "secret"}
+	if _, err := v.access(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(ps.authorize) != 1 || ps.forms[0].Get("grant_type") != "authorization_code" {
+		t.Fatalf("the password did not seed the token chain: %v %v", ps.authorize, ps.forms)
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.tokens == nil || v.tokens.Refresh != "rotated" {
+		t.Fatalf("tokens = %+v", v.tokens)
+	}
+}
+
+func TestAccessFallsBackToThePassword(t *testing.T) {
+	ps := &passwordServer{refuse: true}
+	srv := httptest.NewServer(ps.handler())
+	defer srv.Close()
+
+	v := &vicare{client: srv.Client(), iam: srv.URL, base: srv.URL, clientID: "client",
+		seedRefresh: "stale", email: "me@example.com", password: "secret"}
+	if _, err := v.access(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(ps.forms) != 2 || ps.forms[0].Get("grant_type") != "refresh_token" ||
+		ps.forms[0].Get("refresh_token") != "stale" ||
+		ps.forms[1].Get("grant_type") != "authorization_code" {
+		t.Fatalf("token forms = %v", ps.forms)
+	}
+}
+
+func TestAccessWithoutATokenAndWithoutAPassword(t *testing.T) {
+	v := &vicare{client: http.DefaultClient, iam: "http://127.0.0.1:1", base: "http://127.0.0.1:1",
+		clientID: "client"}
+	_, err := v.access(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "email and password") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPasswordLoginWithoutCredentials(t *testing.T) {
+	v := &vicare{client: http.DefaultClient}
+	if _, err := v.passwordLogin(context.Background()); err == nil {
+		t.Fatal("a login without credentials must fail")
+	}
+}
+
+func TestPasswordLoginShowsTheLoginPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("<html>login</html>"))
+	}))
+	defer srv.Close()
+	v := &vicare{client: srv.Client(), iam: srv.URL, clientID: "client",
+		email: "me@example.com", password: "secret"}
+	_, err := v.passwordLogin(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "browser login") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestIsInvalidGrant(t *testing.T) {
+	if !isInvalidGrant(&oauthError{code: "invalid_grant"}) {
+		t.Fatal("invalid_grant must count")
+	}
+	if isInvalidGrant(&oauthError{code: "invalid_request"}) {
+		t.Fatal("invalid_request must not count")
+	}
+	if isInvalidGrant(errors.New("network")) {
+		t.Fatal("a network error must not count")
 	}
 }

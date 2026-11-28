@@ -54,6 +54,17 @@ func TestConfigureChecksTheKeys(t *testing.T) {
 		t.Fatalf("configured %+v", v)
 	}
 
+	// E-mail and password alone seed the token chain; no refresh token is
+	// needed.
+	p := &vicare{}
+	if err := p.Configure(plugin.Values{"client_id": "c", "email": "me@example.com", "password": "secret"},
+		&plugin.Request{Version: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if p.email != "me@example.com" || p.password != "secret" || p.seedRefresh != "" {
+		t.Fatalf("configured %+v", p)
+	}
+
 	cases := []struct {
 		name string
 		cfg  plugin.Values
@@ -64,6 +75,8 @@ func TestConfigureChecksTheKeys(t *testing.T) {
 		{"empty client", plugin.Values{"client_id": " ", "refresh_token": "r"}, "client_id"},
 		{"unknown key", plugin.Values{"client_id": "c", "refresh_token": "r", "vin": "x"}, "vin"},
 		{"bad refresh", plugin.Values{"client_id": "c", "refresh_token": "r", "refresh": "soon"}, "refresh"},
+		{"email without password", plugin.Values{"client_id": "c", "email": "me@example.com"}, "password"},
+		{"password without email", plugin.Values{"client_id": "c", "password": "secret"}, "email"},
 	}
 	for _, c := range cases {
 		if err := (&vicare{}).Configure(c.cfg, &plugin.Request{Version: 10}); err == nil ||

@@ -59,6 +59,16 @@ The browser cannot open the `vicare://` address; its address bar carries the
 `code` parameter. The helper accepts the whole address or only the code. It
 prints a ready config block.
 
+**Password fallback:** an account's e-mail and password can seed the token
+chain instead of the browser step. The plugin posts them to the authorization
+endpoint, which answers with the code in a redirect, and stores the resulting
+refresh token in its state. It uses the password only when no token is stored
+or the API refuses the token; after that it renews with refresh tokens only.
+The password therefore sits in the configuration and is sent to Viessmann
+again only after a refusal. Accounts with two-factor authentication and a
+changed login page need the `-login` helper, and Viessmann can retire this
+flow at any time: it is the deprecated path PyViCare still implements.
+
 ## Configuration
 
 ```yaml
@@ -67,6 +77,9 @@ plugins:
     config:
       client_id: ${VICARE_CLIENT_ID}
       refresh_token: ${VICARE_REFRESH_TOKEN}
+      # or instead of the browser step:
+      # email: ${VICARE_EMAIL}
+      # password: ${VICARE_PASSWORD}
       installation: "1234567"
       gateway: "7XXXXXXXXXX"
       device: "0"
@@ -76,7 +89,9 @@ plugins:
 | Key | Description |
 |---|---|
 | `client_id` | Required. Client ID of the personal API client in the developer portal. |
-| `refresh_token` | Required. Refresh token printed by `-login`, preferably via `${VICARE_REFRESH_TOKEN}`. |
+| `refresh_token` | Refresh token printed by `-login`, preferably via `${VICARE_REFRESH_TOKEN}`. Required unless `email` and `password` are set. |
+| `email` | ViCare account e-mail, together with `password`. |
+| `password` | ViCare account password. Seeds the token chain when no token works; prefer `${VICARE_PASSWORD}`. |
 | `installation` | Installation ID. Discovered from the account when empty. |
 | `gateway` | Gateway serial. Discovered when empty. |
 | `device` | Device ID on the gateway. Without it the plugin takes the device of type `heating`. |
