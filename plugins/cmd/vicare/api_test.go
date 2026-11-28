@@ -317,3 +317,50 @@ func TestCodeFrom(t *testing.T) {
 		t.Error("an empty answer must not become a code")
 	}
 }
+
+func TestAuthorizeURLAndExchange(t *testing.T) {
+	var form url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		form = r.PostForm
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "a", "refresh_token": "r", "expires_in": 3600,
+		})
+	}))
+	defer srv.Close()
+
+	v := &vicare{client: srv.Client(), iam: srv.URL, clientID: "client"}
+	verifier, challenge, err := pkce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(v.authorizeURL(challenge, "st"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	if u.Path != "/idp/v3/authorize" || q.Get("client_id") != "client" ||
+		q.Get("code_challenge") != challenge || q.Get("code_challenge_method") != "S256" ||
+		q.Get("redirect_uri") != redirectURI || q.Get("response_type") != "code" ||
+		q.Get("state") != "st" || !strings.Contains(q.Get("scope"), "offline_access") {
+		t.Fatalf("authorize URL = %s", u)
+	}
+	if len(verifier) < 43 {
+		t.Fatalf("verifier is too short: %d", len(verifier))
+	}
+
+	tok, err := v.exchangeCode(context.Background(), "the-code", verifier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Access != "a" || tok.Refresh != "r" || tok.Expiry.Before(time.Now()) {
+		t.Fatalf("tokens = %+v", tok)
+	}
+	if form.Get("grant_type") != "authorization_code" || form.Get("code") != "the-code" ||
+		form.Get("client_id") != "client" || form.Get("code_verifier") != verifier ||
+		form.Get("redirect_uri") != redirectURI {
+		t.Fatalf("form = %v", form)
+	}
+}

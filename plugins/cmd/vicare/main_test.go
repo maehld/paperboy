@@ -41,6 +41,7 @@ func testPlugin(t *testing.T, lang string) *vicare {
 	v.req = &plugin.Request{Language: lang, Timezone: "Europe/Berlin",
 		Now: time.Date(2026, 11, 28, 10, 30, 0, 0, time.UTC)}
 	v.loc, v.lang, v.cur = v.req.Location(), lang, testSnapshot()
+	v.curModel, v.curRoles = v.model, v.roles
 	return v
 }
 

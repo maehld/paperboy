@@ -142,10 +142,12 @@ type vicare struct {
 	next         time.Time
 	loadErr      error
 
-	cur  *snapshot
-	req  *plugin.Request
-	loc  *time.Location
-	lang string
+	cur      *snapshot
+	curModel string
+	curRoles []string
+	req      *plugin.Request
+	loc      *time.Location
+	lang     string
 }
 
 var (
@@ -477,7 +479,8 @@ func (v *vicare) Prepare(req *plugin.Request) error {
 		}
 		return errors.New("heating system state is not available")
 	}
-	v.cur, v.req, v.loc, v.lang = v.snap, req, req.Location(), req.Lang()
+	v.cur, v.curModel, v.curRoles = v.snap, v.model, v.roles
+	v.req, v.loc, v.lang = req, req.Location(), req.Lang()
 	return nil
 }
 

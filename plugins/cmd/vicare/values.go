@@ -79,11 +79,11 @@ func (v *vicare) Values(req *plugin.Request) (map[string]plugin.Value, error) {
 			}
 			out[name] = plugin.NumberValue(c.Curve.Shift)
 		case "model":
-			if v.model == "" {
+			if v.curModel == "" {
 				out[name] = dash
 				continue
 			}
-			out[name] = plugin.TextValue(v.model)
+			out[name] = plugin.TextValue(v.curModel)
 		case "updated":
 			if v.cur.Updated.IsZero() {
 				out[name] = dash

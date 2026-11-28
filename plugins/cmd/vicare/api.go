@@ -30,8 +30,8 @@ const (
 	// code from it.
 	redirectURI = "vicare://oauth-callback/everest"
 	// scopes: IoT reads the installation, offline_access returns a refresh
-	// token.
-	scopes = "IoT User offline_access"
+	// token. The ViCare integration of Home Assistant asks for the same two.
+	scopes = "IoT offline_access"
 	// requestTimeout bounds one HTTP call.
 	requestTimeout = 30 * time.Second
 	// tokenSlack renews the access token before it expires.

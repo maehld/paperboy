@@ -46,7 +46,13 @@ needed, and the login happens once by hand:
    reCAPTCHA disabled, redirect URI `vicare://oauth-callback/everest`.
 3. Run the plugin once with `-login` and paste the code from the browser. The
    program prints the refresh token, the installation, the gateway and the
-   device.
+   device. It takes the client ID from `-client` or `VICARE_CLIENT_ID`, and
+   asks for it when both are empty.
+
+   ```bash
+   ./plugins/vicare-v0.1.0 -login
+   ```
+
 4. Put the values into `paperboy.yaml`.
 
 The browser cannot open the `vicare://` address; its address bar carries the

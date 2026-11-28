@@ -203,8 +203,8 @@ func (v *vicare) drawBurner(w plugin.WidgetRequest, img *image.Paletted, b image
 // error.
 func (v *vicare) drawStatus(w plugin.WidgetRequest, img *image.Paletted, b image.Rectangle, s design.Scale) error {
 	var facts []fact
-	if v.model != "" {
-		facts = append(facts, fact{v.t("Anlage", "Device"), v.model})
+	if v.curModel != "" {
+		facts = append(facts, fact{v.t("Anlage", "Device"), v.curModel})
 	}
 	if age := v.dataAge(); age != "" {
 		facts = append(facts, fact{v.t("Stand", "Data"), age})
@@ -436,7 +436,7 @@ func (v *vicare) drawCurve(w plugin.WidgetRequest, img *image.Paletted, b image.
 	if high-low < 10 {
 		low, high = -20, 20
 	}
-	variant := curveVariant(args.String("formula", "auto"), v.roles, len(v.cur.Circuits))
+	variant := curveVariant(args.String("formula", "auto"), v.curRoles, len(v.cur.Circuits))
 
 	ymin, ymax := 20.0, 70.0
 	if c.TempMin != nil && c.TempMax != nil && *c.TempMax-*c.TempMin >= 10 {
