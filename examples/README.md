@@ -2,7 +2,7 @@
 
 The pages under `pages/` are grids of widgets from the shipped plugins
 ([ADR 0049](../docs/adr/0049-plugin-widgets.md)): `weather`, `calendar`, `evcc`, `departures`, `pokedex`, `xkcd`,
-`myskoda`, `countdown`, `rss`, `github`, `dexcom`, `prusalink`, `unifi` and the built-in `paperboy` plugin. Copy the
+`myskoda`, `countdown`, `rss`, `github`, `dexcom`, `prusalink`, `unifi`, `armory` and the built-in `paperboy` plugin. Copy the
 files you need into the `pages/` directory of your instance and adapt the
 grid, the spans and the arguments. A text page's value cells read the same
 `args` as the widget, so a page picks its stop, loadpoint, calendar window or
@@ -63,6 +63,11 @@ date ([ADR 0120](../docs/adr/0120-arguments-for-values.md)).
   header.
 - `comic.yaml` - a full-screen xkcd comic with title and alt text; it hides the
   display type's header.
+- `wow.yaml` - a World of Warcraft character from Blizzard's profile API and
+  Raider.IO: the render with level, class and item level, beside the Mythic+
+  score and the raid progress; it hides the display type's header.
+- `wow-ausruestung.yaml` - the same character's equipped items with slot,
+  rarity, origin and item level, in two columns.
 - `countdown.yaml` - countdowns to Christmas and New Year (yearly, one with a
   progress bar) and two fixed dates, the last with a time and a bar;
   `countdown.lcd2004.yaml` shows the countdown values with their dates on 20×4.

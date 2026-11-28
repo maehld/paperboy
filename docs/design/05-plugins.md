@@ -132,6 +132,7 @@ Every plugin has its own version in `plugins/cmd/<plugin>/VERSION`, embedded in 
 | [`xkcd`](../plugins/xkcd.md) | xkcd | `comic` |
 | [`countdown`](../plugins/countdown.md) | none, every date is an argument | `countdown` |
 | [`pokedex`](../plugins/pokedex.md) | PokéAPI | `card` |
+| [`armory`](../plugins/armory.md) | Blizzard profile API and Raider.IO | `character`, `mythic`, `raid`, `gear`, values `name`, `level`, `class`, `spec`, `guild`, `item-level`, `achievements`, `mythic-score`, `raid-progress`, `last-login` |
 
 Every widget is for an image display. A plugin with data for a text page declares values instead ([ADR 0111](../adr/0111-text-pages-from-plugin-values.md)). The [plugin pages](../plugins/README.md) describe arguments, config keys, values, refresh rules and the data source of each one.
 

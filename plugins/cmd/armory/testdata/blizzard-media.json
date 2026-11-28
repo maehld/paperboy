@@ -1,0 +1,7 @@
+{
+  "assets": [
+    {"key": "avatar", "value": "AVATAR"},
+    {"key": "inset", "value": "INSET"},
+    {"key": "main", "value": "RENDER"}
+  ]
+}

@@ -1,0 +1,10 @@
+# The equipped items of the character: slot, rarity and origin, the item's name
+# and its item level, in two columns. Needs Blizzard credentials; without them
+# the cell shows a notice (docs/plugins/armory.md).
+title: Ausrüstung
+kind: image
+header: false
+grid: [6, 8]
+style: { padding: 4.5 }
+cells:
+  - { at: [0, 0], span: [6, 8], widget: armory/gear }

@@ -1,0 +1,14 @@
+{
+  "equipped_items": [
+    {"slot": {"type": "HEAD", "name": "Kopf"}, "name": "Sturmruferkrone", "quality": {"type": "LEGENDARY", "name": "Legendär"}, "level": {"value": 639, "display_string": "639"}, "context": "raid-mythic", "item": {"id": 1}},
+    {"slot": {"type": "NECK", "name": "Hals"}, "name": "Kette der Geister", "quality": {"type": "EPIC", "name": "Episch"}, "level": {"value": 636, "display_string": "636"}, "context": 5, "item": {"id": 2}},
+    {"slot": {"type": "SHOULDER", "name": "Schulter"}, "name": "Schulterstücke des Elements", "quality": {"type": "EPIC", "name": "Episch"}, "level": {"value": 626, "display_string": "626"}, "context": "raid-heroic", "item": {"id": 3}},
+    {"slot": {"type": "CHEST", "name": "Brust"}, "name": "Brustplatte der tiefen Strömung", "quality": {"type": "EPIC", "name": "Episch"}, "level": {"value": 626, "display_string": "626"}, "context": "dungeon-heroic", "item": {"id": 4}},
+    {"slot": {"type": "WRIST", "name": "Handgelenk"}, "name": "Armschienen des Frostwolfs", "quality": {"type": "EPIC", "name": "Episch"}, "level": {"value": 619, "display_string": "619"}, "context": "world-quest", "item": {"id": 5}},
+    {"slot": {"type": "HANDS", "name": "Hände"}, "name": "Handschuhe des Sturmrufers", "quality": {"type": "EPIC", "name": "Episch"}, "level": {"value": 639, "display_string": "639"}, "context": "raid-mythic", "item": {"id": 6}},
+    {"slot": {"type": "WAIST", "name": "Taille"}, "name": "Gürtel der Ahnen", "quality": {"type": "EPIC", "name": "Episch"}, "level": {"value": 623, "display_string": "623"}, "context": "trade-skill", "item": {"id": 7}},
+    {"slot": {"type": "LEGS", "name": "Beine"}, "name": "Beinschienen der Ahnen", "quality": {"type": "EPIC", "name": "Episch"}, "level": {"value": 639, "display_string": "639"}, "context": "raid-mythic", "item": {"id": 8}},
+    {"slot": {"type": "FEET", "name": "Füße"}, "name": "Stiefel des Wanderers", "quality": {"type": "EPIC", "name": "Episch"}, "level": {"value": 626, "display_string": "626"}, "context": "dungeon-mythic", "item": {"id": 9}},
+    {"slot": {"type": "MAIN_HAND", "name": "Waffe"}, "name": "Ahnenseher, Klinge des Sturms", "quality": {"type": "LEGENDARY", "name": "Legendär"}, "level": {"value": 645, "display_string": "645"}, "context": "", "item": {"id": 10}}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "Thrall",
+  "class": "Shaman",
+  "active_spec_name": "Elemental",
+  "achievement_points": 24310,
+  "gear": {"item_level_equipped": 623},
+  "mythic_plus_scores_by_season": [
+    {"season": "season-x", "scores": {"all": 2847.4, "dps": 2847.4, "healer": 0, "tank": 0}}
+  ],
+  "mythic_plus_best_runs": [
+    {"dungeon": "The Dawnbreaker", "short_name": "DAWN", "mythic_level": 12}
+  ],
+  "raid_progression": {
+    "manaforge-omega": {"summary": "8/8 H", "total_bosses": 8, "normal_bosses_killed": 8, "heroic_bosses_killed": 8, "mythic_bosses_killed": 5}
+  }
+}
