@@ -53,6 +53,7 @@ var pageShots = map[string][]string{
 	"pokedex":    {"pokemon"},
 	"xkcd":       {"comic"},
 	"myskoda":    {"auto", "auto.lcd2004"},
+	"vicare":     {"heizung", "heizung.lcd2004"},
 	"countdown":  {"countdown", "countdown.lcd2004"},
 	"rss":        {"nachrichten"},
 	"dexcom":     {"glukose", "glukose-profil", "glukose-kinder", "glukose.lcd2004"},
@@ -84,7 +85,7 @@ var widgetArgs = map[string]map[string]string{
 // VERSION file. The built-in plugin needs no program.
 var plugins = []string{
 	"calendar", "countdown", "departures", "dexcom", "evcc", "fuel",
-	"myskoda", "pokedex", "prusalink", "rss", "unifi", "weather", "xkcd",
+	"myskoda", "pokedex", "prusalink", "rss", "unifi", "vicare", "weather", "xkcd",
 }
 
 func main() {
@@ -290,6 +291,8 @@ plugins:
       walk_minutes: 4
   myskoda:
     config: {api_key: demo, vin: TMBJB9NY5RF999999, base: %[1]q, refresh: 1h}
+  vicare:
+    config: {client_id: demo, refresh_token: demo, base: %[1]q, iam: %[1]q, refresh: 10m}
   prusalink:
     config: {url: %[1]q, api_key: demo, refresh: 1m}
   unifi:

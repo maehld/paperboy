@@ -97,8 +97,21 @@ A plugin keeps state only for what a restart must not lose **and** cannot rebuil
 
 State must not hold live data. A restored departure view would claim trips that already left. A stateless plugin keeps nothing, because every input is an argument. The state must not hold a secret that the config does not already hold. A value that one cheap request rebuilds belongs in memory, not on disk. A blob is the exception: it holds what a fetch cannot rebuild.
 
-Only [`dexcom`](../plugins/dexcom.md), [`myskoda`](../plugins/myskoda.md) and
-[`fuel`](../plugins/fuel.md) keep state today. `dexcom` keeps the session, the readings of 24 hours and a compact history of 35 days. The login and the readings are quota-limited, and the trend, the graph and a profile over several days need the history. The service answers only 24 hours, so no request rebuilds the older days. `myskoda` keeps the last vehicle fetch, its fetch times and the render blob. The API has a quota, and the render image is not cheap. `fuel` keeps the price history of the cheapest station per fuel. No request rebuilds the past, and the API allows only one request per minute. No other shipped plugin keeps state, because one fetch or a short refresh rebuilds its data. A restart within the refresh interval therefore costs no request.
+Only [`dexcom`](../plugins/dexcom.md), [`myskoda`](../plugins/myskoda.md),
+[`fuel`](../plugins/fuel.md) and [`vicare`](../plugins/vicare.md) keep state
+today. `dexcom` keeps the session, the readings of 24 hours and a compact
+history of 35 days. The login and the readings are quota-limited, and the
+trend, the graph and a profile over several days need the history. The service
+answers only 24 hours, so no request rebuilds the older days. `myskoda` keeps
+the last vehicle fetch, its fetch times and the render blob. The API has a
+quota, and the render image is not cheap. `fuel` keeps the price history of the
+cheapest station per fuel. No request rebuilds the past, and the API allows
+only one request per minute. `vicare` keeps the snapshot, the fetch times and
+the rotating tokens, because the API replaces the refresh token and the
+configuration cannot ([ADR 0181](../adr/0181-vicare-authenticates-with-a-refresh-token-in-plugin-state.md)).
+No other shipped plugin keeps state, because one fetch or a short refresh
+rebuilds its data. A restart within the refresh interval therefore costs no
+request.
 
 The readings of Dexcom in `state/` are acceptable: the operator owns the directory and can delete it. Paperboy exposes no age of a restored state, because `max_age` and the `changed` event set the refresh. No shared helper checks the config fingerprint; each plugin compares its own. An e-paper device polls every 5 to 10 minutes, so a restart rarely shows a gap on the page. That argues against broad state use.
 
@@ -125,6 +138,7 @@ Every plugin has its own version in `plugins/cmd/<plugin>/VERSION`, embedded in 
 | [`departures`](../plugins/departures.md) | EFA rapidJSON | `departures` |
 | [`myskoda`](../plugins/myskoda.md) | MyŠkoda Public API | `battery`, `charging`, `profiles`, `location`, `climate`, `card`, `car`, actions `charging` and `climate` |
 | [`dexcom`](../plugins/dexcom.md) | Dexcom Share | `glucose` (with the child-friendly `sign` smiley, outline or solid), `graph`, `values`, value `state` with the keys `normal`, `low`, `high`, `urgent` |
+| [`vicare`](../plugins/vicare.md) | ViCare cloud API | `heating`, `temperatures`, `dhw`, `burner`, `status`, `overview`, `curve` |
 | [`rss`](../plugins/rss.md) | RSS 2.0, RSS 1.0 and Atom | `feed`, `headline` |
 | [`github`](../plugins/github.md) | GitHub REST API | `repo`, `issues`, `pulls`, `runs`, `commits`, values `open-issues`, `open-pulls`, `failed-runs`, `last-commit`, `last-run`, `state` |
 | [`prusalink`](../plugins/prusalink.md) | PrusaLink API of a Prusa printer | `printer`, `progress`, `temperatures`, values `state`, `progress`, `time-remaining`, `time-printing`, `nozzle`, `bed`, `job` |

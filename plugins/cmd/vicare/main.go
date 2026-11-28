@@ -84,6 +84,7 @@ var configKeys = map[string]plugin.Arg{
 	"device":        {Type: "string", Description: "device ID on the gateway, default the heating device"},
 	"refresh":       {Type: "duration", Default: "10m", Description: "how often the device is read, at least 5m"},
 	"base":          {Type: "string", Default: defaultBase, Description: "API base URL"},
+	"iam":           {Type: "string", Default: defaultIAM, Description: "token host, for a proxy or a test"},
 }
 
 // stateVersion is the format of the plugin state; one of another version is
@@ -207,7 +208,7 @@ func (v *vicare) Describe() plugin.Description {
 					"errors": {Type: "bool", Default: true, Description: "show the first error or notice"},
 				}},
 			{Widget: "overview", Title: "Overview", Kinds: image, MinWidth: 160, MinHeight: 80,
-				Sizes: []plugin.Span{{Columns: 2, Rows: 2}, {Columns: 3, Rows: 2}, {Columns: 6, Rows: 2}},
+				Sizes: []plugin.Span{{Columns: 2, Rows: 2}, {Columns: 3, Rows: 2}},
 				Args: map[string]plugin.Arg{
 					"circuit": {Type: "int", Default: 0, Description: "heating circuit, 0 for the first"},
 				}},
@@ -248,7 +249,10 @@ func (v *vicare) Configure(cfg plugin.Values, req *plugin.Request) error {
 		base = defaultBase
 	}
 	v.base = base
-	v.iam = defaultIAM
+	v.iam = strings.TrimRight(strings.TrimSpace(cfg.String("iam", defaultIAM)), "/")
+	if v.iam == "" {
+		v.iam = defaultIAM
+	}
 
 	refresh, err := cfg.Duration("refresh", 10*time.Minute)
 	if err != nil {
@@ -576,22 +580,45 @@ func (v *vicare) dhwMode(mode string) string {
 	}
 }
 
-// burnerState names the burner or the compressor: "An" or "Aus", empty when
-// the device has neither.
-func (v *vicare) burnerState() string {
+// burnerName names the heat generator and its state, empty when the device
+// has neither.
+func (v *vicare) burnerName() (string, string) {
 	switch {
 	case v.cur.Burner != nil:
 		if v.cur.Burner.Active {
-			return v.t("Brenner an", "Burner on")
+			return v.t("Brenner", "Burner"), v.t("an", "on")
 		}
-		return v.t("Brenner aus", "Burner off")
+		return v.t("Brenner", "Burner"), v.t("aus", "off")
 	case v.cur.Compressor != nil:
 		if v.cur.Compressor.Active {
-			return v.t("Kompressor an", "Compressor on")
+			return v.t("Kompressor", "Compressor"), v.t("an", "on")
 		}
-		return v.t("Kompressor aus", "Compressor off")
+		return v.t("Kompressor", "Compressor"), v.t("aus", "off")
 	}
-	return ""
+	return "", ""
+}
+
+// compressorName names the compressor, for a hybrid device that shows its
+// burner.
+func (v *vicare) compressorName() (string, string) {
+	if v.cur.Compressor == nil {
+		return "", ""
+	}
+	state := v.t("aus", "off")
+	if v.cur.Compressor.Active {
+		state = v.t("an", "on")
+	}
+	return v.t("Kompressor", "Compressor"), state
+}
+
+// burnerState is the value for a text page: "Brenner an", "Kompressor aus" and
+// so on.
+func (v *vicare) burnerState() string {
+	name, state := v.burnerName()
+	if name == "" {
+		return ""
+	}
+	return name + " " + state
 }
 
 // stateKey is the value for plan conditions: an active error is "error".
@@ -602,7 +629,8 @@ func (v *vicare) stateKey() string {
 	return "ok"
 }
 
-// dataAge formats when the device sent its newest value.
+// dataAge formats when the device sent its newest value, without a prefix: a
+// status row names the moment in its label.
 func (v *vicare) dataAge() string {
 	t := v.cur.Updated
 	if t.IsZero() {
@@ -611,7 +639,7 @@ func (v *vicare) dataAge() string {
 	t = t.In(v.loc)
 	now := v.req.Now.In(v.loc)
 	if t.Year() == now.Year() && t.YearDay() == now.YearDay() {
-		return v.t("Stand ", "as of ") + t.Format("15:04")
+		return t.Format("15:04")
 	}
-	return v.t("Stand ", "as of ") + t.Format("02.01. 15:04")
+	return t.Format("02.01. 15:04")
 }

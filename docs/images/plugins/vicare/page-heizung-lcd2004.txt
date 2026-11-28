@@ -1,0 +1,4 @@
+Heizung             
+Außen 4,2  Raum 21,5
+Wasser 48,0  VL 41,8
+Kompressor an Normal

@@ -39,8 +39,13 @@ func (v *vicare) Render(_ *plugin.Request, w plugin.WidgetRequest, img *image.Pa
 	return fmt.Errorf("%w %q", plugin.ErrUnknownWidget, w.Widget)
 }
 
+// fact is one list line: the muted label on the left and the value on the
+// right.
+type fact struct{ label, value string }
+
 // drawHeating shows the flow target with outside and room temperature, the
-// program and what the heat generator does.
+// program and what the heat generator does. A wide cell puts the value left
+// and the facts right.
 func (v *vicare) drawHeating(w plugin.WidgetRequest, img *image.Paletted, b image.Rectangle, s design.Scale) error {
 	c := v.circuit(w.Arg().Int("circuit", 0))
 	if c == nil {
@@ -52,42 +57,28 @@ func (v *vicare) drawHeating(w plugin.WidgetRequest, img *image.Paletted, b imag
 	} else if c.Supply != nil {
 		label, value = v.t("Vorlauf", "Flow"), v.num(*c.Supply, 1)
 	}
+	hero := design.Hero{Label: label, Value: value, Unit: "°C"}
 
-	var details []string
-	line := ""
-	add := func(text string) {
-		if text == "" {
-			return
-		}
-		if line != "" {
-			line += " · "
-		}
-		line += text
-	}
-	add(v.tempLabel(v.t("außen", "outside"), v.cur.Outside))
+	facts := []fact{{v.t("Außen", "Outside"), v.tempText(v.cur.Outside)}}
 	if w.Arg().Bool("room", true) {
-		add(v.tempLabel(v.t("Raum", "room"), c.Room))
+		facts = append(facts, fact{v.t("Raum", "room"), v.tempText(c.Room)})
 	}
-	if line != "" {
-		details = append(details, line)
-	}
-	second := ""
 	if c.Program != "" {
-		second = v.programName(c.Program)
+		facts = append(facts, fact{v.t("Programm", "program"), v.programName(c.Program)})
 	}
-	if state := v.burnerState(); state != "" {
-		if second != "" {
-			second += " · "
-		}
-		second += state
-	}
-	if second != "" {
-		details = append(details, second)
-	}
+	facts = keepKnown(facts)
 
-	if !design.DrawHero(img, b, design.Hero{
-		Label: label, Value: value, Unit: "°C", Details: details,
-	}, s) {
+	if wide(b) {
+		left := image.Rect(b.Min.X, b.Min.Y, b.Min.X+b.Dx()*40/100, b.Max.Y)
+		if !design.DrawHero(img, left, hero, s) {
+			return plugin.TooSmall(w)
+		}
+		gap := max(int(s.Body*0.6), 4)
+		v.factsSize(img, image.Rect(left.Max.X+gap, b.Min.Y, b.Max.X, b.Max.Y), facts, s, s.Detail)
+		return nil
+	}
+	hero.Details = v.detailLines(facts)
+	if !design.DrawHero(img, b, hero, s) {
 		return plugin.TooSmall(w)
 	}
 	return nil
@@ -96,41 +87,26 @@ func (v *vicare) drawHeating(w plugin.WidgetRequest, img *image.Paletted, b imag
 // drawTemperatures lists the temperatures that the device reports.
 func (v *vicare) drawTemperatures(w plugin.WidgetRequest, img *image.Paletted, b image.Rectangle, s design.Scale) error {
 	c := v.circuit(w.Arg().Int("circuit", 0))
-	type row struct{ label, value string }
-	var rows []row
-	add := func(label string, f *float64) {
-		if f != nil {
-			rows = append(rows, row{label, v.num(*f, 1) + "°"})
-		}
-	}
-	add(v.t("Außen", "Outside"), v.cur.Outside)
+	facts := []fact{{v.t("Außen", "Outside"), v.tempText(v.cur.Outside)}}
 	if c != nil {
-		add(v.t("Vorlauf", "Flow"), c.Supply)
-		add(v.t("Raum", "Room"), c.Room)
+		facts = append(facts,
+			fact{v.t("Vorlauf", "Flow"), v.tempText(c.Supply)},
+			fact{v.t("Raum", "Room"), v.tempText(c.Room)})
 	}
 	if v.cur.DHW != nil {
-		add(v.t("Warmwasser", "DHW"), v.cur.DHW.Temp)
+		facts = append(facts, fact{v.t("Warmwasser", "DHW"), v.tempText(v.cur.DHW.Temp)})
 	}
-	add(v.t("Rücklauf", "Return"), v.cur.Return)
-	add(v.t("Kessel", "Boiler"), v.cur.Boiler)
-
-	if len(rows) == 0 {
+	facts = append(facts,
+		fact{v.t("Rücklauf", "Return"), v.tempText(v.cur.Return)},
+		fact{v.t("Kessel", "Boiler"), v.tempText(v.cur.Boiler)})
+	facts = keepKnown(facts)
+	if len(facts) == 0 {
 		return v.notice(img, b, s, v.t("Keine Temperaturen", "No temperatures"), w)
 	}
-	limit := w.Arg().Int("max", 6)
-	if limit < 2 {
-		limit = 2
+	if limit := w.Arg().Int("max", 6); limit >= 2 && len(facts) > limit {
+		facts = facts[:limit]
 	}
-	lineH := int(s.Body*1.25) + max(int(s.Body*0.15), 1)
-	if fit := max(b.Dy()/lineH, 1); fit < len(rows) {
-		rows = rows[:fit]
-	}
-	if len(rows) > limit {
-		rows = rows[:limit]
-	}
-	for i, r := range rows {
-		v.row(img, image.Rect(b.Min.X, b.Min.Y+i*lineH, b.Max.X, b.Min.Y+(i+1)*lineH), r.label, r.value, s)
-	}
+	v.factsIn(img, b, facts, s)
 	return nil
 }
 
@@ -142,15 +118,15 @@ func (v *vicare) drawDHW(w plugin.WidgetRequest, img *image.Paletted, b image.Re
 	}
 	caption := ""
 	if d.Target != nil {
-		caption = v.t("Soll ", "target ") + v.num(*d.Target, 1) + "°"
+		caption = v.t("Soll ", "target ") + v.num(*d.Target, 0) + "°"
 	}
-	if d.Charging {
+	switch {
+	case d.Mode == "off":
+		caption = v.join(caption, v.t("aus", "off"))
+	case d.Charging:
 		caption = v.join(caption, v.t("lädt", "charging"))
-	} else if d.Target != nil {
+	case d.Target != nil:
 		caption = v.join(caption, v.t("bereit", "ready"))
-	}
-	if d.Mode != "" {
-		caption = v.join(caption, v.dhwMode(d.Mode))
 	}
 	hero := design.Hero{
 		Label: v.t("Warmwasser", "DHW"), Value: v.num(*d.Temp, 1), Unit: "°C", Caption: caption,
@@ -177,7 +153,9 @@ func (v *vicare) drawBurner(w plugin.WidgetRequest, img *image.Paletted, b image
 	case v.cur.Burner != nil:
 		label, active = v.t("Brenner", "Burner"), v.cur.Burner.Active
 		modulation, hours, starts = v.cur.Burner.Modulation, v.cur.Burner.Hours, v.cur.Burner.Starts
-		other = v.compressorLine()
+		if name, state := v.compressorName(); name != "" {
+			other = name + " " + state
+		}
 	case v.cur.Compressor != nil:
 		label, active = v.t("Kompressor", "Compressor"), v.cur.Compressor.Active
 		hours, starts = v.cur.Compressor.Hours, v.cur.Compressor.Starts
@@ -221,28 +199,15 @@ func (v *vicare) drawBurner(w plugin.WidgetRequest, img *image.Paletted, b image
 	return nil
 }
 
-// compressorLine names a second heat generator, so a hybrid device shows both.
-func (v *vicare) compressorLine() string {
-	if v.cur.Compressor == nil {
-		return ""
-	}
-	state := v.t("Kompressor aus", "Compressor off")
-	if v.cur.Compressor.Active {
-		state = v.t("Kompressor an", "Compressor on")
-	}
-	return state
-}
-
 // drawStatus shows the model, the age of the data, the programs and the first
 // error.
 func (v *vicare) drawStatus(w plugin.WidgetRequest, img *image.Paletted, b image.Rectangle, s design.Scale) error {
-	type row struct{ label, value string }
-	var rows []row
+	var facts []fact
 	if v.model != "" {
-		rows = append(rows, row{v.t("Anlage", "Device"), v.model})
+		facts = append(facts, fact{v.t("Anlage", "Device"), v.model})
 	}
 	if age := v.dataAge(); age != "" {
-		rows = append(rows, row{v.t("Stand", "Data"), age})
+		facts = append(facts, fact{v.t("Stand", "Data"), age})
 	}
 	for i := range v.cur.Circuits {
 		c := &v.cur.Circuits[i]
@@ -250,9 +215,8 @@ func (v *vicare) drawStatus(w plugin.WidgetRequest, img *image.Paletted, b image
 		if name == "" {
 			name = v.t("Heizkreis ", "Circuit ") + strconv.Itoa(c.Index)
 		}
-		program := v.programName(c.Program)
-		if program != "" {
-			rows = append(rows, row{name, program})
+		if program := v.programName(c.Program); program != "" {
+			facts = append(facts, fact{name, program})
 		}
 	}
 	if w.Arg().Bool("errors", true) {
@@ -264,18 +228,12 @@ func (v *vicare) drawStatus(w plugin.WidgetRequest, img *image.Paletted, b image
 				value = v.join(value, e.Description)
 			}
 		}
-		rows = append(rows, row{label, value})
+		facts = append(facts, fact{label, value})
 	}
-	if len(rows) == 0 {
+	if len(facts) == 0 {
 		return v.notice(img, b, s, v.t("Keine Daten", "No data"), w)
 	}
-	lineH := int(s.Body * 1.25)
-	if fit := max(b.Dy()/lineH, 1); fit < len(rows) {
-		rows = rows[:fit]
-	}
-	for i, r := range rows {
-		v.row(img, image.Rect(b.Min.X, b.Min.Y+i*lineH, b.Max.X, b.Min.Y+(i+1)*lineH), r.label, r.value, s)
-	}
+	v.factsIn(img, b, facts, s)
 	return nil
 }
 
@@ -287,19 +245,30 @@ func (v *vicare) drawOverview(w plugin.WidgetRequest, img *image.Paletted, b ima
 	if v.cur.Outside != nil {
 		value = v.num(*v.cur.Outside, 1)
 	}
-	var details []string
-	if c != nil && c.Room != nil {
-		details = append(details, v.tempLabel(v.t("Raum", "room"), c.Room))
+	facts := []fact{}
+	if c != nil {
+		facts = append(facts, fact{v.t("Raum", "room"), v.tempText(c.Room)})
 	}
-	if v.cur.DHW != nil && v.cur.DHW.Temp != nil {
-		details = append(details, v.tempLabel(v.t("Wasser", "water"), v.cur.DHW.Temp))
+	if v.cur.DHW != nil {
+		facts = append(facts, fact{v.t("Wasser", "water"), v.tempText(v.cur.DHW.Temp)})
 	}
-	if state := v.burnerState(); state != "" {
-		details = append(details, state)
+	if name, state := v.burnerName(); name != "" {
+		facts = append(facts, fact{name, state})
 	}
-	if !design.DrawHero(img, b, design.Hero{
-		Label: v.t("Außen", "Outside"), Value: value, Unit: "°C", Details: details,
-	}, s) {
+	facts = keepKnown(facts)
+	hero := design.Hero{Label: v.t("Außen", "Outside"), Value: value, Unit: "°C"}
+
+	if wide(b) && len(facts) > 0 {
+		left := image.Rect(b.Min.X, b.Min.Y, b.Min.X+b.Dx()*40/100, b.Max.Y)
+		if !design.DrawHero(img, left, hero, s) {
+			return plugin.TooSmall(w)
+		}
+		gap := max(int(s.Body*0.6), 4)
+		v.factsSize(img, image.Rect(left.Max.X+gap, b.Min.Y, b.Max.X, b.Max.Y), facts, s, s.Detail)
+		return nil
+	}
+	hero.Details = v.detailLines(facts)
+	if !design.DrawHero(img, b, hero, s) {
 		return plugin.TooSmall(w)
 	}
 	return nil
@@ -307,13 +276,80 @@ func (v *vicare) drawOverview(w plugin.WidgetRequest, img *image.Paletted, b ima
 
 // ---- helpers ----
 
+// wide reports whether a cell is better used in two columns.
+func wide(b image.Rectangle) bool { return b.Dx() >= 500 && b.Dx() >= b.Dy()*2 }
+
+// factsIn draws facts in one column, or in two on a wide cell.
+func (v *vicare) factsIn(img *image.Paletted, b image.Rectangle, facts []fact, s design.Scale) {
+	v.factsSize(img, b, facts, s, s.Body)
+}
+
+// factsSize draws facts at a given type size. A side column beside a hero uses
+// the detail role, so a label and its value share the column.
+func (v *vicare) factsSize(img *image.Paletted, b image.Rectangle, facts []fact, s design.Scale, size float64) {
+	if len(facts) == 0 || b.Empty() {
+		return
+	}
+	lineH := int(size * 1.3)
+	if lineH < 1 {
+		return
+	}
+	fit := max(b.Dy()/lineH, 1)
+	gap := max(int(size*0.6), 4)
+	cols := 1
+	// Two columns need room beside each other: the longest label and its
+	// value have to fit in one column.
+	if b.Dx() >= 560 && len(facts) > 2 && fit >= 2 {
+		need := 0
+		for _, f := range facts {
+			need = max(need, render.Measure(f.label, size, false)+gap+render.Measure(f.value, size, true))
+		}
+		if (b.Dx()-gap)/2 >= need {
+			cols = 2
+		}
+	}
+	per := (len(facts) + cols - 1) / cols
+	if per > fit {
+		per = fit
+	}
+	colW := (b.Dx() - gap*(cols-1)) / cols
+	for i := 0; i < len(facts) && i < per*cols; i++ {
+		col, row := i/per, i%per
+		x := b.Min.X + col*(colW+gap)
+		v.rowSize(img, image.Rect(x, b.Min.Y+row*lineH, x+colW, b.Min.Y+(row+1)*lineH), facts[i].label, facts[i].value, size)
+	}
+}
+
+// detailLines joins the facts into the hero's detail lines, two per line.
+func (v *vicare) detailLines(facts []fact) []string {
+	var lines []string
+	for i := 0; i < len(facts); i += 2 {
+		part := func(f fact) string {
+			if f.value == "" {
+				return f.label
+			}
+			return f.label + " " + f.value
+		}
+		line := part(facts[i])
+		if i+1 < len(facts) {
+			line = v.join(line, part(facts[i+1]))
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
 // row draws one list line: the label muted on the left, the value bold on the
 // right.
 func (v *vicare) row(img *image.Paletted, r image.Rectangle, label, value string, s design.Scale) {
+	v.rowSize(img, r, label, value, min(s.Body, float64(r.Dy())*0.75))
+}
+
+// rowSize draws one list line at a given type size.
+func (v *vicare) rowSize(img *image.Paletted, r image.Rectangle, label, value string, size float64) {
 	if r.Empty() || (label == "" && value == "") {
 		return
 	}
-	size := min(s.Body, float64(r.Dy())*0.75)
 	if size < render.MinSize {
 		return
 	}
@@ -334,12 +370,23 @@ func (v *vicare) notice(img *image.Paletted, b image.Rectangle, s design.Scale, 
 	return nil
 }
 
-// tempLabel formats a named temperature, empty when it is unknown.
-func (v *vicare) tempLabel(label string, f *float64) string {
+// tempText formats a temperature for a row, a dash when it is unknown.
+func (v *vicare) tempText(f *float64) string {
 	if f == nil {
-		return ""
+		return "–"
 	}
-	return label + " " + v.num(*f, 1) + "°"
+	return v.num(*f, 1) + "°"
+}
+
+// keepKnown drops the facts without a value.
+func keepKnown(facts []fact) []fact {
+	out := facts[:0]
+	for _, f := range facts {
+		if f.value != "" && f.value != "–" {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // join appends a part with the separator of the line.
@@ -404,7 +451,7 @@ func (v *vicare) drawCurve(w plugin.WidgetRequest, img *image.Paletted, b image.
 	label := v.t("Heizkurve", "Heating curve")
 	slope := c.Curve.Slope
 	shift := c.Curve.Shift
-	curveText := v.num(slope, 1) + " · " + signed(shift, v.num(shift, 0))
+	curveText := v.num(slope, 1) + " · " + signed(shift, v.num(shift, 0)+" K")
 	outsideText := v.t("außen ", "outside ") + "–"
 	if v.cur.Outside != nil {
 		outsideText = v.t("außen ", "outside ") + v.num(*v.cur.Outside, 1) + "°"
@@ -420,9 +467,9 @@ func (v *vicare) drawCurve(w plugin.WidgetRequest, img *image.Paletted, b image.
 	head := int(s.Detail * 0.95)
 	y := b.Min.Y + head
 	gap := int(s.Detail * 0.8)
-	wide := b.Dx() >= 500
+	isWide := b.Dx() >= 500
 	mid, right, rightBold := outsideText, soll, true
-	if wide {
+	if isWide {
 		mid, right, rightBold = curveText, outsideText, false
 	}
 	lw := render.Measure(label, s.Detail, true)
@@ -478,7 +525,7 @@ func (v *vicare) drawCurve(w plugin.WidgetRequest, img *image.Paletted, b image.
 		trend.Now = at(*v.cur.Outside)
 		if nowFlow != nil {
 			mark := design.Mark{At: at(*v.cur.Outside), Value: *nowFlow}
-			if wide {
+			if isWide {
 				mark.Label = v.num(*nowFlow, 0) + "°"
 			}
 			trend.Marks = []design.Mark{mark}
@@ -488,14 +535,6 @@ func (v *vicare) drawCurve(w plugin.WidgetRequest, img *image.Paletted, b image.
 		return plugin.TooSmall(w)
 	}
 	return nil
-}
-
-// signed writes a number with an explicit plus, as a curve shift reads.
-func signed(f float64, text string) string {
-	if f > 0 {
-		return "+" + text
-	}
-	return text
 }
 
 // curveVariant picks the formula: variant 2 is the heat pump with one circuit,
@@ -511,6 +550,14 @@ func curveVariant(want string, roles []string, circuits int) int {
 		return 2
 	}
 	return 1
+}
+
+// signed writes a number with an explicit plus, as a curve shift reads.
+func signed(f float64, text string) string {
+	if f > 0 {
+		return "+" + text
+	}
+	return text
 }
 
 func hasRole(roles []string, want string) bool {

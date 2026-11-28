@@ -1,0 +1,13 @@
+# The heating system: the circuit, the hot water, the compressor and the
+# heating curve. Requires the vicare plugin (docs/plugins/vicare.md).
+title: Heizung
+kind: image
+variants: {lcd2004: lcd2004}
+grid: [6, 8]
+style: { padding: 4.5, divider: 0.6 }
+cells:
+  - { at: [0, 0], span: [2, 3], widget: vicare/heating }
+  - { at: [2, 0], span: [2, 3], widget: vicare/dhw }
+  - { at: [4, 0], span: [2, 3], widget: vicare/burner }
+  - { at: [0, 3], span: [4, 5], widget: vicare/curve }
+  - { at: [4, 3], span: [2, 5], widget: vicare/temperatures }

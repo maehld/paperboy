@@ -51,6 +51,11 @@ plugins:
       api_key: ${SKODA_API_KEY}     # created in the MyŠkoda app, bound to the vehicle
       vin: TMBJB9NY5RF999999
       refresh: 1h                   # default; at least 10m (20 requests per hour)
+  vicare:                                # Viessmann heating system, see docs/plugins/vicare.md
+    config:
+      client_id: ${VICARE_CLIENT_ID}     # from the Viessmann developer portal
+      refresh_token: ${VICARE_REFRESH_TOKEN}   # printed by the plugin's -login
+      refresh: 10m                        # default; at least 5m (about 1450 calls a day)
   rss:
     config:
       feeds:

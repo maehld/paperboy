@@ -214,6 +214,7 @@ How plugins are written, hosted and versioned. See [`05-plugins.md`](../design/0
 | [0178](0178-use-the-private-unifi-controller-api.md) | Use the private UniFi controller API for the WAN summary | Accepted, implemented; keeps the documented integration API for sites, devices and clients, adds the optional private `stat/health` call for the WAN line, and ignores per-WAN `uptime_stats` |
 | [0179](0179-pictograms-from-weather-icons.md) | Pictograms from Weather Icons | Accepted, implemented; replaces the OpenMoji PNGs of the weather plugin and adds day and night glyphs |
 | [0180](0180-the-moon-phase-is-computed-locally.md) | The moon phase is computed locally | Accepted, implemented; counts the synodic month from a known new moon, uses 28 phase glyphs and eight names, and shows no moonrise or moonset |
+| [0181](0181-vicare-authenticates-with-a-refresh-token-in-plugin-state.md) | ViCare authenticates with a refresh token in plugin state | Accepted, implemented; a login helper runs the OAuth2 flow with PKCE, the plugin keeps the rotating tokens in its state ([ADR-0081](0081-plugin-state-over-the-protocol.md)) and reads on demand ([ADR-0126](0126-a-schedule-event-for-plugin-demand.md)) |
 
 ## Delivery and releases
 

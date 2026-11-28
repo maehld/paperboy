@@ -1,0 +1,11 @@
+# The heating values on a 20×4 display: outside, room, hot water, flow, the
+# burner and the program. Requires the vicare plugin (docs/plugins/vicare.md).
+kind: text
+cells:
+  - { at: [0, 0], span: [20, 1], value: paperboy/title }
+  - { at: [0, 1], span: [10, 1], value: vicare/outside, label: Außen, unit: none }
+  - { at: [10, 1], span: [10, 1], value: vicare/room, label: Raum, unit: none, align: right }
+  - { at: [0, 2], span: [11, 1], value: vicare/dhw, label: Wasser, unit: none }
+  - { at: [11, 2], span: [9, 1], value: vicare/flow, label: VL, unit: none, align: right }
+  - { at: [0, 3], span: [13, 1], value: vicare/burner }
+  - { at: [14, 3], span: [6, 1], value: vicare/program, align: right }

@@ -39,6 +39,12 @@ func (m *mock) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.evccHistory(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/vehicles/"):
 		m.skoda(w)
+	case r.URL.Path == "/idp/v3/token":
+		m.vicareToken(w)
+	case strings.HasPrefix(r.URL.Path, "/iot/v2/equipment/installations"):
+		m.vicareInstallations(w)
+	case strings.HasPrefix(r.URL.Path, "/iot/v2/features/"):
+		m.vicareFeatures(w)
 	case r.URL.Path == "/api/v1/status", r.URL.Path == "/api/v1/job", r.URL.Path == "/api/v1/info":
 		m.prusalink(w, r)
 	case r.URL.Path == "/car.png":
@@ -976,3 +982,74 @@ func maxInt(a, b int) int {
 }
 
 func maxi(a, b int) int { return maxInt(a, b) }
+
+// ---- vicare ----
+
+// vicareToken answers the OAuth2 token endpoint of the ViCare API.
+func (m *mock) vicareToken(w http.ResponseWriter) {
+	writeJSON(w, map[string]any{
+		"access_token":  "demo-access",
+		"refresh_token": "demo-refresh",
+		"expires_in":    3600,
+		"token_type":    "Bearer",
+	})
+}
+
+// vicareInstallations lists one installation with a heat pump and a
+// ventilation device.
+func (m *mock) vicareInstallations(w http.ResponseWriter) {
+	writeJSON(w, map[string]any{"data": []any{map[string]any{
+		"id": "1234567",
+		"gateways": []any{map[string]any{
+			"serial": "7DEMO0001",
+			"devices": []any{
+				map[string]any{"id": "0", "modelId": "Vitocal 250-A", "deviceType": "heating",
+					"status": "Online", "roles": []string{"type:heatpump"}},
+				map[string]any{"id": "1", "modelId": "Vitovent 300-F", "deviceType": "ventilation",
+					"status": "Online"},
+			},
+		}},
+	}}})
+}
+
+// vicareFeatures answers the gateway-wide features call of the heat pump.
+func (m *mock) vicareFeatures(w http.ResponseWriter) {
+	ts := m.now.UTC().Add(-2 * time.Minute).Format(time.RFC3339)
+	num := func(v float64) map[string]any {
+		return map[string]any{"type": "number", "unit": "celsius", "value": v}
+	}
+	plain := func(v float64) map[string]any {
+		return map[string]any{"type": "number", "value": v}
+	}
+	text := func(v string) map[string]any {
+		return map[string]any{"type": "string", "value": v}
+	}
+	active := func(v bool) map[string]any {
+		return map[string]any{"type": "boolean", "value": v}
+	}
+	feature := func(name string, props map[string]any) map[string]any {
+		return map[string]any{"feature": name, "deviceId": "0", "timestamp": ts, "properties": props}
+	}
+	writeJSON(w, map[string]any{"data": []any{
+		feature("heating.sensors.temperature.outside", map[string]any{"value": num(4.2)}),
+		feature("heating.boiler.sensors.temperature.main", map[string]any{"value": num(52)}),
+		feature("heating.sensors.temperature.return", map[string]any{"value": num(38)}),
+		feature("heating.circuits.0.name", map[string]any{"name": text("Wohnzimmer")}),
+		feature("heating.circuits.0.sensors.temperature.room", map[string]any{"value": num(21.5)}),
+		feature("heating.circuits.0.sensors.temperature.supply", map[string]any{"value": num(41.8)}),
+		feature("heating.circuits.0.temperature", map[string]any{"value": num(45.2)}),
+		feature("heating.circuits.0.operating.programs.active", map[string]any{"value": text("normal")}),
+		feature("heating.circuits.0.operating.modes.active", map[string]any{"value": text("dhwAndHeating")}),
+		feature("heating.circuits.0.heating.curve", map[string]any{"slope": plain(0.6), "shift": plain(4)}),
+		feature("heating.circuits.0.temperature.levels", map[string]any{"min": plain(20), "max": plain(60)}),
+		feature("heating.dhw.sensors.temperature.hotWaterStorage", map[string]any{"value": num(48)}),
+		feature("heating.dhw.temperature.main", map[string]any{"value": num(50)}),
+		feature("heating.dhw.charging", map[string]any{"active": active(false)}),
+		feature("heating.dhw.operating.modes.active", map[string]any{"value": text("balanced")}),
+		feature("heating.dhw.oneTimeCharge", map[string]any{"active": active(false)}),
+		feature("heating.compressors.0", map[string]any{"active": active(true), "phase": text("heating")}),
+		feature("heating.compressors.0.statistics", map[string]any{"hours": plain(13651.9), "starts": plain(4012)}),
+		feature("heating.compressors.0.modulation", map[string]any{"value": plain(42)}),
+		feature("device.messages.errors.raw", map[string]any{"entries": map[string]any{"type": "array", "value": []any{}}}),
+	}})
+}
