@@ -1,4 +1,4 @@
-Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic)
+Copyright (c) 2013-2015 Erik Flowers and Lukas Bischoff (https://github.com/erikflowers/weather-icons)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
