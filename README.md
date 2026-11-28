@@ -53,7 +53,7 @@ The README gives the overview and the quick start. The details are in these page
 
 Paperboy is published under the [MIT licence](LICENSE). Third-party material keeps its own licence:
 
-- The OpenMoji pictograms in `plugins/cmd/weather/icons/` are [CC BY-SA 4.0](plugins/cmd/weather/icons/README.md); the licence travels with the plugin zip.
+- The Weather Icons font in `plugins/cmd/weather/icons/` is under [SIL OFL 1.1](plugins/cmd/weather/icons/OFL.txt); the licence travels with the plugin zip.
 - The operator UI vendors htmx 4.0.1 in `server/internal/paperboy/ui/vendor/` (0BSD, [ADR 0106](docs/adr/0106-self-updating-pages-with-htmx.md)). It is the only foreign JavaScript in the service.
 - The firmware in `firmware/esphome/` is a Paperboy configuration for [ESPHome](https://esphome.io). The images built from it contain the ESPHome runtime, whose C++ parts are GPLv3; the sources are in this repository. The bundled Go fonts (`sdk/render`) come with their own BSD-style licence.
 - The examples and the plugin test fixtures are fictional; xkcd comics are CC BY-NC 2.5 and are fetched at runtime, never shipped.

@@ -32,7 +32,7 @@ for app in calendar weather fuel evcc pokedex xkcd departures myskoda countdown 
   (cd "$root" && CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch \
     go build -trimpath -ldflags="-s -w" -o "$stage/plugins/$app-v$version$ext" "./plugins/cmd/$app")
 done
-cp "$root/plugins/cmd/weather/icons/README.md" "$stage/plugins/weather-icons-LICENSE.md"
+cp "$root/plugins/cmd/weather/icons/OFL.txt" "$stage/plugins/weather-icons-OFL.txt"
 
 out=$(cd "$out" && pwd)
 rm -f "$out/$name.zip"

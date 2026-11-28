@@ -121,7 +121,7 @@ func TestFetchAndBranch(t *testing.T) {
 	c := b.Current
 	if c.Time != "2026-10-22T09:00:00Z" || c.Temp != 12.4 || c.Apparent != 10.9 || c.Humidity != 78 ||
 		c.Precip != 0.12 || c.Wind != 14.2 || c.Beaufort != 3 || c.Code != 3 || !c.IsDay ||
-		c.Symbol != "cloud" || c.Text != "Bedeckt" {
+		c.Symbol != "cloudy" || c.Text != "Bedeckt" {
 		t.Fatalf("current = %+v", c)
 	}
 	if c.PrecipProb == nil || *c.PrecipProb != 22 {
@@ -336,16 +336,45 @@ func TestBeaufort(t *testing.T) {
 
 func TestSymbol(t *testing.T) {
 	tests := []struct {
-		code int
-		want string
+		code  int
+		isDay bool
+		want  string
 	}{
-		{0, "sun"}, {1, "sun"}, {2, "cloud"}, {3, "cloud"}, {45, "cloud"},
-		{51, "rain"}, {65, "rain"}, {80, "rain"}, {71, "snow"}, {86, "snow"},
-		{95, "thunder"}, {99, "thunder"}, {42, "cloud"},
+		{0, true, "day-sunny"}, {1, true, "day-sunny"}, {0, false, "night-clear"},
+		{1, false, "night-clear"}, {2, true, "day-cloudy"},
+		{2, false, "night-alt-partly-cloudy"}, {3, true, "cloudy"},
+		{3, false, "cloudy"}, {45, true, "fog"}, {48, false, "fog"},
+		{51, true, "sprinkle"}, {53, false, "sprinkle"}, {55, true, "sprinkle"},
+		{56, true, "sleet"}, {57, false, "sleet"}, {66, true, "sleet"},
+		{67, false, "sleet"}, {61, true, "rain"}, {63, false, "rain"},
+		{65, true, "rain"}, {80, true, "rain"}, {81, false, "rain"},
+		{82, true, "rain"}, {71, true, "snow"}, {73, false, "snow"},
+		{75, true, "snow"}, {77, false, "snow"}, {85, true, "snow"},
+		{86, false, "snow"}, {95, true, "thunderstorm"}, {96, false, "thunderstorm"},
+		{99, true, "thunderstorm"}, {42, true, "cloudy"}, {42, false, "cloudy"},
 	}
 	for _, tt := range tests {
-		if got := symbol(tt.code); got != tt.want {
-			t.Fatalf("symbol(%d) = %q, want %q", tt.code, got, tt.want)
+		if got := symbol(tt.code, tt.isDay); got != tt.want {
+			t.Fatalf("symbol(%d, %t) = %q, want %q", tt.code, tt.isDay, got, tt.want)
+		}
+	}
+}
+
+// Every pictogram the widgets can name must exist in the embedded font, so a
+// wrong code point fails here instead of leaving a cell empty.
+func TestIcons(t *testing.T) {
+	for code := range conditions {
+		for _, isDay := range []bool{true, false} {
+			name := symbol(code, isDay)
+			m := icon(name)
+			if m == nil {
+				t.Fatalf("icon(%q) for code %d is missing", name, code)
+			}
+		}
+	}
+	for name := range iconRunes {
+		if icon(name) == nil {
+			t.Fatalf("icon(%q) is missing", name)
 		}
 	}
 }

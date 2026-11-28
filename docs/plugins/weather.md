@@ -33,7 +33,27 @@ All widgets are for image displays.
 
 An event is a contiguous run of hours with at least 0.1 mm. Open-Meteo gives precipitation as water equivalent, so snow counts too. An hour with rain and snow is mixed. The plugin decides about the event at render time, so an old forecast still says when a running event ends.
 
-The pictograms come from [OpenMoji](https://openmoji.org) (CC BY-SA 4.0, see `plugins/cmd/weather/icons/README.md`).
+The pictograms are glyphs of [Weather Icons](https://erikflowers.github.io/weather-icons/),
+embedded as `icons/weathericons.ttf`. The font is under
+[SIL OFL 1.1](https://openfontlicense.org) (see
+`plugins/cmd/weather/icons/OFL.txt`), the code under MIT. Each glyph is drawn
+once and reduced to a mask, so one font works on 1-bit and 4-gray panels.
+
+| WMO code | Pictogram, day | Pictogram, night |
+|---|---|---|
+| 0, 1 | `day-sunny` | `night-clear` |
+| 2 | `day-cloudy` | `night-alt-partly-cloudy` |
+| 3 | `cloudy` | `cloudy` |
+| 45, 48 | `fog` | `fog` |
+| 51, 53, 55 | `sprinkle` | `sprinkle` |
+| 56, 57, 66, 67 | `sleet` | `sleet` |
+| 61, 63, 65, 80, 81, 82 | `rain` | `rain` |
+| 71, 73, 75, 77, 85, 86 | `snow` | `snow` |
+| 95, 96, 99 | `thunderstorm` | `thunderstorm` |
+| anything else | `cloudy` | `cloudy` |
+
+Day and night apply only to the codes 0, 1 and 2. The `days` widget always
+uses the day glyph.
 
 ## Values
 

@@ -20,7 +20,7 @@ Paperboy ships the plugins below. One zip per platform (`paperboy-plugins-linux-
 - [`dexcom`](dexcom.md) – the glucose reading of a Dexcom G7 from the Dexcom Share service: the value with trend and alarms, 24 hours and the last hour as a chart, the ambulatory glucose profile over several days, the numbers of 24 hours as rows, a child-friendly smiley for the state, and the `state` value for plan conditions.
 - [`departures`](departures.md) – real-time public transport departures from an EFA installation.
 - [`myskoda`](myskoda.md) – battery, charging plans, parking position and the vehicle image from the [MyŠkoda Public API](https://public.api.connect.skoda-auto.cz/docs).
-- [`weather`](weather.md) – current weather and forecast from [Open-Meteo](https://open-meteo.com/).
+- [`weather`](weather.md) – current weather and forecast from [Open-Meteo](https://open-meteo.com/), pictograms from [Weather Icons](https://erikflowers.github.io/weather-icons/).
 - [`fuel`](fuel.md) – fuel prices around a location from [Tankerkönig](https://creativecommons.tankerkoenig.de): the nearest stations, the cheapest price and its history, plus values for text pages.
 - [`calendar`](calendar.md) – agenda, week, month and birthdays from CalDAV and iCalendar.
 - [`pokedex`](pokedex.md) – a Pokémon card from [PokéAPI](https://pokeapi.co).
