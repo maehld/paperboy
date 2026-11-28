@@ -61,6 +61,10 @@ func (m *mock) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		m.efa(w, r)
 	case strings.HasPrefix(r.URL.Path, "/proxy/network/"):
 		m.unifi(w, r)
+	case strings.HasPrefix(r.URL.Path, "/profile/wow/character/"),
+		r.URL.Path == "/api/v1/characters/profile",
+		r.URL.Path == "/token", r.URL.Path == "/render.png":
+		m.armory(w, r)
 	case r.URL.Path == "/json/list.php":
 		m.fuel(w)
 	case r.URL.Path == "/General/AuthenticatePublisherAccount":
@@ -464,6 +468,72 @@ func (m *mock) xkcd(w http.ResponseWriter) {
 		"alt": "Fortunately, the charging one has been solved now that we've all standardized on mini-USB. Or is it micro-USB? Aaargh.",
 		"img": m.base + "/comic.png", "title": "Standards",
 	})
+}
+
+// ---- armory ----
+
+// armory serves the recorded answers of both APIs from the plugin's test data
+// and a simple figure instead of the character render.
+func (m *mock) armory(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/token":
+		writeJSON(w, map[string]any{"access_token": "demo", "expires_in": 86399, "token_type": "bearer"})
+		return
+	case r.URL.Path == "/render.png":
+		w.Header().Set("Content-Type", "image/png")
+		png.Encode(w, heroArt())
+		return
+	}
+	file := ""
+	switch {
+	case r.URL.Path == "/api/v1/characters/profile":
+		file = "raiderio-thrall.json"
+	case strings.HasSuffix(r.URL.Path, "/character-media"):
+		file = "blizzard-media.json"
+	case strings.HasSuffix(r.URL.Path, "/equipment"):
+		file = "blizzard-equipment.json"
+	case strings.Contains(r.URL.Path, "/profile/wow/character/"):
+		file = "blizzard-profile.json"
+	}
+	if file == "" {
+		http.NotFound(w, r)
+		return
+	}
+	b, err := os.ReadFile(filepath.Join(m.root, "plugins", "cmd", "armory", "testdata", file))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(strings.ReplaceAll(string(b), "RENDER", m.base+"/render.png")))
+}
+
+// heroArt is the stand-in for a character render: a staff and a figure.
+func heroArt() *image.RGBA {
+	const w, h = 400, 800
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{250, 250, 248, 255})
+		}
+	}
+	armor := color.RGBA{70, 90, 120, 255}
+	skin := color.RGBA{190, 150, 120, 255}
+	dark := color.RGBA{40, 45, 55, 255}
+	staff := color.RGBA{120, 90, 60, 255}
+	for y := 150; y < 760; y++ {
+		img.Set(330, y, staff)
+		img.Set(331, y, staff)
+	}
+	ellipse(img, 331, 120, 40, 50, staff)
+	ellipse(img, 190, 620, 45, 140, armor)
+	ellipse(img, 235, 620, 45, 140, armor)
+	ellipse(img, 210, 400, 95, 150, armor)
+	ellipse(img, 125, 310, 55, 60, armor)
+	ellipse(img, 295, 310, 55, 60, armor)
+	ellipse(img, 210, 205, 52, 62, skin)
+	ellipse(img, 210, 172, 56, 44, dark)
+	return img
 }
 
 // ---- PokéAPI ----

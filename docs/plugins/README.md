@@ -30,4 +30,5 @@ Paperboy ships the plugins below. One zip per platform (`paperboy-plugins-linux-
 - [`github`](github.md) – open issues, open pull requests, failed workflow runs and the commit history of GitHub repositories.
 - [`prusalink`](prusalink.md) – the state, progress and temperatures of a Prusa 3D printer from its local PrusaLink API.
 - [`unifi`](unifi.md) – the state of a UniFi home network from the controller's integration API: device and client counts, offline devices and the short WAN summary, plus values for text pages.
+- [`armory`](armory.md) – a World of Warcraft character from [Blizzard's profile API](https://develop.battle.net/documentation/world-of-warcraft/profile-apis) and [Raider.IO](https://raider.io/api): the render with level, class and item level, the Mythic+ score, the raid progress and the equipped items with slot, rarity and origin.
 - [`paperboy`](paperboy.md) – built in, no zip needed: header, title, text, clock, the Paperboy logo, the battery and the device status.

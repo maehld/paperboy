@@ -1,0 +1,12 @@
+# One World of Warcraft character: the render and profile on the left, the
+# Mythic+ score above the raid progress on the right. The plugin reads Blizzard's
+# profile API and Raider.IO; the config names the characters (docs/plugins/armory.md).
+title: World of Warcraft
+kind: image
+header: false
+grid: [6, 8]
+style: { padding: 4.5 }
+cells:
+  - { at: [0, 0], span: [4, 8], widget: armory/character }
+  - { at: [4, 0], span: [2, 4], widget: armory/mythic }
+  - { at: [4, 4], span: [2, 4], widget: armory/raid }

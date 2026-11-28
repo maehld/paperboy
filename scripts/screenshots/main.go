@@ -60,6 +60,7 @@ var pageShots = map[string][]string{
 	"paperboy":   {"status", "hinweise"},
 	"prusalink":  {"drucker", "drucker.lcd2004"},
 	"unifi":      {"netzwerk", "netzwerk.lcd2004"},
+	"armory":     {"wow", "wow-ausruestung"},
 }
 
 // widgetArgs overrides the arguments of a widget preview where the plugin
@@ -85,6 +86,7 @@ var widgetArgs = map[string]map[string]string{
 var plugins = []string{
 	"calendar", "countdown", "departures", "dexcom", "evcc", "fuel",
 	"myskoda", "pokedex", "prusalink", "rss", "unifi", "weather", "xkcd",
+	"armory",
 }
 
 func main() {
@@ -294,6 +296,15 @@ plugins:
     config: {url: %[1]q, api_key: demo, refresh: 1m}
   unifi:
     config: {url: %[8]q, api_key: demo, insecure: true, refresh: 1m}
+  armory:
+    config:
+      region: eu
+      characters: [Thrall@frostwolf]
+      client_id: demo
+      client_secret: demo
+      base: %[1]q
+      api_base: %[1]q
+      oauth_base: %[1]q
   rss:
     config:
       feeds:
