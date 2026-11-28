@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{template "head" .}}
+<title>Paperboy · About</title>
+<style>
+a { color: var(--pb-accent); }
+.card { background: var(--pb-surface); border: 1px solid var(--pb-hairline); border-radius: 8px; padding: .9rem; margin-bottom: 1rem; }
+.card h2 { font-size: 1.05rem; margin: 0 0 .6rem; }
+.card p { margin: 0 0 .7rem; font-size: .9rem; }
+dl { display: grid; grid-template-columns: 8rem minmax(0, 1fr); align-content: start; gap: .15rem .7rem; margin: 0; font-size: .9rem; }
+dt { color: var(--pb-ink-muted); }
+dd { margin: 0; min-width: 0; word-break: break-word; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+th, td { text-align: left; padding: .3rem .8rem .3rem 0; border-top: 1px solid var(--pb-surface-hover); vertical-align: baseline; }
+tr:first-child th { border-top: 0; }
+th { font-weight: 600; color: var(--pb-ink-muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+td.name { font-weight: 600; white-space: nowrap; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.muted { color: var(--pb-ink-muted); font-weight: 400; }
+</style>
+</head>
+<body>
+{{template "chrome" .}}
+<section class="card">
+  <h2>Paperboy</h2>
+  <dl>
+    <dt>Version</dt><dd>{{.Version}}</dd>
+    {{if .Revision}}<dt>Commit</dt><dd>{{.Revision}}{{if .Built}} · {{.Built}}{{end}}</dd>{{end}}
+    <dt>Go</dt><dd>{{.GoVersion}}</dd>
+    <dt>Licence</dt><dd>{{.License}}, see <a href="https://github.com/maehld/paperboy/blob/main/LICENSE" rel="noreferrer">LICENSE</a></dd>
+    <dt>Source</dt><dd><a href="https://github.com/maehld/paperboy" rel="noreferrer">github.com/maehld/paperboy</a></dd>
+  </dl>
+</section>
+
+<section class="card">
+  <h2>Plugins <span class="muted">and where their data comes from</span></h2>
+  <table>
+    <thead><tr><th>Plugin</th><th>Version</th><th>Data source</th></tr></thead>
+    <tbody>
+    {{range .Plugins}}<tr>
+      <td class="name">{{.Name}}</td>
+      <td class="num">{{if .Version}}{{.Version}}{{else}}<span class="muted">–</span>{{end}}</td>
+      <td>{{if .Source}}{{if .URL}}<a href="{{.URL}}" rel="noreferrer">{{.Source}}</a>{{else}}{{.Source}}{{end}}{{else}}<span class="muted">–</span>{{end}}</td>
+    </tr>{{end}}
+    </tbody>
+  </table>
+  <p style="margin-top:.8rem">The data belongs to its providers and follows their terms. The page of each plugin under
+    <a href="https://github.com/maehld/paperboy/tree/main/docs/plugins" rel="noreferrer">docs/plugins</a> names them.</p>
+</section>
+
+<section class="card">
+  <h2>Third-party code</h2>
+  <table>
+    <thead><tr><th>Component</th><th>Licence</th><th>Used for</th></tr></thead>
+    <tbody>
+    {{range .Code}}<tr>
+      <td class="name"><a href="{{.URL}}" rel="noreferrer">{{.Name}}</a></td>
+      <td>{{.License}}</td>
+      <td class="muted">{{if .Note}}{{.Note}}{{else}}library{{end}}</td>
+    </tr>{{end}}
+    </tbody>
+  </table>
+</section>
+{{template "chrome-end" .}}
+</body>
+</html>

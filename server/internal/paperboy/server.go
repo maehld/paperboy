@@ -206,6 +206,7 @@ func (s *Server) uiRoutes() []route {
 		{"GET /ui/system/maintenance", s.handleMaintenance},
 		{"GET /ui/system/stats", s.handleStats},
 		{"GET /ui/system/styleguide", s.handleStyleguide},
+		{"GET /ui/system/about", s.handleAbout},
 		{"GET /ui/playground", s.handleWidgetsPage},
 		{"GET /ui/virtual", s.handleVirtual},
 		{"GET /ui/virtual.js", s.handleVirtualJS},

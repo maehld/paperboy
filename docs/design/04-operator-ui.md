@@ -8,7 +8,7 @@ The operator UI runs on the same listener as the device API. It shows what the i
 
 One layout renders the head, the top bar, the rail, the title line and the theme toggle for every page ([ADR 0152](../adr/0152-a-design-system-and-a-rail-for-the-operator-ui.md), amended by [ADR 0156](../adr/0156-a-title-line-for-the-operator-shell.md)). A page parses the layout with its own template and keeps its title and its styles.
 
-- The rail groups its entries. Overview, Pages and Plans stand without a head. *Configuration* holds Devices, Display types and Plugins, *System* holds Playground, Plugins, Firmware, Maintenance, Stats and the Styleguide ([ADR 0153](../adr/0153-an-overview-page-and-a-grouped-rail.md)). Below 64rem the rail wraps into a strip under the brand, and its foot becomes a second row.
+- The rail groups its entries. Overview, Pages and Plans stand without a head. *Configuration* holds Devices, Display types and Plugins, *System* holds Playground, Plugins, Firmware, Maintenance, Stats, the Styleguide and About ([ADR 0153](../adr/0153-an-overview-page-and-a-grouped-rail.md)). Below 64rem the rail wraps into a strip under the brand, and its foot becomes a second row.
 - The top bar carries the logo lockup, the title line and the page actions. The rail foot carries the search hint, the build label and the theme link.
 - The title line replaces the breadcrumb and the editor bar ([ADR 0156](../adr/0156-a-title-line-for-the-operator-shell.md)). It reads `Plans / Plan solar`, and the file follows as a muted hint. Every step but the current one is a link. The current object is the `h1`. Below 40rem the file, the status and the build disappear, and the secondary actions move into a `⋯` menu.
 - The shell owns the only `main` element. A page lays out its columns in a `div`, so a page rule never restyles the shell.
@@ -80,6 +80,14 @@ The overview, the stats page and the two release trains poll themselves ([ADR 01
 ## Runtime stats
 
 `GET /ui/system/stats` is read-only and polls itself ([ADR 0104](../adr/0104-runtime-stats-in-the-web-ui.md), [0106](../adr/0106-self-updating-pages-with-htmx.md)). It shows Paperboy's heap, goroutines, GC, resident memory and CPU. One row per plugin carries state, program, PID, memory, CPU, requests, errors and timings. A second block names what the operating system sees of each plugin. It shows disk bytes, open files and connections with their peer. It names the last exit with its code or signal and the last 50 stderr lines. A signal such as `SIGSYS` explains a plugin that a sandbox or seccomp filter killed. The lists are cut after a few entries and the card says how many follow. Windows reports no observation yet. The widget cache shows entries, images, bytes and age buckets; the rendered pages and the notice pages follow. Named timings carry count, average, p50, p95 and maximum. Per device it shows the syncs with their duration, and the text polls separately. CPU shares compare with the previous view of the page, because they come from a difference of two readings.
+
+## About
+
+`GET /ui/system/about` is read-only and names what the installation runs. It shows the build label of the top bar again, with the full commit and its date, and the Go toolchain. The licence line links `LICENSE`, and the source line links the repository.
+
+One table lists every configured plugin with its version and its data source. A source the operator runs ("the operator's evcc") carries no link; a third-party service links its provider. A paragraph points to `docs/plugins` for the terms of each source. The built-in plugin has its own row, because it is never configured.
+
+A second table names the third-party code with its licence. It lists htmx (0BSD), DotGothic16 (SIL Open Font License 1.1) and the two Go modules `golang.org/x/image` and `go.yaml.in/yaml/v3`. The page reads the configuration and the build stamp, so it needs no request to a plugin or a data source.
 
 ## Release trains
 
