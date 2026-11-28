@@ -55,9 +55,9 @@ type aboutCode struct {
 // party.
 var pluginSources = map[string]aboutPlugin{
 	"armory":     {Source: "Blizzard Entertainment and Raider.IO", URL: "https://develop.battle.net/documentation/world-of-warcraft/profile-apis"},
-	"calendar":   {Source: "the operator's CalDAV, CardDAV and iCalendar sources"},
+	"calendar":   {Source: "the operator's calendars from CalDAV, CardDAV and iCalendar links"},
 	"countdown":  {Source: "none, every date is an argument"},
-	"departures": {Source: "the operator's EFA installation"},
+	"departures": {Source: "an EFA installation of the local transit provider"},
 	"dexcom":     {Source: "Dexcom Share", URL: "https://developer.dexcom.com/"},
 	"evcc":       {Source: "the operator's evcc", URL: "https://evcc.io"},
 	"fuel":       {Source: "Tankerkönig (MTS-K)", URL: "https://creativecommons.tankerkoenig.de"},
